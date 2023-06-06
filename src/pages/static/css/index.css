@@ -1,0 +1,50 @@
+html,
+body {
+  margin: auto;
+  height: 100%;
+  width: 100%;
+  font-family: Arial, sans-serif;
+}
+#navbar {
+  display: flex;
+  align-items: center;
+  background-color: #323440;
+  padding: 8px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+button {
+  display: inline-flex;
+  background: none;
+  border: none;
+  padding: 4px;
+  margin-right: 2px;
+  cursor: pointer;
+  color: #9ca3af;
+}
+button:hover {
+  color: white;
+}
+#url {
+  background-color: #111827;
+  border: 1px solid #4b5563;
+  margin-left: 6px;
+  margin-right: 6px;
+  color: white;
+  font-size: medium;
+  border-radius: 4px;
+  display: block;
+  width: 80%;
+  padding: 0.4rem;
+}
+#url:hover {
+  background-color: #1f2937;
+}
+#url:focus {
+  background-color: #111827;
+  outline: none;
+  box-shadow: 0 0 0 1px #06b6d4;
+}
+#webview {
+  width: 100%;
+  height: calc(100vh - 50px);
+}

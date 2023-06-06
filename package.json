@@ -1,0 +1,76 @@
+{
+  "name": "peersky-browser",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A minimal p2p web browser.",
+  "keywords": [
+    "peersky",
+    "ipfs",
+    "browser",
+    "dweb"
+  ],
+  "license": "MIT",
+  "author": "Akhilesh Thite <akhileshthite@hotmail.com> (https://akhilesh.art/)",
+  "main": "src/main.js",
+  "repository": "https://github.com/p2plabsxyz/peersky-browser",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "electron .",
+    "electron-rebuild": "electron-rebuild",
+    "build": "electron-builder"
+  },
+  "build": {
+    "appId": "peersky.p2plabs.xyz",
+    "productName": "Peersky Browser",
+    "directories": {
+      "output": "build"
+    },
+    "files": [
+      "public/*",
+      "src/**/*",
+      "src/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "target": "dmg",
+      "icon": "./public/icon.png"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "./public/icon.png"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "./public/icon.png"
+    },
+    "protocols": [
+      {
+        "name": "ipfs",
+        "schemes": [
+          "ipfs",
+          "ipns",
+          "ipld"
+        ],
+        "role": "Viewer"
+      }
+    ],
+    "publish": {
+      "provider": "github",
+      "releaseType": "release"
+    }
+  },
+  "dependencies": {
+    "ipfs": "^0.66.1",
+    "jquery": "^3.6.4",
+    "mime": "^3.0.0"
+  },
+  "devDependencies": {
+    "electron": "^20.1.1",
+    "electron-rebuild": "^3.1.1",
+    "electron-builder": "^23.0.2"
+  }
+}
