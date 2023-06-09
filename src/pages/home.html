@@ -1,17 +1,32 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <style>
-        @import url('./static/css/style.css'); 
+      @import url("peersky://static/css/home.css");
     </style>
-    <!-- <link rel="stylesheet" href="./static/css/style.css"> -->
-    <title>Welcome</title>
-</head>
-<body>
-    <h1>Home</h1>
-    <a href="peersky://about">aa</a>
-</body>
+    <!-- <link rel="stylesheet" href="./static/css/home.css" /> -->
+    <title>Peersky Browser | Home</title>
+  </head>
+  <body>
+    <div class="background">
+      <img
+        class="logo"
+        src="peersky://static/images/logo.png"
+        alt="Peersky Logo"
+      />
+      <div class="frosted-glass">
+        <div class="content">
+          <code class="heading">Peersky</code>
+          <div class="links">
+            <a href="peersky://about">About</a>
+            <a href="https://p2plabs.xyz/">P2P Labs</a>
+            <a href="ipns://ipfs.tech/">ipfs://</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
 </html>

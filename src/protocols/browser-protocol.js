@@ -28,6 +28,11 @@ module.exports = async function createHandler() {
         break;
       case '.js':
       case '.css':
+      case '.png':
+      case '.jpg':
+      case '.jpeg':
+      case '.gif':
+      case '.svg':
         if (!fs.existsSync(absolutePath)) {
           sendResponse({
             statusCode: 404,
