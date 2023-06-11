@@ -3,13 +3,22 @@ const mime = require("mime-types");
 const path = require("path");
 const { directoryListingHtml } = require("../utils/directoryListingTemplate");
 
-module.exports = async function createHandler() {
-  const IPFS = await import("ipfs");
-  const node = await IPFS.create();
+let node;
+async function initializeIPFSNode() {
+  const { node: nodePromise } = await import('./ipfs.mjs');
+  node = await nodePromise;
   const id = await node.id();
   console.log(id);
+}
+initializeIPFSNode();
 
+
+module.exports = async function createHandler() {
   return async function protocolHandler({ url }, sendResponse) {
+    if (!node) {
+      console.log("IPFS node is not ready yet");
+      return;
+    }
     let data = null;
     let statusCode = 200;
     let headers = {

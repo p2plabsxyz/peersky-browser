@@ -35,3 +35,7 @@ urlInput.addEventListener("keypress", async (e) => {
 webView.addEventListener("did-navigate", (e) => {
   urlInput.value = e.url;
 });
+
+webView.addEventListener("did-fail-load", (event) => {
+  console.error(`Failed to load URL: ${event.validatedURL}`, event.errorCode);
+});

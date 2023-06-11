@@ -17,20 +17,23 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "electron .",
     "electron-rebuild": "electron-rebuild",
-    "build": "electron-builder"
+    "build": "electron-builder build --publish never",
+    "build-all": "electron-builder build -mwl"
   },
   "build": {
+    "npmRebuild": false,
+    "asar": false,
     "appId": "peersky.p2plabs.xyz",
     "productName": "Peersky Browser",
     "directories": {
       "output": "build"
     },
     "files": [
+      "node_modules/**/*",
+      "package.json",
       "public/*",
       "src/**/*",
-      "src/*",
-      "node_modules/**/*",
-      "package.json"
+      "src/*"
     ],
     "mac": {
       "target": "dmg",
@@ -66,11 +69,11 @@
   "dependencies": {
     "ipfs": "^0.66.1",
     "jquery": "^3.6.4",
-    "mime": "^3.0.0"
+    "mime-types": "^2.1.35"
   },
   "devDependencies": {
     "electron": "^20.1.1",
-    "electron-rebuild": "^3.1.1",
-    "electron-builder": "^23.0.2"
+    "electron-builder": "^23.6.0",
+    "electron-rebuild": "^3.1.1"
   }
 }

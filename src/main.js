@@ -1,9 +1,10 @@
 const { app, BrowserWindow, protocol } = require('electron');
-const createIPFSHandler = require('./protocols/ipfs-handler')
-const createBrowserHandler = require('./protocols/browser-protocol')
-const { join } = require('path')
+const createIPFSHandler = require('./protocols/ipfs-handler.js');
+const createBrowserHandler = require('./protocols/browser-protocol.js');
+const { join } = require('path');
 
 let mainWindow;
+
 const P2P_PROTOCOL = {
   standard: true,
   secure: true,
@@ -49,22 +50,30 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'peersky', privileges: BROWSER_PROTOCOL },
 ])
 
-app.whenReady().then(onready)
+app.whenReady().then(async () => {
+  await setupProtocol();
+  createWindow();
+});
 
-async function onready () {
-  await setupProtocol()
-  createWindow()
-}
+// const DEFAULT_IPFS_DIR = join(app.getPath('userData'), 'ipfs')
+// const ipfsOptions = {
+//   repo: DEFAULT_IPFS_DIR,
+//   silent: true
+// }
 
 async function setupProtocol () {
   app.setAsDefaultProtocolClient('ipfs')
 
-  const ipfsProtocolHandler = await createIPFSHandler()
-  protocol.registerStreamProtocol('ipfs', ipfsProtocolHandler)
-  protocol.registerStreamProtocol('ipns', ipfsProtocolHandler)
+  const ipfsProtocolHandler = await createIPFSHandler();
+  if (!ipfsProtocolHandler) {
+    throw new Error('IPFS node failed to initialize');
+  }
 
-  const browserProtocolHandler = await createBrowserHandler()
-  protocol.registerStreamProtocol('peersky', browserProtocolHandler)
+  protocol.registerStreamProtocol('ipfs', ipfsProtocolHandler);
+  protocol.registerStreamProtocol('ipns', ipfsProtocolHandler);
+
+  const browserProtocolHandler = await createBrowserHandler();
+  protocol.registerStreamProtocol('peersky', browserProtocolHandler);
 }
 
 app.on('window-all-closed', () => {
