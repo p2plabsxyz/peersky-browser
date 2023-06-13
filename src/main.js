@@ -1,7 +1,7 @@
-const { app, BrowserWindow, protocol } = require('electron');
-const createIPFSHandler = require('./protocols/ipfs-handler.js');
-const createBrowserHandler = require('./protocols/browser-protocol.js');
-const { join } = require('path');
+const { app, BrowserWindow, protocol } = require("electron");
+const createIPFSHandler = require("./protocols/ipfs-handler.js");
+const createBrowserHandler = require("./protocols/browser-protocol.js");
+const { join } = require("path");
 
 let mainWindow;
 
@@ -12,8 +12,8 @@ const P2P_PROTOCOL = {
   supportFetchAPI: true,
   bypassCSP: false,
   corsEnabled: true,
-  stream: true
-}
+  stream: true,
+};
 
 const BROWSER_PROTOCOL = {
   standard: false,
@@ -21,8 +21,8 @@ const BROWSER_PROTOCOL = {
   allowServiceWorkers: false,
   supportFetchAPI: true,
   bypassCSP: false,
-  corsEnabled: true
-}
+  corsEnabled: true,
+};
 
 async function createWindow() {
   mainWindow = new BrowserWindow({
@@ -32,57 +32,49 @@ async function createWindow() {
       nodeIntegration: true,
       contextIsolation: false,
       nativeWindowOpen: true,
-      webviewTag: true
+      webviewTag: true,
     },
   });
 
-  mainWindow.loadFile(join(__dirname, './pages/index.html'));
+  mainWindow.loadFile(join(__dirname, "./pages/index.html"));
   mainWindow.webContents.openDevTools();
 
-  mainWindow.on('closed', () => {
+  mainWindow.on("closed", () => {
     mainWindow = null;
   });
 }
 
 protocol.registerSchemesAsPrivileged([
-  { scheme: 'ipfs', privileges: P2P_PROTOCOL },
-  { scheme: 'ipns', privileges: P2P_PROTOCOL },
-  { scheme: 'peersky', privileges: BROWSER_PROTOCOL },
-])
+  { scheme: "ipfs", privileges: P2P_PROTOCOL },
+  { scheme: "ipns", privileges: P2P_PROTOCOL },
+  { scheme: "peersky", privileges: BROWSER_PROTOCOL },
+]);
 
 app.whenReady().then(async () => {
   await setupProtocol();
   createWindow();
 });
 
-// const DEFAULT_IPFS_DIR = join(app.getPath('userData'), 'ipfs')
-// const ipfsOptions = {
-//   repo: DEFAULT_IPFS_DIR,
-//   silent: true
-// }
-
-async function setupProtocol () {
-  app.setAsDefaultProtocolClient('ipfs')
+async function setupProtocol() {
+  app.setAsDefaultProtocolClient("ipfs");
+  app.setAsDefaultProtocolClient("ipns");
+  app.setAsDefaultProtocolClient("peersky");
 
   const ipfsProtocolHandler = await createIPFSHandler();
-  if (!ipfsProtocolHandler) {
-    throw new Error('IPFS node failed to initialize');
-  }
-
-  protocol.registerStreamProtocol('ipfs', ipfsProtocolHandler);
-  protocol.registerStreamProtocol('ipns', ipfsProtocolHandler);
+  protocol.registerStreamProtocol("ipfs", ipfsProtocolHandler);
+  protocol.registerStreamProtocol("ipns", ipfsProtocolHandler);
 
   const browserProtocolHandler = await createBrowserHandler();
-  protocol.registerStreamProtocol('peersky', browserProtocolHandler);
+  protocol.registerStreamProtocol("peersky", browserProtocolHandler);
 }
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") {
     app.quit();
   }
 });
 
-app.on('activate', () => {
+app.on("activate", () => {
   if (mainWindow === null) {
     createWindow();
   }

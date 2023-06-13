@@ -5,13 +5,12 @@ const { directoryListingHtml } = require("../utils/directoryListingTemplate");
 
 let node;
 async function initializeIPFSNode() {
-  const { node: nodePromise } = await import('./ipfs.mjs');
+  const { node: nodePromise } = await import("./ipfs.mjs");
   node = await nodePromise;
   const id = await node.id();
   console.log(id);
 }
 initializeIPFSNode();
-
 
 module.exports = async function createHandler() {
   return async function protocolHandler({ url }, sendResponse) {
@@ -87,7 +86,7 @@ module.exports = async function createHandler() {
       }
     }
     if (headers["Content-Type"] === undefined) {
-      headers["Content-Type"] = mime.lookup(ipfsPath) || "text/plain";
+      headers["Content-Type"] = mime.lookup(ipfsPath);
     }
     if (statusCode !== 500) {
       data = Readable.from(Buffer.concat(chunks));
