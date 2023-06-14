@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--MetaTags-->
+    <meta name="author" content="Akhilesh Thite" />
+    <meta property="og:title" content="Peersky Browser" />
+    <meta property="og:description" content="A minimal p2p web browser." />
+    <meta
+      name="keywords"
+      content="peersky, peersky browser, p2plabs, dweb, ipfs"
+    />
+    <meta property="og:url" content="https://peersky.p2plabs.xyz/" />
+    <meta property="og:type" content="Website" />
+    <!--Favicon-->
+    <link rel="shortcut icon" type="image/png" href="./images/favicon.ico" />
+    <!-- Tailwind -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.16/dist/tailwind.min.css"
+      rel="stylesheet"
+    />
+    <title>Peersky Browser</title>
+  </head>
+  <body style="background-color: #fffcf9">
+    <center>
+      <img
+        class="mb-6 mt-12"
+        src="./images/peersky-browser.png"
+        width="230"
+        alt="Peersky Browser Logo"
+      />
+      <code class="text-3xl">Peersky Browser</code>
+    </center>
+    <div class="max-w-3xl mx-auto px-5 sm:px-10 md:px-20 mt-6">
+      <p class="mb-2">A minimal p2p web browser.</p>
+      <a href="https://github.com/p2plabsxyz/peersky-browser/releases/latest">
+        <code class="flex text-blue-600 hover:text-blue-500 mb-2"
+          >Download
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke-width="1.5"
+            stroke="currentColor"
+            class="w-5 h-5 ml-2"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
+            />
+          </svg>
+        </code>
+      </a>
+      <span
+        class="text-xs text-yellow-600 border border-yellow-500 bg-yellow-100 text-white p-1 rounded-full"
+        >pre-release</span
+      >
+      <div class="mt-2">
+        <p>
+          Have you ever wondered what it'd be like if the internet wasn't
+          controlled by a handful of big companies? That's what the distributed
+          web, or dWeb, is all about. It's a new kind of internet that operates
+          on a network of computers where everyone shares and cooperates. This
+          way, no single entity can control or shut it down. It's like turning
+          the entire web into a giant, global community project.
+        </p>
+        <p class="mt-2">
+          Peersky is your personal gatekeeper to a new way of accessing web
+          content. Imagine a world where you can access web pages from anyone in
+          a network who has a copy of it, rather than depending on a single
+          website server.
+        </p>
+        <p class="mt-2">
+          Peersky runs a local IPFS node, that fetches and displays web content
+          directly from the decentralized network. It effortlessly recognizes
+          web addresses starting with "ipfs://" or "ipns://", making your
+          browsing experience both offline-friendly and decentralized.
+        </p>
+      </div>
+      <p></p>
+      <footer class="text-sm mt-2 mb-12">
+        <a
+          class="underline hover:text-gray-800 hover:no-underline"
+          href="https://twitter.com/PeerskyBrowser"
+          >Twitter</a
+        >
+        <a
+          class="underline hover:text-gray-800 hover:no-underline"
+          href="https://github.com/p2plabsxyz/peersky-browser/"
+          >Source Code</a
+        ><br />
+        by
+        <a
+          class="underline hover:text-gray-800 hover:no-underline"
+          href="https://p2plabs.xyz/"
+          >p2plabs.xyz</a
+        >
+      </footer>
+    </div>
+  </body>
+</html>
