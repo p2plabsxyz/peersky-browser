@@ -91,3 +91,10 @@ npm run build-all
     - [DScan](https://github.com/p2plabsxyz/dscan)
     - ..
   - [ ]  Load extensions from folders
+
+  ## ⚖️ License
+
+Peersky Browser is licensed under the [MIT License](https://github.com/p2plabsxyz/peersky-browser/blob/main/LICENSE).
+
+<hr>
+Don't forget to leave a star ⭐️ ~ <a href="https://twitter.com/PeerskyBrowser" target="_blank"><img src="https://img.shields.io/twitter/follow/PeerskyBrowser?style=social" alt="twitter" /></a>
