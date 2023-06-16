@@ -92,7 +92,7 @@ npm run build-all
     - ..
   - [ ]  Load extensions from folders
 
-  ## ⚖️ License
+## ⚖️ License
 
 Peersky Browser is licensed under the [MIT License](https://github.com/p2plabsxyz/peersky-browser/blob/main/LICENSE).
 
