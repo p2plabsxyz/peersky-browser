@@ -12,6 +12,10 @@
 
 💻 [Download](https://github.com/p2plabsxyz/peersky-browser/releases/latest) | 🌐 [Website](https://peersky.p2plabs.xyz/)
 
+<div align="center">
+  <img src="./peersky-demo.gif" />
+</div>
+
 ## 🛠 Development
 - Install dependencies
 
