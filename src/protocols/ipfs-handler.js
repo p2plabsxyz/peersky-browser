@@ -1,23 +1,35 @@
-const { Readable } = require("stream");
-const mime = require("mime-types");
-const path = require("path");
-const { directoryListingHtml } = require("../utils/directoryListingTemplate");
+import { Readable } from "stream";
+import mime from "mime-types";
+import path from "path";
+import { directoryListingHtml } from "../utils/directoryListingTemplate.js";
+import { createNode } from "./ipfs/helia.js";
+import { ipfsOptions } from "./config.js";
+import { unixfs } from "@helia/unixfs";
+import { ipns } from "@helia/ipns";
 
-let node;
+let node, fs, name;
+
 async function initializeIPFSNode() {
-  const { node: nodePromise } = await import("./ipfs.mjs");
-  node = await nodePromise;
-  const id = await node.id();
-  console.log(id);
+  console.log("Initializing IPFS node...");
+  const startTime = Date.now();
+  node = await createNode(ipfsOptions);
+  console.log(`IPFS node initialized in ${Date.now() - startTime}ms`);
+  console.log(node.libp2p.peerId);
+
+  fs = unixfs(node);
+  name = ipns(node);
 }
+
 initializeIPFSNode();
 
-module.exports = async function createHandler() {
+export async function createHandler() {
   return async function protocolHandler({ url }, sendResponse) {
     if (!node) {
       console.log("IPFS node is not ready yet");
       return;
     }
+
+    let ipfsPath;
     let data = null;
     let statusCode = 200;
     let headers = {
@@ -26,70 +38,91 @@ module.exports = async function createHandler() {
       "Cache-Control": "no-cache",
     };
 
-    let ipfsPath;
-    if (url.startsWith("ipns://")) {
-      const ipnsPath = url.replace("ipns://", "");
-      ipfsPath = await node.resolve(`/ipns/${ipnsPath}`);
+    const urlObj = new URL(url);
+    
+    if (urlObj.protocol === "ipns:") {
+      let ipnsName = urlObj.hostname;
+      let urlParts = urlObj.pathname.split("/").filter(Boolean);
+
+      // Remove trailing slash if it exists
+      if (ipnsName.endsWith("/")) {
+        ipnsName = ipnsName.slice(0, -1);
+      }
+      try {
+        console.log("Resolving IPNS for:", ipnsName);
+        const resolutionResult = await name.resolveDNSLink(ipnsName, {
+          signal: AbortSignal.timeout(5000),
+        });
+        console.log("Resolution Result:", resolutionResult);
+        const resolvedCID = resolutionResult.cid;
+
+        // Convert CID to string, ensuring it's version 1
+        const cidV1String = resolvedCID.toV1().toString();
+        console.log("Resolved CID String:", cidV1String);
+
+        ipfsPath = `/ipfs/${cidV1String}/${urlParts.join("/")}`;
+      } catch (e) {
+        console.log("Error resolving IPNS:", e);
+        statusCode = 500;
+        data = Readable.from([
+          Buffer.from("Failed to resolve IPNS name: " + e.toString()),
+        ]);
+        sendResponse({ statusCode, headers, data });
+        return;
+      }
     } else {
       ipfsPath = url.replace("ipfs://", "");
     }
-    console.log(ipfsPath);
 
-    const chunks = [];
-    let isDirectory = false;
-    // File handling
     try {
-      for await (const chunk of node.cat(ipfsPath)) {
-        chunks.push(chunk);
+      // Try to access the specific file first
+      const fileStream = [];
+      console.log("Starting file retrieval for IPFS path:", ipfsPath);
+      for await (const chunk of fs.cat(ipfsPath)) {
+        fileStream.push(chunk);
       }
+      console.log("File retrieval complete for IPFS path:", ipfsPath);
+      headers["Content-Type"] =
+        mime.lookup(ipfsPath) || "application/octet-stream";
+      data = Readable.from(Buffer.concat(fileStream));
     } catch (e) {
-      if (e.message.includes("this dag node is a directory")) {
-        // Treat this as a directory
-        isDirectory = true;
+      if (e.message.includes("not a file")) {
+        // If it's not a file, check if it's a directory
+        try {
+          const indexPath = path.join(ipfsPath, "index.html");
+          const indexStream = [];
+          for await (const chunk of fs.cat(indexPath)) {
+            indexStream.push(chunk);
+          }
+          headers["Content-Type"] = "text/html";
+          data = Readable.from(Buffer.concat(indexStream));
+        } catch {
+          // If no index.html, list the directory
+          const files = [];
+          const currentPathSections = ipfsPath.split('/').filter(Boolean);
+
+          if (currentPathSections.length > 0) {  // Check if current directory is not root
+            const parentPath = currentPathSections.slice(0, -1).join('/') || "/";
+            const parentLink = currentPathSections.length > 1 ? `ipfs://${parentPath}` : null;
+            if (parentLink) {
+              files.push(`<li><a href="${parentLink}">../</a></li>`);
+            }
+          }
+          
+          for await (const file of fs.ls(ipfsPath)) {
+            const fileLink = `ipfs://${path.join(ipfsPath, file.name)}`;
+            files.push(`<li><a href="${fileLink}">${file.name}</a></li>`);
+          }
+          const html = directoryListingHtml(ipfsPath, files.join(""));
+
+          headers["Content-Type"] = "text/html";
+          data = Readable.from([Buffer.from(html)]);
+        }
       } else {
+        // Handle other errors
         statusCode = 500;
         data = Readable.from([Buffer.from(e.stack)]);
       }
-    }
-
-    // Directory handling
-    if (isDirectory) {
-      const indexPath = path.join(ipfsPath, "index.html");
-      chunks.length = 0; // Clear chunks array
-      let foundIndex = false;
-
-      try {
-        for await (const chunk of node.cat(indexPath)) {
-          chunks.push(chunk);
-          foundIndex = true;
-        }
-        headers["Content-Type"] = "text/html";
-      } catch (e) {
-        console.log("Failed to read index.html:", e);
-      }
-
-      // If index.html does not exist in the directory
-      if (!foundIndex) {
-        const shortCID = `${ipfsPath.slice(0, 4)}...${ipfsPath.slice(-5)}`;
-        let filesHtml = '<li><a href="../">../</a></li>';
-        for await (const file of node.ls(ipfsPath)) {
-          const fileLink = `./${file.name}${file.type === "dir" ? "/" : ""}`;
-          const fileHref =
-            ipfsPath === "/"
-              ? `/${file.name}${file.type === "dir" ? "/" : ""}`
-              : `${file.name}${file.type === "dir" ? "/" : ""}`;
-          filesHtml += `<li><a href="ipfs://${ipfsPath}${fileHref}">${fileLink}</a></li>`;
-        }
-        const html = directoryListingHtml(shortCID, filesHtml);
-        chunks.push(Buffer.from(html));
-        headers["Content-Type"] = "text/html";
-      }
-    }
-    if (headers["Content-Type"] === undefined) {
-      headers["Content-Type"] = mime.lookup(ipfsPath);
-    }
-    if (statusCode !== 500) {
-      data = Readable.from(Buffer.concat(chunks));
     }
 
     sendResponse({
@@ -97,5 +130,5 @@ module.exports = async function createHandler() {
       headers,
       data,
     });
-  };
+  }
 };

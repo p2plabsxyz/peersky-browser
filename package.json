@@ -12,6 +12,7 @@
   "license": "MIT",
   "author": "Akhilesh Thite <akhileshthite@hotmail.com> (https://akhilesh.art/)",
   "main": "src/main.js",
+  "type": "module",
   "repository": "https://github.com/p2plabsxyz/peersky-browser",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -75,13 +76,27 @@
     }
   },
   "dependencies": {
-    "ipfs": "^0.66.1",
-    "jquery": "^3.7.0",
-    "mime-types": "^2.1.35"
+    "@chainsafe/libp2p-gossipsub": "^13.0.0",
+    "@chainsafe/libp2p-noise": "^15.0.0",
+    "@chainsafe/libp2p-yamux": "^6.0.2",
+    "@helia/ipns": "^7.2.2",
+    "@helia/unixfs": "^3.0.6",
+    "@libp2p/bootstrap": "^10.0.24",
+    "@libp2p/kad-dht": "^12.0.17",
+    "@libp2p/mplex": "^10.0.24",
+    "@libp2p/tcp": "^9.0.26",
+    "@libp2p/webrtc": "^4.0.33",
+    "@libp2p/websockets": "^8.0.24",
+    "helia": "^4.2.1",
+    "jquery": "^3.7.1",
+    "libp2p": "^1.6.0",
+    "libp2p-gossipsub": "^0.13.0",
+    "mime-types": "^2.1.35",
+    "multiformats": "^13.1.0"
   },
   "devDependencies": {
-    "electron": "^20.3.12",
-    "electron-builder": "^23.6.0",
+    "electron": "^29.4.0",
+    "electron-builder": "^24.13.3",
     "electron-rebuild": "^3.2.9"
   }
 }

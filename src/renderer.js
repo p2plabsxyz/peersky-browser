@@ -4,7 +4,6 @@ const forwardButton = document.getElementById("forward");
 const refreshButton = document.getElementById("refresh");
 const homeButton = document.getElementById("home");
 const urlInput = document.getElementById("url");
-const $ = require("jquery");
 
 backButton.addEventListener("click", () => webView.goBack());
 forwardButton.addEventListener("click", () => webView.goForward());
@@ -17,17 +16,19 @@ homeButton.addEventListener("click", () => {
 urlInput.addEventListener("keypress", async (e) => {
   if (e.key === "Enter") {
     const url = urlInput.value.trim();
+    try {
+
     if (url.startsWith("ipfs://") || url.startsWith("ipns://")) {
-      $("#webview").attr("src", url);
+      webView.src = url;
     } else if (url.startsWith("peersky://")) {
-      $("#webview").attr("src", url);
+      webView.src = url;
     } else if (url.startsWith("http://") || url.startsWith("https://")) {
-      $("#webview").attr("src", url);
+      webView.src = url;
     } else {
-      $("#webview").attr(
-        "src",
-        `https://duckduckgo.com/?q=${encodeURIComponent(url)}`
-      );
+      webView.src = `https://duckduckgo.com/?q=${encodeURIComponent(url)}`;
+    } 
+  } catch (error) {
+      console.error('Error loading URL:', error);
     }
   }
 });

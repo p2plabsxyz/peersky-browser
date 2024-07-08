@@ -1,7 +1,11 @@
-const { app, BrowserWindow, protocol } = require("electron");
-const createIPFSHandler = require("./protocols/ipfs-handler.js");
-const createBrowserHandler = require("./protocols/browser-protocol.js");
-const { join } = require("path");
+import { app, BrowserWindow, protocol as globalProtocol, session } from "electron";
+import { join } from "path";
+import { fileURLToPath } from "url";
+import { createHandler as createIPFSHandler } from "./protocols/ipfs-handler.js";
+import { createHandler as createBrowserHandler } from "./protocols/browser-protocol.js";
+import { ipfsOptions } from "./protocols/config.js";
+
+const __dirname = fileURLToPath(new URL('./', import.meta.url))
 
 let mainWindow;
 
@@ -44,28 +48,33 @@ async function createWindow() {
   });
 }
 
-protocol.registerSchemesAsPrivileged([
+globalProtocol.registerSchemesAsPrivileged([
   { scheme: "ipfs", privileges: P2P_PROTOCOL },
   { scheme: "ipns", privileges: P2P_PROTOCOL },
   { scheme: "peersky", privileges: BROWSER_PROTOCOL },
 ]);
 
 app.whenReady().then(async () => {
-  await setupProtocol();
+  await setupProtocols(session.defaultSession);
   createWindow();
 });
 
-async function setupProtocol() {
+async function setupProtocols(session) {
+  const { protocol: sessionProtocol } = session;
+
   app.setAsDefaultProtocolClient("ipfs");
   app.setAsDefaultProtocolClient("ipns");
   app.setAsDefaultProtocolClient("peersky");
 
-  const ipfsProtocolHandler = await createIPFSHandler();
-  protocol.registerStreamProtocol("ipfs", ipfsProtocolHandler);
-  protocol.registerStreamProtocol("ipns", ipfsProtocolHandler);
+  const ipfsProtocolHandler = await createIPFSHandler(ipfsOptions, session);
+  sessionProtocol.registerStreamProtocol("ipfs", ipfsProtocolHandler);
+  sessionProtocol.registerStreamProtocol("ipns", ipfsProtocolHandler);
+  globalProtocol.registerStreamProtocol("ipfs", ipfsProtocolHandler);
+  globalProtocol.registerStreamProtocol("ipns", ipfsProtocolHandler);
 
   const browserProtocolHandler = await createBrowserHandler();
-  protocol.registerStreamProtocol("peersky", browserProtocolHandler);
+  sessionProtocol.registerStreamProtocol("peersky", browserProtocolHandler);
+  globalProtocol.registerStreamProtocol("peersky", browserProtocolHandler);
 }
 
 app.on("window-all-closed", () => {
