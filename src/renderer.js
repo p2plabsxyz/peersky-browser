@@ -20,6 +20,8 @@ urlInput.addEventListener("keypress", async (e) => {
 
     if (url.startsWith("ipfs://") || url.startsWith("ipns://")) {
       webView.src = url;
+    } else if (url.startsWith("hyper://")) {
+      webView.src = url;
     } else if (url.startsWith("peersky://")) {
       webView.src = url;
     } else if (url.startsWith("http://") || url.startsWith("https://")) {

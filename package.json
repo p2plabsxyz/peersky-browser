@@ -6,6 +6,7 @@
   "keywords": [
     "peersky",
     "ipfs",
+    "hyper",
     "browser",
     "dweb"
   ],
@@ -88,6 +89,8 @@
     "@libp2p/webrtc": "^4.0.33",
     "@libp2p/websockets": "^8.0.24",
     "helia": "^4.2.1",
+    "hyper-sdk": "^5.0.0",
+    "hypercore-fetch": "^9.9.1",
     "jquery": "^3.7.1",
     "libp2p": "^1.6.0",
     "libp2p-gossipsub": "^0.13.0",
