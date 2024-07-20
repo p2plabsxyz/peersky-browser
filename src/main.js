@@ -6,6 +6,7 @@ import { createHandler as createBrowserHandler } from "./protocols/browser-proto
 import { createHandler as createHyperHandler } from './protocols/hyper-handler.js';
 import { createHandler as createWeb3Handler } from './protocols/web3-handler.js';
 import { ipfsOptions, hyperOptions } from "./protocols/config.js";
+import { attachContextMenus } from "./context-menu.js";
 
 const __dirname = fileURLToPath(new URL('./', import.meta.url))
 
@@ -30,24 +31,47 @@ const BROWSER_PROTOCOL = {
   corsEnabled: true,
 };
 
-async function createWindow() {
-  mainWindow = new BrowserWindow({
+async function createWindow(url = null, isMainWindow = false) {
+  const windowOptions = {
     width: 800,
     height: 600,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
       nativeWindowOpen: true,
+      sandbox: true,
       webviewTag: true,
     },
+  };
+
+  const window = new BrowserWindow(windowOptions);
+
+  if (isMainWindow) {
+    mainWindow = window;
+    window.loadFile(join(__dirname, "./pages/index.html"));
+    window.webContents.openDevTools();
+  } else {
+    window.loadFile(join(__dirname, "./pages/index.html"), { query: { url } });
+  }
+
+  attachContextMenus(window);
+
+  window.on("closed", () => {
+    if (isMainWindow) {
+      mainWindow = null;
+    }
   });
 
-  mainWindow.loadFile(join(__dirname, "./pages/index.html"));
-  mainWindow.webContents.openDevTools();
-
-  mainWindow.on("closed", () => {
-    mainWindow = null;
+  window.webContents.on("did-finish-load", () => {
+    attachContextMenus(window);
   });
+
+  // Ensure context menu is reattached on navigation within the window
+  window.webContents.on("did-navigate", () => {
+    attachContextMenus(window);
+  });
+
+  return window;
 }
 
 globalProtocol.registerSchemesAsPrivileged([
@@ -60,7 +84,7 @@ globalProtocol.registerSchemesAsPrivileged([
 
 app.whenReady().then(async () => {
   await setupProtocols(session.defaultSession);
-  createWindow();
+  createWindow(null, true); // Create the main window
 });
 
 async function setupProtocols(session) {
@@ -77,7 +101,6 @@ async function setupProtocols(session) {
   sessionProtocol.registerStreamProtocol("ipns", ipfsProtocolHandler);
   globalProtocol.registerStreamProtocol("ipfs", ipfsProtocolHandler);
   globalProtocol.registerStreamProtocol("ipns", ipfsProtocolHandler);
-
 
   const hyperProtocolHandler = await createHyperHandler(hyperOptions, session);
   sessionProtocol.registerStreamProtocol("hyper", hyperProtocolHandler);
@@ -100,6 +123,8 @@ app.on("window-all-closed", () => {
 
 app.on("activate", () => {
   if (mainWindow === null) {
-    createWindow();
+    createWindow(null, true);
   }
 });
+
+export { createWindow };
