@@ -1,6 +1,6 @@
 import { app } from "electron";
 import path from "path";
-import { libp2pOptions } from "./ipfs/libp2p.js";
+import { libp2pOptions } from "./helia/libp2p.js";
 
 const USER_DATA = app.getPath("userData");
 const DEFAULT_IPFS_DIR = path.join(USER_DATA, "ipfs");

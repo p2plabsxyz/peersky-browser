@@ -1,8 +1,8 @@
 import { Readable } from "stream";
 import mime from "mime-types";
 import path from "path";
-import { directoryListingHtml } from "../utils/directoryListingTemplate.js";
-import { createNode } from "./ipfs/helia.js";
+import { directoryListingHtml } from "./helia/directoryListingTemplate.js";
+import { createNode } from "./helia/helia.js";
 import { ipfsOptions } from "./config.js";
 import { unixfs } from "@helia/unixfs";
 import { ipns } from "@helia/ipns";
