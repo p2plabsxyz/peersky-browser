@@ -7,6 +7,7 @@ import { createHandler as createHyperHandler } from './protocols/hyper-handler.j
 import { createHandler as createWeb3Handler } from './protocols/web3-handler.js';
 import { ipfsOptions, hyperOptions } from "./protocols/config.js";
 import { attachContextMenus } from "./context-menu.js";
+import { registerShortcuts } from "./actions.js";
 
 const __dirname = fileURLToPath(new URL('./', import.meta.url))
 
@@ -31,7 +32,7 @@ const BROWSER_PROTOCOL = {
   corsEnabled: true,
 };
 
-async function createWindow(url = null, isMainWindow = false) {
+async function createWindow(url = 'peersky://home', isMainWindow = false) {
   const windowOptions = {
     width: 800,
     height: 600,
@@ -85,6 +86,7 @@ globalProtocol.registerSchemesAsPrivileged([
 app.whenReady().then(async () => {
   await setupProtocols(session.defaultSession);
   createWindow(null, true); // Create the main window
+  registerShortcuts(); // Register global shortcuts
 });
 
 async function setupProtocols(session) {
