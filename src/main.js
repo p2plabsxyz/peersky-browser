@@ -40,7 +40,6 @@ async function createWindow(url = 'peersky://home', isMainWindow = false) {
       nodeIntegration: true,
       contextIsolation: false,
       nativeWindowOpen: true,
-      sandbox: true,
       webviewTag: true,
     },
   };
