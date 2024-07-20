@@ -1,46 +1,37 @@
-const webView = document.getElementById("webview");
-const backButton = document.getElementById("back");
-const forwardButton = document.getElementById("forward");
-const refreshButton = document.getElementById("refresh");
-const homeButton = document.getElementById("home");
-const urlInput = document.getElementById("url");
+const DEFAULT_PAGE = 'peersky://home';
+const webviewContainer = document.querySelector('#webview');
+const nav = document.querySelector('#navbox');
+const pageTitle = document.querySelector('title');
 
-backButton.addEventListener("click", () => webView.goBack());
-forwardButton.addEventListener("click", () => webView.goForward());
-refreshButton.addEventListener("click", () => webView.reload());
-homeButton.addEventListener("click", () => {
-  webView.loadURL("peersky://home");
-  urlInput.value = "peersky://home";
+const searchParams = new URL(window.location.href).searchParams;
+const toNavigate = searchParams.has('url') ? searchParams.get('url') : DEFAULT_PAGE;
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Ensure we correctly call loadURL on the webview itself
+  webviewContainer.loadURL(toNavigate);
+
+  nav.addEventListener('back', () => webviewContainer.goBack());
+  nav.addEventListener('forward', () => webviewContainer.goForward());
+  nav.addEventListener('refresh', () => webviewContainer.reload());
+  nav.addEventListener('home', () => {
+    webviewContainer.loadURL('peersky://home');
+    nav.querySelector('#url').value = 'peersky://home';
+  });
+  nav.addEventListener('navigate', ({ detail }) => {
+    const { url } = detail;
+    navigateTo(url);
+  });
 });
 
-urlInput.addEventListener("keypress", async (e) => {
-  if (e.key === "Enter") {
-    const url = urlInput.value.trim();
-    try {
-
-    if (url.startsWith("ipfs://") || url.startsWith("ipns://")) {
-      webView.src = url;
-    } else if (url.startsWith("hyper://")) {
-      webView.src = url;
-    } else if (url.startsWith("web3://")) {
-      webView.src = url;
-    } else if (url.startsWith("peersky://")) {
-      webView.src = url;
-    } else if (url.startsWith("http://") || url.startsWith("https://")) {
-      webView.src = url;
-    } else {
-      webView.src = `https://duckduckgo.com/?q=${encodeURIComponent(url)}`;
-    } 
-  } catch (error) {
-      console.error('Error loading URL:', error);
-    }
-  }
+// Listen for custom events from tracked-box that should forward these details
+webviewContainer.addEventListener('did-navigate', (e) => {
+  nav.querySelector('#url').value = e.detail.url; // Ensure this detail is passed by the event
 });
 
-webView.addEventListener("did-navigate", (e) => {
-  urlInput.value = e.url;
+webviewContainer.addEventListener('page-title-updated', (e) => {
+  pageTitle.innerText = e.detail.title + ' - Peersky Browser'; // Ensure this detail is passed by the event
 });
 
-webView.addEventListener("did-fail-load", (event) => {
-  console.error(`Failed to load URL: ${event.validatedURL}`, event.errorCode);
-});
+function navigateTo(url) {
+  webviewContainer.loadURL(url);
+}
