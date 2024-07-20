@@ -32,7 +32,7 @@ const BROWSER_PROTOCOL = {
   corsEnabled: true,
 };
 
-async function createWindow(url = 'peersky://home', isMainWindow = false) {
+async function createWindow(url, isMainWindow = false) {
   const windowOptions = {
     width: 800,
     height: 600,
@@ -48,10 +48,10 @@ async function createWindow(url = 'peersky://home', isMainWindow = false) {
 
   if (isMainWindow) {
     mainWindow = window;
-    window.loadFile(join(__dirname, "./pages/index.html"));
+    window.loadFile(join(__dirname, "./pages/index.html"), { query: { url: 'peersky://home' } });
     window.webContents.openDevTools();
   } else {
-    window.loadFile(join(__dirname, "./pages/index.html"), { query: { url } });
+    window.loadFile(join(__dirname, "./pages/index.html"), { query: { url: url || 'peersky://home' } });
   }
 
   attachContextMenus(window);
