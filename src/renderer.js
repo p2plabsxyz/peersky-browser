@@ -1,3 +1,11 @@
+import {
+  IPFS_PREFIX,
+  IPNS_PREFIX,
+  HYPER_PREFIX,
+  WEB3_PREFIX,
+  handleURL,
+} from "./utils.js";
+
 const DEFAULT_PAGE = "peersky://home";
 const webviewContainer = document.querySelector("#webview");
 const nav = document.querySelector("#navbox");
@@ -28,26 +36,10 @@ document.addEventListener("DOMContentLoaded", () => {
     if (urlInput) {
       urlInput.addEventListener("keypress", async (e) => {
         if (e.key === "Enter") {
-          const url = urlInput.value.trim();
+          const rawURL = urlInput.value.trim();
+          const url = handleURL(rawURL);
           try {
-            if (url.startsWith("ipfs://") || url.startsWith("ipns://")) {
-              webviewContainer.loadURL(url);
-            } else if (url.startsWith("hyper://")) {
-              webviewContainer.loadURL(url);
-            } else if (url.startsWith("web3://")) {
-              webviewContainer.loadURL(url);
-            } else if (url.startsWith("peersky://")) {
-              webviewContainer.loadURL(url);
-            } else if (
-              url.startsWith("http://") ||
-              url.startsWith("https://")
-            ) {
-              webviewContainer.loadURL(url);
-            } else {
-              webviewContainer.loadURL(
-                `https://duckduckgo.com/?q=${encodeURIComponent(url)}`
-              );
-            }
+            webviewContainer.loadURL(url);
           } catch (error) {
             console.error("Error loading URL:", error);
           }
