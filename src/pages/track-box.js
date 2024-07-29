@@ -67,6 +67,14 @@ class TrackedBox extends HTMLElement {
   getURL() {
     return this.webview.src;
   }
+
+  executeJavaScript(script) {
+    this.webview.executeJavaScript(script);
+  }
+
+  get webviewElement() {
+    return this.webview;
+  }
 }
 
 customElements.define("tracked-box", TrackedBox);

@@ -9,12 +9,11 @@ import {
 const DEFAULT_PAGE = "peersky://home";
 const webviewContainer = document.querySelector("#webview");
 const nav = document.querySelector("#navbox");
+const findMenu = document.querySelector("#find");
 const pageTitle = document.querySelector("title");
 
 const searchParams = new URL(window.location.href).searchParams;
-const toNavigate = searchParams.has("url")
-  ? searchParams.get("url")
-  : DEFAULT_PAGE;
+const toNavigate = searchParams.has("url") ? searchParams.get("url") : DEFAULT_PAGE;
 
 document.addEventListener("DOMContentLoaded", () => {
   if (webviewContainer && nav) {
@@ -56,6 +55,18 @@ document.addEventListener("DOMContentLoaded", () => {
     webviewContainer.addEventListener("page-title-updated", (e) => {
       pageTitle.innerText = e.detail.title + " - Peersky Browser";
     });
+
+    findMenu.addEventListener('next', ({ detail }) => {
+      webviewContainer.webviewElement.executeJavaScript(`window.find("${detail.value}", ${detail.findNext})`);
+    });
+
+    findMenu.addEventListener('previous', ({ detail }) => {
+      webviewContainer.webviewElement.executeJavaScript(`window.find("${detail.value}", ${detail.findNext}, true)`);
+    });
+
+    findMenu.addEventListener('hide', () => {
+      webviewContainer.focus();
+    });
   } else {
     console.error("webviewContainer or nav not found");
   }
@@ -64,3 +75,10 @@ document.addEventListener("DOMContentLoaded", () => {
 function navigateTo(url) {
   webviewContainer.loadURL(url);
 }
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "f" && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    findMenu.toggle();
+  }
+});

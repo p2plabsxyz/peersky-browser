@@ -5,6 +5,7 @@ body {
   width: 100%;
   font-family: Arial, sans-serif;
 }
+
 #navbox {
   display: flex;
   align-items: center;
@@ -12,6 +13,7 @@ body {
   padding: 8px;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
+
 button {
   display: inline-flex;
   background: none;
@@ -21,9 +23,11 @@ button {
   cursor: pointer;
   color: #9ca3af;
 }
+
 button:hover {
   color: white;
 }
+
 #url {
   background-color: #111827;
   border: 1px solid #4b5563;
@@ -36,11 +40,55 @@ button:hover {
   width: 80%;
   padding: 0.4rem;
 }
+
 #url:hover {
   background-color: #1f2937;
 }
+
 #url:focus {
   background-color: #111827;
   outline: none;
   box-shadow: 0 0 0 1px #06b6d4;
+}
+
+find-menu {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-top: -4px;
+  padding: 0.4em;
+  border-radius: 6px;
+  font-size: medium;
+  background-color: #27272a;
+  position: absolute;
+  z-index: 10;
+}
+
+.find-menu-input {
+  flex: 1;
+  padding: 0.5em;
+  border: none;
+  font-size: inherit;
+  font-family: inherit;
+  background-color: #27272a;
+  color: #fff;
+  outline: none;
+}
+
+.find-menu-button {
+  padding: 0.5em;
+  border: none;
+  background: none;
+  font-size: inherit;
+  font-family: inherit;
+  cursor: pointer;
+  color: #9ca3af;
+}
+
+.find-menu-button:hover {
+  color: white;
+}
+
+.hidden {
+  display: none !important;
 }

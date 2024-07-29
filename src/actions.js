@@ -99,6 +99,26 @@ export function createActions() {
         }
       },
     },
+    FindInPage: {
+      label: "Find in Page",
+      accelerator: "CommandOrControl+F",
+      click: (focusedWindow) => {
+        if (focusedWindow) {
+          focusedWindow.webContents.executeJavaScript(`
+            var findMenu = document.querySelector('find-menu');
+            if (findMenu) {
+              findMenu.toggle();
+              setTimeout(() => {
+                var input = findMenu.querySelector('.find-menu-input');
+                if (input) {
+                  input.focus();
+                }
+              }, 100); // Timeout to ensure the menu is visible and ready to receive focus
+            }
+          `);
+        }
+      },
+    },    
   };
 
   return actions;
