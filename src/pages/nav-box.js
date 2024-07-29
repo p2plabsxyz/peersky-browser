@@ -27,6 +27,7 @@ class NavBox extends HTMLElement {
 
   createButton(id, svgPath) {
     const button = document.createElement("button");
+    button.className = "nav-button";
     button.id = id;
 
     fetch(svgPath)
