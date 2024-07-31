@@ -57,11 +57,11 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     findMenu.addEventListener('next', ({ detail }) => {
-      webviewContainer.webviewElement.executeJavaScript(`window.find("${detail.value}", ${detail.findNext})`);
+      webviewContainer.executeJavaScript(`window.find("${detail.value}", ${detail.findNext})`);
     });
 
     findMenu.addEventListener('previous', ({ detail }) => {
-      webviewContainer.webviewElement.executeJavaScript(`window.find("${detail.value}", ${detail.findNext}, true)`);
+      webviewContainer.executeJavaScript(`window.find("${detail.value}", ${detail.findNext}, true)`);
     });
 
     findMenu.addEventListener('hide', () => {
