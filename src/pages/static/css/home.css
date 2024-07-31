@@ -69,3 +69,29 @@ html {
 .home-link a:hover {
   color: #cccccc;
 }
+
+.peerbar {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  z-index: 3;
+}
+
+.peerbar a {
+  display: block;
+}
+
+.peerbar img {
+  width: 25px;
+  height: 25px;
+  filter: invert(62%) sepia(83%) saturate(447%) hue-rotate(142deg) brightness(93%) contrast(94%);
+  padding: 5px;
+  transition: transform 0.3s ease;
+}
+
+.peerbar img:hover {
+  transform: scale(1.1);
+}
