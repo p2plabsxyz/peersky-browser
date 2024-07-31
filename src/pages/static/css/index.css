@@ -3,14 +3,11 @@
   --text-color: #FFFFFF;   
   --background-nav: #323440;
   --background-url-input: #111827;
-  --background-url-input-hover: #0f172a;
   --background-find-menu: #27272a;
   --button-color: #9ca3af;
   --button-hover-color: #e5e7eb;
-  --focus-shadow-color: #06b6d4;
-  --border-radius: 6px;
+  --primary-color: #06b6d4;
   --font-family-main: Arial, sans-serif;
-  --font-size-medium: medium;
 }
 
 html,
@@ -58,21 +55,21 @@ button:hover {
   margin-left: 6px;
   margin-right: 6px;
   color: var(--text-color);
-  font-size: var(--font-size-medium);
-  border-radius: var(--border-radius);
+  font-size: medium;
+  border-radius: 6px;
   display: block;
   width: 60%;
   padding: 0.4rem;
 }
 
 #url:hover {
-  background-color: var(--background-url-input-hover);
+  background-color: #1f2937;
 }
 
 #url:focus {
   background-color: var(--background-url-input);
   outline: none;
-  box-shadow: 0 0 4px -1px var(--focus-shadow-color);
+  box-shadow: 0 0 4px -1px var(--primary-color);
 }
 
 find-menu {
@@ -81,8 +78,8 @@ find-menu {
   align-items: center;
   margin-top: -4px;
   padding: 0.3em;
-  border-radius: var(--border-radius);
-  font-size: var(--font-size-medium);
+  border-radius: 6px;
+  font-size: medium;
   background-color: var(--background-find-menu);
   position: absolute;
   z-index: 10;

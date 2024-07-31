@@ -7,9 +7,10 @@ html {
   justify-content: center;
   background-color: #000;
   font-family: monospace;
+  position: relative; /* Ensure that body can contain absolutely positioned elements */
 }
 
-.background {
+.home-background {
   position: relative;
   height: 100vh;
   width: 100vw;
@@ -41,7 +42,7 @@ html {
   z-index: 2;
 }
 
-.content {
+.home-content {
   margin-bottom: 4%;
   display: flex;
   flex-direction: column;
@@ -49,22 +50,22 @@ html {
   color: #fff;
 }
 
-.heading {
-    font-size: 35px;
+.home-heading {
+  font-size: 35px;
 }
 
-.links {
+.home-link {
   margin-top: 10px;
   display: flex;
   gap: 20px;
 }
 
-.links a {
-  color: #fff;
+.home-link a {
+  color: var(--button-hover-color);
   text-decoration: none;
   transition: color 0.3s ease;
 }
 
-.links a:hover {
+.home-link a:hover {
   color: #cccccc;
 }
