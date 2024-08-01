@@ -1,0 +1,51 @@
+<meta lang="en">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Builder</title>
+<link rel="stylesheet" type="text/css" href="styles.css">
+
+<main>
+    <div id="backdrop"></div>
+    <div id="loadingSpinner" style="display: none;">
+        <div class="emoji-loader"> ↻ </div>
+    </div>
+    <div class="grid-container">
+        
+        <!-- Text area for Html Code -->
+        <textarea id="htmlCode" placeholder="Type HTML code here" spellcheck="false"></textarea>
+
+        <!-- Text area for Javascript Code -->
+        <textarea id="javascriptCode" spellcheck="false" placeholder="Type JavaScript code here"></textarea>
+
+        <!-- Text area for Css Code -->
+        <textarea id="cssCode" placeholder="Type CSS code here" spellcheck="false"></textarea>
+
+        <!-- Iframe for Code Output -->
+        <iframe id="viewer"></iframe>
+    
+    </div>
+    <div id="dweb-container">
+        <div>
+            <label for="protocolSelect">
+                Protocol:
+                <select id="protocolSelect">
+                    <option value="ipfs" selected>Inter-Planetary File System (IPFS://)</option>
+                    <option value="hyper">Hypercore-Protocol (HYPER://)</option>
+                </select>
+            </label>
+            <button id="uploadButton">Upload to DWeb</button>
+            
+        </div>
+        <div id="fetchContainer">
+            <input id="fetchCidInput" type="text" placeholder="Enter IPFS CID or Hyperdrive URL ">
+            <button id="fetchButton">Fetch from DWeb</button>
+        </div>
+        
+    </div>
+    <ul id="uploadListBox"></ul>
+</main>
+
+<script type="module" src="common.js"></script>
+<script type="module" src="dweb.js"></script>
+<script type="module" src="codeEditor.js"></script>
+
