@@ -9,9 +9,9 @@ class PeerBar extends HTMLElement {
     container.className = 'peerbar';
 
     const links = [
-      { href: 'peersky://p2p/chat/', img: 'chat.svg', alt: 'Peersky Chat' },
-      { href: 'peersky://p2p/upload/', img: 'upload.svg', alt: 'Peersky Upload' },
-      { href: 'peersky://p2p/build/', img: 'build.svg', alt: 'Peersky Build' },
+      { href: 'peersky://p2p/chat/index', img: 'chat.svg', alt: 'Peersky Chat' },
+      { href: 'peersky://p2p/upload/index', img: 'upload.svg', alt: 'Peersky Upload' },
+      { href: 'peersky://p2p/build/index', img: 'build.svg', alt: 'Peersky Build' },
       { href: 'https://reader.distributed.press/', img: 'people.svg', alt: 'Social Reader' }
     ];
 

@@ -1,12 +1,13 @@
 :root {
-  --background-color: #000000;
-  --text-color: #FFFFFF;   
+  --peersky-background-color: #000000;
+  --peersky-p2p-background-color: #18181b;
+  --peersky-text-color: #FFFFFF;   
   --background-nav: #323440;
   --background-url-input: #111827;
   --background-find-menu: #27272a;
   --button-color: #9ca3af;
   --button-hover-color: #e5e7eb;
-  --primary-color: #06b6d4;
+  --peersky-primary-color: #06b6d4;
   --font-family-main: Arial, sans-serif;
 }
 
@@ -54,7 +55,7 @@ button:hover {
   border: none;
   margin-left: 6px;
   margin-right: 6px;
-  color: var(--text-color);
+  color: var(--peersky-text-color);
   font-size: medium;
   border-radius: 6px;
   display: block;
@@ -69,7 +70,7 @@ button:hover {
 #url:focus {
   background-color: var(--background-url-input);
   outline: none;
-  box-shadow: 0 0 4px -1px var(--primary-color);
+  box-shadow: 0 0 4px -1px var(--peersky-primary-color);
 }
 
 find-menu {
@@ -92,7 +93,7 @@ find-menu {
   font-size: inherit;
   font-family: inherit;
   background-color: var(--background-find-menu);
-  color: var(--text-color);
+  color: var(--peersky-text-color);
   outline: none;
 }
 
