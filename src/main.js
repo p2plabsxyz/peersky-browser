@@ -8,8 +8,14 @@ import { createHandler as createWeb3Handler } from './protocols/web3-handler.js'
 import { ipfsOptions, hyperOptions } from "./protocols/config.js";
 import { attachContextMenus } from "./context-menu.js";
 import { registerShortcuts } from "./actions.js";
+import { setupAutoUpdater } from "./auto-updater.js";
 
-const __dirname = fileURLToPath(new URL('./', import.meta.url))
+const __dirname = fileURLToPath(new URL('./', import.meta.url));
+
+// // Uncomment while locally testing the AutoUpdater
+// Object.defineProperty(app, 'isPackaged', {
+//   value: true
+// });
 
 let mainWindow;
 
@@ -84,8 +90,11 @@ globalProtocol.registerSchemesAsPrivileged([
 
 app.whenReady().then(async () => {
   await setupProtocols(session.defaultSession);
-  createWindow(null, true); // Create the main window
-  registerShortcuts(); // Register global shortcuts
+  createWindow(null, true);
+  registerShortcuts();
+    // initializeAutoUpdater(); // Initialize auto-updater
+  console.log('App is prepared, setting up autoUpdater...');
+  setupAutoUpdater();
 });
 
 async function setupProtocols(session) {
