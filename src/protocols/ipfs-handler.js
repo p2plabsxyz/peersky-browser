@@ -6,8 +6,10 @@ import { createNode } from "./helia/helia.js";
 import { ipfsOptions } from "./config.js";
 import { unixfs } from "@helia/unixfs";
 import { ipns } from "@helia/ipns";
+import { concat as uint8ArrayConcat } from "uint8arrays";
+import fs from "fs-extra";
 
-let node, fs, name;
+let node, unixFileSystem, name; // Renamed 'fs' to 'unixFileSystem' to avoid conflict
 
 async function initializeIPFSNode() {
   console.log("Initializing IPFS node...");
@@ -16,17 +18,71 @@ async function initializeIPFSNode() {
   console.log(`IPFS node initialized in ${Date.now() - startTime}ms`);
   console.log(node.libp2p.peerId);
 
-  fs = unixfs(node);
+  unixFileSystem = unixfs(node); // Assigning Helia UnixFS instance to unixFileSystem
   name = ipns(node);
 }
 
 initializeIPFSNode();
 
-export async function createHandler() {
-  return async function protocolHandler({ url }, sendResponse) {
+// Function to read the body of an upload request
+async function* readBody(body, session) {
+  for (const chunk of body) {
+    if (chunk.bytes) {
+      yield await Promise.resolve(chunk.bytes);
+    } else if (chunk.file) {
+      yield* Readable.from(fs.createReadStream(chunk.file));
+    } else {
+      console.warn("Unknown chunk format:", chunk);
+    }
+  }
+}
+
+// Function to handle file uploads
+async function handleFileUpload(request, sendResponse, session) {
+  try {
+    const data = [];
+    for await (const chunk of readBody(request.uploadData, session)) {
+      data.push(chunk);
+    }
+
+    const fileBuffer = uint8ArrayConcat(data); // Concatenate all chunks into a single buffer
+    const cid = await unixFileSystem.addBytes(fileBuffer); // Add file to IPFS using Helia's UnixFS
+    console.log("File uploaded with CID:", cid.toString());
+
+    sendResponse({
+      statusCode: 200,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        Location: `ipfs://${cid.toString()}`,
+        "Content-Type": "text/plain",
+      },
+      data: Readable.from(Buffer.from(cid.toString())), // Respond with the CID
+    });
+  } catch (e) {
+    console.error("Error uploading file:", e);
+    sendResponse({
+      statusCode: 500,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+      },
+      data: Readable.from(Buffer.from(e.stack)),
+    });
+  }
+}
+
+// Exported function to create a protocol handler
+export async function createHandler(session) {
+  return async function protocolHandler(
+    { url, method, uploadData },
+    sendResponse
+  ) {
     if (!node) {
       console.log("IPFS node is not ready yet");
       return;
+    }
+
+    if ((method === "PUT" || method === "POST") && uploadData) {
+      return handleFileUpload({ uploadData }, sendResponse, session);
     }
 
     let ipfsPath;
@@ -39,7 +95,7 @@ export async function createHandler() {
     };
 
     const urlObj = new URL(url);
-    
+
     if (urlObj.protocol === "ipns:") {
       let ipnsName = urlObj.hostname;
       let urlParts = urlObj.pathname.split("/").filter(Boolean);
@@ -78,7 +134,7 @@ export async function createHandler() {
       // Try to access the specific file first
       const fileStream = [];
       console.log("Starting file retrieval for IPFS path:", ipfsPath);
-      for await (const chunk of fs.cat(ipfsPath)) {
+      for await (const chunk of unixFileSystem.cat(ipfsPath)) {
         fileStream.push(chunk);
       }
       console.log("File retrieval complete for IPFS path:", ipfsPath);
@@ -91,7 +147,7 @@ export async function createHandler() {
         try {
           const indexPath = path.join(ipfsPath, "index.html");
           const indexStream = [];
-          for await (const chunk of fs.cat(indexPath)) {
+          for await (const chunk of unixFileSystem.cat(indexPath)) {
             indexStream.push(chunk);
           }
           headers["Content-Type"] = "text/html";
@@ -99,17 +155,20 @@ export async function createHandler() {
         } catch {
           // If no index.html, list the directory
           const files = [];
-          const currentPathSections = ipfsPath.split('/').filter(Boolean);
+          const currentPathSections = ipfsPath.split("/").filter(Boolean);
 
-          if (currentPathSections.length > 0) {  // Check if current directory is not root
-            const parentPath = currentPathSections.slice(0, -1).join('/') || "/";
-            const parentLink = currentPathSections.length > 1 ? `ipfs://${parentPath}` : null;
+          if (currentPathSections.length > 0) {
+            // Check if current directory is not root
+            const parentPath =
+              currentPathSections.slice(0, -1).join("/") || "/";
+            const parentLink =
+              currentPathSections.length > 1 ? `ipfs://${parentPath}` : null;
             if (parentLink) {
               files.push(`<li><a href="${parentLink}">../</a></li>`);
             }
           }
-          
-          for await (const file of fs.ls(ipfsPath)) {
+
+          for await (const file of unixFileSystem.ls(ipfsPath)) {
             const fileLink = `ipfs://${path.join(ipfsPath, file.name)}`;
             files.push(`<li><a href="${fileLink}">${file.name}</a></li>`);
           }
@@ -130,5 +189,5 @@ export async function createHandler() {
       headers,
       data,
     });
-  }
-};
+  };
+}

@@ -13,6 +13,22 @@ async function initializeHyperSDK(options) {
   return fetch;
 }
 
+// Helper function to read and handle body data, especially for 'PUT' and 'POST'
+async function readBody(bodyStream) {
+  if (!bodyStream) return null;
+
+  const reader = bodyStream.getReader();
+  const chunks = [];
+  let readResult;
+
+  while (!(readResult = await reader.read()).done) {
+    chunks.push(readResult.value);
+  }
+
+  // Convert chunks into a single buffer to handle multipart data or binary
+  return Buffer.concat(chunks);
+}
+
 // Create the Hyper protocol handler
 export async function createHandler(options, session) {
   const fetch = await initializeHyperSDK(options);
@@ -21,25 +37,21 @@ export async function createHandler(options, session) {
     const { url, method = 'GET', headers = {}, body = null } = req;
 
     try {
+      const bodyContent = method !== 'GET' ? await readBody(body) : undefined;
+
       const response = await fetch(url, {
         method,
         headers,
-        body: method !== 'GET' ? Readable.from(body) : undefined
+        body: bodyContent ? Readable.from(bodyContent) : undefined,
       });
 
       // Collect the response data to send back
-      const chunks = [];
-      const reader = response.body.getReader();
-      let readResult;
-      while (!(readResult = await reader.read()).done) {
-        chunks.push(readResult.value);
-      }
-      const data = Buffer.concat(chunks);
+      const responseBody = await readBody(response.body);
 
       callback({
         statusCode: response.status,
         headers: Object.fromEntries(response.headers),
-        data: Readable.from(data)
+        data: Readable.from(responseBody)
       });
     } catch (e) {
       console.error('Failed to handle Hyper request:', e);
