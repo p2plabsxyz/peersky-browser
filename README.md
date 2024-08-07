@@ -10,11 +10,11 @@
     <img src="https://img.shields.io/badge/license-MIT-orange.svg?style=flat-square" alt="License">
 </div><br>
 
-💻 [Download](https://github.com/p2plabsxyz/peersky-browser/releases/latest) | 🌐 [Website](https://peersky.p2plabs.xyz/)
+💻 [Download](https://peersky.p2plabs.xyz/)
 
-<div>
+<!-- <div>
   <img src="./peersky-demo.gif" />
-</div>
+</div> -->
 
 ## 🛠 Development
 
@@ -38,7 +38,7 @@ npm run build
 # For Intel and M1 macs
 ```
 
-Now, the build folder will appear in the root directory.
+Now, the `dist` folder will appear in the root directory.
 
 ```bash
 npm run build-all
@@ -47,9 +47,7 @@ npm run build-all
 
 ## 🚧 Roadmap
 
-> Please note that the following roadmap list is in random order, and these items represent high-priority tasks.
-
-- [x] Browser navigation:
+- [x] Basic browser navigation:
 
   - [x] Back
   - [x] Forward
@@ -58,55 +56,75 @@ npm run build-all
 
 - [x] IPFS protocol handler:
 
-  - [x] Run a local IPFS node
+  - [x] Run a local [Helia](https://helia.io/) node
   - [x] `ipfs://` / `ipns://` native URLs support
   - [x] Directory listings support
-  - [ ] [Helia](https://github.com/ipfs/helia) integration
-    > JS-IPFS is deprecated: js-IPFS has been superseded by Helia
 
-- [ ] Experiments:
+- [x] Hypercore protocol handler:
 
-  - [ ] `peersky://upload`
-    - Upload files / directories
-    - Publish blogs / websites
-  - [ ] `Peersky://analytics` ([peerDiscovery](https://github.com/ipfs/js-ipfs/blob/master/docs/core-api/DHT.md#ipfsdhtfindpeerpeerid-options))
-    - Fetch IPs from the DHT and count them as clicks, with regional sorting (visuals)
-  - [ ] `Peersky://chat` ([libp2p/webRTC](https://github.com/libp2p/js-libp2p-webrtc]))
-    - Chat with connected peers on the network
+  - [x] Run a local [hyper](https://holepunch.to/) node
+  - [x] `hyper://` native URLs support
 
-- [ ] Auto-updater (electron’s [autoUpdater](https://www.electronjs.org/docs/latest/api/auto-updater)):
+- [x] P2P Applications:
 
-  - [ ] Download and install the latest release from Github automatically
+  - [x] `peersky://p2p/chat/index`
+    - Peer-to-peer messaging
+  - [x] `peersky://p2p/upload/index`
+    - Decentralized file storage
+  - [x] `peersky://p2p/editor/index`
+    - Build and publish websites
+  - [x] [Social Reader](https://reader.distributed.press/)
+    - A p2p offline client for reading and following microblogs on the fediverse.
+
+- [x] Electron’s Auto-updater:
+
+  - [x] Download and install the latest release from Github automatically
+
+- [x] Context menu:
+
+  - [x] Back / Forward
+  - [x] Reload
+  - [x] Inspect
+  - [x] Undo / Redo
+  - [x] Cut / Copy / Paste
+  - [x] Copy Link Address
+  - [x] Open Link in New Tab 
+
+- [x] Find in page:
+  - [x] Search for text within a document or web page
+
+- [x] Keyboard shortcuts:
+
+  - [x] New Window: `CommandOrControl+N`
+  - [x] Back: `CommandOrControl+[`
+  - [x] Forward: `CommandOrControl+]`
+  - [x] Reload: `CommandOrControl+R`
+  - [x] Find in Page: `CommandOrControl+F`
+  - [x] Open Dev Tools: `CommandOrControl+Shift+I`
+  - [x] Focus URL Bar: `CommandOrControl+L`
+  - [x] Minimize: `CommandOrControl+M`
+  - [x] Close: `CommandOrControl+W`
+  - [x] Toggle Full Screen: `F11`
+
+- [ ] Settings (peersky://settings):
+
+  - [ ] Option to hide/show the clock
+  - [ ] Option to change themes
+  - [ ] Option to set home wallpapers
+
+- [ ] History (peersky://history):
+
+  - [ ] Suggestions based on the browser history when typing in URL prompt
+
+- [ ] Bookmarks (peersky://bookmarks):
+
+  - [ ] Option to add favourite pages in the nav bar (peersky://bookmarks)
 
 - [ ] QR Code generator:
 
-  - [ ] An option to generate QR Code for every page in the URL prompt
+  - [ ] Option to generate QR Code for every page in the URL prompt
 
-- [ ] Context menu:
-
-  - [ ] Back / forward
-  - [ ] Reload
-  - [ ] Generate QR code
-  - [ ] Add to IPFS
-
-- [ ] Browser history:
-
-  - [ ] peersky://history
-  - [ ] Suggestions based on the browser history when typing in URL prompt
-
-- [ ] Bookmarks:
-
-  - [ ] An option to add favourite pages in the nav bar (peersky://bookmarks)
-
-- [ ] Keyboard shortcuts:
-
-  - [ ] New window
-  - [ ] Back / Forward
-  - [ ] Reload
-  - [ ] Find in page
-  - [ ] Developer tools
-
-- [ ] Extensions:
+- [ ] Web extensions:
   - [ ] In-browser extensions
     - [Ad-blocker](https://github.com/gorhill/uBlock)
     - [DScan](https://github.com/p2plabsxyz/dscan)
