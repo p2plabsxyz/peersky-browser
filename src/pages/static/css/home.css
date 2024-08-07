@@ -5,11 +5,12 @@ html {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: black;
+  background-color: #000;
   font-family: monospace;
+  position: relative; /* Ensure that body can contain absolutely positioned elements */
 }
 
-.background {
+.home-background {
   position: relative;
   height: 100vh;
   width: 100vw;
@@ -41,30 +42,56 @@ html {
   z-index: 2;
 }
 
-.content {
-  margin-bottom: 5%;
+.home-content {
+  margin-bottom: 4%;
   display: flex;
   flex-direction: column;
   align-items: center;
-  color: white;
+  color: #fff;
 }
 
-.heading {
-    font-size: 35px;
+.home-heading {
+  font-size: 35px;
 }
 
-.links {
-  margin-top: 20px;
+.home-link {
+  margin-top: 10px;
   display: flex;
   gap: 20px;
 }
 
-.links a {
-  color: white;
+.home-link a {
+  color: var(--button-hover-color);
   text-decoration: none;
   transition: color 0.3s ease;
 }
 
-.links a:hover {
+.home-link a:hover {
   color: #cccccc;
+}
+
+.peerbar {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  z-index: 3;
+}
+
+.peerbar a {
+  display: block;
+}
+
+.peerbar img {
+  width: 25px;
+  height: 25px;
+  filter: invert(62%) sepia(83%) saturate(447%) hue-rotate(142deg) brightness(93%) contrast(94%);
+  padding: 5px;
+  transition: transform 0.3s ease;
+}
+
+.peerbar img:hover {
+  transform: scale(1.1);
 }

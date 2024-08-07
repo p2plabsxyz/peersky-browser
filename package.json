@@ -1,18 +1,20 @@
 {
   "name": "peersky-browser",
   "version": "1.0.0",
-  "private": true,
   "description": "A minimal p2p web browser.",
   "keywords": [
     "peersky",
     "ipfs",
+    "hyper",
+    "web3",
     "browser",
     "dweb"
   ],
   "license": "MIT",
   "author": "Akhilesh Thite <akhileshthite@hotmail.com> (https://akhilesh.art/)",
   "main": "src/main.js",
-  "repository": "https://github.com/p2plabsxyz/peersky-browser",
+  "type": "module",
+  "repository": "https://github.com/p2plabsxyz/peersky-test",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "electron .",
@@ -26,7 +28,7 @@
     "appId": "peersky.p2plabs.xyz",
     "productName": "Peersky Browser",
     "directories": {
-      "output": "build"
+      "output": "dist"
     },
     "files": [
       "node_modules/**/*",
@@ -36,22 +38,41 @@
       "src/*"
     ],
     "mac": {
+      "artifactName": "${name}-${version}-${os}-${arch}.${ext}",
+      "darkModeSupport": true,
+      "gatekeeperAssess": false,
       "target": [
         {
-          "target": "dmg",
+          "target": "default",
           "arch": [
-            "arm64",
-            "x64"
+            "x64",
+            "arm64"
           ]
         }
       ],
       "icon": "./public/icon.png"
     },
     "win": {
-      "target": "nsis",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "ia32",
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "ia32",
+            "x64"
+          ]
+        }
+      ],
       "icon": "./public/icon.png"
     },
     "linux": {
+      "artifactName": "${name}-${version}-${os}-${arch}.${ext}",
       "target": [
         "AppImage",
         "deb"
@@ -69,19 +90,42 @@
         "role": "Viewer"
       }
     ],
-    "publish": {
-      "provider": "github",
-      "releaseType": "release"
-    }
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "p2plabsxyz",
+        "repo": "peersky-test",
+        "releaseType": "release"
+      }
+    ]
   },
   "dependencies": {
-    "ipfs": "^0.66.1",
-    "jquery": "^3.7.0",
-    "mime-types": "^2.1.35"
+    "@chainsafe/libp2p-gossipsub": "^13.0.0",
+    "@chainsafe/libp2p-noise": "^15.0.0",
+    "@chainsafe/libp2p-yamux": "^6.0.2",
+    "@helia/ipns": "^7.2.2",
+    "@helia/unixfs": "^3.0.6",
+    "@libp2p/bootstrap": "^10.0.24",
+    "@libp2p/kad-dht": "^12.0.17",
+    "@libp2p/mplex": "^10.0.24",
+    "@libp2p/tcp": "^9.0.26",
+    "@libp2p/webrtc": "^4.0.33",
+    "@libp2p/websockets": "^8.0.24",
+    "electron-updater": "^6.2.1",
+    "find-process": "^1.4.7",
+    "helia": "^4.2.1",
+    "hyper-sdk": "^5.0.0",
+    "hypercore-fetch": "^9.9.1",
+    "jquery": "^3.7.1",
+    "libp2p": "^1.6.0",
+    "libp2p-gossipsub": "^0.13.0",
+    "mime-types": "^2.1.35",
+    "multiformats": "^13.1.0",
+    "web3protocol": "^0.6.0"
   },
   "devDependencies": {
-    "electron": "^20.3.12",
-    "electron-builder": "^23.6.0",
+    "electron": "^31.3.0",
+    "electron-builder": "^24.13.3",
     "electron-rebuild": "^3.2.9"
   }
 }

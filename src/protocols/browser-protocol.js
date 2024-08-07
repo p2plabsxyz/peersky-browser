@@ -1,8 +1,11 @@
-const path = require("path");
-const fs = require("fs");
-const mime = require("mime-types");
+import path from "path";
+import { fileURLToPath } from 'url';
+import fs from "fs";
+import mime from "mime-types";
 
-module.exports = async function createHandler() {
+const __dirname = fileURLToPath(new URL('./', import.meta.url))
+
+export async function createHandler() {
   return async function protocolHandler({ url }, sendResponse) {
     const parsedUrl = new URL(url);
     let filePath = parsedUrl.hostname + parsedUrl.pathname;

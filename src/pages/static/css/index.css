@@ -1,50 +1,120 @@
+:root {
+  --peersky-background-color: #000000;
+  --peersky-p2p-background-color: #18181b;
+  --peersky-text-color: #FFFFFF;   
+  --background-nav: #323440;
+  --background-url-input: #111827;
+  --background-find-menu: #27272a;
+  --button-color: #9ca3af;
+  --button-hover-color: #e5e7eb;
+  --peersky-primary-color: #06b6d4;
+  --font-family-main: Arial, sans-serif;
+}
+
 html,
 body {
   margin: auto;
   height: 100%;
   width: 100%;
-  font-family: Arial, sans-serif;
+  font-family: var(--font-family-main);
 }
-#navbar {
+
+input, button, textarea, select, select *, option  {
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  background: none;
+  padding:0.25em;
+  border-radius: 0.25em;
+}
+
+#navbox {
   display: flex;
   align-items: center;
-  background-color: #323440;
+  background-color: var(--background-nav);
   padding: 8px;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
+
 button {
   display: inline-flex;
   background: none;
   border: none;
   padding: 4px;
-  margin-right: 2px;
+  margin-right: 3px;
   cursor: pointer;
-  color: #9ca3af;
+  color: var(--button-color);
 }
+
 button:hover {
-  color: white;
+  color: var(--button-hover-color);
 }
+
 #url {
-  background-color: #111827;
-  border: 1px solid #4b5563;
+  background-color: var(--background-url-input);
+  border: none;
   margin-left: 6px;
   margin-right: 6px;
-  color: white;
+  color: var(--peersky-text-color);
   font-size: medium;
-  border-radius: 4px;
+  border-radius: 6px;
   display: block;
-  width: 80%;
+  width: 60%;
   padding: 0.4rem;
 }
+
 #url:hover {
   background-color: #1f2937;
 }
+
 #url:focus {
-  background-color: #111827;
+  background-color: var(--background-url-input);
   outline: none;
-  box-shadow: 0 0 0 1px #06b6d4;
+  box-shadow: 0 0 4px -1px var(--peersky-primary-color);
 }
-#webview {
-  width: 100%;
-  height: calc(100vh - 50px);
+
+find-menu {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-top: -4px;
+  padding: 0.3em;
+  border-radius: 6px;
+  font-size: medium;
+  background-color: var(--background-find-menu);
+  position: absolute;
+  z-index: 10;
+}
+
+.find-menu-input {
+  flex: 1;
+  padding: 0.5em;
+  border: none;
+  font-size: inherit;
+  font-family: inherit;
+  background-color: var(--background-find-menu);
+  color: var(--peersky-text-color);
+  outline: none;
+}
+
+.find-menu-button {
+  padding: 0.5em;
+  border: none;
+  background: none;
+  font-size: inherit;
+  font-family: inherit;
+  cursor: pointer;
+  color: var(--button-color);
+}
+
+.find-menu-button:hover {
+  color: var(--button-hover-color);
+}
+
+.hidden {
+  display: none !important;
+}
+
+button#refresh svg {
+  transform: rotate(75deg);
 }
