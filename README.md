@@ -65,6 +65,11 @@ npm run build-all
   - [x] Run a local [hyper](https://holepunch.to/) node
   - [x] `hyper://` native URLs support
 
+- [x] Web3 protocol handler:
+
+  - [x] Run a local [web3](https://github.com/web3-protocol/web3protocol-js) node
+  - [x] `web3://` native URLs support
+
 - [x] P2P Applications:
 
   - [x] `peersky://p2p/chat/index`
