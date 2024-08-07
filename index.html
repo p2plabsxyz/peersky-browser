@@ -29,24 +29,20 @@
     <div class="flex mb-2">
       Join our community on
       <a href="https://matrix.to/#/#peersky:matrix.org">
-        <code class="text-blue-600 hover:text-blue-500 ml-2 mr-2">Matrix 
-        </code>
+        <code class="text-blue-600 hover:text-blue-500 ml-2 mr-2">Matrix</code>
       </a> &
       <a href="https://discord.gg/4sQGarXp">
-        <code class="text-blue-600 hover:text-blue-500 ml-2">Discord
-        </code>
+        <code class="text-blue-600 hover:text-blue-500 ml-2">Discord</code>
       </a>
     </div>
     <span class="text-xs text-yellow-600 border border-yellow-500 bg-yellow-100 text-white p-1 rounded-full">v1.0.0
       Coming Soon for Mac, Windows, & Linux</span>
     <div class="mt-2">
       <p>
-        Have you ever wondered what it'd be like if the internet wasn't
-        controlled by a handful of big companies? That's what the distributed
-        web, or DWeb, is all about. It's a new kind of internet that operates
-        on a network of computers where everyone shares and cooperates. This
-        way, no single entity can control or shut it down. It's like turning
-        the entire web into a giant, global community project.
+        Have you ever wondered what it'd be like if the internet wasn't controlled by a handful of big companies? That's
+        what the distributed web, or DWeb, is all about. It's a new kind of internet that operates on a network of
+        computers where everyone shares and cooperates. This way, no single entity can control or shut it down. It's
+        like turning the entire web into a giant, global community project.
       </p>
       <p class="mt-2">
         Peersky is your personal gatekeeper to a new way of accessing web content. Imagine a world where you can access
@@ -65,7 +61,120 @@
         autonomy, empowering users to explore the web without traditional internet infrastructure.
       </p>
     </div>
-    <p></p>
+
+    <!-- Roadmap Section -->
+    <section id="roadmap" class="mt-6">
+      <h2 class="text-2xl font-bold mb-4">🚧 Roadmap</h2>
+      <ul class="list-disc pl-5">
+        <li><strong>Basic Browser Navigation:</strong>
+          <ul class="list-disc pl-5">
+            <li>✅ Back</li>
+            <li>✅ Forward</li>
+            <li>✅ Reload</li>
+            <li>✅ Home page (peersky://home)</li>
+          </ul>
+        </li>
+        <li><strong>IPFS Protocol Handler:</strong>
+          <ul class="list-disc pl-5">
+            <li>✅ Run a local <a href="https://helia.io/" class="text-blue-600 hover:text-blue-500">Helia</a> node</li>
+            <li>✅ `ipfs://` / `ipns://` native URLs support</li>
+            <li>✅ Directory listings support</li>
+          </ul>
+        </li>
+        <li><strong>Hypercore Protocol Handler:</strong>
+          <ul class="list-disc pl-5">
+            <li>✅ Run a local <a href="https://holepunch.to/" class="text-blue-600 hover:text-blue-500">hyper</a> node
+            </li>
+            <li>✅ `hyper://` native URLs support</li>
+          </ul>
+        </li>
+        <li><strong>Web3 Protocol Handler:</strong>
+          <ul class="list-disc pl-5">
+            <li>✅ Run a local <a href="https://github.com/web3-protocol/web3protocol-js"
+                class="text-blue-600 hover:text-blue-500">web3</a> node
+            </li>
+            <li>✅ `web3://` native URLs support</li>
+          </ul>
+        </li>
+        <li><strong>P2P Applications:</strong>
+          <ul class="list-disc pl-5">
+            <li>✅ <code>peersky://p2p/chat/index</code> - Peer-to-peer messaging</li>
+            <li>✅ <code>peersky://p2p/upload/index</code> - Decentralized file storage</li>
+            <li>✅ <code>peersky://p2p/editor/index</code> - Build and publish websites</li>
+            <li>✅ <a href="https://reader.distributed.press/" class="text-blue-600 hover:text-blue-500">Social
+                Reader</a> - A p2p offline client for reading and following microblogs on the fediverse.</li>
+          </ul>
+        </li>
+        <li><strong>Electron’s Auto-updater:</strong>
+          <ul class="list-disc pl-5">
+            <li>✅ Download and install the latest release from Github automatically</li>
+          </ul>
+        </li>
+        <li><strong>Context Menu:</strong>
+          <ul class="list-disc pl-5">
+            <li>✅ Back / Forward</li>
+            <li>✅ Reload</li>
+            <li>✅ Inspect</li>
+            <li>✅ Undo / Redo</li>
+            <li>✅ Cut / Copy / Paste</li>
+            <li>✅ Copy Link Address</li>
+            <li>✅ Open Link in New Tab</li>
+          </ul>
+        </li>
+        <li><strong>Find in Page:</strong>
+          <ul class="list-disc pl-5">
+            <li>✅ Search for text within a document or web page</li>
+          </ul>
+        </li>
+        <li><strong>Keyboard Shortcuts:</strong>
+          <ul class="list-disc pl-5">
+            <li>✅ New Window: <code>CommandOrControl+N</code></li>
+            <li>✅ Back: <code>CommandOrControl+[</code></li>
+            <li>✅ Forward: <code>CommandOrControl+]</code></li>
+            <li>✅ Reload: <code>CommandOrControl+R</code></li>
+            <li>✅ Find in Page: <code>CommandOrControl+F</code></li>
+            <li>✅ Open Dev Tools: <code>CommandOrControl+Shift+I</code></li>
+            <li>✅ Focus URL Bar: <code>CommandOrControl+L</code></li>
+            <li>✅ Minimize: <code>CommandOrControl+M</code></li>
+            <li>✅ Close: <code>CommandOrControl+W</code></li>
+            <li>✅ Toggle Full Screen: <code>F11</code></li>
+          </ul>
+        </li>
+        <li><strong>Settings (peersky://settings):</strong>
+          <ul class="list-disc pl-5">
+            <li>☐ Option to hide/show the clock</li>
+            <li>☐ Option to change themes</li>
+            <li>☐ Option to set home wallpapers</li>
+          </ul>
+        </li>
+        <li><strong>History (peersky://history):</strong>
+          <ul class="list-disc pl-5">
+            <li>☐ Suggestions based on the browser history when typing in URL prompt</li>
+          </ul>
+        </li>
+        <li><strong>Bookmarks (peersky://bookmarks):</strong>
+          <ul class="list-disc pl-5">
+            <li>☐ Option to add favourite pages in the nav bar (peersky://bookmarks)</li>
+          </ul>
+        </li>
+        <li><strong>QR Code Generator:</strong>
+          <ul class="list-disc pl-5">
+            <li>☐ Option to generate QR Code for every page in the URL prompt</li>
+          </ul>
+        </li>
+        <li><strong>Web Extensions:</strong>
+          <ul class="list-disc pl-5">
+            <li>☐ In-browser extensions</li>
+            <li>☐ [Ad-blocker](https://github.com/gorhill/uBlock)</li>
+            <li>☐ [DScan](https://github.com/p2plabsxyz/dscan)</li>
+            <li>☐ ..</li>
+            <li>☐ Load extensions from folders</li>
+          </ul>
+        </li>
+      </ul>
+    </section>
+    <!-- End of Roadmap Section -->
+
     <footer class="text-sm mt-6 mb-12">
       <a class="underline hover:text-gray-800 hover:no-underline"
         href="https://github.com/p2plabsxyz/peersky-browser/tree/v1">Github</a>
