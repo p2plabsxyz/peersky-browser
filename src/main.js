@@ -83,6 +83,7 @@ async function createWindow(url, isMainWindow = false) {
 globalProtocol.registerSchemesAsPrivileged([
   { scheme: "ipfs", privileges: P2P_PROTOCOL },
   { scheme: "ipns", privileges: P2P_PROTOCOL },
+  { scheme: "pubsub", privileges: P2P_PROTOCOL },
   { scheme: "hyper", privileges: P2P_PROTOCOL },
   { scheme: "web3", privileges: P2P_PROTOCOL },
   { scheme: "peersky", privileges: BROWSER_PROTOCOL },
@@ -111,6 +112,8 @@ async function setupProtocols(session) {
   sessionProtocol.registerStreamProtocol("ipns", ipfsProtocolHandler);
   globalProtocol.registerStreamProtocol("ipfs", ipfsProtocolHandler);
   globalProtocol.registerStreamProtocol("ipns", ipfsProtocolHandler);
+  globalProtocol.registerStreamProtocol("pubsub", ipfsProtocolHandler);
+  globalProtocol.registerStreamProtocol("pubsub", ipfsProtocolHandler);
 
   const hyperProtocolHandler = await createHyperHandler(hyperOptions, session);
   sessionProtocol.registerStreamProtocol("hyper", hyperProtocolHandler);
