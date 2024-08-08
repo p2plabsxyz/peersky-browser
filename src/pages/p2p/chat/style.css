@@ -1,0 +1,36 @@
+html, body {
+    height: 100%;
+    margin: 0;
+    background: var(--peersky-p2p-background-color);
+}
+.container {
+    display: flex;
+    color: var(--peersky-text-color);
+    flex-direction: column;
+    height: 100%;
+    align-items: center;
+    justify-content: center;
+}
+
+.hidden {
+    display: none;
+}
+
+#chat textarea {
+    flex-grow: 1;
+    margin-bottom: 1em;
+    width: 80%;
+    border: 1px solid var(--peersky-primary-color);
+}
+
+#chatForm {
+    display: flex;
+    width: 80%;
+    margin-bottom: 1em;
+}
+
+#messageInput {
+    flex-grow: 1;
+    line-height: 1.7;
+}
+

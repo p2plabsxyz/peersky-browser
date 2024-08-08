@@ -1,0 +1,140 @@
+<meta lang="en" />
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Chat</title>
+<style>
+  @import url("peersky://static/css/index.css");
+
+  pear-ctrl {
+    margin-top: 9px;
+    margin-left: 9px;
+    position: absolute;
+  }
+  pear-ctrl[data-platform="darwin"] {
+    float: left;
+    margin-top: 4px;
+  }
+
+  pear-ctrl:after {
+    content: "";
+    display: block;
+    height: 1.8rem;
+    position: fixed;
+    z-index: -1;
+    left: 0;
+    top: 0;
+    width: 100%;
+    background-color: var(--peersky-p2p-background-color);
+  }
+
+  button,
+  input {
+    all: unset;
+    border: 1px ridge var(--peersky-primary-color);
+    background: var(--peersky-background-color);
+    color: var(--peersky-text-color);
+    padding: 0.45rem;
+    font-family: monospace;
+    font-size: 1rem;
+    line-height: 1rem;
+  }
+
+  body {
+    background-color: var(--peersky-p2p-background-color);
+    font-family: monospace;
+    margin: 0;
+    padding: 0;
+  }
+
+  main {
+    display: flex;
+    height: 100vh;
+    color: var(--peersky-text-color);
+    justify-content: center;
+    margin: 0;
+    padding: 0;
+  }
+
+  .hidden {
+    display: none !important;
+  }
+
+  #or {
+    margin: 1.5rem auto;
+  }
+
+  #setup {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #loading {
+    align-self: center;
+  }
+
+  #chat {
+    display: flex;
+    flex-direction: column;
+    width: 100vw;
+    padding: 0.75rem;
+  }
+
+  #header {
+    margin-top: 2.2rem;
+    margin-bottom: 0.75rem;
+  }
+
+  #details {
+    display: flex;
+    justify-content: space-between;
+  }
+
+  #messages {
+    flex: 1;
+    font-family: "Courier New", Courier, monospace;
+    overflow-y: scroll;
+  }
+
+  #message-form {
+    display: flex;
+  }
+
+  #message {
+    flex: 1;
+  }
+</style>
+<script type="module" src="./chat.js"></script>
+<pear-ctrl></pear-ctrl>
+<main>
+  <div id="setup">
+    <div>
+      <button id="create-chat-room">Create</button>
+    </div>
+    <div id="or">- or -</div>
+    <form id="join-form">
+      <button type="submit" id="join-chat-room">Join</button>
+      <input
+        required
+        id="join-chat-room-topic"
+        type="text"
+        placeholder="Chat room Topic"
+      />
+    </form>
+  </div>
+  <div id="loading" class="hidden">Loading ...</div>
+  <div id="chat" class="hidden">
+    <div id="header">
+      <div id="details">
+        <div>Topic: <span id="chat-room-topic"></span></div>
+        <div>Peers: <span id="peers-count">0</span></div>
+      </div>
+    </div>
+    <div id="messages"></div>
+    <form id="message-form">
+      <input id="message" type="text" />
+      <input type="submit" value="Send" />
+    </form>
+  </div>
+</main>
