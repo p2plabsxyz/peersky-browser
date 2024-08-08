@@ -24,15 +24,14 @@ async function initializeIPFSNode() {
 
 initializeIPFSNode();
 
-// Function to read the body of an upload request
-async function* readBody(body, session) {
+async function * readBody (body) {
   for (const chunk of body) {
     if (chunk.bytes) {
-      yield await Promise.resolve(chunk.bytes);
+      yield await Promise.resolve(chunk.bytes)
+    } else if (chunk.blobUUID) {
+      yield await session.getBlobData(chunk.blobUUID)
     } else if (chunk.file) {
-      yield* Readable.from(fs.createReadStream(chunk.file));
-    } else {
-      console.warn("Unknown chunk format:", chunk);
+      yield * Readable.from(fs.createReadStream(chunk.file))
     }
   }
 }
@@ -40,13 +39,9 @@ async function* readBody(body, session) {
 // Function to handle file uploads
 async function handleFileUpload(request, sendResponse, session) {
   try {
-    const data = [];
-    for await (const chunk of readBody(request.uploadData, session)) {
-      data.push(chunk);
-    }
-
-    const fileBuffer = uint8ArrayConcat(data); // Concatenate all chunks into a single buffer
-    const cid = await unixFileSystem.addBytes(fileBuffer); // Add file to IPFS using Helia's UnixFS
+    // TODO: detect multipart and upload all files
+    const fileStream = readBody(request.uploadData)
+    const cid = await unixFileSystem.addByteStream(fileStream); // Add file to IPFS using Helia's UnixFS
     console.log("File uploaded with CID:", cid.toString());
 
     sendResponse({

@@ -32,25 +32,17 @@ async function handleMultipartFormData(request) {
   }
 }
 
-// Helper function to read and handle body data, especially for 'PUT' and 'POST'
-async function readBody(bodyStream) {
-  if (!bodyStream) return null;
 
-  const reader = bodyStream.getReader();
-  const chunks = [];
-  let readResult;
-
-  try {
-    while (!(readResult = await reader.read()).done) {
-      chunks.push(readResult.value);
+async function * readBody (body) {
+  for (const chunk of body) {
+    if (chunk.bytes) {
+      yield await Promise.resolve(chunk.bytes)
+    } else if (chunk.blobUUID) {
+      yield await session.getBlobData(chunk.blobUUID)
+    } else if (chunk.file) {
+      yield * Readable.from(fs.createReadStream(chunk.file))
     }
-  } catch (error) {
-    console.error('Error reading body:', error);
-    throw error;
   }
-
-  // Return a readable stream instead of a single buffer
-  return Readable.from(chunks);
 }
 
 // Create the Hyper protocol handler
@@ -58,7 +50,7 @@ export async function createHandler(options, session) {
   const fetch = await initializeHyperSDK(options);
 
   return async function protocolHandler(req, callback) {
-    const { url, method = 'GET', headers = {}, body = null } = req;
+    const { url, method = 'GET', headers = {}, uploadData } = req;
 
     try {
       console.log(`Handling request: ${method} ${url}`);
@@ -68,24 +60,12 @@ export async function createHandler(options, session) {
       const contentType = headers['Content-Type'] || headers['content-type'] || '';
       const isMultipart = contentType.includes('multipart/form-data');
 
-      let bodyContent;
-      if (method !== 'GET') {
-        if (isMultipart) {
-          // Handle multipart form-data
-          const files = await handleMultipartFormData(req);
-          bodyContent = files.length > 0 ? files[0].stream : null;
-          console.log(`Parsed ${files.length} files from form data.`);
-        } else {
-          // Handle regular body data
-          bodyContent = await readBody(body);
-          console.log('Body content read for non-multipart request.');
-        }
-      }
+      const body = uploadData ? Readable.from(readBody(uploadData)) : null
 
       const response = await fetch(url, {
         method,
         headers,
-        body: bodyContent
+        body
       });
 
       // Use a stream to handle the response data
