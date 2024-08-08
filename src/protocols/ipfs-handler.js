@@ -6,10 +6,9 @@ import { createNode } from "./helia/helia.js";
 import { ipfsOptions } from "./config.js";
 import { unixfs } from "@helia/unixfs";
 import { ipns } from "@helia/ipns";
-import { concat as uint8ArrayConcat } from "uint8arrays";
 import fs from "fs-extra";
 
-let node, unixFileSystem, name; // Renamed 'fs' to 'unixFileSystem' to avoid conflict
+let node, unixFileSystem, name;
 
 async function initializeIPFSNode() {
   console.log("Initializing IPFS node...");
@@ -18,13 +17,14 @@ async function initializeIPFSNode() {
   console.log(`IPFS node initialized in ${Date.now() - startTime}ms`);
   console.log(node.libp2p.peerId);
 
-  unixFileSystem = unixfs(node); // Assigning Helia UnixFS instance to unixFileSystem
+  unixFileSystem = unixfs(node);
   name = ipns(node);
 }
 
 initializeIPFSNode();
 
-async function * readBody (body) {
+// Ensure 'session' is passed here
+async function * readBody (body, session) {
   for (const chunk of body) {
     if (chunk.bytes) {
       yield await Promise.resolve(chunk.bytes)
@@ -40,8 +40,8 @@ async function * readBody (body) {
 async function handleFileUpload(request, sendResponse, session) {
   try {
     // TODO: detect multipart and upload all files
-    const fileStream = readBody(request.uploadData)
-    const cid = await unixFileSystem.addByteStream(fileStream); // Add file to IPFS using Helia's UnixFS
+    const fileStream = readBody(request.uploadData, session)
+    const cid = await unixFileSystem.addByteStream(fileStream);
     console.log("File uploaded with CID:", cid.toString());
 
     sendResponse({

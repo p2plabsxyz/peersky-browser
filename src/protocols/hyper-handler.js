@@ -1,6 +1,7 @@
 import { create as createSDK } from 'hyper-sdk';
 import makeHyperFetch from 'hypercore-fetch';
 import { Readable } from 'stream';
+import fs from "fs-extra";
 
 // Initialize the SDK and create the fetch function
 async function initializeHyperSDK(options) {
@@ -13,27 +14,7 @@ async function initializeHyperSDK(options) {
   return fetch;
 }
 
-// Function to handle multipart form-data
-async function handleMultipartFormData(request) {
-  try {
-    const formData = await request.formData();
-    const files = [];
-
-    for (const [name, data] of formData.entries()) {
-      if (name === 'file') {
-        files.push({ name: data.name, stream: data.stream() });
-      }
-    }
-
-    return files;
-  } catch (error) {
-    console.error('Error handling form data:', error);
-    throw error;
-  }
-}
-
-
-async function * readBody (body) {
+async function * readBody (body, session) {
   for (const chunk of body) {
     if (chunk.bytes) {
       yield await Promise.resolve(chunk.bytes)
@@ -56,16 +37,13 @@ export async function createHandler(options, session) {
       console.log(`Handling request: ${method} ${url}`);
       console.log('Headers:', headers);
 
-      // Check if the request contains multipart/form-data
-      const contentType = headers['Content-Type'] || headers['content-type'] || '';
-      const isMultipart = contentType.includes('multipart/form-data');
-
-      const body = uploadData ? Readable.from(readBody(uploadData)) : null
+      const body = uploadData ? Readable.from(readBody(uploadData, session)) : null
 
       const response = await fetch(url, {
         method,
         headers,
-        body
+        body,
+        duplex: 'half'
       });
 
       // Use a stream to handle the response data
