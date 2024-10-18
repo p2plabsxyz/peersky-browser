@@ -18,6 +18,12 @@ export async function createHandler(ipfsOptions, session) {
     console.log(`IPFS node initialized in ${Date.now() - startTime}ms`);
     console.log("Peer ID:", node.libp2p.peerId.toString());
 
+    // Patch the peerId to include toBytes() if it doesn't exist
+    if (typeof node.libp2p.peerId.toBytes !== "function") {
+      node.libp2p.peerId.toBytes = () => node.libp2p.peerId.bytes;
+      console.log("Patched peerId to include toBytes() method.");
+    }
+
     unixFileSystem = unixfs(node);
     name = ipns(node);
   }
@@ -131,9 +137,12 @@ export async function createHandler(ipfsOptions, session) {
     const urlObj = new URL(url);
 
     if (urlObj.protocol === "ipns:") {
-      // Handle IPNS resolution if needed
+      // Handle IPNS resolution
       let ipnsName = urlObj.hostname;
-      let urlParts = urlObj.pathname.split("/").filter(Boolean);
+      let urlParts = urlObj.pathname
+        .split("/")
+        .filter(Boolean)
+        .map((part) => decodeURIComponent(part));
 
       if (ipnsName.endsWith("/")) {
         ipnsName = ipnsName.slice(0, -1);
@@ -162,7 +171,14 @@ export async function createHandler(ipfsOptions, session) {
         return;
       }
     } else {
-      ipfsPath = url.replace("ipfs://", "");
+      // Handle IPFS URLs
+      const urlObj = new URL(url);
+      const cid = urlObj.hostname;
+      const pathSegments = urlObj.pathname
+        .split("/")
+        .filter(Boolean)
+        .map((part) => decodeURIComponent(part));
+      ipfsPath = `${cid}/${pathSegments.join("/")}`;
     }
 
     try {
@@ -177,14 +193,16 @@ export async function createHandler(ipfsOptions, session) {
         mime.lookup(path.basename(ipfsPath)) || "application/octet-stream";
       data = Readable.from(Buffer.concat(fileStream));
     } catch (e) {
+      console.error("Error retrieving file:", e);
       if (e.message.includes("not a file")) {
         // Handle directory listing or index.html retrieval
         try {
-          const indexPath = path.join(ipfsPath, "index.html");
+          const indexPath = path.posix.join(ipfsPath, "index.html");
           const indexStream = [];
           for await (const chunk of unixFileSystem.cat(indexPath)) {
             indexStream.push(chunk);
           }
+          console.log(`Serving index.html for path: ${indexPath}`);
           responseHeaders["Content-Type"] = "text/html";
           data = Readable.from(Buffer.concat(indexStream));
         } catch {
@@ -204,11 +222,16 @@ export async function createHandler(ipfsOptions, session) {
           }
 
           for await (const file of unixFileSystem.ls(ipfsPath)) {
-            const fileLink = `ipfs://${path.join(ipfsPath, file.name)}`;
+            const encodedFileName = encodeURIComponent(file.name);
+            const fileLink = `ipfs://${path.posix.join(
+              ipfsPath,
+              encodedFileName
+            )}`;
             files.push(`<li><a href="${fileLink}">${file.name}</a></li>`);
           }
           const html = directoryListingHtml(ipfsPath, files.join(""));
 
+          console.log(`Serving directory listing for path: ${ipfsPath}`);
           responseHeaders["Content-Type"] = "text/html";
           data = Readable.from([Buffer.from(html)]);
         }
