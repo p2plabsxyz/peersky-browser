@@ -7,14 +7,14 @@ import { $, loadingSpinner, backdrop, iframe } from './common.js'; // Import com
 
 // Import CSS from Agregore theme to use in the iframe preview
 export let basicCSS = `
-@import url("agregore://theme/vars.css");
+@import url("peersky://static/css/index.css");
             body, * {
                 font-size: 1.2rem;
                 margin: 0;
                 padding: 0;
-                font-family: var(--ag-theme-font-family);
-                background: var(--ag-theme-background);
-                color: var(--ag-theme-text);
+                font-family: var(--font-family-main);
+                background: var(--peersky-p2p-background-color);
+                color: var(--peersky-text-color);
             }
 `;
 
