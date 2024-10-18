@@ -3,87 +3,126 @@ import mime from "mime-types";
 import path from "path";
 import { directoryListingHtml } from "./helia/directoryListingTemplate.js";
 import { createNode } from "./helia/helia.js";
-import { ipfsOptions } from "./config.js";
 import { unixfs } from "@helia/unixfs";
 import { ipns } from "@helia/ipns";
+import parseMultipart from "parse-multipart";
 import fs from "fs-extra";
 
-let node, unixFileSystem, name;
+export async function createHandler(ipfsOptions, session) {
+  let node, unixFileSystem, name;
 
-async function initializeIPFSNode() {
-  console.log("Initializing IPFS node...");
-  const startTime = Date.now();
-  node = await createNode(ipfsOptions);
-  console.log(`IPFS node initialized in ${Date.now() - startTime}ms`);
-  console.log(node.libp2p.peerId);
+  async function initializeIPFSNode() {
+    console.log("Initializing IPFS node...");
+    const startTime = Date.now();
+    node = await createNode(ipfsOptions);
+    console.log(`IPFS node initialized in ${Date.now() - startTime}ms`);
+    console.log("Peer ID:", node.libp2p.peerId.toString());
 
-  unixFileSystem = unixfs(node);
-  name = ipns(node);
-}
+    unixFileSystem = unixfs(node);
+    name = ipns(node);
+  }
 
-initializeIPFSNode();
+  await initializeIPFSNode();
 
-// Ensure 'session' is passed here
-async function * readBody (body, session) {
-  for (const chunk of body) {
-    if (chunk.bytes) {
-      yield await Promise.resolve(chunk.bytes)
-    } else if (chunk.blobUUID) {
-      yield await session.getBlobData(chunk.blobUUID)
-    } else if (chunk.file) {
-      yield * Readable.from(fs.createReadStream(chunk.file))
+  // Function to handle file uploads
+  async function handleFileUpload(request, sendResponse) {
+    try {
+      // Get the raw request body
+      const rawBody = await getRawBody(request.uploadData);
+
+      // Get the boundary from the Content-Type header
+      const contentType =
+        request.headers["Content-Type"] || request.headers["content-type"];
+      const boundary = parseMultipart.getBoundary(contentType);
+
+      // Parse the multipart/form-data
+      const parts = parseMultipart.Parse(rawBody, boundary);
+
+      if (parts.length === 0) {
+        throw new Error("No files found in the upload data.");
+      }
+
+      // Create entries for addAll
+      const entries = parts.map((part) => {
+        return {
+          path: part.filename || part.name || "file",
+          content: Readable.from(part.data),
+        };
+      });
+
+      // Use addAll to upload files with paths
+      const options = { wrapWithDirectory: true };
+      let rootCid;
+
+      for await (const result of unixFileSystem.addAll(entries, options)) {
+        rootCid = result.cid;
+      }
+
+      // Return URL without appending filename
+      const fileUrl = `ipfs://${rootCid.toString()}/`;
+
+      console.log("Files uploaded with root CID:", rootCid.toString());
+
+      sendResponse({
+        statusCode: 200,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          Location: fileUrl,
+          "Content-Type": "text/plain",
+        },
+        data: Readable.from(Buffer.from(fileUrl)),
+      });
+    } catch (e) {
+      console.error("Error uploading file:", e);
+      sendResponse({
+        statusCode: 500,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+        },
+        data: Readable.from(Buffer.from(e.stack)),
+      });
     }
   }
-}
 
-// Function to handle file uploads
-async function handleFileUpload(request, sendResponse, session) {
-  try {
-    // TODO: detect multipart and upload all files
-    const fileStream = readBody(request.uploadData, session)
-    const cid = await unixFileSystem.addByteStream(fileStream);
-    console.log("File uploaded with CID:", cid.toString());
-
-    sendResponse({
-      statusCode: 200,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        Location: `ipfs://${cid.toString()}`,
-        "Content-Type": "text/plain",
-      },
-      data: Readable.from(Buffer.from(cid.toString())), // Respond with the CID
-    });
-  } catch (e) {
-    console.error("Error uploading file:", e);
-    sendResponse({
-      statusCode: 500,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-      },
-      data: Readable.from(Buffer.from(e.stack)),
-    });
+  async function getRawBody(uploadData) {
+    const buffers = [];
+    for (const data of uploadData || []) {
+      if (data.bytes) {
+        buffers.push(data.bytes);
+      } else if (data.file) {
+        const fileBuffer = await fs.promises.readFile(data.file);
+        buffers.push(fileBuffer);
+      } else if (data.blobUUID) {
+        // Handle blobUUID if necessary
+        const blobData = await session.getBlobData(data.blobUUID);
+        buffers.push(blobData);
+      }
+    }
+    return Buffer.concat(buffers);
   }
-}
 
-// Exported function to create a protocol handler
-export async function createHandler(session) {
-  return async function protocolHandler(
-    { url, method, uploadData },
-    sendResponse
-  ) {
+  return async function protocolHandler(request, sendResponse) {
+    const { url, method, uploadData, headers } = request;
+
     if (!node) {
       console.log("IPFS node is not ready yet");
       return;
     }
 
-    if ((method === "PUT" || method === "POST") && uploadData) {
-      return handleFileUpload({ uploadData }, sendResponse, session);
+    // Handle file uploads for ipfs:// URLs
+    if (
+      (method === "PUT" || method === "POST") &&
+      uploadData &&
+      url.startsWith("ipfs://")
+    ) {
+      console.log(`Handling file upload for URL: ${url}`);
+      return handleFileUpload({ uploadData, headers }, sendResponse);
     }
 
     let ipfsPath;
     let data = null;
     let statusCode = 200;
-    let headers = {
+    let responseHeaders = {
       "Access-Control-Allow-Origin": "*",
       "Allow-CSP-From": "*",
       "Cache-Control": "no-cache",
@@ -92,13 +131,14 @@ export async function createHandler(session) {
     const urlObj = new URL(url);
 
     if (urlObj.protocol === "ipns:") {
+      // Handle IPNS resolution if needed
       let ipnsName = urlObj.hostname;
       let urlParts = urlObj.pathname.split("/").filter(Boolean);
 
-      // Remove trailing slash if it exists
       if (ipnsName.endsWith("/")) {
         ipnsName = ipnsName.slice(0, -1);
       }
+
       try {
         console.log("Resolving IPNS for:", ipnsName);
         const resolutionResult = await name.resolveDNSLink(ipnsName, {
@@ -118,7 +158,7 @@ export async function createHandler(session) {
         data = Readable.from([
           Buffer.from("Failed to resolve IPNS name: " + e.toString()),
         ]);
-        sendResponse({ statusCode, headers, data });
+        sendResponse({ statusCode, headers: responseHeaders, data });
         return;
       }
     } else {
@@ -126,26 +166,26 @@ export async function createHandler(session) {
     }
 
     try {
-      // Try to access the specific file first
+      // Try to access the specific file
       const fileStream = [];
       console.log("Starting file retrieval for IPFS path:", ipfsPath);
       for await (const chunk of unixFileSystem.cat(ipfsPath)) {
         fileStream.push(chunk);
       }
       console.log("File retrieval complete for IPFS path:", ipfsPath);
-      headers["Content-Type"] =
-        mime.lookup(ipfsPath) || "application/octet-stream";
+      responseHeaders["Content-Type"] =
+        mime.lookup(path.basename(ipfsPath)) || "application/octet-stream";
       data = Readable.from(Buffer.concat(fileStream));
     } catch (e) {
       if (e.message.includes("not a file")) {
-        // If it's not a file, check if it's a directory
+        // Handle directory listing or index.html retrieval
         try {
           const indexPath = path.join(ipfsPath, "index.html");
           const indexStream = [];
           for await (const chunk of unixFileSystem.cat(indexPath)) {
             indexStream.push(chunk);
           }
-          headers["Content-Type"] = "text/html";
+          responseHeaders["Content-Type"] = "text/html";
           data = Readable.from(Buffer.concat(indexStream));
         } catch {
           // If no index.html, list the directory
@@ -169,7 +209,7 @@ export async function createHandler(session) {
           }
           const html = directoryListingHtml(ipfsPath, files.join(""));
 
-          headers["Content-Type"] = "text/html";
+          responseHeaders["Content-Type"] = "text/html";
           data = Readable.from([Buffer.from(html)]);
         }
       } else {
@@ -181,7 +221,7 @@ export async function createHandler(session) {
 
     sendResponse({
       statusCode,
-      headers,
+      headers: responseHeaders,
       data,
     });
   };
