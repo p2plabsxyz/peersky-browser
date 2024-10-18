@@ -107,12 +107,15 @@
     "@helia/unixfs": "^3.0.6",
     "@libp2p/bootstrap": "^10.0.24",
     "@libp2p/kad-dht": "^12.0.17",
+    "@libp2p/mdns": "^11.0.8",
     "@libp2p/mplex": "^10.0.24",
     "@libp2p/tcp": "^9.0.26",
     "@libp2p/webrtc": "^4.0.33",
     "@libp2p/websockets": "^8.0.24",
+    "content-type": "^1.0.5",
     "electron-updater": "^6.2.1",
     "find-process": "^1.4.7",
+    "fs-extra": "^11.2.0",
     "helia": "^4.2.1",
     "hyper-sdk": "^5.0.0",
     "hypercore-fetch": "^9.9.1",
@@ -121,6 +124,7 @@
     "libp2p-gossipsub": "^0.13.0",
     "mime-types": "^2.1.35",
     "multiformats": "^13.1.0",
+    "parse-multipart": "^1.0.4",
     "web3protocol": "^0.6.0"
   },
   "devDependencies": {

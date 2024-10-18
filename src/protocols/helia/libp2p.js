@@ -2,6 +2,7 @@ import { createLibp2p } from "libp2p";
 import { tcp } from "@libp2p/tcp";
 import { noise } from "@chainsafe/libp2p-noise";
 import { yamux } from "@chainsafe/libp2p-yamux";
+import { mdns } from '@libp2p/mdns'
 import { mplex } from "@libp2p/mplex";
 import { webRTC, webRTCDirect } from "@libp2p/webrtc";
 import { kadDHT } from "@libp2p/kad-dht";
@@ -31,7 +32,7 @@ export async function libp2pOptions() {
     transports: [tcp(), webRTC(), webRTCDirect(), webSockets()],
     connectionEncryption: [noise()],
     streamMuxers: [yamux(), mplex()],
-    peerDiscovery: [bootstrap(bootstrapConfig)],
+    peerDiscovery: [mdns(), bootstrap(bootstrapConfig)],
     services: {
       dht: kadDHT({
         clientMode: false, // Disable DHT

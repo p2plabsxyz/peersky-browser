@@ -7,7 +7,7 @@ const DEFAULT_IPFS_DIR = path.join(USER_DATA, "ipfs");
 const DEFAULT_HYPER_DIR = path.join(USER_DATA, "hyper");
 
 export const ipfsOptions = {
-  libp2pOptions: await libp2pOptions(),
+  libp2p: await libp2pOptions(),
   repo: DEFAULT_IPFS_DIR,
   silent: true,
   preload: {

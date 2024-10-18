@@ -44,7 +44,7 @@ async function uploadFile(file) {
     // Construct the URL based on the protocol
     let url;
     if (protocol === 'hyper') {
-        const hyperdriveUrl = await generateHyperdriveKey('drag-and-drop');
+        const hyperdriveUrl = await generateHyperdriveKey('p2p-editor');
         url = `${hyperdriveUrl}`;
     } else {
         url = `ipfs://bafyaabakaieac/`;

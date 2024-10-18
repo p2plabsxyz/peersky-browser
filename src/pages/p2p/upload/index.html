@@ -52,7 +52,7 @@
   </footer>
 </main>
 <script>
-	function $(query) {
+  function $(query) {
     return document.querySelector(query)
 }
 
@@ -88,7 +88,6 @@ async function uploadFiles(files) {
         url = `ipfs://bafyaabakaieac/`;
     }
 
-    // Perform the upload for each file
     try {
         const response = await fetch(url, {
             method: 'PUT',
@@ -96,12 +95,24 @@ async function uploadFiles(files) {
         });
 
         if (!response.ok) {
-            addError(files, await response.text());
+            addError(files[0].name, await response.text());
+            return;
         }
-        const urlResponse = protocol === 'hyper' ? response.url : response.headers.get('Location');
-        addURL(urlResponse);
+
+        // For the hyper protocol, construct the file URLs
+        if (protocol === 'hyper') {
+            // Construct the file URLs for each uploaded file
+            for (const file of files) {
+                const fileUrl = `${url}${encodeURIComponent(file.name)}`;
+                addURL(fileUrl);
+            }
+        } else {
+            const locationHeader = response.headers.get('Location');
+            addURL(locationHeader);
+        }
     } catch (error) {
         console.error(`Error uploading ${files}:`, error);
+        addError(files[0].name, error.message);
     }
 }
 
