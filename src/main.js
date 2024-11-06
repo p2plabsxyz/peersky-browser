@@ -70,6 +70,9 @@ async function createWindow(url, isMainWindow = false) {
 
   window.webContents.on("did-finish-load", () => {
     attachContextMenus(window);
+    window.webContents.executeJavaScript(`
+      document.getElementById('url').focus();
+    `);
   });
 
   // Ensure context menu is reattached on navigation within the window
