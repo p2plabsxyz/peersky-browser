@@ -113,6 +113,7 @@
     "@libp2p/websockets": "^8.0.24",
     "electron-updater": "^6.2.1",
     "find-process": "^1.4.7",
+    "fs-extra": "^11.2.0",
     "helia": "^4.2.1",
     "hyper-sdk": "^5.0.0",
     "hypercore-fetch": "^9.9.1",

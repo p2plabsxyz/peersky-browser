@@ -1,23 +1,21 @@
-import { app, BrowserWindow, protocol as globalProtocol, session } from "electron";
-import { join } from "path";
+import { app, session, protocol as globalProtocol } from "electron";
+import path from "path";
 import { fileURLToPath } from "url";
 import { createHandler as createIPFSHandler } from "./protocols/ipfs-handler.js";
 import { createHandler as createBrowserHandler } from "./protocols/browser-protocol.js";
-import { createHandler as createHyperHandler } from './protocols/hyper-handler.js';
-import { createHandler as createWeb3Handler } from './protocols/web3-handler.js';
+import { createHandler as createHyperHandler } from "./protocols/hyper-handler.js";
+import { createHandler as createWeb3Handler } from "./protocols/web3-handler.js";
 import { ipfsOptions, hyperOptions } from "./protocols/config.js";
-import { attachContextMenus } from "./context-menu.js";
 import { registerShortcuts } from "./actions.js";
 import { setupAutoUpdater } from "./auto-updater.js";
+import WindowManager from "./window-manager.js";
 
-const __dirname = fileURLToPath(new URL('./', import.meta.url));
+const __dirname = fileURLToPath(new URL("./", import.meta.url));
 
 // // Uncomment while locally testing the AutoUpdater
 // Object.defineProperty(app, 'isPackaged', {
 //   value: true
 // });
-
-let mainWindow;
 
 const P2P_PROTOCOL = {
   standard: true,
@@ -38,50 +36,7 @@ const BROWSER_PROTOCOL = {
   corsEnabled: true,
 };
 
-async function createWindow(url, isMainWindow = false) {
-  const windowOptions = {
-    width: 800,
-    height: 600,
-    webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
-      nativeWindowOpen: true,
-      webviewTag: true,
-    },
-  };
-
-  const window = new BrowserWindow(windowOptions);
-
-  if (isMainWindow) {
-    mainWindow = window;
-    window.loadFile(join(__dirname, "./pages/index.html"), { query: { url: 'peersky://home' } });
-    window.webContents.openDevTools();
-  } else {
-    window.loadFile(join(__dirname, "./pages/index.html"), { query: { url: url || 'peersky://home' } });
-  }
-
-  attachContextMenus(window);
-
-  window.on("closed", () => {
-    if (isMainWindow) {
-      mainWindow = null;
-    }
-  });
-
-  window.webContents.on("did-finish-load", () => {
-    attachContextMenus(window);
-    window.webContents.executeJavaScript(`
-      document.getElementById('url').focus();
-    `);
-  });
-
-  // Ensure context menu is reattached on navigation within the window
-  window.webContents.on("did-navigate", () => {
-    attachContextMenus(window);
-  });
-
-  return window;
-}
+let windowManager;
 
 globalProtocol.registerSchemesAsPrivileged([
   { scheme: "ipfs", privileges: P2P_PROTOCOL },
@@ -92,11 +47,22 @@ globalProtocol.registerSchemesAsPrivileged([
 ]);
 
 app.whenReady().then(async () => {
+  windowManager = new WindowManager();
+
   await setupProtocols(session.defaultSession);
-  createWindow(null, true);
-  registerShortcuts();
-    // initializeAutoUpdater(); // Initialize auto-updater
-  console.log('App is prepared, setting up autoUpdater...');
+
+  // Load saved windows or open a new one
+  await windowManager.openSavedWindows();
+  if (windowManager.all.length === 0) {
+    windowManager.open({ isMainWindow: true });
+  }
+
+  registerShortcuts(windowManager); // Pass windowManager to registerShortcuts
+
+  windowManager.startSaver();
+
+  // initializeAutoUpdater(); // Initialize auto-updater
+  console.log("App is prepared, setting up autoUpdater...");
   setupAutoUpdater();
 });
 
@@ -135,9 +101,14 @@ app.on("window-all-closed", () => {
 });
 
 app.on("activate", () => {
-  if (mainWindow === null) {
-    createWindow(null, true);
+  if (windowManager.all.length === 0) {
+    windowManager.open({ isMainWindow: true });
   }
 });
 
-export { createWindow };
+app.on("before-quit", () => {
+  windowManager.saveOpened();
+  windowManager.stopSaver();
+});
+
+export { windowManager };

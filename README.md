@@ -98,6 +98,9 @@ npm run build-all
 - [x] Find in page:
   - [x] Search for text within a document or web page
 
+- [x] Window state persistence:
+  - [x] Save and restore open windows on app launch
+
 - [x] Keyboard shortcuts:
 
   - [x] New Window: `CommandOrControl+N`

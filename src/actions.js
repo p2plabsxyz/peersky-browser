@@ -1,7 +1,7 @@
 import { app, BrowserWindow, globalShortcut } from "electron";
-import { createWindow } from "./main.js";
+import WindowManager from './window-manager.js';
 
-export function createActions() {
+export function createActions(windowManager) {
   const actions = {
     OpenDevTools: {
       label: "Open Dev Tools",
@@ -16,7 +16,7 @@ export function createActions() {
       label: "New Window",
       accelerator: "CommandOrControl+N",
       click: () => {
-        createWindow();
+        windowManager.open();
       },
     },
     Forward: {
@@ -124,8 +124,8 @@ export function createActions() {
   return actions;
 }
 
-export function registerShortcuts() {
-  const actions = createActions();
+export function registerShortcuts(windowManager) {
+  const actions = createActions(windowManager);
 
   const registerFindShortcut = (focusedWindow) => {
     if (focusedWindow) {

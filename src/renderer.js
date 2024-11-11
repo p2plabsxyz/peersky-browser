@@ -5,6 +5,7 @@ import {
   WEB3_PREFIX,
   handleURL,
 } from "./utils.js";
+const { ipcRenderer } = require('electron');
 
 const DEFAULT_PAGE = "peersky://home";
 const webviewContainer = document.querySelector("#webview");
@@ -13,7 +14,9 @@ const findMenu = document.querySelector("#find");
 const pageTitle = document.querySelector("title");
 
 const searchParams = new URL(window.location.href).searchParams;
-const toNavigate = searchParams.has("url") ? searchParams.get("url") : DEFAULT_PAGE;
+const toNavigate = searchParams.has("url")
+  ? searchParams.get("url")
+  : DEFAULT_PAGE;
 
 document.addEventListener("DOMContentLoaded", () => {
   if (webviewContainer && nav) {
@@ -50,6 +53,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (urlInput) {
         urlInput.value = e.detail.url;
       }
+      ipcRenderer.send('webview-did-navigate', e.detail.url);
     });
 
     webviewContainer.addEventListener("page-title-updated", (e) => {

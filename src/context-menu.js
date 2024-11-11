@@ -1,14 +1,21 @@
-import {
-  Menu,
-  MenuItem,
-  clipboard,
-  BrowserWindow,
-  webContents,
-} from "electron";
-import { createWindow } from "./main.js";
+import { Menu, MenuItem, clipboard } from "electron";
+import WindowManager from "./window-manager.js";
+
 const isMac = process.platform === "darwin";
 
-export function attachContextMenus(browserWindow) {
+// Ensure a single instance of WindowManager is used
+let windowManagerInstance = null;
+
+export function setWindowManager(instance) {
+  windowManagerInstance = instance;
+}
+
+export function attachContextMenus(browserWindow, windowManager) {
+  // Assign the WindowManager instance if not already set
+  if (!windowManagerInstance) {
+    windowManagerInstance = windowManager;
+  }
+
   const attachMenuToWebContents = (webContents) => {
     webContents.on("context-menu", (event, params) => {
       const menu = new Menu();
@@ -26,7 +33,7 @@ export function attachContextMenus(browserWindow) {
           new MenuItem({
             label: "Redo",
             role: "redo",
-            accelerator: isMac ? "Command+Shift+Z" : "Control+Y", // Use Cmd+Shift+Z on macOS, Ctrl+Y on other platforms
+            accelerator: isMac ? "Command+Shift+Z" : "Control+Y",
           })
         );
         menu.append(new MenuItem({ type: "separator" }));
@@ -120,7 +127,13 @@ export function attachContextMenus(browserWindow) {
         menu.append(
           new MenuItem({
             label: "Open Link in New Window",
-            click: () => createWindow(params.linkURL),
+            click: () => {
+              if (windowManagerInstance) {
+                windowManagerInstance.open({ url: params.linkURL });
+              } else {
+                console.error("WindowManager instance not set.");
+              }
+            },
           })
         );
       }
@@ -139,7 +152,11 @@ export function attachContextMenus(browserWindow) {
       attachMenuToWebContents(webviewWebContents);
 
       webviewWebContents.setWindowOpenHandler(({ url }) => {
-        createWindow(url);
+        if (windowManagerInstance) {
+          windowManagerInstance.open({ url });
+        } else {
+          console.error("WindowManager instance not set.");
+        }
         return { action: "deny" };
       });
     }
