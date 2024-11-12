@@ -9,6 +9,7 @@ import { ipfsOptions, hyperOptions } from "./protocols/config.js";
 import { registerShortcuts } from "./actions.js";
 import { setupAutoUpdater } from "./auto-updater.js";
 import WindowManager from "./window-manager.js";
+import { attachContextMenus, setWindowManager } from "./context-menu.js";
 
 const __dirname = fileURLToPath(new URL("./", import.meta.url));
 
@@ -49,6 +50,9 @@ globalProtocol.registerSchemesAsPrivileged([
 app.whenReady().then(async () => {
   windowManager = new WindowManager();
 
+  // Set the WindowManager instance in context-menu.js
+  setWindowManager(windowManager);
+
   await setupProtocols(session.defaultSession);
 
   // Load saved windows or open a new one
@@ -61,9 +65,38 @@ app.whenReady().then(async () => {
 
   windowManager.startSaver();
 
-  // initializeAutoUpdater(); // Initialize auto-updater
-  console.log("App is prepared, setting up autoUpdater...");
+  // Initialize AutoUpdater after windowManager is ready
+  console.log("App is prepared, setting up AutoUpdater...");
   setupAutoUpdater();
+});
+
+// Introduce a flag to prevent multiple 'before-quit' handling
+let isQuitting = false;
+
+app.on("before-quit", (event) => {
+  if (isQuitting) {
+    return;
+  }
+  event.preventDefault(); // Prevent the default quit behavior
+
+  console.log("Before quit: Saving window states...");
+
+  isQuitting = true; // Set the quitting flag
+
+  windowManager.setQuitting(true); // Inform WindowManager that quitting is happening
+
+  windowManager
+    .saveOpened()
+    .then(() => {
+      console.log("Window states saved successfully.");
+      windowManager.stopSaver();
+      app.quit(); // Proceed to quit the app
+    })
+    .catch((error) => {
+      console.error("Error saving window states on quit:", error);
+      windowManager.stopSaver();
+      app.quit(); // Proceed to quit the app even if saving fails
+    });
 });
 
 async function setupProtocols(session) {
@@ -104,11 +137,6 @@ app.on("activate", () => {
   if (windowManager.all.length === 0) {
     windowManager.open({ isMainWindow: true });
   }
-});
-
-app.on("before-quit", () => {
-  windowManager.saveOpened();
-  windowManager.stopSaver();
 });
 
 export { windowManager };

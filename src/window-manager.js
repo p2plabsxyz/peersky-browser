@@ -14,6 +14,11 @@ class WindowManager {
     this.saverTimer = null;
     this.saverInterval = DEFAULT_SAVE_INTERVAL;
     this.isSaving = false; // Flag to prevent concurrent saves
+    this.isQuitting = false; // Flag to indicate app is quitting
+  }
+
+  setQuitting(flag) {
+    this.isQuitting = flag;
   }
 
   open(options = {}) {
@@ -28,14 +33,22 @@ class WindowManager {
         `webview-did-navigate-${window.id}`,
         window.navigateListener
       );
-      // Save the state after the window is closed
-      this.saveOpened();
+      // Save the state after the window is closed, only if not quitting
+      if (!this.isQuitting) {
+        this.saveOpened();
+      }
     });
 
-    // Save state when the window is moved, resized, or navigated
-    window.window.on("move", () => this.saveOpened());
-    window.window.on("resize", () => this.saveOpened());
-    window.webContents.on("did-navigate", () => this.saveOpened());
+    // Save state when the window is moved, resized, or navigated, only if not quitting
+    window.window.on("move", () => {
+      if (!this.isQuitting) this.saveOpened();
+    });
+    window.window.on("resize", () => {
+      if (!this.isQuitting) this.saveOpened();
+    });
+    window.webContents.on("did-navigate", () => {
+      if (!this.isQuitting) this.saveOpened();
+    });
 
     return window;
   }
@@ -45,16 +58,20 @@ class WindowManager {
   }
 
   async saveOpened() {
-    if (this.isSaving) return; // Prevent concurrent saves
+    if (this.isSaving) {
+      console.warn("saveOpened is already in progress.");
+      return;
+    }
     this.isSaving = true;
+    console.log("Saving window states...");
 
     const windowStates = [];
     for (const window of this.all) {
-      // Skip destroyed windows
       if (
         window.window.isDestroyed() ||
         window.window.webContents.isDestroyed()
       ) {
+        console.log(`Skipping destroyed window: ${window.id}`);
         continue;
       }
       try {
@@ -62,16 +79,22 @@ class WindowManager {
         const position = window.window.getPosition();
         const size = window.window.getSize();
         windowStates.push({ url, position, size });
+        console.log(
+          `Saved window ${window.id}: URL=${url}, Position=${position}, Size=${size}`
+        );
       } catch (error) {
-        console.error("Error saving window state:", error);
+        console.error(
+          `Error saving window state for window ${window.id}:`,
+          error
+        );
       }
     }
 
     try {
-      // Write to a temporary file first to prevent data corruption
       const tempPath = PERSIST_FILE + ".tmp";
       fs.outputJsonSync(tempPath, windowStates);
       fs.moveSync(tempPath, PERSIST_FILE, { overwrite: true });
+      console.log(`Window states saved to ${PERSIST_FILE}`);
     } catch (error) {
       console.error("Error writing window states to file:", error);
     }
@@ -83,12 +106,14 @@ class WindowManager {
     try {
       const exists = await fs.pathExists(PERSIST_FILE);
       if (!exists) {
+        console.log("Persist file does not exist.");
         return [];
       }
 
       const data = await fs.readFile(PERSIST_FILE, "utf8");
       if (!data.trim()) {
         // Check for empty or whitespace-only content
+        console.log("Persist file is empty.");
         return [];
       }
 
@@ -113,6 +138,9 @@ class WindowManager {
         return [];
       }
 
+      console.log(
+        `Loaded ${windowStates.length} window state(s) from persist file.`
+      );
       return windowStates;
     } catch (e) {
       console.error("Error loading saved windows", e);
@@ -123,7 +151,13 @@ class WindowManager {
   async openSavedWindows() {
     const windowStates = await this.loadSaved();
 
-    for (const state of windowStates) {
+    if (windowStates.length === 0) {
+      console.log("No windows to restore.");
+      return;
+    }
+
+    for (const [index, state] of windowStates.entries()) {
+      console.log(`Opening saved window ${index + 1}:`, state);
       const options = {};
       if (state.position && Array.isArray(state.position)) {
         const [x, y] = state.position;
@@ -142,18 +176,24 @@ class WindowManager {
       }
       this.open(options);
     }
+
+    console.log(`${windowStates.length} window(s) restored.`);
   }
 
   startSaver() {
     this.saverTimer = setInterval(() => {
       this.saveOpened();
     }, this.saverInterval);
+    console.log(
+      `Window state saver started with interval ${this.saverInterval}ms.`
+    );
   }
 
   stopSaver() {
     if (this.saverTimer) {
       clearInterval(this.saverTimer);
       this.saverTimer = null;
+      console.log("Window state saver stopped.");
     }
   }
 }
@@ -188,6 +228,7 @@ class PeerskyWindow {
     // Define the listener function
     this.navigateListener = (event, url) => {
       this.currentURL = url;
+      console.log(`Navigation detected in window ${this.id}: ${url}`);
       windowManager.saveOpened();
     };
 
@@ -204,14 +245,16 @@ class PeerskyWindow {
         this.window.webContents
           .executeJavaScript(
             `
-          const { ipcRenderer } = require('electron');
-          const webview = document.querySelector('tracked-box').webviewElement;
-          if (webview) {
-            webview.addEventListener('did-navigate', (e) => {
-              ipcRenderer.send('webview-did-navigate-${this.id}', webview.src);
-            });
-          }
-        `
+            const { ipcRenderer } = require('electron');
+            const webview = document.querySelector('tracked-box').webviewElement;
+            if (webview) {
+              webview.addEventListener('did-navigate', (e) => {
+                ipcRenderer.send('webview-did-navigate-${this.id}', webview.src);
+              });
+            }
+            // Send window ID to renderer for correct IPC event naming
+            ipcRenderer.send('set-window-id', ${this.id});
+          `
           )
           .catch((error) => {
             console.error("Error injecting script into webContents:", error);
