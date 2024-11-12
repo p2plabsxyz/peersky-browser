@@ -22,6 +22,8 @@ document.addEventListener("DOMContentLoaded", () => {
   if (webviewContainer && nav) {
     webviewContainer.loadURL(toNavigate);
 
+    focusURLInput();
+
     nav.addEventListener("back", () => webviewContainer.goBack());
     nav.addEventListener("forward", () => webviewContainer.goForward());
     nav.addEventListener("refresh", () => webviewContainer.reload());
@@ -78,6 +80,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
 function navigateTo(url) {
   webviewContainer.loadURL(url);
+}
+
+function focusURLInput() {
+  const urlInput = nav.querySelector("#url");
+  if (urlInput) {
+    urlInput.focus();
+  }
 }
 
 document.addEventListener("keydown", (e) => {
