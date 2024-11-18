@@ -124,7 +124,6 @@
     "libp2p-gossipsub": "^0.13.0",
     "mime-types": "^2.1.35",
     "multiformats": "^13.1.0",
-    "parse-multipart": "^1.0.4",
     "web3protocol": "^0.6.0"
   },
   "devDependencies": {

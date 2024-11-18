@@ -5,7 +5,6 @@ import { directoryListingHtml } from "./helia/directoryListingTemplate.js";
 import { createNode } from "./helia/helia.js";
 import { unixfs } from "@helia/unixfs";
 import { ipns } from "@helia/ipns";
-import parseMultipart from "parse-multipart";
 import fs from "fs-extra";
 
 export async function createHandler(ipfsOptions, session) {
@@ -33,28 +32,27 @@ export async function createHandler(ipfsOptions, session) {
   // Function to handle file uploads
   async function handleFileUpload(request, sendResponse) {
     try {
-      // Get the raw request body
-      const rawBody = await getRawBody(request.uploadData);
-
-      // Get the boundary from the Content-Type header
-      const contentType =
-        request.headers["Content-Type"] || request.headers["content-type"];
-      const boundary = parseMultipart.getBoundary(contentType);
-
-      // Parse the multipart/form-data
-      const parts = parseMultipart.Parse(rawBody, boundary);
-
-      if (parts.length === 0) {
-        throw new Error("No files found in the upload data.");
+      const entries = [];
+      for (const data of request.uploadData || []) {
+        if (data.type === "file" && data.file) {
+          const fileName = path.basename(data.file);
+          entries.push({
+            path: fileName,
+            content: fs.createReadStream(data.file),
+          });
+        } else if (data.type === "blob" && data.blobUUID) {
+          const blobData = await session.getBlobData(data.blobUUID);
+          const fileName = "index.html";
+          entries.push({
+            path: fileName,
+            content: blobData,
+          });
+        }
       }
 
-      // Create entries for addAll
-      const entries = parts.map((part) => {
-        return {
-          path: part.filename || part.name || "file",
-          content: Readable.from(part.data),
-        };
-      });
+      if (entries.length === 0) {
+        throw new Error("No files found in the upload data.");
+      }
 
       // Use addAll to upload files with paths
       const options = { wrapWithDirectory: true };
@@ -88,23 +86,6 @@ export async function createHandler(ipfsOptions, session) {
         data: Readable.from(Buffer.from(e.stack)),
       });
     }
-  }
-
-  async function getRawBody(uploadData) {
-    const buffers = [];
-    for (const data of uploadData || []) {
-      if (data.bytes) {
-        buffers.push(data.bytes);
-      } else if (data.file) {
-        const fileBuffer = await fs.promises.readFile(data.file);
-        buffers.push(fileBuffer);
-      } else if (data.blobUUID) {
-        // Handle blobUUID if necessary
-        const blobData = await session.getBlobData(data.blobUUID);
-        buffers.push(blobData);
-      }
-    }
-    return Buffer.concat(buffers);
   }
 
   return async function protocolHandler(request, sendResponse) {
