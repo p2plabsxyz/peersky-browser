@@ -80,14 +80,37 @@ class NavBox extends HTMLElement {
     const refreshButton = this.buttonElements["refresh"];
     if (refreshButton) {
       if (isLoading) {
-        // Change icon to close.svg
         this.updateButtonIcon(refreshButton, "close.svg");
       } else {
-        // Change icon to reload.svg
         this.updateButtonIcon(refreshButton, "reload.svg");
       }
     } else {
       console.error("Refresh button not found.");
+    }
+  }
+
+  setNavigationButtons(canGoBack, canGoForward) {
+    const backButton = this.buttonElements["back"];
+    const forwardButton = this.buttonElements["forward"];
+
+    if (backButton) {
+      if (canGoBack) {
+        backButton.classList.add("active");
+        backButton.removeAttribute("disabled");
+      } else {
+        backButton.classList.remove("active");
+        backButton.setAttribute("disabled", "true");
+      }
+    }
+
+    if (forwardButton) {
+      if (canGoForward) {
+        forwardButton.classList.add("active");
+        forwardButton.removeAttribute("disabled");
+      } else {
+        forwardButton.classList.remove("active");
+        forwardButton.setAttribute("disabled", "true");
+      }
     }
   }
 
@@ -101,7 +124,7 @@ class NavBox extends HTMLElement {
           } else {
             this.dispatchEvent(new CustomEvent("reload"));
           }
-        } else {
+        } else if (!button.disabled) {
           this.navigate(button.id);
         }
       }

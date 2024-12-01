@@ -7,6 +7,8 @@
   --background-find-menu: #27272a;
   --button-color: #9ca3af;
   --button-hover-color: #e5e7eb;
+  --button-active-color: #ffffff;
+  --button-inactive-color: #6b7280;
   --peersky-primary-color: #06b6d4;
   --font-family-main: Arial, sans-serif;
 }
@@ -36,7 +38,7 @@ input, button, textarea, select, select *, option  {
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
 
-button {
+.nav-button {
   display: inline-flex;
   background: none;
   border: none;
@@ -44,10 +46,26 @@ button {
   margin-right: 3px;
   cursor: pointer;
   color: var(--button-color);
+  transition: color 0.2s ease-in-out;
 }
 
-button:hover {
+.nav-button.active {
+  color: var(--button-active-color);
+}
+
+.nav-button:disabled {
+  color: var(--button-inactive-color);
+  cursor: not-allowed;
+}
+
+.nav-button:hover:not(:disabled) {
   color: var(--button-hover-color);
+}
+
+.svg-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 #url {

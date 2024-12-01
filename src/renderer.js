@@ -51,15 +51,18 @@ document.addEventListener("DOMContentLoaded", () => {
         "did-stop-loading",
         () => {
           nav.setLoading(false);
+          updateNavigationButtons();
         }
       );
 
-      webviewContainer.webviewElement.addEventListener(
-        "did-fail-load",
-        () => {
-          nav.setLoading(false);
-        }
-      );
+      webviewContainer.webviewElement.addEventListener("did-fail-load", () => {
+        nav.setLoading(false);
+        updateNavigationButtons();
+      });
+
+      webviewContainer.webviewElement.addEventListener("did-navigate", () => {
+        updateNavigationButtons();
+      });
     } else {
       console.error("webviewElement not found in webviewContainer");
     }
@@ -110,10 +113,21 @@ document.addEventListener("DOMContentLoaded", () => {
     findMenu.addEventListener("hide", () => {
       webviewContainer.focus();
     });
+
+    // Initial update of navigation buttons
+    updateNavigationButtons();
   } else {
     console.error("webviewContainer or nav not found");
   }
 });
+
+function updateNavigationButtons() {
+  if (webviewContainer && nav && webviewContainer.webviewElement) {
+    const canGoBack = webviewContainer.webviewElement.canGoBack();
+    const canGoForward = webviewContainer.webviewElement.canGoForward();
+    nav.setNavigationButtons(canGoBack, canGoForward);
+  }
+}
 
 function navigateTo(url) {
   webviewContainer.loadURL(url);
