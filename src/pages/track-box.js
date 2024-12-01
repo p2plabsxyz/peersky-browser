@@ -60,6 +60,10 @@ class TrackedBox extends HTMLElement {
     this.webview.reload();
   }
 
+  stop() {
+    this.webview.stop();
+  }
+
   loadURL(url) {
     this.webview.src = url;
   }

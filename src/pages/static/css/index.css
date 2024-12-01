@@ -114,7 +114,3 @@ find-menu {
 .hidden {
   display: none !important;
 }
-
-button#refresh svg {
-  transform: rotate(75deg);
-}

@@ -5,7 +5,7 @@ import {
   WEB3_PREFIX,
   handleURL,
 } from "./utils.js";
-const { ipcRenderer } = require('electron');
+const { ipcRenderer } = require("electron");
 
 const DEFAULT_PAGE = "peersky://home";
 const webviewContainer = document.querySelector("#webview");
@@ -26,7 +26,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     nav.addEventListener("back", () => webviewContainer.goBack());
     nav.addEventListener("forward", () => webviewContainer.goForward());
-    nav.addEventListener("refresh", () => webviewContainer.reload());
+    nav.addEventListener("reload", () => webviewContainer.reload());
+    nav.addEventListener("stop", () => webviewContainer.stop());
     nav.addEventListener("home", () => {
       webviewContainer.loadURL("peersky://home");
       nav.querySelector("#url").value = "peersky://home";
@@ -35,6 +36,25 @@ document.addEventListener("DOMContentLoaded", () => {
       const { url } = detail;
       navigateTo(url);
     });
+
+    // Handle webview loading events
+    if (webviewContainer.webviewElement) {
+      webviewContainer.webviewElement.addEventListener(
+        "did-start-loading",
+        () => {
+          nav.setLoading(true);
+        }
+      );
+
+      webviewContainer.webviewElement.addEventListener(
+        "did-stop-loading",
+        () => {
+          nav.setLoading(false);
+        }
+      );
+    } else {
+      console.error("webviewElement not found in webviewContainer");
+    }
 
     const urlInput = nav.querySelector("#url");
     if (urlInput) {
@@ -55,22 +75,26 @@ document.addEventListener("DOMContentLoaded", () => {
       if (urlInput) {
         urlInput.value = e.detail.url;
       }
-      ipcRenderer.send('webview-did-navigate', e.detail.url);
+      ipcRenderer.send("webview-did-navigate", e.detail.url);
     });
 
     webviewContainer.addEventListener("page-title-updated", (e) => {
       pageTitle.innerText = e.detail.title + " - Peersky Browser";
     });
 
-    findMenu.addEventListener('next', ({ detail }) => {
-      webviewContainer.executeJavaScript(`window.find("${detail.value}", ${detail.findNext})`);
+    findMenu.addEventListener("next", ({ detail }) => {
+      webviewContainer.executeJavaScript(
+        `window.find("${detail.value}", ${detail.findNext})`
+      );
     });
 
-    findMenu.addEventListener('previous', ({ detail }) => {
-      webviewContainer.executeJavaScript(`window.find("${detail.value}", ${detail.findNext}, true)`);
+    findMenu.addEventListener("previous", ({ detail }) => {
+      webviewContainer.executeJavaScript(
+        `window.find("${detail.value}", ${detail.findNext}, true)`
+      );
     });
 
-    findMenu.addEventListener('hide', () => {
+    findMenu.addEventListener("hide", () => {
       webviewContainer.focus();
     });
   } else {
