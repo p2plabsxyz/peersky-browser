@@ -24,6 +24,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     focusURLInput();
 
+    // Navigation Button Event Listeners
     nav.addEventListener("back", () => webviewContainer.goBack());
     nav.addEventListener("forward", () => webviewContainer.goForward());
     nav.addEventListener("reload", () => webviewContainer.reload());
@@ -37,7 +38,7 @@ document.addEventListener("DOMContentLoaded", () => {
       navigateTo(url);
     });
 
-    // Handle webview loading events
+    // Handle webview loading events to toggle refresh/stop button
     if (webviewContainer.webviewElement) {
       webviewContainer.webviewElement.addEventListener(
         "did-start-loading",
@@ -48,6 +49,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
       webviewContainer.webviewElement.addEventListener(
         "did-stop-loading",
+        () => {
+          nav.setLoading(false);
+        }
+      );
+
+      webviewContainer.webviewElement.addEventListener(
+        "did-fail-load",
         () => {
           nav.setLoading(false);
         }
@@ -69,8 +77,11 @@ document.addEventListener("DOMContentLoaded", () => {
           }
         }
       });
+    } else {
+      console.error("URL input not found within nav-box.");
     }
 
+    // Update URL input and send navigation event
     webviewContainer.addEventListener("did-navigate", (e) => {
       if (urlInput) {
         urlInput.value = e.detail.url;
@@ -78,10 +89,12 @@ document.addEventListener("DOMContentLoaded", () => {
       ipcRenderer.send("webview-did-navigate", e.detail.url);
     });
 
+    // Update page title
     webviewContainer.addEventListener("page-title-updated", (e) => {
       pageTitle.innerText = e.detail.title + " - Peersky Browser";
     });
 
+    // Find Menu Event Listeners
     findMenu.addEventListener("next", ({ detail }) => {
       webviewContainer.executeJavaScript(
         `window.find("${detail.value}", ${detail.findNext})`

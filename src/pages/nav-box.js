@@ -1,7 +1,7 @@
 class NavBox extends HTMLElement {
   constructor() {
     super();
-    this.isLoading = false; // Add isLoading state
+    this.isLoading = false;
     this.buildNavBox();
     this.attachEvents();
   }
@@ -15,7 +15,7 @@ class NavBox extends HTMLElement {
       { id: "home", svg: "home.svg" },
     ];
 
-    this.buttonElements = {}; // Store references to buttons
+    this.buttonElements = {};
 
     buttons.forEach((button) => {
       const btnElement = this.createButton(
@@ -38,47 +38,56 @@ class NavBox extends HTMLElement {
     button.className = "nav-button";
     button.id = id;
 
+    // Create a container for the SVG to manage icons
+    const svgContainer = document.createElement("div");
+    svgContainer.className = "svg-container";
+    button.appendChild(svgContainer);
+
+    this.loadSVG(svgContainer, svgPath);
+
+    return button;
+  }
+
+  loadSVG(container, svgPath) {
     fetch(svgPath)
       .then((response) => response.text())
       .then((svgContent) => {
-        const svgContainer = document.createElement("div");
-        svgContainer.innerHTML = svgContent;
-        const svgElement = svgContainer.querySelector("svg");
-        svgElement.setAttribute("width", "18");
-        svgElement.setAttribute("height", "18");
-        svgElement.setAttribute("fill", "currentColor");
-        button.appendChild(svgElement);
+        container.innerHTML = svgContent;
+        const svgElement = container.querySelector("svg");
+        if (svgElement) {
+          svgElement.setAttribute("width", "18");
+          svgElement.setAttribute("height", "18");
+          svgElement.setAttribute("fill", "currentColor");
+        }
+      })
+      .catch((error) => {
+        console.error(`Error loading SVG from ${svgPath}:`, error);
       });
-    return button;
   }
 
   updateButtonIcon(button, svgFileName) {
     const svgPath = `peersky://static/assets/svg/${svgFileName}`;
-    // Clear existing SVG
-    button.innerHTML = ''; // Use innerHTML to clear all content
-    // Fetch new SVG
-    fetch(svgPath)
-      .then((response) => response.text())
-      .then((svgContent) => {
-        const svgContainer = document.createElement("div");
-        svgContainer.innerHTML = svgContent;
-        const svgElement = svgContainer.querySelector("svg");
-        svgElement.setAttribute("width", "18");
-        svgElement.setAttribute("height", "18");
-        svgElement.setAttribute("fill", "currentColor");
-        button.appendChild(svgElement);
-      });
+    const svgContainer = button.querySelector(".svg-container");
+    if (svgContainer) {
+      this.loadSVG(svgContainer, svgPath);
+    } else {
+      console.error("SVG container not found within the button.");
+    }
   }
 
   setLoading(isLoading) {
     this.isLoading = isLoading;
     const refreshButton = this.buttonElements["refresh"];
-    if (isLoading) {
-      // Change icon to close.svg
-      this.updateButtonIcon(refreshButton, "close.svg");
+    if (refreshButton) {
+      if (isLoading) {
+        // Change icon to close.svg
+        this.updateButtonIcon(refreshButton, "close.svg");
+      } else {
+        // Change icon to reload.svg
+        this.updateButtonIcon(refreshButton, "reload.svg");
+      }
     } else {
-      // Change icon to reload.svg
-      this.updateButtonIcon(refreshButton, "reload.svg");
+      console.error("Refresh button not found.");
     }
   }
 
@@ -98,12 +107,17 @@ class NavBox extends HTMLElement {
       }
     });
 
-    this.querySelector("#url").addEventListener("keypress", (event) => {
-      if (event.key === "Enter") {
-        const url = event.target.value.trim();
-        this.dispatchEvent(new CustomEvent("navigate", { detail: { url } }));
-      }
-    });
+    const urlInput = this.querySelector("#url");
+    if (urlInput) {
+      urlInput.addEventListener("keypress", (event) => {
+        if (event.key === "Enter") {
+          const url = event.target.value.trim();
+          this.dispatchEvent(new CustomEvent("navigate", { detail: { url } }));
+        }
+      });
+    } else {
+      console.error("URL input not found within nav-box.");
+    }
   }
 
   navigate(action) {
