@@ -76,8 +76,14 @@ html {
   left: 20px;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 8px;
+  padding: 8px;
   z-index: 3;
+  background-color: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px) saturate(180%);
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .peerbar a {
@@ -87,9 +93,10 @@ html {
 .peerbar img {
   width: 25px;
   height: 25px;
-  filter: invert(62%) sepia(83%) saturate(447%) hue-rotate(142deg) brightness(93%) contrast(94%);
+  filter: invert(100%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(100%)
+    contrast(100%);
   padding: 5px;
-  transition: transform 0.3s ease;
+  transition: transform 0.3s ease, filter 0.3s ease;
 }
 
 .peerbar img:hover {

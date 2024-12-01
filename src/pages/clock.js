@@ -14,9 +14,15 @@ class Clock extends HTMLElement {
         this.style.top = "20px";
         this.style.right = "20px";
         this.style.color = "#FFFFFF";
-        this.style.fontFamily = "monospace";
+        this.style.fontFamily = "'Helvetica Neue', Arial, sans-serif";
         this.style.fontSize = "30px";
-        this.style.padding = "5px";
+        this.style.fontWeight = "200";
+        this.style.padding = "8px";
+        this.style.borderRadius = "12px";
+        this.style.backgroundColor = "rgba(255, 255, 255, 0.1)";
+        this.style.backdropFilter = "blur(10px) saturate(180%)";
+        this.style.border = "1px solid rgba(255, 255, 255, 0.2)";
+        this.style.boxShadow = "0 4px 10px rgba(0, 0, 0, 0.2)";
         this.textContent = this.formatTime(this.currentTime);
     }
 
