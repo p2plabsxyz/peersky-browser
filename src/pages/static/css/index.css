@@ -2,9 +2,9 @@
   --peersky-background-color: #000000;
   --peersky-p2p-background-color: #18181b;
   --peersky-text-color: #FFFFFF;   
-  --background-nav: #323440;
-  --background-url-input: #111827;
-  --background-find-menu: #27272a;
+  --background-nav: #27272a;
+  --background-url-input: #171717;
+  --background-find-menu: #323440;
   --button-color: #9ca3af;
   --button-hover-color: #e5e7eb;
   --button-active-color: #ffffff;
@@ -34,6 +34,7 @@ input, button, textarea, select, select *, option  {
   display: flex;
   align-items: center;
   background-color: var(--background-nav);
+  gap: 8px;
   padding: 8px;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
@@ -43,7 +44,6 @@ input, button, textarea, select, select *, option  {
   background: none;
   border: none;
   padding: 4px;
-  margin-right: 3px;
   cursor: pointer;
   color: var(--button-color);
   transition: color 0.2s ease-in-out;
@@ -75,20 +75,22 @@ input, button, textarea, select, select *, option  {
   margin-right: 6px;
   color: var(--peersky-text-color);
   font-size: medium;
-  border-radius: 6px;
+  border-radius: 8px;
   display: block;
   width: 60%;
-  padding: 0.4rem;
+  padding: 0.4rem 10px;
+  text-indent: 6px;
 }
 
 #url:hover {
-  background-color: #1f2937;
+  background-color: var(--background-url-input);
+  box-shadow: 0 0 4px -1px #0a0a0a;
 }
 
 #url:focus {
   background-color: var(--background-url-input);
   outline: none;
-  box-shadow: 0 0 4px -1px var(--peersky-primary-color);
+  box-shadow: 0 0 4px -1px #0a0a0a;
 }
 
 find-menu {

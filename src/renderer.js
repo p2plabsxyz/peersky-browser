@@ -94,7 +94,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Update page title
     webviewContainer.addEventListener("page-title-updated", (e) => {
-      pageTitle.innerText = e.detail.title + " - Peersky Browser";
+      pageTitle.innerText = e.detail.title ? `${e.detail.title} - Peersky Browser` : "Peersky Browser";
     });
 
     // Find Menu Event Listeners

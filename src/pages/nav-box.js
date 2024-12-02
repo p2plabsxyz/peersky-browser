@@ -29,7 +29,7 @@ class NavBox extends HTMLElement {
     const urlInput = document.createElement("input");
     urlInput.type = "text";
     urlInput.id = "url";
-    urlInput.placeholder = "Search with DuckDuckGo or type a URL";
+    urlInput.placeholder = "Search with DuckDuckGo or type a P2P URL";
     this.appendChild(urlInput);
   }
 
