@@ -6,13 +6,14 @@ import { createNode } from "./helia/helia.js";
 import { unixfs } from "@helia/unixfs";
 import { ipns } from "@helia/ipns";
 import fs from "fs-extra";
-import { JsonRpcProvider } from "ethers";
 import contentHash from "content-hash";
 import { CID } from "multiformats/cid";
 import { base32 } from "multiformats/bases/base32";
 import { base36 } from "multiformats/bases/base36";
 import { base58btc } from "multiformats/bases/base58";
 import { peerIdFromString } from "@libp2p/peer-id";
+import { ensCache, saveEnsCache, RPC_URL, ipfsOptions } from "./config.js";
+import { JsonRpcProvider } from "ethers";
 
 // Create a combined multibase decoder to handle base32, base36, and base58btc
 const multibaseDecoder = base32.decoder
@@ -51,8 +52,8 @@ export async function createHandler(ipfsOptions, session) {
 
   await initializeIPFSNode();
 
-  // Initialize Ethereum provider
-  const provider = new JsonRpcProvider("https://eth.llamarpc.com");
+  // Initialize Ethereum provider with configurable RPC URL
+  const provider = new JsonRpcProvider(RPC_URL);
 
   // Function to handle file uploads
   async function handleFileUpload(request, sendResponse) {
@@ -68,10 +69,7 @@ export async function createHandler(ipfsOptions, session) {
         } else if (data.type === "blob" && data.blobUUID) {
           const blobData = await session.getBlobData(data.blobUUID);
           const fileName = "index.html";
-          entries.push({
-            path: fileName,
-            content: blobData,
-          });
+          entries.push({ path: fileName, content: blobData });
         }
       }
 
@@ -105,9 +103,7 @@ export async function createHandler(ipfsOptions, session) {
       console.error("Error uploading file:", e);
       sendResponse({
         statusCode: 500,
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-        },
+        headers: { "Access-Control-Allow-Origin": "*" },
         data: Readable.from(Buffer.from(e.stack)),
       });
     }
@@ -234,50 +230,67 @@ export async function createHandler(ipfsOptions, session) {
     }
 
     if (ensName) {
-      // ENS resolution
+      // ENS resolution with caching
       try {
         const resolver = await provider.getResolver(ensName);
-        if (resolver) {
-          const contentHashRaw = await resolver.getContentHash();
-          if (contentHashRaw) {
-            let cidOrName;
-            let codec;
-            try {
-              codec = contentHash.getCodec(contentHashRaw);
-              cidOrName = contentHash.decode(contentHashRaw);
-            } catch (err) {
-              if (contentHashRaw.startsWith("ipfs://")) {
-                codec = "ipfs-ns";
-                cidOrName = contentHashRaw.slice(7);
-              } else if (contentHashRaw.startsWith("ipns://")) {
-                codec = "ipns-ns";
-                cidOrName = contentHashRaw.slice(7);
-              } else {
-                throw new Error(
-                  "Unsupported content hash format: " + contentHashRaw
-                );
-              }
-            }
-
-            const urlParts = urlObj.pathname
-              .split("/")
-              .filter(Boolean)
-              .map((part) => decodeURIComponent(part));
-
-            if (codec === "ipfs-ns") {
-              const cid = parseCID(cidOrName);
-              ipfsPath = [cid, ...urlParts];
-            } else if (codec === "ipns-ns") {
-              // IPNS resolution from ENS
-              ipfsPath = await handleIPNSResolution(cidOrName, urlParts);
-            } else {
-              throw new Error("Unsupported content hash codec: " + codec);
-            }
-          } else {
-            throw new Error("No content hash set for ENS name " + ensName);
-          }
-        } else {
+        if (!resolver)
           throw new Error("No resolver found for ENS name " + ensName);
+
+        let contentHashRaw;
+        if (ensCache.has(ensName)) {
+          contentHashRaw = ensCache.get(ensName);
+          console.log(
+            `[${new Date().toISOString()}] ENS cache hit for ${ensName}`
+          );
+        } else {
+          contentHashRaw = await resolver.getContentHash();
+          ensCache.set(ensName, contentHashRaw);
+          saveEnsCache(); // Persist the updated cache
+          console.log(
+            `[${new Date().toISOString()}] ENS cache miss for ${ensName}, fetched contentHash.`
+          );
+          console.log(
+            `[${new Date().toISOString()}] Current ENS cache size: ${
+              ensCache.size
+            }`
+          );
+        }
+
+        if (!contentHashRaw) {
+          throw new Error("No content hash set for ENS name " + ensName);
+        }
+
+        let cidOrName;
+        let codec;
+        try {
+          codec = contentHash.getCodec(contentHashRaw);
+          cidOrName = contentHash.decode(contentHashRaw);
+        } catch (err) {
+          if (contentHashRaw.startsWith("ipfs://")) {
+            codec = "ipfs-ns";
+            cidOrName = contentHashRaw.slice(7);
+          } else if (contentHashRaw.startsWith("ipns://")) {
+            codec = "ipns-ns";
+            cidOrName = contentHashRaw.slice(7);
+          } else {
+            throw new Error(
+              "Unsupported content hash format: " + contentHashRaw
+            );
+          }
+        }
+
+        const urlParts = urlObj.pathname
+          .split("/")
+          .filter(Boolean)
+          .map((part) => decodeURIComponent(part));
+
+        if (codec === "ipfs-ns") {
+          const cid = parseCID(cidOrName);
+          ipfsPath = [cid, ...urlParts];
+        } else if (codec === "ipns-ns") {
+          ipfsPath = await handleIPNSResolution(cidOrName, urlParts);
+        } else {
+          throw new Error("Unsupported content hash codec: " + codec);
         }
       } catch (e) {
         console.error("Error resolving ENS name:", e);
@@ -342,23 +355,11 @@ export async function createHandler(ipfsOptions, session) {
     try {
       const [cid, ...pathSegments] = ipfsPath;
       const pathString = pathSegments.join("/");
-
-      console.log("Starting file retrieval for CID:", cid.toString());
-      console.log("With path:", pathString);
-
       const fileStream = [];
 
-      // Correctly pass options object to unixfs.cat
-      if (pathString) {
-        for await (const chunk of unixFileSystem.cat(cid, {
-          path: pathString,
-        })) {
-          fileStream.push(chunk);
-        }
-      } else {
-        for await (const chunk of unixFileSystem.cat(cid)) {
-          fileStream.push(chunk);
-        }
+      const options = pathString ? { path: pathString } : {};
+      for await (const chunk of unixFileSystem.cat(cid, options)) {
+        fileStream.push(chunk);
       }
 
       console.log("File retrieval complete for IPFS path:", ipfsPath);
@@ -374,7 +375,7 @@ export async function createHandler(ipfsOptions, session) {
     } catch (e) {
       console.error("Error retrieving file:", e);
       if (e.message.includes("not a file")) {
-        // Check if it's a directory
+        // Attempt to serve index.html or directory listing
         try {
           const [cid, ...pathSegments] = ipfsPath;
           const indexPathString =
@@ -419,11 +420,7 @@ export async function createHandler(ipfsOptions, session) {
             files.push(`<li><a href="${fileLink}">${file.name}</a></li>`);
           }
 
-          const html = directoryListingHtml(
-            pathSegments.join("/"),
-            files.join("")
-          );
-
+          const html = directoryListingHtml(pathString, files.join(""));
           console.log(
             `Serving directory listing for path: ${ipfsPath.join("/")}`
           );
@@ -437,10 +434,6 @@ export async function createHandler(ipfsOptions, session) {
       }
     }
 
-    sendResponse({
-      statusCode,
-      headers: responseHeaders,
-      data,
-    });
+    sendResponse({ statusCode, headers: responseHeaders, data });
   };
 }
