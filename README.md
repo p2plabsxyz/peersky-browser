@@ -12,25 +12,21 @@
 
 💻 [Download](https://peersky.p2plabs.xyz/)
 
-<!-- <div>
-  <img src="./peersky-demo.gif" />
-</div> -->
-
 ## 🛠 Development
 
-- Install dependencies
+### Install dependencies
 
 ```bash
 npm install
 ```
 
-- Start the app
+### Start the app
 
 ```bash
 npm start
 ```
 
-- Build
+### Build
   After development of the browser, run the following command. This will create a `production` build.
 
 ```bash
@@ -45,7 +41,7 @@ npm run build-all
 # For macOS, Linux, and Windows
 ```
 
-## 🚧 Roadmap
+## Roadmap
 
 - [x] Basic browser navigation:
 
@@ -146,15 +142,12 @@ npm run build-all
 
   - [ ] Option to add favourite pages in the nav bar (peersky://bookmarks)
 
-## 📄 Contribute
+## Contribute
 
 - Thanks for your interest in contributing to Peersky Browser. There are many ways you can contribute to the project.
 - To start, take a few minutes to read the "[contribution guide](https://github.com/p2plabsxyz/peersky-browser/blob/main/.github/CONTRIBUTING.md)".
 - We look forward to your [pull requests](https://github.com/p2plabsxyz/peersky-browser/pulls) and / or involvement in our [issues page](https://github.com/p2plabsxyz/peersky-browser/issues).
 
-## ⚖️ License
+## License
 
 Peersky Browser is licensed under the [MIT License](https://github.com/p2plabsxyz/peersky-browser/blob/main/LICENSE).
-
-<hr>
-Don't forget to leave a star ⭐️ ~ <a href="https://twitter.com/PeerskyBrowser" target="_blank"><img src="https://img.shields.io/twitter/follow/PeerskyBrowser?style=social" alt="twitter" /></a>
