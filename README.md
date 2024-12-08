@@ -52,7 +52,12 @@ npm run build-all
   - [x] Back
   - [x] Forward
   - [x] Reload
+  - [x] Browser protocol (peersky://)
   - [x] Home page (peersky://home)
+  - [x] Search engine
+    - DuckDuckGo (default)
+    - Ecosia
+  - [ ] Tabs? Maybe?
 
 - [x] IPFS protocol handler:
 
@@ -72,14 +77,14 @@ npm run build-all
 
 - [x] P2P Applications:
 
-  - [x] `peersky://p2p/chat/index`
+  - [x] `peersky://p2p/chat/`
     - Peer-to-peer messaging
-  - [x] `peersky://p2p/upload/index`
+  - [x] `peersky://p2p/upload/`
     - Decentralized file storage
-  - [x] `peersky://p2p/editor/index`
+  - [x] `peersky://p2p/editor/`
     - Build and publish websites
   - [x] [Social Reader](https://reader.distributed.press/)
-    - A p2p offline client for reading and following microblogs on the fediverse.
+    - A p2p offline ActivityPub client for reading and following microblogs on the fediverse.
 
 - [x] Electron’s Auto-updater:
 
@@ -114,30 +119,32 @@ npm run build-all
   - [x] Close: `CommandOrControl+W`
   - [x] Toggle Full Screen: `F11`
 
+- [ ] Web extensions:
+  - [ ] Ability to add extensions
+  - [ ] Default extensions
+    - [Ad-blocker](https://github.com/gorhill/uBlock)
+    - [DScan](https://github.com/p2plabsxyz/dscan)
+    - ..
+
 - [ ] Settings (peersky://settings):
 
-  - [ ] Option to hide/show the clock
-  - [ ] Option to change themes
-  - [ ] Option to set home wallpapers
+  - [ ] Switch search engines
+  - [ ] Set custom home page wallpapers
+  - [ ] Hide/show the home page clock
+  - [ ] Change themes
+  - [ ] Clear browser cache
 
 - [ ] History (peersky://history):
 
   - [ ] Suggestions based on the browser history when typing in URL prompt
 
-- [ ] Bookmarks (peersky://bookmarks):
-
-  - [ ] Option to add favourite pages in the nav bar (peersky://bookmarks)
-
 - [ ] QR Code generator:
 
   - [ ] Option to generate QR Code for every page in the URL prompt
 
-- [ ] Web extensions:
-  - [ ] In-browser extensions
-    - [Ad-blocker](https://github.com/gorhill/uBlock)
-    - [DScan](https://github.com/p2plabsxyz/dscan)
-    - ..
-  - [ ] Load extensions from folders
+- [ ] Bookmarks (peersky://bookmarks):
+
+  - [ ] Option to add favourite pages in the nav bar (peersky://bookmarks)
 
 ## 📄 Contribute
 
