@@ -42,8 +42,11 @@
 
 - [x] Web3 protocol handler:
 
-  - [x] Run a local [web3](https://github.com/web3-protocol/web3protocol-js) node
-  - [x] `web3://` native URLs support
+  - [x] Run a local [web3 protocol](https://docs.web3url.io/) node
+    - [x] Access on-chain websites.
+    - [x] Fetch data from smart contracts using auto, manual, and resource request resolve modes.
+    - [x] Retrieve NFT metadata or content (e.g., web3://[contract]/tokenHTML/[tokenId]).
+    - [x] Query account balances or other data directly from smart contracts.
 
 - [x] P2P Applications:
 
