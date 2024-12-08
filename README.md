@@ -12,35 +12,6 @@
 
 💻 [Download](https://peersky.p2plabs.xyz/)
 
-## 🛠 Development
-
-### Install dependencies
-
-```bash
-npm install
-```
-
-### Start the app
-
-```bash
-npm start
-```
-
-### Build
-  After development of the browser, run the following command. This will create a `production` build.
-
-```bash
-npm run build
-# For Intel and M1 macs
-```
-
-Now, the `dist` folder will appear in the root directory.
-
-```bash
-npm run build-all
-# For macOS, Linux, and Windows
-```
-
 ## Roadmap
 
 - [x] Basic browser navigation:
@@ -82,7 +53,7 @@ npm run build-all
     - Decentralized file storage
   - [x] `peersky://p2p/editor/`
     - Build and publish websites
-  - [x] [Social Reader](https://reader.distributed.press/)
+  - [x] [reader.p2plabs.xyz](https://reader.distributed.press/)
     - A p2p offline ActivityPub client for reading and following microblogs on the fediverse.
 
 - [x] Electron’s Auto-updater:
@@ -118,13 +89,6 @@ npm run build-all
   - [x] Close: `CommandOrControl+W`
   - [x] Toggle Full Screen: `F11`
 
-- [ ] Web extensions:
-  - [ ] Ability to add extensions
-  - [ ] Default extensions
-    - [Ad-blocker](https://github.com/gorhill/uBlock)
-    - [DScan](https://github.com/p2plabsxyz/dscan)
-    - ..
-
 - [ ] Settings (peersky://settings):
 
   - [ ] Switch search engines
@@ -132,6 +96,13 @@ npm run build-all
   - [ ] Hide/show the home page clock
   - [ ] Change themes
   - [ ] Clear browser cache
+
+- [ ] Web extensions:
+  - [ ] Ability to add extensions
+  - [ ] Default extensions
+    - [Ad-blocker](https://github.com/gorhill/uBlock)
+    - [DScan](https://github.com/p2plabsxyz/dscan)
+    - ..
 
 - [ ] History (peersky://history):
 
@@ -149,6 +120,35 @@ npm run build-all
 
   - [ ] List and showcase published content from `peersky://p2p/` apps for enhanced discoverability.
   - [ ] Provide metadata (e.g., creation date, content type) to improve navigation and usability.
+
+## Development
+
+### Install dependencies
+
+```bash
+npm install
+```
+
+### Start the app
+
+```bash
+npm start
+```
+
+### Build
+  After development of the browser, run the following command. This will create a `production` build.
+
+```bash
+npm run build
+# For Intel and M1 macs
+```
+
+Now, the `dist` folder will appear in the root directory.
+
+```bash
+npm run build-all
+# For macOS, Linux, and Windows
+```
 
 ## Contribute
 
