@@ -142,6 +142,11 @@ npm run build-all
 
   - [ ] Option to add favourite pages in the nav bar (peersky://bookmarks)
 
+- [ ] Archive (peersky://archive):
+
+  - [ ] List and showcase published content from `peersky://p2p/` apps for enhanced discoverability.
+  - [ ] Provide metadata (e.g., creation date, content type) to improve navigation and usability.
+
 ## Contribute
 
 - Thanks for your interest in contributing to Peersky Browser. There are many ways you can contribute to the project.
