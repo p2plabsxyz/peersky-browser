@@ -60,6 +60,9 @@ npm run build-all
   - [x] Run a local [Helia](https://helia.io/) node
   - [x] `ipfs://` / `ipns://` native URLs support
   - [x] Directory listings support
+  - [x] Native ENS domain resolution:
+    - [x] Resolve `.eth` domains directly to IPFS/IPNS content without centralized gateways (e.g., `ipfs://vitalik.eth`).
+    - [x] Local caching for resolved ENS content to enhance performance and reduce RPC calls.
 
 - [x] Hypercore protocol handler:
 
