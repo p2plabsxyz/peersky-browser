@@ -123,6 +123,7 @@
 
   - [ ] List and showcase published content from `peersky://p2p/` apps for enhanced discoverability.
   - [ ] Provide metadata (e.g., creation date, content type) to improve navigation and usability.
+  - [ ] Ability to download all the hashes of published data in a .json file.
 
 ## Development
 
