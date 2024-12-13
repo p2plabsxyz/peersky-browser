@@ -67,8 +67,3 @@ body::before {
 .peerbar img:hover {
   transform: scale(1.1);
 }
-
-hello-world {
-  color: white;
-  font-size: 3rem;
-}
