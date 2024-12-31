@@ -1,18 +1,32 @@
 <!DOCTYPE html>
-<meta charset="UTF-8" />
-<meta http-equiv="X-UA-Compatible" content="IE=edge" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<style>
-  @import url("peersky://static/css/plan1.css");
-</style>
-<title>Plan 1</title>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+    <style>
+      @import url("peersky://static/css/plan1.css");
+    </style>
+    <title>Plan 1</title>
+    <script async src="peersky://static/js/vendor/es-module-shims/es-module-shims.js"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "@braid/myers-diff": "peersky://static/js/vendor/myers-diff1/myers-diff1.js",
+          "@braid/simpleton-client": "peersky://static/js/vendor/braid-org/simpleton-client.js",
+          "@braid/braid-http": "https://esm.sh/braid-http@1.3.5",
+          "marked": "https://esm.sh/marked@11.1.0"
+        }
+      }
+    </script>
+
 <div class="plan1-background">
   <h1>Plan 1</h1>
   <p>
     A love letter to the grateful dead internet hypothesis
   </p>
 
-  <h2>Elves</h2>
+  <h2>Hello Elves</h2>
   <p>
     Elves are discreet hypertext helpers.
   </p>
@@ -130,6 +144,39 @@
   <div class="example">
     <goodbye-world></goodbye-world>
   </div>
+
+  <h2>Advanced Elves</h2>
+
+  <h3>simpleton-client</h3>
+  <p>
+    required attributes:
+  </p>
+
+  <ul>
+    <li>src: a url backed by braid-text service</li>
+  </ul>
+
+  <h4>Demo</h4>
+
+  <div class="example">
+    <simpleton-client src="https://braid-text.1998.social/example"></simpleton-client>
+  </div>
+
+  <h3>braid-markdown</h3>
+  <p>
+    required attributes:
+  </p>
+
+  <ul>
+    <li>src: a url backed by braid-text service</li>
+  </ul>
+
+  <h4>Demo</h4>
+
+  <div class="example">
+    <braid-markdown src="https://braid-text.1998.social/markdown/example"></braid-markdown>
+  </div>
+
 </div>
 
 <script src="peersky://static/elves/elf.js" type="module"></script>
