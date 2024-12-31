@@ -14,7 +14,8 @@
         "imports": {
           "@braid/myers-diff": "peersky://static/js/vendor/myers-diff1/myers-diff1.js",
           "@braid/simpleton-client": "peersky://static/js/vendor/braid-org/simpleton-client.js",
-          "@braid/braid-http": "npm://braid-http/index.mjs"
+          "@braid/braid-http": "https://esm.sh/braid-http@1.3.5",
+          "marked": "https://esm.sh/marked@11.1.0"
         }
       }
     </script>
@@ -160,6 +161,22 @@
   <div class="example">
     <simpleton-client src="https://braid-text.1998.social/example"></simpleton-client>
   </div>
+
+  <h3>braid-markdown</h3>
+  <p>
+    required attributes:
+  </p>
+
+  <ul>
+    <li>src: a url backed by braid-text service</li>
+  </ul>
+
+  <h4>Demo</h4>
+
+  <div class="example">
+    <braid-markdown src="https://braid-text.1998.social/markdown/example"></braid-markdown>
+  </div>
+
 </div>
 
 <script src="peersky://static/elves/elf.js" type="module"></script>
