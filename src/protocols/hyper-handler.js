@@ -2,40 +2,129 @@ import { create as createSDK } from "hyper-sdk";
 import makeHyperFetch from "hypercore-fetch";
 import { Readable, PassThrough } from "stream";
 import fs from "fs-extra";
+import HyperDHT from "hyperdht";
 import Hyperswarm from "hyperswarm";
 import crypto from "hypercore-crypto";
 import b4a from "b4a";
+import { hyperOptions } from "./config.js";
 
 let sdk, fetch;
 let swarm = null;
+
+// Mapping: roomKey -> hypercore feed (stores chat messages)
+const roomFeeds = {};
+// Mapping: roomKey -> array of SSE clients (for real-time updates)
+const roomSseClients = {};
+
 let peers = [];
+// Keep track of which rooms we’ve joined in the swarm (avoid double-joining)
+const joinedRooms = new Set();
 
-// Store all active SSE client streams
-let sseClients = [];
-
-// Initialize the SDK and fetch
-async function initializeHyperSDK(options) {
-  if (sdk && fetch) return fetch; // Return fetch if already initialized
-
-  console.log("Initializing Hyper SDK...");
-  sdk = await createSDK(options); // Create SDK
-  fetch = makeHyperFetch({
-    sdk: sdk,
-    writable: true, // Enable write capability
+function createDHT() {
+  const dht = new HyperDHT({ ephemeral: false });
+  dht.on("error", (err) => {
+    console.error("HyperDHT error:", err);
   });
-  console.log("Hyper SDK initialized.");
-  return fetch; // Return the fetch function
+  return dht;
 }
 
-// Protocol handler creation
+// Initialize Hyper SDK (once)
+async function initializeHyperSDK(options) {
+  if (sdk && fetch) return fetch;
+
+  console.log("Initializing Hyper SDK...");
+  sdk = await createSDK(options);
+  fetch = makeHyperFetch({ sdk, writable: true });
+  console.log("Hyper SDK initialized.");
+  return fetch;
+}
+
+// Initialize Hyperswarm with the keypair from hyperOptions and a custom DHT.
+async function initializeSwarm() {
+  if (swarm) return;
+
+  const keyPair = hyperOptions.keyPair;
+  const dht = createDHT();
+
+  swarm = new Hyperswarm({
+    keyPair,
+    dht,
+    firewall: (remotePublicKey, details) => false,
+  });
+
+  swarm.on("error", (err) => {
+    console.error("Hyperswarm error:", err);
+  });
+
+  // On new peer connections:
+  swarm.on("connection", (connection, info) => {
+    const shortID = connection.remotePublicKey
+      ? b4a.toString(connection.remotePublicKey, "hex").substr(0, 6)
+      : "peer";
+
+    if (info.discoveryKey) {
+      const discKey = b4a.toString(info.discoveryKey, "hex");
+      console.log(`New peer [${shortID}] connected, discKey: ${discKey}`);
+    } else {
+      console.log(`New peer [${shortID}] connected (no discKey).`);
+    }
+
+    connection.on("error", (err) => {
+      console.error(`Peer [${shortID}] connection error:`, err);
+    });
+
+    peers.push({ connection, shortID });
+    console.log(`Peers connected: ${peers.length}`);
+    broadcastPeerCount();
+
+    // Replicate all known feeds on this connection.
+    for (const feed of Object.values(roomFeeds)) {
+      feed.replicate(connection);
+    }
+
+    connection.on("data", (rawData) => {
+      let msg;
+      try {
+        msg = JSON.parse(rawData.toString());
+      } catch {
+        msg = {
+          sender: shortID,
+          message: rawData.toString(),
+          timestamp: Date.now(),
+        };
+      }
+      msg.sender = shortID;
+      if (!msg.timestamp) msg.timestamp = Date.now();
+      console.log(`Peer [${shortID}] =>`, msg);
+      if (msg.roomKey && roomFeeds[msg.roomKey]) {
+        appendMessageToFeed(msg.roomKey, {
+          sender: msg.sender,
+          message: msg.message,
+          timestamp: msg.timestamp,
+        }).catch((err) => {
+          console.error("Error appending peer msg to feed:", err);
+        });
+      }
+    });
+
+    connection.on("close", () => {
+      peers = peers.filter((p) => p.connection !== connection);
+      console.log(`Peer [${shortID}] disconnected. Peers: ${peers.length}`);
+      broadcastPeerCount();
+    });
+  });
+}
+
+// Main exported function to handle the `hyper://` protocol.
 export async function createHandler(options, session) {
-  await initializeHyperSDK(options); // Initialize SDK and fetch
+  await initializeHyperSDK(options);
+  await initializeSwarm();
 
   return async function protocolHandler(req, callback) {
-    const { url, method = "GET", headers = {}, uploadData } = req;
+    const { url, method, headers, uploadData } = req;
     const urlObj = new URL(url);
-    const pathname = urlObj.pathname;
     const protocol = urlObj.protocol.replace(":", "");
+    const pathname = urlObj.pathname;
 
     console.log(`Handling request: ${method} ${url}`);
 
@@ -44,46 +133,46 @@ export async function createHandler(options, session) {
         protocol === "hyper" &&
         (urlObj.hostname === "chat" || pathname.startsWith("/chat"))
       ) {
-        await handleChatRequest(req, callback, session); // Handle chat-specific requests
+        await handleChatRequest(req, callback, session);
       } else {
-        await handleHyperRequest(req, callback, session); // Handle general hyper requests
+        await handleHyperRequest(req, callback, session);
       }
-    } catch (e) {
-      console.error("Failed to handle Hyper request:", e);
+    } catch (err) {
+      console.error("Failed to handle Hyper request:", err);
       callback({
         statusCode: 500,
         headers: { "Content-Type": "text/plain" },
-        data: Readable.from([`Error handling Hyper request: ${e.message}`]),
+        data: Readable.from([`Error handling Hyper request: ${err.message}`]),
       });
     }
   };
 }
 
-// Function to handle chat requests
+// Handle all chat‐related endpoints (create room, join room, send/receive messages, etc).
 async function handleChatRequest(req, callback, session) {
-  const { url, method, uploadData } = req; // Extract uploadData
+  const { url, method, uploadData } = req;
   const urlObj = new URL(url);
-  const searchParams = urlObj.searchParams;
-  const action = searchParams.get("action");
+  const action = urlObj.searchParams.get("action");
+  const roomKey = urlObj.searchParams.get("roomKey");
 
   console.log(`Chat request: ${method} ${url}`);
 
   try {
-    if (method === "POST" && action === "create") {
-      const roomKey = await generateChatRoom();
-      console.log(`Created chat room with key: ${roomKey}`);
-      // Do NOT automatically join the created chat room on the server
+    if (method === "POST" && action === "create-key") {
+      // Create a brand-new random roomKey
+      const newRoomKey = await generateChatRoom();
+      console.log("Generated new chat room key:", newRoomKey);
       callback({
         statusCode: 200,
         headers: { "Content-Type": "application/json" },
-        data: Readable.from([Buffer.from(JSON.stringify({ roomKey }))]),
+        data: Readable.from([
+          Buffer.from(JSON.stringify({ roomKey: newRoomKey })),
+        ]),
       });
     } else if (method === "POST" && action === "join") {
-      const roomKey = searchParams.get("roomKey");
-      if (!roomKey) {
-        throw new Error("Missing roomKey in join request");
-      }
-      console.log(`Joining chat room with key: ${roomKey}`);
+      // Join an existing room
+      if (!roomKey) throw new Error("Missing roomKey in join request");
+      console.log("Joining chat room:", roomKey);
       await joinChatRoom(roomKey);
       callback({
         statusCode: 200,
@@ -93,9 +182,27 @@ async function handleChatRequest(req, callback, session) {
         ]),
       });
     } else if (method === "POST" && action === "send") {
-      const message = await getRequestBody(uploadData, session);
-      console.log(`Sending message: ${message}`);
-      sendMessageToPeers(message);
+      // Send a message
+      if (!roomKey) throw new Error("Missing roomKey in send request");
+      const { sender, message } = await getJSONBody(uploadData, session);
+      console.log(`Sending message [${sender}]: ${message}`);
+
+      // Append to feed
+      await appendMessageToFeed(roomKey, {
+        sender,
+        message,
+        timestamp: Date.now(),
+      });
+
+      // Broadcast to peers
+      const data = JSON.stringify({
+        sender,
+        message,
+        timestamp: Date.now(),
+        roomKey,
+      });
+      sendMessageToPeers(data);
+
       callback({
         statusCode: 200,
         headers: { "Content-Type": "application/json" },
@@ -104,25 +211,39 @@ async function handleChatRequest(req, callback, session) {
         ]),
       });
     } else if (method === "GET" && action === "receive") {
-      console.log("Setting up message stream for receiving messages");
+      // SSE for receiving messages in real-time
+      if (!roomKey) throw new Error("Missing roomKey in receive request");
+      console.log("Setting up SSE for room:", roomKey);
+
+      const feed = roomFeeds[roomKey];
+      if (!feed) throw new Error("Feed not initialized for this room");
+
       const stream = new PassThrough();
+      session.messageStream = stream; // keep reference
 
-      // Keep a reference to the stream to prevent garbage collection
-      session.messageStream = stream;
+      // Replay the entire feed so the client sees the full history
+      for (let i = 0; i < feed.length; i++) {
+        const msg = await feed.get(i);
+        stream.write(`data: ${JSON.stringify(msg)}\n\n`);
+      }
 
-      // Send keep-alive messages every 15 seconds
-      const keepAliveInterval = setInterval(() => {
-        stream.write(":\n\n"); // Comment line in SSE to keep the connection alive
+      // Keep the SSE connection alive
+      const keepAlive = setInterval(() => {
+        stream.write(":\n\n");
       }, 15000);
 
-      // Clean up on stream close
-      stream.on("close", () => {
-        clearInterval(keepAliveInterval);
-        sseClients = sseClients.filter((s) => s !== stream);
-      });
+      // Track SSE client
+      if (!roomSseClients[roomKey]) {
+        roomSseClients[roomKey] = [];
+      }
+      roomSseClients[roomKey].push(stream);
 
-      // Add the stream to the list of SSE clients
-      sseClients.push(stream);
+      stream.on("close", () => {
+        clearInterval(keepAlive);
+        roomSseClients[roomKey] = roomSseClients[roomKey].filter(
+          (s) => s !== stream
+        );
+      });
 
       callback({
         statusCode: 200,
@@ -134,33 +255,34 @@ async function handleChatRequest(req, callback, session) {
         data: stream,
       });
     } else {
+      // Unknown action
       callback({
         statusCode: 400,
         headers: { "Content-Type": "text/plain" },
-        data: Readable.from([Buffer.from("Invalid chat action")]),
+        data: Readable.from(["Invalid chat action"]),
       });
     }
-  } catch (e) {
-    console.error("Error in handleChatRequest:", e);
+  } catch (err) {
+    console.error("Error in handleChatRequest:", err);
     callback({
       statusCode: 500,
       headers: { "Content-Type": "text/plain" },
-      data: Readable.from([Buffer.from(`Error in chat request: ${e.message}`)]),
+      data: Readable.from([`Error in chat request: ${err.message}`]),
     });
   }
 }
 
-// Function to handle general Hyper requests
+// Handle general hyper:// requests not related to “chat” API routes.
 async function handleHyperRequest(req, callback, session) {
   const { url, method = "GET", headers = {}, uploadData } = req;
-  const fetch = await initializeHyperSDK(); // Ensure fetch is initialized
+  const fetchFn = await initializeHyperSDK(); // ensure sdk/fetch is initted
 
-  let body = null;
+  let body;
   if (uploadData) {
     try {
-      body = readBody(uploadData, session); // Get the stream directly
-    } catch (error) {
-      console.error("Error reading uploadData:", error);
+      body = readBody(uploadData, session);
+    } catch (err) {
+      console.error("Error reading uploadData:", err);
       callback({
         statusCode: 400,
         headers: { "Content-Type": "text/plain" },
@@ -171,45 +293,41 @@ async function handleHyperRequest(req, callback, session) {
   }
 
   try {
-    const response = await fetch(url, {
+    const resp = await fetchFn(url, {
       method,
       headers,
       body,
-      duplex: "half", // Ensure that the request supports streaming
+      duplex: "half",
     });
-
-    if (response.body) {
-      // Stream the response body back to the client
-      const responseStream = Readable.from(response.body);
-      console.log("Response received:", response.status);
-
+    if (resp.body) {
+      const responseStream = Readable.from(resp.body);
+      console.log("Response received:", resp.status);
       callback({
-        statusCode: response.status,
-        headers: Object.fromEntries(response.headers),
+        statusCode: resp.status,
+        headers: Object.fromEntries(resp.headers),
         data: responseStream,
       });
     } else {
-      console.warn("No response body received.");
+      console.warn("No response body.");
       callback({
-        statusCode: response.status,
-        headers: Object.fromEntries(response.headers),
+        statusCode: resp.status,
+        headers: Object.fromEntries(resp.headers),
         data: Readable.from([""]),
       });
     }
-  } catch (e) {
-    console.error("Failed to fetch from Hyper SDK:", e);
+  } catch (err) {
+    console.error("Failed to fetch from Hyper SDK:", err);
     callback({
       statusCode: 500,
       headers: { "Content-Type": "text/plain" },
-      data: Readable.from([`Error fetching data: ${e.message}`]),
+      data: Readable.from([`Error fetching data: ${err.message}`]),
     });
   }
 }
 
-// Helper function to read request body
+// Helper: read the upload body (files, bytes, or blobs) into a stream.
 function readBody(body, session) {
   const stream = new PassThrough();
-
   (async () => {
     try {
       for (const data of body || []) {
@@ -228,101 +346,99 @@ function readBody(body, session) {
         }
       }
       stream.end();
-    } catch (error) {
-      console.error("Error reading request body:", error);
-      stream.emit("error", error);
+    } catch (err) {
+      console.error("Error reading request body:", err);
+      stream.emit("error", err);
     }
   })();
-
   return stream;
 }
 
-// Helper function to extract request body
-async function getRequestBody(uploadData, session) {
-  try {
-    const stream = readBody(uploadData, session);
-    const chunks = [];
-    for await (const chunk of stream) {
-      chunks.push(chunk);
+// Helper: read JSON body from a request.
+async function getJSONBody(uploadData, session) {
+  const stream = readBody(uploadData, session);
+  const chunks = [];
+  for await (const chunk of stream) {
+    chunks.push(chunk);
+  }
+  const buf = Buffer.concat(chunks);
+  console.log("Request body received (JSON):", buf.toString());
+  return JSON.parse(buf.toString());
+}
+
+// Broadcast updated peer count to all SSE clients (in all rooms).
+function broadcastPeerCount() {
+  const cnt = peers.length;
+  console.log(`Broadcasting peer count: ${cnt}`);
+  for (const streams of Object.values(roomSseClients)) {
+    for (const s of streams) {
+      s.write(`event: peersCount\ndata: ${cnt}\n\n`);
     }
-    const buffer = Buffer.concat(chunks);
-    console.log("Request body received:", buffer.toString());
-    return buffer.toString();
-  } catch (error) {
-    console.error("Error reading request body:", error);
-    throw error;
   }
 }
 
-// Chat room generation and swarm management functions
-async function generateChatRoom() {
-  const topicBuffer = crypto.randomBytes(32);
-  const roomKey = b4a.toString(topicBuffer, "hex");
-  // Do NOT join the swarm here; let the client handle joining
-  return roomKey;
-}
-
-async function joinChatRoom(roomKey) {
-  const topicBuffer = b4a.from(roomKey, "hex");
-  await joinSwarm(topicBuffer);
-}
-
-async function joinSwarm(topicBuffer) {
-  if (swarm) {
-    console.log("Already connected to a swarm. Destroying current swarm.");
-    swarm.destroy();
-    peers = [];
-  }
-
-  swarm = new Hyperswarm();
-
-  swarm.on("connection", (peer) => {
-    console.log("New peer connected");
-    peers.push(peer);
-
-    // Notify clients of updated peer count
-    updatePeersCount();
-
-    const peerId = b4a.toString(peer.remotePublicKey, "hex").substr(0, 6); // Get peer ID
-
-    peer.on("data", (data) => {
-      const message = data.toString();
-      console.log(`Received message from peer (${peerId}): ${message}`);
-      // Broadcast the message along with the sender (peer) ID to all SSE clients
-      sseClients.forEach((stream) => {
-        stream.write(
-          `data: ${JSON.stringify({ sender: peerId, message })}\n\n`
-        );
-      });
-    });
-
-    peer.on("close", () => {
-      console.log("Peer disconnected");
-      peers = peers.filter((p) => p !== peer);
-      // Notify clients of updated peer count
-      updatePeersCount();
-    });
-  });
-
-  const discovery = swarm.join(topicBuffer, { client: true, server: true });
-  await discovery.flushed();
-  console.log("Joined swarm with topic:", b4a.toString(topicBuffer, "hex"));
-}
-
-// Send message to all connected peers
-function sendMessageToPeers(message) {
+// Send a raw data string to all currently connected peers (swarm connections).
+function sendMessageToPeers(data) {
   console.log(`Broadcasting message to ${peers.length} peers`);
-  peers.forEach((peer) => {
-    peer.write(message);
-  });
+  for (const { connection } of peers) {
+    // If the connection is still open, write data
+    if (!connection.destroyed) {
+      connection.write(data);
+    }
+  }
 }
 
-// Update peers count and notify clients
-function updatePeersCount() {
-  const count = peers.length;
-  console.log(`Peers connected: ${count}`);
-  // Broadcast the updated peer count to all SSE clients
-  sseClients.forEach((stream) => {
-    stream.write(`event: peersCount\ndata: ${count}\n\n`);
-  });
+// Append a message object to the feed for a given roomKey.
+async function appendMessageToFeed(roomKey, { sender, message, timestamp }) {
+  const feed = roomFeeds[roomKey];
+  if (!feed) {
+    throw new Error(`Feed not initialized for room ${roomKey}`);
+  }
+  const obj = {
+    sender,
+    message,
+    timestamp: timestamp || Date.now(),
+  };
+  await feed.append(obj);
+}
+
+// Create a brand-new random 32-byte hex “roomKey”.
+async function generateChatRoom() {
+  const buf = crypto.randomBytes(32);
+  return b4a.toString(buf, "hex");
+}
+
+// Join a chat room: create/load the feed, join the swarm topic, etc.
+async function joinChatRoom(roomKey) {
+  // 1) Load the feed deterministically using the room key via the 'name' option.
+  let feed = roomFeeds[roomKey];
+  if (!feed) {
+    feed = sdk.corestore.get({
+      name: "chat-" + roomKey, // Use a deterministic name so every device gets the same feed.
+      valueEncoding: "json",
+    });
+    await feed.ready();
+    roomFeeds[roomKey] = feed;
+
+    // 2) When new entries are appended to this feed, broadcast them via SSE.
+    feed.on("append", async () => {
+      const idx = feed.length - 1;
+      const msg = await feed.get(idx);
+      const sseArray = roomSseClients[roomKey] || [];
+      for (const s of sseArray) {
+        s.write(`data: ${JSON.stringify(msg)}\n\n`);
+      }
+    });
+  }
+
+  // 3) Join the swarm (only once per room)
+  if (!joinedRooms.has(roomKey)) {
+    joinedRooms.add(roomKey);
+    const topicBuf = b4a.from(roomKey, "hex");
+    swarm.join(topicBuf, { client: true, server: true });
+    await swarm.flush();
+    console.log(`Joined swarm for room: ${roomKey}`);
+  } else {
+    console.log(`Already joined swarm for room: ${roomKey}`);
+  }
 }
