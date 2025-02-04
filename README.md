@@ -5,9 +5,9 @@
 <h1 align="center">Peersky Browser</h1>
 
 <div align="center">
-    <img src="https://img.shields.io/badge/Platform-electron.js-black.svg?style=flat-square" alt="platform">
-    <img src="https://img.shields.io/github/release-date-pre/p2plabsxyz/peersky-browser?color=green&style=flat-square" alt="Release" />
-    <img src="https://img.shields.io/badge/license-MIT-orange.svg?style=flat-square" alt="License">
+    <img src="https://img.shields.io/badge/Platform-electron.js-black.svg" alt="platform">
+    <img src="https://img.shields.io/github/release-date-pre/p2plabsxyz/peersky-browser?color=green" alt="Release" />
+    <img src="https://img.shields.io/mastodon/follow/113323887574214930" alt="Mastodon Follow">
 </div><br>
 
 💻 [Download](https://peersky.p2plabs.xyz/)
