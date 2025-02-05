@@ -355,23 +355,71 @@ export async function createHandler(ipfsOptions, session) {
     try {
       const [cid, ...pathSegments] = ipfsPath;
       const pathString = pathSegments.join("/");
-      const fileStream = [];
 
-      const options = pathString ? { path: pathString } : {};
-      for await (const chunk of unixFileSystem.cat(cid, options)) {
-        fileStream.push(chunk);
+      const stats = await unixFileSystem.stat(cid, { path: pathString });
+      if (stats.type === "directory") {
+        // Directory => try "index.html" or show directory listing
+        const indexPath = pathString
+          ? pathString.replace(/\/+$/, "") + "/index.html"
+          : "index.html";
+
+        try {
+          // If index.html exists, serve it as HTML
+          const indexStream = [];
+          for await (const chunk of unixFileSystem.cat(cid, {
+            path: indexPath,
+          })) {
+            indexStream.push(chunk);
+          }
+          responseHeaders["Content-Type"] = "text/html";
+          data = Readable.from(Buffer.concat(indexStream));
+        } catch (err) {
+          // Otherwise, generate a directory listing
+          const files = [];
+          for await (const file of unixFileSystem.ls(cid, {
+            path: pathString,
+          })) {
+            const encoded = encodeURIComponent(file.name);
+            const fileLink = pathString
+              ? `ipfs://${cid.toString()}/${pathString}/${encoded}`
+              : `ipfs://${cid.toString()}/${encoded}`;
+            files.push(`<li><a href="${fileLink}">${file.name}</a></li>`);
+          }
+          const html = directoryListingHtml(pathString, files.join("\n"));
+          responseHeaders["Content-Type"] = "text/html";
+          data = Readable.from([Buffer.from(html)]);
+        }
+      } else {
+        // File => read and sniff MIME. If the path has no extension or "application/octet-stream",
+        // check the first bytes for an <html> or <!doctype> and set Content-Type to text/html
+        const fileChunks = [];
+        for await (const chunk of unixFileSystem.cat(cid, {
+          path: pathString,
+        })) {
+          fileChunks.push(chunk);
+        }
+        const fileBuffer = Buffer.concat(fileChunks);
+
+        let contentType = mime.lookup(pathString) || "application/octet-stream";
+        if (contentType === "application/octet-stream") {
+          const snippet = fileBuffer
+            .slice(0, 512)
+            .toString("utf8")
+            .toLowerCase();
+          if (
+            snippet.includes("<html") ||
+            snippet.includes("<!doctype html") ||
+            snippet.includes("<head>") ||
+            snippet.includes("<body>")
+          ) {
+            contentType = "text/html; charset=utf-8";
+          }
+        }
+
+        responseHeaders["Content-Type"] = contentType;
+        responseHeaders["Content-Length"] = `${fileBuffer.length}`;
+        data = Readable.from(fileBuffer);
       }
-
-      console.log("File retrieval complete for IPFS path:", ipfsPath);
-
-      // Determine the content type based on the file name
-      const lastSegment = pathSegments[pathSegments.length - 1];
-      const contentType = lastSegment
-        ? mime.lookup(lastSegment) || "application/octet-stream"
-        : "application/octet-stream";
-      responseHeaders["Content-Type"] = contentType;
-
-      data = Readable.from(Buffer.concat(fileStream));
     } catch (e) {
       console.error("Error retrieving file:", e);
       if (e.message.includes("not a file")) {
