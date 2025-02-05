@@ -3,170 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>P2P Chat App</title>
-    <style>
-      body {
-        background-color: #001601;
-        font-family: monospace;
-        color: #b0d944;
-        margin: 0;
-        padding: 0;
-        overflow: hidden; /* Prevent scroll on the main app */
-      }
-
-      main {
-        display: flex;
-        justify-content: center;
-        height: 100vh;
-        flex-direction: column;
-        align-items: center;
-        padding: 1rem;
-        box-sizing: border-box;
-      }
-
-      button,
-      input {
-        all: unset;
-        border: 1px ridge #b0d944;
-        background: #000;
-        color: #b0d944;
-        padding: 0.45rem;
-        font-family: monospace;
-        font-size: 1rem;
-        margin: 0.25rem;
-        box-sizing: border-box;
-      }
-
-      #chat {
-        display: none;
-        flex-direction: column;
-        width: 100%;
-        max-width: 600px;
-        height: 80vh;
-        background-color: #002800;
-        border: 1px solid #b0d944;
-        border-radius: 8px;
-        overflow: hidden;
-        box-sizing: border-box;
-      }
-
-      /* Chat room info at the top */
-      #chat-room-info {
-        display: none;
-        width: 100%;
-        padding: 0.5rem 1rem;
-        background-color: #003300;
-        box-sizing: border-box;
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start; /* Align to the left */
-      }
-
-      #chat-room-info div {
-        margin-bottom: 0.2rem;
-      }
-
-      #messages {
-        flex: 1;
-        overflow-y: auto;
-        padding: 1rem;
-        background-color: #001a00;
-        box-sizing: border-box;
-      }
-
-      /* Customize scrollbar */
-      #messages::-webkit-scrollbar {
-        width: 8px;
-      }
-
-      #messages::-webkit-scrollbar-track {
-        background: #001a00;
-      }
-
-      #messages::-webkit-scrollbar-thumb {
-        background-color: #b0d944;
-        border-radius: 4px;
-      }
-
-      /* Styling for messages */
-      .message {
-        margin-bottom: 0.5rem;
-        display: flex;
-        flex-direction: column;
-        max-width: 80%;
-      }
-
-      /* Message styling for left and right alignment */
-      .message-left {
-        align-items: flex-start;
-        text-align: left;
-      }
-
-      .message-right {
-        align-items: flex-end;
-        text-align: right;
-        margin-left: auto;
-      }
-
-      .sender-left,
-      .sender-right {
-        font-weight: bold;
-        margin-top: 0.2rem;
-        font-size: 0.8rem;
-        color: #aaa;
-      }
-
-      .message-text-left,
-      .message-text-right {
-        background-color: #333;
-        padding: 0.5rem;
-        border-radius: 5px;
-        word-wrap: break-word;
-      }
-
-      .message-text-left {
-        background-color: #444;
-      }
-
-      .message-text-right {
-        background-color: #555;
-      }
-
-      /* Message input fixed at the bottom */
-      #message-form {
-        display: flex;
-        padding: 0.5rem 1rem;
-        background-color: #003300;
-        box-sizing: border-box;
-      }
-
-      #message {
-        flex: 1;
-        padding: 0.5rem;
-        border-radius: 4px;
-        border: 1px solid #b0d944;
-        background-color: #001a00;
-        color: #b0d944;
-      }
-
-      #message:focus {
-        outline: none;
-        border-color: #b0d944;
-      }
-
-      #message-form button {
-        padding: 0 1rem;
-        background-color: #004400;
-        color: #b0d944;
-        border: 1px solid #b0d944;
-        border-radius: 4px;
-        cursor: pointer;
-      }
-
-      #message-form button:hover {
-        background-color: #005500;
-      }
-    </style>
+    <link rel="stylesheet" href="./styles.css">
+    <title>Hyper Chat</title>
   </head>
   <body>
     <main>
@@ -178,7 +16,7 @@
             required
             id="join-chat-room-topic"
             type="text"
-            placeholder="Chat room hash e6d3a2...
+            placeholder="Chat RoomKey efa48..
         "
           />
           <button type="submit">Join Room</button>
@@ -187,7 +25,7 @@
 
       <div id="chat">
         <div id="chat-room-info">
-          <div>Topic: <span id="chat-room-topic"></span></div>
+          <div>RoomKey: <span id="chat-room-topic"></span></div>
           <div>Peers: <span id="peers-count">0</span></div>
         </div>
         <div id="messages"></div>
@@ -198,7 +36,9 @@
             placeholder="Type your message"
             required
           />
-          <button type="submit">Send</button>
+          <button type="submit" id="send-button">
+            <img src="./send.svg" alt="Send" />
+          </button>
         </form>
       </div>
     </main>

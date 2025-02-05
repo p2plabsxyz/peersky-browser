@@ -96,8 +96,10 @@ document
 document.querySelector("#join-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const topic = document.querySelector("#join-chat-room-topic").value.trim();
-  if (!topic) {
-    alert("Please enter a valid chat room key.");
+  // Validate room key format: 64-character hexadecimal string
+  const roomKeyPattern = /^[a-f0-9]{64}$/i;
+  if (!roomKeyPattern.test(topic)) {
+    alert("Invalid room key! Please enter a valid 64-character hexadecimal key.");
     return;
   }
   try {
