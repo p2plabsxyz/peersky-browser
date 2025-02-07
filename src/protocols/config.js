@@ -1,7 +1,7 @@
 import { app } from "electron";
 import path from "path";
-import { libp2pOptions } from "./helia/libp2p.js";
 import fs from "fs-extra";
+import { libp2pOptions } from "./helia/libp2p.js";
 import { getDefaultChainList } from "web3protocol/chains";
 
 const USER_DATA = app.getPath("userData");
@@ -34,20 +34,14 @@ export const hyperOptions = {
   storage: DEFAULT_HYPER_DIR,
 };
 
-// Dynamically fetch RPC URL from default chain list
-let RPC_URL = null;
-
-(async () => {
-  const chainList = getDefaultChainList();
-  const targetChainId = 1; // Ethereum mainnet
-  const targetChain = chainList.find((chain) => chain.id === targetChainId);
-
-  if (targetChain && targetChain.rpcUrls?.length > 0) {
-    RPC_URL = targetChain.rpcUrls[0]; // Use the first RPC URL
-  } else {
-    console.error(`Could not find RPC URL for chain ${targetChainId}`);
-  }
-})();
+// Initialize RPC_URL using top-level await (avoiding an async IIFE)
+const chainList = await getDefaultChainList();
+const targetChainId = 1; // Ethereum mainnet
+const targetChain = chainList.find((chain) => chain.id === targetChainId);
+export const RPC_URL =
+  targetChain && targetChain.rpcUrls?.length > 0
+    ? targetChain.rpcUrls[0]
+    : (console.error(`Could not find RPC URL for chain ${targetChainId}`), null);
 
 // Initialize or load ENS cache
 let ensCache = new Map();
@@ -77,4 +71,4 @@ export function saveEnsCache() {
 }
 
 // Export the cache and save function
-export { ensCache, RPC_URL };
+export { ensCache };
