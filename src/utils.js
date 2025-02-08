@@ -36,10 +36,10 @@ function makeDuckDuckGo(query) {
 
 function handleURL(rawURL) {
   if (rawURL.endsWith('.eth')) {
-    if (!rawURL.startsWith(IPFS_PREFIX)) {
-      return `${IPFS_PREFIX}${rawURL}`;
+    if (rawURL.startsWith(IPFS_PREFIX) || rawURL.startsWith(IPNS_PREFIX)) {
+      return rawURL;
     }
-    return rawURL;
+    return `${IPFS_PREFIX}${rawURL}`;
   } else if (
     rawURL.startsWith(IPFS_PREFIX) || 
     rawURL.startsWith(IPNS_PREFIX) || 
