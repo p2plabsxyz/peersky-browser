@@ -14,7 +14,7 @@
   "author": "Akhilesh Thite <akhileshthite@hotmail.com> (https://akhilesh.art/)",
   "main": "src/main.js",
   "type": "module",
-  "repository": "https://github.com/p2plabsxyz/peersky-test",
+  "repository": "https://github.com/p2plabsxyz/peersky-browser",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "electron .",
@@ -109,7 +109,7 @@
       {
         "provider": "github",
         "owner": "p2plabsxyz",
-        "repo": "peersky-test",
+        "repo": "peersky-browser",
         "releaseType": "release"
       }
     ]
