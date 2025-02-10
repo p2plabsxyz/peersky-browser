@@ -20,11 +20,12 @@
     "start": "electron .",
     "electron-rebuild": "electron-rebuild",
     "build": "electron-builder build --publish never",
-    "build-all": "electron-builder build -mwl"
+    "build-all": "electron-builder build -mwl",
+    "postinstall": "electron-builder install-app-deps"
   },
   "build": {
-    "npmRebuild": false,
-    "asar": false,
+    "npmRebuild": true,
+    "asar": true,
     "appId": "peersky.p2plabs.xyz",
     "productName": "Peersky Browser",
     "directories": {
@@ -39,14 +40,11 @@
     ],
     "mac": {
       "artifactName": "${name}-${version}-${os}-${arch}.${ext}",
-      "darkModeSupport": true,
-      "gatekeeperAssess": false,
       "target": [
         {
           "target": "default",
           "arch": [
-            "x64",
-            "arm64"
+            "universal"
           ]
         }
       ],
@@ -54,30 +52,24 @@
     },
     "win": {
       "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "ia32",
-            "x64"
-          ]
-        },
-        {
-          "target": "portable",
-          "arch": [
-            "ia32",
-            "x64"
-          ]
-        }
+        "nsis",
+        "portable"
       ],
       "icon": "./public/icon.png"
     },
     "linux": {
       "artifactName": "${name}-${version}-${os}-${arch}.${ext}",
-      "target": [
-        "AppImage",
-        "deb"
+      "executableArgs": [
+        "--enable-accelerated-video"
       ],
-      "icon": "./public/icon.png"
+      "target": [
+        "deb",
+        "AppImage",
+        "apk",
+        "pacman",
+        "snap"
+      ],
+      "category": "Network;WebBrowser"
     },
     "protocols": [
       {
@@ -132,7 +124,6 @@
   },
   "devDependencies": {
     "electron": "^31.3.0",
-    "electron-builder": "^24.13.3",
-    "electron-rebuild": "^3.2.9"
+    "electron-builder": "^24.13.3"
   }
 }
