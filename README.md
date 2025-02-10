@@ -24,7 +24,7 @@
   - [x] Search engine
     - DuckDuckGo (default)
     - Ecosia
-  - [ ] Tabs? Maybe?
+  - [ ] [Tabs?](https://github.com/p2plabsxyz/peersky-browser/issues/11)
 
 - [x] IPFS protocol handler:
 
