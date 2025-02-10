@@ -1,7 +1,7 @@
 {
   "name": "peersky-browser",
   "version": "1.0.0",
-  "description": "A minimal p2p web browser.",
+  "description": "A minimal local-first p2p web browser: access, communicate, and publish offline.",
   "keywords": [
     "peersky",
     "ipfs",
