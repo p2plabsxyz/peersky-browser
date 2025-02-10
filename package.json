@@ -73,11 +73,34 @@
     },
     "protocols": [
       {
+        "name": "webpages",
+        "schemes": [
+          "http",
+          "https"
+        ],
+        "role": "Viewer"
+      },
+      {
         "name": "ipfs",
         "schemes": [
           "ipfs",
           "ipns",
           "ipld"
+        ],
+        "role": "Viewer"
+      },
+      {
+        "name": "hyper",
+        "schemes": [
+          "hyper",
+          "dat"
+        ],
+        "role": "Viewer"
+      },
+      {
+        "name": "web3",
+        "schemes": [
+          "web3"
         ],
         "role": "Viewer"
       }
