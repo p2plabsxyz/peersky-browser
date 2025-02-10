@@ -42,6 +42,7 @@ let windowManager;
 globalProtocol.registerSchemesAsPrivileged([
   { scheme: "ipfs", privileges: P2P_PROTOCOL },
   { scheme: "ipns", privileges: P2P_PROTOCOL },
+  { scheme: "pubsub", privileges: P2P_PROTOCOL },
   { scheme: "hyper", privileges: P2P_PROTOCOL },
   { scheme: "web3", privileges: P2P_PROTOCOL },
   { scheme: "peersky", privileges: BROWSER_PROTOCOL },
@@ -109,22 +110,18 @@ async function setupProtocols(session) {
   app.setAsDefaultProtocolClient("peersky");
 
   const ipfsProtocolHandler = await createIPFSHandler(ipfsOptions, session);
-  sessionProtocol.registerStreamProtocol("ipfs", ipfsProtocolHandler);
-  sessionProtocol.registerStreamProtocol("ipns", ipfsProtocolHandler);
-  globalProtocol.registerStreamProtocol("ipfs", ipfsProtocolHandler);
-  globalProtocol.registerStreamProtocol("ipns", ipfsProtocolHandler);
+  sessionProtocol.registerStreamProtocol("ipfs", ipfsProtocolHandler, P2P_PROTOCOL);
+  sessionProtocol.registerStreamProtocol("ipns", ipfsProtocolHandler, P2P_PROTOCOL);
+  sessionProtocol.registerStreamProtocol("pubsub", ipfsProtocolHandler, P2P_PROTOCOL);
 
   const hyperProtocolHandler = await createHyperHandler(hyperOptions, session);
-  sessionProtocol.registerStreamProtocol("hyper", hyperProtocolHandler);
-  globalProtocol.registerStreamProtocol("hyper", hyperProtocolHandler);
+  sessionProtocol.registerStreamProtocol("hyper", hyperProtocolHandler, P2P_PROTOCOL);
 
   const web3ProtocolHandler = await createWeb3Handler();
-  sessionProtocol.registerStreamProtocol("web3", web3ProtocolHandler);
-  globalProtocol.registerStreamProtocol("web3", web3ProtocolHandler);
+  sessionProtocol.registerStreamProtocol("web3", web3ProtocolHandler, P2P_PROTOCOL);
 
   const browserProtocolHandler = await createBrowserHandler();
-  sessionProtocol.registerStreamProtocol("peersky", browserProtocolHandler);
-  globalProtocol.registerStreamProtocol("peersky", browserProtocolHandler);
+  sessionProtocol.registerStreamProtocol("peersky", browserProtocolHandler, BROWSER_PROTOCOL);
 }
 
 app.on("window-all-closed", () => {
