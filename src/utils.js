@@ -39,7 +39,8 @@ function handleURL(rawURL) {
     if (rawURL.startsWith(IPFS_PREFIX) || rawURL.startsWith(IPNS_PREFIX)) {
       return rawURL;
     }
-    return `${IPFS_PREFIX}${rawURL}`;
+    // ENS names are mutable and should be resolved via IPNS.
+    return `${IPNS_PREFIX}${rawURL}`;
   } else if (
     rawURL.startsWith(IPFS_PREFIX) || 
     rawURL.startsWith(IPNS_PREFIX) || 
