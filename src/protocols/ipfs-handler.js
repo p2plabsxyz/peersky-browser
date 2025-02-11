@@ -11,7 +11,7 @@ import { CID } from "multiformats/cid";
 import { base32 } from "multiformats/bases/base32";
 import { base36 } from "multiformats/bases/base36";
 import { base58btc } from "multiformats/bases/base58";
-import { peerIdFromString } from "@libp2p/peer-id";
+import { peerIdFromString, peerIdFromCID } from "@libp2p/peer-id";
 import { ensCache, saveEnsCache, RPC_URL, ipfsOptions } from "./config.js";
 import { JsonRpcProvider } from "ethers";
 
@@ -28,6 +28,15 @@ function parseCID(cidString) {
   } catch (error) {
     throw new Error(`Failed to parse CID: ${error.message}`);
   }
+}
+
+function getPeerIdFromString(peerIdString) {
+  // If the first character is '1' or 'Q', treat it as base58btc encoded PeerId.
+  if (peerIdString.charAt(0) === '1' || peerIdString.charAt(0) === 'Q') {
+    return peerIdFromString(peerIdString);
+  }
+  // Otherwise, assume it's a CID-encoded PeerId and parse it accordingly.
+  return peerIdFromCID(CID.parse(peerIdString, multibaseDecoder));
 }
 
 export async function createHandler(ipfsOptions, session) {
@@ -114,8 +123,9 @@ export async function createHandler(ipfsOptions, session) {
     // Try peerIdFromString first
     let peerId;
     try {
-      peerId = peerIdFromString(ipnsName);
-      // Ensure peerId has toBytes()
+      // Use our helper function instead of directly calling peerIdFromString
+      peerId = getPeerIdFromString(ipnsName);
+      // Patch the peerId if it doesn't have the toBytes method
       if (typeof peerId.toBytes !== "function") {
         peerId.toBytes = () => peerId.multihash.bytes;
         console.log("Patched peerId to include toBytes() method.");
