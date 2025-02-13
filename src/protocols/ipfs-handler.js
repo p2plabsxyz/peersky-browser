@@ -437,7 +437,6 @@ export async function createHandler(ipfsOptions, session) {
         }
 
         responseHeaders["Content-Type"] = contentType;
-        responseHeaders["Content-Length"] = `${fileBuffer.length}`;
         data = Readable.from(fileBuffer);
       }
     } catch (e) {
