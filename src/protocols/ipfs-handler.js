@@ -11,7 +11,7 @@ import { CID } from "multiformats/cid";
 import { base32 } from "multiformats/bases/base32";
 import { base36 } from "multiformats/bases/base36";
 import { base58btc } from "multiformats/bases/base58";
-import { peerIdFromString } from "@libp2p/peer-id";
+import { peerIdFromString, peerIdFromCID } from "@libp2p/peer-id";
 import { ensCache, saveEnsCache, RPC_URL, ipfsOptions } from "./config.js";
 import { JsonRpcProvider } from "ethers";
 
@@ -30,6 +30,15 @@ function parseCID(cidString) {
   }
 }
 
+function getPeerIdFromString(peerIdString) {
+  // If the first character is '1' or 'Q', treat it as base58btc encoded PeerId.
+  if (peerIdString.charAt(0) === '1' || peerIdString.charAt(0) === 'Q') {
+    return peerIdFromString(peerIdString);
+  }
+  // Otherwise, assume it's a CID-encoded PeerId and parse it accordingly.
+  return peerIdFromCID(CID.parse(peerIdString, multibaseDecoder));
+}
+
 export async function createHandler(ipfsOptions, session) {
   let node, unixFileSystem, name;
 
@@ -45,7 +54,12 @@ export async function createHandler(ipfsOptions, session) {
       node.libp2p.peerId.toBytes = () => node.libp2p.peerId.multihash.bytes;
       console.log("Patched node peerId to include toBytes() method.");
     }
-
+    // Also ensure the PeerID has a 'bytes' property (required by IPNS)
+    if (!node.libp2p.peerId.bytes) {
+      node.libp2p.peerId.bytes = node.libp2p.peerId.toBytes();
+      console.log("Patched node peerId to include bytes property.");
+    }
+    
     unixFileSystem = unixfs(node);
     name = ipns(node);
   }
@@ -114,11 +128,17 @@ export async function createHandler(ipfsOptions, session) {
     // Try peerIdFromString first
     let peerId;
     try {
-      peerId = peerIdFromString(ipnsName);
-      // Ensure peerId has toBytes()
+      // Use the helper function instead of directly calling peerIdFromString
+      peerId = getPeerIdFromString(ipnsName);
+      // Ensure the resolved PeerID has a proper toBytes() method
       if (typeof peerId.toBytes !== "function") {
         peerId.toBytes = () => peerId.multihash.bytes;
         console.log("Patched peerId to include toBytes() method.");
+      }
+      // Also ensure the PeerID has a 'bytes' property
+      if (!peerId.bytes) {
+        peerId.bytes = peerId.toBytes();
+        console.log("Patched peerId to include bytes property.");
       }
       const resolutionResult = await name.resolve(peerId, {
         signal: AbortSignal.timeout(5000),
