@@ -54,7 +54,12 @@ export async function createHandler(ipfsOptions, session) {
       node.libp2p.peerId.toBytes = () => node.libp2p.peerId.multihash.bytes;
       console.log("Patched node peerId to include toBytes() method.");
     }
-
+    // Also ensure the PeerID has a 'bytes' property (required by IPNS)
+    if (!node.libp2p.peerId.bytes) {
+      node.libp2p.peerId.bytes = node.libp2p.peerId.toBytes();
+      console.log("Patched node peerId to include bytes property.");
+    }
+    
     unixFileSystem = unixfs(node);
     name = ipns(node);
   }
@@ -123,12 +128,17 @@ export async function createHandler(ipfsOptions, session) {
     // Try peerIdFromString first
     let peerId;
     try {
-      // Use our helper function instead of directly calling peerIdFromString
+      // Use the helper function instead of directly calling peerIdFromString
       peerId = getPeerIdFromString(ipnsName);
-      // Patch the peerId if it doesn't have the toBytes method
+      // Ensure the resolved PeerID has a proper toBytes() method
       if (typeof peerId.toBytes !== "function") {
         peerId.toBytes = () => peerId.multihash.bytes;
         console.log("Patched peerId to include toBytes() method.");
+      }
+      // Also ensure the PeerID has a 'bytes' property
+      if (!peerId.bytes) {
+        peerId.bytes = peerId.toBytes();
+        console.log("Patched peerId to include bytes property.");
       }
       const resolutionResult = await name.resolve(peerId, {
         signal: AbortSignal.timeout(5000),
