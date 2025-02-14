@@ -1,0 +1,11 @@
+.plan1-background {
+  padding: 1rem;
+}
+
+.example {
+  border: 1px solid #787878;
+  background: 1px solid #e3e3e3;
+  padding: 1rem;
+  display: grid;
+  place-items: center;
+}

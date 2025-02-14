@@ -1,0 +1,47 @@
+# https://github.com/AgregoreWeb/agregore-browser/blob/master/.github/workflows/build.yml
+
+name: Build/release
+
+on:
+  push:
+    ## Run on tags starting with `v*`
+    tags:
+      - 'v*'
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  release:
+    continue-on-error: true
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+
+    steps:
+      - name: Install libarchive-tools for pacman build # Related https://github.com/electron-userland/electron-builder/issues/4181
+        if: startsWith(matrix.os, 'ubuntu')
+        run: sudo apt-get install libarchive-tools
+
+      - name: Check out Git repository
+        uses: actions/checkout@v3
+        with:
+          submodules: true
+
+      - name: Install Node.js, NPM and Yarn
+        uses: actions/setup-node@v3
+        with:
+          node-version: 'lts/*'
+
+      - name: Non-tag specific build step
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        run: echo "This build was triggered without a tag."
+
+      - name: Build binaries with electron-builder
+        uses: coparse-inc/action-electron-builder@29a7606c7d726b5b0f4dc2f334026f58bea0e1bb # v1.6.0 but safer than a tag that can be changed
+        with:
+          max_attempts: 2
+          github_token: ${{ secrets.github_token }}
+          release: ${{ startsWith(github.ref, 'refs/tags/v') }}

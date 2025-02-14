@@ -1,30 +1,51 @@
-import {
-  Menu,
-  MenuItem,
-  clipboard,
-  BrowserWindow,
-  webContents,
-} from "electron";
-import { createWindow } from "./main.js";
+import { Menu, MenuItem, clipboard } from "electron";
+import WindowManager from "./window-manager.js";
 
-export function attachContextMenus(browserWindow) {
+const isMac = process.platform === "darwin";
+
+// Ensure a single instance of WindowManager is used
+let windowManagerInstance = null;
+
+export function setWindowManager(instance) {
+  windowManagerInstance = instance;
+}
+
+export function attachContextMenus(browserWindow, windowManager) {
+  // Assign the WindowManager instance if not already set
+  if (!windowManagerInstance) {
+    windowManagerInstance = windowManager;
+  }
+
   const attachMenuToWebContents = (webContents) => {
     webContents.on("context-menu", (event, params) => {
       const menu = new Menu();
 
-      // Add Undo, Redo for editable text fields
+      // Add Undo, Redo for editable text fields with platform-specific accelerators
       if (params.isEditable) {
-        menu.append(new MenuItem({ label: "Undo", role: "undo" }));
-        menu.append(new MenuItem({ label: "Redo", role: "redo" }));
+        menu.append(
+          new MenuItem({
+            label: "Undo",
+            role: "undo",
+            accelerator: "CommandOrControl+Z",
+          })
+        );
+        menu.append(
+          new MenuItem({
+            label: "Redo",
+            role: "redo",
+            accelerator: isMac ? "Command+Shift+Z" : "Control+Y",
+          })
+        );
         menu.append(new MenuItem({ type: "separator" }));
       }
 
-      // Always add Cut, Copy, Paste if there is a selection or text can be edited
+      // Cut, Copy, Paste, Delete, and Select All with accelerators
       if (params.isEditable || params.selectionText.trim().length > 0) {
         menu.append(
           new MenuItem({
             label: "Cut",
             role: "cut",
+            accelerator: "CommandOrControl+X",
             enabled: params.editFlags.canCut,
           })
         );
@@ -32,6 +53,7 @@ export function attachContextMenus(browserWindow) {
           new MenuItem({
             label: "Copy",
             role: "copy",
+            accelerator: "CommandOrControl+C",
             enabled: params.editFlags.canCopy,
           })
         );
@@ -39,13 +61,27 @@ export function attachContextMenus(browserWindow) {
           new MenuItem({
             label: "Paste",
             role: "paste",
+            accelerator: "CommandOrControl+V",
             enabled: params.editFlags.canPaste,
+          })
+        );
+        menu.append(
+          new MenuItem({
+            label: "Delete",
+            role: "delete",
+          })
+        );
+        menu.append(
+          new MenuItem({
+            label: "Select All",
+            role: "selectAll",
+            accelerator: "CommandOrControl+A",
           })
         );
         menu.append(new MenuItem({ type: "separator" }));
       }
 
-      // Navigation controls
+      // Navigation controls with no accelerators
       menu.append(
         new MenuItem({
           label: "Back",
@@ -91,7 +127,13 @@ export function attachContextMenus(browserWindow) {
         menu.append(
           new MenuItem({
             label: "Open Link in New Window",
-            click: () => createWindow(params.linkURL),
+            click: () => {
+              if (windowManagerInstance) {
+                windowManagerInstance.open({ url: params.linkURL });
+              } else {
+                console.error("WindowManager instance not set.");
+              }
+            },
           })
         );
       }
@@ -110,7 +152,11 @@ export function attachContextMenus(browserWindow) {
       attachMenuToWebContents(webviewWebContents);
 
       webviewWebContents.setWindowOpenHandler(({ url }) => {
-        createWindow(url);
+        if (windowManagerInstance) {
+          windowManagerInstance.open({ url });
+        } else {
+          console.error("WindowManager instance not set.");
+        }
         return { action: "deny" };
       });
     }

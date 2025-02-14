@@ -1,7 +1,7 @@
 import { app, BrowserWindow, globalShortcut } from "electron";
-import { createWindow } from "./main.js";
+import WindowManager from './window-manager.js';
 
-export function createActions() {
+export function createActions(windowManager) {
   const actions = {
     OpenDevTools: {
       label: "Open Dev Tools",
@@ -16,7 +16,7 @@ export function createActions() {
       label: "New Window",
       accelerator: "CommandOrControl+N",
       click: () => {
-        createWindow();
+        windowManager.open();
       },
     },
     Forward: {
@@ -118,19 +118,45 @@ export function createActions() {
           `);
         }
       },
-    },    
+    },
   };
 
   return actions;
 }
 
-export function registerShortcuts() {
-  const actions = createActions();
+export function registerShortcuts(windowManager) {
+  const actions = createActions(windowManager);
+
+  const registerFindShortcut = (focusedWindow) => {
+    if (focusedWindow) {
+      globalShortcut.register("CommandOrControl+F", () => {
+        actions.FindInPage.click(focusedWindow);
+      });
+    }
+  };
+
+  const unregisterFindShortcut = () => {
+    globalShortcut.unregister("CommandOrControl+F");
+  };
+
+  // Register and unregister `Ctrl+F` based on focus
+  app.on("browser-window-focus", (event, win) => {
+    registerFindShortcut(win);
+  });
+
+  app.on("browser-window-blur", () => {
+    unregisterFindShortcut();
+  });
+
+  // Register remaining shortcuts
   Object.keys(actions).forEach((key) => {
     const action = actions[key];
-    globalShortcut.register(action.accelerator, () => {
-      const focusedWindow = BrowserWindow.getFocusedWindow();
-      action.click(focusedWindow);
-    });
+    if (key !== "FindInPage") {
+      // Register other shortcuts except `Ctrl+F`
+      globalShortcut.register(action.accelerator, () => {
+        const focusedWindow = BrowserWindow.getFocusedWindow();
+        if (focusedWindow) action.click(focusedWindow);
+      });
+    }
   });
 }

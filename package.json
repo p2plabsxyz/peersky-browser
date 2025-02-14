@@ -1,7 +1,7 @@
 {
   "name": "peersky-browser",
-  "version": "1.0.0",
-  "description": "A minimal p2p web browser.",
+  "version": "1.0.0-beta.1",
+  "description": "A minimal local-first p2p web browser: access, communicate, and publish offline.",
   "keywords": [
     "peersky",
     "ipfs",
@@ -14,17 +14,18 @@
   "author": "Akhilesh Thite <akhileshthite@hotmail.com> (https://akhilesh.art/)",
   "main": "src/main.js",
   "type": "module",
-  "repository": "https://github.com/p2plabsxyz/peersky-test",
+  "repository": "https://github.com/p2plabsxyz/peersky-browser",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "electron .",
     "electron-rebuild": "electron-rebuild",
     "build": "electron-builder build --publish never",
-    "build-all": "electron-builder build -mwl"
+    "build-all": "electron-builder build -mwl",
+    "postinstall": "electron-builder install-app-deps"
   },
   "build": {
-    "npmRebuild": false,
-    "asar": false,
+    "npmRebuild": true,
+    "asar": true,
     "appId": "peersky.p2plabs.xyz",
     "productName": "Peersky Browser",
     "directories": {
@@ -39,14 +40,11 @@
     ],
     "mac": {
       "artifactName": "${name}-${version}-${os}-${arch}.${ext}",
-      "darkModeSupport": true,
-      "gatekeeperAssess": false,
       "target": [
         {
           "target": "default",
           "arch": [
-            "x64",
-            "arm64"
+            "universal"
           ]
         }
       ],
@@ -54,32 +52,34 @@
     },
     "win": {
       "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "ia32",
-            "x64"
-          ]
-        },
-        {
-          "target": "portable",
-          "arch": [
-            "ia32",
-            "x64"
-          ]
-        }
+        "nsis",
+        "portable"
       ],
       "icon": "./public/icon.png"
     },
     "linux": {
       "artifactName": "${name}-${version}-${os}-${arch}.${ext}",
-      "target": [
-        "AppImage",
-        "deb"
+      "executableArgs": [
+        "--enable-accelerated-video"
       ],
-      "icon": "./public/icon.png"
+      "target": [
+        "deb",
+        "AppImage",
+        "apk",
+        "pacman",
+        "snap"
+      ],
+      "category": "Network;WebBrowser"
     },
     "protocols": [
+      {
+        "name": "webpages",
+        "schemes": [
+          "http",
+          "https"
+        ],
+        "role": "Viewer"
+      },
       {
         "name": "ipfs",
         "schemes": [
@@ -88,13 +88,28 @@
           "ipld"
         ],
         "role": "Viewer"
+      },
+      {
+        "name": "hyper",
+        "schemes": [
+          "hyper",
+          "dat"
+        ],
+        "role": "Viewer"
+      },
+      {
+        "name": "web3",
+        "schemes": [
+          "web3"
+        ],
+        "role": "Viewer"
       }
     ],
     "publish": [
       {
         "provider": "github",
         "owner": "p2plabsxyz",
-        "repo": "peersky-test",
+        "repo": "peersky-browser",
         "releaseType": "release"
       }
     ]
@@ -136,7 +151,6 @@
   },
   "devDependencies": {
     "electron": "^31.3.0",
-    "electron-builder": "^24.13.3",
-    "electron-rebuild": "^3.2.9"
+    "electron-builder": "^24.13.3"
   }
 }

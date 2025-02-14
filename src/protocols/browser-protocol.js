@@ -18,8 +18,33 @@ export async function createHandler() {
     const format = path.extname(absolutePath);
     switch (format) {
       case '':
+        if (fs.existsSync(absolutePath) && fs.statSync(absolutePath).isDirectory()) {
+          // Try to find index.html in the directory
+          const indexPath = path.join(absolutePath, 'index.html');
+          if (fs.existsSync(indexPath)) {
+            absolutePath = indexPath;
+          } else {
+            sendResponse({
+              statusCode: 404,
+              headers: { "Content-Type": "text/html" },
+              data: fs.createReadStream(path.join(__dirname, "../pages/404.html")),
+            });
+            return;
+          }
+        } else {
+          // Try appending '.html' to absolutePath
+          absolutePath += '.html';
+          if (!fs.existsSync(absolutePath)) {
+            sendResponse({
+              statusCode: 404,
+              headers: { "Content-Type": "text/html" },
+              data: fs.createReadStream(path.join(__dirname, "../pages/404.html")),
+            });
+            return;
+          }
+        }
+        break;
       case '.html':
-        if (format === '') absolutePath += '.html';
         if (!fs.existsSync(absolutePath)) {
           sendResponse({
             statusCode: 404,
