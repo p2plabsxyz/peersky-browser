@@ -30,7 +30,7 @@ const agentVersion = "p2plabsxyz/peersky-browser";
 export async function libp2pOptions() {
   return await createLibp2p({
     addresses: {
-      listen: ["/ip4/0.0.0.0/tcp/0", "/ip6/::/tcp/0", "/webrtc"],
+      listen: ["/ip4/0.0.0.0/tcp/0", "/ip6/::/tcp/0", "/webrtc", "/p2p-circuit"],
     },
     transports: [
       tcp(),
