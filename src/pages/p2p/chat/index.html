@@ -1,36 +1,48 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="./styles.css">
+    <title>Hyper Chat</title>
+  </head>
+  <body>
+    <main>
+      <div id="setup">
+        <button id="create-chat-room">Create Room</button>
+        <div>- or -</div>
+        <form id="join-form">
+          <input
+            required
+            id="join-chat-room-topic"
+            type="text"
+            placeholder="Chat RoomKey efa48..
+        "
+          />
+          <button type="submit">Join Room</button>
+        </form>
+      </div>
 
-<head>
-  <title>Chat</title>
-</head>
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="stylesheet" type="text/css" href="style.css" />
-<style>
-  @import url("peersky://static/css/index.css");
-</style>
+      <div id="chat">
+        <div id="chat-room-info">
+          <div>RoomKey: <span id="chat-room-topic"></span></div>
+          <div>Peers: <span id="peers-count">0</span></div>
+        </div>
+        <div id="messages"></div>
+        <form id="message-form">
+          <input
+            id="message"
+            type="text"
+            placeholder="Type your message"
+            required
+          />
+          <button type="submit" id="send-button">
+            <img src="./send.svg" alt="Send" />
+          </button>
+        </form>
+      </div>
+    </main>
 
-<body>
-
-  <div class="container" id="setup">
-    <h1>P2P Chat</h1>
-    <form id="roomNameForm">
-      <input name="channelName" id="channelNameInput" placeholder="Pick a room name" />
-      <p><button type="submit">Set name</button></p>
-    </form>
-  </div>
-
-  <div class="container hidden" id="chat">
-    <h1 id="roomName">Room name</h1>
-    <textarea readonly></textarea>
-    <form id="chatForm">
-      <input id="messageInput" placeholder="Type your message here" />
-      <button type="submit">Send</button>
-    </form>
-  </div>
-
-  <script src="lib.js"></script>
-  <script src="pubsub.js"></script>
-</body>
-
+    <script type="module" src="./app.js"></script>
+  </body>
 </html>
