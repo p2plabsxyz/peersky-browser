@@ -18,7 +18,6 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "electron .",
-    "electron-rebuild": "electron-rebuild",
     "build": "electron-builder build --publish never",
     "build-all": "electron-builder build -mwl",
     "postinstall": "electron-builder install-app-deps"
