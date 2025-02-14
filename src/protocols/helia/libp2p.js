@@ -2,13 +2,18 @@ import { createLibp2p } from "libp2p";
 import { tcp } from "@libp2p/tcp";
 import { noise } from "@chainsafe/libp2p-noise";
 import { yamux } from "@chainsafe/libp2p-yamux";
-import { mdns } from '@libp2p/mdns'
+import { mdns } from "@libp2p/mdns";
 import { mplex } from "@libp2p/mplex";
 import { webRTC, webRTCDirect } from "@libp2p/webrtc";
 import { kadDHT } from "@libp2p/kad-dht";
 import { webSockets } from "@libp2p/websockets";
 import { bootstrap } from "@libp2p/bootstrap";
 import { gossipsub } from "@chainsafe/libp2p-gossipsub";
+import { identify, identifyPush } from "@libp2p/identify";
+import {
+  circuitRelayTransport,
+  circuitRelayServer,
+} from "@libp2p/circuit-relay-v2";
 
 // this list comes from https://github.com/ipfs/kubo/blob/da28fbc65a2e0f1ce59f9923823326ae2bc4f713/config/bootstrap_peers.go#L17
 const bootstrapConfig = {
@@ -20,16 +25,20 @@ const bootstrapConfig = {
   ],
 };
 
+const agentVersion = "p2plabsxyz/peersky-browser";
+
 export async function libp2pOptions() {
   return await createLibp2p({
     addresses: {
-      listen: [
-        '/ip4/0.0.0.0/tcp/0',
-        '/ip6/::/tcp/0',
-        '/webrtc'
-      ]
+      listen: ["/ip4/0.0.0.0/tcp/0", "/ip6/::/tcp/0", "/webrtc"],
     },
-    transports: [tcp(), webRTC(), webRTCDirect(), webSockets()],
+    transports: [
+      tcp(),
+      webRTC(),
+      webRTCDirect(),
+      webSockets(),
+      circuitRelayTransport(),
+    ],
     connectionEncryption: [noise()],
     streamMuxers: [yamux(), mplex()],
     peerDiscovery: [mdns(), bootstrap(bootstrapConfig)],
@@ -40,6 +49,11 @@ export async function libp2pOptions() {
       pubsub: gossipsub({
         emitSelf: true, // Enable pubsub
       }),
+      identify: identify({
+        agentVersion,
+      }),
+      identifyPush: identifyPush({ agentVersion }),
     },
+    relay: circuitRelayServer(),
   });
 }
