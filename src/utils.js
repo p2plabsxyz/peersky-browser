@@ -35,7 +35,18 @@ function makeDuckDuckGo(query) {
 }
 
 function handleURL(rawURL) {
-  if (rawURL.startsWith(IPFS_PREFIX) || rawURL.startsWith(IPNS_PREFIX) || rawURL.startsWith(HYPER_PREFIX) || rawURL.startsWith(WEB3_PREFIX)) {
+  if (rawURL.endsWith('.eth')) {
+    if (rawURL.startsWith(IPFS_PREFIX) || rawURL.startsWith(IPNS_PREFIX)) {
+      return rawURL;
+    }
+    // ENS names are mutable and should be resolved via IPNS.
+    return `${IPNS_PREFIX}${rawURL}`;
+  } else if (
+    rawURL.startsWith(IPFS_PREFIX) || 
+    rawURL.startsWith(IPNS_PREFIX) || 
+    rawURL.startsWith(HYPER_PREFIX) || 
+    rawURL.startsWith(WEB3_PREFIX)
+  ) {
     return rawURL;
   } else if (isURL(rawURL)) {
     return rawURL;
