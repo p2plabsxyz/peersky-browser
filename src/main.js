@@ -13,11 +13,6 @@ import { attachContextMenus, setWindowManager } from "./context-menu.js";
 
 const __dirname = fileURLToPath(new URL("./", import.meta.url));
 
-// // Uncomment while locally testing the AutoUpdater
-// Object.defineProperty(app, 'isPackaged', {
-//   value: true
-// });
-
 const P2P_PROTOCOL = {
   standard: true,
   secure: true,
@@ -67,8 +62,8 @@ app.whenReady().then(async () => {
   windowManager.startSaver();
 
   // Initialize AutoUpdater after windowManager is ready
-  console.log("App is prepared, setting up AutoUpdater...");
-  setupAutoUpdater();
+  // console.log("App is prepared, setting up AutoUpdater...");
+  // setupAutoUpdater();
 });
 
 // Introduce a flag to prevent multiple 'before-quit' handling
