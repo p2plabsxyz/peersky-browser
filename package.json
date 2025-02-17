@@ -49,7 +49,7 @@
           ]
         }
       ],
-      "icon": "./public/icon.png"
+      "icon": "./public/icon.icns"
     },
     "win": {
       "target": [
