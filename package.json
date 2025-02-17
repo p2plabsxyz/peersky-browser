@@ -23,6 +23,7 @@
     "postinstall": "electron-builder install-app-deps"
   },
   "build": {
+    "buildDependenciesFromSource": true,
     "npmRebuild": true,
     "asar": true,
     "appId": "peersky.p2plabs.xyz",
@@ -43,7 +44,8 @@
         {
           "target": "default",
           "arch": [
-            "universal"
+            "x64",
+            "arm64"          
           ]
         }
       ],
@@ -65,8 +67,7 @@
         "deb",
         "AppImage",
         "apk",
-        "pacman",
-        "snap"
+        "pacman"
       ],
       "category": "Network;WebBrowser"
     },
