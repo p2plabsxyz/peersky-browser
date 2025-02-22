@@ -9,28 +9,44 @@ class NavBox extends HTMLElement {
   buildNavBox() {
     this.id = "navbox";
     const buttons = [
-      { id: "back", svg: "left.svg" },
-      { id: "forward", svg: "right.svg" },
-      { id: "refresh", svg: "reload.svg" },
-      { id: "home", svg: "home.svg" },
+      { id: "back", svg: "left.svg", position: "start" },
+      { id: "forward", svg: "right.svg", position: "start" },
+      { id: "refresh", svg: "reload.svg", position: "start" },
+      { id: "home", svg: "home.svg", position: "start" },
+      { id: "plus", svg: "plus.svg", position: "end" },
     ];
 
     this.buttonElements = {};
 
-    buttons.forEach((button) => {
-      const btnElement = this.createButton(
-        button.id,
-        `peersky://static/assets/svg/${button.svg}`
-      );
-      this.appendChild(btnElement);
-      this.buttonElements[button.id] = btnElement;
-    });
+    // Create buttons that should appear before the URL input
+    buttons
+      .filter((btn) => btn.position === "start")
+      .forEach((button) => {
+        const btnElement = this.createButton(
+          button.id,
+          `peersky://static/assets/svg/${button.svg}`
+        );
+        this.appendChild(btnElement);
+        this.buttonElements[button.id] = btnElement;
+      });
 
     const urlInput = document.createElement("input");
     urlInput.type = "text";
     urlInput.id = "url";
     urlInput.placeholder = "Search with DuckDuckGo or type a P2P URL";
     this.appendChild(urlInput);
+
+    // Create buttons that should appear after the URL input
+    buttons
+      .filter((btn) => btn.position === "end")
+      .forEach((button) => {
+        const btnElement = this.createButton(
+          button.id,
+          `peersky://static/assets/svg/${button.svg}`
+        );
+        this.appendChild(btnElement);
+        this.buttonElements[button.id] = btnElement;
+      });
   }
 
   createButton(id, svgPath) {
@@ -124,6 +140,8 @@ class NavBox extends HTMLElement {
           } else {
             this.dispatchEvent(new CustomEvent("reload"));
           }
+        } else if (button.id === "plus") {
+          this.dispatchEvent(new CustomEvent("new-window"));
         } else if (!button.disabled) {
           this.navigate(button.id);
         }

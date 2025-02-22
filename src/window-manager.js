@@ -15,6 +15,13 @@ class WindowManager {
     this.saverInterval = DEFAULT_SAVE_INTERVAL;
     this.isSaving = false; // Flag to prevent concurrent saves
     this.isQuitting = false; // Flag to indicate app is quitting
+    this.registerListeners();
+  }
+
+  registerListeners() {
+    ipcMain.on("new-window", () => {
+      this.open();
+    });
   }
 
   setQuitting(flag) {

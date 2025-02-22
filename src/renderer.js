@@ -37,6 +37,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const { url } = detail;
       navigateTo(url);
     });
+    nav.addEventListener("new-window", () => {
+      ipcRenderer.send("new-window");
+    });
 
     // Handle webview loading events to toggle refresh/stop button
     if (webviewContainer.webviewElement) {
