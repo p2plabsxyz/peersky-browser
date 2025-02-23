@@ -5,11 +5,13 @@
 <h1 align="center">Peersky Browser</h1>
 
 <div align="center">
+    <img src="https://img.shields.io/github/actions/workflow/status/p2plabsxyz/peersky-browser/build.yml" alt="GitHub Actions Workflow Status">
     <img src="https://img.shields.io/badge/Platform-electron.js-black.svg" alt="platform">
-    <img src="https://img.shields.io/github/release-date-pre/p2plabsxyz/peersky-browser?color=green" alt="Release" />
+    <img src="https://img.shields.io/github/release-date-pre/p2plabsxyz/peersky-browser?color=green" alt="GitHub Pre-release" />
+    <!-- <img src="https://img.shields.io/github/v/release/p2plabsxyz/peersky-browser?color=green" alt="GitHub Release"> -->
     <img src="https://img.shields.io/mastodon/follow/113323887574214930" alt="Mastodon Follow">
     <img src="./banner.png" alt="Peersky, displaying multiple overlapping windows. The foreground window shows a search bar with DuckDuckGo, while the background contains a Wikipedia page on ipns:// about Earth and a private hyper:// chat. The central window features a scenic forest image with sunlight filtering through tall trees, and a clock">
-</div><br>
+</div>
 
 💻 [Download](https://peersky.p2plabs.xyz/)
 
