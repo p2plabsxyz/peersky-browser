@@ -48,17 +48,18 @@
   - [x] Run a local [web3 protocol](https://docs.web3url.io/) node
     - [x] Access on-chain websites.
     - [x] Fetch data from smart contracts using auto, manual, and resource request resolve modes.
-    - [x] Retrieve NFT metadata or content (e.g., web3://[contract]/tokenHTML/[tokenId]).
     - [x] Query account balances or other data directly from smart contracts.
 
 - [x] P2P Applications:
 
   - [x] `peersky://p2p/chat/`
-    - Peer-to-peer messaging
+    - Peer-to-peer messaging over Hyper
   - [x] `peersky://p2p/upload/`
     - Decentralized file storage
   - [x] `peersky://p2p/editor/`
     - Build and publish websites
+  - [x] `peersky://p2p/wiki/`
+    - Browse Wikipedia over IPFS
   - [x] [reader.p2plabs.xyz](https://reader.distributed.press/)
     - A p2p offline ActivityPub client for reading and following microblogs on the fediverse.
 
@@ -104,7 +105,7 @@
   - [ ] Clear browser cache
 
 - [ ] Web extensions:
-  - [ ] Ability to add extensions
+  - [ ] Ability to add and manage extensions
   - [ ] Default extensions
     - [Ad-blocker](https://github.com/gorhill/uBlock)
     - [DScan](https://github.com/p2plabsxyz/dscan)
