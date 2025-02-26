@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="A lightweight, open-source search interface for browsing Wikipedia over IPFS (InterPlanetary File System)."
+    />
+    <link rel="icon" href="./static/assets/favicon.ico" sizes="32x32" />
+    <title>IPFS Wikipedia Search</title>
+    <style>
+      @import url("./static/styles.css");
+    </style>
+  </head>
+  <body>
+    <div class="search-container">
+      <img
+        src="./static/assets/wikipedia-on-ipfs.png"
+        alt="Wikipedia on IPFS (credit: https://github.com/ipfs/distributed-wikipedia-mirror)"
+      />
+      <form id="searchForm">
+        <input
+          type="text"
+          id="searchInput"
+          placeholder="Search Wikipedia on IPFS..."
+          autocomplete="off"
+          required
+        />
+        <button type="submit">Search</button>
+      </form>
+      <ul id="suggestionsList" class="suggestions"></ul>
+      <div id="errorMessage"></div>
+    </div>
+
+    <div class="info-container">
+      <a href="https://github.com/p2plabsxyz/wiki.p2plabs.xyz">Source Code</a> |
+      <a href="ipns://wiki.p2plabs.xyz">ipns://</a>
+      <a href="hyper://wiki.p2plabs.xyz">hyper://</a>
+    </div>
+
+    <script src="./script.js"></script>
+  </body>
+</html>

@@ -12,6 +12,7 @@ class PeerBar extends HTMLElement {
       { href: 'peersky://p2p/chat/', img: 'chat.svg', alt: 'Peersky Chat' },
       { href: 'peersky://p2p/upload/', img: 'upload.svg', alt: 'Peersky Upload' },
       { href: 'peersky://p2p/editor/', img: 'build.svg', alt: 'Peersky Build' },
+      { href: 'peersky://p2p/wiki/', img: 'wikipedia.svg', alt: 'Peersky Wiki' },
       { href: 'https://reader.distributed.press/', img: 'people.svg', alt: 'Social Reader' }
     ];
 
