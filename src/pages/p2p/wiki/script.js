@@ -4,27 +4,21 @@ const searchForm = document.getElementById("searchForm");
 const errorMessage = document.getElementById("errorMessage");
 let debounceTimeout;
 
-/**
- * Detect if the browser supports the 'ipns://' protocol.
- * We do this by assigning a test URL to a hidden <a> element and checking its .protocol.
- */
-function supportsIpnsProtocol() {
-  const testLink = document.createElement("a");
-  testLink.href = "ipns://test";
-  return testLink.protocol === "ipns:";
+function isP2PEnvironment() {
+  const protocol = window.location.protocol;
+  const isIpfs = protocol.startsWith("ipfs") || protocol.startsWith("ipns");
+  const ua = navigator.userAgent.toLowerCase();
+  const isPeersky = ua.includes("peersky");
+  const isAgregore = ua.includes("agregore");
+  return isIpfs || isPeersky || isAgregore;
 }
 
-/**
- * Returns the base URL prefix for Wikipedia on IPFS, depending on IPNS protocol support.
- * If the browser supports IPNS, use 'ipns://en.wikipedia-on-ipfs.org/'.
- * Otherwise, fall back to the public https gateway.
- */
 function getIpfsBaseUrl() {
-  if (supportsIpnsProtocol()) {
-    // Direct IPNS (peer-to-peer)
+  // If in a true P2P environment (or recognized one like Peersky or Agregore), use IPNS://
+  if (isP2PEnvironment()) {
     return "ipns://en.wikipedia-on-ipfs.org/";
   } else {
-    // HTTP gateway fallback
+    // Otherwise, fallback to the HTTP gateway
     return "https://en-wikipedia--on--ipfs-org.ipns.dweb.link/";
   }
 }
@@ -82,7 +76,9 @@ function resolveQuery(query) {
  * Returns suggestions from Wikipedia on IPFS
  */
 function fetchSuggestions(query) {
-  const apiUrl = 'https://en.wikipedia.org/w/api.php?origin=*&action=opensearch&format=json&search=' + encodeURIComponent(query);
+  const apiUrl =
+    "https://en.wikipedia.org/w/api.php?origin=*&action=opensearch&format=json&search=" +
+    encodeURIComponent(query);
 
   fetch(apiUrl)
     .then((response) => response.json())
