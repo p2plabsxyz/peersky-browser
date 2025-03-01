@@ -1,0 +1,220 @@
+@import url("peersky://static/css/index.css");
+
+:root {
+  --hyper-chat-bg: #121313;
+  --hyper-chat-text-color: var(--peersky-text-color);
+  --hyper-chat-nav-bg: var(--background-nav);
+  --hyper-chat-input-bg: var(--background-url-input);
+  --hyper-chat-border: #444;
+  --hyper-chat-message-left: #3c3c41;
+  --hyper-chat-message-right: #303131;
+  --hyper-chat-button-hover: #3c3c41;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--hyper-chat-bg);
+  font-family: var(--font-family-main);
+  color: var(--hyper-chat-text-color);
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  padding: 1rem;
+  box-sizing: border-box;
+}
+
+#setup {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  margin-bottom: 2rem;
+}
+
+#setup > div {
+  color: var(--button-color);
+}
+
+#join-chat-room-topic {
+  margin-right: 6px;
+}
+
+button,
+input {
+  border: none;
+  outline: none;
+  border-radius: 6px;
+  font-family: var(--font-family-main);
+  font-size: 1rem;
+  color: var(--hyper-chat-text-color);
+  padding: 0.6rem 1rem;
+  transition: background-color 0.2s, color 0.2s;
+  box-sizing: border-box;
+}
+
+button {
+  background-color: var(--hyper-chat-nav-bg);
+  cursor: pointer;
+}
+button:hover {
+  background-color: var(--hyper-chat-button-hover);
+}
+
+input {
+  background-color: var(--hyper-chat-input-bg);
+  border: 1px solid var(--hyper-chat-border);
+}
+
+input::placeholder {
+  color: #888;
+}
+
+#chat {
+  display: none;
+  flex-direction: column;
+  width: 100%;
+  max-width: 600px;
+  height: 80vh;
+  box-sizing: border-box;
+  background-color: var(--peersky-p2p-background-color);
+  border: 1px solid var(--hyper-chat-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+#chat-room-info {
+  display: none;
+  flex-direction: column;
+  align-items: flex-start;
+  font-size: 0.8rem;
+  color: #aaa;
+  width: 100%;
+  background-color: var(--hyper-chat-nav-bg);
+  padding: 0.75rem 1rem;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--hyper-chat-border);
+}
+#chat-room-info div {
+  margin-bottom: 0.2rem;
+}
+
+#messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem;
+  box-sizing: border-box;
+}
+
+#messages::-webkit-scrollbar {
+  width: 6px;
+}
+#messages::-webkit-scrollbar-track {
+  background: var(--peersky-p2p-background-color);
+}
+#messages::-webkit-scrollbar-thumb {
+  background-color: var(--hyper-chat-border);
+  border-radius: 3px;
+}
+
+.message {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0.75rem;
+  max-width: 75%;
+  line-height: 1.3;
+}
+
+.message-left {
+  align-items: flex-start;
+  text-align: left;
+}
+
+.message-right {
+  margin-left: auto;
+  align-items: flex-end;
+  text-align: right;
+}
+
+.message-text-left,
+.message-text-right {
+  padding: 0.65rem 0.9rem;
+  border-radius: 16px;
+  word-wrap: break-word;
+  font-size: 0.95rem;
+}
+
+.message-text-left {
+  background-color: var(--hyper-chat-message-left);
+  border-top-left-radius: 0;
+}
+
+.message-text-right {
+  background-color: var(--hyper-chat-message-right);
+  border-top-right-radius: 0;
+}
+
+.sender-left,
+.sender-right {
+  margin-top: 0.3rem;
+  font-size: 0.7rem;
+  color: #aaa;
+}
+
+#message-form {
+  display: flex;
+  padding: 0.5rem 1rem;
+  background-color: var(--hyper-chat-nav-bg);
+  box-sizing: border-box;
+  border-top: 1px solid var(--hyper-chat-border);
+  gap: 0.5rem;
+}
+
+#message {
+  flex: 1;
+  border: 1px solid var(--hyper-chat-border);
+  border-radius: 6px;
+  background-color: var(--hyper-chat-input-bg);
+  color: var(--hyper-chat-text-color);
+  padding: 0.5rem 0.75rem;
+}
+
+#send-button {
+  all: unset;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.4rem;
+  border-radius: 50%;
+  transition: background-color 0.2s;
+}
+
+#send-button img {
+  width: 24px;
+  height: 24px;
+  filter: invert(60%);
+  transition: filter 0.2s ease-in-out, transform 0.2s ease-in-out;
+}
+
+#send-button img:hover {
+  filter: invert(100%);
+  transform: scale(1.1);
+}
+
+a {
+  color: var(--peersky-primary-color);
+  text-decoration: underline;
+}
+a:hover {
+  text-decoration: none;
+}

@@ -1,31 +1,16 @@
 <!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <style>
-      @import url("peersky://static/css/home.css");
-    </style>
-    <title>Peersky Browser | Home</title>
-  </head>
-  <body>
-    <div class="background">
-      <img
-        class="logo"
-        src="peersky://logo.png"
-        alt="Peersky Logo"
-      />
-      <div class="frosted-glass">
-        <div class="content">
-          <code class="heading">Peersky</code>
-          <div class="links">
-            <a href="https://peersky.p2plabs.xyz/">About</a>
-            <a href="https://p2plabs.xyz/">P2P Labs</a>
-            <a href="ipns://ipfs.tech/">ipfs://</a>
-          </div>
-        </div>
-      </div>
-    </div>
-  </body>
-</html>
+<meta charset="UTF-8" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<style>
+  @import url("peersky://static/css/home.css");
+  @import url("peersky://static/css/index.css");
+</style>
+<title>Home</title>
+<div class="home-background">
+  <simple-clock></simple-clock>
+  <peer-bar></peer-bar>
+</div>
+
+<script src="peersky://clock.js"></script>
+<script src="peersky://peer-bar.js"></script>

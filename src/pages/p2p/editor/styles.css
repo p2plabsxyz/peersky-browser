@@ -1,0 +1,154 @@
+@import url("peersky://static/css/index.css");
+
+:root {
+    --gap: 5px;
+    --half-gap: calc(var(--gap) / 2);
+}
+
+body, * {
+    padding: 0;
+    margin: 0;
+    font-family: var(--font-family-main);
+    background: var(--peersky-p2p-background-color);
+    color: var(--peersky-text-color);
+    box-sizing: border-box;
+}
+
+main {
+    padding: var(--gap);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--peersky-p2p-background-color);
+    color: var(--peersky-text-color);
+}
+
+.grid-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr; /* Two columns */
+    grid-template-rows: 1fr 1fr; /* Two rows */
+    height: 95vh;
+    padding: var(--half-gap);
+    row-gap: var(--gap);
+    column-gap: var(--gap);
+}
+
+.grid-container > * {
+    padding: var(--gap);
+    width: 100%;
+    height: 100%;
+    overflow: auto; /* To handle content overflow */
+    border: 1px solid var(--peersky-primary-color);
+}
+
+.grid-container > textarea {
+    resize: none;
+    font-size: 1.2rem;
+}
+
+#viewer {
+    color: var(--peersky-text-color);
+}
+
+div textarea:focus {
+    outline: 2px solid var(--peersky-text-color);
+    color: var(--peersky-text-color);
+}
+
+#dweb-container,
+#uploadListBox {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 var(--half-gap);
+}
+
+#dweb-container > * {
+    width: 100%;
+    display:flex;
+    flex-direction:row;
+    align-items: flex-end;
+    gap: var(--half-gap);
+    padding: var(--half-gap);
+}
+
+#uploadListBox {
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+li {
+    display: flex;
+    align-items: flex-end;
+}
+
+#loadingSpinner, #backdrop {
+    display: none;  
+}
+
+#loadingSpinner, .emoji-loader {
+    background: transparent;
+}
+
+#loadingSpinner {
+    position: absolute; 
+    top: 50%; 
+    left: 50%; 
+    transform: translate(-50%, -50%); 
+    z-index: 1000; 
+    border-radius: 50%;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.emoji-loader {
+    color: var(--ag-color-green);
+    font-size: 10rem; 
+    border-radius: 50%;
+    animation: spin 2s linear infinite;
+}
+
+#backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5); 
+    z-index: 999; 
+}
+
+#uploadButton {
+    white-space: nowrap;
+}
+
+#fetchContainer {
+    justify-content: flex-end;
+    align-items: flex-end;
+}
+
+span {
+    pointer-events: cursor;
+    color: var(--peersky-text-color);
+}
+
+span:hover {
+    color: var(--peersky-primary-color);
+}
+
+/* Media query for mobile devices */
+@media screen and (max-width: 768px) {
+    #dweb-container,
+    #dweb-container > *  {
+       flex-direction: column;
+       align-items: flex-start;
+    }
+    .grid-container {
+        grid-template-columns: 1fr; /* One column */
+        grid-template-rows: repeat(4, 1fr); /* Four rows */
+    }
+}

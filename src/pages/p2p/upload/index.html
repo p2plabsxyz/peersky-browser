@@ -1,0 +1,141 @@
+<meta lang="en" />
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Upload</title>
+<style>
+  @import url("peersky://static/css/index.css");
+  html {
+    background: var(--peersky-p2p-background-color);
+    color: var(--peersky-text-color);
+    font-family: var(--font-family-main);
+  }
+  #uploadBox {
+    padding: 1em;
+    border: 2px dashed var(--peersky-primary-color);
+    border-radius: 0.5em;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+  #protocolSelect{
+    margin-bottom: 20px;
+  }
+
+  a {
+    color: var(--peersky-text-color);
+    padding: 0.15em 0.5em;
+    border-radius: 0.5em;
+  }
+
+  main {
+    margin: 1em;
+  }
+</style>
+<main>
+  <label for="protocolSelect">
+    Protocol:
+    <select id="protocolSelect">
+      <option value="ipfs" selected>
+        Inter-Planetary File System (IPFS://)
+      </option>
+      <option value="hyper">Hypercore-Protocol (HYPER://)</option>
+    </select>
+  </label>
+  <section id="uploadBox">
+    <h1>Drop a file to upload it</h1>
+  </section>
+  <ul id="uploadListBox"></ul>
+  <footer>
+    <a href="https://github.com/AgregoreWeb/agregore-drag-and-drop"
+      >Source Code</a
+    >
+  </footer>
+</main>
+<script>
+  function $(query) {
+    return document.querySelector(query)
+}
+
+const uploadBox = $('#uploadBox')
+uploadBox.ondragover = () => false
+uploadBox.ondrop = async (e) => {
+    e.preventDefault()
+    const { dataTransfer } = e
+    if(!dataTransfer) return
+
+    await uploadFiles(dataTransfer.files);
+}
+
+const uploadListBox = $('#uploadListBox')
+
+const protocolSelect = $('#protocolSelect')
+
+async function uploadFiles(files) {
+    const protocol = protocolSelect.value;
+
+    const formData = new FormData();
+    // Append each file to the FormData
+    for (const file of files) {
+        formData.append('file', file, file.name);
+    }
+
+    // Construct the URL based on the protocol
+    let url;
+    if (protocol === 'hyper') {
+        const hyperdriveUrl = await generateHyperdriveKey('drag-and-drop');
+        url = `${hyperdriveUrl}`;
+    } else {
+        url = `ipfs://bafyaabakaieac/`;
+    }
+
+    try {
+        const response = await fetch(url, {
+            method: 'PUT',
+            body: formData,
+        });
+
+        if (!response.ok) {
+            addError(files[0].name, await response.text());
+            return;
+        }
+
+        // For the hyper protocol, construct the file URLs
+        if (protocol === 'hyper') {
+            // Construct the file URLs for each uploaded file
+            for (const file of files) {
+                const fileUrl = `${url}${encodeURIComponent(file.name)}`;
+                addURL(fileUrl);
+            }
+        } else {
+            const locationHeader = response.headers.get('Location');
+            addURL(locationHeader);
+        }
+    } catch (error) {
+        console.error(`Error uploading ${files}:`, error);
+        addError(files[0].name, error.message);
+    }
+}
+
+
+
+async function generateHyperdriveKey(name) {
+    try {
+        const response = await fetch(`hyper://localhost/?key=${name}`, { method: 'POST' });
+        if (!response.ok) {
+            throw new Error(`Failed to generate Hyperdrive key: ${response.statusText}`);
+        }
+        return await response.text();  // This returns the hyper:// URL
+    } catch (error) {
+        console.error('Error generating Hyperdrive key:', error);
+        throw error;
+    }
+}
+
+function addURL(url) {
+    uploadListBox.innerHTML += `<li><a href="${url}">${url}</a></li>`
+}
+
+function addError(name, text) {
+    uploadListBox.innerHTML += `<li class="log">Error in ${name}: ${text}</li>`
+}
+</script>

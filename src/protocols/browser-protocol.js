@@ -1,8 +1,11 @@
-const path = require("path");
-const fs = require("fs");
-const mime = require("mime-types");
+import path from "path";
+import { fileURLToPath } from 'url';
+import fs from "fs";
+import mime from "mime-types";
 
-module.exports = async function createHandler() {
+const __dirname = fileURLToPath(new URL('./', import.meta.url))
+
+export async function createHandler() {
   return async function protocolHandler({ url }, sendResponse) {
     const parsedUrl = new URL(url);
     let filePath = parsedUrl.hostname + parsedUrl.pathname;
@@ -15,8 +18,33 @@ module.exports = async function createHandler() {
     const format = path.extname(absolutePath);
     switch (format) {
       case '':
+        if (fs.existsSync(absolutePath) && fs.statSync(absolutePath).isDirectory()) {
+          // Try to find index.html in the directory
+          const indexPath = path.join(absolutePath, 'index.html');
+          if (fs.existsSync(indexPath)) {
+            absolutePath = indexPath;
+          } else {
+            sendResponse({
+              statusCode: 404,
+              headers: { "Content-Type": "text/html" },
+              data: fs.createReadStream(path.join(__dirname, "../pages/404.html")),
+            });
+            return;
+          }
+        } else {
+          // Try appending '.html' to absolutePath
+          absolutePath += '.html';
+          if (!fs.existsSync(absolutePath)) {
+            sendResponse({
+              statusCode: 404,
+              headers: { "Content-Type": "text/html" },
+              data: fs.createReadStream(path.join(__dirname, "../pages/404.html")),
+            });
+            return;
+          }
+        }
+        break;
       case '.html':
-        if (format === '') absolutePath += '.html';
         if (!fs.existsSync(absolutePath)) {
           sendResponse({
             statusCode: 404,

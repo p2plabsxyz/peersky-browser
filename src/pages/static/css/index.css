@@ -1,50 +1,136 @@
+:root {
+  --peersky-background-color: #000000;
+  --peersky-p2p-background-color: #18181b;
+  --peersky-text-color: #FFFFFF;   
+  --background-nav: #27272a;
+  --background-url-input: #171717;
+  --background-find-menu: #323440;
+  --button-color: #9ca3af;
+  --button-hover-color: #e5e7eb;
+  --button-active-color: #ffffff;
+  --button-inactive-color: #6b7280;
+  --peersky-primary-color: #06b6d4;
+  --font-family-main: Arial, sans-serif;
+}
+
 html,
 body {
   margin: auto;
   height: 100%;
   width: 100%;
-  font-family: Arial, sans-serif;
+  font-family: var(--font-family-main);
 }
-#navbar {
+
+input, button, textarea, select, select *, option  {
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  background: none;
+  padding:0.25em;
+  border-radius: 0.25em;
+}
+
+#navbox {
   display: flex;
   align-items: center;
-  background-color: #323440;
+  background-color: var(--background-nav);
+  gap: 8px;
   padding: 8px;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
-button {
+
+.nav-button {
   display: inline-flex;
   background: none;
   border: none;
   padding: 4px;
-  margin-right: 2px;
   cursor: pointer;
-  color: #9ca3af;
+  color: var(--button-color);
+  transition: color 0.2s ease-in-out;
 }
-button:hover {
-  color: white;
+
+.nav-button.active {
+  color: var(--button-active-color);
 }
+
+.nav-button:disabled {
+  color: var(--button-inactive-color);
+  cursor: not-allowed;
+}
+
+.nav-button:hover:not(:disabled) {
+  color: var(--button-hover-color);
+}
+
+.svg-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 #url {
-  background-color: #111827;
-  border: 1px solid #4b5563;
+  background-color: var(--background-url-input);
+  border: none;
   margin-left: 6px;
   margin-right: 6px;
-  color: white;
+  color: var(--peersky-text-color);
   font-size: medium;
-  border-radius: 4px;
+  border-radius: 8px;
   display: block;
-  width: 80%;
-  padding: 0.4rem;
+  width: 60%;
+  padding: 0.4rem 10px;
+  text-indent: 6px;
 }
+
 #url:hover {
-  background-color: #1f2937;
+  background-color: var(--background-url-input);
+  box-shadow: 0 0 4px -1px #0a0a0a;
 }
+
 #url:focus {
-  background-color: #111827;
+  background-color: var(--background-url-input);
   outline: none;
-  box-shadow: 0 0 0 1px #06b6d4;
+  box-shadow: 0 0 4px -1px #0a0a0a;
 }
-#webview {
-  width: 100%;
-  height: calc(100vh - 50px);
+
+find-menu {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-top: -4px;
+  padding: 0.3em;
+  border-radius: 6px;
+  font-size: medium;
+  background-color: var(--background-find-menu);
+  position: absolute;
+  z-index: 10;
+}
+
+.find-menu-input {
+  flex: 1;
+  padding: 0.5em;
+  border: none;
+  font-size: inherit;
+  font-family: inherit;
+  background-color: var(--background-find-menu);
+  color: var(--peersky-text-color);
+  outline: none;
+}
+
+.find-menu-button {
+  padding: 0.5em;
+  border: none;
+  background: none;
+  font-size: inherit;
+  font-family: inherit;
+  cursor: pointer;
+  color: var(--button-color);
+}
+
+.find-menu-button:hover {
+  color: var(--button-hover-color);
+}
+
+.hidden {
+  display: none !important;
 }

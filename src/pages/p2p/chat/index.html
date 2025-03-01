@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="./styles.css">
+    <title>Hyper Chat</title>
+  </head>
+  <body>
+    <main>
+      <div id="setup">
+        <button id="create-chat-room">Create Room</button>
+        <div>- or -</div>
+        <form id="join-form">
+          <input
+            required
+            id="join-chat-room-topic"
+            type="text"
+            placeholder="Chat RoomKey efa48..
+        "
+          />
+          <button type="submit">Join Room</button>
+        </form>
+      </div>
+
+      <div id="chat">
+        <div id="chat-room-info">
+          <div>RoomKey: <span id="chat-room-topic"></span></div>
+          <div>Peers: <span id="peers-count">0</span></div>
+        </div>
+        <div id="messages"></div>
+        <form id="message-form">
+          <input
+            id="message"
+            type="text"
+            placeholder="Type your message"
+            required
+          />
+          <button type="submit" id="send-button">
+            <img src="./send.svg" alt="Send" />
+          </button>
+        </form>
+      </div>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
