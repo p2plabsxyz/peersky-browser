@@ -1,0 +1,10 @@
+diff --git a/node_modules/node-datachannel/cmake/toolchain/ci.cmake b/node_modules/node-datachannel/cmake/toolchain/ci.cmake
+index 0b75c7e..a3f53c9 100644
+--- a/node_modules/node-datachannel/cmake/toolchain/ci.cmake
++++ b/node_modules/node-datachannel/cmake/toolchain/ci.cmake
+@@ -20,4 +20,4 @@ set(CMAKE_CXX_COMPILER_TARGET ${triple})
+ message(STATUS "Compiling for: ${triple}")
+ 
+ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} $ENV{COMPILER_FLAGS}")
+-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} $ENV{COMPILER_FLAGS}")
++set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} $ENV{COMPILER_FLAGS} -frtti")
