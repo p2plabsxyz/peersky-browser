@@ -255,7 +255,13 @@ export async function createHandler(ipfsOptions, session) {
         const resolver = await provider.getResolver(ensName);
         if (!resolver)
           throw new Error("No resolver found for ENS name " + ensName);
-
+        
+        // First check if the ENS name exists by trying to resolve its address
+        const address = await provider.getAddress(ensName);
+        if (!address) {
+          throw new Error("ENS name does not exist: " + ensName);
+        }
+        
         let contentHashRaw;
         if (ensCache.has(ensName)) {
           contentHashRaw = ensCache.get(ensName);
@@ -264,16 +270,23 @@ export async function createHandler(ipfsOptions, session) {
           );
         } else {
           contentHashRaw = await resolver.getContentHash();
-          ensCache.set(ensName, contentHashRaw);
-          saveEnsCache(); // Persist the updated cache
-          console.log(
-            `[${new Date().toISOString()}] ENS cache miss for ${ensName}, fetched contentHash.`
-          );
-          console.log(
-            `[${new Date().toISOString()}] Current ENS cache size: ${
-              ensCache.size
-            }`
-          );
+          // Only cache if we got a valid content hash
+          if (contentHashRaw) {
+            ensCache.set(ensName, contentHashRaw);
+            saveEnsCache(); // Persist the updated cache
+            console.log(
+              `[${new Date().toISOString()}] ENS cache miss for ${ensName}, fetched and cached contentHash.`
+            );
+            console.log(
+              `[${new Date().toISOString()}] Current ENS cache size: ${
+                ensCache.size
+              }`
+            );
+          } else {
+            console.log(
+              `[${new Date().toISOString()}] No content hash found for ${ensName}, skipping cache.`
+            );
+          }
         }
 
         if (!contentHashRaw) {
