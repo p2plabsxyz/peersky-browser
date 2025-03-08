@@ -6,7 +6,7 @@ import HyperDHT from "hyperdht";
 import Hyperswarm from "hyperswarm";
 import crypto from "hypercore-crypto";
 import b4a from "b4a";
-import { hyperOptions } from "./config.js";
+import { hyperOptions, loadKeyPair, saveKeyPair } from "./config.js";
 
 let sdk, fetch;
 let swarm = null;
@@ -33,6 +33,17 @@ async function initializeHyperSDK(options) {
   if (sdk && fetch) return fetch;
 
   console.log("Initializing Hyper SDK...");
+
+  // Load or generate the swarm keypair
+  let keyPair = loadKeyPair();
+  if (!keyPair) {
+    keyPair = crypto.keyPair();
+    saveKeyPair(keyPair);
+    console.log("Generated new swarm keypair");
+  } else {
+    console.log("Loaded existing swarm keypair");
+  }
+
   sdk = await createSDK(options);
   fetch = makeHyperFetch({ sdk, writable: true });
   console.log("Hyper SDK initialized.");
