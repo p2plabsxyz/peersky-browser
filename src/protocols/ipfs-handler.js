@@ -264,6 +264,9 @@ export async function createHandler(ipfsOptions, session) {
           );
         } else {
           contentHashRaw = await resolver.getContentHash();
+          if (!contentHashRaw) {
+            throw new Error("No content hash set for ENS name " + ensName);
+          }
           ensCache.set(ensName, contentHashRaw);
           saveEnsCache(); // Persist the updated cache
           console.log(
