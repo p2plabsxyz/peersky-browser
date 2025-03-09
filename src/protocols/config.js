@@ -25,6 +25,9 @@ export function loadKeyPair() {
 
 // Save a new keypair to disk
 export function saveKeyPair(keyPair) {
+  // Ensure the hyper directory exists
+  fs.ensureDirSync(DEFAULT_HYPER_DIR);
+
   fs.writeJsonSync(KEYPAIR_PATH, {
     publicKey: keyPair.publicKey.toString("hex"),
     secretKey: keyPair.secretKey.toString("hex")
