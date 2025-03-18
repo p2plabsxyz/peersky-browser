@@ -15,6 +15,8 @@
 
 html,
 body {
+  background-color: var(--peersky-background-color);
+  color: var(--peersky-text-color);
   margin: auto;
   height: 100%;
   width: 100%;
@@ -22,12 +24,19 @@ body {
 }
 
 input, button, textarea, select, select *, option  {
-  color: inherit;
+  color: var(--peersky-text-color);
   font-family: inherit;
   font-size: inherit;
-  background: none;
-  padding:0.25em;
+  background-color: var(--background-url-input);
+  border: 1px solid var(--peersky-primary-color);
+  padding:0.5em;
   border-radius: 0.25em;
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--peersky-primary-color);
+  box-shadow: 0 0 0 2px var(--peersky-primary-color);
 }
 
 #navbox {
@@ -134,3 +143,42 @@ find-menu {
 .hidden {
   display: none !important;
 }
+
+pre {
+  background-color: var(--peersky-p2p-background-color);
+  padding: 1em;
+  overflow: auto;
+  border-radius: 0.5em;
+}
+
+code {
+  background-color: var(--peersky-primary-color);
+  color: var(--peersky-background-color);
+  padding: 0.2em 0.4em;
+  border-radius: 0.3em;
+  font-family: 'Courier New', monospace;
+}
+
+pre > code {
+  background-color: transparent;
+  color: inherit;
+  padding: 0;
+}
+
+img, video, iframe {
+  max-width: 100%,
+  display: block;
+  margin: 1em auto;
+}
+
+a {
+  color: var(--peersky-primary-color);
+  text-decoration: underline;
+}
+
+a:hover {
+  color: var(--peersky-text-color);
+  background-color: var(--peersky-primary-color);
+  text-decoration: none;
+}
+

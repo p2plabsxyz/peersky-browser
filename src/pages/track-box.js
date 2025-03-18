@@ -25,6 +25,17 @@ class TrackedBox extends HTMLElement {
       );
     });
 
+    this.webview.addEventListener("did-finish-load", () => {
+      fetch("peersky://static/js/formatter.js")
+        .then((response) => response.text())
+        .then((scriptContent) => {
+          this.webview.executeJavaScript(scriptContent);
+        })
+        .catch((error) => {
+          console.error("Failed to load formatter.js:", error);
+        });
+    });
+
     this.appendChild(this.webview);
   }
 
