@@ -21,6 +21,16 @@ body {
   font-family: var(--font-family-main);
 }
 
+/* Ensures that <pre> and <code> elements inherit the dark theme background and text color for readability */
+body > pre, body > code {
+  background: var(--peersky-background-color);
+  color: var(--peersky-text-color);
+  min-height: 100%;
+  margin: 0px;
+  padding: 12px;
+  padding-top: 24px;
+}
+
 input, button, textarea, select, select *, option  {
   color: inherit;
   font-family: inherit;
