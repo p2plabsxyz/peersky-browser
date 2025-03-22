@@ -11,7 +11,7 @@ class TrackedBox extends HTMLElement {
     this.webview.style.height = "calc(100vh - 50px)";
     this.webview.style.width = "100%";
     this.webview.preload =
-      "file://" + require("path").join(__dirname, "preload.js");
+      "file://" + require("path").resolve("src/pages/preload.js");
 
     this.webview.addEventListener("did-navigate", (e) => {
       this.dispatchEvent(
