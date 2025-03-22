@@ -1,3 +1,5 @@
+const path = require("path");
+
 class TrackedBox extends HTMLElement {
   constructor() {
     super();
@@ -10,8 +12,9 @@ class TrackedBox extends HTMLElement {
     this.webview.setAttribute("allowpopups", "true");
     this.webview.style.height = "calc(100vh - 50px)";
     this.webview.style.width = "100%";
-    this.webview.preload =
-      "file://" + require("path").resolve("src/pages/preload.js");
+
+    // Dynamically resolve the preload script path
+    this.webview.preload = "file://" + path.join(__dirname, "preload.js");
 
     this.webview.addEventListener("did-navigate", (e) => {
       this.dispatchEvent(
