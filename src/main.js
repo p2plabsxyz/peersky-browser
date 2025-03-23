@@ -1,4 +1,4 @@
-import { app, session, protocol as globalProtocol } from "electron";
+import { app, session, protocol as globalProtocol, globalShortcut } from "electron"; // Added globalShortcut
 import path from "path";
 import { fileURLToPath } from "url";
 import { createHandler as createIPFSHandler } from "./protocols/ipfs-handler.js";
@@ -12,6 +12,7 @@ import WindowManager from "./window-manager.js";
 import { attachContextMenus, setWindowManager } from "./context-menu.js";
 
 const __dirname = fileURLToPath(new URL("./", import.meta.url));
+
 
 const P2P_PROTOCOL = {
   standard: true,
@@ -86,11 +87,13 @@ app.on("before-quit", (event) => {
     .then(() => {
       console.log("Window states saved successfully.");
       windowManager.stopSaver();
+      globalShortcut.unregisterAll(); // Clean up all shortcuts on quit
       app.quit(); // Proceed to quit the app
     })
     .catch((error) => {
       console.error("Error saving window states on quit:", error);
       windowManager.stopSaver();
+      globalShortcut.unregisterAll(); // Clean up all shortcuts on quit
       app.quit(); // Proceed to quit the app even if saving fails
     });
 });

@@ -1,5 +1,5 @@
 import { app, BrowserWindow, globalShortcut } from "electron";
-import WindowManager from './window-manager.js';
+import WindowManager from "./window-manager.js";
 
 export function createActions(windowManager) {
   const actions = {
@@ -17,6 +17,14 @@ export function createActions(windowManager) {
       accelerator: "CommandOrControl+N",
       click: () => {
         windowManager.open();
+      },
+    },
+    NewTab: {
+      label: "New Tab",
+      accelerator: "CommandOrControl+T", // Changed to cross-platform
+      click: () => {
+        windowManager.open({ isMainWindow: false });
+        console.log("New tab/window opened via CommandOrControl+T");
       },
     },
     Forward: {
@@ -113,7 +121,7 @@ export function createActions(windowManager) {
                 if (input) {
                   input.focus();
                 }
-              }, 100); // Timeout to ensure the menu is visible and ready to receive focus
+              }, 100);
             }
           `);
         }
@@ -139,7 +147,6 @@ export function registerShortcuts(windowManager) {
     globalShortcut.unregister("CommandOrControl+F");
   };
 
-  // Register and unregister `Ctrl+F` based on focus
   app.on("browser-window-focus", (event, win) => {
     registerFindShortcut(win);
   });
@@ -148,15 +155,18 @@ export function registerShortcuts(windowManager) {
     unregisterFindShortcut();
   });
 
-  // Register remaining shortcuts
+  // Register remaining shortcuts with debug logging
   Object.keys(actions).forEach((key) => {
     const action = actions[key];
     if (key !== "FindInPage") {
-      // Register other shortcuts except `Ctrl+F`
-      globalShortcut.register(action.accelerator, () => {
+      const success = globalShortcut.register(action.accelerator, () => {
         const focusedWindow = BrowserWindow.getFocusedWindow();
-        if (focusedWindow) action.click(focusedWindow);
+        if (focusedWindow) {
+          action.click(focusedWindow);
+          console.log(`${action.label} triggered with ${action.accelerator}`);
+        }
       });
+      console.log(`Registering ${action.label} (${action.accelerator}): ${success ? "Success" : "Failed"}`);
     }
   });
 }
