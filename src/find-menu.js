@@ -8,6 +8,7 @@ class FindMenu extends HTMLElement {
     this.matchesCount = 0;
     this.currentMatchIndex = 0;
     this.isPdf = false; // Track if current document is PDF
+    this.wrappingBackward = false; // Tracks if we're wrapping around to the end
 
     this.addEventListener('keydown', ({ key }) => {
       if (key === 'Escape') this.hide();
@@ -94,6 +95,7 @@ class FindMenu extends HTMLElement {
   }
 
   async detectContentType() {
+    if (this.isPdf !== null) return; // detect only once
     const webview = this.getWebviewElement();
     if (!webview) return;
     
@@ -130,14 +132,8 @@ class FindMenu extends HTMLElement {
       
       // Update match count display
       if (matches > 0) {
-        // For PDFs, handle the duplicate counting issue
-        if (this.isPdf && this.matchesCount > 0 && matches > this.matchesCount) {
-          // In PDFs, sometimes the count doubles incorrectly => keep original count
-          this.currentMatchIndex = (this.currentMatchIndex % this.matchesCount) + 1;
-        } else {
-          this.matchesCount = matches;
-          this.currentMatchIndex = activeMatchOrdinal;
-        }
+        this.matchesCount = matches; // Store the matches count
+        this.currentMatchIndex = activeMatchOrdinal;
         
         this.matchCountDisplay.textContent = `${this.currentMatchIndex} of ${this.matchesCount}`;
       } else {
@@ -147,7 +143,7 @@ class FindMenu extends HTMLElement {
       }
     });
   }
-  
+
   findInWebview(value, options = {}) {
     const webview = this.getWebviewElement();
     if (!webview) return;
