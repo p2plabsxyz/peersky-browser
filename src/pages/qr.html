@@ -5,61 +5,9 @@
 
 <title>QR Code</title>
 <style>
-  body {
-    display: flex;
-    height: 100vh;
-    justify-content: center;
-    align-items: center;
-    background-color: #f3f4f6;
-    margin: 0;
-    font-family: Arial, sans-serif;
-  }
-
-  .plan1-background {
-    background: #ffffff;
-    border: 2px solid #8b5a2b; /* SaddleBrown Border */
-    border-radius: 16px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
-    padding: 40px;
-    text-align: center;
-  }
-
-  .example {
-    margin-bottom: 20px;
-    padding: 20px;
-    border: 3px dashed #8b5a2b;
-    border-radius: 12px;
-    background-color: #fffaf0; /* Light Lemonchiffon Background */
-  }
-
-  qr-code {
-    width: 200px;
-    height: 200px;
-    display: block;
-    margin: 0 auto;
-  }
-
-  button#download {
-    background-color: #8b5a2b;
-    color: #fff;
-    border: none;
-    padding: 10px 20px;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: background 0.3s ease;
-  }
-
-  button#download:hover {
-    background-color: #6e431e;
-  }
-
-  button#download:disabled {
-    background-color: #d3d3d3;
-    cursor: not-allowed;
-  }
+  @import url("peersky://static/css/qr.css");
 </style>
-
-<div class="plan1-background">
+<div class="qr-background">
   <div class="example">
     <qr-code id="qr" data-fg="saddlebrown" data-bg="lemonchiffon"></qr-code>
   </div>
@@ -68,27 +16,27 @@
 
 <script src="peersky://static/elves/elf.js" type="module"></script>
 <script type="module">
-  document.addEventListener('DOMContentLoaded', () => {
+  document.addEventListener("DOMContentLoaded", () => {
     const urlParams = new URLSearchParams(window.location.search);
-    const url = urlParams.get('url') || 'peersky://home';
-    const qr = document.querySelector('#qr');
-    qr.setAttribute('src', url);
+    const url = urlParams.get("url") || "peersky://home";
+    const qr = document.querySelector("#qr");
+    qr.setAttribute("src", url);
 
-    const downloadBtn = document.getElementById('download');
+    const downloadBtn = document.getElementById("download");
 
     // Enable download button once QR code renders
-    setTimeout(() => downloadBtn.disabled = false, 1000);
+    setTimeout(() => (downloadBtn.disabled = false), 1000);
 
-    downloadBtn.addEventListener('click', () => {
-      const qrImage = document.querySelector('qr-code img');
+    downloadBtn.addEventListener("click", () => {
+      const qrImage = document.querySelector("qr-code img");
       if (!qrImage) {
-        alert('QR code not generated yet!');
+        alert("QR code not generated yet!");
         return;
       }
 
-      const link = document.createElement('a');
+      const link = document.createElement("a");
       link.href = qrImage.src;
-      link.download = 'qr-code.png';
+      link.download = "qr-code.png";
       link.click();
     });
   });

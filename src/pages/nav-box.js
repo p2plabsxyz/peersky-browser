@@ -143,8 +143,8 @@ class NavBox extends HTMLElement {
           }
         } else if (button.id === "plus") {
           this.dispatchEvent(new CustomEvent("new-window"));
-        } else if (button.id === "qr-code"){
-          this.dispatchEvent(new CustomEvent("generate-qr", { bubbles: true, composed: true }));
+        } else if (button.id === "qr-code") {
+          this.dispatchEvent(new CustomEvent("generate-qr"));
         } else if (!button.disabled) {
           this.navigate(button.id);
         }

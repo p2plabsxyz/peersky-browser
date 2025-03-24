@@ -22,12 +22,12 @@ class WindowManager {
     ipcMain.on("new-window", () => {
       this.open();
     });
-    ipcMain.on("open-qr-window",(_, data)=>{
+    ipcMain.on("open-qr-window", (_, data) => {
       this.open({
         isQRWindow: true,
         query: { url: data.url },
       });
-    })
+    });
   }
 
   setQuitting(flag) {
@@ -54,7 +54,7 @@ class WindowManager {
     });
 
     // Save state when the window is moved, resized, or navigated, only if not quitting
-    if(!isQRWindow) {
+    if (!isQRWindow) {
       window.window.on("move", () => {
         if (!this.isQuitting) this.saveOpened();
       });
@@ -216,8 +216,7 @@ class WindowManager {
 
 class PeerskyWindow {
   constructor(options = {}, windowManager) {
-    console.log("options => " , options)
-    const {url, isQRWindow,isMainWindow = false, ...windowOptions } = options;
+    const { url, isQRWindow, isMainWindow = false, ...windowOptions } = options;
 
     this.window = new BrowserWindow({
       width: 800,
@@ -233,7 +232,13 @@ class PeerskyWindow {
 
     this.id = this.window.webContents.id;
     const loadURL = path.join(__dirname, "./pages/index.html");
-    const query = { query: { url: isQRWindow? `peersky://qr?url=${options?.query?.url}`: url || "peersky://home" } };
+    const query = {
+      query: {
+        url: isQRWindow
+          ? `peersky://qr?url=${options?.query?.url}`
+          : url || "peersky://home",
+      },
+    };
 
     this.window.loadFile(loadURL, query);
 
