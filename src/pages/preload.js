@@ -31,7 +31,7 @@ document.addEventListener("DOMContentLoaded", function () {
           margin: auto;
           height: 100%;
           width: 100%;
-          font-family: var(--font-family-main);
+          font-family: monospace;
       }
   
       body > pre,
