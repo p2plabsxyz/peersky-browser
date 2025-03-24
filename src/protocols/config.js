@@ -26,6 +26,9 @@ export function loadKeyPair() {
 // Save a new keypair to disk
 export function saveKeyPair(keyPair) {
   fs.writeJsonSync(KEYPAIR_PATH, {
+
+    fs.ensureDirSync(DEFAULT_HYPER_DIR);
+    
     publicKey: keyPair.publicKey.toString("hex"),
     secretKey: keyPair.secretKey.toString("hex")
   });
