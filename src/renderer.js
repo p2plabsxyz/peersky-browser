@@ -40,6 +40,12 @@ document.addEventListener("DOMContentLoaded", () => {
     nav.addEventListener("new-window", () => {
       ipcRenderer.send("new-window");
     });
+    nav.addEventListener("generate-qr",()=>{
+
+      const currentURL = webviewContainer.webviewElement.src || DEFAULT_PAGE;
+      console.log(currentURL)
+      ipcRenderer.send("open-qr-window", { url: currentURL });
+    })
 
     // Handle webview loading events to toggle refresh/stop button
     if (webviewContainer.webviewElement) {

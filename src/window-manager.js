@@ -22,6 +22,12 @@ class WindowManager {
     ipcMain.on("new-window", () => {
       this.open();
     });
+    ipcMain.on("open-qr-window",(_, data)=>{
+      this.open({
+        isQRWindow: true,
+        query: { url: data.url },
+      });
+    })
   }
 
   setQuitting(flag) {
@@ -29,6 +35,7 @@ class WindowManager {
   }
 
   open(options = {}) {
+    const { isQRWindow = false } = options;
     const window = new PeerskyWindow(options, this);
     this.windows.add(window);
 
@@ -41,21 +48,23 @@ class WindowManager {
         window.navigateListener
       );
       // Save the state after the window is closed, only if not quitting
-      if (!this.isQuitting) {
+      if (!this.isQuitting && !isQRWindow) {
         this.saveOpened();
       }
     });
 
     // Save state when the window is moved, resized, or navigated, only if not quitting
-    window.window.on("move", () => {
-      if (!this.isQuitting) this.saveOpened();
-    });
-    window.window.on("resize", () => {
-      if (!this.isQuitting) this.saveOpened();
-    });
-    window.webContents.on("did-navigate", () => {
-      if (!this.isQuitting) this.saveOpened();
-    });
+    if(!isQRWindow) {
+      window.window.on("move", () => {
+        if (!this.isQuitting) this.saveOpened();
+      });
+      window.window.on("resize", () => {
+        if (!this.isQuitting) this.saveOpened();
+      });
+      window.webContents.on("did-navigate", () => {
+        if (!this.isQuitting) this.saveOpened();
+      });
+    }
 
     return window;
   }
@@ -207,7 +216,9 @@ class WindowManager {
 
 class PeerskyWindow {
   constructor(options = {}, windowManager) {
-    const { url, isMainWindow = false, ...windowOptions } = options;
+    console.log("options => " , options)
+    const {url, isQRWindow,isMainWindow = false, ...windowOptions } = options;
+
     this.window = new BrowserWindow({
       width: 800,
       height: 600,
@@ -221,9 +232,9 @@ class PeerskyWindow {
     });
 
     this.id = this.window.webContents.id;
-
     const loadURL = path.join(__dirname, "./pages/index.html");
-    const query = { query: { url: url || "peersky://home" } };
+    const query = { query: { url: isQRWindow? `peersky://qr?url=${options?.query?.url}`: url || "peersky://home" } };
+
     this.window.loadFile(loadURL, query);
 
     // Attach context menus

@@ -14,6 +14,7 @@ class NavBox extends HTMLElement {
       { id: "refresh", svg: "reload.svg", position: "start" },
       { id: "home", svg: "home.svg", position: "start" },
       { id: "plus", svg: "plus.svg", position: "end" },
+      { id: "qr-code", svg: "qrcode.svg", position: "end" },
     ];
 
     this.buttonElements = {};
@@ -142,6 +143,8 @@ class NavBox extends HTMLElement {
           }
         } else if (button.id === "plus") {
           this.dispatchEvent(new CustomEvent("new-window"));
+        } else if (button.id === "qr-code"){
+          this.dispatchEvent(new CustomEvent("generate-qr", { bubbles: true, composed: true }));
         } else if (!button.disabled) {
           this.navigate(button.id);
         }
