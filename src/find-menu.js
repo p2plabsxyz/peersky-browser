@@ -129,16 +129,19 @@ class FindMenu extends HTMLElement {
       
       // Ensure this is a response to our current request
       if (requestId !== this.currentRequestId) return;
-      
-      // Update match count display
-      if (matches > 0) {
-        this.matchesCount = matches; // Store the matches count
-        this.currentMatchIndex = activeMatchOrdinal;
-        
+
+      // updates the match count display only if 
+      // 1. matchesCount is 0 (first search) or
+      // 2. search value has changed or
+      // 3. content type is PDF (as it may trigger multiple found-in-page events)
+      if (this.matchesCount === 0 || this.currentSearchValue !== this.input.value || !this.isPdf) {
+        this.matchesCount = matches;
+      }
+      this.currentMatchIndex = activeMatchOrdinal;
+
+      if (this.matchesCount > 0) {
         this.matchCountDisplay.textContent = `${this.currentMatchIndex} of ${this.matchesCount}`;
       } else {
-        this.matchesCount = 0;
-        this.currentMatchIndex = 0;
         this.matchCountDisplay.textContent = 'No matches';
       }
     });
