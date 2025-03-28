@@ -9,6 +9,7 @@ class FindMenu extends HTMLElement {
     this.currentMatchIndex = 0;
     this.isPdf = false; // Track if current document is PDF
     this.wrappingBackward = false; // Tracks if we're wrapping around to the end
+    this.updateTimeout = null;
 
     this.addEventListener('keydown', ({ key }) => {
       if (key === 'Escape') this.hide();
@@ -126,18 +127,30 @@ class FindMenu extends HTMLElement {
     // Listen for found-in-page events
     webview.addEventListener('found-in-page', (event) => {
       const { requestId, matches, activeMatchOrdinal } = event.result;
+      console.log('found-in-page', requestId, matches, activeMatchOrdinal);
       
       // Ensure this is a response to our current request
       if (requestId !== this.currentRequestId) return;
 
       // updates the match count display only if 
       // 1. matchesCount is 0 (first search) or
-      // 2. search value has changed or
-      // 3. content type is PDF (as it may trigger multiple found-in-page events)
-      if (this.matchesCount === 0 || this.currentSearchValue !== this.input.value || !this.isPdf) {
-        this.matchesCount = matches;
+      // 2. search value has changed 
+      if (this.matchesCount === 0 || this.currentSearchValue !== this.input.value) {
+        this.matchesCount = matches || 0;
       }
-      this.currentMatchIndex = activeMatchOrdinal;
+      if(matches > 0) {
+        this.currentMatchIndex = activeMatchOrdinal;
+        if(this.currentMatchIndex > this.matchesCount) {
+          console.log('wrapping', this.currentMatchIndex, this.matchesCount);
+          this.currentMatchIndex = 1;
+        }
+        else if(this.currentMatchIndex < 1 && this.matchesCount > 0) {
+          this.currentMatchIndex = this.matchesCount
+        }
+      }
+      else{
+        this.currentMatchIndex = 0;
+      }
 
       if (this.matchesCount > 0) {
         this.matchCountDisplay.textContent = `${this.currentMatchIndex} of ${this.matchesCount}`;
@@ -146,6 +159,7 @@ class FindMenu extends HTMLElement {
       }
     });
   }
+
 
   findInWebview(value, options = {}) {
     const webview = this.getWebviewElement();
