@@ -40,6 +40,10 @@ document.addEventListener("DOMContentLoaded", () => {
     nav.addEventListener("new-window", () => {
       ipcRenderer.send("new-window");
     });
+    nav.addEventListener("generate-qr", () => {
+      const currentURL = webviewContainer.webviewElement.src || DEFAULT_PAGE;
+      ipcRenderer.send("open-qr-window", { url: currentURL });
+    });
 
     // Handle webview loading events to toggle refresh/stop button
     if (webviewContainer.webviewElement) {
@@ -97,7 +101,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Update page title
     webviewContainer.addEventListener("page-title-updated", (e) => {
-      pageTitle.innerText = e.detail.title ? `${e.detail.title} - Peersky Browser` : "Peersky Browser";
+      pageTitle.innerText = e.detail.title
+        ? `${e.detail.title} - Peersky Browser`
+        : "Peersky Browser";
     });
 
     // Find Menu Event Listeners
