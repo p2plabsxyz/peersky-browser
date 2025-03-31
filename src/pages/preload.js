@@ -31,12 +31,12 @@ document.addEventListener("DOMContentLoaded", function () {
           margin: auto;
           height: 100%;
           width: 100%;
-          font-family: monospace;
       }
   
       body > pre,
       body > code {
           background: var(--peersky-background-color);
+          font-family: monospace;
           color: var(--peersky-text-color);
           min-height: calc(100% - 24px);
           margin: 0px;
