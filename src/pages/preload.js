@@ -26,13 +26,6 @@ document.addEventListener("DOMContentLoaded", function () {
       --font-family-main: Arial, sans-serif;
       }
   
-      html,
-      body {
-          margin: auto;
-          height: 100%;
-          width: 100%;
-      }
-  
       body > pre,
       body > code {
           background: var(--peersky-background-color);
