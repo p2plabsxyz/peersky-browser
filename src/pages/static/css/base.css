@@ -1,0 +1,13 @@
+html,
+body {
+  margin: auto;
+}
+
+body > pre,
+body > code {
+  background: #000000;
+  color: #ffffff;
+  margin: 0px;
+  padding: 12px;
+  min-height: calc(100vh - 24px) !important;
+}

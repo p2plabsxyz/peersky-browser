@@ -9,40 +9,13 @@ function getFileExtension() {
 }
 
 document.addEventListener("DOMContentLoaded", function () {
-  const style = document.createElement("style");
-  const cssText = document.createTextNode(`
-      :root {
-      --peersky-background-color: #000000;
-      --peersky-p2p-background-color: #18181b;
-      --peersky-text-color: #ffffff;
-      --background-nav: #27272a;
-      --background-url-input: #171717;
-      --background-find-menu: #323440;
-      --button-color: #9ca3af;
-      --button-hover-color: #e5e7eb;
-      --button-active-color: #ffffff;
-      --button-inactive-color: #6b7280;
-      --peersky-primary-color: #06b6d4;
-      --font-family-main: Arial, sans-serif;
-      }
-  
-      body > pre,
-      body > code {
-          background: var(--peersky-background-color);
-          font-family: monospace;
-          color: var(--peersky-text-color);
-          min-height: calc(100% - 24px);
-          margin: 0px;
-          padding: 12px;
-      }
-      `);
-  style.appendChild(cssText);
-  document.head.appendChild(style);
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = "peersky://static/css/base.css";
+  link.type = "text/css";
+  document.head.appendChild(link);
 
-  // Get the file extension of the current document
   const extension = getFileExtension();
-
-  // Special handling for XML files
   if (extension === "xml") {
     const sheet = document.styleSheets[0];
     sheet.insertRule(
@@ -53,8 +26,6 @@ document.addEventListener("DOMContentLoaded", function () {
       "div.header { border-color: #ffffff; }",
       sheet.cssRules.length
     );
-
-    // Set the color for elements with the class 'html-tag'
     sheet.insertRule(".html-tag { color: green; }", sheet.cssRules.length);
   }
 });
