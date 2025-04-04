@@ -1,3 +1,5 @@
+@import url("./vars.css");
+
 html,
 body {
   margin: auto;
@@ -5,8 +7,8 @@ body {
 
 body > pre,
 body > code {
-  background: #000000;
-  color: #ffffff;
+  background: var(--peersky-background-color);
+  color: var(--peersky-text-color);
   margin: 0px;
   padding: 12px;
   min-height: calc(100vh - 24px) !important;
