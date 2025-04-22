@@ -8,6 +8,16 @@ const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const PERSIST_FILE = path.join(app.getPath("userData"), "lastOpened.json");
 const DEFAULT_SAVE_INTERVAL = 30 * 1000;
 
+ipcMain.handle("peersky-read-css", (event, name) => {
+  const cssFile = path.join(__dirname, "pages", "static", "css", `${name}.css`);
+  try {
+    return fs.readFileSync(cssFile, "utf8");
+  } catch (err) {
+    console.error(`Failed to read CSS ${name}:`, err);
+    return "";
+  }
+});
+
 class WindowManager {
   constructor() {
     this.windows = new Set();

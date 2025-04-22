@@ -1,4 +1,4 @@
-@import url("./vars.css");
+@import url('peersky://static/css/vars.css');
 
 html,
 body {
@@ -11,5 +11,5 @@ body > code {
   color: var(--peersky-text-color);
   margin: 0px;
   padding: 12px;
-  min-height: calc(100vh - 24px) !important;
+  min-height: calc(100vh - 24px);
 }
