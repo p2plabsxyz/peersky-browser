@@ -1,18 +1,13 @@
 import { app, session, protocol as globalProtocol } from "electron";
-import fs from "fs-extra";
-import path from "path";
-import { fileURLToPath } from "url";
 import { createHandler as createIPFSHandler } from "./protocols/ipfs-handler.js";
 import { createHandler as createBrowserHandler } from "./protocols/browser-protocol.js";
 import { createHandler as createHyperHandler } from "./protocols/hyper-handler.js";
 import { createHandler as createWeb3Handler } from "./protocols/web3-handler.js";
 import { ipfsOptions, hyperOptions } from "./protocols/config.js";
 import { registerShortcuts } from "./actions.js";
-import { setupAutoUpdater } from "./auto-updater.js";
 import WindowManager from "./window-manager.js";
 import { attachContextMenus, setWindowManager } from "./context-menu.js";
-
-const __dirname = fileURLToPath(new URL("./", import.meta.url));
+// import { setupAutoUpdater } from "./auto-updater.js";
 
 const P2P_PROTOCOL = {
   standard: true,
