@@ -131,6 +131,16 @@
 
 ## Development
 
+### Node.js and npm Setup
+
+Please refer to the [Node.js official documentation](https://nodejs.org/) to install Node.js. Once installed, npm (Node Package Manager) will be available, allowing you to run commands like `npx` and `npm`.
+
+- **npm**: Comes bundled with Node.js. Verify installation by running:
+  ```bash
+  node -v
+  npm -v
+  ```
+
 ### Install dependencies
 
 ```bash
@@ -144,7 +154,7 @@ npm start
 ```
 
 ### Build
-  After development of the browser, run the following command. This will create a `production` build.
+  After development of the browser, run the following command. This will create a production build.
 
 ```bash
 npm run build
