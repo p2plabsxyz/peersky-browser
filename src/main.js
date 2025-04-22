@@ -1,4 +1,5 @@
 import { app, session, protocol as globalProtocol } from "electron";
+import fs from "fs-extra";
 import path from "path";
 import { fileURLToPath } from "url";
 import { createHandler as createIPFSHandler } from "./protocols/ipfs-handler.js";
@@ -48,35 +49,6 @@ app.whenReady().then(async () => {
 
   // Set the WindowManager instance in context-menu.js
   setWindowManager(windowManager);
-  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-    const headers = details.responseHeaders;
-
-    // Find the Content-Security-Policy header
-    const cspKey = Object.keys(headers).find(
-      (k) => k.toLowerCase() === "content-security-policy"
-    );
-
-    if (cspKey && Array.isArray(headers[cspKey]) && headers[cspKey][0]) {
-      let csp = headers[cspKey][0];
-
-      // Modify style-src directive to allow custom peersky: protocol
-      // This modification is required to allow loading stylesheets through our custom protocol
-      // while maintaining other CSP restrictions intact
-      if (csp.includes("style-src")) {
-        const directives = csp.split(";");
-        const styleSrcIndex = directives.findIndex((d) =>
-          d.trim().startsWith("style-src")
-        );
-        if (styleSrcIndex !== -1) {
-          directives[styleSrcIndex] += " peersky:";
-          headers[cspKey][0] = directives.join(";");
-        }
-      }
-    }
-
-    callback({ responseHeaders: headers });
-  });
-
   await setupProtocols(session.defaultSession);
 
   // Load saved windows or open a new one
