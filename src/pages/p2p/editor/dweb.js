@@ -34,65 +34,103 @@ uploadButton.addEventListener('click', assembleCode);
 // Upload code to Dweb
 async function uploadFile(file) {
     const protocol = protocolSelect.value;
+    console.log(`[uploadFile] Uploading ${file.name}, protocol: ${protocol}`);
 
-    const formData = new FormData();
-
-    // Append file to the FormData
-    formData.append('file', file, file.name);
-
-
-    // Construct the URL based on the protocol
-    let url;
     if (protocol === 'hyper') {
-        const hyperdriveUrl = await generateHyperdriveKey('p2p-editor');
-        url = `${hyperdriveUrl}`;
-    } else {
-        url = `ipfs://bafyaabakaieac/`;
-    }
+        const hyperdriveUrl = await generateHyperdriveKey();
+        const url = `${hyperdriveUrl}${encodeURIComponent(file.name)}`;
+        const cleanUrl = url.replace(/index\.html$/, '');
+        console.log(`[uploadFile] Hyper URL: ${url}`);
 
-    // Perform the upload for each file
-    try {
-        const response = await fetch(url, {
-            method: 'PUT',
-            body: formData,
-        });
+        try {
+            const response = await fetch(url, {
+                method: 'PUT',
+                body: file, // Send raw file bytes
+                headers: {
+                    'Content-Type': file.type || 'text/html'
+                }
+            });
 
-        if (!response.ok) {
-            addError(file, await response.text());
+            console.log(`[uploadFile] Response status: ${response.status}, ok: ${response.ok}`);
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error(`[uploadFile] Error uploading ${file.name}: ${errorText}`);
+                addError(file.name, errorText);
+                return;
+            }
+
+            addURL(cleanUrl);
+        } catch (error) {
+            console.error(`[uploadFile] Error uploading ${file.name}:`, error);
+            addError(file.name, error.message);
+        } finally {
+            showSpinner(false);
         }
-        const urlResponse = protocol === 'hyper' ? response.url : response.headers.get('Location');
-        addURL(urlResponse);
-    } catch (error) {
-        console.error(`Error uploading ${file}:`, error);
-    } finally {
-        showSpinner(false);
+    } else {
+        // IPFS upload with FormData
+        const formData = new FormData();
+        console.log(`[uploadFile] Appending file for IPFS: ${file.name}`);
+        formData.append('file', file, file.name);
+
+        const url = `ipfs://bafyaabakaieac/`;
+        console.log(`[uploadFile] IPFS URL: ${url}`);
+
+        try {
+            const response = await fetch(url, {
+                method: 'PUT',
+                body: formData,
+            });
+
+            console.log(`[uploadFile] IPFS Response status: ${response.status}, ok: ${response.ok}`);
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error(`[uploadFile] IPFS Error: ${errorText}`);
+                addError(file.name, errorText);
+                return;
+            }
+
+            const locationHeader = response.headers.get('Location');
+            console.log(`[uploadFile] IPFS Location header: ${locationHeader}`);
+            addURL(locationHeader);
+        } catch (error) {
+            console.error(`[uploadFile] Error uploading to IPFS:`, error);
+            addError(file.name, error.message);
+        } finally {
+            showSpinner(false);
+        }
     }
 }
 
+async function generateHyperdriveKey() {
+    // Generate a unique name using timestamp and random string
+    const timestamp = Date.now();
+    const randomStr = Math.random().toString(36).substring(2, 8);
+    const uniqueName = `p2p-editor-${timestamp}-${randomStr}`;
+    console.log(`[generateHyperdriveKey] Generating key for name: ${uniqueName}`);
 
-
-async function generateHyperdriveKey(name) {
     try {
-        const response = await fetch(`hyper://localhost/?key=${name}`, { method: 'POST' });
+        const response = await fetch(`hyper://localhost/?key=${encodeURIComponent(uniqueName)}`, { method: 'POST' });
         if (!response.ok) {
             throw new Error(`Failed to generate Hyperdrive key: ${response.statusText}`);
         }
-        return await response.text();  // This returns the hyper:// URL
+        const hyperUrl = await response.text();
+        console.log(`[generateHyperdriveKey] Hyperdrive URL: ${hyperUrl}`);
+        return hyperUrl; // Returns the hyper:// URL
     } catch (error) {
-        console.error('Error generating Hyperdrive key:', error);
+        console.error('[generateHyperdriveKey] Error generating Hyperdrive key:', error);
         throw error;
     }
 }
 
-
 function addURL(url) {
+    console.log(`[addURL] Adding URL: ${url}`);
     const listItem = document.createElement('li');
     const link = document.createElement('a');
     link.href = url;
     link.textContent = url;
 
     const copyContainer = document.createElement('span');
-    const copyIcon = '⊕'
+    const copyIcon = '⊕';
     copyContainer.innerHTML = copyIcon;
     copyContainer.onclick = function() {
         navigator.clipboard.writeText(url).then(() => {
@@ -101,7 +139,7 @@ function addURL(url) {
                 copyContainer.innerHTML = copyIcon;
             }, 3000);
         }).catch(err => {
-            console.error('Error in copying text: ', err);
+            console.error('[addURL] Error in copying text: ', err);
         });
     };
 
@@ -110,13 +148,14 @@ function addURL(url) {
     uploadListBox.appendChild(listItem);
 }
 
-
 function addError(name, text) {
-    uploadListBox.innerHTML += `<li class="log">Error in ${name}: ${text}</li>`
+    console.log(`[addError] Error in ${name}: ${text}`);
+    uploadListBox.innerHTML += `<li class="log">Error in ${name}: ${text}</li>`;
 }
 
 // The fetchFromDWeb function detects which protocol is used and fetches the content
 async function fetchFromDWeb(url) {
+    console.log(`[fetchFromDWeb] Fetching URL: ${url}`);
     if (!url) {
         alert("Please enter a CID or Name.");
         return;
@@ -129,10 +168,11 @@ async function fetchFromDWeb(url) {
 
     try {
         const response = await fetch(url);
+        console.log(`[fetchFromDWeb] Response status: ${response.status}`);
         const data = await response.text();
         parseAndDisplayData(data);
     } catch (error) {
-        console.error("Error fetching from DWeb:", error);
+        console.error("[fetchFromDWeb] Error fetching from DWeb:", error);
         alert("Failed to fetch from DWeb.");
     }
 }
@@ -145,6 +185,7 @@ fetchButton.addEventListener('click', () => {
 
 // Parse the data and display it in the code editor
 function parseAndDisplayData(data) {
+    console.log(`[parseAndDisplayData] Parsing received data`);
     const parser = new DOMParser();
     const doc = parser.parseFromString(data, 'text/html');
 
@@ -165,6 +206,9 @@ function parseAndDisplayData(data) {
     const htmlContent = doc.body.innerHTML; // Get the content inside the body tag without script/style tags
 
     // Displaying the content in respective textareas
+    console.log(`[parseAndDisplayData] Setting HTML: ${htmlContent.substring(0, 50)}...`);
+    console.log(`[parseAndDisplayData] Setting CSS: ${cssContent.substring(0, 50)}...`);
+    console.log(`[parseAndDisplayData] Setting JS: ${jsContent.substring(0, 50)}...`);
     $('#htmlCode').value = htmlContent;
     $('#cssCode').value = cssContent;
     $('#javascriptCode').value = jsContent;
