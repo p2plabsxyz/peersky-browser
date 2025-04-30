@@ -11,13 +11,18 @@
   }
   #uploadBox {
     padding: 1em;
-    border: 2px dashed var(--peersky-primary-color);
+    border: 2px dashed #404950;
     border-radius: 0.5em;
     display: flex;
     justify-content: center;
     align-items: center;
   }
-  #protocolSelect{
+  #uploadBox svg {
+    color: var(--button-color);
+    width: 100px;
+    height: 100px;
+  }
+  #protocolSelect {
     margin-bottom: 20px;
   }
 
@@ -30,6 +35,10 @@
   main {
     margin: 1em;
   }
+  #uploadListBox li.uploading {
+    font-style: italic;
+    color: var(--peersky-text-color);
+  }
 </style>
 <main>
   <label for="protocolSelect">
@@ -41,116 +50,138 @@
       <option value="hyper">Hypercore-Protocol (HYPER://)</option>
     </select>
   </label>
+  <input type="file" id="fileInput" multiple style="display: none;" />
   <section id="uploadBox">
-    <h1>Drop a file to upload it</h1>
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-upload" viewBox="0 0 16 16">
+      <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5"/>
+      <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708z"/>
+    </svg>  
   </section>
   <ul id="uploadListBox"></ul>
-  <footer>
-    <a href="https://github.com/AgregoreWeb/agregore-drag-and-drop"
-      >Source Code</a
-    >
-  </footer>
 </main>
 <script>
   function $(query) {
-    return document.querySelector(query)
-}
-
-const uploadBox = $('#uploadBox')
-uploadBox.ondragover = () => false
-uploadBox.ondrop = async (e) => {
-    e.preventDefault()
-    const { dataTransfer } = e
-    if(!dataTransfer) return
-
-    await uploadFiles(dataTransfer.files);
-}
-
-const uploadListBox = $('#uploadListBox')
-
-const protocolSelect = $('#protocolSelect')
-
-async function uploadFiles(files) {
-    const protocol = protocolSelect.value;
-
-    if (protocol === 'hyper') {
-        const hyperdriveUrl = await generateHyperdriveKey('drag-and-drop');
-        console.log(`Hyper base URL: ${hyperdriveUrl}`);
-
-        for (const file of files) {
-            const url = `${hyperdriveUrl}${encodeURIComponent(file.name)}`;
-            console.log(`Uploading ${file.name} to ${url}`);
-
-            try {
-                const response = await fetch(url, {
-                    method: 'PUT',
-                    body: file, // Send raw file bytes
-                    headers: {
-                        'Content-Type': file.type || 'application/octet-stream'
-                    }
-                });
-
-                console.log(`Response for ${file.name}: ${response.status}, ok: ${response.ok}`);
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    console.error(`Error uploading ${file.name}: ${errorText}`);
-                    addError(file.name, errorText);
-                    continue;
-                }
-
-                addURL(url);
-            } catch (error) {
-                console.error(`Error uploading ${file.name}:`, error);
-                addError(file.name, error.message);
-            }
-        }
-    } else {
-        // Keep IPFS as FormData
-        const formData = new FormData();
-        for (const file of files) {
-            console.log(`Appending file for IPFS: ${file.name}`);
-            formData.append('file', file, file.name);
-        }
-        const url = `ipfs://bafyaabakaieac/`;
-        console.log(`Sending to IPFS: ${url}`);
-
-        try {
-            const response = await fetch(url, {
-                method: 'PUT',
-                body: formData,
-            });
-            console.log(`IPFS Response: ${response.status}`);
-            if (!response.ok) {
-                addError(files[0].name, await response.text());
-                return;
-            }
-            const locationHeader = response.headers.get('Location');
-            addURL(locationHeader);
-        } catch (error) {
-            console.error(`Error uploading to IPFS:`, error);
-            addError(files[0].name, error.message);
-        }
-    }
-}
-
-async function generateHyperdriveKey(name) {
-    try {
-        const response = await fetch(`hyper://localhost/?key=${name}`, { method: 'POST' });
-        if (!response.ok) {
-            throw new Error(`Failed to generate Hyperdrive key: ${response.statusText}`);
-        }
-        return await response.text();  // This returns the hyper:// URL
-    } catch (error) {
-        console.error('Error generating Hyperdrive key:', error);
-        throw error;
-    }
-}
-
-function addURL(url) {
-    uploadListBox.innerHTML += `<li><a href="${url}">${url}</a></li>`
-}
-
-function addError(name, text) {
-    uploadListBox.innerHTML += `<li class="log">Error in ${name}: ${text}</li>`
-}
+      return document.querySelector(query);
+  }
+  
+  const uploadBox = $('#uploadBox');
+  const fileInput = $('#fileInput');
+  const uploadListBox = $('#uploadListBox');
+  const protocolSelect = $('#protocolSelect');
+  
+  // Enable drag-and-drop
+  uploadBox.ondragover = () => false;
+  uploadBox.ondrop = async (e) => {
+      e.preventDefault();
+      const { dataTransfer } = e;
+      if (!dataTransfer) return;
+      await uploadFiles(dataTransfer.files);
+  };
+  
+  // Enable click to open file selector
+  uploadBox.onclick = () => {
+      fileInput.click();
+  };
+  
+  // Handle file selection
+  fileInput.onchange = async () => {
+      if (fileInput.files.length > 0) {
+          await uploadFiles(fileInput.files);
+          fileInput.value = ''; // Reset input
+      }
+  };
+  
+  async function uploadFiles(files) {
+      const uploadingItem = document.createElement('li');
+      uploadingItem.className = 'uploading';
+      uploadingItem.textContent = 'Uploading...';
+      uploadListBox.appendChild(uploadingItem);
+      
+      const protocol = protocolSelect.value;
+  
+      if (protocol === 'hyper') {
+          const hyperdriveUrl = await generateHyperdriveKey('drag-and-drop');
+          console.log(`Hyper base URL: ${hyperdriveUrl}`);
+  
+          for (const file of files) {
+              const url = `${hyperdriveUrl}${encodeURIComponent(file.name)}`;
+              console.log(`Uploading ${file.name} to ${url}`);
+  
+              try {
+                  const response = await fetch(url, {
+                      method: 'PUT',
+                      body: file,
+                      headers: {
+                          'Content-Type': file.type || 'application/octet-stream'
+                      }
+                  });
+  
+                  console.log(`Response for ${file.name}: ${response.status}, ok: ${response.ok}`);
+                  if (!response.ok) {
+                      const errorText = await response.text();
+                      console.error(`Error uploading ${file.name}: ${errorText}`);
+                      addError(file.name, errorText);
+                      continue;
+                  }
+  
+                  addURL(url);
+              } catch (error) {
+                  console.error(`Error uploading ${file.name}:`, error);
+                  addError(file.name, error.message);
+              }
+          }
+      } else {
+          const formData = new FormData();
+          for (const file of files) {
+              console.log(`Appending file for IPFS: ${file.name}`);
+              formData.append('file', file, file.name);
+          }
+          const url = `ipfs://bafyaabakaieac/`;
+          console.log(`Sending to IPFS: ${url}`);
+  
+          try {
+              const response = await fetch(url, {
+                  method: 'PUT',
+                  body: formData,
+              });
+              console.log(`IPFS Response: ${response.status}`);
+              if (!response.ok) {
+                  addError(files[0].name, await response.text());
+                  return;
+              }
+              const locationHeader = response.headers.get('Location');
+              addURL(locationHeader);
+          } catch (error) {
+              console.error(`Error uploading to IPFS:`, error);
+              addError(files[0].name, error.message);
+          }
+      }
+      uploadingItem.remove();
+  }
+  
+  async function generateHyperdriveKey(name) {
+      try {
+          const response = await fetch(`hyper://localhost/?key=${name}`, { method: 'POST' });
+          if (!response.ok) {
+              throw new Error(`Failed to generate Hyperdrive key: ${response.statusText}`);
+          }
+          return await response.text();
+      } catch (error) {
+          console.error('Error generating Hyperdrive key:', error);
+          throw error;
+      }
+  }
+  
+  function addURL(url) {
+      const li = document.createElement('li');
+      li.innerHTML = `<a href="${url}">${url}</a>`;
+      uploadListBox.appendChild(li);
+  }
+  
+  function addError(name, text) {
+      const li = document.createElement('li');
+      li.className = 'log';
+      li.textContent = `Error in ${name}: ${text}`;
+      uploadListBox.appendChild(li);
+  }
 </script>
