@@ -99,6 +99,19 @@ export async function createHandler(ipfsOptions, session) {
         rootCid = result.cid;
       }
 
+      // 1) Pin it locally so it survives any GC
+      for await (const pinned of node.pins.add(rootCid)) {
+        console.log("Pinned root CID:", pinned.toString());
+      }
+  
+      // 2) Advertise it on the DHT so others can discover it
+      try {
+        await node.routing.provide(rootCid);
+        console.log("Provided CID on DHT:", rootCid.toString());
+      } catch (err) {
+        console.error("Error providing CID to DHT:", err);
+      }
+  
       // Return URL without appending filename
       const fileUrl = `ipfs://${rootCid.toString()}/`;
 
