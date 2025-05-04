@@ -1,14 +1,33 @@
 :root {
-  --peersky-background-color: #000000;
-  --peersky-p2p-background-color: #18181b;
-  --peersky-text-color: #ffffff;
-  --background-nav: #27272a;
-  --background-url-input: #171717;
-  --background-find-menu: #202125;
-  --button-color: #9ca3af;
-  --button-hover-color: #e5e7eb;
-  --button-active-color: #ffffff;
-  --button-inactive-color: #6b7280;
-  --peersky-primary-color: #06b6d4;
+  /* Base16 Color Palette */
+  --base00: #000000; /* Default Background */
+  --base01: #18181b; /* Lighter Background */
+  --base02: #27272a; /* Selection Background */
+  --base03: #202125; /* Line Highlighting */
+  --base04: #6b7280; /* Dark Foreground */
+  --base05: #9ca3af; /* Default Foreground */
+  --base06: #e5e7eb; /* Light Foreground */
+  --base07: #ffffff; /* Light Background */
+  --base08: #ff0000; /* Accent Color */
+  --base09: #ffa500; /* Accent Color */
+  --base0A: #ffff00; /* Accent Color */
+  --base0B: #00ff00; /* Accent Color */
+  --base0C: #00ffff; /* Accent Color */
+  --base0D: #06b6d4; /* Primary Color */
+  --base0E: #ff00ff; /* Accent Color */
+  --base0F: #a52a2a; /* Accent Color */
+
+  /* Component-Specific Variables */
+  --peersky-background-color: var(--base00);
+  --peersky-p2p-background-color: var(--base01);
+  --peersky-text-color: var(--base07);
+  --background-nav: var(--base02);
+  --background-url-input: var(--base01);
+  --background-find-menu: var(--base03);
+  --button-color: var(--base05);
+  --button-hover-color: var(--base06);
+  --button-active-color: var(--base07);
+  --button-inactive-color: var(--base04);
+  --peersky-primary-color: var(--base0D);
   --font-family-main: Arial, sans-serif;
 }
