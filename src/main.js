@@ -1,6 +1,7 @@
 import { app, session, protocol as globalProtocol } from "electron";
-import { createHandler as createIPFSHandler } from "./protocols/ipfs-handler.js";
 import { createHandler as createBrowserHandler } from "./protocols/browser-protocol.js";
+import { createHandler as createBrowserThemeHandler } from "./protocols/theme-handler.js";
+import { createHandler as createIPFSHandler } from "./protocols/ipfs-handler.js";
 import { createHandler as createHyperHandler } from "./protocols/hyper-handler.js";
 import { createHandler as createWeb3Handler } from "./protocols/web3-handler.js";
 import { ipfsOptions, hyperOptions } from "./protocols/config.js";
@@ -31,12 +32,13 @@ const BROWSER_PROTOCOL = {
 let windowManager;
 
 globalProtocol.registerSchemesAsPrivileged([
+  { scheme: "peersky", privileges: BROWSER_PROTOCOL },
+  { scheme: "browser", privileges: BROWSER_PROTOCOL },
   { scheme: "ipfs", privileges: P2P_PROTOCOL },
   { scheme: "ipns", privileges: P2P_PROTOCOL },
   { scheme: "pubsub", privileges: P2P_PROTOCOL },
   { scheme: "hyper", privileges: P2P_PROTOCOL },
   { scheme: "web3", privileges: P2P_PROTOCOL },
-  { scheme: "peersky", privileges: BROWSER_PROTOCOL },
 ]);
 
 app.whenReady().then(async () => {
@@ -93,11 +95,18 @@ app.on("before-quit", (event) => {
 async function setupProtocols(session) {
   const { protocol: sessionProtocol } = session;
 
+  app.setAsDefaultProtocolClient("peersky");
+  app.setAsDefaultProtocolClient("browser");
   app.setAsDefaultProtocolClient("ipfs");
   app.setAsDefaultProtocolClient("ipns");
   app.setAsDefaultProtocolClient("hyper");
   app.setAsDefaultProtocolClient("web3");
-  app.setAsDefaultProtocolClient("peersky");
+
+  const browserProtocolHandler = await createBrowserHandler();
+  sessionProtocol.registerStreamProtocol("peersky", browserProtocolHandler, BROWSER_PROTOCOL);
+
+  const browserThemeHandler = await createBrowserThemeHandler();
+  sessionProtocol.registerStreamProtocol("browser", browserThemeHandler, BROWSER_PROTOCOL);
 
   const ipfsProtocolHandler = await createIPFSHandler(ipfsOptions, session);
   sessionProtocol.registerStreamProtocol("ipfs", ipfsProtocolHandler, P2P_PROTOCOL);
@@ -109,9 +118,6 @@ async function setupProtocols(session) {
 
   const web3ProtocolHandler = await createWeb3Handler();
   sessionProtocol.registerStreamProtocol("web3", web3ProtocolHandler, P2P_PROTOCOL);
-
-  const browserProtocolHandler = await createBrowserHandler();
-  sessionProtocol.registerStreamProtocol("peersky", browserProtocolHandler, BROWSER_PROTOCOL);
 }
 
 app.on("window-all-closed", () => {
