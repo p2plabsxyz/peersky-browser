@@ -1,4 +1,4 @@
-@import url("peersky://static/css/index.css");
+@import url("browser://theme/index.css");
 
 :root {
   --hyper-chat-bg: #121313;
