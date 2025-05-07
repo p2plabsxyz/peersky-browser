@@ -43,67 +43,40 @@ async function uploadFile(file) {
     const protocol = protocolSelect.value;
     console.log(`[uploadFile] Uploading ${file.name}, protocol: ${protocol}`);
 
+    let url;
     if (protocol === 'hyper') {
         const hyperdriveUrl = await getOrCreateHyperdrive();
-        const url = `${hyperdriveUrl}${encodeURIComponent(file.name)}`;
+        url = `${hyperdriveUrl}${encodeURIComponent(file.name)}`;
         console.log(`[uploadFile] Hyper URL: ${url}`);
-
-        try {
-            const response = await fetch(url, {
-                method: 'PUT',
-                body: file, // Send raw file bytes
-                headers: {
-                    'Content-Type': file.type || 'text/html'
-                }
-            });
-
-            console.log(`[uploadFile] Response status: ${response.status}, ok: ${response.ok}`);
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error(`[uploadFile] Error uploading ${file.name}: ${errorText}`);
-                addError(file.name, errorText);
-                return;
-            }
-
-            addURL(url);
-        } catch (error) {
-            console.error(`[uploadFile] Error uploading ${file.name}:`, error);
-            addError(file.name, error.message);
-        } finally {
-            showSpinner(false);
-        }
     } else {
-        // IPFS upload with FormData
-        const formData = new FormData();
-        console.log(`[uploadFile] Appending file for IPFS: ${file.name}`);
-        formData.append('file', file, file.name);
-
-        const url = `ipfs://bafyaabakaieac/`;
+        url = `ipfs://bafyaabakaieac/${encodeURIComponent(file.name)}`;
         console.log(`[uploadFile] IPFS URL: ${url}`);
+    }
 
-        try {
-            const response = await fetch(url, {
-                method: 'PUT',
-                body: formData,
-            });
-
-            console.log(`[uploadFile] IPFS Response status: ${response.status}, ok: ${response.ok}`);
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error(`[uploadFile] IPFS Error: ${errorText}`);
-                addError(file.name, errorText);
-                return;
+    try {
+        const response = await fetch(url, {
+            method: 'PUT',
+            body: file, // Send raw file bytes
+            headers: {
+                'Content-Type': file.type || 'text/html'
             }
+        });
 
-            const locationHeader = response.headers.get('Location');
-            console.log(`[uploadFile] IPFS Location header: ${locationHeader}`);
-            addURL(locationHeader);
-        } catch (error) {
-            console.error(`[uploadFile] Error uploading to IPFS:`, error);
-            addError(file.name, error.message);
-        } finally {
-            showSpinner(false);
+        console.log(`[uploadFile] Response status: ${response.status}, ok: ${response.ok}`);
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`[uploadFile] Error uploading ${file.name}: ${errorText}`);
+            addError(file.name, errorText);
+            return;
         }
+
+        const finalUrl = protocol === 'hyper' ? url : response.headers.get('Location');
+        addURL(finalUrl);
+    } catch (error) {
+        console.error(`[uploadFile] Error uploading ${file.name}:`, error);
+        addError(file.name, error.message);
+    } finally {
+        showSpinner(false);
     }
 }
 
