@@ -75,7 +75,6 @@ export async function createHandler() {
 
     if (parsedUrl.hostname === 'theme') {
       const fileName = parsedUrl.pathname.slice(1);
-      console.log('Attempting to serve:', fileName);
 
       try {
         const resolvedPath = await resolveFile(fileName);
