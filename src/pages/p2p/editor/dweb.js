@@ -1,8 +1,14 @@
 import { update, showSpinner, basicCSS } from './codeEditor.js';
 import { $, uploadButton, protocolSelect, fetchButton, fetchCidInput } from './common.js';
 
-// assemble code before uploading
+// Assemble code before uploading
 export async function assembleCode() {
+    const title = document.getElementById("titleInput").value.trim();
+    if (!title) {
+        alert("Please enter a title for your project.");
+        return;
+    }
+
     // Display loading spinner
     showSpinner(true);
 
@@ -22,7 +28,8 @@ export async function assembleCode() {
 
     // Convert the combined code into a Blob
     const blob = new Blob([combinedCode], { type: 'text/html' });
-    const file = new File([blob], "index.html", { type: 'text/html' });
+    const fileName = `${title.replace(/\s+/g, '-').toLowerCase()}.html`;
+    const file = new File([blob], fileName, { type: 'text/html' });
 
     // Upload the file
     await uploadFile(file);
@@ -37,9 +44,8 @@ async function uploadFile(file) {
     console.log(`[uploadFile] Uploading ${file.name}, protocol: ${protocol}`);
 
     if (protocol === 'hyper') {
-        const hyperdriveUrl = await generateHyperdriveKey();
+        const hyperdriveUrl = await getOrCreateHyperdrive();
         const url = `${hyperdriveUrl}${encodeURIComponent(file.name)}`;
-        const cleanUrl = url.replace(/index\.html$/, '');
         console.log(`[uploadFile] Hyper URL: ${url}`);
 
         try {
@@ -59,7 +65,7 @@ async function uploadFile(file) {
                 return;
             }
 
-            addURL(cleanUrl);
+            addURL(url);
         } catch (error) {
             console.error(`[uploadFile] Error uploading ${file.name}:`, error);
             addError(file.name, error.message);
@@ -101,25 +107,24 @@ async function uploadFile(file) {
     }
 }
 
-async function generateHyperdriveKey() {
-    // Generate a unique name using timestamp and random string
-    const timestamp = Date.now();
-    const randomStr = Math.random().toString(36).substring(2, 8);
-    const uniqueName = `p2p-editor-${timestamp}-${randomStr}`;
-    console.log(`[generateHyperdriveKey] Generating key for name: ${uniqueName}`);
+let hyperdriveUrl = null;
 
-    try {
-        const response = await fetch(`hyper://localhost/?key=${encodeURIComponent(uniqueName)}`, { method: 'POST' });
-        if (!response.ok) {
-            throw new Error(`Failed to generate Hyperdrive key: ${response.statusText}`);
+async function getOrCreateHyperdrive() {
+    if (!hyperdriveUrl) {
+        const name = 'p2p-editor';
+        try {
+            const response = await fetch(`hyper://localhost/?key=${encodeURIComponent(name)}`, { method: 'POST' });
+            if (!response.ok) {
+                throw new Error(`Failed to generate Hyperdrive key: ${response.statusText}`);
+            }
+            hyperdriveUrl = await response.text();
+            console.log(`[getOrCreateHyperdrive] Hyperdrive URL: ${hyperdriveUrl}`);
+        } catch (error) {
+            console.error('[getOrCreateHyperdrive] Error generating Hyperdrive key:', error);
+            throw error;
         }
-        const hyperUrl = await response.text();
-        console.log(`[generateHyperdriveKey] Hyperdrive URL: ${hyperUrl}`);
-        return hyperUrl; // Returns the hyper:// URL
-    } catch (error) {
-        console.error('[generateHyperdriveKey] Error generating Hyperdrive key:', error);
-        throw error;
     }
+    return hyperdriveUrl;
 }
 
 function addURL(url) {
@@ -191,11 +196,7 @@ function parseAndDisplayData(data) {
 
     // Extracting CSS
     const styleElements = Array.from(doc.querySelectorAll('style'));
-
-    // Remove the first element (agregore theme CSS)
-    styleElements.shift();
-
-    // Now combine the CSS from the remaining <style> elements
+    styleElements.shift(); // Remove the first element (basicCSS)
     let cssContent = styleElements.map(style => style.innerHTML).join('');
 
     // Extracting JavaScript
