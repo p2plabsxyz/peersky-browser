@@ -9,19 +9,23 @@ const __dirname = fileURLToPath(new URL('./', import.meta.url));
 export async function createHandler() {
   return async function protocolHandler({ url }, sendResponse) {
     const parsedUrl = new URL(url);
-    let filePath;
 
     if (parsedUrl.hostname === 'theme') {
       const fileName = parsedUrl.pathname.slice(1);
-      filePath = path.join(__dirname, '../pages/theme', fileName);
+      const filePath = path.join(__dirname, '../pages/theme', fileName);
       console.log('Attempting to serve:', filePath);
 
       if (!fs.existsSync(filePath)) {
         console.log('File not found:', filePath);
         sendResponse({
           statusCode: 404,
-          headers: { 'Content-Type': 'text/plain' },
-          data: Readable.from(['File not found'])
+          headers: {
+            'Content-Type': 'text/html',
+            'Access-Control-Allow-Origin': '*',
+            'Allow-CSP-From': '*',
+            'Cache-Control': 'no-cache'
+          },
+          data: fs.createReadStream(path.join(__dirname, '../pages/404.html'))
         });
         return;
       }
@@ -30,19 +34,27 @@ export async function createHandler() {
       const data = fs.createReadStream(filePath);
       const contentType = mime.lookup(filePath) || 'text/plain';
       const headers = {
-        'Content-Type': contentType
+        'Content-Type': contentType,
+        'Access-Control-Allow-Origin': '*',
+        'Allow-CSP-From': '*',
+        'Cache-Control': 'no-cache'
       };
 
       sendResponse({
         statusCode,
         headers,
-        data,
+        data
       });
     } else {
       sendResponse({
         statusCode: 404,
-        headers: { 'Content-Type': 'text/plain' },
-        data: Readable.from(['Not found'])
+        headers: {
+          'Content-Type': 'text/html',
+          'Access-Control-Allow-Origin': '*',
+          'Allow-CSP-From': '*',
+          'Cache-Control': 'no-cache'
+        },
+        data: fs.createReadStream(path.join(__dirname, '../pages/404.html'))
       });
     }
   };
