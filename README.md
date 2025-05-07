@@ -24,10 +24,11 @@
   - [x] Reload
   - [x] Browser protocol (peersky://)
   - [x] Home page (peersky://home)
+  - [x] Cross browser themeing ([browser://theme](https://github.com/p2plabsxyz/peersky-browser/blob/main/docs/Theme.md))
   - [x] Search engine
     - DuckDuckGo (default)
     - Ecosia
-  - [ ] [Tabs?](https://github.com/p2plabsxyz/peersky-browser/issues/11)
+  - [ ] [Tabs](https://github.com/p2plabsxyz/peersky-browser/issues/11)
 
 - [x] IPFS protocol handler:
 
@@ -104,7 +105,7 @@
   - [ ] Change themes
   - [ ] Clear browser cache
 
-- [ ] Web extensions:
+- [ ] [Web extensions](https://github.com/p2plabsxyz/peersky-browser/issues/19):
   - [ ] Ability to add and manage extensions
   - [ ] Default extensions
     - [Ad-blocker](https://github.com/gorhill/uBlock)
