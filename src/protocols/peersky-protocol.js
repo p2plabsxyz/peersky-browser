@@ -1,9 +1,37 @@
 import path from "path";
 import { fileURLToPath } from 'url';
-import fs from "fs";
 import mime from "mime-types";
+import { Readable } from 'stream';
+import ScopedFS from 'scoped-fs';
 
-const __dirname = fileURLToPath(new URL('./', import.meta.url))
+const __dirname = fileURLToPath(new URL('./', import.meta.url));
+const pagesPath = path.join(__dirname, '../pages');
+const fs = new ScopedFS(pagesPath);
+
+const CHECK_PATHS = [
+  (path) => path,
+  (path) => path + '/index.html',
+  (path) => path + '.html'
+];
+
+async function resolveFile(filePath) {
+  for (const toTry of CHECK_PATHS) {
+    const tryPath = toTry(filePath);
+    if (await exists(tryPath)) return tryPath;
+  }
+  throw new Error('File not found');
+}
+
+async function exists(filePath) {
+  return new Promise((resolve, reject) => {
+    fs.stat(filePath, (err, stat) => {
+      if (err) {
+        if (err.code === 'ENOENT') resolve(false);
+        else reject(err);
+      } else resolve(stat.isFile());
+    });
+  });
+}
 
 export async function createHandler() {
   return async function protocolHandler({ url }, sendResponse) {
@@ -12,89 +40,49 @@ export async function createHandler() {
 
     if (filePath === '/') filePath = 'home'; // default to home page
 
-    let absolutePath = path.join(__dirname, `../pages/${filePath}`);
-
-    // Resolve file existence and format
-    const format = path.extname(absolutePath);
-    switch (format) {
-      case '':
-        if (fs.existsSync(absolutePath) && fs.statSync(absolutePath).isDirectory()) {
-          // Try to find index.html in the directory
-          const indexPath = path.join(absolutePath, 'index.html');
-          if (fs.existsSync(indexPath)) {
-            absolutePath = indexPath;
-          } else {
-            sendResponse({
-              statusCode: 404,
-              headers: { "Content-Type": "text/html" },
-              data: fs.createReadStream(path.join(__dirname, "../pages/404.html")),
-            });
-            return;
-          }
-        } else {
-          // Try appending '.html' to absolutePath
-          absolutePath += '.html';
-          if (!fs.existsSync(absolutePath)) {
-            sendResponse({
-              statusCode: 404,
-              headers: { "Content-Type": "text/html" },
-              data: fs.createReadStream(path.join(__dirname, "../pages/404.html")),
-            });
-            return;
-          }
-        }
-        break;
-      case '.html':
-        if (!fs.existsSync(absolutePath)) {
-          sendResponse({
-            statusCode: 404,
-            headers: { "Content-Type": "text/html" },
-            data: fs.createReadStream(path.join(__dirname, "../pages/404.html")),
-          });
-          return;
-        }
-        break;
-      case '.js':
-      case '.css':
-      case '.png':
-      case '.jpg':
-      case '.jpeg':
-      case '.gif':
-      case '.svg':
-        if (!fs.existsSync(absolutePath)) {
-          sendResponse({
-            statusCode: 404,
-            headers: { "Content-Type": "text/plain" },
-            data: "File not found",
-          });
-          return;
-        }
-        break;
-      default:
+    try {
+      const resolvedPath = await resolveFile(filePath);
+      const format = path.extname(resolvedPath);
+      if (!['', '.html', '.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg'].includes(format)) {
         sendResponse({
           statusCode: 403,
-          headers: { "Content-Type": "text/plain" },
-          data: "Unsupported file type",
+          headers: {
+            'Content-Type': 'text/plain',
+            'Access-Control-Allow-Origin': '*',
+            'Allow-CSP-From': '*',
+            'Cache-Control': 'no-cache'
+          },
+          data: Readable.from(['Unsupported file type'])
         });
         return;
+      }
+
+      const statusCode = 200;
+      const data = fs.createReadStream(resolvedPath);
+      const contentType = mime.lookup(resolvedPath) || 'text/plain';
+      const headers = {
+        'Content-Type': contentType,
+        'Access-Control-Allow-Origin': '*',
+        'Allow-CSP-From': '*',
+        'Cache-Control': 'no-cache'
+      };
+
+      sendResponse({
+        statusCode,
+        headers,
+        data
+      });
+    } catch (e) {
+      sendResponse({
+        statusCode: 404,
+        headers: {
+          'Content-Type': 'text/html',
+          'Access-Control-Allow-Origin': '*',
+          'Allow-CSP-From': '*',
+          'Cache-Control': 'no-cache'
+        },
+        data: fs.createReadStream('404.html')
+      });
     }
-
-    const statusCode = 200;
-    const data = fs.createReadStream(absolutePath);
-
-    const contentType = mime.lookup(absolutePath) || "text/plain";
-
-    const headers = {
-      "Access-Control-Allow-Origin": "*",
-      "Allow-CSP-From": "*",
-      "Cache-Control": "no-cache",
-      "Content-Type": contentType,
-    };
-
-    sendResponse({
-      statusCode,
-      headers,
-      data,
-    });
   };
-};
+}
