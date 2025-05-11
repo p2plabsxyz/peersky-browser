@@ -17,17 +17,19 @@
   --base0E: #ff00ff; /* Accent Color */
   --base0F: #a52a2a; /* Accent Color */
 
-  /* Component-Specific Variables */
-  --peersky-background-color: var(--base00);
-  --peersky-p2p-background-color: var(--base01);
-  --peersky-text-color: var(--base07);
-  --background-nav: var(--base02);
-  --background-url-input: var(--base01);
-  --background-find-menu: var(--base03);
-  --button-color: var(--base05);
-  --button-hover-color: var(--base06);
-  --button-active-color: var(--base07);
-  --button-inactive-color: var(--base04);
-  --peersky-primary-color: var(--base0D);
-  --font-family-main: Arial, sans-serif;
+  /* Standardized Browser Theme Variables */
+  --browser-theme-font-family: Arial, sans-serif;
+  --browser-theme-background: var(--base01);
+  --browser-theme-text-color: var(--base07);
+  --browser-theme-primary-highlight: var(--base0D);
+  --browser-theme-secondary-highlight: var(--base0C);
+
+  /* Peersky-Specific Variables */
+  --peersky-nav-background: var(--base02);
+  --peersky-nav-button-color: var(--base05);
+  --peersky-nav-button-hover: var(--base06);
+  --peersky-nav-button-active: var(--base07);
+  --peersky-nav-button-inactive: var(--base04);
+  --peersky-background-url-input: var(--base01);
+  --peersky-background-find-menu: var(--base03);
 }

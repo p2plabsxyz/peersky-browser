@@ -5,7 +5,7 @@ body {
   margin: auto;
   height: 100%;
   width: 100%;
-  font-family: var(--font-family-main);
+  font-family: var(--browser-theme-font-family);
 }
 
 input, button, textarea, select, select *, option  {
@@ -20,7 +20,7 @@ input, button, textarea, select, select *, option  {
 #navbox {
   display: flex;
   align-items: center;
-  background-color: var(--background-nav);
+  background-color: var(--peersky-nav-background);
   gap: 8px;
   padding: 8px;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
@@ -29,7 +29,7 @@ input, button, textarea, select, select *, option  {
 .match-count {
   margin: 0 5px;
   font-size: 12px;
-  color: var(--button-color);
+  color: var(--peersky-nav-button-color);
   min-width: 60px;
   text-align: center;
 }
@@ -40,21 +40,21 @@ input, button, textarea, select, select *, option  {
   border: none;
   padding: 4px;
   cursor: pointer;
-  color: var(--button-color);
+  color: var(--peersky-nav-button-color);
   transition: color 0.2s ease-in-out;
 }
 
 .nav-button.active {
-  color: var(--button-active-color);
+  color: var(--peersky-nav-button-active);
 }
 
 .nav-button:disabled {
-  color: var(--button-inactive-color);
+  color: var(--peersky-nav-button-inactive);
   cursor: not-allowed;
 }
 
 .nav-button:hover:not(:disabled) {
-  color: var(--button-hover-color);
+  color: var(--peersky-nav-button-hover);
 }
 
 .svg-container {
@@ -64,11 +64,11 @@ input, button, textarea, select, select *, option  {
 }
 
 #url {
-  background-color: var(--background-url-input);
+  background-color: var(--peersky-background-url-input);
   border: none;
   margin-left: 6px;
   margin-right: 6px;
-  color: var(--peersky-text-color);
+  color: var(--browser-theme-text-color);
   font-size: medium;
   border-radius: 8px;
   display: block;
@@ -78,12 +78,12 @@ input, button, textarea, select, select *, option  {
 }
 
 #url:hover {
-  background-color: var(--background-url-input);
+  background-color: var(--peersky-background-url-input);
   box-shadow: 0 0 4px -1px #0a0a0a;
 }
 
 #url:focus {
-  background-color: var(--background-url-input);
+  background-color: var(--peersky-background-url-input);
   outline: none;
   box-shadow: 0 0 4px -1px #0a0a0a;
 }
@@ -96,7 +96,7 @@ find-menu {
   padding: 0.3em;
   border-radius: 6px;
   font-size: medium;
-  background-color: var(--background-find-menu);
+  background-color: var(--peersky-background-find-menu);
   position: absolute;
   z-index: 10;
 }
@@ -107,8 +107,8 @@ find-menu {
   border: none;
   font-size: inherit;
   font-family: inherit;
-  background-color: var(--background-find-menu);
-  color: var(--peersky-text-color);
+  background-color: var(--peersky-background-find-menu);
+  color: var(--browser-theme-text-color);
   outline: none;
 }
 
@@ -119,11 +119,11 @@ find-menu {
   font-size: inherit;
   font-family: inherit;
   cursor: pointer;
-  color: var(--button-color);
+  color: var(--peersky-nav-button-color);
 }
 
 .find-menu-button:hover {
-  color: var(--button-hover-color);
+  color: var(--peersky-nav-button-hover);
 }
 
 .hidden {

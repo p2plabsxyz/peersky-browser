@@ -2,9 +2,9 @@
 
 :root {
   --hyper-chat-bg: #121313;
-  --hyper-chat-text-color: var(--peersky-text-color);
-  --hyper-chat-nav-bg: var(--background-nav);
-  --hyper-chat-input-bg: var(--background-url-input);
+  --hyper-chat-text-color: var(--browser-theme-text-color);
+  --hyper-chat-nav-bg: var(--peersky-nav-background);
+  --hyper-chat-input-bg: var(--peersky-background-url-input);
   --hyper-chat-border: #444;
   --hyper-chat-message-left: #3c3c41;
   --hyper-chat-message-right: #303131;
@@ -18,7 +18,7 @@ body {
   width: 100%;
   height: 100%;
   background-color: var(--hyper-chat-bg);
-  font-family: var(--font-family-main);
+  font-family: var(--browser-theme-font-family);
   color: var(--hyper-chat-text-color);
 }
 
@@ -42,7 +42,7 @@ main {
 }
 
 #setup > div {
-  color: var(--button-color);
+  color: var(--peersky-nav-button-color);
 }
 
 #join-chat-room-topic {
@@ -54,7 +54,7 @@ input {
   border: none;
   outline: none;
   border-radius: 6px;
-  font-family: var(--font-family-main);
+  font-family: var(--browser-theme-font-family);
   font-size: 1rem;
   color: var(--hyper-chat-text-color);
   padding: 0.6rem 1rem;
@@ -86,7 +86,7 @@ input::placeholder {
   max-width: 600px;
   height: 80vh;
   box-sizing: border-box;
-  background-color: var(--peersky-p2p-background-color);
+  background-color: var(--browser-theme-background);
   border: 1px solid var(--hyper-chat-border);
   border-radius: 8px;
   overflow: hidden;
@@ -119,7 +119,7 @@ input::placeholder {
   width: 6px;
 }
 #messages::-webkit-scrollbar-track {
-  background: var(--peersky-p2p-background-color);
+  background: var(--browser-theme-background);
 }
 #messages::-webkit-scrollbar-thumb {
   background-color: var(--hyper-chat-border);
@@ -212,7 +212,7 @@ input::placeholder {
 }
 
 a {
-  color: var(--peersky-primary-color);
+  color: var(--browser-theme-primary-highlight);
   text-decoration: underline;
 }
 a:hover {

@@ -8,9 +8,9 @@
 body, * {
     padding: 0;
     margin: 0;
-    font-family: var(--font-family-main);
-    background: var(--peersky-p2p-background-color);
-    color: var(--peersky-text-color);
+    font-family: var(--browser-theme-font-family);
+    background: var(--browser-theme-background);
+    color: var(--browser-theme-text-color);
     box-sizing: border-box;
 }
 
@@ -19,8 +19,8 @@ main {
     height: 100vh;
     display: flex;
     flex-direction: column;
-    background: var(--peersky-p2p-background-color);
-    color: var(--peersky-text-color);
+    background: var(--browser-theme-background);
+    color: var(--browser-theme-text-color);
 }
 
 .grid-container {
@@ -38,7 +38,7 @@ main {
     width: 100%;
     height: 100%;
     overflow: auto; /* To handle content overflow */
-    border: 1px solid var(--peersky-primary-color);
+    border: 1px solid var(--browser-theme-primary-highlight);
 }
 
 .grid-container > textarea {
@@ -47,12 +47,12 @@ main {
 }
 
 #viewer {
-    color: var(--peersky-text-color);
+    color: var(--browser-theme-text-color);
 }
 
 div textarea:focus {
-    outline: 2px solid var(--peersky-text-color);
-    color: var(--peersky-text-color);
+    outline: 2px solid var(--browser-theme-text-color);
+    color: var(--browser-theme-text-color);
 }
 
 #dweb-container,
@@ -133,11 +133,11 @@ li {
 
 span {
     pointer-events: cursor;
-    color: var(--peersky-text-color);
+    color: var(--browser-theme-text-color);
 }
 
 span:hover {
-    color: var(--peersky-primary-color);
+    color: var(--browser-theme-primary-highlight);
 }
 
 /* Media query for mobile devices */

@@ -7,8 +7,8 @@ body {
 
 body > pre,
 body > code {
-  background: var(--peersky-background-color);
-  color: var(--peersky-text-color);
+  background: var(--browser-theme-background);
+  color: var(--browser-theme-text-color);
   margin: 0px;
   padding: 12px;
   min-height: calc(100vh - 24px);

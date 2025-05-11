@@ -19,15 +19,15 @@ export let basicCSS = `
 // CSS for iframe preview: Peersky P2P theme
 const previewCSS = `
     :root {
-        --peersky-p2p-background-color: #18181b;
-        --peersky-text-color: #FFFFFF;
+        --browser-theme-background: #18181b;
+        --browser-theme-text-color: #FFFFFF;
     }
     body {
         font-size: 1.2rem;
         margin: 0;
         padding: 0;
-        background: var(--peersky-p2p-background-color);
-        color: var(--peersky-text-color);
+        background: var(--browser-theme-background);
+        color: var(--browser-theme-text-color);
     }
 `;
 
