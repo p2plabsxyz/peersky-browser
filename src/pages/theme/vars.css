@@ -1,13 +1,13 @@
 :root {
   /* Base16 Color Palette */
-  --base00: #000000; /* Default Background */
-  --base01: #18181b; /* Lighter Background */
-  --base02: #27272a; /* Selection Background */
-  --base03: #202125; /* Line Highlighting */
-  --base04: #6b7280; /* Dark Foreground */
-  --base05: #9ca3af; /* Default Foreground */
-  --base06: #e5e7eb; /* Light Foreground */
-  --base07: #ffffff; /* Light Background */
+  --base00: #000000; /* Black - Default dark background for UI or dark theme */
+  --base01: #18181b; /* Dark Gray - Lighter background for URL input, secondary UI elements, or dark theme background */
+  --base02: #27272a; /* Medium Gray - Navigation bar background or selection highlight */
+  --base03: #202125; /* Gray - Find menu background or subtle UI elements like line highlights */
+  --base04: #6b7280; /* Light Gray - Inactive button color or muted foreground text */
+  --base05: #9ca3af; /* Lighter Gray - Default button color or primary foreground text */
+  --base06: #e5e7eb; /* Very Light Gray - Button hover color or light foreground text */
+  --base07: #ffffff; /* White - Active button color, primary text in dark theme, or light theme background */
   --base08: #ffccff; /* Light Violet - Light Accent Variant */
   --base09: #9400d3; /* Dark Violet - Accent for Violet Theme */
   --base0A: #90EE90; /* Light Green - Accent for Green Theme */
