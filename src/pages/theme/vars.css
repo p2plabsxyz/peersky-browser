@@ -8,21 +8,21 @@
   --base05: #9ca3af; /* Default Foreground */
   --base06: #e5e7eb; /* Light Foreground */
   --base07: #ffffff; /* Light Background */
-  --base08: #ff0000; /* Accent Color */
-  --base09: #ffa500; /* Accent Color */
-  --base0A: #ffff00; /* Accent Color */
-  --base0B: #00ff00; /* Accent Color */
-  --base0C: #00ffff; /* Accent Color */
-  --base0D: #06b6d4; /* Primary Color */
-  --base0E: #ff00ff; /* Accent Color */
-  --base0F: #a52a2a; /* Accent Color */
+  --base08: #ffccff; /* Light Violet - Light Accent Variant */
+  --base09: #9400d3; /* Dark Violet - Accent for Violet Theme */
+  --base0A: #90EE90; /* Light Green - Accent for Green Theme */
+  --base0B: #007f00; /* Dark Green - Accent for Green Theme */
+  --base0C: #00ffff; /* Cyan - Light Primary Highlight */
+  --base0D: #06b6d4; /* Blue - Darker Secondary Highlight */
+  --base0E: #ffff99; /* Light Yellow - Light Accent Variant */
+  --base0F: #d4a500; /* Dark Yellow - Accent for Yellow Theme */
 
   /* Standardized Browser Theme Variables */
   --browser-theme-font-family: Arial, sans-serif;
   --browser-theme-background: var(--base01);
   --browser-theme-text-color: var(--base07);
-  --browser-theme-primary-highlight: var(--base0D);
-  --browser-theme-secondary-highlight: var(--base0C);
+  --browser-theme-primary-highlight: var(--base0C);
+  --browser-theme-secondary-highlight: var(--base0D);
 
   /* Peersky-Specific Variables */
   --peersky-nav-background: var(--base02);
