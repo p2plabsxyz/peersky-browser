@@ -4,6 +4,8 @@
 
 The `browser://theme/` protocol provides a standardized way for web applications to access browser-level CSS styles and theme variables in [Peersky](https://peersky.p2plabs.xyz/) and other compatible browsers, such as [Agregore](https://agregore.mauve.moe/). This protocol ensures consistent theming across different browsers by serving CSS files with a common set of variables. It allows developers to build applications that adapt to the browser's theme without needing browser-specific code.
 
+![DWeb Scratchpad in Peersky and Agregore](./images/browser-theme-protocol-example.png)
+
 ## Purpose
 
 The goal of the `browser://theme/` protocol is to:
