@@ -1,17 +1,29 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import path from "path";
 import fs from "fs-extra";
+import ScopedFS from 'scoped-fs';
 import { fileURLToPath } from "url";
 import { attachContextMenus } from "./context-menu.js";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const PERSIST_FILE = path.join(app.getPath("userData"), "lastOpened.json");
 const DEFAULT_SAVE_INTERVAL = 30 * 1000;
+const cssPath = path.join(__dirname, "pages", "theme");
+const cssFS = new ScopedFS(cssPath);
 
-ipcMain.handle("peersky-read-css", (event, name) => {
-  const cssFile = path.join(__dirname, "pages", "static", "css", `${name}.css`);
+ipcMain.handle("peersky-read-css", async (event, name) => {
   try {
-    return fs.readFileSync(cssFile, "utf8");
+    const safeName = path.basename(name).replace(/\.css$/, '') + '.css';
+    const data = await new Promise((resolve, reject) => {
+      cssFS.readFile(safeName, (err, buffer) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(buffer.toString('utf8'));
+        }
+      });
+    });
+    return data;
   } catch (err) {
     console.error(`Failed to read CSS ${name}:`, err);
     return "";

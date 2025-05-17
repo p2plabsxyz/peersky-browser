@@ -1,0 +1,15 @@
+@import url('browser://theme/vars.css');
+
+html,
+body {
+  margin: auto;
+}
+
+body > pre,
+body > code {
+  background: var(--browser-theme-background);
+  color: var(--browser-theme-text-color);
+  margin: 0px;
+  padding: 12px;
+  min-height: calc(100vh - 24px);
+}

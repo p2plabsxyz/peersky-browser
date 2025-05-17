@@ -1,0 +1,35 @@
+:root {
+  /* Base16 Color Palette */
+  --base00: #000000; /* Black - Default dark background for UI or dark theme */
+  --base01: #18181b; /* Dark Gray - Lighter background for URL input, secondary UI elements, or dark theme background */
+  --base02: #27272a; /* Medium Gray - Navigation bar background or selection highlight */
+  --base03: #202125; /* Gray - Find menu background or subtle UI elements like line highlights */
+  --base04: #6b7280; /* Light Gray - Inactive button color or muted foreground text */
+  --base05: #9ca3af; /* Lighter Gray - Default button color or primary foreground text */
+  --base06: #e5e7eb; /* Very Light Gray - Button hover color or light foreground text */
+  --base07: #ffffff; /* White - Active button color, primary text in dark theme, or light theme background */
+  --base08: #ffccff; /* Light Violet - Light Accent Variant */
+  --base09: #9400d3; /* Dark Violet - Accent for Violet Theme */
+  --base0A: #90EE90; /* Light Green - Accent for Green Theme */
+  --base0B: #007f00; /* Dark Green - Accent for Green Theme */
+  --base0C: #00ffff; /* Cyan - Light Primary Highlight */
+  --base0D: #06b6d4; /* Blue - Darker Secondary Highlight */
+  --base0E: #ffff99; /* Light Yellow - Light Accent Variant */
+  --base0F: #d4a500; /* Dark Yellow - Accent for Yellow Theme */
+
+  /* Standardized Browser Theme Variables */
+  --browser-theme-font-family: Arial, sans-serif;
+  --browser-theme-background: var(--base01);
+  --browser-theme-text-color: var(--base07);
+  --browser-theme-primary-highlight: var(--base0C);
+  --browser-theme-secondary-highlight: var(--base0D);
+
+  /* Peersky-Specific Variables */
+  --peersky-nav-background: var(--base02);
+  --peersky-nav-button-color: var(--base05);
+  --peersky-nav-button-hover: var(--base06);
+  --peersky-nav-button-active: var(--base07);
+  --peersky-nav-button-inactive: var(--base04);
+  --peersky-background-url-input: var(--base01);
+  --peersky-background-find-menu: var(--base03);
+}
