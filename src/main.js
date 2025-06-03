@@ -1,4 +1,4 @@
-import { app, session, protocol as globalProtocol } from "electron";
+import { app, session, protocol as globalProtocol, ipcMain, BrowserWindow } from "electron";
 import { createHandler as createBrowserHandler } from "./protocols/peersky-protocol.js";
 import { createHandler as createBrowserThemeHandler } from "./protocols/theme-handler.js";
 import { createHandler as createIPFSHandler } from "./protocols/ipfs-handler.js";
@@ -129,6 +129,27 @@ app.on("window-all-closed", () => {
 app.on("activate", () => {
   if (windowManager.all.length === 0) {
     windowManager.open({ isMainWindow: true });
+  }
+});
+
+ipcMain.on("window-control", (event, command) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  if (!window) return;
+  
+  switch (command) {
+    case "minimize":
+      window.minimize();
+      break;
+    case "maximize":
+      if (window.isMaximized()) {
+        window.unmaximize();
+      } else {
+        window.maximize();
+      }
+      break;
+    case "close":
+      window.close();
+      break;
   }
 });
 

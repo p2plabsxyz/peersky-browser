@@ -24,6 +24,8 @@ input, button, textarea, select, select *, option  {
   gap: 8px;
   padding: 8px;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .match-count {
@@ -128,4 +130,188 @@ find-menu {
 
 .hidden {
   display: none !important;
+}
+
+/* Add these styles to your existing CSS */
+
+.tabbar {
+  display: flex;
+  align-items: center;
+  background-color: var(--peersky-nav-background);
+  width: 100%;
+  height: 36px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+}
+
+.tab-container {
+  display: flex;
+  flex-grow: 1;
+  overflow-x: auto;
+  scrollbar-width: none; /* Hide scrollbar in Firefox */
+}
+
+.tab-container::-webkit-scrollbar {
+  display: none; /* Hide scrollbar in Chrome/Safari */
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  min-width: 180px;
+  max-width: 240px;
+  height: 30px;
+  padding: 0 10px;
+  margin: 3px 3px 0 0;
+  background-color: var(--peersky-background-url-input);
+  color: var(--browser-theme-text-color);
+  border-radius: 6px 6px 0 0;
+  font-size: 12px;
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  user-select: none;
+  position: relative;
+}
+
+.tab.active {
+  background-color: var(--browser-theme-background);
+  height: 32px;
+}
+
+.tab-title {
+  flex-grow: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 10px;
+}
+
+.close-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  font-size: 14px;
+  cursor: pointer;
+  color: var(--peersky-nav-button-color);
+}
+
+.close-tab:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+  color: var(--peersky-nav-button-hover);
+}
+
+.add-tab-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: none;
+  border: none;
+  border-radius: 50%;
+  margin: 0 8px;
+  font-size: 20px;
+  cursor: pointer;
+  color: var(--peersky-nav-button-color);
+}
+
+.add-tab-button:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: var(--peersky-nav-button-hover);
+}
+
+/* Adjust the header container */
+.header-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  position: sticky; 
+  top: 38px;
+  z-index: 999;
+  background-color: var(--peersky-nav-background);
+  margin-top: 38px;
+}
+
+/* Adjust webview height to account for tabs */
+tracked-box {
+  height: calc(100vh - 88px) !important;
+  width: 100%;
+}
+
+/* Add this to your existing CSS */
+
+.titlebar {
+  display: flex;
+  height: 38px;
+  background-color: var(--peersky-nav-background);
+  -webkit-app-region: drag; /* Makes the titlebar draggable */
+  user-select: none;
+  width: 100%;
+  position: fixed;
+  top: 0;
+  z-index: 1000;
+}
+
+.app-icon {
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tabbar-container {
+  flex-grow: 1;
+  display: flex;
+  -webkit-app-region: no-drag; /* Make tabs clickable */
+}
+
+.window-controls {
+  display: flex;
+  -webkit-app-region: no-drag; /* Make buttons clickable */
+}
+
+.window-control {
+  width: 46px;
+  height: 38px;
+  border: none;
+  background: none;
+  color: var(--peersky-nav-button-color);
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.window-control:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.window-control.close:hover {
+  background-color: #e81123;
+  color: white;
+}
+
+/* Adjust the tabbar to fit in titlebar */
+.tabbar {
+  width: 100%;
+  height: 38px;
+  background: none;
+}
+
+.tab {
+  height: 32px;
+  margin-top: 6px;
+  margin-bottom: 0;
+}
+
+.tab.active {
+  background-color: var(--browser-theme-background);
+  height: 32px;
 }

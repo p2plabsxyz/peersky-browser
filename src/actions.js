@@ -86,7 +86,14 @@ export function createActions(windowManager) {
       accelerator: "CommandOrControl+W",
       click: (focusedWindow) => {
         if (focusedWindow) {
-          focusedWindow.close();
+          focusedWindow.webContents.executeJavaScript(`
+            const tabBar = document.querySelector('#tabbar');
+            if (tabBar && tabBar.tabs.length > 1) {
+              tabBar.closeTab(tabBar.getActiveTab().id);
+            } else {
+              window.close();
+            }
+          `);
         }
       },
     },
@@ -114,6 +121,66 @@ export function createActions(windowManager) {
                   input.focus();
                 }
               }, 100); // Timeout to ensure the menu is visible and ready to receive focus
+            }
+          `);
+        }
+      },
+    },
+    NewTab: {
+      label: "New Tab",
+      accelerator: "CommandOrControl+T",
+      click: (focusedWindow) => {
+        if (focusedWindow) {
+          focusedWindow.webContents.executeJavaScript(`
+            const tabBar = document.querySelector('#tabbar');
+            if (tabBar) {
+              tabBar.addTab();
+            }
+          `);
+        }
+      },
+    },
+    CloseTab: {
+      label: "Close Tab",
+      accelerator: "CommandOrControl+W",
+      click: (focusedWindow) => {
+        if (focusedWindow) {
+          focusedWindow.webContents.executeJavaScript(`
+            const tabBar = document.querySelector('#tabbar');
+            if (tabBar && tabBar.getActiveTab()) {
+              tabBar.closeTab(tabBar.getActiveTab().id);
+            }
+          `);
+        }
+      },
+    },
+    NextTab: {
+      label: "Next Tab",
+      accelerator: "CommandOrControl+Tab",
+      click: (focusedWindow) => {
+        if (focusedWindow) {
+          focusedWindow.webContents.executeJavaScript(`
+            const tabBar = document.querySelector('#tabbar');
+            if (tabBar && tabBar.tabs.length > 1) {
+              const activeIndex = tabBar.tabs.findIndex(tab => tab.id === tabBar.activeTabId);
+              const nextIndex = (activeIndex + 1) % tabBar.tabs.length;
+              tabBar.selectTab(tabBar.tabs[nextIndex].id);
+            }
+          `);
+        }
+      },
+    },
+    PreviousTab: {
+      label: "Previous Tab",
+      accelerator: "CommandOrControl+Shift+Tab",
+      click: (focusedWindow) => {
+        if (focusedWindow) {
+          focusedWindow.webContents.executeJavaScript(`
+            const tabBar = document.querySelector('#tabbar');
+            if (tabBar && tabBar.tabs.length > 1) {
+              const activeIndex = tabBar.tabs.findIndex(tab => tab.id === tabBar.activeTabId);
+              const prevIndex = (activeIndex - 1 + tabBar.tabs.length) % tabBar.tabs.length;
+              tabBar.selectTab(tabBar.tabs[prevIndex].id);
             }
           `);
         }
