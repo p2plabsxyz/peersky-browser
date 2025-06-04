@@ -2,11 +2,14 @@ import { app } from "electron";
 import path from "path";
 import fs from "fs-extra";
 import crypto from "hypercore-crypto";
-import { libp2pOptions } from "./helia/libp2p.js";
+import { FsBlockstore } from "blockstore-fs";
+import { FsDatastore } from "datastore-fs";
 import { getDefaultChainList } from "web3protocol/chains";
 
 const USER_DATA = app.getPath("userData");
 const DEFAULT_IPFS_DIR = path.join(USER_DATA, "ipfs");
+const BLOCKSTORE_PATH = path.join(DEFAULT_IPFS_DIR, "blocks");
+const DATASTORE_PATH = path.join(DEFAULT_IPFS_DIR, "datastore"); 
 const DEFAULT_HYPER_DIR = path.join(USER_DATA, "hyper");
 const ENS_CACHE = path.join(USER_DATA, "ensCache.json");
 const KEYPAIR_PATH = path.join(DEFAULT_HYPER_DIR, "swarm-keypair.json");
@@ -34,25 +37,15 @@ export function saveKeyPair(keyPair) {
   });
 }
 
-export const ipfsOptions = {
-  libp2p: await libp2pOptions(),
-  repo: DEFAULT_IPFS_DIR,
-  silent: true,
-  preload: {
-    enabled: false,
-  },
-  config: {
-    Addresses: {
-      Swarm: [
-        "/ip4/0.0.0.0/tcp/4002",
-        "/ip4/0.0.0.0/udp/4002/quic",
-        "/ip6/::/tcp/4002",
-        "/ip6/::/udp/4002/quic",
-      ],
-    },
-    Gateway: null,
-  },
-};
+export async function ipfsOptions() {
+  await fs.ensureDir(BLOCKSTORE_PATH);
+  await fs.ensureDir(DATASTORE_PATH);
+  return {
+    repo: DEFAULT_IPFS_DIR,
+    blockstore: new FsBlockstore(BLOCKSTORE_PATH),
+    datastore: new FsDatastore(DATASTORE_PATH),
+  };
+}
 
 export const hyperOptions = {
   // All options here: https://github.com/datproject/sdk/#const-hypercore-hyperdrive-resolvename-keypair-derivesecret-registerextension-close--await-sdkopts
