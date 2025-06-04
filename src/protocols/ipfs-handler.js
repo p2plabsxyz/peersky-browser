@@ -72,13 +72,14 @@ export async function createHandler(ipfsOptions, session) {
   // Function to handle file uploads
   async function handleFileUpload(request, sendResponse) {
     try {
+      const startTime = Date.now();
       const entries = [];
       for (const data of request.uploadData || []) {
         if (data.type === "file" && data.file) {
           const fileName = path.basename(data.file);
           entries.push({
             path: fileName,
-            content: fs.createReadStream(data.file),
+            content: fs.createReadStream(data.file, { highWaterMark: 1024 * 1024 }),
           });
         } else if (data.type === "blob" && data.blobUUID) {
           const blobData = await session.getBlobData(data.blobUUID);
@@ -86,7 +87,7 @@ export async function createHandler(ipfsOptions, session) {
           entries.push({ path: fileName, content: blobData });
         }
       }
-
+  
       if (entries.length === 0) {
         throw new Error("No files found in the upload data.");
       }
@@ -96,23 +97,17 @@ export async function createHandler(ipfsOptions, session) {
       let rootCid;
 
       for await (const result of unixFileSystem.addAll(entries, options)) {
+        console.log("Added:", result.path, result.cid.toString());
         rootCid = result.cid;
       }
-
-      // 1) Pin it locally so it survives any GC
-      for await (const pinned of node.pins.add(rootCid)) {
-        console.log("Pinned root CID:", pinned.toString());
-      }
+      console.log(`Added all files in ${Date.now() - startTime}ms`);
   
-      // 2) Advertise it on the DHT so others can discover it
-      try {
-        await node.routing.provide(rootCid);
-        console.log("Provided CID on DHT:", rootCid.toString());
-      } catch (err) {
-        console.error("Error providing CID to DHT:", err);
-      }
+      await node.pins.add(rootCid, { recursive: true });
+      console.log(`Pinned in ${Date.now() - startTime}ms`);
   
-      // Return URL without appending filename
+      await node.libp2p.contentRouting.provide(rootCid);
+      console.log(`Provided ${rootCid} to DHT in ${Date.now() - startTime}ms`);
+  
       const fileUrl = `ipfs://${rootCid.toString()}/`;
 
       console.log("Files uploaded with root CID:", rootCid.toString());
