@@ -1,3 +1,4 @@
+// @ts-check
 import { createHelia } from "helia";
 import { createLibp2p } from "libp2p";
 import { libp2pDefaults } from "helia";
@@ -9,7 +10,7 @@ import { tcp } from "@libp2p/tcp";
 import { webRTC, webRTCDirect } from "@libp2p/webrtc";
 import { webSockets } from "@libp2p/websockets";
 import { quic } from "@chainsafe/libp2p-quic";
-import { circuitRelayTransport } from "@libp2p/circuit-relay-v2";
+import { circuitRelayTransport, circuitRelayServer } from "@libp2p/circuit-relay-v2";
 import { autoNAT } from "@libp2p/autonat";
 import { uPnPNAT } from "@libp2p/upnp-nat";
 import { dcutr } from "@libp2p/dcutr";
@@ -55,11 +56,9 @@ export async function createNode() {
       quic(),
       webRTC(),
       webRTCDirect(),
-      circuitRelayTransport({
-        discoverRelays: 2,
-      }),
+      circuitRelayTransport(),
     ],
-    connectionEncryption: [noise()],
+    connectionEncrypters: [noise()],
     streamMuxers: [yamux(), mplex()],
     peerDiscovery: [
       mdns(),
@@ -67,7 +66,6 @@ export async function createNode() {
     ],
     services: {
       ...defaults.services,
-      upnpNAT: uPnPNAT(),
       autoNAT: autoNAT(),
       dcutr: dcutr(),
       delegatedRouting: () => createDelegatedRoutingV1HttpApiClient('https://delegated-ipfs.dev', delegatedHTTPRoutingDefaults()),
@@ -80,14 +78,12 @@ export async function createNode() {
       identify: identify(),
       identifyPush: identifyPush(),
       ping: ping(),
+      relay: circuitRelayServer(),
+      upnpNAT: uPnPNAT(),
     },
     connectionManager: {
       maxConnections: 500,
-      minConnections: 100,
       maxParallelDials: 100,
-      maxParallelDialsPerPeer: 10,
-      dialTimeout: 30000,
-      autoDial: true,
     },
     connectionGater: {
       // denyDialMultiaddr: async (multiaddr) => {
@@ -112,21 +108,17 @@ export async function createNode() {
     },
   });
 
+  /** @type {any} */
+  const ds = options.datastore;
+  /** @type {any} */
+  const bs = options.blockstore;
+
   const node = await createHelia({
     ...options,
     libp2p,
-    refresh: false,
-    status: true,
-    block: true
+    datastore: ds,
+    blockstore: bs,
   });
-
-  // Debug logging for node connectivity
-  // node.libp2p.addEventListener("self:peer:update", () => {
-  //   console.log("Node multiaddrs:", node.libp2p.getMultiaddrs().map(ma => ma.toString()));
-  // });
-  // node.libp2p.addEventListener("peer:connect", (evt) => {
-  //   console.log(`Connected to peer: ${evt.detail.toString()}`);
-  // });
 
   return node;
 }
