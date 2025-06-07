@@ -1,11 +1,12 @@
 @import url('browser://theme/vars.css');
 
-html,
-body {
-  margin: auto;
+html, body {
+  margin: 0;
+  padding: 0;
   height: 100%;
   width: 100%;
   font-family: var(--browser-theme-font-family);
+  overflow: hidden;
 }
 
 input, button, textarea, select, select *, option  {
@@ -94,13 +95,14 @@ find-menu {
   display: flex;
   flex-direction: row;
   align-items: center;
-  margin-top: -4px;
   padding: 0.3em;
   border-radius: 6px;
   font-size: medium;
   background-color: var(--peersky-background-find-menu);
-  position: absolute;
-  z-index: 10;
+  position: fixed;
+  top: 88px;
+  right: 20px;
+  z-index: 1001;
 }
 
 .find-menu-input {
@@ -132,16 +134,13 @@ find-menu {
   display: none !important;
 }
 
-/* Add these styles to your existing CSS */
-
 .tabbar {
   display: flex;
   align-items: center;
   background-color: var(--peersky-nav-background);
   width: 100%;
   height: 36px;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: visible;
   white-space: nowrap;
 }
 
@@ -149,20 +148,23 @@ find-menu {
   display: flex;
   flex-grow: 1;
   overflow-x: auto;
-  scrollbar-width: none; /* Hide scrollbar in Firefox */
-}
-
-.tab-container::-webkit-scrollbar {
-  display: none; /* Hide scrollbar in Chrome/Safari */
+  overflow-y: hidden;
+  scroll-behavior: smooth;;
+  max-width: 100%;
+  min-width: 0;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 .tab {
   display: flex;
   align-items: center;
-  min-width: 180px;
+  min-width: 48px !important;
   max-width: 240px;
+  width: 0;
+  flex: 1 1 auto;
   height: 30px;
-  padding: 0 10px;
+  padding: 0 2px 0 5px;
   margin: 3px 3px 0 0;
   background-color: var(--peersky-background-url-input);
   color: var(--browser-theme-text-color);
@@ -174,6 +176,13 @@ find-menu {
   text-overflow: ellipsis;
   user-select: none;
   position: relative;
+  -webkit-app-region: no-drag;
+  box-sizing: border-box;
+}
+
+.tab-container::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .tab.active {
@@ -182,31 +191,37 @@ find-menu {
 }
 
 .tab-title {
-  flex-grow: 1;
+  flex: 1 1 0%;
+  min-width: 0 !important;
+  max-width: 100%;
+  width: 0;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  padding-right: 10px;
+  padding-right: 2px;
+  -webkit-app-region: no-drag;
+  font-size: 11px;
 }
 
 .close-tab {
   display: flex;
   align-items: center;
   justify-content: center;
+  min-width: 16px;
   width: 16px;
   height: 16px;
+  flex-shrink: 0;
   border-radius: 50%;
   font-size: 14px;
   cursor: pointer;
   color: var(--peersky-nav-button-color);
-}
-
-.close-tab:hover {
-  background-color: rgba(255, 255, 255, 0.2);
-  color: var(--peersky-nav-button-hover);
+  -webkit-app-region: no-drag;
+  margin-left: auto;
 }
 
 .add-tab-button {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
   width: 28px;
@@ -218,6 +233,7 @@ find-menu {
   font-size: 20px;
   cursor: pointer;
   color: var(--peersky-nav-button-color);
+  -webkit-app-region: no-drag;
 }
 
 .add-tab-button:hover {
@@ -225,35 +241,40 @@ find-menu {
   color: var(--peersky-nav-button-hover);
 }
 
-/* Adjust the header container */
 .header-container {
   display: flex;
   flex-direction: column;
   width: 100%;
-  position: sticky; 
+  position: fixed; 
   top: 38px;
+  left: 0;
+  right: 0;
   z-index: 999;
   background-color: var(--peersky-nav-background);
-  margin-top: 38px;
 }
 
-/* Adjust webview height to account for tabs */
 tracked-box {
+  position: fixed;
+  top: 88px;
+  left: 0;
+  right: 0;
+  bottom: 0;
   height: calc(100vh - 88px) !important;
   width: 100%;
+  overflow: hidden;
 }
-
-/* Add this to your existing CSS */
 
 .titlebar {
   display: flex;
   height: 38px;
   background-color: var(--peersky-nav-background);
-  -webkit-app-region: drag; /* Makes the titlebar draggable */
+  -webkit-app-region: drag;
   user-select: none;
   width: 100%;
   position: fixed;
   top: 0;
+  left: 0;
+  right: 0;
   z-index: 1000;
 }
 
@@ -263,17 +284,19 @@ tracked-box {
   display: flex;
   align-items: center;
   justify-content: center;
+  -webkit-app-region: drag;
 }
 
 .tabbar-container {
-  flex-grow: 1;
-  display: flex;
-  -webkit-app-region: no-drag; /* Make tabs clickable */
+  flex: 1 1 auto;;
+  -webkit-app-region: no-drag;
+  min-width: 0;
+  overflow: hidden;;
 }
 
 .window-controls {
   display: flex;
-  -webkit-app-region: no-drag; /* Make buttons clickable */
+  -webkit-app-region: no-drag;
 }
 
 .window-control {
@@ -298,20 +321,70 @@ tracked-box {
   color: white;
 }
 
-/* Adjust the tabbar to fit in titlebar */
 .tabbar {
   width: 100%;
   height: 38px;
   background: none;
+  -webkit-app-region: drag;
 }
 
 .tab {
   height: 32px;
   margin-top: 6px;
   margin-bottom: 0;
+  -webkit-app-region: no-drag;
 }
 
 .tab.active {
   background-color: var(--browser-theme-background);
   height: 32px;
+}
+
+.webview-container {
+  position: fixed;
+  top: 88px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: calc(100vh - 88px);
+  overflow: hidden;
+  background-color: var(--browser-theme-background, #333);
+  display: flex;
+}
+
+.tab-webview {
+  width: 100%;
+  height: 100%;
+  border: none;
+  flex: 1;
+  min-height: 0;
+}
+
+.tab-webview[style*="display: block"] {
+  display: flex !important;
+  flex: 1;
+}
+
+.tab-webview {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: none;
+}
+
+.tab.loading .tab-title::before {
+  content: "⟳";
+  display: inline-block;
+  margin-right: 5px;
+  animation: spin 1s infinite linear;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.tab.loading {
+  color: var(--peersky-nav-button-active);
 }

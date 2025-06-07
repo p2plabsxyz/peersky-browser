@@ -8,176 +8,148 @@ import {
 const { ipcRenderer } = require("electron");
 
 const DEFAULT_PAGE = "peersky://home";
-const webviewContainer = document.querySelector("#webview");
+const webviewContainer = document.querySelector("#webview-container");
 const nav = document.querySelector("#navbox");
 const findMenu = document.querySelector("#find");
 const pageTitle = document.querySelector("title");
-const tabBar = document.querySelector("#tabbar");
 
-// Map to track which tab has which webview content
-const tabContents = new Map();
-
+// Get initial URL from search params
 const searchParams = new URL(window.location.href).searchParams;
-const toNavigate = searchParams.has("url")
-  ? searchParams.get("url")
-  : DEFAULT_PAGE;
+const toNavigate = searchParams.has("url") ? searchParams.get("url") : DEFAULT_PAGE;
 
 document.addEventListener("DOMContentLoaded", () => {
   const titleBar = document.querySelector("#titlebar");
   const tabBar = document.querySelector("#tabbar") || new TabBar();
+  
+  // This is our webview container where all tab webviews will live
+  const webviewContainer = document.createElement("div");
+  webviewContainer.id = "webview-container";
+  webviewContainer.className = "webview-container";
+  document.body.appendChild(webviewContainer);
+  
+  // Connect the tabBar with the webviewContainer
+  tabBar.connectWebviewContainer(webviewContainer);
   
   if (titleBar && tabBar) {
     titleBar.connectTabBar(tabBar);
   }
 
   if (webviewContainer && nav && tabBar) {
+    // Setup tab event handlers
     tabBar.addEventListener("tab-selected", (e) => {
       const { tabId, url } = e.detail;
       
-      // Store current webview state for active tab if switching tabs
-      const activeTab = tabBar.getActiveTab();
-      if (activeTab) {
-        saveTabState(activeTab.id);
+      // Update URL input to match selected tab
+      nav.querySelector("#url").value = url;
+      
+      // Update window title
+      const tab = tabBar.tabs.find(t => t.id === tabId);
+      if (tab) {
+        pageTitle.innerText = `${tab.title} - Peersky Browser`;
       }
       
-      // Load the selected tab's URL
-      webviewContainer.loadURL(url);
-      nav.querySelector("#url").value = url;
+      // Update navigation buttons state
+      updateNavigationButtons(tabBar);
     });
     
-    tabBar.addEventListener("tab-closed", () => {
-
+    // Handle tab navigation events
+    tabBar.addEventListener("tab-navigated", (e) => {
+      const { tabId, url } = e.detail;
+      
+      // Update URL input if this is the active tab
+      if (tabId === tabBar.activeTabId) {
+        nav.querySelector("#url").value = url;
+      }
+      
+      // Send navigation event to main process
+      ipcRenderer.send("webview-did-navigate", url);
     });
     
-    function saveTabState(tabId) {
-      const currentUrl = webviewContainer.getURL();
-      tabBar.updateTab(tabId, { url: currentUrl });
+    // Handle tab loading state changes
+    tabBar.addEventListener("tab-loading", (e) => {
+      const { tabId, isLoading } = e.detail;
+      
+      // Update UI for loading state if this is active tab
+      if (tabId === tabBar.activeTabId) {
+        nav.setLoading(isLoading);
+      }
+    });
+    
+    // Check if we need to navigate to a specific URL initially
+    if (toNavigate !== DEFAULT_PAGE) {
+      // Find the first tab
+      const firstTab = tabBar.tabs[0];
+      if (firstTab) {
+        // Navigate to the requested URL
+        tabBar.updateTab(firstTab.id, { url: toNavigate });
+      }
+    }
+    
+    // Update URL input with active tab's URL
+    const activeTab = tabBar.getActiveTab();
+    if (activeTab && nav.querySelector("#url")) {
+      nav.querySelector("#url").value = activeTab.url;
     }
 
-    webviewContainer.loadURL(toNavigate);
-    focusURLInput();
-
-    nav.addEventListener("back", () => webviewContainer.goBack());
-    nav.addEventListener("forward", () => webviewContainer.goForward());
-    nav.addEventListener("reload", () => webviewContainer.reload());
-    nav.addEventListener("stop", () => webviewContainer.stop());
+    // Navigation Button Event Listeners
+    nav.addEventListener("back", () => tabBar.goBackActiveTab());
+    nav.addEventListener("forward", () => tabBar.goForwardActiveTab());
+    nav.addEventListener("reload", () => tabBar.reloadActiveTab());
+    nav.addEventListener("stop", () => tabBar.stopActiveTab());
     nav.addEventListener("home", () => {
-      webviewContainer.loadURL("peersky://home");
+      tabBar.navigateActiveTab("peersky://home");
       nav.querySelector("#url").value = "peersky://home";
-      
-      // Update current tab
-      const activeTab = tabBar.getActiveTab();
-      if (activeTab) {
-        tabBar.updateTab(activeTab.id, { 
-          url: "peersky://home",
-          title: "Home" 
-        });
-      }
     });
     
     nav.addEventListener("navigate", ({ detail }) => {
       const { url } = detail;
-      navigateTo(url);
+      const processedUrl = handleURL(url);
+      tabBar.navigateActiveTab(processedUrl);
     });
+    
     nav.addEventListener("new-window", () => {
       ipcRenderer.send("new-window");
     });
 
-    // Handle webview loading events to toggle refresh/stop button
-    if (webviewContainer.webviewElement) {
-      webviewContainer.webviewElement.addEventListener(
-        "did-start-loading",
-        () => {
-          nav.setLoading(true);
-        }
-      );
-
-      webviewContainer.webviewElement.addEventListener(
-        "did-stop-loading",
-        () => {
-          nav.setLoading(false);
-          updateNavigationButtons();
-        }
-      );
-
-      webviewContainer.webviewElement.addEventListener("did-fail-load", () => {
-        nav.setLoading(false);
-        updateNavigationButtons();
-      });
-
-      webviewContainer.webviewElement.addEventListener("did-navigate", () => {
-        updateNavigationButtons();
-      });
-    } else {
-      console.error("webviewElement not found in webviewContainer");
-    }
-
+    // URL input handling
     const urlInput = nav.querySelector("#url");
     if (urlInput) {
       urlInput.addEventListener("keypress", async (e) => {
         if (e.key === "Enter") {
           const rawURL = urlInput.value.trim();
           const url = handleURL(rawURL);
-          try {
-            webviewContainer.loadURL(url);
-            
-            // Update current tab
-            const activeTab = tabBar.getActiveTab();
-            if (activeTab) {
-              tabBar.updateTab(activeTab.id, { url });
-            }
-          } catch (error) {
-            console.error("Error loading URL:", error);
-          }
+          tabBar.navigateActiveTab(url);
         }
       });
-    } else {
-      console.error("URL input not found within nav-box.");
     }
-
-    // Update URL input and send navigation event
-    webviewContainer.addEventListener("did-navigate", (e) => {
-      if (urlInput) {
-        urlInput.value = e.detail.url;
-      }
-      ipcRenderer.send("webview-did-navigate", e.detail.url);
-      
-      // Update current tab URL
-      const activeTab = tabBar.getActiveTab();
-      if (activeTab) {
-        tabBar.updateTab(activeTab.id, { url: e.detail.url });
-      }
-    });
-
-    // Update page title and tab title
-    webviewContainer.addEventListener("page-title-updated", (e) => {
-      const newTitle = e.detail.title || "Peersky Browser";
-      pageTitle.innerText = `${newTitle} - Peersky Browser`;
-      
-      // Update current tab title
-      const activeTab = tabBar.getActiveTab();
-      if (activeTab) {
-        tabBar.updateTab(activeTab.id, { title: newTitle });
-      }
-    });
 
     // Find Menu Event Listeners
     findMenu.addEventListener("next", ({ detail }) => {
-      webviewContainer.executeJavaScript(
-        `window.find("${detail.value}", ${detail.findNext})`
-      );
+      const webview = tabBar.getActiveWebview();
+      if (webview) {
+        webview.executeJavaScript(
+          `window.find("${detail.value}", ${detail.findNext})`
+        );
+      }
     });
 
     findMenu.addEventListener("previous", ({ detail }) => {
-      webviewContainer.executeJavaScript(
-        `window.find("${detail.value}", ${detail.findNext}, true)`
-      );
+      const webview = tabBar.getActiveWebview();
+      if (webview) {
+        webview.executeJavaScript(
+          `window.find("${detail.value}", ${detail.findNext}, true)`
+        );
+      }
     });
 
     findMenu.addEventListener("hide", () => {
-      webviewContainer.focus();
+      const webview = tabBar.getActiveWebview();
+      if (webview) {
+        webview.focus();
+      }
     });
 
+    // Add keyboard shortcut for new tab
     document.addEventListener("keydown", (e) => {
       if (e.key === "t" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
@@ -186,27 +158,20 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     // Initial update of navigation buttons
-    updateNavigationButtons();
-  } else {
-    console.error("webviewContainer, nav, or tabBar not found");
+    updateNavigationButtons(tabBar);
   }
 });
 
-function updateNavigationButtons() {
-  if (webviewContainer && nav && webviewContainer.webviewElement) {
-    const canGoBack = webviewContainer.webviewElement.canGoBack();
-    const canGoForward = webviewContainer.webviewElement.canGoForward();
-    nav.setNavigationButtons(canGoBack, canGoForward);
-  }
-}
-
-function navigateTo(url) {
-  webviewContainer.loadURL(url);
+function updateNavigationButtons(tabBar) {
+  if (!nav) return;
   
-  // Update current tab
-  const activeTab = tabBar.getActiveTab();
-  if (activeTab) {
-    tabBar.updateTab(activeTab.id, { url });
+  const webview = tabBar.getActiveWebview();
+  if (webview) {
+    const canGoBack = webview.canGoBack();
+    const canGoForward = webview.canGoForward();
+    nav.setNavigationButtons(canGoBack, canGoForward);
+  } else {
+    nav.setNavigationButtons(false, false);
   }
 }
 
