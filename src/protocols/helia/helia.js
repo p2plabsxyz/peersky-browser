@@ -86,26 +86,33 @@ export async function createNode() {
       maxParallelDials: 100,
     },
     connectionGater: {
-      // denyDialMultiaddr: async (multiaddr) => {
-      //   console.log(`Checking multiaddr: ${multiaddr.toString()}`);
-      //   return false;
-      // },
-      // denyDialPeer: async (peerId) => {
-      //   console.log(`Checking peer: ${peerId.toString()}`);
-      //   return false;
-      // },
-      // denyInboundConnection: async () => false,
-      // denyOutboundConnection: async () => false,
-      // denyInboundEncryptedConnection: async () => false,
-      // denyOutboundEncryptedConnection: async () => false,
-      // denyInboundUpgrade: async () => false,
-      // denyOutboundUpgrade: async () => false,
-      // filterMultiaddrForPeer: async (multiaddr, peerId) => {
-      //   const isRelayed = multiaddr.toString().includes("/p2p-circuit");
-      //   console.log(`Filtering multiaddr for peer ${peerId}: ${multiaddr} - relayed: ${isRelayed}`);
-      //   return true;
-      // },
-    },
+      filterMultiaddrForPeer: async (multiaddr, peerId) => {
+        const maStr = multiaddr.toString();
+      
+        const privateIpPatterns = [
+          /\/ip4\/10\./,
+          /\/ip4\/172\.(1[6-9]|2[0-9]|3[0-1])\./,
+          /\/ip4\/192\.168\./,
+          /\/ip4\/127\./
+        ];
+      
+        const isPrivate = privateIpPatterns.some(pattern => pattern.test(maStr));
+        const isRelayed = maStr.includes("/p2p-circuit");
+      
+        // Reject private IPs if not relayed
+        if (isPrivate && !isRelayed) {
+          console.log(`REJECTING private multiaddr for peer ${peerId}: ${maStr}`);
+          return false;
+        }
+      
+        // Optionally log only allowed relayed
+        // if (isRelayed) {
+        //   console.log(`ALLOWING relayed multiaddr for peer ${peerId}: ${maStr}`);
+        // }
+      
+        return true;
+      }
+    }
   });
 
   /** @type {any} */
