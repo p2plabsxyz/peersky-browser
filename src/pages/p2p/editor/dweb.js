@@ -1,6 +1,30 @@
 import { update, showSpinner, basicCSS } from './codeEditor.js';
 import { $, uploadButton, protocolSelect, fetchButton, fetchCidInput } from './common.js';
 
+// Safe localStorage access helpers
+function safeLocalStorageGet(key) {
+    try {
+        return localStorage.getItem(key);
+    } catch (e) {
+        console.warn(`[safeLocalStorageGet] localStorage not available:`, e);
+        return null;
+    }
+}
+function safeLocalStorageSet(key, value) {
+    try {
+        localStorage.setItem(key, value);
+    } catch (e) {
+        console.warn(`[safeLocalStorageSet] localStorage not available:`, e);
+    }
+}
+
+// Read protocol from URL param or localStorage, default to 'ipfs'
+const urlParams = new URLSearchParams(window.location.search);
+const paramProtocol = urlParams.get('protocol');
+const storedProtocol = safeLocalStorageGet('lastProtocol');
+const initialProtocol = paramProtocol || storedProtocol || 'ipfs';
+protocolSelect.value = initialProtocol;
+
 // Toggle title input visibility based on protocol
 function toggleTitleInput() {
     const titleInput = $('#titleInput');
@@ -13,20 +37,22 @@ function toggleTitleInput() {
     }
 }
 
-// Restore protocol from localStorage (if exists)
-const lastProtocol = localStorage.getItem('lastProtocol');
-if (lastProtocol) {
-    protocolSelect.value = lastProtocol;
-}
-
-// Initialize title input visibility
+// Initialize UI state
 toggleTitleInput();
+updateSelectorURL();
 
-// Update visibility + save protocol on change
+// When protocol changes: update UI, localStorage, and URL
 protocolSelect.addEventListener('change', () => {
     toggleTitleInput();
-    localStorage.setItem('lastProtocol', protocolSelect.value);
+    safeLocalStorageSet('lastProtocol', protocolSelect.value);
+    updateSelectorURL();
 });
+
+function updateSelectorURL() {
+    const base = window.location.pathname + window.location.hash;
+    const newURL = `${base}?protocol=${protocolSelect.value}`;
+    history.replaceState(null, '', newURL);
+}
 
 // Assemble code before uploading
 export async function assembleCode() {
