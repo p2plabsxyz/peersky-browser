@@ -1,12 +1,45 @@
 import { update, showSpinner, basicCSS } from './codeEditor.js';
 import { $, uploadButton, protocolSelect, fetchButton, fetchCidInput } from './common.js';
 
+// Toggle title input visibility based on protocol
+function toggleTitleInput() {
+    const titleInput = $('#titleInput');
+    if (protocolSelect.value === 'ipfs') {
+        titleInput.classList.add('hidden');
+        titleInput.removeAttribute('required');
+    } else {
+        titleInput.classList.remove('hidden');
+        titleInput.setAttribute('required', '');
+    }
+}
+
+// Restore protocol from localStorage (if exists)
+const lastProtocol = localStorage.getItem('lastProtocol');
+if (lastProtocol) {
+    protocolSelect.value = lastProtocol;
+}
+
+// Initialize title input visibility
+toggleTitleInput();
+
+// Update visibility + save protocol on change
+protocolSelect.addEventListener('change', () => {
+    toggleTitleInput();
+    localStorage.setItem('lastProtocol', protocolSelect.value);
+});
+
 // Assemble code before uploading
 export async function assembleCode() {
-    const title = document.getElementById("titleInput").value.trim();
-    if (!title) {
-        alert("Please enter a title for your project.");
-        return;
+    const protocol = protocolSelect.value;
+    let fileName = 'index.html';
+
+    if (protocol === 'hyper') {
+        const title = $('#titleInput').value.trim();
+        if (!title) {
+            alert("Please enter a title for your project.");
+            return;
+        }
+        fileName = `${title.replace(/\s+/g, '-').toLowerCase()}.html`;
     }
 
     // Display loading spinner
@@ -18,17 +51,16 @@ export async function assembleCode() {
     <html>
     <head>
         <style>${basicCSS}</style>
-        <style>${document.getElementById("cssCode").value}</style>
+        <style>${$('#cssCode').value}</style>
     </head>
     <body>
-        ${document.getElementById("htmlCode").value}
-        <script>${document.getElementById("javascriptCode").value}</script>
+        ${$('#htmlCode').value}
+        <script>${$('#javascriptCode').value}</script>
     </body>
     </html>`;
 
     // Convert the combined code into a Blob
     const blob = new Blob([combinedCode], { type: 'text/html' });
-    const fileName = `${title.replace(/\s+/g, '-').toLowerCase()}.html`;
     const file = new File([blob], fileName, { type: 'text/html' });
 
     // Upload the file

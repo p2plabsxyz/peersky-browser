@@ -3,7 +3,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>P2P Editor</title>
 <link rel="stylesheet" type="text/css" href="styles.css">
-
+<style>
+    #titleInput.hidden {
+        display: none;
+    }
+</style>
 <main>
     <div id="backdrop"></div>
     <div id="loadingSpinner" style="display: none;">
@@ -32,15 +36,14 @@
                     <option value="hyper">HYPER://</option>
                 </select>
             </label>
-            <input type="text" id="titleInput" placeholder="Project title" required>
+            <input type="text" id="titleInput" placeholder="Project title" class="hidden">
             <button id="uploadButton">Upload to DWeb</button>
         
         </div>
         <div id="fetchContainer">
-            <input id="fetchCidInput" type="text" placeholder="Enter IPFS CID or Hyper URL ">
+            <input id="fetchCidInput" type="text" placeholder="Enter IPFS CID or Hyper URL">
             <button id="fetchButton">Fetch from DWeb</button>
         </div>
-
     </div>
     <ul id="uploadListBox"></ul>
 </main>
@@ -48,4 +51,3 @@
 <script type="module" src="common.js"></script>
 <script type="module" src="dweb.js"></script>
 <script type="module" src="codeEditor.js"></script>
-
