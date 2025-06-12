@@ -149,7 +149,7 @@ find-menu {
   flex-grow: 1;
   overflow-x: auto;
   overflow-y: hidden;
-  scroll-behavior: smooth;;
+  scroll-behavior: smooth;
   max-width: 100%;
   min-width: 0;
   scrollbar-width: none;

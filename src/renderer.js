@@ -39,29 +39,25 @@ document.addEventListener("DOMContentLoaded", () => {
     tabBar.addEventListener("tab-selected", (e) => {
       const { tabId, url } = e.detail;
       
-      // Update URL input to match selected tab
       nav.querySelector("#url").value = url;
       
-      // Update window title
       const tab = tabBar.tabs.find(t => t.id === tabId);
       if (tab) {
         pageTitle.innerText = `${tab.title} - Peersky Browser`;
       }
       
-      // Update navigation buttons state
       updateNavigationButtons(tabBar);
     });
     
-    // Handle tab navigation events
     tabBar.addEventListener("tab-navigated", (e) => {
       const { tabId, url } = e.detail;
       
-      // Update URL input if this is the active tab
       if (tabId === tabBar.activeTabId) {
         nav.querySelector("#url").value = url;
+        
+        setTimeout(() => updateNavigationButtons(tabBar), 100);
       }
       
-      // Send navigation event to main process
       ipcRenderer.send("webview-did-navigate", url);
     });
     
@@ -69,18 +65,24 @@ document.addEventListener("DOMContentLoaded", () => {
     tabBar.addEventListener("tab-loading", (e) => {
       const { tabId, isLoading } = e.detail;
       
-      // Update UI for loading state if this is active tab
       if (tabId === tabBar.activeTabId) {
         nav.setLoading(isLoading);
+        
+        if (!isLoading) {
+          setTimeout(() => updateNavigationButtons(tabBar), 100);
+        }
       }
+    });
+
+    // Add with other event listeners
+    tabBar.addEventListener("navigation-state-changed", () => {
+      updateNavigationButtons(tabBar);
     });
     
     // Check if we need to navigate to a specific URL initially
     if (toNavigate !== DEFAULT_PAGE) {
-      // Find the first tab
       const firstTab = tabBar.tabs[0];
       if (firstTab) {
-        // Navigate to the requested URL
         tabBar.updateTab(firstTab.id, { url: toNavigate });
       }
     }
@@ -149,7 +151,6 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
 
-    // Add keyboard shortcut for new tab
     document.addEventListener("keydown", (e) => {
       if (e.key === "t" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();

@@ -4,8 +4,8 @@ class TabBar extends HTMLElement {
     this.tabs = [];
     this.activeTabId = null;
     this.tabCounter = 0;
-    this.webviews = new Map(); 
-    this.webviewContainer = null;
+    this.webviews = new Map(); // Store webviews by tab ID
+    this.webviewContainer = null; // Will be set by connectWebviewContainer
     this.buildTabBar();
     this.setupBrowserCloseHandler();
   }
@@ -16,6 +16,7 @@ class TabBar extends HTMLElement {
     // After connecting container, restore or create initial tabs
     this.restoreOrCreateInitialTabs();
     
+    // Force activation of the initial tab's webview after a delay
     setTimeout(() => this.forceActivateCurrentTab(), 300);
   }
 
@@ -86,7 +87,7 @@ class TabBar extends HTMLElement {
     }
   });
     
-    // Don't add first tab here
+    // Don't add first tab automatically here anymore
     // Will be handled in restoreOrCreateInitialTabs
   }
 
@@ -263,6 +264,11 @@ class TabBar extends HTMLElement {
       this.dispatchEvent(new CustomEvent("tab-loading", { 
         detail: { tabId, isLoading: false } 
       }));
+      
+      // Dispatch a navigation state update event
+      this.dispatchEvent(new CustomEvent("navigation-state-changed", {
+        detail: { tabId }
+      }));
     });
     
     webview.addEventListener("page-title-updated", (e) => {
@@ -278,6 +284,13 @@ class TabBar extends HTMLElement {
       this.dispatchEvent(new CustomEvent("tab-navigated", { 
         detail: { tabId, url: newUrl } 
       }));
+      
+      // Update navigation buttons after a delay to ensure state is updated
+      setTimeout(() => {
+        this.dispatchEvent(new CustomEvent("navigation-state-changed", {
+          detail: { tabId }
+        }));
+      }, 100);
     });
     
     webview.addEventListener("new-window", (e) => {
