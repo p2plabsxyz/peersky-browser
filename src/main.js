@@ -153,4 +153,26 @@ ipcMain.on("window-control", (event, command) => {
   }
 });
 
+//IPC handler for moving tabs to new window
+ipcMain.on('new-window-with-tab', (event, tabData) => {
+  // new window with isolated tab
+  const newWindow = windowManager.open({
+    url: tabData.url,
+    isolate: true, // Don't restore other tabs
+    singleTab: {
+      url: tabData.url,
+      title: tabData.title,
+      id: tabData.tabId
+    }
+  });
+});
+
+ipcMain.on('new-window', (event, options = {}) => {
+  if (options.isolate) {
+    windowManager.open({ ...options, restoreTabs: false }); // not restoring other tabs of isolated window
+  } else {
+    windowManager.open(options);
+  }
+});
+
 export { windowManager };

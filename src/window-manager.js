@@ -294,7 +294,6 @@ class PeerskyWindow {
     });
 
     this.window.on("closed", () => {
-      // Clean up IPC listener
       ipcMain.removeListener(
         `webview-did-navigate-${this.id}`,
         this.navigateListener
@@ -323,6 +322,41 @@ class PeerskyWindow {
       return "peersky://home";
     }
   }
+}
+
+// handling for isolated windows
+function createWindow(options = {}) {
+  const win = new BrowserWindow({
+    width: 800,
+    height: 600,
+    frame:false,
+    titleBarStyle: 'hidden',
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+      nativeWindowOpen: true,
+      webviewTag: true,
+    },
+    ...windowOptions,
+  });
+
+  if (options.isolate && options.singleTab) {
+    // For isolated windows, pass the specific tab data as URL parameter
+    const url = new URL(path.join(__dirname, 'index.html'), 'file:');
+    url.searchParams.set('url', options.singleTab.url);
+    url.searchParams.set('isolate', 'true'); 
+    win.loadURL(url.toString());
+  } else if (options.url) {
+    // Regular new window with specific URL
+    const url = new URL(path.join(__dirname, 'index.html'), 'file:');
+    url.searchParams.set('url', options.url);
+    win.loadURL(url.toString());
+  } else {
+    // Default window
+    win.loadFile(path.join(__dirname, 'index.html'));
+  }
+
+  return win;
 }
 
 export default WindowManager;

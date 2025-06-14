@@ -149,7 +149,7 @@ find-menu {
   flex-grow: 1;
   overflow-x: auto;
   overflow-y: hidden;
-  scroll-behavior: smooth;
+  scroll-behavior: smooth;;
   max-width: 100%;
   min-width: 0;
   scrollbar-width: none;
@@ -373,11 +373,26 @@ tracked-box {
   display: none;
 }
 
+.tab-favicon {
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  margin-right: 6px;
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+  display: none;
+}
+
 .tab.loading .tab-title::before {
   content: "⟳";
   display: inline-block;
   margin-right: 5px;
   animation: spin 1s infinite linear;
+}
+
+.tab.loading .tab-favicon[style*="display: block"] + .tab-title::before {
+  display: none;
 }
 
 @keyframes spin {
@@ -387,4 +402,81 @@ tracked-box {
 
 .tab.loading {
   color: var(--peersky-nav-button-active);
+}
+
+.tab-context-menu {
+  background: var(--browser-theme-background);
+  border: 1px solid var(--peersky-nav-border-color);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  padding: 4px 0;
+  min-width: 180px;
+  font-size: 13px;
+  z-index: 10000;
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  cursor: pointer;
+  color: var(--peersky-nav-button-color);
+  transition: background-color 0.1s ease;
+}
+
+.context-menu-item:hover {
+  background-color: #222222;
+}
+
+.context-menu-item .menu-icon {
+  margin-right: 8px;
+  width: 16px;
+  font-size: 12px;
+}
+
+.context-menu-item[data-action="duplicate"] .menu-icon {
+  font-size: 11px;
+}
+
+.context-menu-item[data-action="move-to-new-window"] .menu-icon {
+  font-size: 11px;
+}
+
+.context-menu-item[data-action="new-tab-right"] .menu-icon {
+  font-size: 11px;
+}
+
+.context-menu-separator {
+  height: 1px;
+  background: var(--peersky-nav-border-color);
+  margin: 4px 0;
+}
+
+.tab.pinned {
+  background: #007ab3;
+  border-left: 3px solid var(--peersky-nav-button-active);
+  min-width: 120px;
+  position: relative;
+}
+
+.tab.pinned::before {
+  content: "📌";
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  font-size: 8px;
+  opacity: 0.7;
+}
+
+.tab.muted {
+  opacity: 0.7;
+}
+
+.tab.muted .tab-title {
+  font-style: italic;
+}
+
+.mute-indicator {
+  opacity: 0.8;
+  font-size: 10px;
 }

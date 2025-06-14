@@ -6,8 +6,10 @@ class TabBar extends HTMLElement {
     this.tabCounter = 0;
     this.webviews = new Map(); // Store webviews by tab ID
     this.webviewContainer = null; // Will be set by connectWebviewContainer
+    this.pinnedTabs = new Set(); // Track pinned tabs
     this.buildTabBar();
     this.setupBrowserCloseHandler();
+    this.setupTabContextMenu();
   }
 
   // Connect to the webview container where all webviews will live
@@ -93,6 +95,19 @@ class TabBar extends HTMLElement {
 
   // Restore persisted tabs or create initial home tab
   restoreOrCreateInitialTabs() {
+    // Check if this is an isolated window
+    const searchParams = new URL(window.location.href).searchParams;
+    const isIsolated = searchParams.get('isolate') === 'true';
+    const initialUrl = searchParams.get('url');
+    
+    if (isIsolated && initialUrl) {
+      // Create only one tab with the specified URL
+      const homeTabId = this.addTab(initialUrl, "New Tab");
+      this.saveTabsState();
+      return;
+    }
+    
+    // Normal restoration logic
     const persistedTabs = this.loadPersistedTabs();
     
     if (persistedTabs && persistedTabs.tabs.length > 0) {
@@ -123,7 +138,8 @@ class TabBar extends HTMLElement {
         tabs: this.tabs.map(tab => ({
           id: tab.id,
           url: tab.url,
-          title: tab.title
+          title: tab.title,
+          isPinned: this.pinnedTabs.has(tab.id)
         })),
         activeTabId: this.activeTabId,
         tabCounter: this.tabCounter
@@ -142,6 +158,19 @@ class TabBar extends HTMLElement {
     // Restore each tab
     persistedData.tabs.forEach(tabData => {
       const tabId = this.addTabWithId(tabData.id, tabData.url, tabData.title);
+      
+      // Restore pinned state
+      if (tabData.isPinned) {
+        this.pinnedTabs.add(tabId);
+        // timeout for ui update
+        setTimeout(()=>{
+        const tabElement = document.getElementById(tabId);
+        if (tabElement) {
+          tabElement.classList.add('pinned');
+        }
+      }, 0);
+      }
+      
       if (tabData.id === persistedData.activeTabId) {
         restoredActiveTabId = tabId;
       }
@@ -170,6 +199,12 @@ class TabBar extends HTMLElement {
     const tabTitle = document.createElement("span");
     tabTitle.className = "tab-title";
     tabTitle.textContent = title;
+
+    // favicon element
+    const faviconElement = document.createElement("div");
+    faviconElement.className = "tab-favicon";
+    faviconElement.style.backgroundImage = "url(peersky://static/assets/icon16.png)"; 
+    faviconElement.style.display = "block";
     
     const closeButton = document.createElement("span");
     closeButton.className = "close-tab";
@@ -178,7 +213,8 @@ class TabBar extends HTMLElement {
       e.stopPropagation();
       this.closeTab(tabId);
     });
-    
+
+    tab.appendChild(faviconElement);
     tab.appendChild(tabTitle);
     tab.appendChild(closeButton);
     
@@ -245,27 +281,37 @@ class TabBar extends HTMLElement {
   // Set up all event handlers for a webview
   setupWebviewEvents(webview, tabId) {
     webview.addEventListener("did-start-loading", () => {
-      // Update tab UI to show loading state
       const tabElement = document.getElementById(tabId);
-      if (tabElement) tabElement.classList.add("loading");
+      if (tabElement) {
+        tabElement.classList.add("loading");
+        
+        const faviconElement = tabElement.querySelector('.tab-favicon');
+        if (faviconElement) {
+          faviconElement.style.display = "none";
+        }
+      }
       
-      // Dispatch loading event
       this.dispatchEvent(new CustomEvent("tab-loading", { 
         detail: { tabId, isLoading: true } 
       }));
     });
-    
+  
     webview.addEventListener("did-stop-loading", () => {
-      // Update tab UI to show loading complete
       const tabElement = document.getElementById(tabId);
-      if (tabElement) tabElement.classList.remove("loading");
+      if (tabElement) {
+        tabElement.classList.remove("loading");
+        
+        const faviconElement = tabElement.querySelector('.tab-favicon');
+        if (faviconElement && faviconElement.style.display === "none") {
+          faviconElement.style.backgroundImage = "url(peersky://static/assets/icon16.png)";
+          faviconElement.style.display = "block";
+        }
+      }
       
-      // Dispatch loading complete event
       this.dispatchEvent(new CustomEvent("tab-loading", { 
         detail: { tabId, isLoading: false } 
       }));
       
-      // Dispatch a navigation state update event
       this.dispatchEvent(new CustomEvent("navigation-state-changed", {
         detail: { tabId }
       }));
@@ -275,27 +321,66 @@ class TabBar extends HTMLElement {
       const newTitle = e.title || "Untitled";
       this.updateTab(tabId, { title: newTitle });
     });
-    
+  
     webview.addEventListener("did-navigate", (e) => {
       const newUrl = e.url;
       this.updateTab(tabId, { url: newUrl });
       
-      // Dispatch navigation event
       this.dispatchEvent(new CustomEvent("tab-navigated", { 
         detail: { tabId, url: newUrl } 
       }));
       
-      // Update navigation buttons after a delay to ensure state is updated
       setTimeout(() => {
         this.dispatchEvent(new CustomEvent("navigation-state-changed", {
           detail: { tabId }
         }));
       }, 100);
     });
-    
+  
+    // Handle audio state changes
+    webview.addEventListener("media-started-playing", () => {
+      this.updateTabMuteState(tabId);
+    });
+  
+    webview.addEventListener("media-paused", () => {
+      this.updateTabMuteState(tabId);
+    });
+  
     webview.addEventListener("new-window", (e) => {
-      // Create a new tab for target URL
       this.addTab(e.url, "New Tab");
+    });
+
+    webview.addEventListener("page-favicon-updated", (e) => {
+      const tabElement = document.getElementById(tabId);
+      if (!tabElement) return;
+      
+      // Get the first favicon URL from the event
+      const faviconUrl = e.favicons && e.favicons.length > 0 ? e.favicons[0] : null;
+      
+      // Find or create favicon element
+      let faviconElement = tabElement.querySelector('.tab-favicon');
+      if (!faviconElement) {
+        faviconElement = document.createElement('div');
+        faviconElement.className = 'tab-favicon';
+        
+        // Insert favicon before the title
+        const titleElement = tabElement.querySelector('.tab-title');
+        if (titleElement) {
+          tabElement.insertBefore(faviconElement, titleElement);
+        } else {
+          tabElement.prepend(faviconElement);
+        }
+      }
+      
+      // Update favicon image
+      if (faviconUrl) {
+        faviconElement.style.backgroundImage = `url(${faviconUrl})`;
+        faviconElement.style.display = 'block';
+      } else {
+        // Use default icon if no favicon is available
+        faviconElement.style.backgroundImage = 'url(peersky://static/assets/icon16.png)';
+        faviconElement.style.display = 'block';
+      }
     });
   }
 
@@ -496,6 +581,329 @@ class TabBar extends HTMLElement {
         this.saveTabsState();
       }
     });
+  }
+
+  // Setup context menu for tabs
+  setupTabContextMenu() {
+    this.addEventListener('contextmenu', (e) => {
+      // Check if right-click was on a tab
+      const tab = e.target.closest('.tab');
+      if (tab) {
+        e.preventDefault();
+        this.showTabContextMenu(e, tab.id);
+      }
+    });
+  }
+
+  // Show context menu for a tab
+  showTabContextMenu(event, tabId) {
+    // Remove existing context menu if any
+    const existingMenu = document.querySelector('.tab-context-menu');
+    if (existingMenu) {
+      existingMenu.remove();
+    }
+
+    const menu = document.createElement('div');
+    menu.className = 'tab-context-menu';
+    menu.style.position = 'fixed';
+    menu.style.left = `${event.clientX}px`;
+    menu.style.top = `${event.clientY}px`;
+    menu.style.zIndex = '10000';
+
+    const tab = this.tabs.find(t => t.id === tabId);
+    const webview = this.webviews.get(tabId);
+    const isPinned = this.pinnedTabs.has(tabId);
+    const isMuted = webview?.isAudioMuted() || false;
+
+    menu.innerHTML = `
+      <div class="context-menu-item" data-action="reload">
+        <span class="menu-icon">🔄</span>
+        Reload page
+      </div>
+      <div class="context-menu-item" data-action="duplicate">
+        <span class="menu-icon">📑</span>
+        Duplicate tab
+      </div>
+      <div class="context-menu-item" data-action="mute">
+        <span class="menu-icon">${isMuted ? '🔊' : '🔇'}</span>
+        ${isMuted ? 'Unmute site' : 'Mute site'}
+      </div>
+      <div class="context-menu-item" data-action="new-tab-right">
+        <span class="menu-icon">➡️</span>
+        New tab to the right
+      </div>
+      <div class="context-menu-item" data-action="move-to-new-window">
+        <span class="menu-icon">🗔</span>
+        Move to new window
+      </div>
+      <div class="context-menu-separator"></div>
+      <div class="context-menu-item" data-action="pin">
+        <span class="menu-icon">📌</span>
+        ${isPinned ? 'Unpin tab' : 'Pin tab'}
+      </div>
+      <div class="context-menu-separator"></div>
+      <div class="context-menu-item" data-action="close-others">
+        <span class="menu-icon">✖️</span>
+        Close other tabs
+      </div>
+      <div class="context-menu-item" data-action="close">
+        <span class="menu-icon">❌</span>
+        Close tab
+      </div>
+    `;
+
+    // Add event listeners to menu items
+    menu.addEventListener('click', (e) => {
+      const action = e.target.closest('.context-menu-item')?.dataset.action;
+      if (action) {
+        this.handleTabContextMenuAction(action, tabId);
+        menu.remove();
+      }
+    });
+
+    // Close menu when clicking outside
+    const closeMenu = (e) => {
+      if (!menu.contains(e.target)) {
+        menu.remove();
+        document.removeEventListener('click', closeMenu);
+      }
+    };
+    
+    setTimeout(() => {
+      document.addEventListener('click', closeMenu);
+    }, 0);
+
+    document.body.appendChild(menu);
+  }
+
+  // Handle context menu actions
+  handleTabContextMenuAction(action, tabId) {
+    const webview = this.webviews.get(tabId);
+    
+    switch (action) {
+      case 'reload':
+        if (webview) {
+          webview.reload();
+        }
+        break;
+        
+      case 'duplicate':
+        this.duplicateTab(tabId);
+        break;
+        
+      case 'mute':
+        if (webview) {
+          if (webview.isAudioMuted()) {
+            webview.setAudioMuted(false);
+          } else {
+            webview.setAudioMuted(true);
+          }
+          this.updateTabMuteState(tabId);
+        }
+        break;
+        
+      case 'new-tab-right':
+        this.addTabToTheRight(tabId);
+        break;
+        
+      case 'move-to-new-window':
+        this.moveTabToNewWindow(tabId);
+        break;
+        
+      case 'pin':
+        this.togglePinTab(tabId);
+        break;
+        
+      case 'close-others':
+        this.closeOtherTabs(tabId);
+        break;
+        
+      case 'close':
+        this.closeTab(tabId);
+        break;
+    }
+  }
+
+  // Duplicate a tab - creates new tab with same URL
+  duplicateTab(tabId) {
+    const tab = this.tabs.find(t => t.id === tabId);
+    if (!tab) return;
+    
+    const newTitle = tab.title === 'Home' ? 'Home' : `${tab.title} (Copy)`;
+    const newTabId = this.addTab(tab.url, newTitle);
+    
+    this.moveTabToPosition(newTabId, this.tabs.findIndex(t => t.id === tabId) + 1);
+    
+    return newTabId;
+  }
+
+  // Add new tab to the right of specified tab
+  addTabToTheRight(tabId) {
+    const newTabId = this.addTab("peersky://home", "Home");
+    
+    const referenceIndex = this.tabs.findIndex(t => t.id === tabId);
+    if (referenceIndex !== -1) {
+      this.moveTabToPosition(newTabId, referenceIndex + 1);
+    }
+    
+    return newTabId;
+  }
+
+  moveTabToNewWindow(tabId) {
+    const tab = this.tabs.find(t => t.id === tabId);
+    if (!tab) return;
+    
+    // Prevent moving the last tab
+    if (this.tabs.length === 1) {
+      console.log('Cannot move the last tab to a new window');
+      return;
+    }
+    
+    const tabElement = document.getElementById(tabId);
+    if (tabElement) {
+      tabElement.remove();
+    }
+    
+    // Remove from tabs array
+    const tabIndex = this.tabs.findIndex(t => t.id === tabId);
+    if (tabIndex !== -1) {
+      this.tabs.splice(tabIndex, 1);
+    }
+    
+    // Remove associated webview
+    const webview = this.webviews.get(tabId);
+    if (webview) {
+      webview.remove();
+      this.webviews.delete(tabId);
+    }
+    
+    // Remove from pinned tabs if it was pinned
+    this.pinnedTabs.delete(tabId);
+    
+    // If we moved the active tab, select another one
+    if (this.activeTabId === tabId) {
+      const newTabIndex = Math.max(0, tabIndex - 1);
+      if (this.tabs[newTabIndex]) {
+        this.selectTab(this.tabs[newTabIndex].id);
+      }
+    }
+    
+    // Save the current state (without the moved tab)
+    this.saveTabsState();
+    
+    const { ipcRenderer } = require('electron');
+    ipcRenderer.send('new-window-with-tab', { 
+      url: tab.url, 
+      title: tab.title,
+      tabId: tab.id,
+      isolate: true
+    });
+    
+    // Dispatch event that tab was moved
+    this.dispatchEvent(new CustomEvent("tab-moved-to-new-window", { 
+      detail: { tabId, url: tab.url, title: tab.title } 
+    }));
+  }
+
+  // Toggle pin state of a tab
+  togglePinTab(tabId) {
+    const tabElement = document.getElementById(tabId);
+    if (!tabElement) return;
+
+    if (this.pinnedTabs.has(tabId)) {
+      // Unpin tab
+      this.pinnedTabs.delete(tabId);
+      tabElement.classList.remove('pinned');
+    } else {
+      // Pin tab
+      this.pinnedTabs.add(tabId);
+      tabElement.classList.add('pinned');
+      
+      // Move to leftmost position
+      this.moveTabToPosition(tabId, 0);
+    }
+    
+    this.saveTabsState();
+  }
+
+  // Move tab to specific position
+  moveTabToPosition(tabId, position) {
+    const tabIndex = this.tabs.findIndex(t => t.id === tabId);
+    if (tabIndex === -1) return;
+
+    const maxPosition = this.tabs.length - 1;
+    position = Math.max(0, Math.min(position, maxPosition));
+    
+    if (tabIndex === position) return;
+
+    const [tab] = this.tabs.splice(tabIndex, 1);
+    
+    // Insert at new position in array
+    this.tabs.splice(position, 0, tab);
+    
+    // Update DOM order
+    const tabElement = document.getElementById(tabId);
+    if (tabElement && this.tabContainer) {
+      this.tabContainer.removeChild(tabElement);
+      
+      if (position === 0) {
+        // Insert at beginning
+        this.tabContainer.insertBefore(tabElement, this.tabContainer.firstChild);
+      } else if (position >= this.tabs.length - 1) {
+        // Insert at end
+        this.tabContainer.appendChild(tabElement);
+      } else {
+        // Insert at specific position
+        const nextTabId = this.tabs[position + 1].id;
+        const nextTabElement = document.getElementById(nextTabId);
+        if (nextTabElement) {
+          this.tabContainer.insertBefore(tabElement, nextTabElement);
+        } else {
+          this.tabContainer.appendChild(tabElement);
+        }
+      }
+    }
+    
+    this.saveTabsState();
+  }
+
+  // Close all tabs except the specified one
+  closeOtherTabs(keepTabId) {
+    const tabsToClose = this.tabs
+      .filter(tab => tab.id !== keepTabId && !this.pinnedTabs.has(tab.id))
+      .map(tab => tab.id);
+    
+    tabsToClose.forEach(tabId => {
+      this.closeTab(tabId);
+    });
+  }
+
+  // Update tab visual state based on mute status
+  updateTabMuteState(tabId) {
+    const tabElement = document.getElementById(tabId);
+    const webview = this.webviews.get(tabId);
+    
+    if (tabElement && webview) {
+      const titleElement = tabElement.querySelector('.tab-title');
+      if (titleElement) {
+        if (webview.isAudioMuted()) {
+          tabElement.classList.add('muted');
+          if (!titleElement.querySelector('.mute-indicator')) {
+            const muteIndicator = document.createElement('span');
+            muteIndicator.className = 'mute-indicator';
+            muteIndicator.textContent = '🔇';
+            muteIndicator.style.marginLeft = '4px';
+            titleElement.appendChild(muteIndicator);
+          }
+        } else {
+          tabElement.classList.remove('muted');
+          const muteIndicator = titleElement.querySelector('.mute-indicator');
+          if (muteIndicator) {
+            muteIndicator.remove();
+          }
+        }
+      }
+    }
   }
 }
 
