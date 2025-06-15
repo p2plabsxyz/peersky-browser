@@ -84,7 +84,7 @@ export async function createHandler(ipfsOptions, session) {
         } else if (data.type === "blob" && data.blobUUID) {
           const blobData = await session.getBlobData(data.blobUUID);
           const fileName = "index.html";
-          entries.push({ path: fileName, content: blobData });
+          entries.push({ path: fileName, content: Readable.from(blobData) });
         }
       }
   
