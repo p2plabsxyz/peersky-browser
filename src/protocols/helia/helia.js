@@ -22,7 +22,10 @@ import { createDelegatedRoutingV1HttpApiClient } from "@helia/delegated-routing-
 import { delegatedHTTPRoutingDefaults } from "@helia/routers";
 import { ipnsValidator } from "ipns/validator";
 import { ipnsSelector } from "ipns/selector";
+import { userAgent } from "libp2p/user-agent";
 import { ipfsOptions, getLibp2pPrivateKey } from "../config.js";
+import pkg from '../../../package.json' assert { type: 'json' };
+const { version } = pkg;
 
 // https://github.com/ipfs/helia/blob/main/packages/helia/src/utils/bootstrappers.ts
 const bootstrapConfig = {
@@ -39,11 +42,15 @@ export async function createNode() {
   const options = await ipfsOptions();
 
   const privateKey = await getLibp2pPrivateKey();
+  const agentVersion = `peersky-browser/${version} ${userAgent()}`;
 
   const defaults = libp2pDefaults({ privateKey });
 
   const libp2p = await createLibp2p({
     ...defaults,
+    nodeInfo: {
+      userAgent: agentVersion
+    },
     addresses: {
       listen: [
         '/ip4/0.0.0.0/tcp/0',
@@ -104,6 +111,7 @@ export async function createNode() {
   });
 
   console.log("Peer ID:", node.libp2p.peerId.toString());
+  console.log("Node userAgent:", agentVersion);
 
   return node;
 }
