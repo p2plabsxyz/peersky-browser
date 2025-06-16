@@ -22,7 +22,7 @@ import { createDelegatedRoutingV1HttpApiClient } from "@helia/delegated-routing-
 import { delegatedHTTPRoutingDefaults } from "@helia/routers";
 import { ipnsValidator } from "ipns/validator";
 import { ipnsSelector } from "ipns/selector";
-import { ipfsOptions } from "../config.js";
+import { ipfsOptions, getLibp2pPrivateKey } from "../config.js";
 
 // https://github.com/ipfs/helia/blob/main/packages/helia/src/utils/bootstrappers.ts
 const bootstrapConfig = {
@@ -38,7 +38,9 @@ const bootstrapConfig = {
 export async function createNode() {
   const options = await ipfsOptions();
 
-  const defaults = libp2pDefaults();
+  const privateKey = await getLibp2pPrivateKey();
+
+  const defaults = libp2pDefaults({ privateKey });
 
   const libp2p = await createLibp2p({
     ...defaults,
@@ -100,6 +102,8 @@ export async function createNode() {
     datastore: ds,
     blockstore: bs,
   });
+
+  console.log("Peer ID:", node.libp2p.peerId.toString());
 
   return node;
 }

@@ -5,6 +5,7 @@ import crypto from "hypercore-crypto";
 import { FsBlockstore } from "blockstore-fs";
 import { FsDatastore } from "datastore-fs";
 import { getDefaultChainList } from "web3protocol/chains";
+import { generateKeyPair, privateKeyFromProtobuf, privateKeyToProtobuf } from "@libp2p/crypto/keys";
 
 const USER_DATA = app.getPath("userData");
 const DEFAULT_IPFS_DIR = path.join(USER_DATA, "ipfs");
@@ -13,6 +14,7 @@ const DATASTORE_PATH = path.join(DEFAULT_IPFS_DIR, "datastore");
 const DEFAULT_HYPER_DIR = path.join(USER_DATA, "hyper");
 const ENS_CACHE = path.join(USER_DATA, "ensCache.json");
 const KEYPAIR_PATH = path.join(DEFAULT_HYPER_DIR, "swarm-keypair.json");
+const LIBP2P_KEY_PATH = path.join(DEFAULT_IPFS_DIR, "libp2p-key");
 
 // Try loading an existing keypair from disk
 export function loadKeyPair() {
@@ -35,6 +37,44 @@ export function saveKeyPair(keyPair) {
     publicKey: keyPair.publicKey.toString("hex"),
     secretKey: keyPair.secretKey.toString("hex")
   });
+}
+
+// Load the libp2p private key from disk (for Helia)
+export async function loadLibp2pKey() {
+  try {
+    const raw = await fs.promises.readFile(LIBP2P_KEY_PATH);
+    console.log(`Loaded libp2p key from ${LIBP2P_KEY_PATH}`);
+    return privateKeyFromProtobuf(new Uint8Array(raw));
+  } catch (err) {
+    if (err.code === "ENOENT") {
+      console.log(`No libp2p key found at ${LIBP2P_KEY_PATH}, will generate a new one`);
+      return null;
+    }
+    throw err;
+  }
+}
+
+// Save the libp2p private key to disk (for Helia)
+export async function saveLibp2pKey(privateKey) {
+  try {
+    await fs.promises.mkdir(path.dirname(LIBP2P_KEY_PATH), { recursive: true });
+    const pb = privateKeyToProtobuf(privateKey);
+    await fs.promises.writeFile(LIBP2P_KEY_PATH, Buffer.from(pb));
+    console.log(`Saved libp2p key to ${LIBP2P_KEY_PATH}`);
+  } catch (err) {
+    console.error(`Error saving libp2p key: ${err.message}`);
+    throw err;
+  }
+}
+
+// Get or generate a persistent private key for Helia
+export async function getLibp2pPrivateKey() {
+  let privateKey = await loadLibp2pKey();
+  if (!privateKey) {
+    privateKey = await generateKeyPair("Ed25519");
+    await saveLibp2pKey(privateKey);
+  }
+  return privateKey;
 }
 
 export async function ipfsOptions() {
