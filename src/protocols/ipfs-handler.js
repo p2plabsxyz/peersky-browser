@@ -47,7 +47,6 @@ export async function createHandler(ipfsOptions, session) {
     const startTime = Date.now();
     node = await createNode(ipfsOptions);
     console.log(`IPFS node initialized in ${Date.now() - startTime}ms`);
-    console.log("Peer ID:", node.libp2p.peerId.toString());
 
     // Ensure the node's PeerId has toBytes()
     if (typeof node.libp2p.peerId.toBytes !== "function") {
