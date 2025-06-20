@@ -4,7 +4,6 @@ import { createLibp2p } from "libp2p";
 import { libp2pDefaults } from "helia";
 import { noise } from "@chainsafe/libp2p-noise";
 import { yamux } from "@chainsafe/libp2p-yamux";
-import { mplex } from "@libp2p/mplex";
 import { mdns } from "@libp2p/mdns";
 import { tcp } from "@libp2p/tcp";
 import { webRTC, webRTCDirect } from "@libp2p/webrtc";
@@ -70,7 +69,7 @@ export async function createNode() {
       circuitRelayTransport(),
     ],
     connectionEncrypters: [noise()],
-    streamMuxers: [yamux(), mplex()],
+    streamMuxers: [yamux()],
     peerDiscovery: [
       mdns(),
       bootstrap(bootstrapConfig),
