@@ -81,7 +81,6 @@ export async function createNode() {
       dcutr: dcutr(),
       delegatedRouting: () => createDelegatedRoutingV1HttpApiClient('https://delegated-ipfs.dev', delegatedHTTPRoutingDefaults()),
       dht: kadDHT({
-        clientMode: false,
         validators: { ipns: ipnsValidator },
         selectors: { ipns: ipnsSelector },
       }),
