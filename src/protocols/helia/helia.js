@@ -90,8 +90,10 @@ export async function createNode() {
       upnpNAT: uPnPNAT(),
     },
     connectionManager: {
-      maxConnections: 300,
-      maxParallelDials: 20,
+      maxConnections: 500,
+      inboundConnectionThreshold: 100,
+      maxIncomingPendingConnections: 100,
+      maxParallelDials: 50,
       dialTimeout: 10000,
     },
   });
