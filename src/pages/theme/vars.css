@@ -32,4 +32,16 @@
   --peersky-nav-button-inactive: var(--base04);
   --peersky-background-url-input: var(--base01);
   --peersky-background-find-menu: var(--base03);
+
+  /* Settings Page Variables */
+  --settings-bg-primary: var(--base01);
+  --settings-text-primary: var(--base07);
+  --settings-text-secondary: var(--base05);
+  --settings-card-bg: var(--base02);
+  --settings-border: var(--base04);
+  --settings-border-hover: var(--base05);
+  --settings-border-focus: var(--base06);
+  --settings-backdrop-blur: blur(10px);
+  --settings-danger-color: #dc2626;
+  --settings-danger-color-hover: #b91c1c;
 }

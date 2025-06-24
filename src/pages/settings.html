@@ -4,20 +4,90 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <style>
   @import url("browser://theme/index.css");
+  @import url("browser://theme/vars.css");
   @import url("browser://theme/settings.css");
 </style>
-<title>Settings</title>
+<title>Settings - Peersky Browser</title>
 
-<main>
-  <h1>Settings</h1>
-  
-  <section id="general-settings">
-    <h2>General Settings</h2>
-    <!-- General settings will be implemented here -->
+<main class="settings-container">
+  <section id="general-settings" class="settings-section">
+    <h1>General Settings</h1>
+    
+    <div class="setting-group">
+      <label for="search-engine">Search Engine</label>
+      <select id="search-engine" class="settings-select">
+        <option value="duckduckgo">DuckDuckGo</option>
+        <option value="ecosia">Ecosia</option>
+        <option value="google">Google</option>
+        <option value="bing">Bing</option>
+        <option value="brave">Brave Search</option>
+        <option value="startpage">Startpage</option>
+      </select>
+    </div>
+
+    <div class="setting-group">
+      <label for="theme-toggle">Theme</label>
+      <select id="theme-toggle" class="settings-select">
+        <option value="system">System</option>
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+      </select>
+    </div>
+
+    <div class="setting-group">
+      <label class="toggle-label">
+        <input type="checkbox" id="show-clock" class="settings-toggle">
+        <span class="toggle-slider"></span>
+        Show home page clock
+      </label>
+    </div>
+
+    <div class="setting-group">
+      <label for="wallpaper-selector">Home page wallpaper</label>
+      <div class="wallpaper-controls">
+        <select id="wallpaper-selector" class="settings-select">
+          <option value="default">Default (Forest)</option>
+          <option value="custom">Custom image</option>
+        </select>
+        <input type="file" id="wallpaper-file" class="file-input" accept="image/*" style="display: none;">
+        <button type="button" id="wallpaper-browse" class="btn-secondary" style="display: none;">Browse</button>
+      </div>
+    </div>
+
+    <div class="setting-group">
+      <button type="button" id="clear-cache" class="btn-danger">Clear Cache</button>
+      <p class="setting-description">Clear browser cache, cookies, and stored data</p>
+    </div>
   </section>
 
-  <section id="extension-settings">
-    <h2>Extension Settings</h2>
-    <!-- Extension settings will be implemented here -->
+  <section id="extension-settings" class="settings-section">
+    <h1>Extension Management</h1>
+    <p class="section-description">Extension support coming soon</p>
+    
+    <div class="extensions-placeholder">
+      <div class="extension-item">
+        <div class="extension-info">
+          <span class="extension-name">Ad Blocker</span>
+          <span class="extension-status">Coming soon</span>
+        </div>
+        <label class="toggle-label">
+          <input type="checkbox" class="settings-toggle" disabled>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      
+      <div class="extension-item">
+        <div class="extension-info">
+          <span class="extension-name">DScan</span>
+          <span class="extension-status">Coming soon</span>
+        </div>
+        <label class="toggle-label">
+          <input type="checkbox" class="settings-toggle" disabled>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
   </section>
-</main> 
+</main>
+
+<script type="module" src="./static/js/settings.js"></script> 
