@@ -382,12 +382,21 @@ tracked-box {
 .tab-favicon {
   width: 16px;
   height: 16px;
-  min-width: 16px;
-  margin-right: 6px;
   background-size: contain;
-  background-position: center;
   background-repeat: no-repeat;
-  display: none;
+  background-position: center;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+.p2p-indicator {
+  font-size: 12px;
+  margin-right: 6px;
+  color: var(--peersky-nav-button-color);
+  opacity: 0.7;
+  user-select: none;
+  line-height: 1;
+  display: inline-block;
 }
 
 .tab.loading .tab-title::before {

@@ -150,6 +150,7 @@ class TabBar extends HTMLElement {
           id: tab.id,
           url: tab.url,
           title: tab.title,
+          protocol: tab.protocol,
           isPinned: this.pinnedTabs.has(tab.id),
           groupId: this.tabGroupAssignments.get(tab.id) || null
         })),
@@ -277,12 +278,15 @@ class TabBar extends HTMLElement {
     tab.addEventListener("click", () => this.selectTab(tabId));
     
     this.tabContainer.appendChild(tab);
-    this.tabs.push({id: tabId, url, title});
+    const protocol = this._getProtocol(url);
+    this.tabs.push({id: tabId, url, title, protocol});
     
     // Create webview for this tab if container exists
     if (this.webviewContainer) {
       this.createWebviewForTab(tabId, url);
     }
+    
+    this._updateP2PIndicator(tabId);
     
     return tabId;
   }
@@ -544,6 +548,7 @@ class TabBar extends HTMLElement {
     
     if (url) {
       tab.url = url;
+      tab.protocol = this._getProtocol(url);
       // Update the webview if URL is updated externally
       const webview = this.webviews.get(tabId);
       if (webview && webview.getAttribute("src") !== url) {
@@ -561,6 +566,8 @@ class TabBar extends HTMLElement {
         }
       }
     }
+    
+    this._updateP2PIndicator(tabId);
     
     // Save state when tab is updated
     this.saveTabsState();
@@ -1695,6 +1702,53 @@ class TabBar extends HTMLElement {
         return closest;
       }
     }, { offset: Number.NEGATIVE_INFINITY }).element;
+  }
+
+  // --- P2P Protocol Helpers ---
+
+  _getProtocol(url) {
+    if (url.startsWith('ipfs://') || url.startsWith('ipns://')) {
+      return 'ipfs';
+    }
+    if (url.startsWith('hyper://')) {
+      return 'hyper';
+    }
+    if (url.startsWith('web3://')) {
+      return 'web3';
+    }
+    if (url.startsWith('peersky://') || url.startsWith('browser://')) {
+      return 'peersky';
+    }
+    return 'http';
+  }
+
+  _updateP2PIndicator(tabId) {
+    const tab = this.tabs.find(t => t.id === tabId);
+    const tabElement = document.getElementById(tabId);
+    if (!tab || !tabElement) return;
+
+    let indicator = tabElement.querySelector('.p2p-indicator');
+    const protocol = this._getProtocol(tab.url);
+
+    if (['ipfs', 'hyper', 'web3'].includes(protocol)) {
+      if (!indicator) {
+        indicator = document.createElement('span');
+        indicator.className = 'p2p-indicator';
+        const favicon = tabElement.querySelector('.tab-favicon');
+        if (favicon) {
+          favicon.insertAdjacentElement('afterend', indicator);
+        } else {
+          tabElement.prepend(indicator);
+        }
+      }
+      indicator.textContent = `⬢`; // Hexagon symbol
+      indicator.title = `This tab is using the ${protocol} protocol.`;
+      indicator.style.display = 'inline-block';
+    } else {
+      if (indicator) {
+        indicator.remove();
+      }
+    }
   }
 }
 
