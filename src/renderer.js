@@ -154,7 +154,13 @@ document.addEventListener("DOMContentLoaded", () => {
     document.addEventListener("keydown", (e) => {
       if (e.key === "t" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
-        tabBar.addTab();
+        try {
+          if (tabBar && typeof tabBar.addTab === 'function') {
+            tabBar.addTab();
+          }
+        } catch (error) {
+          console.error('Error adding tab:', error);
+        }
       }
     });
 
@@ -166,26 +172,41 @@ document.addEventListener("DOMContentLoaded", () => {
 function updateNavigationButtons(tabBar) {
   if (!nav) return;
   
-  const webview = tabBar.getActiveWebview();
-  if (webview) {
-    const canGoBack = webview.canGoBack();
-    const canGoForward = webview.canGoForward();
-    nav.setNavigationButtons(canGoBack, canGoForward);
-  } else {
+  try {
+    const webview = tabBar.getActiveWebview();
+    if (webview) {
+      const canGoBack = webview.canGoBack();
+      const canGoForward = webview.canGoForward();
+      nav.setNavigationButtons(canGoBack, canGoForward);
+    } else {
+      nav.setNavigationButtons(false, false);
+    }
+  } catch (error) {
+    console.error('Error updating navigation buttons:', error);
     nav.setNavigationButtons(false, false);
   }
 }
 
 function focusURLInput() {
-  const urlInput = nav.querySelector("#url");
-  if (urlInput) {
-    urlInput.focus();
+  try {
+    const urlInput = nav.querySelector("#url");
+    if (urlInput) {
+      urlInput.focus();
+    }
+  } catch (error) {
+    console.error('Error focusing URL input:', error);
   }
 }
 
 document.addEventListener("keydown", (e) => {
   if (e.key === "f" && (e.ctrlKey || e.metaKey)) {
     e.preventDefault();
-    findMenu.toggle();
+    try {
+      if (findMenu && typeof findMenu.toggle === 'function') {
+        findMenu.toggle();
+      }
+    } catch (error) {
+      console.error('Error toggling find menu:', error);
+    }
   }
 });

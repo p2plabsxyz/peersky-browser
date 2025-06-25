@@ -87,13 +87,23 @@ export function createActions(windowManager) {
       click: (focusedWindow) => {
         if (focusedWindow) {
           focusedWindow.webContents.executeJavaScript(`
-            const tabBar = document.querySelector('#tabbar');
-            if (tabBar && tabBar.tabs.length > 1) {
-              tabBar.closeTab(tabBar.getActiveTab().id);
-            } else {
+            try {
+              const tabBar = document.querySelector('#tabbar');
+              if (tabBar && tabBar.tabs && tabBar.tabs.length > 1 && typeof tabBar.closeTab === 'function' && typeof tabBar.getActiveTab === 'function') {
+                const activeTab = tabBar.getActiveTab();
+                if (activeTab && activeTab.id) {
+                  tabBar.closeTab(activeTab.id);
+                }
+              } else {
+                window.close();
+              }
+            } catch (error) {
+              console.error('Error in Close action:', error);
               window.close();
             }
-          `);
+          `).catch(error => {
+            console.error('Script execution failed in Close action:', error);
+          });
         }
       },
     },
@@ -132,25 +142,40 @@ export function createActions(windowManager) {
       click: (focusedWindow) => {
         if (focusedWindow) {
           focusedWindow.webContents.executeJavaScript(`
-            const tabBar = document.querySelector('#tabbar');
-            if (tabBar) {
-              tabBar.addTab();
+            try {
+              const tabBar = document.querySelector('#tabbar');
+              if (tabBar && typeof tabBar.addTab === 'function') {
+                tabBar.addTab();
+              }
+            } catch (error) {
+              console.error('Error adding tab:', error);
             }
-          `);
+          `).catch(error => {
+            console.error('Script execution failed:', error);
+          });
         }
       },
     },
     CloseTab: {
       label: "Close Tab",
-      accelerator: "CommandOrControl+W",
+      accelerator: "CommandOrControl+Shift+W",
       click: (focusedWindow) => {
         if (focusedWindow) {
           focusedWindow.webContents.executeJavaScript(`
-            const tabBar = document.querySelector('#tabbar');
-            if (tabBar && tabBar.getActiveTab()) {
-              tabBar.closeTab(tabBar.getActiveTab().id);
+            try {
+              const tabBar = document.querySelector('#tabbar');
+              if (tabBar && typeof tabBar.getActiveTab === 'function' && typeof tabBar.closeTab === 'function') {
+                const activeTab = tabBar.getActiveTab();
+                if (activeTab && activeTab.id) {
+                  tabBar.closeTab(activeTab.id);
+                }
+              }
+            } catch (error) {
+              console.error('Error closing tab:', error);
             }
-          `);
+          `).catch(error => {
+            console.error('Script execution failed:', error);
+          });
         }
       },
     },
@@ -160,13 +185,21 @@ export function createActions(windowManager) {
       click: (focusedWindow) => {
         if (focusedWindow) {
           focusedWindow.webContents.executeJavaScript(`
-            const tabBar = document.querySelector('#tabbar');
-            if (tabBar && tabBar.tabs.length > 1) {
-              const activeIndex = tabBar.tabs.findIndex(tab => tab.id === tabBar.activeTabId);
-              const nextIndex = (activeIndex + 1) % tabBar.tabs.length;
-              tabBar.selectTab(tabBar.tabs[nextIndex].id);
+            try {
+              const tabBar = document.querySelector('#tabbar');
+              if (tabBar && tabBar.tabs && tabBar.tabs.length > 1) {
+                const activeIndex = tabBar.tabs.findIndex(tab => tab.id === tabBar.activeTabId);
+                const nextIndex = (activeIndex + 1) % tabBar.tabs.length;
+                if (typeof tabBar.selectTab === 'function') {
+                  tabBar.selectTab(tabBar.tabs[nextIndex].id);
+                }
+              }
+            } catch (error) {
+              console.error('Error switching to next tab:', error);
             }
-          `);
+          `).catch(error => {
+            console.error('Script execution failed:', error);
+          });
         }
       },
     },
@@ -176,13 +209,21 @@ export function createActions(windowManager) {
       click: (focusedWindow) => {
         if (focusedWindow) {
           focusedWindow.webContents.executeJavaScript(`
-            const tabBar = document.querySelector('#tabbar');
-            if (tabBar && tabBar.tabs.length > 1) {
-              const activeIndex = tabBar.tabs.findIndex(tab => tab.id === tabBar.activeTabId);
-              const prevIndex = (activeIndex - 1 + tabBar.tabs.length) % tabBar.tabs.length;
-              tabBar.selectTab(tabBar.tabs[prevIndex].id);
+            try {
+              const tabBar = document.querySelector('#tabbar');
+              if (tabBar && tabBar.tabs && tabBar.tabs.length > 1) {
+                const activeIndex = tabBar.tabs.findIndex(tab => tab.id === tabBar.activeTabId);
+                const prevIndex = (activeIndex - 1 + tabBar.tabs.length) % tabBar.tabs.length;
+                if (typeof tabBar.selectTab === 'function') {
+                  tabBar.selectTab(tabBar.tabs[prevIndex].id);
+                }
+              }
+            } catch (error) {
+              console.error('Error switching to previous tab:', error);
             }
-          `);
+          `).catch(error => {
+            console.error('Script execution failed:', error);
+          });
         }
       },
     },

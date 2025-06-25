@@ -178,8 +178,12 @@ find-menu {
   position: relative;
   -webkit-app-region: no-drag;
   box-sizing: border-box;
+  transition: all 0.2s ease-in-out;
 }
-
+.tab.dragging {
+  opacity: 0.5;
+  background: #555;
+}
 .tab-container::-webkit-scrollbar {
   width: 0;
   height: 0;
@@ -244,6 +248,8 @@ find-menu {
 .header-container {
   display: flex;
   flex-direction: column;
+  justify-content: center;
+  height: 50px;
   width: 100%;
   position: fixed; 
   top: 38px;
@@ -432,6 +438,7 @@ tracked-box {
   margin-right: 8px;
   width: 16px;
   font-size: 12px;
+  color: azure;
 }
 
 .context-menu-item[data-action="duplicate"] .menu-icon {
@@ -479,4 +486,194 @@ tracked-box {
 .mute-indicator {
   opacity: 0.8;
   font-size: 10px;
+}
+
+/* Tab Group Styles */
+.tab-group-header {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 8px;
+  margin-top: 8px;
+  border-radius: 8px 8px 0 0;
+  color: white;
+  font-size: 11px;
+  cursor: default;
+  user-select: none;
+  -webkit-app-region: no-drag;
+}
+.tab-group-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 3px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  user-select: none;
+}
+.tab-group-toggle:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+.tab-group-toggle:active {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+.tab-group-title {
+  flex-grow: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 8px;
+}
+
+.tab-group-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.tab-group-edit, .tab-group-close {
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.tab-group-edit:hover, .tab-group-close:hover {
+  opacity: 1;
+}
+
+/* Tab styling for grouped tabs */
+.tab[data-group-id] {
+  margin-left: 8px;
+}
+
+/* Group Edit Dialog */
+.tab-group-dialog {
+  position: absolute;
+  z-index: 10001;
+  background: var(--browser-theme-background);
+  border: 1px solid var(--peersky-nav-border-color);
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+  animation: slideIn 0.2s ease-out;
+  max-width: 320px;
+  width: 90%;
+}
+
+.tab-group-dialog h3 {
+  margin-top: 0;
+  margin-bottom: 16px;
+  font-size: 16px;
+}
+
+.dialog-row {
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+}
+
+.dialog-row label {
+  width: 60px;
+}
+
+.dialog-row input {
+  flex-grow: 1;
+  padding: 6px;
+  background: var(--peersky-background-url-input);
+  border: 1px solid var(--peersky-nav-border-color);
+  color: var(--browser-theme-text-color);
+  transition: border-color 0.2s;
+}
+
+.dialog-row input:focus {
+  border-color: var(--peersky-nav-button-active);
+}
+
+.color-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.color-option {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.color-option:hover {
+  transform: scale(1.1);
+}
+
+.color-option.selected {
+  transform: scale(1.2);
+  box-shadow: 0 0 0 2px var(--peersky-nav-button-active);
+}
+
+.dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.dialog-buttons button {
+  padding: 8px 16px;
+  background: var(--peersky-nav-background);
+  border: 1px solid var(--peersky-nav-border-color);
+  color: var(--browser-theme-text-color);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.dialog-buttons button:hover {
+  background: var(--peersky-nav-button-hover);
+}
+
+.dialog-buttons button#group-edit-save {
+  background-color: var(--peersky-nav-button-active);
+  color: white;
+}
+
+/* Dialog overlay */
+.dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 10000;
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* Submenu styling */
+.tab-context-submenu {
+  position: fixed;
+  background: var(--browser-theme-background);
+  border: 1px solid var(--peersky-nav-border-color);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  padding: 4px 0;
+  min-width: 180px;
+  font-size: 13px;
+  z-index: 10001;
+}
+
+.has-submenu .submenu-arrow {
+  margin-left: auto;
+  padding-left: 8px;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideIn {
+  from { transform: translate(-50%, -60%); opacity: 0; }
+  to { transform: translate(-50%, -50%); opacity: 1; }
 }

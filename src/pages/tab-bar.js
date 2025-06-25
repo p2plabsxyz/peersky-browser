@@ -7,6 +7,10 @@ class TabBar extends HTMLElement {
     this.webviews = new Map(); // Store webviews by tab ID
     this.webviewContainer = null; // Will be set by connectWebviewContainer
     this.pinnedTabs = new Set(); // Track pinned tabs
+    this.tabGroups = new Map(); // Store tab groups
+    this.tabGroupAssignments = new Map(); // Track tab group assignments
+    this.groupColors = ["#FF5733", "#33FF57", "#3357FF", "#FF33A1", "#A133FF"]; // Predefined group colors
+    this.draggedTabId = null;
     this.buildTabBar();
     this.setupBrowserCloseHandler();
     this.setupTabContextMenu();
@@ -60,6 +64,7 @@ class TabBar extends HTMLElement {
         }
       }, time);
     });
+    setTimeout(() => this.refreshGroupStyles(), 600);
   }
 
   buildTabBar() {
@@ -82,12 +87,17 @@ class TabBar extends HTMLElement {
 
     // enable mouse-wheel => horizontal scroll
     this.tabContainer.addEventListener('wheel', e => {
-    // only intercept vertical scrolls
+      // only intercept vertical scrolls
       if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
-      e.preventDefault();
-      this.tabContainer.scrollLeft += e.deltaY;
-    }
-  });
+        e.preventDefault();
+        this.tabContainer.scrollLeft += e.deltaY;
+      }
+    });
+    
+    // Add drag and drop listeners
+    this.tabContainer.addEventListener('dragstart', this.handleDragStart.bind(this));
+    this.tabContainer.addEventListener('dragend', this.handleDragEnd.bind(this));
+    this.tabContainer.addEventListener('dragover', this.handleDragOver.bind(this));
     
     // Don't add first tab automatically here anymore
     // Will be handled in restoreOrCreateInitialTabs
@@ -140,10 +150,17 @@ class TabBar extends HTMLElement {
           id: tab.id,
           url: tab.url,
           title: tab.title,
-          isPinned: this.pinnedTabs.has(tab.id)
+          isPinned: this.pinnedTabs.has(tab.id),
+          groupId: this.tabGroupAssignments.get(tab.id) || null
         })),
         activeTabId: this.activeTabId,
-        tabCounter: this.tabCounter
+        tabCounter: this.tabCounter,
+        tabGroups: Array.from(this.tabGroups.entries()).map(([id, group]) => ({
+          id,
+          name: group.name,
+          color: group.color,
+          expanded: group.expanded
+        }))
       };
       localStorage.setItem("peersky-browser-tabs", JSON.stringify(tabsData));
     } catch (error) {
@@ -156,6 +173,18 @@ class TabBar extends HTMLElement {
     this.tabCounter = persistedData.tabCounter || 0;
     let restoredActiveTabId = null;
 
+    // Restore tab groups first
+    if (persistedData.tabGroups) {
+      persistedData.tabGroups.forEach(groupData => {
+        this.tabGroups.set(groupData.id, {
+          id: groupData.id,
+          name: groupData.name,
+          color: groupData.color,
+          expanded: groupData.expanded
+        });
+      });
+    }
+
     // Restore each tab
     persistedData.tabs.forEach(tabData => {
       const tabId = this.addTabWithId(tabData.id, tabData.url, tabData.title);
@@ -163,19 +192,41 @@ class TabBar extends HTMLElement {
       // Restore pinned state
       if (tabData.isPinned) {
         this.pinnedTabs.add(tabId);
-        // timeout for ui update
-        setTimeout(()=>{
+        setTimeout(() => {
+          const tabElement = document.getElementById(tabId);
+          if (tabElement) {
+            tabElement.classList.add('pinned');
+          }
+        }, 0);
+      }
+      
+      // Restore group assignment
+      if (tabData.groupId && this.tabGroups.has(tabData.groupId)) {
+        this.tabGroupAssignments.set(tabId, tabData.groupId);
+        
+        // Apply group styles to tab element
         const tabElement = document.getElementById(tabId);
-        if (tabElement) {
-          tabElement.classList.add('pinned');
+        const group = this.tabGroups.get(tabData.groupId);
+        if (tabElement && group) {
+          tabElement.dataset.groupId = tabData.groupId;
+          if (group.expanded) {
+            tabElement.style.borderTop = `2px solid ${group.color}`;
+          }
         }
-      }, 0);
       }
       
       if (tabData.id === persistedData.activeTabId) {
         restoredActiveTabId = tabId;
       }
     });
+
+    // Render all group headers
+    for (const groupId of this.tabGroups.keys()) {
+      this.renderGroupHeader(groupId);
+    }
+    
+    // Update grouped tabs UI
+    this.updateGroupedTabsUI();
 
     // Select the previously active tab
     if (restoredActiveTabId) {
@@ -187,6 +238,9 @@ class TabBar extends HTMLElement {
 
     // Force activation after a delay
     setTimeout(() => this.forceActivateCurrentTab(), 200);
+    
+    // Ensure group styles are applied after all DOM elements are ready
+    setTimeout(() => this.refreshGroupStyles(), 300);
   }
 
   // Add tab with specific ID (for restoration)
@@ -196,6 +250,7 @@ class TabBar extends HTMLElement {
     tab.className = "tab";
     tab.id = tabId;
     tab.dataset.url = url;
+    tab.draggable = true;
     
     const tabTitle = document.createElement("span");
     tabTitle.className = "tab-title";
@@ -412,6 +467,9 @@ class TabBar extends HTMLElement {
       webview.remove();
       this.webviews.delete(tabId);
     }
+    
+    // Remove tab from group
+    this.removeTabFromGroup(tabId);
     
     // If we closed the active tab, select another one
     if (this.activeTabId === tabId) {
@@ -642,25 +700,67 @@ class TabBar extends HTMLElement {
       </div>
     `;
 
+    const tabGroupId = this.tabGroupAssignments.get(tabId);
+    const isGrouped = !!tabGroupId;
+    
+    // Add group-related menu items before the last separator
+    const groupMenuItems = `
+      <div class="context-menu-separator"></div>
+      ${isGrouped ? `
+        <div class="context-menu-item" data-action="remove-from-group">
+          <span class="menu-icon">🔓</span>
+          Remove from group
+        </div>
+      ` : `
+        <div class="context-menu-item" data-action="add-to-new-group">
+          <span class="menu-icon">🔖</span>
+          Add to new group
+        </div>
+      `}
+      ${this.tabGroups.size > 0 && !isGrouped ? `
+        <div class="context-menu-item has-submenu" data-action="add-to-existing-group">
+          <span class="menu-icon">➕</span>
+          Add to group
+          <span class="submenu-arrow">▸</span>
+        </div>
+      ` : ''}
+    `;
+    
+    // Insert group menu items before pin option
+    const menuHtml = menu.innerHTML;
+    const pinIndex = menuHtml.indexOf('<div class="context-menu-item" data-action="pin">');
+    if (pinIndex !== -1) {
+      menu.innerHTML = 
+        menuHtml.substring(0, pinIndex) + 
+        groupMenuItems + 
+        menuHtml.substring(pinIndex);
+    }
+
+    const cleanup = () => {
+      if (menu.parentNode) menu.remove();
+      document.removeEventListener('click', closeMenuOnClickOutside);
+      window.removeEventListener('blur', cleanup);
+    };
+
     // Add event listeners to menu items
     menu.addEventListener('click', (e) => {
       const action = e.target.closest('.context-menu-item')?.dataset.action;
       if (action) {
         this.handleTabContextMenuAction(action, tabId);
-        menu.remove();
+        cleanup();
       }
     });
 
     // Close menu when clicking outside
-    const closeMenu = (e) => {
+    const closeMenuOnClickOutside = (e) => {
       if (!menu.contains(e.target)) {
-        menu.remove();
-        document.removeEventListener('click', closeMenu);
+        cleanup();
       }
     };
     
     setTimeout(() => {
-      document.addEventListener('click', closeMenu);
+      document.addEventListener('click', closeMenuOnClickOutside);
+      window.addEventListener('blur', cleanup);
     }, 0);
 
     document.body.appendChild(menu);
@@ -710,6 +810,18 @@ class TabBar extends HTMLElement {
         
       case 'close':
         this.closeTab(tabId);
+        break;
+
+      case 'add-to-new-group':
+        this.createTabGroup([tabId], {}, true); // Pass true to show edit dialog
+        break;
+        
+      case 'remove-from-group':
+        this.removeTabFromGroup(tabId);
+        break;
+        
+      case 'add-to-existing-group':
+        this.showAddToGroupSubmenu(tabId);
         break;
     }
   }
@@ -769,6 +881,9 @@ class TabBar extends HTMLElement {
     
     // Remove from pinned tabs if it was pinned
     this.pinnedTabs.delete(tabId);
+    
+    // Remove from group if it was grouped
+    this.removeTabFromGroup(tabId);
     
     // If we moved the active tab, select another one
     if (this.activeTabId === tabId) {
@@ -893,6 +1008,693 @@ class TabBar extends HTMLElement {
         }
       }
     }
+  }
+
+  // Create a new tab group with the given tabs
+  createTabGroup(tabIds, options = {}, showEditDialog = false) {
+    const groupId = `group-${Date.now()}`;
+    const colorIndex = Math.floor(Math.random() * this.groupColors.length);
+    
+    // Create the group metadata
+    this.tabGroups.set(groupId, {
+      id: groupId,
+      name: options.name || '',
+      color: options.color || this.groupColors[colorIndex],
+      expanded: options.expanded !== undefined ? options.expanded : true
+    });
+    
+    // Assign tabs to this group
+    tabIds.forEach(tabId => {
+      this.addTabToGroup(tabId, groupId);
+    });
+    
+    // Create or update the group header
+    this.renderGroupHeader(groupId);
+    this.updateGroupedTabsUI();
+    
+    // Save the state
+    this.saveTabsState();
+    
+    // Show the edit dialog immediately if requested
+    if (showEditDialog) {
+      setTimeout(() => this.showGroupEditDialog(groupId), 50);
+    }
+    
+    return groupId;
+  }
+
+  // Add a tab to an existing group
+  addTabToGroup(tabId, groupId) {
+    // If tab is already in a group, remove it first
+    if (this.tabGroupAssignments.has(tabId)) {
+      this.removeTabFromGroup(tabId);
+    }
+    
+    // Assign tab to new group
+    this.tabGroupAssignments.set(tabId, groupId);
+    
+    // Update UI
+    const tabElement = document.getElementById(tabId);
+    if (tabElement) {
+      tabElement.dataset.groupId = groupId;
+      const group = this.tabGroups.get(groupId);
+      if (group) {
+        tabElement.style.borderTop = group.expanded ? '2px solid ' + group.color : 'none';
+      }
+    }
+  }
+
+  // Remove a tab from its group
+  removeTabFromGroup(tabId) {
+    const groupId = this.tabGroupAssignments.get(tabId);
+    if (!groupId) return;
+    
+    // Remove assignment
+    this.tabGroupAssignments.delete(tabId);
+    
+    // Update tab UI
+    const tabElement = document.getElementById(tabId);
+    if (tabElement) {
+      delete tabElement.dataset.groupId;
+      tabElement.style.borderTop = 'none';
+    }
+    
+    // Check if group is now empty
+    const groupHasTabs = Array.from(this.tabGroupAssignments.values()).some(gId => gId === groupId);
+    if (!groupHasTabs) {
+      this.deleteGroup(groupId);
+    } else {
+      this.renderGroupHeader(groupId);
+    }
+  }
+
+  // Delete a group but keep its tabs
+  deleteGroup(groupId) {
+    if (!this.tabGroups.has(groupId)) return;
+    
+    // Remove all tabs from this group
+    for (const [tabId, gId] of this.tabGroupAssignments.entries()) {
+      if (gId === groupId) {
+        const tabElement = document.getElementById(tabId);
+        if (tabElement) {
+          delete tabElement.dataset.groupId;
+          tabElement.style.borderTop = 'none';
+        }
+        this.tabGroupAssignments.delete(tabId);
+      }
+    }
+    
+    // Remove the group header
+    const header = document.getElementById(`group-header-${groupId}`);
+    if (header) header.remove();
+    
+    // Delete group data
+    this.tabGroups.delete(groupId);
+    
+    // Save state
+    this.saveTabsState();
+  }
+
+  // Update only the toggle button without recreating the header
+  updateGroupToggleButton(groupId) {
+    const group = this.tabGroups.get(groupId);
+    if (!group) return;
+    
+    const header = document.getElementById(`group-header-${groupId}`);
+    if (!header) return;
+    
+    const toggleButton = header.querySelector('.tab-group-toggle');
+    if (toggleButton) {
+      toggleButton.textContent = group.expanded ? '▾' : '▸';
+      toggleButton.title = group.expanded ? 'Collapse group' : 'Expand group';
+    }
+  }
+
+  // Toggle group collapse state
+  toggleGroupCollapse(groupId) {
+    const group = this.tabGroups.get(groupId);
+    if (!group) {
+      console.log(`Group ${groupId} not found`);
+      return;
+    }
+    
+    console.log(`Toggling group ${groupId} from ${group.expanded} to ${!group.expanded}`);
+    
+    // Toggle the expanded state
+    group.expanded = !group.expanded;
+    
+    // Update the UI immediately
+    this.updateGroupedTabsUI();
+    
+    // UPDATE: Only update the toggle button text, don't re-render the entire header
+    this.updateGroupToggleButton(groupId);
+    
+    // Save state
+    this.saveTabsState();
+    
+    console.log(`Group ${groupId} is now ${group.expanded ? 'expanded' : 'collapsed'}`);
+  }
+
+  // Update group properties
+  updateGroupProperties(groupId, properties) {
+    const group = this.tabGroups.get(groupId);
+    if (!group) return;
+    
+    if (properties.name !== undefined) group.name = properties.name;
+    if (properties.color !== undefined) group.color = properties.color;
+    if (properties.expanded !== undefined) group.expanded = properties.expanded;
+    
+    // Update UI
+    this.renderGroupHeader(groupId);
+    this.updateGroupedTabsUI();
+    
+    // Update all tab borders for this group
+    if (properties.color !== undefined) {
+      for (const [tabId, gId] of this.tabGroupAssignments.entries()) {
+        if (gId === groupId) {
+          const tabElement = document.getElementById(tabId);
+          if (tabElement && group.expanded) {
+            tabElement.style.borderTop = '2px solid ' + properties.color;
+          }
+        }
+      }
+    }
+    
+    // Save state
+    this.saveTabsState();
+  }
+
+  // Create/update the group header element
+  renderGroupHeader(groupId) {
+    const group = this.tabGroups.get(groupId);
+    if (!group) return;
+    
+    // Find all tabs in this group
+    const groupTabIds = Array.from(this.tabGroupAssignments.entries())
+      .filter(([_, gId]) => gId === groupId)
+      .map(([tabId, _]) => tabId);
+    
+    if (groupTabIds.length === 0) return;
+    
+    // Find the first tab element in this group to position the header
+    const firstTabId = groupTabIds[0];
+    const firstTabElement = document.getElementById(firstTabId);
+    
+    if (!firstTabElement) return;
+    
+    // Check if header already exists
+    let header = document.getElementById(`group-header-${groupId}`);
+    const headerExists = !!header;
+    
+    if (!header) {
+      header = document.createElement('div');
+      header.id = `group-header-${groupId}`;
+      header.className = 'tab-group-header';
+      
+      // Insert before the first tab in the group
+      this.tabContainer.insertBefore(header, firstTabElement);
+    }
+    
+    // Update header style
+    header.style.backgroundColor = group.color;
+    
+    // Only recreate content if header is new
+    if (!headerExists) {
+      // Clear any existing content
+      header.innerHTML = '';
+      
+      // Create toggle button
+      const toggleButton = document.createElement('div');
+      toggleButton.className = 'tab-group-toggle';
+      toggleButton.title = group.expanded ? 'Collapse group' : 'Expand group';
+      toggleButton.textContent = group.expanded ? '▾' : '▸';
+      
+      // Create title element
+      const titleElement = document.createElement('div');
+      titleElement.className = 'tab-group-title';
+      titleElement.title = group.name || 'Unnamed group';
+      titleElement.textContent = group.name || 'Unnamed group';
+      
+      // Create controls container
+      const controlsContainer = document.createElement('div');
+      controlsContainer.className = 'tab-group-controls';
+      
+      // Create edit button
+      const editButton = document.createElement('span');
+      editButton.className = 'tab-group-edit';
+      editButton.title = 'Edit group';
+      editButton.textContent = '✎';
+      
+      // Create close button
+      const closeButton = document.createElement('span');
+      closeButton.className = 'tab-group-close';
+      closeButton.title = 'Close group';
+      closeButton.textContent = '×';
+      
+      // Append controls
+      controlsContainer.appendChild(editButton);
+      controlsContainer.appendChild(closeButton);
+      
+      // Append all elements to header
+      header.appendChild(toggleButton);
+      header.appendChild(titleElement);
+      header.appendChild(controlsContainer);
+      
+      // Add event listeners ONLY when creating new header
+      toggleButton.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        
+        console.log(`Toggle button clicked for group ${groupId}`);
+        
+        // Toggle the group state
+        this.toggleGroupCollapse(groupId);
+        
+        return false; // Prevent any event bubbling
+      });
+      
+      editButton.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.showGroupEditDialog(groupId);
+      });
+      
+      closeButton.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.deleteGroup(groupId);
+      });
+      
+      // Add right-click context menu for the header
+      header.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        this.showGroupContextMenu(e, groupId);
+      });
+    } else {
+      // If header exists, just update the content without recreating event listeners
+      const titleElement = header.querySelector('.tab-group-title');
+      if (titleElement) {
+        titleElement.title = group.name || 'Unnamed group';
+        titleElement.textContent = group.name || 'Unnamed group';
+      }
+      
+      // Update toggle button
+      this.updateGroupToggleButton(groupId);
+    }
+  }
+
+  // Update visibility of tabs based on group collapse state
+  updateGroupedTabsUI() {
+    console.log('Updating grouped tabs UI');
+    
+    // First reset all tabs to default state
+    this.tabs.forEach(tab => {
+      const tabElement = document.getElementById(tab.id);
+      if (tabElement) {
+        tabElement.style.display = '';
+      }
+    });
+    
+    // Then hide tabs in collapsed groups
+    for (const [groupId, group] of this.tabGroups.entries()) {
+      console.log(`Group ${groupId}: expanded=${group.expanded}`);
+      
+      if (!group.expanded) {
+        for (const [tabId, gId] of this.tabGroupAssignments.entries()) {
+          if (gId === groupId) {
+            const tabElement = document.getElementById(tabId);
+            if (tabElement) {
+              console.log(`Hiding tab ${tabId} in collapsed group ${groupId}`);
+              tabElement.style.display = 'none';
+              
+              // If this is the active tab, activate another visible tab
+              if (tabId === this.activeTabId) {
+                const visibleTabs = this.tabs.filter(t => 
+                  !this.tabGroupAssignments.has(t.id) || 
+                  this.tabGroups.get(this.tabGroupAssignments.get(t.id))?.expanded
+                );
+                if (visibleTabs.length > 0) {
+                  console.log(`Switching active tab from ${tabId} to ${visibleTabs[0].id}`);
+                  this.selectTab(visibleTabs[0].id);
+                }
+              }
+            }
+          }
+        }
+      } else {
+        // Make sure tabs in expanded groups are visible
+        for (const [tabId, gId] of this.tabGroupAssignments.entries()) {
+          if (gId === groupId) {
+            const tabElement = document.getElementById(tabId);
+            if (tabElement) {
+              console.log(`Showing tab ${tabId} in expanded group ${groupId}`);
+              tabElement.style.display = '';
+            }
+          }
+        }
+      }
+    }
+  }
+
+  refreshGroupStyles() {
+    // First, ensure all tabs in groups have the correct styling
+    for (const [tabId, groupId] of this.tabGroupAssignments.entries()) {
+      const tabElement = document.getElementById(tabId);
+      const group = this.tabGroups.get(groupId);
+      
+      if (tabElement && group) {
+        tabElement.dataset.groupId = groupId;
+        if (group.expanded) {
+          tabElement.style.borderTop = `2px solid ${group.color}`;
+        } else {
+          tabElement.style.borderTop = 'none';
+        }
+      }
+    }
+  
+    // Ensure all group headers are positioned correctly and have correct colors
+    for (const groupId of this.tabGroups.keys()) {
+      this.renderGroupHeader(groupId);
+    }
+    
+    // Make sure collapsed groups stay collapsed
+    this.updateGroupedTabsUI();
+  }
+
+  // Show dialog to edit group name and color
+  showGroupEditDialog(groupId) {
+    const group = this.tabGroups.get(groupId);
+    if (!group) return;
+    
+    // Create overlay background for modal effect
+    const overlay = document.createElement('div');
+    overlay.className = 'dialog-overlay';
+    overlay.style.position = 'fixed';
+    overlay.style.top = '0';
+    overlay.style.left = '0';
+    overlay.style.right = '0';
+    overlay.style.bottom = '0';
+    overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+    overlay.style.zIndex = '10000';
+    document.body.appendChild(overlay);
+    
+    // Create dialog if it doesn't exist
+    let dialog = document.getElementById('tab-group-edit-dialog');
+    if (!dialog) {
+      dialog = document.createElement('div');
+      dialog.id = 'tab-group-edit-dialog';
+      dialog.className = 'tab-group-dialog';
+      document.body.appendChild(dialog);
+    }
+    
+    // Set title based on whether this is a new or existing group
+    const isNewGroup = !group.name;
+    const dialogTitle = isNewGroup ? 'Create new tab group' : 'Edit group';
+    
+    // Populate dialog
+    dialog.innerHTML = `
+      <h3>${dialogTitle}</h3>
+      <div class="dialog-row">
+        <label for="group-name">Name:</label>
+        <input type="text" id="group-name" value="${group.name || ''}" placeholder="Enter group name">
+      </div>
+      <div class="dialog-row">
+        <label>Color:</label>
+        <div class="color-options">
+          ${this.groupColors.map(color => 
+            `<div class="color-option ${color === group.color ? 'selected' : ''}" 
+                  style="background-color: ${color}" data-color="${color}"></div>`
+          ).join('')}
+        </div>
+      </div>
+      <div class="dialog-buttons">
+        <button id="group-edit-cancel">Cancel</button>
+        <button id="group-edit-save">Save</button>
+      </div>
+    `;
+    
+    // Center the dialog in the viewport
+    dialog.style.position = 'fixed';
+    dialog.style.top = '50%';
+    dialog.style.left = '50%';
+    dialog.style.transform = 'translate(-50%, -50%)';
+    dialog.style.zIndex = '10001';
+    
+    // Add event listeners
+    dialog.querySelectorAll('.color-option').forEach(option => {
+      option.addEventListener('click', (e) => {
+        dialog.querySelectorAll('.color-option').forEach(o => o.classList.remove('selected'));
+        e.target.classList.add('selected');
+      });
+    });
+    
+    document.getElementById('group-edit-cancel').addEventListener('click', () => {
+      dialog.remove();
+      overlay.remove();
+      
+      // If canceling a new group creation, delete the empty group
+      if (isNewGroup) {
+        this.deleteGroup(groupId);
+      }
+    });
+    
+    document.getElementById('group-edit-save').addEventListener('click', () => {
+      const name = document.getElementById('group-name').value;
+      const color = dialog.querySelector('.color-option.selected')?.dataset.color || group.color;
+      
+      this.updateGroupProperties(groupId, { name, color });
+      dialog.remove();
+      overlay.remove();
+    });
+    
+    // Auto-focus the name input
+    setTimeout(() => {
+      const nameInput = document.getElementById('group-name');
+      if (nameInput) {
+        nameInput.focus();
+        nameInput.select();
+      }
+    }, 50);
+    
+    // Show dialog
+    dialog.style.display = 'block';
+  }
+
+  // Show context menu for a group header
+  showGroupContextMenu(event, groupId) {
+    const group = this.tabGroups.get(groupId);
+    if (!group) return;
+    
+    // Remove existing context menu if any
+    const existingMenu = document.querySelector('.tab-context-menu');
+    if (existingMenu) {
+      existingMenu.remove();
+    }
+    
+    const menu = document.createElement('div');
+    menu.className = 'tab-context-menu';
+    menu.style.position = 'fixed';
+    menu.style.left = `${event.clientX}px`;
+    menu.style.top = `${event.clientY}px`;
+    menu.style.zIndex = '10000';
+    
+    menu.innerHTML = `
+      <div class="context-menu-item" data-action="add-tab">
+        <span class="menu-icon">+</span>
+        Add new tab to group
+      </div>
+      <div class="context-menu-item" data-action="edit">
+        <span class="menu-icon">✎</span>
+        Edit group
+      </div>
+      <div class="context-menu-item" data-action="toggle">
+        <span class="menu-icon">${group.expanded ? '▸' : '▾'}</span>
+        ${group.expanded ? 'Collapse group' : 'Expand group'}
+      </div>
+      <div class="context-menu-separator"></div>
+      <div class="context-menu-item" data-action="ungroup">
+        <span class="menu-icon">🔓</span>
+        Ungroup tabs
+      </div>
+      <div class="context-menu-item" data-action="close-group">
+        <span class="menu-icon">❌</span>
+        Close group
+      </div>
+    `;
+    
+    // Add event listeners to menu items
+    menu.addEventListener('click', (e) => {
+      const action = e.target.closest('.context-menu-item')?.dataset.action;
+      if (action) {
+        this.handleGroupContextMenuAction(action, groupId);
+        menu.remove();
+      }
+    });
+    
+    // Close menu when clicking outside
+    const closeMenu = (e) => {
+      if (!menu.contains(e.target)) {
+        menu.remove();
+        document.removeEventListener('click', closeMenu);
+      }
+    };
+    
+    setTimeout(() => {
+      document.addEventListener('click', closeMenu);
+    }, 0);
+    
+    document.body.appendChild(menu);
+  }
+
+  // Handle group context menu actions
+  handleGroupContextMenuAction(action, groupId) {
+    switch (action) {
+      case 'add-tab':
+        const newTabId = this.addTab("peersky://home", "Home");
+        this.addTabToGroup(newTabId, groupId);
+        break;
+        
+      case 'edit':
+        this.showGroupEditDialog(groupId);
+        break;
+        
+      case 'toggle':
+        this.toggleGroupCollapse(groupId);
+        break;
+        
+      case 'ungroup':
+        this.deleteGroup(groupId);
+        break;
+        
+      case 'close-group':
+        this.closeTabsInGroup(groupId);
+        break;
+    }
+  }
+
+  // Close all tabs in a group
+  closeTabsInGroup(groupId) {
+    const tabIds = Array.from(this.tabGroupAssignments.entries())
+      .filter(([_, gId]) => gId === groupId)
+      .map(([tabId, _]) => tabId);
+    
+    // Make a copy since closeTab modifies the collection
+    [...tabIds].forEach(tabId => {
+      this.closeTab(tabId);
+    });
+    
+    // The group should be automatically deleted when empty
+  }
+
+  // Show submenu to select which group to add the tab to
+  showAddToGroupSubmenu(tabId) {
+    const tabElement = document.getElementById(tabId);
+    if (!tabElement) return;
+    
+    const submenu = document.createElement('div');
+    submenu.className = 'tab-context-submenu';
+    
+    let submenuHtml = '';
+    for (const [groupId, group] of this.tabGroups.entries()) {
+      submenuHtml += `
+        <div class="context-menu-item" data-group-id="${groupId}">
+          <span class="menu-icon" style="background-color: ${group.color}; width: 10px; height: 10px; border-radius: 50%;"></span>
+          ${group.name || 'Unnamed group'}
+        </div>
+      `;
+    }
+    
+    submenu.innerHTML = submenuHtml;
+    
+    // Position submenu next to the "Add to group" menu item
+    const menuItem = document.querySelector('.context-menu-item[data-action="add-to-existing-group"]');
+    if (menuItem) {
+      const rect = menuItem.getBoundingClientRect();
+      submenu.style.left = `${rect.right}px`;
+      submenu.style.top = `${rect.top}px`;
+    }
+    
+    // Add event listeners
+    submenu.addEventListener('click', (e) => {
+      const groupId = e.target.closest('.context-menu-item')?.dataset.groupId;
+      if (groupId) {
+        this.addTabToGroup(tabId, groupId);
+        document.querySelector('.tab-context-menu')?.remove();
+        submenu.remove();
+      }
+    });
+    
+    document.body.appendChild(submenu);
+  }
+
+  // Drag and Drop Handlers
+  handleDragStart(e) {
+    const tabElement = e.target.closest('.tab');
+    if (tabElement) {
+      this.draggedTabId = tabElement.id;
+      // Add a delay to allow the browser to create the drag image
+      setTimeout(() => {
+        tabElement.classList.add('dragging');
+      }, 0);
+    }
+  }
+
+  handleDragEnd() {
+    if (!this.draggedTabId) return;
+
+    const tabElement = document.getElementById(this.draggedTabId);
+    if (tabElement) {
+      tabElement.classList.remove('dragging');
+    }
+
+    // Get the new order of tab IDs from the DOM
+    const newTabElements = Array.from(this.tabContainer.querySelectorAll('.tab'));
+    const newTabOrderIds = newTabElements.map(el => el.id);
+
+    // Reorder the internal `this.tabs` array to match the DOM
+    this.tabs.sort((a, b) => {
+      return newTabOrderIds.indexOf(a.id) - newTabOrderIds.indexOf(b.id);
+    });
+
+    // Save the new state and refresh group UI to ensure headers are correct
+    this.saveTabsState();
+    this.refreshGroupStyles();
+
+    this.draggedTabId = null;
+  }
+
+  handleDragOver(e) {
+    e.preventDefault();
+    
+    const draggingElement = document.getElementById(this.draggedTabId);
+    if (!draggingElement) return;
+
+    // Find the tab we are hovering over to insert before it
+    const afterElement = this.getDragAfterElement(this.tabContainer, e.clientX);
+
+    if (afterElement) {
+      this.tabContainer.insertBefore(draggingElement, afterElement);
+    } else {
+      // We are at the end, so append it
+      this.tabContainer.appendChild(draggingElement);
+    }
+  }
+
+  getDragAfterElement(container, x) {
+    // Get all draggable tabs, excluding the one being dragged
+    const draggableElements = [...container.querySelectorAll('.tab:not(.dragging)')];
+
+    return draggableElements.reduce((closest, child) => {
+      const box = child.getBoundingClientRect();
+      // Calculate the offset of the cursor from the center of the element
+      const offset = x - box.left - box.width / 2;
+      
+      // We are looking for the element that is immediately to the right of the cursor,
+      // so we want a negative offset that is closest to zero.
+      if (offset < 0 && offset > closest.offset) {
+        return { offset: offset, element: child };
+      } else {
+        return closest;
+      }
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
   }
 }
 
