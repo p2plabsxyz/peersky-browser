@@ -125,9 +125,10 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 function updateNavigationButtons() {
-  if (webviewContainer && nav && webviewContainer.webviewElement) {
-    const canGoBack = webviewContainer.webviewElement.canGoBack();
-    const canGoForward = webviewContainer.webviewElement.canGoForward();
+  if (webviewContainer && nav) {
+    // Use TrackedBox's safe navigation methods that handle both webview and iframe
+    const canGoBack = webviewContainer.canGoBack();
+    const canGoForward = webviewContainer.canGoForward();
     nav.setNavigationButtons(canGoBack, canGoForward);
   }
 }
