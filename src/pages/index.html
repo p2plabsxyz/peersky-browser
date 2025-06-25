@@ -6,11 +6,14 @@
   @import url("browser://theme/index.css");
 </style>
 <title>Peersky Browser</title>
-<nav-box id="navbox"></nav-box>
+<title-bar id="titlebar"></title-bar>
+<div class="header-container">
+  <nav-box id="navbox"></nav-box>
+</div>
 <find-menu id="find" class="hidden"></find-menu>
-<tracked-box id="webview" src="peersky://home"></tracked-box>
 
 <script type="module" src="../renderer.js"></script>
 <script src="../find-menu.js"></script>
 <script src="./nav-box.js"></script>
-<script src="./track-box.js"></script>
+<script src="./tab-bar.js"></script>
+<script src="./titlebar.js"></script>
