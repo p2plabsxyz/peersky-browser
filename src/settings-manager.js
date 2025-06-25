@@ -5,8 +5,16 @@
 import { app, ipcMain } from 'electron';
 import { promises as fs } from 'fs';
 import path from 'path';
+import os from 'os';
 
 const SETTINGS_FILE = path.join(app.getPath("userData"), "settings.json");
+const DEBUG_LOG = path.join(os.homedir(), '.peersky', 'debug.log');
+
+// Debug logging helper
+function logDebug(message) {
+  const entry = `[${new Date().toISOString()}] Settings: ${message}\n`;
+  fs.appendFile(DEBUG_LOG, entry).catch(() => {}); // Don't crash on failure
+}
 
 // Default settings configuration
 const DEFAULT_SETTINGS = {
@@ -23,51 +31,92 @@ class SettingsManager {
     this.isLoading = false;
     this.isSaving = false;
     
-    // TODO: Initialize settings on startup
     this.init();
-    
-    // TODO: Register IPC handlers
     this.registerIpcHandlers();
   }
 
   async init() {
-    // TODO: Load settings from file on startup
-    // TODO: Validate loaded settings
-    // TODO: Apply settings to browser (theme, etc.)
-    console.log('SettingsManager: Initialization TODO');
+    try {
+      // Ensure debug log directory exists
+      await fs.mkdir(path.dirname(DEBUG_LOG), { recursive: true });
+      logDebug('Settings manager initializing');
+      
+      await this.loadSettings();
+      logDebug('Settings manager initialized successfully');
+    } catch (error) {
+      logDebug(`Initialization failed: ${error.message}`);
+    }
   }
 
   registerIpcHandlers() {
-    // TODO: Handle get all settings
+    // Get all settings
     ipcMain.handle('settings-get-all', async () => {
-      // TODO: Return current settings
-      console.log('TODO: Get all settings');
-      return this.settings;
+      try {
+        logDebug('Request: get all settings');
+        return this.settings;
+      } catch (error) {
+        logDebug(`Error getting all settings: ${error.message}`);
+        throw error;
+      }
     });
 
-    // TODO: Handle get single setting
+    // Get single setting
     ipcMain.handle('settings-get', async (event, key) => {
-      // TODO: Return specific setting
-      console.log('TODO: Get setting:', key);
-      return this.settings[key];
+      try {
+        logDebug(`Request: get setting ${key}`);
+        if (!(key in this.settings)) {
+          throw new Error(`Setting '${key}' does not exist`);
+        }
+        return this.settings[key];
+      } catch (error) {
+        logDebug(`Error getting setting ${key}: ${error.message}`);
+        throw error;
+      }
     });
 
-    // TODO: Handle set setting
+    // Set setting
     ipcMain.handle('settings-set', async (event, key, value) => {
-      // TODO: Validate and set setting
-      // TODO: Save to file
-      // TODO: Apply changes (theme, etc.)
-      console.log('TODO: Set setting:', key, value);
-      return true;
+      try {
+        logDebug(`Request: set ${key} = ${value}`);
+        
+        // Validate setting
+        if (!this.validateSetting(key, value)) {
+          const error = `Invalid value for ${key}: ${value}`;
+          logDebug(error);
+          throw new Error(error);
+        }
+        
+        // Update setting
+        const oldValue = this.settings[key];
+        this.settings[key] = value;
+        
+        // Save to file
+        await this.saveSettings();
+        
+        logDebug(`Setting updated: ${key} changed from ${oldValue} to ${value}`);
+        return { success: true, key, value, oldValue };
+      } catch (error) {
+        logDebug(`Error setting ${key}: ${error.message}`);
+        throw error;
+      }
     });
 
-    // TODO: Handle reset settings
+    // Reset settings to defaults
     ipcMain.handle('settings-reset', async () => {
-      // TODO: Reset to defaults
-      // TODO: Save to file
-      // TODO: Apply changes
-      console.log('TODO: Reset settings');
-      return true;
+      try {
+        logDebug('Request: reset settings to defaults');
+        
+        const oldSettings = { ...this.settings };
+        this.settings = { ...DEFAULT_SETTINGS };
+        
+        await this.saveSettings();
+        
+        logDebug('Settings reset to defaults successfully');
+        return { success: true, settings: this.settings, oldSettings };
+      } catch (error) {
+        logDebug(`Error resetting settings: ${error.message}`);
+        throw error;
+      }
     });
 
     // TODO: Handle clear cache
@@ -89,27 +138,75 @@ class SettingsManager {
   }
 
   async loadSettings() {
-    // TODO: Load settings from JSON file
-    // TODO: Handle file not found (use defaults)
-    // TODO: Handle corrupted JSON
-    // TODO: Validate loaded settings
-    // TODO: Merge with defaults for missing keys
-    console.log('TODO: Load settings from file');
+    try {
+      const data = await fs.readFile(SETTINGS_FILE, 'utf8');
+      const loaded = JSON.parse(data);
+      
+      // Merge with defaults for missing keys
+      this.settings = { ...DEFAULT_SETTINGS, ...loaded };
+      
+      logDebug(`Settings loaded successfully: ${Object.keys(loaded).length} keys`);
+      return this.settings;
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        logDebug('Settings file not found, creating with defaults');
+      } else {
+        logDebug(`loadSettings failed: ${error.message}`);
+      }
+      
+      // Use defaults and create initial file
+      this.settings = { ...DEFAULT_SETTINGS };
+      await this.saveSettings();
+      return this.settings;
+    }
   }
 
   async saveSettings() {
-    // TODO: Prevent concurrent saves
-    // TODO: Write to temporary file first
-    // TODO: Atomic move to final location
-    // TODO: Handle write errors
-    console.log('TODO: Save settings to file');
+    if (this.isSaving) {
+      logDebug('Save already in progress, skipping');
+      return;
+    }
+    
+    this.isSaving = true;
+    try {
+      // Ensure directory exists
+      await fs.mkdir(path.dirname(SETTINGS_FILE), { recursive: true });
+      
+      // Atomic write: write to temp file then rename
+      const tempFile = SETTINGS_FILE + '.tmp';
+      await fs.writeFile(tempFile, JSON.stringify(this.settings, null, 2), 'utf8');
+      await fs.rename(tempFile, SETTINGS_FILE);
+      
+      logDebug('Settings saved successfully');
+    } catch (error) {
+      logDebug(`saveSettings failed: ${error.message}`);
+      throw error;
+    } finally {
+      this.isSaving = false;
+    }
   }
 
   validateSetting(key, value) {
-    // TODO: Validate setting values
-    // TODO: Return validation result
-    console.log('TODO: Validate setting:', key, value);
-    return true;
+    const validators = {
+      searchEngine: (v) => ['duckduckgo', 'ecosia', 'google', 'bing', 'brave', 'startpage'].includes(v),
+      theme: (v) => ['system', 'light', 'dark'].includes(v),
+      showClock: (v) => typeof v === 'boolean',
+      wallpaper: (v) => ['default', 'custom'].includes(v),
+      wallpaperCustomPath: (v) => v === null || typeof v === 'string'
+    };
+    
+    const validator = validators[key];
+    if (!validator) {
+      logDebug(`No validator for setting: ${key}`);
+      return false;
+    }
+    
+    const isValid = validator(value);
+    if (!isValid) {
+      logDebug(`Validation failed for ${key}: ${value}`);
+    }
+    
+    return isValid;
   }
 
   applySettings() {
