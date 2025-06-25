@@ -574,6 +574,7 @@ tracked-box {
   margin-top: 0;
   margin-bottom: 16px;
   font-size: 16px;
+  color: white;
 }
 
 .dialog-row {
@@ -584,6 +585,7 @@ tracked-box {
 
 .dialog-row label {
   width: 60px;
+  color: white;
 }
 
 .dialog-row input {
@@ -644,7 +646,7 @@ tracked-box {
 
 .dialog-buttons button#group-edit-save {
   background-color: var(--peersky-nav-button-active);
-  color: white;
+  color: black;
 }
 
 /* Dialog overlay */
