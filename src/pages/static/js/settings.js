@@ -1,10 +1,33 @@
 // Settings page JavaScript - Frontend functionality
-// Phase 2: IPC communication with settings-manager.js
+// IPC communication with settings-manager.js
 
-// TODO: Import Electron IPC for renderer process
-// const { ipcRenderer } = require('electron');
+// Import Electron IPC for renderer process
+// Try different ways to access ipcRenderer in iframe context
+let ipcRenderer;
+try {
+  // First try direct require
+  ipcRenderer = require('electron').ipcRenderer;
+} catch (e) {
+  try {
+    // Try parent window's require
+    ipcRenderer = parent.require('electron').ipcRenderer;
+  } catch (e2) {
+    try {
+      // Try top window's require
+      ipcRenderer = top.require('electron').ipcRenderer;
+    } catch (e3) {
+      console.error('Could not access ipcRenderer:', e3);
+    }
+  }
+}
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Check if IPC is available
+  if (!ipcRenderer) {
+    console.error('IPC not available - settings will not persist');
+    // Still allow UI to work for testing
+  }
+  
   // Get form elements
   const searchEngine = document.getElementById('search-engine');
   const themeToggle = document.getElementById('theme-toggle');
@@ -15,13 +38,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const clearCache = document.getElementById('clear-cache');
 
   // Handle wallpaper selector change
-  wallpaperSelector?.addEventListener('change', (e) => {
+  wallpaperSelector?.addEventListener('change', async (e) => {
     if (e.target.value === 'custom') {
       wallpaperFile.style.display = 'block';
       wallpaperBrowse.style.display = 'inline-block';
     } else {
       wallpaperFile.style.display = 'none';
       wallpaperBrowse.style.display = 'none';
+      // Save wallpaper setting when switching away from custom
+      await saveSettingToBackend('wallpaper', e.target.value);
     }
   });
 
@@ -31,46 +56,49 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Handle wallpaper file selection
-  wallpaperFile?.addEventListener('change', (e) => {
+  wallpaperFile?.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (file) {
       console.log('Selected wallpaper file:', file.name);
-      // TODO: Call ipcRenderer.invoke('settings-upload-wallpaper', file.path)
-      // TODO: Update wallpaper preview
-      // TODO: Save wallpaper setting
+      // TODO: Implement wallpaper upload in future commits
+      console.log('Wallpaper upload not implemented yet');
     }
   });
 
   // Handle clear cache button
   clearCache?.addEventListener('click', async () => {
     if (confirm('Are you sure you want to clear the browser cache? This action cannot be undone.')) {
-      console.log('Clear cache requested');
-      // TODO: Call ipcRenderer.invoke('settings-clear-cache')
-      // TODO: Show success/error message
-      // TODO: Update UI to reflect cleared state
+      try {
+        console.log('Clear cache requested');
+        // TODO: Implement cache clearing in future commits
+        console.log('Cache clearing not implemented yet');
+        alert('Cache clearing will be implemented in a future update.');
+      } catch (error) {
+        console.error('Failed to clear cache:', error);
+        alert(`Failed to clear cache: ${error.message}`);
+      }
     }
   });
 
   // Add change listeners for form elements
-  searchEngine?.addEventListener('change', (e) => {
+  searchEngine?.addEventListener('change', async (e) => {
     console.log('Search engine changed:', e.target.value);
-    // TODO: Call ipcRenderer.invoke('settings-set', 'searchEngine', e.target.value)
+    await saveSettingToBackend('searchEngine', e.target.value);
   });
 
-  themeToggle?.addEventListener('change', (e) => {
+  themeToggle?.addEventListener('change', async (e) => {
     console.log('Theme changed:', e.target.value);
-    // TODO: Call ipcRenderer.invoke('settings-set', 'theme', e.target.value)
-    // TODO: Apply theme immediately
+    await saveSettingToBackend('theme', e.target.value);
+    // TODO: Apply theme immediately in future commits
   });
 
-  showClock?.addEventListener('change', (e) => {
+  showClock?.addEventListener('change', async (e) => {
     console.log('Show clock changed:', e.target.checked);
-    // TODO: Call ipcRenderer.invoke('settings-set', 'showClock', e.target.checked)
+    await saveSettingToBackend('showClock', e.target.checked);
   });
 
-  // TODO: Load settings from backend instead of defaults
-  // loadSettingsFromBackend();
-  loadDefaultSettings();
+  // Load settings from backend
+  loadSettingsFromBackend();
 });
 
 function loadDefaultSettings() {
@@ -84,26 +112,97 @@ function loadDefaultSettings() {
   if (showClock) showClock.checked = true;
 }
 
-// TODO: Add Phase 2 functions
+// Load settings from backend
 async function loadSettingsFromBackend() {
-  // TODO: Call ipcRenderer.invoke('settings-get-all')
-  // TODO: Populate form fields with loaded settings
-  // TODO: Handle loading errors
-  console.log('TODO: Load settings from backend');
+  if (!ipcRenderer) {
+    console.warn('IPC not available, using defaults');
+    loadDefaultSettings();
+    return;
+  }
+  
+  try {
+    console.log('Loading settings from backend...');
+    const settings = await ipcRenderer.invoke('settings-get-all');
+    console.log('Settings loaded:', settings);
+    populateFormFields(settings);
+  } catch (error) {
+    console.error('Failed to load settings:', error);
+    // Fallback to defaults if backend fails
+    loadDefaultSettings();
+  }
+}
+
+// Populate form fields with settings data
+function populateFormFields(settings) {
+  const searchEngine = document.getElementById('search-engine');
+  const themeToggle = document.getElementById('theme-toggle');
+  const showClock = document.getElementById('show-clock');
+  const wallpaperSelector = document.getElementById('wallpaper-selector');
+  
+  if (searchEngine && settings.searchEngine) {
+    searchEngine.value = settings.searchEngine;
+  }
+  if (themeToggle && settings.theme) {
+    themeToggle.value = settings.theme;
+  }
+  if (showClock && typeof settings.showClock === 'boolean') {
+    showClock.checked = settings.showClock;
+  }
+  if (wallpaperSelector && settings.wallpaper) {
+    wallpaperSelector.value = settings.wallpaper;
+  }
+  
+  console.log('Form fields populated with settings');
 }
 
 async function saveSettingToBackend(key, value) {
-  // TODO: Call ipcRenderer.invoke('settings-set', key, value)
-  // TODO: Handle save errors
-  // TODO: Show success feedback
-  console.log('TODO: Save setting to backend:', key, value);
+  if (!ipcRenderer) {
+    console.warn('IPC not available, setting not saved:', key, value);
+    return;
+  }
+  
+  try {
+    console.log('Saving setting to backend:', key, value);
+    const result = await ipcRenderer.invoke('settings-set', key, value);
+    console.log('Setting saved successfully:', result);
+    
+    // TODO: Show success notification in future commits
+    return result;
+  } catch (error) {
+    console.error('Failed to save setting:', error);
+    alert(`Failed to save ${key}: ${error.message}`);
+    
+    // Reload settings to revert form to current backend state
+    await loadSettingsFromBackend();
+    throw error;
+  }
 }
 
 async function resetSettingsToDefaults() {
-  // TODO: Call ipcRenderer.invoke('settings-reset')
-  // TODO: Reload form with default values
-  // TODO: Apply changes to browser
-  console.log('TODO: Reset settings to defaults');
+  if (!ipcRenderer) {
+    console.warn('IPC not available, cannot reset settings');
+    return;
+  }
+  
+  try {
+    if (!confirm('Are you sure you want to reset all settings to defaults? This cannot be undone.')) {
+      return;
+    }
+    
+    console.log('Resetting settings to defaults...');
+    const result = await ipcRenderer.invoke('settings-reset');
+    console.log('Settings reset successfully:', result);
+    
+    // Reload form with new default values
+    await loadSettingsFromBackend();
+    
+    alert('Settings have been reset to defaults.');
+    return result;
+  } catch (error) {
+    console.error('Failed to reset settings:', error);
+    alert(`Failed to reset settings: ${error.message}`);
+    throw error;
+  }
 }
 
 // TODO: Add theme application functions
