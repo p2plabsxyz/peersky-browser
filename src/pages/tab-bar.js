@@ -101,13 +101,14 @@ class TabBar extends HTMLElement {
     const initialUrl = searchParams.get('url');
     
     if (isIsolated && initialUrl) {
-      // Create only one tab with the specified URL
-      const homeTabId = this.addTab(initialUrl, "New Tab");
-      this.saveTabsState();
+      // For isolated windows, ONLY create the specified tab and don't load any persisted tabs
+      const tabTitle = searchParams.get('title') || "New Tab";
+      const homeTabId = this.addTab(initialUrl, tabTitle);
+      // Don't call saveTabsState() here to avoid overwriting the main window's tabs
       return;
     }
     
-    // Normal restoration logic
+    // Normal restoration logic (only for non-isolated windows)
     const persistedTabs = this.loadPersistedTabs();
     
     if (persistedTabs && persistedTabs.tabs.length > 0) {
@@ -433,17 +434,16 @@ class TabBar extends HTMLElement {
     // Don't do anything if this tab is already active
     if (this.activeTabId === tabId) return;
     
+    // First, hide ALL webviews to ensure clean state
+    this.webviews.forEach((webview) => {
+      webview.style.display = "none";
+    });
+    
     // Remove active class from current active tab
     if (this.activeTabId) {
       const currentActive = document.getElementById(this.activeTabId);
       if (currentActive) {
         currentActive.classList.remove("active");
-      }
-      
-      // Hide the current active webview
-      const currentWebview = this.webviews.get(this.activeTabId);
-      if (currentWebview) {
-        currentWebview.style.display = "none";
       }
     }
     
@@ -453,27 +453,17 @@ class TabBar extends HTMLElement {
       newActive.classList.add("active");
       this.activeTabId = tabId;
       
-      // Show the newly active webview
+      // Show ONLY the newly active webview
       const newWebview = this.webviews.get(tabId);
       if (newWebview) {
         newWebview.style.display = "flex";
         
-        // Focus the webview to ensure it gets activated
-        newWebview.focus();
-        
-        // Force a more reliable layout refresh
+        // Focus the webview after a short delay to ensure it's visible
         setTimeout(() => {
           if (newWebview && document.body.contains(newWebview)) {
-            // Quick toggle to force redraw and ensure content is displayed
-            newWebview.style.display = "none";
-            requestAnimationFrame(() => {
-              if (newWebview && document.body.contains(newWebview)) {
-                newWebview.style.display = "flex";
-                newWebview.focus();
-              }
-            });
+            newWebview.focus();
           }
-        }, 50);
+        }, 10);
       }
       
       // Find the URL for this tab
@@ -795,8 +785,7 @@ class TabBar extends HTMLElement {
     ipcRenderer.send('new-window-with-tab', { 
       url: tab.url, 
       title: tab.title,
-      tabId: tab.id,
-      isolate: true
+      isolate: true  // Remove tabId to prevent conflicts
     });
     
     // Dispatch event that tab was moved

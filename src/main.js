@@ -6,7 +6,7 @@ import { createHandler as createHyperHandler } from "./protocols/hyper-handler.j
 import { createHandler as createWeb3Handler } from "./protocols/web3-handler.js";
 import { ipfsOptions, hyperOptions } from "./protocols/config.js";
 import { registerShortcuts } from "./actions.js";
-import WindowManager from "./window-manager.js";
+import WindowManager, { createIsolatedWindow } from "./window-manager.js";
 import { attachContextMenus, setWindowManager } from "./context-menu.js";
 // import { setupAutoUpdater } from "./auto-updater.js";
 
@@ -153,16 +153,14 @@ ipcMain.on("window-control", (event, command) => {
   }
 });
 
-//IPC handler for moving tabs to new window
+// IPC handler for moving tabs to new window
 ipcMain.on('new-window-with-tab', (event, tabData) => {
-  // new window with isolated tab
-  const newWindow = windowManager.open({
-    url: tabData.url,
-    isolate: true, // Don't restore other tabs
+  // Create new isolated window with the specific tab
+  createIsolatedWindow({
+    isolate: true,
     singleTab: {
       url: tabData.url,
-      title: tabData.title,
-      id: tabData.tabId
+      title: tabData.title
     }
   });
 });
