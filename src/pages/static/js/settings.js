@@ -28,6 +28,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Still allow UI to work for testing
   }
   
+  // Initialize custom dropdowns
+  initializeCustomDropdowns();
+  
   // Get form elements
   const searchEngine = document.getElementById('search-engine');
   const themeToggle = document.getElementById('theme-toggle');
@@ -152,6 +155,9 @@ function populateFormFields(settings) {
     wallpaperSelector.value = settings.wallpaper;
   }
   
+  // Update custom dropdown displays after loading settings
+  updateCustomDropdownDisplays();
+  
   console.log('Form fields populated with settings');
 }
 
@@ -216,4 +222,94 @@ function applyTheme(themeName) {
 function updateWallpaperPreview(imagePath) {
   // TODO: Show wallpaper preview in settings
   console.log('TODO: Update wallpaper preview:', imagePath);
+}
+
+// Custom dropdown functionality
+function initializeCustomDropdowns() {
+  const customSelects = document.querySelectorAll('.custom-select');
+  
+  customSelects.forEach(select => {
+    const display = select.querySelector('.select-display');
+    const dropdown = select.querySelector('.select-dropdown');
+    const options = select.querySelectorAll('.select-option');
+    const hiddenInput = select.parentElement.querySelector('input[type="hidden"]');
+    
+    // Toggle dropdown on display click
+    display.addEventListener('click', (e) => {
+      e.stopPropagation();
+      
+      // Close other dropdowns
+      document.querySelectorAll('.custom-select.open').forEach(otherSelect => {
+        if (otherSelect !== select) {
+          otherSelect.classList.remove('open');
+        }
+      });
+      
+      // Toggle current dropdown
+      select.classList.toggle('open');
+    });
+    
+    // Handle option selection
+    options.forEach(option => {
+      option.addEventListener('click', (e) => {
+        e.stopPropagation();
+        
+        const value = option.dataset.value;
+        const text = option.textContent;
+        
+        // Update display
+        display.textContent = text;
+        display.dataset.value = value;
+        
+        // Update hidden input
+        if (hiddenInput) {
+          hiddenInput.value = value;
+          
+          // Trigger change event for settings saving
+          const changeEvent = new Event('change', { bubbles: true });
+          hiddenInput.dispatchEvent(changeEvent);
+        }
+        
+        // Update selected state
+        options.forEach(opt => opt.classList.remove('selected'));
+        option.classList.add('selected');
+        
+        // Close dropdown
+        select.classList.remove('open');
+      });
+    });
+  });
+  
+  // Close dropdowns when clicking outside
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.custom-select.open').forEach(select => {
+      select.classList.remove('open');
+    });
+  });
+  
+  // Update dropdown displays based on current values
+  updateCustomDropdownDisplays();
+}
+
+// Update custom dropdown displays with current values
+function updateCustomDropdownDisplays() {
+  const customSelects = document.querySelectorAll('.custom-select');
+  
+  customSelects.forEach(select => {
+    const display = select.querySelector('.select-display');
+    const options = select.querySelectorAll('.select-option');
+    const hiddenInput = select.parentElement.querySelector('input[type="hidden"]');
+    
+    if (hiddenInput && hiddenInput.value) {
+      const selectedOption = [...options].find(opt => opt.dataset.value === hiddenInput.value);
+      if (selectedOption) {
+        display.textContent = selectedOption.textContent;
+        display.dataset.value = selectedOption.dataset.value;
+        
+        // Update selected state
+        options.forEach(opt => opt.classList.remove('selected'));
+        selectedOption.classList.add('selected');
+      }
+    }
+  });
 }

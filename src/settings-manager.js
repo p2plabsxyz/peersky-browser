@@ -19,7 +19,7 @@ function logDebug(message) {
 // Default settings configuration
 const DEFAULT_SETTINGS = {
   searchEngine: 'duckduckgo',
-  theme: 'system',
+  theme: 'dark',
   showClock: true,
   wallpaper: 'default',
   wallpaperCustomPath: null
@@ -189,7 +189,7 @@ class SettingsManager {
   validateSetting(key, value) {
     const validators = {
       searchEngine: (v) => ['duckduckgo', 'ecosia', 'google', 'bing', 'brave', 'startpage'].includes(v),
-      theme: (v) => ['system', 'light', 'dark'].includes(v),
+      theme: (v) => ['light', 'dark', 'green', 'cyan', 'yellow'].includes(v),
       showClock: (v) => typeof v === 'boolean',
       wallpaper: (v) => ['default', 'custom'].includes(v),
       wallpaperCustomPath: (v) => v === null || typeof v === 'string'

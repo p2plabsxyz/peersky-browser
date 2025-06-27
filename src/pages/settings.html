@@ -15,22 +15,30 @@
     
     <div class="setting-group">
       <label for="search-engine">Search Engine</label>
-      <select id="search-engine" class="settings-select">
-        <option value="duckduckgo">DuckDuckGo</option>
-        <option value="ecosia">Ecosia</option>
-        <option value="startpage">Startpage</option>
-      </select>
+      <div class="custom-select" id="search-engine-select">
+        <div class="select-display" data-value="duckduckgo">DuckDuckGo</div>
+        <div class="select-dropdown">
+          <div class="select-option" data-value="duckduckgo">DuckDuckGo</div>
+          <div class="select-option" data-value="ecosia">Ecosia</div>
+          <div class="select-option" data-value="startpage">Startpage</div>
+        </div>
+      </div>
+      <input type="hidden" id="search-engine" value="duckduckgo">
     </div>
 
     <div class="setting-group">
       <label for="theme-toggle">Theme</label>
-      <select id="theme-toggle" class="settings-select">
-        <option value="light">Light</option>
-        <option value="dark">Dark</option>
-        <option value="green">Green</option>
-        <option value="cyan">Cyan</option>
-        <option value="yellow">Yellow</option>
-      </select>
+      <div class="custom-select" id="theme-select">
+        <div class="select-display" data-value="dark">Dark</div>
+        <div class="select-dropdown">
+          <div class="select-option" data-value="light">Light</div>
+          <div class="select-option" data-value="dark">Dark</div>
+          <div class="select-option" data-value="green">Green</div>
+          <div class="select-option" data-value="cyan">Cyan</div>
+          <div class="select-option" data-value="yellow">Yellow</div>
+        </div>
+      </div>
+      <input type="hidden" id="theme-toggle" value="dark">
     </div>
 
     <div class="setting-group">
@@ -44,10 +52,14 @@
     <div class="setting-group">
       <label for="wallpaper-selector">Home page wallpaper</label>
       <div class="wallpaper-controls">
-        <select id="wallpaper-selector" class="settings-select">
-          <option value="default">Default (Forest)</option>
-          <option value="custom">Custom image</option>
-        </select>
+        <div class="custom-select" id="wallpaper-select">
+          <div class="select-display" data-value="default">Default (Forest)</div>
+          <div class="select-dropdown">
+            <div class="select-option" data-value="default">Default (Forest)</div>
+            <div class="select-option" data-value="custom">Custom image</div>
+          </div>
+        </div>
+        <input type="hidden" id="wallpaper-selector" value="default">
         <input type="file" id="wallpaper-file" class="file-input" accept="image/*" style="display: none;">
         <button type="button" id="wallpaper-browse" class="btn-secondary" style="display: none;">Browse</button>
       </div>
