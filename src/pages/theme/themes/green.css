@@ -1,0 +1,43 @@
+/* Green Theme Variables */
+:root {
+  /* Green Theme Overrides */
+  --browser-theme-background: #0f2418;
+  --browser-theme-text-color: #90EE90;
+  --browser-theme-primary-highlight: #00ff7f;
+  --browser-theme-secondary-highlight: #32cd32;
+  
+  /* Navigation */
+  --peersky-nav-background: #1a3d29;
+  --peersky-nav-button-color: #90EE90;
+  --peersky-nav-button-hover: #98fb98;
+  --peersky-nav-button-active: #00ff7f;
+  --peersky-nav-button-inactive: #4a7c59;
+  --peersky-background-url-input: #0f2418;
+  --peersky-background-find-menu: #1a3d29;
+
+  /* Settings Page */
+  --settings-bg-primary: #0f2418;
+  --settings-text-primary: #90EE90;
+  --settings-text-secondary: #7dd87d;
+  --settings-card-bg: #1a3d29;
+  --settings-border: #4a7c59;
+  --settings-border-hover: #5a8b69;
+  --settings-border-focus: #90EE90;
+
+  /* Green theme notifications */
+  --success-color: #32cd32;
+  --success-text-color: #0f2418;
+  --success-border-color: #228b22;
+  
+  /* Green theme specific colors */
+  --base00: #0f2418;
+  --base01: #1a3d29;
+  --base02: #2d5a42;
+  --base03: #4a7c59;
+  --base04: #5a8b69;
+  --base05: #7dd87d;
+  --base06: #90EE90;
+  --base07: #98fb98;
+  --base0A: var(--base0A); /* Keep original light green */
+  --base0B: #007f00; /* Keep original dark green */
+}

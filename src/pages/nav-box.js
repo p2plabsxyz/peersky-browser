@@ -4,6 +4,7 @@ class NavBox extends HTMLElement {
     this.isLoading = false;
     this.buildNavBox();
     this.attachEvents();
+    this.attachThemeListener();
   }
 
   buildNavBox() {
@@ -13,6 +14,7 @@ class NavBox extends HTMLElement {
       { id: "forward", svg: "right.svg", position: "start" },
       { id: "refresh", svg: "reload.svg", position: "start" },
       { id: "home", svg: "home.svg", position: "start" },
+      { id: "settings", svg: "settings.svg", position: "end" },
       { id: "plus", svg: "plus.svg", position: "end" },
     ];
 
@@ -142,6 +144,8 @@ class NavBox extends HTMLElement {
           }
         } else if (button.id === "plus") {
           this.dispatchEvent(new CustomEvent("new-window"));
+        } else if (button.id === "settings") {
+          this.dispatchEvent(new CustomEvent("navigate", { detail: { url: "peersky://settings" } }));
         } else if (!button.disabled) {
           this.navigate(button.id);
         }
@@ -163,6 +167,29 @@ class NavBox extends HTMLElement {
 
   navigate(action) {
     this.dispatchEvent(new CustomEvent(action));
+  }
+
+  attachThemeListener() {
+    // Listen for theme reload events from settings manager
+    window.addEventListener('theme-reload', (event) => {
+      console.log('NavBox received theme reload event:', event.detail);
+      this.handleThemeChange(event.detail.theme);
+    });
+  }
+
+  handleThemeChange(theme) {
+    // Force re-evaluation of CSS by toggling a class
+    this.classList.remove('theme-updating');
+    // Use requestAnimationFrame to ensure the class removal is processed
+    requestAnimationFrame(() => {
+      this.classList.add('theme-updating');
+      console.log('NavBox theme updated to:', theme);
+      
+      // Remove the temporary class after a brief moment
+      setTimeout(() => {
+        this.classList.remove('theme-updating');
+      }, 100);
+    });
   }
 }
 

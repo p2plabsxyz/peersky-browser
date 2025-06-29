@@ -1,0 +1,43 @@
+/* Yellow Theme Variables */
+:root {
+  /* Yellow Theme Overrides */
+  --browser-theme-background: #2a1f0a;
+  --browser-theme-text-color: #ffff99;
+  --browser-theme-primary-highlight: #ffd700;
+  --browser-theme-secondary-highlight: #d4a500;
+  
+  /* Navigation */
+  --peersky-nav-background: #3d2e14;
+  --peersky-nav-button-color: #fbbf24;
+  --peersky-nav-button-hover: #f59e0b;
+  --peersky-nav-button-active: #ffd700;
+  --peersky-nav-button-inactive: #92400e;
+  --peersky-background-url-input: #2a1f0a;
+  --peersky-background-find-menu: #3d2e14;
+
+  /* Settings Page */
+  --settings-bg-primary: #2a1f0a;
+  --settings-text-primary: #ffff99;
+  --settings-text-secondary: #fbbf24;
+  --settings-card-bg: #3d2e14;
+  --settings-border: #92400e;
+  --settings-border-hover: #b45309;
+  --settings-border-focus: #ffd700;
+
+  /* Yellow theme notifications */
+  --success-color: #d97706;
+  --success-text-color: #ffffff;
+  --success-border-color: #b45309;
+  
+  /* Yellow theme specific colors */
+  --base00: #2a1f0a;
+  --base01: #3d2e14;
+  --base02: #78350f;
+  --base03: #92400e;
+  --base04: #b45309;
+  --base05: #d97706;
+  --base06: #fbbf24;
+  --base07: #ffff99;
+  --base0E: #ffff99; /* Keep original light yellow */
+  --base0F: #d4a500; /* Keep original dark yellow */
+}
