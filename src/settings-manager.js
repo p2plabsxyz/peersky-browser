@@ -2,7 +2,7 @@
 // Handles settings storage, defaults, validation, and IPC communication
 // Pattern: Similar to window-manager.js
 
-import { app, ipcMain } from 'electron';
+import { app, ipcMain, BrowserWindow } from 'electron';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
@@ -92,6 +92,9 @@ class SettingsManager {
         
         // Save to file
         await this.saveSettings();
+        
+        // Apply setting changes immediately
+        this.applySettingChange(key, value);
         
         logDebug(`Setting updated: ${key} changed from ${oldValue} to ${value}`);
         return { success: true, key, value, oldValue };
@@ -210,11 +213,55 @@ class SettingsManager {
   }
 
   applySettings() {
-    // TODO: Apply theme changes
-    // TODO: Update search engine
-    // TODO: Apply wallpaper changes
-    // TODO: Notify all windows of changes
-    console.log('TODO: Apply settings to browser');
+    // Apply all settings to all windows
+    this.applySettingChange('theme', this.settings.theme);
+    this.applySettingChange('searchEngine', this.settings.searchEngine);
+    this.applySettingChange('showClock', this.settings.showClock);
+    this.applySettingChange('wallpaper', this.settings.wallpaper);
+  }
+
+  applySettingChange(key, value) {
+    try {
+      logDebug(`Applying setting change: ${key} = ${value}`);
+      
+      // Get all open windows
+      const windows = BrowserWindow.getAllWindows();
+      
+      if (key === 'theme') {
+        // Notify all windows of theme change
+        windows.forEach(window => {
+          if (window && !window.isDestroyed()) {
+            window.webContents.send('theme-changed', value);
+          }
+        });
+        logDebug(`Theme changed to ${value}, notified ${windows.length} windows`);
+      } else if (key === 'searchEngine') {
+        // Notify windows of search engine change
+        windows.forEach(window => {
+          if (window && !window.isDestroyed()) {
+            window.webContents.send('search-engine-changed', value);
+          }
+        });
+      } else if (key === 'showClock') {
+        // Notify windows of clock setting change
+        windows.forEach(window => {
+          if (window && !window.isDestroyed()) {
+            window.webContents.send('show-clock-changed', value);
+          }
+        });
+      } else if (key === 'wallpaper') {
+        // Notify windows of wallpaper change
+        windows.forEach(window => {
+          if (window && !window.isDestroyed()) {
+            window.webContents.send('wallpaper-changed', value);
+          }
+        });
+      }
+      
+      logDebug(`Applied setting change: ${key} to ${windows.length} windows`);
+    } catch (error) {
+      logDebug(`Failed to apply setting change ${key}: ${error.message}`);
+    }
   }
 
   // TODO: Add helper methods

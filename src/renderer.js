@@ -19,6 +19,16 @@ const toNavigate = searchParams.has("url")
   : DEFAULT_PAGE;
 
 document.addEventListener("DOMContentLoaded", () => {
+  // Listen for theme changes from main process
+  ipcRenderer.on('theme-changed', (event, newTheme) => {
+    console.log('Main window: Theme changed to:', newTheme);
+    reloadThemeCSS();
+    // Dispatch event for nav-box component
+    window.dispatchEvent(new CustomEvent('theme-reload', { 
+      detail: { theme: newTheme } 
+    }));
+  });
+
   if (webviewContainer && nav) {
     webviewContainer.loadURL(toNavigate);
 
@@ -150,3 +160,25 @@ document.addEventListener("keydown", (e) => {
     findMenu.toggle();
   }
 });
+
+function reloadThemeCSS() {
+  // Reload CSS imports for theme files
+  const styleElements = document.querySelectorAll('style');
+  styleElements.forEach(style => {
+    const text = style.textContent || style.innerText;
+    if (text && text.includes('browser://theme/')) {
+      const newStyle = document.createElement('style');
+      newStyle.textContent = text;
+      style.parentNode.replaceChild(newStyle, style);
+    }
+  });
+  
+  // Reload CSS links with cache busting
+  const linkElements = document.querySelectorAll('link[href*="browser://theme/"]');
+  linkElements.forEach(link => {
+    const href = link.href.split('?')[0];
+    link.href = `${href}?t=${Date.now()}`;
+  });
+  
+  console.log('Main window: Theme CSS reloaded');
+}

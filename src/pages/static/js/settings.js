@@ -2,18 +2,14 @@
 // IPC communication with settings-manager.js
 
 // Import Electron IPC for renderer process
-// Try different ways to access ipcRenderer in iframe context
 let ipcRenderer;
 try {
-  // First try direct require
   ipcRenderer = require('electron').ipcRenderer;
 } catch (e) {
   try {
-    // Try parent window's require
     ipcRenderer = parent.require('electron').ipcRenderer;
   } catch (e2) {
     try {
-      // Try top window's require
       ipcRenderer = top.require('electron').ipcRenderer;
     } catch (e3) {
       console.error('Could not access ipcRenderer:', e3);
@@ -25,7 +21,39 @@ document.addEventListener('DOMContentLoaded', () => {
   // Check if IPC is available
   if (!ipcRenderer) {
     console.error('IPC not available - settings will not persist');
-    // Still allow UI to work for testing
+  } else {
+    // Listen for theme changes from main process
+    ipcRenderer.on('theme-changed', (event, newTheme) => {
+      console.log('Theme changed to:', newTheme);
+      
+      // Update form field if different
+      const themeToggle = document.getElementById('theme-toggle');
+      if (themeToggle && themeToggle.value !== newTheme) {
+        themeToggle.value = newTheme;
+        updateCustomDropdownDisplays();
+      }
+      
+      // Reload theme CSS
+      reloadThemeCSS();
+    });
+    
+    // Listen for other setting changes
+    ipcRenderer.on('search-engine-changed', (event, newEngine) => {
+      console.log('Search engine changed to:', newEngine);
+      const searchEngine = document.getElementById('search-engine');
+      if (searchEngine && searchEngine.value !== newEngine) {
+        searchEngine.value = newEngine;
+        updateCustomDropdownDisplays();
+      }
+    });
+    
+    ipcRenderer.on('show-clock-changed', (event, showClock) => {
+      console.log('Show clock changed to:', showClock);
+      const clockToggle = document.getElementById('show-clock');
+      if (clockToggle && clockToggle.checked !== showClock) {
+        clockToggle.checked = showClock;
+      }
+    });
   }
   
   // Initialize custom dropdowns
@@ -43,12 +71,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // Handle wallpaper selector change
   wallpaperSelector?.addEventListener('change', async (e) => {
     if (e.target.value === 'custom') {
-      wallpaperFile.style.display = 'block';
-      wallpaperBrowse.style.display = 'inline-block';
+      wallpaperFile?.classList.remove('hidden');
+      wallpaperBrowse?.classList.remove('hidden');
     } else {
-      wallpaperFile.style.display = 'none';
-      wallpaperBrowse.style.display = 'none';
-      // Save wallpaper setting when switching away from custom
+      wallpaperFile?.classList.add('hidden');
+      wallpaperBrowse?.classList.add('hidden');
       await saveSettingToBackend('wallpaper', e.target.value);
     }
   });
@@ -63,7 +90,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const file = e.target.files[0];
     if (file) {
       console.log('Selected wallpaper file:', file.name);
-      // TODO: Implement wallpaper upload in future commits
       console.log('Wallpaper upload not implemented yet');
     }
   });
@@ -73,7 +99,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (confirm('Are you sure you want to clear the browser cache? This action cannot be undone.')) {
       try {
         console.log('Clear cache requested');
-        // TODO: Implement cache clearing in future commits
         console.log('Cache clearing not implemented yet');
         alert('Cache clearing will be implemented in a future update.');
       } catch (error) {
@@ -91,8 +116,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   themeToggle?.addEventListener('change', async (e) => {
     console.log('Theme changed:', e.target.value);
+    
+    // Apply theme immediately for instant feedback
+    applyThemeImmediately(e.target.value);
+    
     await saveSettingToBackend('theme', e.target.value);
-    // TODO: Apply theme immediately in future commits
+    
+    // Show success message
+    showSettingsSavedMessage('Theme updated successfully');
   });
 
   showClock?.addEventListener('change', async (e) => {
@@ -105,13 +136,12 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function loadDefaultSettings() {
-  // Set default values - TODO: Replace with loadSettingsFromBackend()
   const searchEngine = document.getElementById('search-engine');
   const themeToggle = document.getElementById('theme-toggle');
   const showClock = document.getElementById('show-clock');
   
   if (searchEngine) searchEngine.value = 'duckduckgo';
-  if (themeToggle) themeToggle.value = 'system';
+  if (themeToggle) themeToggle.value = 'dark';
   if (showClock) showClock.checked = true;
 }
 
@@ -130,7 +160,6 @@ async function loadSettingsFromBackend() {
     populateFormFields(settings);
   } catch (error) {
     console.error('Failed to load settings:', error);
-    // Fallback to defaults if backend fails
     loadDefaultSettings();
   }
 }
@@ -171,14 +200,10 @@ async function saveSettingToBackend(key, value) {
     console.log('Saving setting to backend:', key, value);
     const result = await ipcRenderer.invoke('settings-set', key, value);
     console.log('Setting saved successfully:', result);
-    
-    // TODO: Show success notification in future commits
     return result;
   } catch (error) {
     console.error('Failed to save setting:', error);
     alert(`Failed to save ${key}: ${error.message}`);
-    
-    // Reload settings to revert form to current backend state
     await loadSettingsFromBackend();
     throw error;
   }
@@ -199,9 +224,7 @@ async function resetSettingsToDefaults() {
     const result = await ipcRenderer.invoke('settings-reset');
     console.log('Settings reset successfully:', result);
     
-    // Reload form with new default values
     await loadSettingsFromBackend();
-    
     alert('Settings have been reset to defaults.');
     return result;
   } catch (error) {
@@ -211,17 +234,42 @@ async function resetSettingsToDefaults() {
   }
 }
 
-// TODO: Add theme application functions
-function applyTheme(themeName) {
-  // TODO: Apply theme changes to current page
-  // TODO: Notify other windows of theme change
-  console.log('TODO: Apply theme:', themeName);
+// Apply theme immediately to current page for instant feedback
+function applyThemeImmediately(themeName) {
+  try {
+    // Reload theme CSS files
+    reloadThemeCSS();
+    
+    // Update theme class on document
+    document.documentElement.classList.remove(...Array.from(document.documentElement.classList).filter(c => c.startsWith('theme-')));
+    document.documentElement.classList.add(`theme-${themeName}`);
+    
+    console.log('Theme applied immediately:', themeName);
+  } catch (error) {
+    console.error('Failed to apply theme immediately:', error);
+  }
 }
 
-// TODO: Add wallpaper handling functions
-function updateWallpaperPreview(imagePath) {
-  // TODO: Show wallpaper preview in settings
-  console.log('TODO: Update wallpaper preview:', imagePath);
+function reloadThemeCSS() {
+  // Reload CSS imports for theme files
+  const styleElements = document.querySelectorAll('style');
+  styleElements.forEach(style => {
+    const text = style.textContent || style.innerText;
+    if (text && text.includes('browser://theme/')) {
+      const newStyle = document.createElement('style');
+      newStyle.textContent = text;
+      style.parentNode.replaceChild(newStyle, style);
+    }
+  });
+  
+  // Reload CSS links with cache busting
+  const linkElements = document.querySelectorAll('link[href*="browser://theme/"]');
+  linkElements.forEach(link => {
+    const href = link.href.split('?')[0];
+    link.href = `${href}?t=${Date.now()}`;
+  });
+  
+  console.log('Theme CSS reloaded');
 }
 
 // Custom dropdown functionality
@@ -312,4 +360,35 @@ function updateCustomDropdownDisplays() {
       }
     }
   });
+}
+
+// Show temporary success message using CSS classes only
+function showSettingsSavedMessage(message) {
+  // Remove any existing message
+  const existingMessage = document.querySelector('.settings-saved-message');
+  if (existingMessage) {
+    existingMessage.remove();
+  }
+  
+  // Create new message element with CSS classes only
+  const messageEl = document.createElement('div');
+  messageEl.className = 'settings-saved-message';
+  messageEl.textContent = message;
+  
+  document.body.appendChild(messageEl);
+  
+  // Animate in using CSS
+  setTimeout(() => {
+    messageEl.classList.add('show');
+  }, 10);
+  
+  // Remove after 3 seconds
+  setTimeout(() => {
+    messageEl.classList.remove('show');
+    setTimeout(() => {
+      if (messageEl.parentNode) {
+        messageEl.parentNode.removeChild(messageEl);
+      }
+    }, 300);
+  }, 3000);
 }
