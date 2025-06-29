@@ -1,0 +1,43 @@
+/* Cyan Theme Variables */
+:root {
+  /* Cyan Theme Overrides */
+  --browser-theme-background: #0c1820;
+  --browser-theme-text-color: #00ffff;
+  --browser-theme-primary-highlight: #00ffff;
+  --browser-theme-secondary-highlight: #06b6d4;
+  
+  /* Navigation */
+  --peersky-nav-background: #1e3a3f;
+  --peersky-nav-button-color: #67e8f9;
+  --peersky-nav-button-hover: #22d3ee;
+  --peersky-nav-button-active: #00ffff;
+  --peersky-nav-button-inactive: #155e75;
+  --peersky-background-url-input: #0c1820;
+  --peersky-background-find-menu: #1e3a3f;
+
+  /* Settings Page */
+  --settings-bg-primary: #0c1820;
+  --settings-text-primary: #00ffff;
+  --settings-text-secondary: #67e8f9;
+  --settings-card-bg: #1e3a3f;
+  --settings-border: #155e75;
+  --settings-border-hover: #0891b2;
+  --settings-border-focus: #00ffff;
+
+  /* Cyan theme notifications */
+  --success-color: #06b6d4;
+  --success-text-color: #ffffff;
+  --success-border-color: #0891b2;
+  
+  /* Cyan theme specific colors */
+  --base00: #0c1820;
+  --base01: #1e3a3f;
+  --base02: #0f4c75;
+  --base03: #155e75;
+  --base04: #0891b2;
+  --base05: #0ea5e9;
+  --base06: #67e8f9;
+  --base07: #00ffff;
+  --base0C: #00ffff; /* Keep original cyan */
+  --base0D: #06b6d4; /* Keep original blue */
+}

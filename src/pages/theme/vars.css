@@ -42,6 +42,6 @@
   --settings-border-hover: var(--base05);
   --settings-border-focus: var(--base06);
   --settings-backdrop-blur: blur(10px);
-  --settings-danger-color: #dc2626;
-  --settings-danger-color-hover: #b91c1c;
+  --settings-danger-color: #e53935;
+  --settings-danger-color-hover: #c62828;
 }

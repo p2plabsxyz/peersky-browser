@@ -1,0 +1,41 @@
+/* Dark Theme Variables */
+:root {
+  /* Dark Theme Overrides */
+  --browser-theme-background: #18181b;
+  --browser-theme-text-color: #ffffff;
+  --browser-theme-primary-highlight: #3b82f6;
+  --browser-theme-secondary-highlight: #1d4ed8;
+  
+  /* Navigation */
+  --peersky-nav-background: #27272a;
+  --peersky-nav-button-color: #9ca3af;
+  --peersky-nav-button-hover: #e5e7eb;
+  --peersky-nav-button-active: #ffffff;
+  --peersky-nav-button-inactive: #6b7280;
+  --peersky-background-url-input: #18181b;
+  --peersky-background-find-menu: #202125;
+
+  /* Settings Page */
+  --settings-bg-primary: #18181b;
+  --settings-text-primary: #ffffff;
+  --settings-text-secondary: #9ca3af;
+  --settings-card-bg: #27272a;
+  --settings-border: #6b7280;
+  --settings-border-hover: #9ca3af;
+  --settings-border-focus: #e5e7eb;
+
+  /* Dark theme notifications */
+  --success-color: #10b981;
+  --success-text-color: #ffffff;
+  --success-border-color: #059669;
+  
+  /* Dark theme specific colors */
+  --base00: #000000;
+  --base01: #18181b;
+  --base02: #27272a;
+  --base03: #202125;
+  --base04: #6b7280;
+  --base05: #9ca3af;
+  --base06: #e5e7eb;
+  --base07: #ffffff;
+}

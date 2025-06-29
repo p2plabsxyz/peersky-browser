@@ -1,6 +1,34 @@
 @import "./vars.css";
 @import "./style.css";
 
+/* Success Message Notification */
+.settings-saved-message {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background-color: var(--success-color);
+  color: var(--success-text-color);
+  padding: 12px 20px;
+  border-radius: 6px;
+  font-weight: 500;
+  z-index: 1000;
+  opacity: 0;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--success-border-color);
+  transform: translateY(-10px);
+}
+
+.settings-saved-message.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Hidden utility class for wallpaper controls */
+.hidden {
+  display: none !important;
+}
+
 /* Settings Container */
 .settings-container {
   max-width: 600px;

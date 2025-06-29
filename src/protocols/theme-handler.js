@@ -3,6 +3,7 @@ import { fileURLToPath } from 'url';
 import mime from "mime-types";
 import { Readable } from 'stream';
 import ScopedFS from 'scoped-fs';
+import settingsManager from '../settings-manager.js';
 
 const __dirname = fileURLToPath(new URL('./', import.meta.url));
 const themePath = path.join(__dirname, '../pages/theme');
@@ -77,7 +78,31 @@ export async function createHandler() {
       const fileName = parsedUrl.pathname.slice(1);
 
       try {
-        const resolvedPath = await resolveFile(fileName);
+        let resolvedPath;
+        
+        // Handle dynamic theme loading for vars.css
+        if (fileName === 'vars.css') {
+          try {
+            const currentTheme = await settingsManager.settings.theme || 'dark';
+            
+            // Try to load theme-specific CSS file from themes subfolder
+            const themeFileName = `themes/${currentTheme}.css`;
+            try {
+              resolvedPath = await resolveFile(themeFileName);
+            } catch (themeError) {
+              // Fallback to default vars.css if theme file not found
+              console.warn(`Theme file ${themeFileName} not found, falling back to vars.css`);
+              resolvedPath = await resolveFile(fileName);
+            }
+          } catch (settingsError) {
+            console.warn('Could not get theme setting, using default vars.css:', settingsError);
+            resolvedPath = await resolveFile(fileName);
+          }
+        } else {
+          // For all other files, use normal resolution
+          resolvedPath = await resolveFile(fileName);
+        }
+
         const statusCode = 200;
         const data = themeFS.createReadStream(resolvedPath);
         const contentType = mime.lookup(resolvedPath) || 'text/plain';
@@ -85,7 +110,11 @@ export async function createHandler() {
           'Content-Type': contentType,
           'Access-Control-Allow-Origin': '*',
           'Allow-CSP-From': '*',
-          'Cache-Control': 'no-cache'
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+          'ETag': `"theme-${Date.now()}"`,
+          'Last-Modified': new Date().toUTCString()
         };
 
         sendResponse({
