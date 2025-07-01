@@ -40,4 +40,8 @@
   --base07: #00ffff;
   --base0C: #00ffff; /* Keep original cyan */
   --base0D: #06b6d4; /* Keep original blue */
+
+    /* Danger colors */
+    --settings-danger-color: #e53935;
+    --settings-danger-color-hover: #c62828;
 }

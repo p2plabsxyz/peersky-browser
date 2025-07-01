@@ -40,4 +40,8 @@
   --base07: #ffff99;
   --base0E: #ffff99; /* Keep original light yellow */
   --base0F: #d4a500; /* Keep original dark yellow */
+
+    /* Danger colors */
+    --settings-danger-color: #e53935;
+    --settings-danger-color-hover: #c62828;
 }

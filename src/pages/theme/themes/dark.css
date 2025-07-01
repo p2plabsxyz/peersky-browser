@@ -38,4 +38,8 @@
   --base05: #9ca3af;
   --base06: #e5e7eb;
   --base07: #ffffff;
+  
+  /* Danger colors */
+  --settings-danger-color: #e53935;
+  --settings-danger-color-hover: #c62828;
 }

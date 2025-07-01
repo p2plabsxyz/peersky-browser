@@ -236,21 +236,21 @@
 }
 
 /* Buttons */
-.btn-danger {
-  padding: 0.6rem 1.2rem;
-  border: 1px solid var(--settings-danger-color);
-  border-radius: 6px;
-  background: var(--settings-danger-color);
-  color: var(--base07);
-  font-size: 0.9rem;
-  cursor: pointer;
+.settings-container button.btn-danger {
+  padding: 0.6rem 1.2rem !important;
+  border: 1px solid var(--settings-danger-color) !important;
+  border-radius: 6px !important;
+  background: var(--settings-danger-color) !important;
+  color: white !important;
+  font-size: 0.9rem !important;
+  cursor: pointer !important;
   transition: all 0.2s ease;
   backdrop-filter: var(--settings-backdrop-blur);
 }
 
-.btn-danger:hover {
-  background: var(--settings-danger-color-hover);
-  border-color: var(--settings-danger-color-hover);
+.settings-container button.btn-danger:hover {
+  background: var(--settings-danger-color-hover) !important;
+  border-color: var(--settings-danger-color-hover) !important;
 }
 
 .btn-danger:active {
