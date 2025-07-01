@@ -4,14 +4,20 @@ class TrackedBox extends HTMLElement {
   constructor() {
     super();
     this.observer = new ResizeObserver(() => this.emitResize());
+    this.currentInternalURL = null;
     this.initWebView();
   }
 
   initWebView() {
     this.webview = document.createElement("webview");
     this.webview.setAttribute("allowpopups", "true");
-    this.webview.style.height = "calc(100vh - 50px)";
+    // Use absolute positioning to prevent layout interference
+    this.webview.style.position = "absolute";
+    this.webview.style.top = "45px"; // Leave space for nav bar
+    this.webview.style.left = "0";
+    this.webview.style.height = "calc(100vh - 45px)";
     this.webview.style.width = "100%";
+    this.webview.style.zIndex = "1";
 
     // Dynamically resolve the preload script path
     this.webview.preload = "file://" + path.join(__dirname, "preload.js");
@@ -29,6 +35,7 @@ class TrackedBox extends HTMLElement {
         new CustomEvent("page-title-updated", { detail: { title: e.title } })
       );
     });
+
 
     this.appendChild(this.webview);
   }
@@ -50,30 +57,18 @@ class TrackedBox extends HTMLElement {
   }
 
   goBack() {
-    if (this.currentInternalURL) {
-      // For internal pages, we can't go back in iframe history
-      // Instead, navigate to a default page or do nothing
-      return;
-    }
     if (this.webview.canGoBack()) {
       this.webview.goBack();
     }
   }
 
   goForward() {
-    if (this.currentInternalURL) {
-      // For internal pages, we can't go forward in iframe history  
-      return;
-    }
     if (this.webview.canGoForward()) {
       this.webview.goForward();
     }
   }
 
   canGoBack() {
-    if (this.currentInternalURL) {
-      return false; // Internal pages don't have back/forward
-    }
     try {
       return this.webview.canGoBack();
     } catch (e) {
@@ -82,9 +77,6 @@ class TrackedBox extends HTMLElement {
   }
 
   canGoForward() {
-    if (this.currentInternalURL) {
-      return false; // Internal pages don't have back/forward
-    }
     try {
       return this.webview.canGoForward();  
     } catch (e) {
@@ -93,13 +85,7 @@ class TrackedBox extends HTMLElement {
   }
 
   reload() {
-    if (this.currentInternalURL) {
-      // Reload internal page
-      this.loadInternalPage(this.currentInternalURL);
-    } else {
-      // Reload webview
-      this.webview.reload();
-    }
+    this.webview.reload();
   }
 
   stop() {
@@ -113,26 +99,37 @@ class TrackedBox extends HTMLElement {
     } else {
       // External URLs load in webview as before
       this.currentInternalURL = null;
-      if (this.mainFrame) this.mainFrame.style.display = 'none';
-      this.webview.style.display = 'block';
+      if (this.mainFrame) {
+        this.mainFrame.style.zIndex = "0";
+        this.mainFrame.style.visibility = "hidden";
+      }
+      this.webview.style.zIndex = "1";
+      this.webview.style.visibility = "visible";
       this.webview.src = url;
     }
   }
 
   loadInternalPage(url) {
-    // Hide webview and show main frame content for internal pages
-    this.webview.style.display = 'none';
+    // Use z-index layering instead of display switching to prevent layout conflicts
+    this.webview.style.zIndex = "0";
+    this.webview.style.visibility = "hidden";
     
     // Create or get main frame container
     if (!this.mainFrame) {
       this.mainFrame = document.createElement('iframe');
-      this.mainFrame.style.height = 'calc(100vh - 50px)';
+      // Use absolute positioning to match webview layout
+      this.mainFrame.style.position = "absolute";
+      this.mainFrame.style.top = "45px"; // Leave space for nav bar
+      this.mainFrame.style.left = "0";
+      this.mainFrame.style.height = 'calc(100vh - 45px)';
       this.mainFrame.style.width = '100%';
       this.mainFrame.style.border = 'none';
+      this.mainFrame.style.zIndex = "1";
       // Note: iframe inherits context from parent frame
       this.appendChild(this.mainFrame);
     } else {
-      this.mainFrame.style.display = 'block';
+      this.mainFrame.style.zIndex = "1";
+      this.mainFrame.style.visibility = "visible";
     }
     
     // Map peersky:// URLs to actual HTML files
@@ -154,8 +151,12 @@ class TrackedBox extends HTMLElement {
     } else {
       // Fallback to webview for unknown peersky:// URLs
       this.currentInternalURL = null;
-      this.webview.style.display = 'block';
-      if (this.mainFrame) this.mainFrame.style.display = 'none';
+      this.webview.style.zIndex = "1";
+      this.webview.style.visibility = "visible";
+      if (this.mainFrame) {
+        this.mainFrame.style.zIndex = "0";
+        this.mainFrame.style.visibility = "hidden";
+      }
       this.webview.src = url;
     }
   }

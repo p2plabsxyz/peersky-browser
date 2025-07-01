@@ -30,7 +30,9 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   if (webviewContainer && nav) {
-    webviewContainer.loadURL(toNavigate);
+    // Process the initial URL through handleURL to ensure proper formatting
+    const processedURL = handleURL(toNavigate);
+    webviewContainer.loadURL(processedURL);
 
     focusURLInput();
 
@@ -144,7 +146,9 @@ function updateNavigationButtons() {
 }
 
 function navigateTo(url) {
-  webviewContainer.loadURL(url);
+  // Process URL through handleURL to ensure proper formatting
+  const processedURL = handleURL(url);
+  webviewContainer.loadURL(processedURL);
 }
 
 function focusURLInput() {
