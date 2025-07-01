@@ -31,8 +31,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (webviewContainer && nav) {
     // Process the initial URL through handleURL to ensure proper formatting
-    const processedURL = handleURL(toNavigate);
-    webviewContainer.loadURL(processedURL);
+    handleURL(toNavigate).then(processedURL => {
+      webviewContainer.loadURL(processedURL);
+    }).catch(error => {
+      console.error('Error processing initial URL:', error);
+      webviewContainer.loadURL(toNavigate);
+    });
 
     focusURLInput();
 
@@ -87,12 +91,16 @@ document.addEventListener("DOMContentLoaded", () => {
       urlInput.addEventListener("keypress", async (e) => {
         if (e.key === "Enter") {
           const rawURL = urlInput.value.trim();
-          const url = handleURL(rawURL);
-          try {
-            webviewContainer.loadURL(url);
-          } catch (error) {
-            console.error("Error loading URL:", error);
-          }
+          handleURL(rawURL).then(url => {
+            try {
+              webviewContainer.loadURL(url);
+            } catch (error) {
+              console.error("Error loading URL:", error);
+            }
+          }).catch(error => {
+            console.error("Error processing URL:", error);
+            webviewContainer.loadURL(rawURL);
+          });
         }
       });
     } else {
@@ -145,10 +153,15 @@ function updateNavigationButtons() {
   }
 }
 
-function navigateTo(url) {
-  // Process URL through handleURL to ensure proper formatting
-  const processedURL = handleURL(url);
-  webviewContainer.loadURL(processedURL);
+async function navigateTo(url) {
+  try {
+    // Process URL through handleURL to ensure proper formatting
+    const processedURL = await handleURL(url);
+    webviewContainer.loadURL(processedURL);
+  } catch (error) {
+    console.error('Error processing URL:', error);
+    webviewContainer.loadURL(url);
+  }
 }
 
 function focusURLInput() {

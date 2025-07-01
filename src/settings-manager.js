@@ -191,7 +191,7 @@ class SettingsManager {
 
   validateSetting(key, value) {
     const validators = {
-      searchEngine: (v) => ['duckduckgo', 'ecosia', 'google', 'bing', 'brave', 'startpage'].includes(v),
+      searchEngine: (v) => ['duckduckgo', 'ecosia', 'startpage'].includes(v),
       theme: (v) => ['light', 'dark', 'green', 'cyan', 'yellow'].includes(v),
       showClock: (v) => typeof v === 'boolean',
       wallpaper: (v) => ['default', 'custom'].includes(v),
@@ -264,8 +264,22 @@ class SettingsManager {
     }
   }
 
-  // TODO: Add helper methods
-  // getSearchEngineUrl(query) - convert search to URL
+  // Helper methods
+  getSearchEngineUrl(query) {
+    const { makeSearch } = require('./utils.js');
+    return makeSearch(query, this.settings.searchEngine);
+  }
+
+  getSearchEngineName() {
+    const engineNames = {
+      'duckduckgo': 'DuckDuckGo',
+      'ecosia': 'Ecosia',
+      'startpage': 'Startpage'
+    };
+    return engineNames[this.settings.searchEngine] || 'DuckDuckGo';
+  }
+
+  // TODO: Add additional helper methods
   // getThemeData() - get current theme configuration
   // getWallpaperPath() - get current wallpaper file path
 }

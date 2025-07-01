@@ -37,6 +37,9 @@ class NavBox extends HTMLElement {
     urlInput.id = "url";
     urlInput.placeholder = "Search with DuckDuckGo or type a P2P URL";
     this.appendChild(urlInput);
+    
+    // Update placeholder based on search engine setting
+    this.updateSearchPlaceholder();
 
     // Create buttons that should appear after the URL input
     buttons
@@ -175,6 +178,17 @@ class NavBox extends HTMLElement {
       console.log('NavBox received theme reload event:', event.detail);
       this.handleThemeChange(event.detail.theme);
     });
+    
+    // Listen for search engine changes from settings manager
+    try {
+      const { ipcRenderer } = require('electron');
+      ipcRenderer.on('search-engine-changed', (event, newEngine) => {
+        console.log('NavBox: Search engine changed to:', newEngine);
+        this.updateSearchPlaceholder();
+      });
+    } catch (error) {
+      console.warn('NavBox: Could not setup search engine listener:', error);
+    }
   }
 
   handleThemeChange(theme) {
@@ -190,6 +204,28 @@ class NavBox extends HTMLElement {
         this.classList.remove('theme-updating');
       }, 100);
     });
+  }
+
+  async updateSearchPlaceholder() {
+    const urlInput = this.querySelector("#url");
+    if (!urlInput) return;
+    
+    try {
+      const { ipcRenderer } = require('electron');
+      const searchEngine = await ipcRenderer.invoke('settings-get', 'searchEngine');
+      
+      const engineNames = {
+        'duckduckgo': 'DuckDuckGo',
+        'ecosia': 'Ecosia',
+        'startpage': 'Startpage'
+      };
+      
+      const engineName = engineNames[searchEngine] || 'DuckDuckGo';
+      urlInput.placeholder = `Search with ${engineName} or type a P2P URL`;
+    } catch (error) {
+      console.warn('NavBox: Could not get search engine setting:', error);
+      urlInput.placeholder = "Search with DuckDuckGo or type a P2P URL";
+    }
   }
 }
 
