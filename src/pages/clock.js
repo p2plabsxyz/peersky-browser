@@ -2,11 +2,65 @@ class Clock extends HTMLElement {
     constructor() {
         super();
         this.updateTime();
+        this.isVisible = true; // Default state
+        this.setupIPC();
     }
 
     connectedCallback() {
         this.render();
         this.startClock();
+        this.loadInitialSettings();
+    }
+
+    setupIPC() {
+        // Access IPC renderer through various methods since we're in a webview/iframe context
+        let ipcRenderer;
+        try {
+            ipcRenderer = require('electron').ipcRenderer;
+        } catch (e) {
+            try {
+                ipcRenderer = parent.require('electron').ipcRenderer;
+            } catch (e2) {
+                try {
+                    ipcRenderer = top.require('electron').ipcRenderer;
+                } catch (e3) {
+                    console.warn('Clock: Could not access ipcRenderer, clock toggle will not work');
+                    return;
+                }
+            }
+        }
+
+        this.ipcRenderer = ipcRenderer;
+
+        // Listen for show-clock-changed events
+        if (this.ipcRenderer) {
+            this.ipcRenderer.on('show-clock-changed', (event, showClock) => {
+                console.log('Clock: Show clock setting changed to:', showClock);
+                this.setVisibility(showClock);
+            });
+        }
+    }
+
+    async loadInitialSettings() {
+        if (!this.ipcRenderer) {
+            console.warn('Clock: IPC not available, using default visibility');
+            return;
+        }
+
+        try {
+            const showClock = await this.ipcRenderer.invoke('settings-get', 'showClock');
+            console.log('Clock: Initial showClock setting:', showClock);
+            this.setVisibility(showClock);
+        } catch (error) {
+            console.error('Clock: Failed to load initial settings:', error);
+            // Keep default visibility on error
+        }
+    }
+
+    setVisibility(visible) {
+        this.isVisible = visible;
+        this.style.display = visible ? 'block' : 'none';
+        console.log('Clock: Visibility set to:', visible ? 'visible' : 'hidden');
     }
 
     render() {
