@@ -316,6 +316,8 @@ class PeerskyWindow {
         contextIsolation: false,
         nativeWindowOpen: true,
         webviewTag: true,
+        enableRemoteModule: true,
+// https://stackoverflow.com/questions/55093700/electron-5-0-0-uncaught-referenceerror-require-is-not-defined
       },
       ...windowOptions,
     });
