@@ -13,6 +13,7 @@ class NavBox extends HTMLElement {
       { id: "forward", svg: "right.svg", position: "start" },
       { id: "refresh", svg: "reload.svg", position: "start" },
       { id: "home", svg: "home.svg", position: "start" },
+      { id: "bookmark", svg: "bookmark.svg", position: "start" },
       { id: "plus", svg: "plus.svg", position: "end" },
     ];
 
@@ -142,7 +143,11 @@ class NavBox extends HTMLElement {
           }
         } else if (button.id === "plus") {
           this.dispatchEvent(new CustomEvent("new-window"));
-        } else if (!button.disabled) {
+        }
+        else if (button.id === "bookmark" ){
+          this.dispatchEvent(new CustomEvent("add-bookmark"));
+        }
+        else if (!button.disabled) {
           this.navigate(button.id);
         }
       }

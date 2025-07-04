@@ -12,6 +12,9 @@ const webviewContainer = document.querySelector("#webview");
 const nav = document.querySelector("#navbox");
 const findMenu = document.querySelector("#find");
 const pageTitle = document.querySelector("title");
+const bookmarkBox = document.querySelector("#bookmarkbox");
+console.log("Bookmark box:", bookmarkBox);
+console.log("Webview container:", webviewContainer);
 
 const searchParams = new URL(window.location.href).searchParams;
 const toNavigate = searchParams.has("url")
@@ -39,6 +42,32 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     nav.addEventListener("new-window", () => {
       ipcRenderer.send("new-window");
+    });
+    nav.addEventListener("add-bookmark", () => {
+      const urlInput = nav.querySelector("#url");
+      const title = pageTitle.innerText.replace(' - Peersky Browser', '').trim();
+      
+      let favicon = '';
+      try {
+          const iconLink = document.querySelector('link[rel="icon"], link[rel="shortcut icon"]');
+          if (iconLink) {
+              favicon = new URL(iconLink.href, urlInput.value.trim()).href;
+          }
+          if (!favicon) {
+              favicon = "peersky://static/assets/svg/favicon.svg"; 
+          }
+      } catch(e) {
+        // TODO:
+        console.error("Error fetching favicon:", e);
+      }
+
+
+      if (urlInput && urlInput.value) {
+        const url = urlInput.value.trim();
+        ipcRenderer.send("add-bookmark", { url, title, favicon });
+      } else {
+        console.error("URL input not found or is empty.");
+      }
     });
 
     // Handle webview loading events to toggle refresh/stop button
