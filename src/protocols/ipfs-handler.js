@@ -68,19 +68,34 @@ export async function createHandler(ipfsOptions, session) {
   // Initialize Ethereum provider with configurable RPC URL
   const provider = new JsonRpcProvider(RPC_URL);
 
-  // Function to handle file uploads
+  // Function to handle file and directory uploads
   async function handleFileUpload(request, sendResponse) {
     try {
       const startTime = Date.now();
       const entries = [];
       for (const data of request.uploadData || []) {
         if (data.type === "file" && data.file) {
-          const fileName = path.basename(data.file);
-          entries.push({
-            path: fileName,
-            content: fs.createReadStream(data.file, { highWaterMark: 1024 * 1024 }),
-          });
+          const filePath = data.file;
+          const stats = await fs.stat(filePath);
+          if (stats.isDirectory()) {
+            // Handle directory with globSource for recursive upload
+            const source = globSource(filePath, '**/*');
+            for await (const entry of source) {
+              entries.push({
+                path: entry.path,
+                content: entry.content, // Readable stream for file content
+              });
+            }
+          } else {
+            // Handle individual file
+            const fileName = path.basename(filePath);
+            entries.push({
+              path: fileName,
+              content: fs.createReadStream(filePath, { highWaterMark: 1024 * 1024 }),
+            });
+          }
         } else if (data.type === "blob" && data.blobUUID) {
+          // Handle blob data
           const blobData = await session.getBlobData(data.blobUUID);
           const fileName = "index.html";
           entries.push({ path: fileName, content: blobData });
@@ -91,7 +106,7 @@ export async function createHandler(ipfsOptions, session) {
         throw new Error("No files found in the upload data.");
       }
   
-      // Use addAll to upload files with paths
+      // Use addAll to upload files with paths, wrapping with a directory
       const options = { wrapWithDirectory: true };
       let rootCid;
   
@@ -101,6 +116,7 @@ export async function createHandler(ipfsOptions, session) {
       }
       console.log(`Added all files in ${Date.now() - startTime}ms`);
   
+      // Pin the root CID recursively
       await node.pins.add(rootCid, { recursive: true });
       console.log(`Pinned in ${Date.now() - startTime}ms`);
   
@@ -120,7 +136,7 @@ export async function createHandler(ipfsOptions, session) {
       const peerCount = node.libp2p.getPeers().length;
       console.log(`Providing ${rootCid} with ${peerCount} peers connected`);
   
-      // Provide in the background
+      // Provide the root CID to the DHT in the background
       node.libp2p.contentRouting.provide(rootCid).then(() => {
         console.log(`Provided ${rootCid} to DHT in ${Date.now() - startTime}ms`);
       }).catch(err => console.log('Error providing:', err));
