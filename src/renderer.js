@@ -31,12 +31,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (webviewContainer && nav) {
     // Process the initial URL through handleURL to ensure proper formatting
-    handleURL(toNavigate).then(processedURL => {
-      webviewContainer.loadURL(processedURL);
-    }).catch(error => {
-      console.error('Error processing initial URL:', error);
-      webviewContainer.loadURL(toNavigate);
-    });
+    (async () => {
+      try {
+        const processedURL = await handleURL(toNavigate);
+        webviewContainer.loadURL(processedURL);
+      } catch (error) {
+        console.error('Error processing initial URL:', error);
+        webviewContainer.loadURL(toNavigate);
+      }
+    })();
 
     focusURLInput();
 
@@ -91,16 +94,13 @@ document.addEventListener("DOMContentLoaded", () => {
       urlInput.addEventListener("keypress", async (e) => {
         if (e.key === "Enter") {
           const rawURL = urlInput.value.trim();
-          handleURL(rawURL).then(url => {
-            try {
-              webviewContainer.loadURL(url);
-            } catch (error) {
-              console.error("Error loading URL:", error);
-            }
-          }).catch(error => {
+          try {
+            const processedURL = await handleURL(rawURL);
+            webviewContainer.loadURL(processedURL);
+          } catch (error) {
             console.error("Error processing URL:", error);
             webviewContainer.loadURL(rawURL);
-          });
+          }
         }
       });
     } else {
