@@ -116,8 +116,10 @@
     ]
   },
   "dependencies": {
+    "@chainsafe/libp2p-quic": "^1.1.1",
     "@helia/ipns": "^8.2.3",
     "@helia/unixfs": "^5.0.3",
+    "@libp2p/webtransport": "^5.0.47",
     "b4a": "^1.6.7",
     "blockstore-fs": "^2.0.2",
     "content-hash": "^2.5.2",

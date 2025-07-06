@@ -6,8 +6,10 @@ import { noise } from "@chainsafe/libp2p-noise";
 import { yamux } from "@chainsafe/libp2p-yamux";
 import { mdns } from "@libp2p/mdns";
 import { tcp } from "@libp2p/tcp";
+import { quic } from '@chainsafe/libp2p-quic'
 import { webRTC, webRTCDirect } from "@libp2p/webrtc";
 import { webSockets } from "@libp2p/websockets";
+import { webTransport } from '@libp2p/webtransport'
 import { circuitRelayTransport } from "@libp2p/circuit-relay-v2";
 import { autoNAT } from "@libp2p/autonat";
 import { autoTLS } from '@ipshipyard/libp2p-auto-tls'
@@ -55,17 +57,19 @@ export async function createNode() {
         '/ip4/0.0.0.0/tcp/0',
         '/ip4/0.0.0.0/tcp/0/ws',
         '/ip4/0.0.0.0/udp/0/webrtc-direct',
-        '/ip6/::/tcp/0',
-        '/ip6/::/tcp/0/ws',
         '/ip6/::/udp/0/webrtc-direct',
+        '/ip4/0.0.0.0/udp/0/quic-v1',
+        '/ip4/0.0.0.0/udp/0/quic-v1/webtransport',
         '/p2p-circuit'
       ],
     },
     transports: [
       tcp(),
+      quic(),
       webSockets(),
       webRTC(),
       webRTCDirect(),
+      webTransport(),
       circuitRelayTransport(),
     ],
     connectionEncrypters: [noise()],
