@@ -86,7 +86,24 @@ export function createActions(windowManager) {
       accelerator: "CommandOrControl+W",
       click: (focusedWindow) => {
         if (focusedWindow) {
-          focusedWindow.close();
+          focusedWindow.webContents.executeJavaScript(`
+            try {
+              const tabBar = document.querySelector('#tabbar');
+              if (tabBar && tabBar.tabs && tabBar.tabs.length > 1 && typeof tabBar.closeTab === 'function' && typeof tabBar.getActiveTab === 'function') {
+                const activeTab = tabBar.getActiveTab();
+                if (activeTab && activeTab.id) {
+                  tabBar.closeTab(activeTab.id);
+                }
+              } else {
+                window.close();
+              }
+            } catch (error) {
+              console.error('Error in Close action:', error);
+              window.close();
+            }
+          `).catch(error => {
+            console.error('Script execution failed in Close action:', error);
+          });
         }
       },
     },
@@ -116,6 +133,97 @@ export function createActions(windowManager) {
               }, 100); // Timeout to ensure the menu is visible and ready to receive focus
             }
           `);
+        }
+      },
+    },
+    NewTab: {
+      label: "New Tab",
+      accelerator: "CommandOrControl+T",
+      click: (focusedWindow) => {
+        if (focusedWindow) {
+          focusedWindow.webContents.executeJavaScript(`
+            try {
+              const tabBar = document.querySelector('#tabbar');
+              if (tabBar && typeof tabBar.addTab === 'function') {
+                tabBar.addTab();
+              }
+            } catch (error) {
+              console.error('Error adding tab:', error);
+            }
+          `).catch(error => {
+            console.error('Script execution failed:', error);
+          });
+        }
+      },
+    },
+    CloseTab: {
+      label: "Close Tab",
+      accelerator: "CommandOrControl+Shift+W",
+      click: (focusedWindow) => {
+        if (focusedWindow) {
+          focusedWindow.webContents.executeJavaScript(`
+            try {
+              const tabBar = document.querySelector('#tabbar');
+              if (tabBar && typeof tabBar.getActiveTab === 'function' && typeof tabBar.closeTab === 'function') {
+                const activeTab = tabBar.getActiveTab();
+                if (activeTab && activeTab.id) {
+                  tabBar.closeTab(activeTab.id);
+                }
+              }
+            } catch (error) {
+              console.error('Error closing tab:', error);
+            }
+          `).catch(error => {
+            console.error('Script execution failed:', error);
+          });
+        }
+      },
+    },
+    NextTab: {
+      label: "Next Tab",
+      accelerator: "CommandOrControl+Tab",
+      click: (focusedWindow) => {
+        if (focusedWindow) {
+          focusedWindow.webContents.executeJavaScript(`
+            try {
+              const tabBar = document.querySelector('#tabbar');
+              if (tabBar && tabBar.tabs && tabBar.tabs.length > 1) {
+                const activeIndex = tabBar.tabs.findIndex(tab => tab.id === tabBar.activeTabId);
+                const nextIndex = (activeIndex + 1) % tabBar.tabs.length;
+                if (typeof tabBar.selectTab === 'function') {
+                  tabBar.selectTab(tabBar.tabs[nextIndex].id);
+                }
+              }
+            } catch (error) {
+              console.error('Error switching to next tab:', error);
+            }
+          `).catch(error => {
+            console.error('Script execution failed:', error);
+          });
+        }
+      },
+    },
+    PreviousTab: {
+      label: "Previous Tab",
+      accelerator: "CommandOrControl+Shift+Tab",
+      click: (focusedWindow) => {
+        if (focusedWindow) {
+          focusedWindow.webContents.executeJavaScript(`
+            try {
+              const tabBar = document.querySelector('#tabbar');
+              if (tabBar && tabBar.tabs && tabBar.tabs.length > 1) {
+                const activeIndex = tabBar.tabs.findIndex(tab => tab.id === tabBar.activeTabId);
+                const prevIndex = (activeIndex - 1 + tabBar.tabs.length) % tabBar.tabs.length;
+                if (typeof tabBar.selectTab === 'function') {
+                  tabBar.selectTab(tabBar.tabs[prevIndex].id);
+                }
+              }
+            } catch (error) {
+              console.error('Error switching to previous tab:', error);
+            }
+          `).catch(error => {
+            console.error('Script execution failed:', error);
+          });
         }
       },
     },

@@ -11,6 +11,10 @@ class FindMenu extends HTMLElement {
     this.wrappingBackward = false; // Tracks if we're wrapping around to the end
     this.updateTimeout = null;
 
+    this.tabGroups = new Map(); // Store group metadata
+    this.tabGroupAssignments = new Map(); // Map tab IDs to group IDs
+    this.groupColors = ['#4285F4', '#EA4335', '#FBBC05', '#34A853', '#8AB4F8', '#F28B82', '#FDD663', '#81C995']; // Google Chrome-like colors
+
     this.addEventListener('keydown', ({ key }) => {
       if (key === 'Escape') this.hide();
     });
