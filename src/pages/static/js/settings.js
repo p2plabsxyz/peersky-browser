@@ -1,59 +1,115 @@
-// Settings page JavaScript - Frontend functionality
-// IPC communication with settings-manager.js
+/**
+ * Settings Page JavaScript - Webview Frontend
+ * 
+ * Secure settings interface using contextBridge API with fallback support.
+ * Migrated from iframe to webview for improved security and context isolation.
+ */
 
-// Import Electron IPC for renderer process
-let ipcRenderer;
-try {
-  ipcRenderer = require('electron').ipcRenderer;
-} catch (e) {
-  try {
-    ipcRenderer = parent.require('electron').ipcRenderer;
-  } catch (e2) {
+let settingsAPI;
+let eventCleanupFunctions = [];
+
+// Initialize API access with fallback handling
+function initializeAPI() {
+  // Primary: Secure contextBridge API
+  if (window.electronAPI?.settings) {
+    settingsAPI = window.electronAPI;
+    return true;
+  }
+  
+  // Fallback: Direct IPC (development mode)
+  if (window.electronIPC) {
+    settingsAPI = createFallbackAPI(window.electronIPC);
+    return true;
+  }
+  
+  // Legacy fallbacks
+  const ipcSources = [
+    () => require('electron').ipcRenderer,
+    () => parent.require('electron').ipcRenderer,
+    () => top.require('electron').ipcRenderer
+  ];
+  
+  for (const getIPC of ipcSources) {
     try {
-      ipcRenderer = top.require('electron').ipcRenderer;
-    } catch (e3) {
-      console.error('Could not access ipcRenderer:', e3);
+      const ipc = getIPC();
+      if (ipc) {
+        settingsAPI = createFallbackAPI(ipc);
+        return true;
+      }
+    } catch (e) {
+      // Continue to next fallback
     }
   }
+  
+  return false;
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  // Check if IPC is available
-  if (!ipcRenderer) {
-    console.error('IPC not available - settings will not persist');
-  } else {
-    // Listen for theme changes from main process
-    ipcRenderer.on('theme-changed', (event, newTheme) => {
-      console.log('Theme changed to:', newTheme);
-      
-      // Update form field if different
-      const themeToggle = document.getElementById('theme-toggle');
-      if (themeToggle && themeToggle.value !== newTheme) {
-        themeToggle.value = newTheme;
-        updateCustomDropdownDisplays();
-      }
-      
-      // Reload theme CSS
-      reloadThemeCSS();
-    });
+// Create fallback API wrapper
+function createFallbackAPI(ipc) {
+  const wrapCallback = (eventName, callback) => {
+    const wrappedCallback = (event, ...args) => callback(...args);
+    ipc.on(eventName, wrappedCallback);
+    return () => ipc.removeListener(eventName, wrappedCallback);
+  };
+
+  return {
+    settings: {
+      getAll: () => ipc.invoke('settings-get-all'),
+      get: (key) => ipc.invoke('settings-get', key),
+      set: (key, value) => ipc.invoke('settings-set', key, value),
+      reset: () => ipc.invoke('settings-reset')
+    },
+    onThemeChanged: (callback) => wrapCallback('theme-changed', callback),
+    onSearchEngineChanged: (callback) => wrapCallback('search-engine-changed', callback),
+    onShowClockChanged: (callback) => wrapCallback('show-clock-changed', callback)
+  };
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  // Initialize API access
+  if (!initializeAPI()) {
+    console.error('Settings: No API access available - settings will not persist');
+    showSettingsSavedMessage('Settings API not available', 'error');
+    loadDefaultSettings();
+    return;
+  }
+  
+  // Set up event listeners with cleanup tracking
+  try {
+    if (settingsAPI.onThemeChanged) {
+      const cleanup1 = settingsAPI.onThemeChanged((newTheme) => {
+        const themeToggle = document.getElementById('theme-toggle');
+        if (themeToggle && themeToggle.value !== newTheme) {
+          themeToggle.value = newTheme;
+          updateCustomDropdownDisplays();
+        }
+        reloadThemeCSS();
+      });
+      eventCleanupFunctions.push(cleanup1);
+    }
     
-    // Listen for other setting changes
-    ipcRenderer.on('search-engine-changed', (event, newEngine) => {
-      console.log('Search engine changed to:', newEngine);
-      const searchEngine = document.getElementById('search-engine');
-      if (searchEngine && searchEngine.value !== newEngine) {
-        searchEngine.value = newEngine;
-        updateCustomDropdownDisplays();
-      }
-    });
+    if (settingsAPI.onSearchEngineChanged) {
+      const cleanup2 = settingsAPI.onSearchEngineChanged((newEngine) => {
+        const searchEngine = document.getElementById('search-engine');
+        if (searchEngine && searchEngine.value !== newEngine) {
+          searchEngine.value = newEngine;
+          updateCustomDropdownDisplays();
+        }
+      });
+      eventCleanupFunctions.push(cleanup2);
+    }
     
-    ipcRenderer.on('show-clock-changed', (event, showClock) => {
-      console.log('Show clock changed to:', showClock);
-      const clockToggle = document.getElementById('show-clock');
-      if (clockToggle && clockToggle.checked !== showClock) {
-        clockToggle.checked = showClock;
-      }
-    });
+    if (settingsAPI.onShowClockChanged) {
+      const cleanup3 = settingsAPI.onShowClockChanged((showClock) => {
+        const clockToggle = document.getElementById('show-clock');
+        if (clockToggle && clockToggle.checked !== showClock) {
+          clockToggle.checked = showClock;
+        }
+      });
+      eventCleanupFunctions.push(cleanup3);
+    }
+  } catch (error) {
+    console.error('Settings: Failed to set up event listeners:', error);
   }
   
   // Initialize custom dropdowns
@@ -147,19 +203,18 @@ function loadDefaultSettings() {
 
 // Load settings from backend
 async function loadSettingsFromBackend() {
-  if (!ipcRenderer) {
-    console.warn('IPC not available, using defaults');
+  if (!settingsAPI?.settings) {
+    console.warn('Settings: API not available, using defaults');
     loadDefaultSettings();
     return;
   }
   
   try {
-    console.log('Loading settings from backend...');
-    const settings = await ipcRenderer.invoke('settings-get-all');
-    console.log('Settings loaded:', settings);
+    const settings = await settingsAPI.settings.getAll();
     populateFormFields(settings);
   } catch (error) {
-    console.error('Failed to load settings:', error);
+    console.error('Settings: Failed to load settings:', error);
+    showSettingsSavedMessage(`Failed to load settings: ${error.message}`, 'error');
     loadDefaultSettings();
   }
 }
@@ -191,45 +246,45 @@ function populateFormFields(settings) {
 }
 
 async function saveSettingToBackend(key, value) {
-  if (!ipcRenderer) {
-    console.warn('IPC not available, setting not saved:', key, value);
+  if (!settingsAPI?.settings) {
+    console.warn('Settings: API not available, setting not saved:', key, value);
+    showSettingsSavedMessage('Settings not available', 'error');
     return;
   }
   
   try {
-    console.log('Saving setting to backend:', key, value);
-    const result = await ipcRenderer.invoke('settings-set', key, value);
-    console.log('Setting saved successfully:', result);
+    const result = await settingsAPI.settings.set(key, value);
+    showSettingsSavedMessage(`${key} saved successfully!`, 'success');
     return result;
   } catch (error) {
-    console.error('Failed to save setting:', error);
-    alert(`Failed to save ${key}: ${error.message}`);
+    console.error('Settings: Failed to save setting:', error);
+    showSettingsSavedMessage(`Failed to save ${key}: ${error.message}`, 'error');
+    
+    // Reload settings to sync UI with backend state
     await loadSettingsFromBackend();
     throw error;
   }
 }
 
 async function resetSettingsToDefaults() {
-  if (!ipcRenderer) {
-    console.warn('IPC not available, cannot reset settings');
+  if (!settingsAPI?.settings) {
+    console.warn('Settings: API not available, cannot reset settings');
+    showSettingsSavedMessage('Settings not available', 'error');
+    return;
+  }
+  
+  if (!confirm('Are you sure you want to reset all settings to defaults? This cannot be undone.')) {
     return;
   }
   
   try {
-    if (!confirm('Are you sure you want to reset all settings to defaults? This cannot be undone.')) {
-      return;
-    }
-    
-    console.log('Resetting settings to defaults...');
-    const result = await ipcRenderer.invoke('settings-reset');
-    console.log('Settings reset successfully:', result);
-    
+    const result = await settingsAPI.settings.reset();
     await loadSettingsFromBackend();
-    alert('Settings have been reset to defaults.');
+    showSettingsSavedMessage('Settings have been reset to defaults', 'success');
     return result;
   } catch (error) {
-    console.error('Failed to reset settings:', error);
-    alert(`Failed to reset settings: ${error.message}`);
+    console.error('Settings: Failed to reset settings:', error);
+    showSettingsSavedMessage(`Failed to reset settings: ${error.message}`, 'error');
     throw error;
   }
 }
@@ -362,18 +417,30 @@ function updateCustomDropdownDisplays() {
   });
 }
 
-// Show temporary success message using CSS classes only
-function showSettingsSavedMessage(message) {
+// Show temporary message with type support (success, error, warning)
+function showSettingsSavedMessage(message, type = 'success') {
   // Remove any existing message
   const existingMessage = document.querySelector('.settings-saved-message');
   if (existingMessage) {
     existingMessage.remove();
   }
   
-  // Create new message element with CSS classes only
+  // Create new message element with appropriate styling
   const messageEl = document.createElement('div');
-  messageEl.className = 'settings-saved-message';
+  messageEl.className = `settings-saved-message ${type}`;
   messageEl.textContent = message;
+  
+  // Add type-specific styling
+  if (type === 'error') {
+    messageEl.style.backgroundColor = '#f44336';
+    messageEl.style.color = 'white';
+  } else if (type === 'warning') {
+    messageEl.style.backgroundColor = '#ff9800';
+    messageEl.style.color = 'white';
+  } else {
+    messageEl.style.backgroundColor = '#4caf50';
+    messageEl.style.color = 'white';
+  }
   
   document.body.appendChild(messageEl);
   
@@ -382,7 +449,8 @@ function showSettingsSavedMessage(message) {
     messageEl.classList.add('show');
   }, 10);
   
-  // Remove after 3 seconds
+  // Remove after duration based on type
+  const duration = type === 'error' ? 5000 : 3000;
   setTimeout(() => {
     messageEl.classList.remove('show');
     setTimeout(() => {
@@ -390,5 +458,20 @@ function showSettingsSavedMessage(message) {
         messageEl.parentNode.removeChild(messageEl);
       }
     }, 300);
-  }, 3000);
+  }, duration);
 }
+
+// Cleanup function for event listeners
+function cleanup() {
+  eventCleanupFunctions.forEach(cleanupFn => {
+    try {
+      cleanupFn();
+    } catch (error) {
+      console.error('Settings: Error during cleanup:', error);
+    }
+  });
+  eventCleanupFunctions = [];
+}
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', cleanup);

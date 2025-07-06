@@ -1,13 +1,22 @@
 <!DOCTYPE html>
+<html lang="en">
+<head>
 <meta charset="UTF-8" />
 <meta http-equiv="X-UA-Compatible" content="IE=edge" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<!-- 
+  CSP allows peersky: protocol for secure script loading in webview.
+  Migrated from iframe (insecure) to webview with context isolation.
+-->
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' peersky:; object-src 'none'; style-src 'self' 'unsafe-inline' browser:;">
 <style>
   @import url("browser://theme/index.css");
   @import url("browser://theme/vars.css");
   @import url("browser://theme/settings.css");
 </style>
 <title>Settings - Peersky Browser</title>
+</head>
+<body>
 
 <main class="settings-container">
   <section id="general-settings" class="settings-section">
@@ -101,4 +110,6 @@
   </section>
 </main>
 
-<script src="./static/js/settings.js"></script> 
+<script src="peersky://static/js/settings.js" defer></script>
+</body>
+</html> 

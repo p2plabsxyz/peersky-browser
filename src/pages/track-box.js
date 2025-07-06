@@ -1,43 +1,16 @@
 const path = require("path");
 
+/**
+ * TrackedBox - Webview container with dynamic preload script assignment
+ * 
+ * Supports secure loading of internal pages (like settings) with appropriate
+ * preload scripts while maintaining context isolation for security.
+ */
 class TrackedBox extends HTMLElement {
   constructor() {
     super();
     this.observer = new ResizeObserver(() => this.emitResize());
-    this.currentInternalURL = null;
-    this.initWebView();
-  }
-
-  initWebView() {
-    this.webview = document.createElement("webview");
-    this.webview.setAttribute("allowpopups", "true");
-    // Use absolute positioning to prevent layout interference
-    this.webview.style.position = "absolute";
-    this.webview.style.top = "45px"; // Leave space for nav bar
-    this.webview.style.left = "0";
-    this.webview.style.height = "calc(100vh - 45px)";
-    this.webview.style.width = "100%";
-    this.webview.style.zIndex = "1";
-
-    // Dynamically resolve the preload script path
-    this.webview.preload = "file://" + path.join(__dirname, "preload.js");
-
-    this.webview.addEventListener("did-navigate", (e) => {
-      this.dispatchEvent(
-        new CustomEvent("did-navigate", {
-          detail: { url: this.webview.getURL() },
-        })
-      );
-    });
-
-    this.webview.addEventListener("page-title-updated", (e) => {
-      this.dispatchEvent(
-        new CustomEvent("page-title-updated", { detail: { title: e.title } })
-      );
-    });
-
-
-    this.appendChild(this.webview);
+    this.webview = null;
   }
 
   connectedCallback() {
@@ -56,21 +29,83 @@ class TrackedBox extends HTMLElement {
     );
   }
 
+  loadURL(url) {
+    // Determine appropriate preload script based on URL
+    const preloadScript = url === 'peersky://settings' ? 
+      'settings-preload.js' : 'preload.js';
+    
+    // Recreate webview with correct preload (preload must be set at creation time)
+    this.createWebview(preloadScript, url);
+  }
+
+  createWebview(preloadScript, url) {
+    // Remove existing webview if it exists
+    if (this.webview) {
+      this.webview.remove();
+    }
+    
+    // Create new webview with proper preload script
+    this.webview = document.createElement("webview");
+    this.webview.setAttribute("allowpopups", "true");
+    this.webview.setAttribute("preload", "file://" + path.join(__dirname, preloadScript));
+    
+    // Apply consistent styling
+    this.applyWebviewStyling();
+    
+    // Add event listeners
+    this.setupEventListeners();
+    
+    // Add to DOM and load URL
+    this.appendChild(this.webview);
+    this.webview.src = url;
+  }
+
+  applyWebviewStyling() {
+    const styles = {
+      position: "absolute",
+      top: "45px", // Leave space for navigation bar
+      left: "0",
+      height: "calc(100vh - 45px)",
+      width: "100%",
+      zIndex: "1",
+      border: "none"
+    };
+
+    Object.assign(this.webview.style, styles);
+  }
+
+  setupEventListeners() {
+    this.webview.addEventListener("did-navigate", (e) => {
+      this.dispatchEvent(
+        new CustomEvent("did-navigate", {
+          detail: { url: this.webview.getURL() },
+        })
+      );
+    });
+
+    this.webview.addEventListener("page-title-updated", (e) => {
+      this.dispatchEvent(
+        new CustomEvent("page-title-updated", { detail: { title: e.title } })
+      );
+    });
+  }
+
+  // Navigation methods
   goBack() {
-    if (this.webview.canGoBack()) {
+    if (this.webview && this.webview.canGoBack()) {
       this.webview.goBack();
     }
   }
 
   goForward() {
-    if (this.webview.canGoForward()) {
+    if (this.webview && this.webview.canGoForward()) {
       this.webview.goForward();
     }
   }
 
   canGoBack() {
     try {
-      return this.webview.canGoBack();
+      return this.webview ? this.webview.canGoBack() : false;
     } catch (e) {
       return false;
     }
@@ -78,99 +113,37 @@ class TrackedBox extends HTMLElement {
 
   canGoForward() {
     try {
-      return this.webview.canGoForward();  
+      return this.webview ? this.webview.canGoForward() : false;
     } catch (e) {
       return false;
     }
   }
 
   reload() {
-    this.webview.reload();
+    if (this.webview) {
+      this.webview.reload();
+    }
   }
 
   stop() {
-    this.webview.stop();
-  }
-
-  loadURL(url) {
-    // Check if this is an internal peersky:// page that should load in main frame
-    if (url && url.startsWith('peersky://')) {
-      this.loadInternalPage(url);
-    } else {
-      // External URLs load in webview as before
-      this.currentInternalURL = null;
-      if (this.mainFrame) {
-        this.mainFrame.style.zIndex = "0";
-        this.mainFrame.style.visibility = "hidden";
-      }
-      this.webview.style.zIndex = "1";
-      this.webview.style.visibility = "visible";
-      this.webview.src = url;
-    }
-  }
-
-  loadInternalPage(url) {
-    // Use z-index layering instead of display switching to prevent layout conflicts
-    this.webview.style.zIndex = "0";
-    this.webview.style.visibility = "hidden";
-    
-    // Create or get main frame container
-    if (!this.mainFrame) {
-      this.mainFrame = document.createElement('iframe');
-      // Use absolute positioning to match webview layout
-      this.mainFrame.style.position = "absolute";
-      this.mainFrame.style.top = "45px"; // Leave space for nav bar
-      this.mainFrame.style.left = "0";
-      this.mainFrame.style.height = 'calc(100vh - 45px)';
-      this.mainFrame.style.width = '100%';
-      this.mainFrame.style.border = 'none';
-      this.mainFrame.style.zIndex = "1";
-      // Note: iframe inherits context from parent frame
-      this.appendChild(this.mainFrame);
-    } else {
-      this.mainFrame.style.zIndex = "1";
-      this.mainFrame.style.visibility = "visible";
-    }
-    
-    // Map peersky:// URLs to actual HTML files
-    const pageMap = {
-      'peersky://home': '../pages/home.html',
-      'peersky://settings': '../pages/settings.html',
-    };
-    
-    const htmlFile = pageMap[url];
-    if (htmlFile) {
-      this.currentInternalURL = url;
-      this.mainFrame.src = htmlFile;
-      // Dispatch navigation event so browser knows we've navigated
-      this.dispatchEvent(
-        new CustomEvent("did-navigate", {
-          detail: { url: url },
-        })
-      );
-    } else {
-      // Fallback to webview for unknown peersky:// URLs
-      this.currentInternalURL = null;
-      this.webview.style.zIndex = "1";
-      this.webview.style.visibility = "visible";
-      if (this.mainFrame) {
-        this.mainFrame.style.zIndex = "0";
-        this.mainFrame.style.visibility = "hidden";
-      }
-      this.webview.src = url;
+    if (this.webview) {
+      this.webview.stop();
     }
   }
 
   getURL() {
-    // Return the current URL whether it's in webview or main frame
-    if (this.currentInternalURL) {
-      return this.currentInternalURL;
+    try {
+      return this.webview ? 
+        (this.webview.getURL() || this.webview.src) : '';
+    } catch (e) {
+      return this.webview ? this.webview.src : '';
     }
-    return this.webview.src;
   }
 
   executeJavaScript(script) {
-    this.webview.executeJavaScript(script);
+    if (this.webview) {
+      this.webview.executeJavaScript(script);
+    }
   }
 
   get webviewElement() {
