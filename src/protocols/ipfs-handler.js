@@ -137,7 +137,9 @@ export async function createHandler(ipfsOptions, session) {
       console.log(`Providing ${rootCid} with ${peerCount} peers connected`);
   
       // Provide the root CID to the DHT in the background
-      node.libp2p.contentRouting.provide(rootCid).then(() => {
+      node.libp2p.contentRouting.provide(rootCid, {
+        signal: AbortSignal.timeout(30000),
+      }).then(() => {
         console.log(`Provided ${rootCid} to DHT in ${Date.now() - startTime}ms`);
       }).catch(err => console.log('Error providing:', err));
   
