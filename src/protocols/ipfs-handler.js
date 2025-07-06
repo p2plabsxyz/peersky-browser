@@ -3,7 +3,7 @@ import mime from "mime-types";
 import path from "path";
 import { directoryListingHtml } from "./helia/directoryListingTemplate.js";
 import { createNode } from "./helia/helia.js";
-import { unixfs } from "@helia/unixfs";
+import { unixfs, globSource } from "@helia/unixfs";
 import { ipns } from "@helia/ipns";
 import fs from "fs-extra";
 import contentHash from "content-hash";
@@ -83,18 +83,18 @@ export async function createHandler(ipfsOptions, session) {
         } else if (data.type === "blob" && data.blobUUID) {
           const blobData = await session.getBlobData(data.blobUUID);
           const fileName = "index.html";
-          entries.push({ path: fileName, content: Readable.from(blobData) });
+          entries.push({ path: fileName, content: blobData });
         }
       }
   
       if (entries.length === 0) {
         throw new Error("No files found in the upload data.");
       }
-
+  
       // Use addAll to upload files with paths
       const options = { wrapWithDirectory: true };
       let rootCid;
-
+  
       for await (const result of unixFileSystem.addAll(entries, options)) {
         console.log("Added:", result.path, result.cid.toString());
         rootCid = result.cid;
@@ -104,13 +104,9 @@ export async function createHandler(ipfsOptions, session) {
       await node.pins.add(rootCid, { recursive: true });
       console.log(`Pinned in ${Date.now() - startTime}ms`);
   
-      await node.libp2p.contentRouting.provide(rootCid);
-      console.log(`Provided ${rootCid} to DHT in ${Date.now() - startTime}ms`);
-  
       const fileUrl = `ipfs://${rootCid.toString()}/`;
-
-      console.log("Files uploaded with root CID:", rootCid.toString());
-
+  
+      // Send response immediately after pinning
       sendResponse({
         statusCode: 200,
         headers: {
@@ -120,6 +116,16 @@ export async function createHandler(ipfsOptions, session) {
         },
         data: Readable.from(Buffer.from(fileUrl)),
       });
+
+      const peerCount = node.libp2p.getPeers().length;
+      console.log(`Providing ${rootCid} with ${peerCount} peers connected`);
+  
+      // Provide in the background
+      node.libp2p.contentRouting.provide(rootCid).then(() => {
+        console.log(`Provided ${rootCid} to DHT in ${Date.now() - startTime}ms`);
+      }).catch(err => console.log('Error providing:', err));
+  
+      console.log("Files uploaded with root CID:", rootCid.toString());
     } catch (e) {
       console.error("Error uploading file:", e);
       sendResponse({
