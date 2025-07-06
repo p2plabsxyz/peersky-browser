@@ -177,9 +177,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     applyThemeImmediately(e.target.value);
     
     await saveSettingToBackend('theme', e.target.value);
-    
-    // Show success message
-    showSettingsSavedMessage('Theme updated successfully');
   });
 
   showClock?.addEventListener('change', async (e) => {
@@ -254,11 +251,31 @@ async function saveSettingToBackend(key, value) {
   
   try {
     const result = await settingsAPI.settings.set(key, value);
-    showSettingsSavedMessage(`${key} saved successfully!`, 'success');
+    
+    // Create user-friendly success messages
+    const successMessages = {
+      'searchEngine': 'Search engine updated successfully!',
+      'theme': 'Theme updated successfully!',
+      'showClock': 'Clock setting updated successfully!',
+      'wallpaper': 'Wallpaper updated successfully!'
+    };
+    
+    const message = successMessages[key] || `${key} updated successfully!`;
+    showSettingsSavedMessage(message, 'success');
     return result;
   } catch (error) {
     console.error('Settings: Failed to save setting:', error);
-    showSettingsSavedMessage(`Failed to save ${key}: ${error.message}`, 'error');
+    
+    // Create user-friendly error messages
+    const errorMessages = {
+      'searchEngine': 'Failed to save search engine setting',
+      'theme': 'Failed to save theme setting',
+      'showClock': 'Failed to save clock setting',
+      'wallpaper': 'Failed to save wallpaper setting'
+    };
+    
+    const errorMessage = errorMessages[key] || `Failed to save ${key} setting`;
+    showSettingsSavedMessage(`${errorMessage}: ${error.message}`, 'error');
     
     // Reload settings to sync UI with backend state
     await loadSettingsFromBackend();
