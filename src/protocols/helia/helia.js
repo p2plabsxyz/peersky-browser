@@ -15,7 +15,7 @@ import { autoNAT } from "@libp2p/autonat";
 import { autoTLS } from '@ipshipyard/libp2p-auto-tls'
 import { uPnPNAT } from "@libp2p/upnp-nat";
 import { dcutr } from "@libp2p/dcutr";
-import { kadDHT } from "@libp2p/kad-dht";
+import { kadDHT, removePrivateAddressesMapper } from "@libp2p/kad-dht";
 import { ping } from "@libp2p/ping";
 import { identify, identifyPush } from "@libp2p/identify";
 import { bootstrap } from "@libp2p/bootstrap";
@@ -28,16 +28,18 @@ import { ipfsOptions, getLibp2pPrivateKey } from "../config.js";
 import pkg from '../../../package.json' assert { type: 'json' };
 const { version } = pkg;
 
-// https://github.com/ipfs/helia/blob/main/packages/helia/src/utils/bootstrappers.ts
+// https://github.com/libp2p/js-libp2p-amino-dht-bootstrapper/blob/main/src/utils/default-config.ts
 const bootstrapConfig = {
   list: [
-    '/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN',
-    '/dnsaddr/bootstrap.libp2p.io/p2p/QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb',
-    '/dnsaddr/bootstrap.libp2p.io/p2p/QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt',
+    '/dns4/am6.bootstrap.libp2p.io/tcp/443/wss/p2p/QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb',
+    '/dns4/sg1.bootstrap.libp2p.io/p2p/QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt',
+    '/dns4/sv15.bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN',
+    // va1 is not in the TXT records for _dnsaddr.bootstrap.libp2p.io yet
+    // so use the host name directly
     '/dnsaddr/va1.bootstrap.libp2p.io/p2p/12D3KooWKnDdG3iXw9eTFijk3EWSunZcFi54Zka4wmtqtt6rPxc8',
     '/ip4/104.131.131.82/tcp/4001/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ'
-  ],
-};
+  ]
+}
 
 export async function createNode() {
   const options = await ipfsOptions();
@@ -87,6 +89,8 @@ export async function createNode() {
       dht: kadDHT({
         validators: { ipns: ipnsValidator },
         selectors: { ipns: ipnsSelector },
+        peerInfoMapper: removePrivateAddressesMapper,
+        reprovide: { concurrency: 10 }
       }),
       identify: identify(),
       identifyPush: identifyPush(),
@@ -97,8 +101,6 @@ export async function createNode() {
       maxConnections: 500,
       inboundConnectionThreshold: 100,
       maxIncomingPendingConnections: 100,
-      maxParallelDials: 50,
-      dialTimeout: 10000,
     },
   });
 
