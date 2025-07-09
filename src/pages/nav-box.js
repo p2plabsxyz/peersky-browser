@@ -14,8 +14,8 @@ class NavBox extends HTMLElement {
       { id: "forward", svg: "right.svg", position: "start" },
       { id: "refresh", svg: "reload.svg", position: "start" },
       { id: "home", svg: "home.svg", position: "start" },
-      { id: "settings", svg: "settings.svg", position: "end" },
       { id: "plus", svg: "plus.svg", position: "end" },
+      { id: "settings", svg: "settings.svg", position: "end" },
     ];
 
     this.buttonElements = {};
