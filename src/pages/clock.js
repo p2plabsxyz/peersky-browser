@@ -13,42 +13,32 @@ class Clock extends HTMLElement {
     }
 
     setupIPC() {
-        // Access IPC renderer through various methods since we're in a webview/iframe context
-        let ipcRenderer;
-        try {
-            ipcRenderer = require('electron').ipcRenderer;
-        } catch (e) {
+        // Use electronAPI exposed by settings-preload.js
+        if (window.electronAPI) {
+            this.electronAPI = window.electronAPI;
+            
+            // Listen for show-clock-changed events
             try {
-                ipcRenderer = parent.require('electron').ipcRenderer;
-            } catch (e2) {
-                try {
-                    ipcRenderer = top.require('electron').ipcRenderer;
-                } catch (e3) {
-                    console.warn('Clock: Could not access ipcRenderer, clock toggle will not work');
-                    return;
-                }
+                this.electronAPI.onShowClockChanged((showClock) => {
+                    console.log('Clock: Show clock setting changed to:', showClock);
+                    this.setVisibility(showClock);
+                });
+            } catch (error) {
+                console.error('Clock: Failed to set up event listener:', error);
             }
-        }
-
-        this.ipcRenderer = ipcRenderer;
-
-        // Listen for show-clock-changed events
-        if (this.ipcRenderer) {
-            this.ipcRenderer.on('show-clock-changed', (event, showClock) => {
-                console.log('Clock: Show clock setting changed to:', showClock);
-                this.setVisibility(showClock);
-            });
+        } else {
+            console.warn('Clock: electronAPI not available, clock toggle will not work');
         }
     }
 
     async loadInitialSettings() {
-        if (!this.ipcRenderer) {
-            console.warn('Clock: IPC not available, using default visibility');
+        if (!this.electronAPI) {
+            console.warn('Clock: electronAPI not available, using default visibility');
             return;
         }
 
         try {
-            const showClock = await this.ipcRenderer.invoke('settings-get', 'showClock');
+            const showClock = await this.electronAPI.settings.get('showClock');
             console.log('Clock: Initial showClock setting:', showClock);
             this.setVisibility(showClock);
         } catch (error) {

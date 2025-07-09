@@ -31,7 +31,7 @@ class TrackedBox extends HTMLElement {
 
   loadURL(url) {
     // Determine appropriate preload script based on URL
-    const preloadScript = url === 'peersky://settings' ? 
+    const preloadScript = (url === 'peersky://settings' || url === 'peersky://home') ? 
       'settings-preload.js' : 'preload.js';
     
     // Recreate webview with correct preload (preload must be set at creation time)
