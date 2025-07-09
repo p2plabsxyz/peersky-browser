@@ -1,10 +1,11 @@
 const path = require("path");
 
 /**
- * TrackedBox - Webview container with dynamic preload script assignment
+ * TrackedBox - Persistent webview container with unified preload script
  * 
- * Supports secure loading of internal pages (like settings) with appropriate
- * preload scripts while maintaining context isolation for security.
+ * Uses a single persistent webview element with unified preload script that
+ * dynamically exposes appropriate APIs based on the current page context.
+ * Eliminates webview recreation and preload switching complexity.
  */
 class TrackedBox extends HTMLElement {
   constructor() {
@@ -16,6 +17,7 @@ class TrackedBox extends HTMLElement {
   connectedCallback() {
     this.observer.observe(this);
     this.emitResize();
+    this.createPersistentWebview();
   }
 
   disconnectedCallback() {
@@ -30,24 +32,22 @@ class TrackedBox extends HTMLElement {
   }
 
   loadURL(url) {
-    // Determine appropriate preload script based on URL
-    const preloadScript = (url === 'peersky://settings' || url === 'peersky://home') ? 
-      'settings-preload.js' : 'preload.js';
-    
-    // Recreate webview with correct preload (preload must be set at creation time)
-    this.createWebview(preloadScript, url);
-  }
-
-  createWebview(preloadScript, url) {
-    // Remove existing webview if it exists
-    if (this.webview) {
-      this.webview.remove();
+    if (!this.webview) {
+      console.warn('TrackedBox: webview not initialized yet');
+      return;
     }
     
-    // Create new webview with proper preload script
+    console.log(`TrackedBox: Navigating to ${url}`);
+    
+    // Simply navigate - unified preload handles all contexts
+    this.webview.src = url;
+  }
+
+  createPersistentWebview() {
+    // Create webview only once with unified preload script
     this.webview = document.createElement("webview");
     this.webview.setAttribute("allowpopups", "true");
-    this.webview.setAttribute("preload", "file://" + path.join(__dirname, preloadScript));
+    this.webview.setAttribute("preload", "file://" + path.join(__dirname, "unified-preload.js"));
     
     // Apply consistent styling
     this.applyWebviewStyling();
@@ -55,9 +55,10 @@ class TrackedBox extends HTMLElement {
     // Add event listeners
     this.setupEventListeners();
     
-    // Add to DOM and load URL
+    // Add to DOM (without loading URL yet)
     this.appendChild(this.webview);
-    this.webview.src = url;
+    
+    console.log('TrackedBox: Persistent webview created with unified preload');
   }
 
   applyWebviewStyling() {

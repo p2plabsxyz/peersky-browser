@@ -1,8 +1,8 @@
 /**
- * Settings Page JavaScript - Webview Frontend
+ * Settings Page JavaScript - Unified Preload Frontend
  * 
- * Secure settings interface using contextBridge API with fallback support.
- * Migrated from iframe to webview for improved security and context isolation.
+ * Secure settings interface using unified preload script with context-aware API exposure.
+ * Receives full electronAPI access when on settings pages with comprehensive fallbacks.
  */
 
 let settingsAPI;
@@ -10,9 +10,25 @@ let eventCleanupFunctions = [];
 
 // Initialize API access with fallback handling
 function initializeAPI() {
-  // Primary: Secure contextBridge API
+  console.log('Settings: Attempting to initialize API...');
+  console.log('Settings: window.electronAPI available:', !!window.electronAPI);
+  console.log('Settings: window.peersky available:', !!window.peersky);
+  
+  // Primary: unified preload electronAPI (for settings pages)
   if (window.electronAPI?.settings) {
+    console.log('Settings: Using electronAPI from unified preload');
     settingsAPI = window.electronAPI;
+    return true;
+  }
+  
+  // Secondary: peersky API (fallback if context detection fails)
+  if (window.peersky?.settings) {
+    console.log('Settings: Using peersky.settings API');
+    settingsAPI = {
+      settings: window.peersky.settings,
+      ...window.peersky.events,
+      readCSS: window.peersky.css?.readCSS
+    };
     return true;
   }
   
