@@ -21,7 +21,7 @@ const DEFAULT_SETTINGS = {
   searchEngine: 'duckduckgo',
   theme: 'dark',
   showClock: true,
-  wallpaper: 'default',
+  wallpaper: 'redwoods',
   wallpaperCustomPath: null
 };
 
@@ -122,6 +122,17 @@ class SettingsManager {
       }
     });
 
+    // Get wallpaper URL
+    ipcMain.handle('settings-get-wallpaper-url', async () => {
+      try {
+        logDebug('Request: get wallpaper URL');
+        return this.getWallpaperUrl();
+      } catch (error) {
+        logDebug(`Error getting wallpaper URL: ${error.message}`);
+        throw error;
+      }
+    });
+
     // Handle clear cache
     ipcMain.handle('settings-clear-cache', async () => {
       try {
@@ -177,13 +188,57 @@ class SettingsManager {
       }
     });
 
-    // TODO: Handle wallpaper upload
-    ipcMain.handle('settings-upload-wallpaper', async (event, filePath) => {
-      // TODO: Validate file
-      // TODO: Copy to userData directory
-      // TODO: Update settings
-      console.log('TODO: Upload wallpaper:', filePath);
-      return true;
+    // Handle wallpaper upload
+    ipcMain.handle('settings-upload-wallpaper', async (event, fileData) => {
+      try {
+        logDebug(`Wallpaper upload requested: ${fileData.name}`);
+        
+        // Validate file data
+        if (!fileData || !fileData.name || !fileData.content) {
+          throw new Error('Invalid file data provided');
+        }
+        
+        const allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+        const fileExtension = path.extname(fileData.name).toLowerCase();
+        if (!allowedExtensions.includes(fileExtension)) {
+          throw new Error('Invalid file type. Please select a valid image file (jpg, png, gif, webp)');
+        }
+        
+        // Create wallpapers directory in userData
+        const USER_DATA = app.getPath("userData");
+        const wallpapersDir = path.join(USER_DATA, "wallpapers");
+        await fs.mkdir(wallpapersDir, { recursive: true });
+        
+        // Generate unique filename to avoid conflicts
+        const fileName = `wallpaper_${Date.now()}${fileExtension}`;
+        const destinationPath = path.join(wallpapersDir, fileName);
+        
+        // Convert base64 content to buffer and save
+        const buffer = Buffer.from(fileData.content, 'base64');
+        await fs.writeFile(destinationPath, buffer);
+        
+        // Update settings
+        this.settings.wallpaper = 'custom';
+        this.settings.wallpaperCustomPath = destinationPath;
+        
+        // Save settings
+        await this.saveSettings();
+        
+        // Apply wallpaper change immediately
+        this.applySettingChange('wallpaper', 'custom');
+        
+        logDebug(`Wallpaper uploaded successfully: ${destinationPath}`);
+        return { 
+          success: true, 
+          message: 'Wallpaper uploaded successfully',
+          path: destinationPath 
+        };
+        
+      } catch (error) {
+        const errorMsg = `Failed to upload wallpaper: ${error.message}`;
+        logDebug(errorMsg);
+        throw new Error(errorMsg);
+      }
     });
   }
 
@@ -241,7 +296,7 @@ class SettingsManager {
       searchEngine: (v) => ['duckduckgo', 'ecosia', 'startpage'].includes(v),
       theme: (v) => ['light', 'dark', 'green', 'cyan', 'yellow'].includes(v),
       showClock: (v) => typeof v === 'boolean',
-      wallpaper: (v) => ['default', 'custom'].includes(v),
+      wallpaper: (v) => ['redwoods', 'mountains', 'custom'].includes(v),
       wallpaperCustomPath: (v) => v === null || typeof v === 'string'
     };
     
@@ -303,6 +358,13 @@ class SettingsManager {
             window.webContents.send('wallpaper-changed', value);
           }
         });
+      } else if (key === 'wallpaperCustomPath') {
+        // When custom path changes, also notify about wallpaper change
+        windows.forEach(window => {
+          if (window && !window.isDestroyed()) {
+            window.webContents.send('wallpaper-changed', this.settings.wallpaper);
+          }
+        });
       }
       
       logDebug(`Applied setting change: ${key} to ${windows.length} windows`);
@@ -326,9 +388,27 @@ class SettingsManager {
     return engineNames[this.settings.searchEngine] || 'DuckDuckGo';
   }
 
-  // TODO: Add additional helper methods
-  // getThemeData() - get current theme configuration
-  // getWallpaperPath() - get current wallpaper file path
+  // Get wallpaper path for current setting
+  getWallpaperPath() {
+    if (this.settings.wallpaper === 'custom' && this.settings.wallpaperCustomPath) {
+      return this.settings.wallpaperCustomPath;
+    }
+    // Return path to built-in wallpaper
+    const wallpaperFile = this.settings.wallpaper === 'mountains' ? 'mountains.jpg' : 'redwoods.jpg';
+    return path.join(__dirname, 'pages', 'static', 'assets', wallpaperFile);
+  }
+
+  // Get wallpaper URL for browser usage
+  getWallpaperUrl() {
+    if (this.settings.wallpaper === 'custom' && this.settings.wallpaperCustomPath) {
+      // Extract filename from full path and serve via peersky protocol
+      const filename = path.basename(this.settings.wallpaperCustomPath);
+      return `peersky://wallpaper/${filename}`;
+    }
+    // Return URL to built-in wallpaper
+    const wallpaperFile = this.settings.wallpaper === 'mountains' ? 'mountains.jpg' : 'redwoods.jpg';
+    return `peersky://static/assets/${wallpaperFile}`;
+  }
 }
 
 // Create singleton instance

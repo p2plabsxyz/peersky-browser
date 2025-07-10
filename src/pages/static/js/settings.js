@@ -74,11 +74,13 @@ function createFallbackAPI(ipc) {
       get: (key) => ipc.invoke('settings-get', key),
       set: (key, value) => ipc.invoke('settings-set', key, value),
       reset: () => ipc.invoke('settings-reset'),
-      clearCache: () => ipc.invoke('settings-clear-cache')
+      clearCache: () => ipc.invoke('settings-clear-cache'),
+      uploadWallpaper: (filePath) => ipc.invoke('settings-upload-wallpaper', filePath)
     },
     onThemeChanged: (callback) => wrapCallback('theme-changed', callback),
     onSearchEngineChanged: (callback) => wrapCallback('search-engine-changed', callback),
-    onShowClockChanged: (callback) => wrapCallback('show-clock-changed', callback)
+    onShowClockChanged: (callback) => wrapCallback('show-clock-changed', callback),
+    onWallpaperChanged: (callback) => wrapCallback('wallpaper-changed', callback)
   };
 }
 
@@ -125,6 +127,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
       eventCleanupFunctions.push(cleanup3);
     }
+    
+    if (settingsAPI.onWallpaperChanged) {
+      const cleanup4 = settingsAPI.onWallpaperChanged((wallpaperType) => {
+        const wallpaperSelector = document.getElementById('wallpaper-selector');
+        if (wallpaperSelector && wallpaperSelector.value !== wallpaperType) {
+          wallpaperSelector.value = wallpaperType;
+          updateCustomDropdownDisplays();
+        }
+      });
+      eventCleanupFunctions.push(cleanup4);
+    }
   } catch (error) {
     console.error('Settings: Failed to set up event listeners:', error);
   }
@@ -139,18 +152,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   const wallpaperSelector = document.getElementById('wallpaper-selector');
   const wallpaperFile = document.getElementById('wallpaper-file');
   const wallpaperBrowse = document.getElementById('wallpaper-browse');
+  const wallpaperRemove = document.getElementById('wallpaper-remove');
+  const wallpaperPreview = document.getElementById('wallpaper-preview');
   const clearCache = document.getElementById('clear-cache');
 
-  // Handle wallpaper selector change
+  // Handle built-in wallpaper selector change
   wallpaperSelector?.addEventListener('change', async (e) => {
-    if (e.target.value === 'custom') {
-      wallpaperFile?.classList.remove('hidden');
-      wallpaperBrowse?.classList.remove('hidden');
-    } else {
-      wallpaperFile?.classList.add('hidden');
-      wallpaperBrowse?.classList.add('hidden');
-      await saveSettingToBackend('wallpaper', e.target.value);
-    }
+    const selectedValue = e.target.value;
+    console.log('Built-in wallpaper changed to:', selectedValue);
+    await saveSettingToBackend('wallpaper', selectedValue);
   });
 
   // Handle browse button click
@@ -158,12 +168,70 @@ document.addEventListener('DOMContentLoaded', async () => {
     wallpaperFile.click();
   });
 
+  // Handle remove custom wallpaper
+  wallpaperRemove?.addEventListener('click', async () => {
+    if (confirm('Remove custom wallpaper and switch to default?')) {
+      try {
+        // Switch back to default wallpaper
+        await saveSettingToBackend('wallpaper', 'redwoods');
+        
+        // Update UI
+        wallpaperSelector.value = 'redwoods';
+        updateCustomDropdownDisplays();
+        updateCustomWallpaperUI(false);
+        
+        showSettingsSavedMessage('Custom wallpaper removed', 'success');
+      } catch (error) {
+        console.error('Failed to remove custom wallpaper:', error);
+        showSettingsSavedMessage('Failed to remove custom wallpaper', 'error');
+      }
+    }
+  });
+
   // Handle wallpaper file selection
   wallpaperFile?.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (file) {
-      console.log('Selected wallpaper file:', file.name);
-      console.log('Wallpaper upload not implemented yet');
+      try {
+        console.log('Selected wallpaper file:', file.name);
+        
+        // Check if settingsAPI supports wallpaper upload
+        if (!settingsAPI.settings.uploadWallpaper) {
+          showSettingsSavedMessage('Wallpaper upload not supported', 'error');
+          return;
+        }
+        
+        // Validate file size (max 10MB)
+        if (file.size > 10 * 1024 * 1024) {
+          showSettingsSavedMessage('File too large. Please select an image smaller than 10MB.', 'error');
+          return;
+        }
+        
+        showSettingsSavedMessage('Uploading wallpaper...', 'warning');
+        
+        // Read file content using FileReader
+        const fileContent = await readFileAsBase64(file);
+        
+        // Upload wallpaper using file data
+        const result = await settingsAPI.settings.uploadWallpaper({
+          name: file.name,
+          content: fileContent
+        });
+        
+        if (result.success) {
+          // Update UI to show custom wallpaper is active
+          updateCustomWallpaperUI(true);
+          
+          showSettingsSavedMessage('Wallpaper uploaded successfully!', 'success');
+          console.log('Wallpaper uploaded:', result.path);
+        } else {
+          showSettingsSavedMessage('Failed to upload wallpaper', 'error');
+        }
+        
+      } catch (error) {
+        console.error('Failed to upload wallpaper:', error);
+        showSettingsSavedMessage(`Failed to upload wallpaper: ${error.message}`, 'error');
+      }
     }
   });
 
@@ -208,6 +276,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     await saveSettingToBackend('showClock', e.target.checked);
   });
 
+  // Initialize custom wallpaper UI state
+  updateCustomWallpaperUI(false);
+  
   // Load settings from backend
   loadSettingsFromBackend();
 });
@@ -216,10 +287,12 @@ function loadDefaultSettings() {
   const searchEngine = document.getElementById('search-engine');
   const themeToggle = document.getElementById('theme-toggle');
   const showClock = document.getElementById('show-clock');
+  const wallpaperSelector = document.getElementById('wallpaper-selector');
   
   if (searchEngine) searchEngine.value = 'duckduckgo';
   if (themeToggle) themeToggle.value = 'dark';
   if (showClock) showClock.checked = true;
+  if (wallpaperSelector) wallpaperSelector.value = 'redwoods';
 }
 
 // Load settings from backend
@@ -257,7 +330,13 @@ function populateFormFields(settings) {
     showClock.checked = settings.showClock;
   }
   if (wallpaperSelector && settings.wallpaper) {
-    wallpaperSelector.value = settings.wallpaper;
+    // Only set built-in wallpaper values, ignore custom
+    if (settings.wallpaper === 'redwoods' || settings.wallpaper === 'mountains') {
+      wallpaperSelector.value = settings.wallpaper;
+    } else if (settings.wallpaper === 'custom') {
+      // For custom wallpaper, show custom UI but keep built-in selector unchanged
+      updateCustomWallpaperUI(true);
+    }
   }
   
   // Update custom dropdown displays after loading settings
@@ -412,6 +491,7 @@ function initializeCustomDropdowns() {
           // Trigger change event for settings saving
           const changeEvent = new Event('change', { bubbles: true });
           hiddenInput.dispatchEvent(changeEvent);
+          
         }
         
         // Update selected state
@@ -434,6 +514,35 @@ function initializeCustomDropdowns() {
   // Update dropdown displays based on current values
   updateCustomDropdownDisplays();
 }
+
+// Update custom wallpaper UI state
+function updateCustomWallpaperUI(isCustomActive) {
+  const wallpaperRemove = document.getElementById('wallpaper-remove');
+  const wallpaperPreview = document.getElementById('wallpaper-preview');
+  
+  if (isCustomActive) {
+    wallpaperRemove?.style.setProperty('display', 'inline-block');
+    wallpaperPreview?.style.setProperty('display', 'block');
+  } else {
+    wallpaperRemove?.style.setProperty('display', 'none');
+    wallpaperPreview?.style.setProperty('display', 'none');
+  }
+}
+
+// Read file as base64 using FileReader
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      // Remove the data URL prefix (data:image/jpeg;base64,)
+      const base64Content = reader.result.split(',')[1];
+      resolve(base64Content);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 
 // Update custom dropdown displays with current values
 function updateCustomDropdownDisplays() {

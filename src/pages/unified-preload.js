@@ -42,7 +42,14 @@ const settingsAPI = {
   
   reset: () => ipcRenderer.invoke('settings-reset'),
   
-  clearCache: () => ipcRenderer.invoke('settings-clear-cache')
+  clearCache: () => ipcRenderer.invoke('settings-clear-cache'),
+  
+  uploadWallpaper: (fileData) => {
+    if (!fileData || !fileData.name || !fileData.content) {
+      throw new Error('File data must include name and content');
+    }
+    return ipcRenderer.invoke('settings-upload-wallpaper', fileData);
+  }
 };
 
 // Helper function to create safe event listeners (only for settings pages)
@@ -97,7 +104,7 @@ try {
       css: cssAPI
     });
     
-    // Also expose minimal electronAPI for clock functionality
+    // Also expose minimal electronAPI for clock and wallpaper functionality
     contextBridge.exposeInMainWorld('electronAPI', {
       settings: {
         get: (key) => {
@@ -108,7 +115,9 @@ try {
           throw new Error('Access denied: Home pages can only access showClock setting');
         }
       },
-      onShowClockChanged: (callback) => createEventListener('show-clock-changed', callback)
+      getWallpaperUrl: () => ipcRenderer.invoke('settings-get-wallpaper-url'),
+      onShowClockChanged: (callback) => createEventListener('show-clock-changed', callback),
+      onWallpaperChanged: (callback) => createEventListener('wallpaper-changed', callback)
     });
     
     console.log('Unified-preload: Home peersky + limited electronAPI exposed');

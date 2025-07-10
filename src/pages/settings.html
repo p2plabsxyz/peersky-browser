@@ -59,18 +59,31 @@
     </div>
 
     <div class="setting-group">
-      <label for="wallpaper-selector">Home page wallpaper</label>
+      <label for="wallpaper-selector">Built-in wallpapers</label>
       <div class="wallpaper-controls">
         <div class="custom-select" id="wallpaper-select">
-          <div class="select-display" data-value="default">Default (Forest)</div>
+          <div class="select-display" data-value="redwoods">Redwoods</div>
           <div class="select-dropdown">
-            <div class="select-option" data-value="default">Default (Forest)</div>
-            <div class="select-option" data-value="custom">Custom image</div>
+            <div class="select-option" data-value="redwoods">Redwoods</div>
+            <div class="select-option" data-value="mountains">Mountains</div>
           </div>
         </div>
-        <input type="hidden" id="wallpaper-selector" value="default">
-        <input type="file" id="wallpaper-file" class="file-input" accept="image/*" style="display: none;">
-        <button type="button" id="wallpaper-browse" class="btn-secondary" style="display: none;">Browse</button>
+        <input type="hidden" id="wallpaper-selector" value="redwoods">
+      </div>
+    </div>
+
+    <div class="setting-group">
+      <label>Custom wallpaper upload</label>
+      <div class="custom-wallpaper-section">
+        <p class="setting-description">Upload your own image as wallpaper (max 10MB)</p>
+        <div class="custom-upload-controls">
+          <input type="file" id="wallpaper-file" class="file-input" accept="image/*" style="display: none;">
+          <button type="button" id="wallpaper-browse" class="btn-secondary">Choose Image</button>
+          <button type="button" id="wallpaper-remove" class="btn-danger" style="display: none;">Remove Custom</button>
+        </div>
+        <div id="wallpaper-preview" class="wallpaper-preview" style="display: none;">
+          <p class="preview-text">Custom wallpaper active</p>
+        </div>
       </div>
     </div>
 
