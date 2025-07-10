@@ -2,7 +2,7 @@
 // Handles settings storage, defaults, validation, and IPC communication
 // Pattern: Similar to window-manager.js
 
-import { app, ipcMain, BrowserWindow } from 'electron';
+import { app, ipcMain, BrowserWindow, session } from 'electron';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
@@ -122,12 +122,59 @@ class SettingsManager {
       }
     });
 
-    // TODO: Handle clear cache
+    // Handle clear cache
     ipcMain.handle('settings-clear-cache', async () => {
-      // TODO: Clear browser cache
-      // TODO: Clear stored data
-      console.log('TODO: Clear cache');
-      return true;
+      try {
+        logDebug('Starting cache clearing operation');
+        
+        // 1. Clear Electron session data (browser cache, cookies, storage)
+        await session.defaultSession.clearStorageData({
+          storages: [
+            'cookies',
+            'localStorage', 
+            'sessionStorage',
+            'indexedDB',
+            'serviceworkers',
+            'cachestorage'
+          ]
+        });
+        
+        // Clear HTTP cache separately
+        await session.defaultSession.clearCache();
+        
+        logDebug('Electron session data cleared successfully');
+        
+        // 2. Clear P2P protocol cache files
+        const USER_DATA = app.getPath("userData");
+        const filesToClear = [
+          { path: path.join(USER_DATA, "ensCache.json"), type: "ENS cache" },
+          { path: path.join(USER_DATA, "ipfs"), type: "IPFS data" },
+          { path: path.join(USER_DATA, "hyper"), type: "Hyper data" }
+        ];
+        
+        // Clear P2P cache files/directories
+        for (const { path: filePath, type } of filesToClear) {
+          try {
+            await fs.rm(filePath, { recursive: true, force: true });
+            logDebug(`Cleared ${type}: ${filePath}`);
+          } catch (error) {
+            if (error.code === 'ENOENT') {
+              logDebug(`${type} not found (skipping): ${filePath}`);
+            } else {
+              logDebug(`Failed to clear ${type}: ${error.message}`);
+            }
+          }
+        }
+        
+        logDebug('Cache clearing operation completed successfully');
+        return { success: true, message: 'Cache cleared successfully' };
+        
+      } catch (error) {
+        const errorMsg = `Failed to clear cache: ${error.message}`;
+        logDebug(errorMsg);
+        console.error(errorMsg);
+        throw new Error(errorMsg);
+      }
     });
 
     // TODO: Handle wallpaper upload

@@ -73,7 +73,8 @@ function createFallbackAPI(ipc) {
       getAll: () => ipc.invoke('settings-get-all'),
       get: (key) => ipc.invoke('settings-get', key),
       set: (key, value) => ipc.invoke('settings-set', key, value),
-      reset: () => ipc.invoke('settings-reset')
+      reset: () => ipc.invoke('settings-reset'),
+      clearCache: () => ipc.invoke('settings-clear-cache')
     },
     onThemeChanged: (callback) => wrapCallback('theme-changed', callback),
     onSearchEngineChanged: (callback) => wrapCallback('search-engine-changed', callback),
@@ -171,8 +172,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (confirm('Are you sure you want to clear the browser cache? This action cannot be undone.')) {
       try {
         console.log('Clear cache requested');
-        console.log('Cache clearing not implemented yet');
-        alert('Cache clearing will be implemented in a future update.');
+        const result = await settingsAPI.settings.clearCache();
+        
+        if (result.success) {
+          alert('Cache cleared successfully!');
+          console.log('Cache clearing completed:', result.message);
+        } else {
+          alert('Cache clearing failed. Please try again.');
+          console.error('Cache clearing failed:', result);
+        }
       } catch (error) {
         console.error('Failed to clear cache:', error);
         alert(`Failed to clear cache: ${error.message}`);

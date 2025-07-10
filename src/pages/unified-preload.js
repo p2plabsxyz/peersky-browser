@@ -40,7 +40,9 @@ const settingsAPI = {
     return ipcRenderer.invoke('settings-set', key, value);
   },
   
-  reset: () => ipcRenderer.invoke('settings-reset')
+  reset: () => ipcRenderer.invoke('settings-reset'),
+  
+  clearCache: () => ipcRenderer.invoke('settings-clear-cache')
 };
 
 // Helper function to create safe event listeners (only for settings pages)
