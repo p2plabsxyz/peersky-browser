@@ -34,7 +34,28 @@ function makeDuckDuckGo(query) {
   return `https://duckduckgo.com/?q=${encodeURIComponent(query)}`;
 }
 
-function handleURL(rawURL) {
+function makeEcosia(query) {
+  return `https://www.ecosia.org/search?q=${encodeURIComponent(query)}`;
+}
+
+function makeStartpage(query) {
+  return `https://www.startpage.com/sp/search?query=${encodeURIComponent(query)}`;
+}
+
+
+function makeSearch(query, engine = 'duckduckgo') {
+  switch (engine) {
+    case 'ecosia':
+      return makeEcosia(query);
+    case 'startpage':
+      return makeStartpage(query);
+    case 'duckduckgo':
+    default:
+      return makeDuckDuckGo(query);
+  }
+}
+
+async function handleURL(rawURL) {
   if (rawURL.endsWith('.eth')) {
     if (rawURL.startsWith(IPFS_PREFIX) || rawURL.startsWith(IPNS_PREFIX)) {
       return rawURL;
@@ -55,7 +76,15 @@ function handleURL(rawURL) {
   } else if (looksLikeDomain(rawURL)) {
     return makeHttps(rawURL);
   } else {
-    return makeDuckDuckGo(rawURL);
+    // For search queries, try to get user's preferred search engine
+    try {
+      const { ipcRenderer } = require('electron');
+      const searchEngine = await ipcRenderer.invoke('settings-get', 'searchEngine');
+      return makeSearch(rawURL, searchEngine);
+    } catch (error) {
+      console.warn('Could not get search engine setting, using DuckDuckGo:', error);
+      return makeDuckDuckGo(rawURL);
+    }
   }
 }
 
@@ -68,4 +97,7 @@ export {
   makeHttp,
   makeHttps,
   makeDuckDuckGo,
+  makeEcosia,
+  makeStartpage,
+  makeSearch,
 };

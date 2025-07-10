@@ -129,3 +129,7 @@ find-menu {
 .hidden {
   display: none !important;
 }
+
+#settings {
+  margin-left: auto;
+}

@@ -19,8 +19,27 @@ const toNavigate = searchParams.has("url")
   : DEFAULT_PAGE;
 
 document.addEventListener("DOMContentLoaded", () => {
+  // Listen for theme changes from main process
+  ipcRenderer.on('theme-changed', (event, newTheme) => {
+    console.log('Main window: Theme changed to:', newTheme);
+    reloadThemeCSS();
+    // Dispatch event for nav-box component
+    window.dispatchEvent(new CustomEvent('theme-reload', { 
+      detail: { theme: newTheme } 
+    }));
+  });
+
   if (webviewContainer && nav) {
-    webviewContainer.loadURL(toNavigate);
+    // Process the initial URL through handleURL to ensure proper formatting
+    (async () => {
+      try {
+        const processedURL = await handleURL(toNavigate);
+        webviewContainer.loadURL(processedURL);
+      } catch (error) {
+        console.error('Error processing initial URL:', error);
+        webviewContainer.loadURL(toNavigate);
+      }
+    })();
 
     focusURLInput();
 
@@ -75,11 +94,12 @@ document.addEventListener("DOMContentLoaded", () => {
       urlInput.addEventListener("keypress", async (e) => {
         if (e.key === "Enter") {
           const rawURL = urlInput.value.trim();
-          const url = handleURL(rawURL);
           try {
-            webviewContainer.loadURL(url);
+            const processedURL = await handleURL(rawURL);
+            webviewContainer.loadURL(processedURL);
           } catch (error) {
-            console.error("Error loading URL:", error);
+            console.error("Error processing URL:", error);
+            webviewContainer.loadURL(rawURL);
           }
         }
       });
@@ -125,15 +145,23 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 function updateNavigationButtons() {
-  if (webviewContainer && nav && webviewContainer.webviewElement) {
-    const canGoBack = webviewContainer.webviewElement.canGoBack();
-    const canGoForward = webviewContainer.webviewElement.canGoForward();
+  if (webviewContainer && nav) {
+    // Use TrackedBox's safe navigation methods that handle both webview and iframe
+    const canGoBack = webviewContainer.canGoBack();
+    const canGoForward = webviewContainer.canGoForward();
     nav.setNavigationButtons(canGoBack, canGoForward);
   }
 }
 
-function navigateTo(url) {
-  webviewContainer.loadURL(url);
+async function navigateTo(url) {
+  try {
+    // Process URL through handleURL to ensure proper formatting
+    const processedURL = await handleURL(url);
+    webviewContainer.loadURL(processedURL);
+  } catch (error) {
+    console.error('Error processing URL:', error);
+    webviewContainer.loadURL(url);
+  }
 }
 
 function focusURLInput() {
@@ -149,3 +177,25 @@ document.addEventListener("keydown", (e) => {
     findMenu.toggle();
   }
 });
+
+function reloadThemeCSS() {
+  // Reload CSS imports for theme files
+  const styleElements = document.querySelectorAll('style');
+  styleElements.forEach(style => {
+    const text = style.textContent || style.innerText;
+    if (text && text.includes('browser://theme/')) {
+      const newStyle = document.createElement('style');
+      newStyle.textContent = text;
+      style.parentNode.replaceChild(newStyle, style);
+    }
+  });
+  
+  // Reload CSS links with cache busting
+  const linkElements = document.querySelectorAll('link[href*="browser://theme/"]');
+  linkElements.forEach(link => {
+    const href = link.href.split('?')[0];
+    link.href = `${href}?t=${Date.now()}`;
+  });
+  
+  console.log('Main window: Theme CSS reloaded');
+}
