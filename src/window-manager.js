@@ -6,7 +6,11 @@ import { fileURLToPath } from "url";
 import { attachContextMenus } from "./context-menu.js";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
-const PERSIST_FILE = path.join(app.getPath("userData"), "lastOpened.json");
+
+const USER_DATA_PATH = app.getPath("userData");
+const BOOKMARKS_FILE = path.join(USER_DATA_PATH, "bookmarks.json");
+const PERSIST_FILE = path.join(USER_DATA_PATH, "lastOpened.json");
+
 const DEFAULT_SAVE_INTERVAL = 30 * 1000;
 const cssPath = path.join(__dirname, "pages", "theme");
 const cssFS = new ScopedFS(cssPath);
@@ -44,10 +48,93 @@ class WindowManager {
     ipcMain.on("new-window", () => {
       this.open();
     });
+
+    ipcMain.on("add-bookmark", (_, { url, title, favicon }) => {
+      this.addBookmark({ url, title, favicon });
+    });
+
+    ipcMain.handle("get-bookmarks", () => {
+      return this.loadBookmarks();
+    });
+
+    ipcMain.handle("delete-bookmark", (event, { url }) => {
+      return this.deleteBookmark(url);
+    });
   }
 
   setQuitting(flag) {
     this.isQuitting = flag;
+  }
+
+  addBookmark(newBookmark) {
+    if (!newBookmark || !newBookmark.url) {
+      console.error("Invalid bookmark data provided.");
+      return;
+    }
+    try {
+      const bookmarks = this.loadBookmarks();
+      const existingIndex = bookmarks.findIndex(
+        (b) => b.url === newBookmark.url
+      );
+
+      if (existingIndex > -1) {
+        bookmarks[existingIndex] = {
+          ...bookmarks[existingIndex],
+          ...newBookmark,
+        };
+        console.log(`Bookmark updated: ${newBookmark.url}`);
+      } else {
+        bookmarks.push({ ...newBookmark, dateAdded: new Date().toISOString() });
+        console.log(`Bookmark added: ${newBookmark.url}`);
+      }
+
+      fs.writeJsonSync(BOOKMARKS_FILE, bookmarks, { spaces: 2 });
+    } catch (error) {
+      console.error("Error adding bookmark:", error);
+    }
+  }
+
+  deleteBookmark(urlToDelete) {
+    if (!urlToDelete) return false;
+    try {
+      console.log(`Attempting to delete bookmark: ${urlToDelete}`);
+      const bookmarks = this.loadBookmarks();
+      const updatedBookmarks = bookmarks.filter((b) => b.url !== urlToDelete);
+
+      if (bookmarks.length === updatedBookmarks.length) {
+        console.warn(
+          `Attempted to delete a non-existent bookmark: ${urlToDelete}`
+        );
+        return false;
+      }
+
+      fs.writeJsonSync(BOOKMARKS_FILE, updatedBookmarks, { spaces: 2 });
+      console.log(`Bookmark deleted: ${urlToDelete}`);
+      return true;
+    } catch (error) {
+      console.error(`Error deleting bookmark: ${urlToDelete}`, error);
+      return false;
+    }
+  }
+
+  loadBookmarks() {
+    try {
+      if (!fs.existsSync(BOOKMARKS_FILE)) {
+        console.log("Bookmarks file does not exist, creating a new one.");
+        fs.writeJsonSync(BOOKMARKS_FILE, [], { spaces: 2 });
+      }
+      const bookmarks = fs.readJsonSync(BOOKMARKS_FILE);
+      if (!Array.isArray(bookmarks)) {
+        console.error(
+          "Bookmarks file is not an array, resetting to empty array."
+        );
+        return [];
+      }
+      return bookmarks;
+    } catch (error) {
+      console.error("Error loading bookmarks:", error);
+      return [];
+    }
   }
 
   open(options = {}) {
