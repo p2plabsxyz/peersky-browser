@@ -42,7 +42,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     nav.addEventListener("toggle-bookmark", async () => {
-      console.log("Toggle bookmark clicked");
       const urlInput = nav.querySelector("#url");
       if (!urlInput || !urlInput.value) {
         console.error("URL input is empty, cannot toggle bookmark.");
@@ -51,11 +50,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const url = urlInput.value.trim();
       
       const bookmarks = await ipcRenderer.invoke("get-bookmarks");
-      console.log("Current bookmarks:", bookmarks);
       const existingBookmark = bookmarks.find((b) => b.url === url);
 
       if (existingBookmark) {
-        console.log("Deleting existing bookmark:", url);
         ipcRenderer.invoke("delete-bookmark", { url });
       } else {
         const title = pageTitle.innerText
@@ -78,7 +75,6 @@ document.addEventListener("DOMContentLoaded", () => {
           console.error("Error fetching favicon:", e);
           favicon = `https://www.google.com/s2/favicons?domain=${url.hostname}`;
         }
-        console.log("Adding new Bookmarks ", url);
         ipcRenderer.send("add-bookmark", { url, title, favicon });
       }
       setTimeout(() => updateBookmarkIcon(url), 100);
@@ -91,9 +87,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const isBookmarked = bookmarks.some(
           (bookmark) => bookmark.url === currentUrl
         );
-        console.log("Bookmark state for", currentUrl, "is", isBookmarked);
         nav.setBookmarkState(isBookmarked);
-        console.log("Bookmark icon updated for", currentUrl); 
       } catch (error) {
         console.error("Failed to update bookmark icon:", error);
       }
@@ -157,9 +151,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Update page title
     webviewContainer.addEventListener("page-title-updated", (e) => {
-      pageTitle.innerText = e.detail.title
-        ? `${e.detail.title} - Peersky Browser`
-        : "Peersky Browser";
+     pageTitle.innerText = e.detail.title ? `${e.detail.title} - Peersky Browser` : "Peersky Browser";
     });
 
     // Find Menu Event Listeners

@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import path from "path";
 import fs from "fs-extra";
-import ScopedFS from "scoped-fs";
+import ScopedFS from 'scoped-fs';
 import { fileURLToPath } from "url";
 import { attachContextMenus } from "./context-menu.js";
 
@@ -17,13 +17,13 @@ const cssFS = new ScopedFS(cssPath);
 
 ipcMain.handle("peersky-read-css", async (event, name) => {
   try {
-    const safeName = path.basename(name).replace(/\.css$/, "") + ".css";
+    const safeName = path.basename(name).replace(/\.css$/, '') + '.css';
     const data = await new Promise((resolve, reject) => {
       cssFS.readFile(safeName, (err, buffer) => {
         if (err) {
           reject(err);
         } else {
-          resolve(buffer.toString("utf8"));
+          resolve(buffer.toString('utf8'));
         }
       });
     });
@@ -58,7 +58,6 @@ class WindowManager {
     });
 
     ipcMain.handle("delete-bookmark", (event, { url }) => {
-      console.log("This is Coming Here ") 
       return this.deleteBookmark(url);
     });
   }

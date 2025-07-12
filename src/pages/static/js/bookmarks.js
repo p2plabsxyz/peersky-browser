@@ -20,8 +20,6 @@ class BookmarkBox extends HTMLElement {
   }
 
   async loadBookmarks() {
-    // Use the API exposed by the preload script
-
     const bookmarks = await window.electronAPI.getBookmarks();
     this.displayBookmarks(bookmarks);
   }
@@ -34,8 +32,6 @@ class BookmarkBox extends HTMLElement {
       container.innerHTML = "<p>No bookmarks saved yet.</p>";
       return;
     }
-    console.log(bookmarks)
-    // Sort bookmarks by date, newest first
     bookmarks.sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded));
 
     bookmarks.forEach((bookmark) => {
@@ -60,10 +56,8 @@ class BookmarkBox extends HTMLElement {
     this.shadowRoot.querySelectorAll(".delete-btn").forEach((button) => {
       button.addEventListener("click", async (event) => {
         const urlToDelete = event.target.dataset.url;
-        // Use the API exposed by the preload script
         const success = await window.electronAPI.deleteBookmark(urlToDelete);
         if (success) {
-          // Refresh the list after deletion
           this.loadBookmarks();
         }
       });
