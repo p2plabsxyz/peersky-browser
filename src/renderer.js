@@ -45,22 +45,32 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     nav.addEventListener("add-bookmark", () => {
       const urlInput = nav.querySelector("#url");
-      const title = pageTitle.innerText.replace(' - Peersky Browser', '').trim();
-      
-      let favicon = '';
-      try {
-          const iconLink = document.querySelector('link[rel="icon"], link[rel="shortcut icon"]');
-          if (iconLink) {
-              favicon = new URL(iconLink.href, urlInput.value.trim()).href;
-          }
-          if (!favicon) {
-              favicon = "peersky://static/assets/svg/favicon.svg"; 
-          }
-      } catch(e) {
-        // TODO:
-        console.error("Error fetching favicon:", e);
-      }
+      const rawUrl = urlInput.value.trim();
+      const url = new URL(rawUrl);
+      const title = pageTitle.innerText
+        .replace(" - Peersky Browser", "")
+        .trim();
 
+      let favicon = "";
+
+      try {
+        // 1. Try to extract from existing <link rel="icon">
+        const iconLink = document.querySelector(
+          'link[rel="icon"], link[rel="shortcut icon"]'
+        );
+        if (iconLink) {
+          favicon = new URL(iconLink.href, url.origin).href;
+        }
+
+        // 2. Fallback to DuckDuckGo or Google if no icon found
+        if (!favicon) {
+          // favicon = `https://icons.duckduckgo.com/ip3/${url.hostname}.ico`;
+          favicon = `https://www.google.com/s2/favicons?domain=${url.hostname}`;
+        }
+      } catch (e) {
+        console.error("Error fetching favicon:", e);
+        favicon = `https://www.google.com/s2/favicons?domain=${url.hostname}`;
+      }
 
       if (urlInput && urlInput.value) {
         const url = urlInput.value.trim();
@@ -126,7 +136,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Update page title
     webviewContainer.addEventListener("page-title-updated", (e) => {
-      pageTitle.innerText = e.detail.title ? `${e.detail.title} - Peersky Browser` : "Peersky Browser";
+      pageTitle.innerText = e.detail.title
+        ? `${e.detail.title} - Peersky Browser`
+        : "Peersky Browser";
     });
 
     // Find Menu Event Listeners

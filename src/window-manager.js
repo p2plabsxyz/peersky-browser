@@ -46,7 +46,7 @@ class WindowManager {
     ipcMain.on("new-window", () => {
       this.open();
     });
-    ipcMain.on('add-bookmark', (event, { url, title, favicon }) => {
+    ipcMain.on('add-bookmark', (_, { url, title, favicon }) => {
       console.log("Received request to add bookmark:", url);
       this.addBookmark({ url, title, favicon });
     });
@@ -101,10 +101,10 @@ class WindowManager {
 
           fs.writeJsonSync(BOOKMARKS_FILE, updatedBookmarks, { spaces: 2 });
           console.log(`Bookmark deleted: ${urlToDelete}`);
-          return true; // Return success
+          return true; 
       } catch (error) {
           console.error(`Error deleting bookmark: ${urlToDelete}`, error);
-          return false; // Return failure
+          return false; 
       }
   }
 
@@ -316,8 +316,6 @@ class PeerskyWindow {
         contextIsolation: false,
         nativeWindowOpen: true,
         webviewTag: true,
-        enableRemoteModule: true,
-// https://stackoverflow.com/questions/55093700/electron-5-0-0-uncaught-referenceerror-require-is-not-defined
       },
       ...windowOptions,
     });
