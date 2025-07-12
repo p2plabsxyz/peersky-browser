@@ -41,6 +41,64 @@ document.addEventListener("DOMContentLoaded", () => {
       ipcRenderer.send("new-window");
     });
 
+    nav.addEventListener("toggle-bookmark", async () => {
+      console.log("Toggle bookmark clicked");
+      const urlInput = nav.querySelector("#url");
+      if (!urlInput || !urlInput.value) {
+        console.error("URL input is empty, cannot toggle bookmark.");
+        return;
+      }
+      const url = urlInput.value.trim();
+      
+      const bookmarks = await ipcRenderer.invoke("get-bookmarks");
+      console.log("Current bookmarks:", bookmarks);
+      const existingBookmark = bookmarks.find((b) => b.url === url);
+
+      if (existingBookmark) {
+        console.log("Deleting existing bookmark:", url);
+        ipcRenderer.invoke("delete-bookmark", { url });
+      } else {
+        const title = pageTitle.innerText
+          .replace(" - Peersky Browser", "")
+          .trim();
+        let favicon = "";
+        try {
+          const iconLink = document.querySelector(
+            'link[rel="icon"], link[rel="shortcut icon"]'
+          );
+          if (iconLink) {
+            favicon = new URL(iconLink.href, url.origin).href;
+          }
+
+          if (!favicon) {
+        
+            favicon = `https://www.google.com/s2/favicons?domain=${url.hostname}`;
+          }
+        } catch (e) {
+          console.error("Error fetching favicon:", e);
+          favicon = `https://www.google.com/s2/favicons?domain=${url.hostname}`;
+        }
+        console.log("Adding new Bookmarks ", url);
+        ipcRenderer.send("add-bookmark", { url, title, favicon });
+      }
+      setTimeout(() => updateBookmarkIcon(url), 100);
+    });
+
+    async function updateBookmarkIcon(currentUrl) {
+      if (!currentUrl) return;
+      try {
+        const bookmarks = await ipcRenderer.invoke("get-bookmarks");
+        const isBookmarked = bookmarks.some(
+          (bookmark) => bookmark.url === currentUrl
+        );
+        console.log("Bookmark state for", currentUrl, "is", isBookmarked);
+        nav.setBookmarkState(isBookmarked);
+        console.log("Bookmark icon updated for", currentUrl); 
+      } catch (error) {
+        console.error("Failed to update bookmark icon:", error);
+      }
+    }
+  
     // Handle webview loading events to toggle refresh/stop button
     if (webviewContainer.webviewElement) {
       webviewContainer.webviewElement.addEventListener(
@@ -61,6 +119,7 @@ document.addEventListener("DOMContentLoaded", () => {
       webviewContainer.webviewElement.addEventListener("did-fail-load", () => {
         nav.setLoading(false);
         updateNavigationButtons();
+        updateBookmarkIcon(webviewContainer.getURL());
       });
 
       webviewContainer.webviewElement.addEventListener("did-navigate", () => {
@@ -93,11 +152,14 @@ document.addEventListener("DOMContentLoaded", () => {
         urlInput.value = e.detail.url;
       }
       ipcRenderer.send("webview-did-navigate", e.detail.url);
+      updateBookmarkIcon(e.detail.url);
     });
 
     // Update page title
     webviewContainer.addEventListener("page-title-updated", (e) => {
-      pageTitle.innerText = e.detail.title ? `${e.detail.title} - Peersky Browser` : "Peersky Browser";
+      pageTitle.innerText = e.detail.title
+        ? `${e.detail.title} - Peersky Browser`
+        : "Peersky Browser";
     });
 
     // Find Menu Event Listeners
