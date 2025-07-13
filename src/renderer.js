@@ -40,7 +40,17 @@ document.addEventListener("DOMContentLoaded", () => {
     nav.addEventListener("new-window", () => {
       ipcRenderer.send("new-window");
     });
-
+    function isValidURL(url) {
+      try {
+        if(url.startsWith("peersky://") ) {
+          return false;
+        }
+        new URL(url);
+        return true;
+      } catch (error) {
+        return false;
+      }
+    }
     nav.addEventListener("toggle-bookmark", async () => {
       const urlInput = nav.querySelector("#url");
       if (!urlInput || !urlInput.value) {
@@ -48,6 +58,10 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
       const url = urlInput.value.trim();
+      if(!isValidURL(url)) {
+        console.error("Invalid URL format, cannot toggle bookmark.");
+        return;
+      }
 
       const bookmarks = await ipcRenderer.invoke("get-bookmarks");
       const existingBookmark = bookmarks.find((b) => b.url === url);
@@ -60,6 +74,7 @@ document.addEventListener("DOMContentLoaded", () => {
           .trim();
         const parsedUrl = new URL(url);
         const favicon = await getFavicon(parsedUrl);
+        console.log("Adding bookmark:", { url, title, favicon });
         ipcRenderer.send("add-bookmark", { url, title, favicon });
       }
       setTimeout(() => updateBookmarkIcon(url), 100);
@@ -67,7 +82,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     async function getFavicon(parsedUrl) {
       let favicon = "";
-      try {
         const iconLink = document.querySelector(
           'link[rel="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"]'
         );
@@ -76,7 +90,7 @@ document.addEventListener("DOMContentLoaded", () => {
             iconLink.getAttribute("href"),
             parsedUrl.origin
           ).href;
-
+          console.log("Using favicon from link tag:", tempFavicon);
           const response = await fetch(tempFavicon);
           if (
             response.ok &&
@@ -96,10 +110,12 @@ document.addEventListener("DOMContentLoaded", () => {
             favicon = fallbackFavicon;
           }
         }
-      } catch (_) {
-        return "peersky://static/assets/svg/globe.svg";
-      }
-      return favicon;
+        if(!favicon) {
+          console.warn("No valid favicon found, using default.");
+          favicon = "peersky://static/assets/svg/globe.svg";
+        }
+        console.log("Final favicon URL:", favicon);
+        return favicon;
     }
 
     async function updateBookmarkIcon(currentUrl) {
