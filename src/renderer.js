@@ -48,7 +48,7 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
       const url = urlInput.value.trim();
-      
+
       const bookmarks = await ipcRenderer.invoke("get-bookmarks");
       const existingBookmark = bookmarks.find((b) => b.url === url);
 
@@ -58,27 +58,49 @@ document.addEventListener("DOMContentLoaded", () => {
         const title = pageTitle.innerText
           .replace(" - Peersky Browser", "")
           .trim();
-        let favicon = "";
-        try {
-          const iconLink = document.querySelector(
-            'link[rel="icon"], link[rel="shortcut icon"]'
-          );
-          if (iconLink) {
-            favicon = new URL(iconLink.href, url.origin).href;
-          }
-
-          if (!favicon) {
-        
-            favicon = `https://www.google.com/s2/favicons?domain=${url.hostname}`;
-          }
-        } catch (e) {
-          console.error("Error fetching favicon:", e);
-          favicon = `https://www.google.com/s2/favicons?domain=${url.hostname}`;
-        }
+        const parsedUrl = new URL(url);
+        const favicon = await getFavicon(parsedUrl);
         ipcRenderer.send("add-bookmark", { url, title, favicon });
       }
       setTimeout(() => updateBookmarkIcon(url), 100);
     });
+
+    async function getFavicon(parsedUrl) {
+      let favicon = "";
+      try {
+        const iconLink = document.querySelector(
+          'link[rel="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"]'
+        );
+        if (iconLink && iconLink.href) {
+          const tempFavicon = new URL(
+            iconLink.getAttribute("href"),
+            parsedUrl.origin
+          ).href;
+
+          const response = await fetch(tempFavicon);
+          if (
+            response.ok &&
+            response.headers.get("content-type")?.startsWith("image")
+          ) {
+            favicon = tempFavicon;
+          }
+        }
+        if (!favicon) {
+          const fallbackFavicon = new URL("/favicon.ico", parsedUrl.origin)
+            .href;
+          const response = await fetch(fallbackFavicon);
+          if (
+            response.ok &&
+            response.headers.get("content-type")?.startsWith("image")
+          ) {
+            favicon = fallbackFavicon;
+          }
+        }
+      } catch (_) {
+        return "peersky://static/assets/svg/globe.svg";
+      }
+      return favicon;
+    }
 
     async function updateBookmarkIcon(currentUrl) {
       if (!currentUrl) return;
@@ -92,7 +114,7 @@ document.addEventListener("DOMContentLoaded", () => {
         console.error("Failed to update bookmark icon:", error);
       }
     }
-  
+
     // Handle webview loading events to toggle refresh/stop button
     if (webviewContainer.webviewElement) {
       webviewContainer.webviewElement.addEventListener(
@@ -151,7 +173,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Update page title
     webviewContainer.addEventListener("page-title-updated", (e) => {
-     pageTitle.innerText = e.detail.title ? `${e.detail.title} - Peersky Browser` : "Peersky Browser";
+      pageTitle.innerText = e.detail.title
+        ? `${e.detail.title} - Peersky Browser`
+        : "Peersky Browser";
     });
 
     // Find Menu Event Listeners
