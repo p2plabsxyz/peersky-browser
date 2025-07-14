@@ -1,127 +1,176 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta http-equiv="X-UA-Compatible" content="IE=edge" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<!-- 
-  CSP allows peersky: protocol for secure script loading in webview.
-  Migrated from iframe (insecure) to webview with context isolation.
--->
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' peersky:; object-src 'none'; style-src 'self' 'unsafe-inline' browser:;">
-<style>
-  @import url("browser://theme/index.css");
-  @import url("browser://theme/vars.css");
-  @import url("browser://theme/settings.css");
-</style>
-<title>Settings - Peersky Browser</title>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' peersky:; object-src 'none'; style-src 'self' 'unsafe-inline' browser:;">
+  <style>
+    @import url("browser://theme/index.css");
+    @import url("browser://theme/vars.css");
+    @import url("browser://theme/settings.css");
+  </style>
+  <title>Settings - Peersky Browser</title>
 </head>
 <body>
 
-<main class="settings-container">
-  <section id="general-settings" class="settings-section">
-    <h1>General Settings</h1>
-    
-    <div class="setting-group">
-      <label for="search-engine">Search Engine</label>
-      <div class="custom-select" id="search-engine-select">
-        <div class="select-display" data-value="duckduckgo">DuckDuckGo</div>
-        <div class="select-dropdown">
-          <div class="select-option" data-value="duckduckgo">DuckDuckGo</div>
-          <div class="select-option" data-value="ecosia">Ecosia</div>
-          <div class="select-option" data-value="startpage">Startpage</div>
-        </div>
+<div class="settings-wrapper">
+  <div class="settings-layout">
+    <!-- Sidebar Navigation -->
+    <nav class="settings-sidebar">
+      <div class="sidebar-header">
+        <h1 class="sidebar-title">Settings</h1>
       </div>
-      <input type="hidden" id="search-engine" value="duckduckgo">
-    </div>
-
-    <div class="setting-group">
-      <label for="theme-toggle">Theme</label>
-      <div class="custom-select" id="theme-select">
-        <div class="select-display" data-value="dark">Dark</div>
-        <div class="select-dropdown">
-          <div class="select-option" data-value="light">Light</div>
-          <div class="select-option" data-value="dark">Dark</div>
-          <div class="select-option" data-value="green">Green</div>
-          <div class="select-option" data-value="cyan">Cyan</div>
-          <div class="select-option" data-value="yellow">Yellow</div>
-        </div>
+      <div class="sidebar-nav">
+        <a href="#appearance" class="nav-item active" data-section="appearance">
+          Appearance
+        </a>
+        <a href="#search" class="nav-item" data-section="search">
+          Search
+        </a>
+        <a href="#toolbar" class="nav-item" data-section="toolbar">
+          Toolbar
+        </a>
+        <a href="#extensions" class="nav-item" data-section="extensions">
+          Extensions
+        </a>
       </div>
-      <input type="hidden" id="theme-toggle" value="dark">
-    </div>
+    </nav>
 
-    <div class="setting-group">
-      <label class="toggle-label">
-        <input type="checkbox" id="show-clock" class="settings-toggle">
-        <span class="toggle-slider"></span>
-        Show home page clock
-      </label>
-    </div>
-
-    <div class="setting-group">
-      <label for="wallpaper-selector">Built-in wallpapers</label>
-      <div class="wallpaper-controls">
-        <div class="custom-select" id="wallpaper-select">
-          <div class="select-display" data-value="redwoods">Redwoods</div>
-          <div class="select-dropdown">
-            <div class="select-option" data-value="redwoods">Redwoods</div>
-            <div class="select-option" data-value="mountains">Mountains</div>
+    <!-- Content Area -->
+    <main class="settings-content">
+      <!-- Appearance Section -->
+      <div id="appearance-section" class="settings-page active">
+        <h1 class="section-title">Appearance</h1>
+        
+        <section class="settings-section">
+          <div class="setting-row">
+            <div class="setting-label">Color theme</div>
+            <div class="setting-control">
+              <div class="custom-select" id="theme-select">
+                <div class="select-display" data-value="dark">Dark</div>
+                <div class="select-dropdown">
+                  <div class="select-option" data-value="light">Light</div>
+                  <div class="select-option" data-value="dark">Dark</div>
+                  <div class="select-option" data-value="green">Green</div>
+                  <div class="select-option" data-value="cyan">Cyan</div>
+                  <div class="select-option" data-value="yellow">Yellow</div>
+                </div>
+              </div>
+              <input type="hidden" id="theme-toggle" value="dark">
+            </div>
           </div>
-        </div>
-        <input type="hidden" id="wallpaper-selector" value="redwoods">
-      </div>
-    </div>
+          
+          <div class="setting-row">
+            <div class="setting-label">Built-in wallpapers</div>
+            <div class="setting-control">
+              <div class="custom-select" id="wallpaper-select">
+                <div class="select-display" data-value="redwoods">Redwoods</div>
+                <div class="select-dropdown">
+                  <div class="select-option" data-value="redwoods">Redwoods</div>
+                  <div class="select-option" data-value="mountains">Mountains</div>
+                </div>
+              </div>
+              <input type="hidden" id="wallpaper-selector" value="redwoods">
+            </div>
+          </div>
 
-    <div class="setting-group">
-      <label>Custom wallpaper upload</label>
-      <div class="custom-wallpaper-section">
-        <p class="setting-description">Upload your own image as wallpaper (max 10MB)</p>
-        <div class="custom-upload-controls">
-          <input type="file" id="wallpaper-file" class="file-input" accept="image/*" style="display: none;">
-          <button type="button" id="wallpaper-browse" class="btn-secondary">Choose Image</button>
-          <button type="button" id="wallpaper-remove" class="btn-danger" style="display: none;">Remove Custom</button>
-        </div>
-        <div id="wallpaper-preview" class="wallpaper-preview" style="display: none;">
-          <p class="preview-text">Custom wallpaper active</p>
-        </div>
+          <div class="setting-row">
+            <div class="setting-label">Custom wallpaper</div>
+            <div class="setting-control">
+              <input type="file" id="wallpaper-file" class="file-input" accept="image/*" style="display: none;">
+              <button type="button" id="wallpaper-browse" class="btn btn-secondary">Choose Image</button>
+              <button type="button" id="wallpaper-remove" class="btn btn-danger" style="display: none;">Remove Custom</button>
+            </div>
+          </div>
+        </section>
       </div>
-    </div>
 
-    <div class="setting-group">
-      <button type="button" id="clear-cache" class="btn-danger">Clear Cache</button>
-      <p class="setting-description">Clear browser cache, cookies, and stored data</p>
-    </div>
-  </section>
+      <!-- Search Section -->
+      <div id="search-section" class="settings-page">
+        <h1 class="section-title">Search Engine</h1>
+        
+        <section class="settings-section">
+          <div class="setting-row">
+            <div class="setting-label">Default search engine</div>
+            <div class="setting-control">
+              <div class="custom-select" id="search-engine-select">
+                <div class="select-display" data-value="duckduckgo">DuckDuckGo</div>
+                <div class="select-dropdown">
+                  <div class="select-option" data-value="duckduckgo">DuckDuckGo</div>
+                  <div class="select-option" data-value="ecosia">Ecosia</div>
+                  <div class="select-option" data-value="startpage">Startpage</div>
+                </div>
+              </div>
+              <input type="hidden" id="search-engine" value="duckduckgo">
+            </div>
+          </div>
+        </section>
+      </div>
 
-  <section id="extension-settings" class="settings-section">
-    <h1>Extension Management</h1>
-    <p class="section-description">Extension support coming soon</p>
-    
-    <div class="extensions-placeholder">
-      <div class="extension-item">
-        <div class="extension-info">
-          <span class="extension-name">Ad Blocker</span>
-          <span class="extension-status">Coming soon</span>
-        </div>
-        <label class="toggle-label">
-          <input type="checkbox" class="settings-toggle" disabled>
-          <span class="toggle-slider"></span>
-        </label>
+      <!-- Toolbar Section -->
+      <div id="toolbar-section" class="settings-page">
+        <h1 class="section-title">Toolbar</h1>
+        
+        <section class="settings-section">
+          <div class="setting-row">
+            <div class="setting-label">Show home page clock</div>
+            <div class="setting-control">
+              <label class="toggle-label">
+                <input type="checkbox" id="show-clock" class="toggle-input">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+          
+          <div class="setting-row">
+            <div class="setting-label">Clear cache</div>
+            <div class="setting-control">
+              <button type="button" id="clear-cache" class="btn btn-danger">Clear Cache</button>
+            </div>
+          </div>
+        </section>
       </div>
-      
-      <div class="extension-item">
-        <div class="extension-info">
-          <span class="extension-name">DScan</span>
-          <span class="extension-status">Coming soon</span>
-        </div>
-        <label class="toggle-label">
-          <input type="checkbox" class="settings-toggle" disabled>
-          <span class="toggle-slider"></span>
-        </label>
+
+      <!-- Extensions Section -->
+      <div id="extensions-section" class="settings-page">
+        <h1 class="section-title">Extensions</h1>
+        
+        <section class="settings-section">
+          <div class="coming-soon-notice">
+            Extension support coming soon
+          </div>
+          
+          <div class="extension-row">
+            <div class="extension-info">
+              <div class="extension-name">Ad Blocker</div>
+              <div class="extension-status">Coming soon</div>
+            </div>
+            <div class="extension-toggle">
+              <label class="toggle-label">
+                <input type="checkbox" class="toggle-input" disabled>
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+          
+          <div class="extension-row">
+            <div class="extension-info">
+              <div class="extension-name">DScan</div>
+              <div class="extension-status">Coming soon</div>
+            </div>
+            <div class="extension-toggle">
+              <label class="toggle-label">
+                <input type="checkbox" class="toggle-input" disabled>
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+        </section>
       </div>
-    </div>
-  </section>
-</main>
+    </main>
+  </div>
+</div>
 
 <script src="peersky://static/js/settings.js" defer></script>
 </body>

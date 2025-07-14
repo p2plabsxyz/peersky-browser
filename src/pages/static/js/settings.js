@@ -142,6 +142,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.error('Settings: Failed to set up event listeners:', error);
   }
   
+  // Initialize sidebar navigation
+  initializeSidebarNavigation();
+  
   // Initialize custom dropdowns
   initializeCustomDropdowns();
   
@@ -447,6 +450,41 @@ function reloadThemeCSS() {
   console.log('Theme CSS reloaded');
 }
 
+// Sidebar navigation functionality for page switching
+function initializeSidebarNavigation() {
+  const navItems = document.querySelectorAll('.nav-item');
+  const pages = document.querySelectorAll('.settings-page');
+  
+  // Handle nav clicks for page switching
+  navItems.forEach(item => {
+    item.addEventListener('click', (e) => {
+      e.preventDefault();
+      
+      const sectionName = item.getAttribute('data-section');
+      const targetPageId = sectionName + '-section';
+      
+      // Update active nav item
+      navItems.forEach(nav => nav.classList.remove('active'));
+      item.classList.add('active');
+      
+      // Show corresponding page
+      pages.forEach(page => page.classList.remove('active'));
+      const targetPage = document.getElementById(targetPageId);
+      if (targetPage) {
+        targetPage.classList.add('active');
+      }
+    });
+  });
+  
+  // Set initial active state (appearance page)
+  if (navItems.length > 0) {
+    navItems[0].classList.add('active');
+  }
+  if (pages.length > 0) {
+    pages[0].classList.add('active');
+  }
+}
+
 // Custom dropdown functionality
 function initializeCustomDropdowns() {
   const customSelects = document.querySelectorAll('.custom-select');
@@ -505,10 +543,12 @@ function initializeCustomDropdowns() {
   });
   
   // Close dropdowns when clicking outside
-  document.addEventListener('click', () => {
-    document.querySelectorAll('.custom-select.open').forEach(select => {
-      select.classList.remove('open');
-    });
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.custom-select')) {
+      document.querySelectorAll('.custom-select.open').forEach(select => {
+        select.classList.remove('open');
+      });
+    }
   });
   
   // Update dropdown displays based on current values
