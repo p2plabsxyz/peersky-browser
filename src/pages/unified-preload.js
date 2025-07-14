@@ -1,58 +1,89 @@
 /**
- * Unified Preload Script - Context-Aware API Exposure with Security
+ * Unified Preload Script - Context-Aware API Exposure with Enhanced Security
  * 
- * Immediately detects page context and exposes appropriate APIs:
- * - Settings pages: Full electronAPI access
- * - Home pages: Basic environment + CSS
- * - Other internal pages: Minimal environment  
- * - External pages: Very minimal access
+ * Detects page context and exposes appropriate APIs based on security levels:
+ * - Settings pages: Full electronAPI access (getAll, set, reset, clearCache, uploadWallpaper)
+ * - Home pages: Limited access (showClock, wallpaper only)
+ * - Internal pages: Minimal access (theme only)  
+ * - External pages: No settings access
  * 
- * Eliminates need for preload switching while maintaining security.
+ * Security Model: Principle of least privilege with granular access control.
  */
 
 const { contextBridge, ipcRenderer } = require('electron');
 
-// Determine context IMMEDIATELY when preload runs
+// Context detection using window.location for immediate synchronous access
 const url = window.location.href;
 const isSettings = url.startsWith('peersky://settings');
 const isHome = url.startsWith('peersky://home');
 const isInternal = url.startsWith('peersky://');
 const isExternal = !isInternal;
 
+const context = { url, isSettings, isHome, isInternal, isExternal };
+
 console.log(`Unified-preload: Context detection - URL: ${url}`);
 console.log(`Unified-preload: isSettings: ${isSettings}, isHome: ${isHome}, isInternal: ${isInternal}, isExternal: ${isExternal}`);
 
-// Settings API (only for settings pages)
-const settingsAPI = {
-  getAll: () => ipcRenderer.invoke('settings-get-all'),
-  
-  get: (key) => {
-    if (!key || typeof key !== 'string') {
-      throw new Error('Setting key must be a non-empty string');
+// Factory function to create context-appropriate settings API with access control
+function createSettingsAPI(pageContext) {
+  const baseAPI = {
+    get: (key) => {
+      if (!key || typeof key !== 'string') {
+        throw new Error('Setting key must be a non-empty string');
+      }
+      return ipcRenderer.invoke('settings-get', key);
     }
-    return ipcRenderer.invoke('settings-get', key);
-  },
-  
-  set: (key, value) => {
-    if (!key || typeof key !== 'string') {
-      throw new Error('Setting key must be a non-empty string');
-    }
-    return ipcRenderer.invoke('settings-set', key, value);
-  },
-  
-  reset: () => ipcRenderer.invoke('settings-reset'),
-  
-  clearCache: () => ipcRenderer.invoke('settings-clear-cache'),
-  
-  uploadWallpaper: (fileData) => {
-    if (!fileData || !fileData.name || !fileData.content) {
-      throw new Error('File data must include name and content');
-    }
-    return ipcRenderer.invoke('settings-upload-wallpaper', fileData);
-  }
-};
+  };
 
-// Helper function to create safe event listeners (only for settings pages)
+  if (pageContext.isSettings) {
+    // Full settings API only for settings pages
+    return {
+      ...baseAPI,
+      getAll: () => ipcRenderer.invoke('settings-get-all'),
+      set: (key, value) => {
+        if (!key || typeof key !== 'string') {
+          throw new Error('Setting key must be a non-empty string');
+        }
+        return ipcRenderer.invoke('settings-set', key, value);
+      },
+      reset: () => ipcRenderer.invoke('settings-reset'),
+      clearCache: () => ipcRenderer.invoke('settings-clear-cache'),
+      uploadWallpaper: (fileData) => {
+        if (!fileData || !fileData.name || !fileData.content) {
+          throw new Error('File data must include name and content');
+        }
+        return ipcRenderer.invoke('settings-upload-wallpaper', fileData);
+      }
+    };
+  } else if (pageContext.isHome) {
+    // Limited API for home pages - only clock and wallpaper
+    return {
+      get: (key) => {
+        const allowedKeys = ['showClock', 'wallpaper'];
+        if (!allowedKeys.includes(key)) {
+          throw new Error(`Access denied: Home pages can only access: ${allowedKeys.join(', ')}`);
+        }
+        return baseAPI.get(key);
+      }
+    };
+  } else if (pageContext.isInternal) {
+    // Minimal API for other internal pages - only theme
+    return {
+      get: (key) => {
+        const allowedKeys = ['theme'];
+        if (!allowedKeys.includes(key)) {
+          throw new Error(`Access denied: Internal pages can only access: ${allowedKeys.join(', ')}`);
+        }
+        return baseAPI.get(key);
+      }
+    };
+  } else {
+    // No settings API for external pages
+    return null;
+  }
+}
+
+// Create safe event listeners with error handling
 function createEventListener(eventName, callback) {
   if (typeof callback !== 'function') {
     throw new Error('Callback must be a function');
@@ -70,19 +101,21 @@ function createEventListener(eventName, callback) {
   return () => ipcRenderer.removeListener(eventName, wrappedCallback);
 }
 
-// CSS API (for internal pages)
+// Static APIs for different contexts
 const cssAPI = {
   readCSS: (type) => ipcRenderer.invoke('peersky-read-css', type)
 };
 
-// Environment API (basic info)
 const environmentAPI = {
   version: process.versions.electron,
   platform: process.platform,
   userAgent: navigator.userAgent
 };
 
-// Expose APIs based on context - IMMEDIATELY
+// Create context-appropriate APIs
+const settingsAPI = createSettingsAPI(context);
+
+// Expose APIs based on context with enhanced granularity
 try {
   if (isSettings) {
     // Settings pages get full electronAPI access (exactly what settings.js expects)
@@ -95,35 +128,27 @@ try {
       readCSS: cssAPI.readCSS
     });
     
-    console.log('Unified-preload: Settings electronAPI exposed');
+    console.log('Unified-preload: Full Settings electronAPI exposed');
     
   } else if (isHome) {
-    // Home pages get basic environment + CSS + clock settings
+    // Home pages get basic environment + CSS + limited settings
     contextBridge.exposeInMainWorld('peersky', {
       environment: environmentAPI,
       css: cssAPI
     });
     
-    // Also expose minimal electronAPI for clock and wallpaper functionality
+    // Limited electronAPI for home functionality only
     contextBridge.exposeInMainWorld('electronAPI', {
-      settings: {
-        get: (key) => {
-          // Only allow getting showClock setting for home pages
-          if (key === 'showClock') {
-            return ipcRenderer.invoke('settings-get', key);
-          }
-          throw new Error('Access denied: Home pages can only access showClock setting');
-        }
-      },
+      settings: settingsAPI, // Uses limited home API automatically
       getWallpaperUrl: () => ipcRenderer.invoke('settings-get-wallpaper-url'),
       onShowClockChanged: (callback) => createEventListener('show-clock-changed', callback),
       onWallpaperChanged: (callback) => createEventListener('wallpaper-changed', callback)
     });
     
-    console.log('Unified-preload: Home peersky + limited electronAPI exposed');
+    console.log('Unified-preload: Home APIs exposed (showClock, wallpaper access only)');
     
   } else if (isInternal) {
-    // Other internal pages get minimal environment
+    // Other internal pages get minimal environment + very limited settings
     contextBridge.exposeInMainWorld('peersky', {
       environment: {
         platform: process.platform,
@@ -131,17 +156,24 @@ try {
       }
     });
     
-    console.log('Unified-preload: Internal minimal API exposed');
+    // Very minimal electronAPI for theme access only
+    if (settingsAPI) {
+      contextBridge.exposeInMainWorld('electronAPI', {
+        settings: settingsAPI // Uses minimal internal API (theme only)
+      });
+    }
+    
+    console.log('Unified-preload: Internal minimal API exposed (theme only)');
     
   } else {
-    // External pages get almost nothing
+    // External pages get almost nothing - no settings API at all
     contextBridge.exposeInMainWorld('peersky', {
       environment: {
         platform: process.platform
       }
     });
     
-    console.log('Unified-preload: External minimal API exposed');
+    console.log('Unified-preload: External minimal API exposed (no settings access)');
   }
   
 } catch (error) {
