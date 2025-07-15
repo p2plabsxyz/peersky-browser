@@ -23,16 +23,16 @@
       </div>
       <div class="sidebar-nav">
         <a href="#appearance" class="nav-item active" data-section="appearance">
-          Appearance
+          <img src="peersky://static/assets/svg/palette.svg" class="nav-icon" alt="Appearance Icon">
+          <span>Appearance</span>
         </a>
         <a href="#search" class="nav-item" data-section="search">
-          Search
-        </a>
-        <a href="#toolbar" class="nav-item" data-section="toolbar">
-          Toolbar
+          <img src="peersky://static/assets/svg/search.svg" class="nav-icon" alt="Search Icon">
+          <span>Search</span>
         </a>
         <a href="#extensions" class="nav-item" data-section="extensions">
-          Extensions
+          <img src="peersky://static/assets/svg/puzzle.svg" class="nav-icon" alt="Extensions Icon">
+          <span>Extensions</span>
         </a>
       </div>
     </nav>
@@ -84,6 +84,16 @@
               <button type="button" id="wallpaper-remove" class="btn btn-danger" style="display: none;">Remove Custom</button>
             </div>
           </div>
+
+          <div class="setting-row">
+            <div class="setting-label">Show clock on home page</div>
+            <div class="setting-control">
+              <label class="toggle-label">
+                <input type="checkbox" id="show-clock" class="toggle-input">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
         </section>
       </div>
 
@@ -104,23 +114,6 @@
                 </div>
               </div>
               <input type="hidden" id="search-engine" value="duckduckgo">
-            </div>
-          </div>
-        </section>
-      </div>
-
-      <!-- Toolbar Section -->
-      <div id="toolbar-section" class="settings-page">
-        <h1 class="section-title">Toolbar</h1>
-        
-        <section class="settings-section">
-          <div class="setting-row">
-            <div class="setting-label">Show home page clock</div>
-            <div class="setting-control">
-              <label class="toggle-label">
-                <input type="checkbox" id="show-clock" class="toggle-input">
-                <span class="toggle-slider"></span>
-              </label>
             </div>
           </div>
           

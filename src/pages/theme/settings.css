@@ -52,7 +52,6 @@ body {
 .settings-layout {
   display: flex;
   width: 100%;
-  max-width: 900px;
   height: 100vh;
   overflow: hidden;
 }
@@ -61,13 +60,14 @@ body {
 .settings-sidebar {
   width: 200px;
   background: rgba(0, 0, 0, 0.07);
-  border-left: 1px solid var(--settings-border);
   border-right: 1px solid var(--settings-border);
   display: flex;
   flex-direction: column;
   position: sticky;
   top: 0;
+  left: 0;
   height: 100vh;
+  flex-shrink: 0;
 }
 
 .sidebar-header {
@@ -107,6 +107,17 @@ body {
   min-height: 48px;
 }
 
+.nav-icon {
+  width: 20px !important;
+  height: 20px !important;
+  margin-right: 12px !important;
+  margin: 0 12px 0 0 !important;
+  display: block !important;
+  opacity: 0.8;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
 .settings-sidebar .nav-item:hover {
   background: var(--settings-card-bg);
   color: var(--settings-text-primary);
@@ -124,6 +135,9 @@ body {
   overflow: hidden;
   background: var(--settings-bg-primary);
   height: 100vh;
+  max-width: 800px;        
+  margin: 0 auto;           
+  box-sizing: border-box;   
 }
 
 /* Settings Page Structure */
@@ -157,10 +171,12 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.75rem 1rem;
+  padding: 1rem;
   border-bottom: 1px solid var(--settings-border);
-  min-height: 40px;
+  min-height: 55px;
+  height: 55px;
   margin: 0 -1rem;
+  box-sizing: border-box;
 }
 
 .setting-row:last-child {
@@ -182,6 +198,9 @@ body {
 .setting-control {
   flex-shrink: 0;
   margin-left: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 /* Custom Dropdown */
@@ -298,20 +317,24 @@ body {
   font-size: 0.85rem;
   cursor: pointer;
   transition: all 0.2s ease;
-  font-weight: 500;
-  height: 32px;
+  font-weight: 450;
+  height: 25px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 100px;
+  min-width: 80px;
   box-sizing: border-box;
   white-space: nowrap;
+  vertical-align: middle;
 }
 
 .btn-secondary {
   background: var(--settings-bg-secondary);
   color: var(--settings-text-primary);
   border: 1px solid var(--settings-border);
+  font-weight: 450;
+  height: 25px;
+  min-width: 80px;
 }
 
 .btn-secondary:hover {
@@ -322,6 +345,9 @@ body {
   background: var(--settings-danger-color);
   color: white;
   border: 1px solid var(--settings-danger-color);
+  font-weight: 450;
+  height: 25px;
+  min-width: 80px;
 }
 
 .btn-danger:hover {

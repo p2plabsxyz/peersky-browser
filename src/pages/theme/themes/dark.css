@@ -28,3 +28,8 @@
   --settings-danger-color: #e53935;
   --settings-danger-color-hover: #c62828;
 }
+
+/* Dark theme specific styling for nav icons */
+.nav-icon {
+  filter: brightness(0) invert(1);
+}

@@ -561,7 +561,7 @@ function updateCustomWallpaperUI(isCustomActive) {
   const wallpaperPreview = document.getElementById('wallpaper-preview');
   
   if (isCustomActive) {
-    wallpaperRemove?.style.setProperty('display', 'inline-block');
+    wallpaperRemove?.style.setProperty('display', 'inline-flex');
     wallpaperPreview?.style.setProperty('display', 'block');
   } else {
     wallpaperRemove?.style.setProperty('display', 'none');
@@ -628,7 +628,7 @@ function showSettingsSavedMessage(message, type = 'success') {
     messageEl.style.backgroundColor = '#ff9800';
     messageEl.style.color = 'white';
   } else {
-    messageEl.style.backgroundColor = '#4caf50';
+    messageEl.style.backgroundColor = '#0fba84';
     messageEl.style.color = 'white';
   }
   
