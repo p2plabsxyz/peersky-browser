@@ -50,7 +50,7 @@ document.addEventListener("DOMContentLoaded", () => {
     nav.addEventListener("stop", () => webviewContainer.stop());
     nav.addEventListener("home", () => {
       webviewContainer.loadURL("peersky://home");
-      nav.querySelector("#url").value = "peersky://home";
+      nav.querySelector("#url").value = "";
     });
     nav.addEventListener("navigate", ({ detail }) => {
       const { url } = detail;
@@ -110,7 +110,12 @@ document.addEventListener("DOMContentLoaded", () => {
     // Update URL input and send navigation event
     webviewContainer.addEventListener("did-navigate", (e) => {
       if (urlInput) {
-        urlInput.value = e.detail.url;
+        // Hide peersky://home URL, show all others
+        if (e.detail.url === "peersky://home") {
+          urlInput.value = "";
+        } else {
+          urlInput.value = e.detail.url;
+        }
       }
       ipcRenderer.send("webview-did-navigate", e.detail.url);
     });
