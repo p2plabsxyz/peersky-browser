@@ -24,21 +24,6 @@
   --settings-border-hover: #9ca3af;
   --settings-border-focus: #6b7280;
 
-  /* Light theme notifications */
-  --success-color: #059669;
-  --success-text-color: #ffffff;
-  --success-border-color: #047857;
-  
-  /* Light theme specific colors */
-  --base00: #ffffff;
-  --base01: #f9fafb;
-  --base02: #f3f4f6;
-  --base03: #e5e7eb;
-  --base04: #9ca3af;
-  --base05: #6b7280;
-  --base06: #374151;
-  --base07: #000000;
-  
   /* Danger colors */
   --settings-danger-color: #e53935;
   --settings-danger-color-hover: #c62828;

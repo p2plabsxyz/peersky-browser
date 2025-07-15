@@ -1,0 +1,30 @@
+/* Violet Theme Variables */
+:root {
+  /* Violet Theme Overrides */
+  --browser-theme-background: #faf5ff;
+  --browser-theme-text-color: #581c87;
+  --browser-theme-primary-highlight: #8b5cf6;
+  --browser-theme-secondary-highlight: #7c3aed;
+  
+  /* Navigation */
+  --peersky-nav-background: #c29de9;
+  --peersky-nav-button-color: #6b21a8;
+  --peersky-nav-button-hover: #581c87;
+  --peersky-nav-button-active: #4c1d95;
+  --peersky-nav-button-inactive: #c084fc;
+  --peersky-background-url-input: #f3e8ff;
+  --peersky-background-find-menu: #e9d5ff;
+
+  /* Settings Page */
+  --settings-bg-primary: #f9f5fe;
+  --settings-text-primary: #4c1d95;
+  --settings-text-secondary: #6b21a8;
+  --settings-card-bg: #e9d5ff;
+  --settings-border: #c084fc;
+  --settings-border-hover: #a855f7;
+  --settings-border-focus: #8b5cf6;
+
+  /* Danger colors */
+  --settings-danger-color: #e53935;
+  --settings-danger-color-hover: #c62828;
+}

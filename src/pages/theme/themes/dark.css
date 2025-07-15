@@ -23,21 +23,6 @@
   --settings-border: #6b7280;
   --settings-border-hover: #9ca3af;
   --settings-border-focus: #e5e7eb;
-
-  /* Dark theme notifications */
-  --success-color: #10b981;
-  --success-text-color: #ffffff;
-  --success-border-color: #059669;
-  
-  /* Dark theme specific colors */
-  --base00: #000000;
-  --base01: #18181b;
-  --base02: #27272a;
-  --base03: #202125;
-  --base04: #6b7280;
-  --base05: #9ca3af;
-  --base06: #e5e7eb;
-  --base07: #ffffff;
   
   /* Danger colors */
   --settings-danger-color: #e53935;

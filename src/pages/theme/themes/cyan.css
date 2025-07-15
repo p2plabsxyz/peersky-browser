@@ -1,47 +1,30 @@
 /* Cyan Theme Variables */
 :root {
   /* Cyan Theme Overrides */
-  --browser-theme-background: #0c1820;
-  --browser-theme-text-color: #00ffff;
-  --browser-theme-primary-highlight: #00ffff;
-  --browser-theme-secondary-highlight: #06b6d4;
+  --browser-theme-background: #e0f7fa;
+  --browser-theme-text-color: #006064;
+  --browser-theme-primary-highlight: #00acc1;
+  --browser-theme-secondary-highlight: #0097a7;
   
   /* Navigation */
-  --peersky-nav-background: #1e3a3f;
-  --peersky-nav-button-color: #67e8f9;
-  --peersky-nav-button-hover: #22d3ee;
-  --peersky-nav-button-active: #00ffff;
-  --peersky-nav-button-inactive: #155e75;
-  --peersky-background-url-input: #0c1820;
-  --peersky-background-find-menu: #1e3a3f;
+  --peersky-nav-background: #B7FEF5;
+  --peersky-nav-button-color: #004d5f;
+  --peersky-nav-button-hover: #006064;
+  --peersky-nav-button-active: #003d47;
+  --peersky-nav-button-inactive: #4dd0e1;
+  --peersky-background-url-input: #E2FEFB;
+  --peersky-background-find-menu: #b2ebf2;
 
   /* Settings Page */
-  --settings-bg-primary: #0c1820;
-  --settings-text-primary: #00ffff;
-  --settings-text-secondary: #67e8f9;
-  --settings-card-bg: #1e3a3f;
-  --settings-border: #155e75;
-  --settings-border-hover: #0891b2;
-  --settings-border-focus: #00ffff;
+  --settings-bg-primary: #9edfd6;
+  --settings-text-primary: #003d47;
+  --settings-text-secondary: #006064;
+  --settings-card-bg: #d9f4f8;
+  --settings-border: #4dd0e1;
+  --settings-border-hover: #26c6da;
+  --settings-border-focus: #00acc1;
 
-  /* Cyan theme notifications */
-  --success-color: #06b6d4;
-  --success-text-color: #ffffff;
-  --success-border-color: #0891b2;
-  
-  /* Cyan theme specific colors */
-  --base00: #0c1820;
-  --base01: #1e3a3f;
-  --base02: #0f4c75;
-  --base03: #155e75;
-  --base04: #0891b2;
-  --base05: #0ea5e9;
-  --base06: #67e8f9;
-  --base07: #00ffff;
-  --base0C: #00ffff; /* Keep original cyan */
-  --base0D: #06b6d4; /* Keep original blue */
-
-    /* Danger colors */
-    --settings-danger-color: #e53935;
-    --settings-danger-color-hover: #c62828;
+  /* Danger colors */
+  --settings-danger-color: #e53935;
+  --settings-danger-color-hover: #c62828;
 }
