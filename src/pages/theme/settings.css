@@ -322,7 +322,6 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 80px;
   box-sizing: border-box;
   white-space: nowrap;
   vertical-align: middle;
@@ -334,7 +333,6 @@ body {
   border: 1px solid var(--settings-border);
   font-weight: 450;
   height: 25px;
-  min-width: 80px;
 }
 
 .btn-secondary:hover {
@@ -347,7 +345,6 @@ body {
   border: 1px solid var(--settings-danger-color);
   font-weight: 450;
   height: 25px;
-  min-width: 80px;
 }
 
 .btn-danger:hover {
@@ -429,56 +426,27 @@ body {
   display: none;
 }
 
-/* Responsive Design */
-@media (max-width: 900px) {
-  .settings-wrapper {
-    padding: 0;
+/* Responsive Design - Simplified */
+@media (max-width: 749px) {
+  .settings-sidebar {
+    display: none;
   }
   
-  .settings-layout {
-    max-width: none;
+  .settings-content {
+    padding: 1.5rem;
+    margin-left: 0;
+    width: 100%;
   }
 }
 
-@media (max-width: 768px) {
-  .settings-layout {
-    flex-direction: column;
-  }
-  
-  .settings-sidebar {
-    width: 100%;
-    height: auto;
-    border-bottom: 1px solid var(--settings-border);
-    position: relative;
-  }
-  
-  .sidebar-nav {
-    display: flex;
+/* Minimum usable width - prevent layout from becoming too cramped */
+@media (max-width: 600px) {
+  .settings-content {
+    min-width: 600px;
     overflow-x: auto;
-    padding: 0.25rem 0;
   }
   
-  .nav-item {
-    white-space: nowrap;
-    border-bottom: 3px solid transparent;
-    padding: 0.5rem 0.75rem;
-    min-width: auto;
-  }
-  
-  .nav-item.active {
-    border-bottom-color: var(--settings-border-focus);
-  }
-
-  .setting-row, .extension-row {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.5rem;
-    margin: 0;
-    padding: 0.75rem 0;
-  }
-
-  .setting-control, .extension-toggle {
-    margin-left: 0;
-    align-self: flex-end;
+  .settings-wrapper {
+    overflow-x: auto;
   }
 }
