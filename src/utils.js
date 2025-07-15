@@ -39,7 +39,7 @@ function makeEcosia(query) {
 }
 
 function makeStartpage(query) {
-  return `https://www.startpage.com/sp/search?query=${encodeURIComponent(query)}`;
+  return `https://www.startpage.com/do/search?query=${encodeURIComponent(query)}`;
 }
 
 
