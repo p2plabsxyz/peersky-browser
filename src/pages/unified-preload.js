@@ -193,6 +193,18 @@ try {
 // CSS injection logic (for pages that need it)
 window.addEventListener('DOMContentLoaded', async () => {
   try {
+    // Initialize theme on page load for internal pages
+    if (isInternal) {
+      try {
+        const currentTheme = await ipcRenderer.invoke('settings-get', 'theme');
+        if (currentTheme) {
+          document.documentElement.setAttribute('data-theme', currentTheme);
+        }
+      } catch (error) {
+        console.warn('Failed to initialize theme:', error);
+      }
+    }
+    
     // Check if page already has stylesheets
     const hasStylesheets = [...document.styleSheets].some(s => {
       try { return !!s.cssRules } catch { return false }

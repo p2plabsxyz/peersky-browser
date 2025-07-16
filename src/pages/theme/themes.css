@@ -1,0 +1,230 @@
+/* Unified Theme System - All Themes Consolidated */
+/* This file replaces individual theme files with a single unified system */
+
+/* Default Theme Variables (Dark Theme) */
+:root {
+  /* Dark Theme - Default */
+  --browser-theme-background: #18181b;
+  --browser-theme-text-color: #ffffff;
+  --browser-theme-primary-highlight: #3b82f6;
+  --browser-theme-secondary-highlight: #1d4ed8;
+  
+  /* Navigation */
+  --peersky-nav-background: #27272a;
+  --peersky-nav-button-color: #9ca3af;
+  --peersky-nav-button-hover: #e5e7eb;
+  --peersky-nav-button-active: #ffffff;
+  --peersky-nav-button-inactive: #6b7280;
+  --peersky-background-url-input: #18181b;
+  --peersky-background-find-menu: #202125;
+
+  /* Settings Page */
+  --settings-bg-primary: #18181b;
+  --settings-text-primary: #ffffff;
+  --settings-text-secondary: #9ca3af;
+  --settings-card-bg: #27272a;
+  --settings-border: #6b7280;
+  --settings-border-hover: #9ca3af;
+  --settings-border-focus: #e5e7eb;
+  
+  /* Danger colors */
+  --settings-danger-color: #e53935;
+  --settings-danger-color-hover: #c62828;
+}
+
+/* Dark Theme Specific Styling */
+.nav-icon {
+  filter: brightness(0) invert(1);
+}
+
+/* Settings sidebar SVG colors - Dark theme (white icons) */
+.settings-sidebar .nav-icon {
+  filter: brightness(0) invert(1);
+}
+
+/* Light Theme */
+[data-theme="light"] {
+  --browser-theme-background: #ffffff;
+  --browser-theme-text-color: #000000;
+  --browser-theme-primary-highlight: #3b82f6;
+  --browser-theme-secondary-highlight: #1d4ed8;
+  
+  /* Navigation */
+  --peersky-nav-background: #f3f4f6;
+  --peersky-nav-button-color: #374151;
+  --peersky-nav-button-hover: #1f2937;
+  --peersky-nav-button-active: #000000;
+  --peersky-nav-button-inactive: #9ca3af;
+  --peersky-background-url-input: #ffffff;
+  --peersky-background-find-menu: #f9fafb;
+
+  /* Settings Page */
+  --settings-bg-primary: #ffffff;
+  --settings-text-primary: #000000;
+  --settings-text-secondary: #374151;
+  --settings-card-bg: #f9fafb;
+  --settings-border: #d1d5db;
+  --settings-border-hover: #9ca3af;
+  --settings-border-focus: #6b7280;
+
+  /* Danger colors */
+  --settings-danger-color: #e53935;
+  --settings-danger-color-hover: #c62828;
+}
+
+/* Cyan Theme */
+[data-theme="cyan"] {
+  --browser-theme-background: #e0f7fa;
+  --browser-theme-text-color: #006064;
+  --browser-theme-primary-highlight: #00acc1;
+  --browser-theme-secondary-highlight: #0097a7;
+  
+  /* Navigation */
+  --peersky-nav-background: #B7FEF5;
+  --peersky-nav-button-color: #004d5f;
+  --peersky-nav-button-hover: #006064;
+  --peersky-nav-button-active: #003d47;
+  --peersky-nav-button-inactive: #4dd0e1;
+  --peersky-background-url-input: #E2FEFB;
+  --peersky-background-find-menu: #b2ebf2;
+
+  /* Settings Page */
+  --settings-bg-primary: #9edfd6;
+  --settings-text-primary: #003d47;
+  --settings-text-secondary: #006064;
+  --settings-card-bg: #d9f4f8;
+  --settings-border: #4dd0e1;
+  --settings-border-hover: #26c6da;
+  --settings-border-focus: #00acc1;
+
+  /* Danger colors */
+  --settings-danger-color: #e53935;
+  --settings-danger-color-hover: #c62828;
+}
+
+/* Green Theme */
+[data-theme="green"] {
+  --browser-theme-background: #e8f5e8;
+  --browser-theme-text-color: #1b5e1f;
+  --browser-theme-primary-highlight: #22c55e;
+  --browser-theme-secondary-highlight: #16a34a;
+  
+  /* Navigation */
+  --peersky-nav-background: #dcfce7;
+  --peersky-nav-button-color: #166534;
+  --peersky-nav-button-hover: #15803d;
+  --peersky-nav-button-active: #14532d;
+  --peersky-nav-button-inactive: #86efac;
+  --peersky-background-url-input: #f0fdf4;
+  --peersky-background-find-menu: #dcfce7;
+
+  /* Settings Page */
+  --settings-bg-primary: #dcfce7;
+  --settings-text-primary: #14532d;
+  --settings-text-secondary: #166534;
+  --settings-card-bg: #bbf7d0;
+  --settings-border: #22c55e;
+  --settings-border-hover: #4ade80;
+  --settings-border-focus: #22c55e;
+
+  /* Danger colors */
+  --settings-danger-color: #e53935;
+  --settings-danger-color-hover: #c62828;
+}
+
+/* Yellow Theme */
+[data-theme="yellow"] {
+  --browser-theme-background: #fffbeb;
+  --browser-theme-text-color: #451a03;
+  --browser-theme-primary-highlight: #f59e0b;
+  --browser-theme-secondary-highlight: #d97706;
+  
+  /* Navigation */
+  --peersky-nav-background: #fef3c7;
+  --peersky-nav-button-color: #92400e;
+  --peersky-nav-button-hover: #78350f;
+  --peersky-nav-button-active: #451a03;
+  --peersky-nav-button-inactive: #fbbf24;
+  --peersky-background-url-input: #fffef7;
+  --peersky-background-find-menu: #fef3c7;
+
+  /* Settings Page */
+  --settings-bg-primary: #f6f1d0;
+  --settings-text-primary: #451a03;
+  --settings-text-secondary: #92400e;
+  --settings-card-bg: #f5e8b0;
+  --settings-border: #fbbf24;
+  --settings-border-hover: #f59e0b;
+  --settings-border-focus: #d97706;
+
+  /* Danger colors */
+  --settings-danger-color: #e53935;
+  --settings-danger-color-hover: #c62828;
+}
+
+/* Violet Theme */
+[data-theme="violet"] {
+  --browser-theme-background: #faf5ff;
+  --browser-theme-text-color: #581c87;
+  --browser-theme-primary-highlight: #8b5cf6;
+  --browser-theme-secondary-highlight: #7c3aed;
+  
+  /* Navigation */
+  --peersky-nav-background: #c29de9;
+  --peersky-nav-button-color: #6b21a8;
+  --peersky-nav-button-hover: #581c87;
+  --peersky-nav-button-active: #4c1d95;
+  --peersky-nav-button-inactive: #c084fc;
+  --peersky-background-url-input: #f3e8ff;
+  --peersky-background-find-menu: #e9d5ff;
+
+  /* Settings Page */
+  --settings-bg-primary: #f9f5fe;
+  --settings-text-primary: #4c1d95;
+  --settings-text-secondary: #6b21a8;
+  --settings-card-bg: #e9d5ff;
+  --settings-border: #c084fc;
+  --settings-border-hover: #a855f7;
+  --settings-border-focus: #8b5cf6;
+
+  /* Danger colors */
+  --settings-danger-color: #e53935;
+  --settings-danger-color-hover: #c62828;
+}
+
+/* Settings sidebar SVG colors - Non-dark themes (dark icons) */
+[data-theme="light"] .settings-sidebar .nav-icon,
+[data-theme="cyan"] .settings-sidebar .nav-icon,
+[data-theme="green"] .settings-sidebar .nav-icon,
+[data-theme="yellow"] .settings-sidebar .nav-icon,
+[data-theme="violet"] .settings-sidebar .nav-icon {
+  filter: brightness(0) invert(0.2);
+}
+
+/* Theme Transition Effects */
+html,
+body {
+  transition: background-color 0.15s ease-in-out, color 0.15s ease-in-out;
+}
+
+/* Smooth transitions for theme switching */
+body,
+main,
+header,
+footer,
+section,
+article,
+aside,
+div,
+p,
+span,
+h1, h2, h3, h4, h5, h6,
+input,
+button,
+select,
+textarea,
+label,
+pre,
+code {
+  transition: background-color 0.15s ease-in-out, color 0.15s ease-in-out, border-color 0.15s ease-in-out;
+}

@@ -328,6 +328,8 @@ function populateFormFields(settings) {
   }
   if (themeToggle && settings.theme) {
     themeToggle.value = settings.theme;
+    // Apply theme immediately on page load
+    applyThemeImmediately(settings.theme);
   }
   if (showClock && typeof settings.showClock === 'boolean') {
     showClock.checked = settings.showClock;
@@ -415,12 +417,14 @@ async function resetSettingsToDefaults() {
 // Apply theme immediately to current page for instant feedback
 function applyThemeImmediately(themeName) {
   try {
-    // Reload theme CSS files
+    // Reload theme CSS files to ensure unified theme system is loaded
     reloadThemeCSS();
     
-    // Update theme class on document
+    // Update theme data attribute on document for unified theme system
+    document.documentElement.setAttribute('data-theme', themeName);
+    
+    // Remove old theme classes (legacy support)
     document.documentElement.classList.remove(...Array.from(document.documentElement.classList).filter(c => c.startsWith('theme-')));
-    document.documentElement.classList.add(`theme-${themeName}`);
     
     console.log('Theme applied immediately:', themeName);
   } catch (error) {

@@ -83,19 +83,11 @@ export async function createHandler() {
         // Handle dynamic theme loading for vars.css
         if (fileName === 'vars.css') {
           try {
-            const currentTheme = await settingsManager.settings.theme || 'dark';
-            
-            // Try to load theme-specific CSS file from themes subfolder
-            const themeFileName = `themes/${currentTheme}.css`;
-            try {
-              resolvedPath = await resolveFile(themeFileName);
-            } catch (themeError) {
-              // Fallback to default vars.css if theme file not found
-              console.warn(`Theme file ${themeFileName} not found, falling back to vars.css`);
-              resolvedPath = await resolveFile(fileName);
-            }
-          } catch (settingsError) {
-            console.warn('Could not get theme setting, using default vars.css:', settingsError);
+            // Use the unified themes.css file for all theme switching
+            resolvedPath = await resolveFile('themes.css');
+          } catch (themeError) {
+            // Fallback to default vars.css if unified theme file not found
+            console.warn('Unified themes.css file not found, falling back to vars.css');
             resolvedPath = await resolveFile(fileName);
           }
         } else {
