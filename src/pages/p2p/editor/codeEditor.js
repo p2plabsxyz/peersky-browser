@@ -16,20 +16,26 @@ export let basicCSS = `
     }
 `;
 
-// CSS for iframe preview: Peersky P2P theme
-const previewCSS = `
-    :root {
-        --browser-theme-background: #18181b;
-        --browser-theme-text-color: #FFFFFF;
-    }
-    body {
-        font-size: 1.2rem;
-        margin: 0;
-        padding: 0;
-        background: var(--browser-theme-background);
-        color: var(--browser-theme-text-color);
-    }
-`;
+// CSS for iframe preview: Use current theme colors
+function getPreviewCSS() {
+    const computedStyle = getComputedStyle(document.documentElement);
+    const bgColor = computedStyle.getPropertyValue('--browser-theme-background').trim();
+    const textColor = computedStyle.getPropertyValue('--browser-theme-text-color').trim();
+    
+    return `
+        :root {
+            --browser-theme-background: ${bgColor};
+            --browser-theme-text-color: ${textColor};
+        }
+        body {
+            font-size: 1.2rem;
+            margin: 0;
+            padding: 0;
+            background: var(--browser-theme-background);
+            color: var(--browser-theme-text-color);
+        }
+    `;
+}
 
 // Function for live rendering
 export function update() {
@@ -39,9 +45,9 @@ export function update() {
     console.log('CSS Code:', cssCode);
     let javascriptCode = $('#javascriptCode').value;
     console.log('JavaScript Code:', javascriptCode);
-    // Assemble all elements for the iframe preview, using previewCSS
+    // Assemble all elements for the iframe preview, using dynamic theme CSS
     let iframeContent = `
-    <style>${previewCSS}</style>
+    <style>${getPreviewCSS()}</style>
     <style>${cssCode}</style>
     <script>${javascriptCode}</script>
     ${htmlCode}
