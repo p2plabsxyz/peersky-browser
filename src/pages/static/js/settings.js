@@ -607,6 +607,7 @@ function showSettingsSavedMessage(message, type = 'success') {
   const messageEl = document.createElement('div');
   messageEl.className = `settings-saved-message ${type}`;
   messageEl.textContent = message;
+  messageEl.style.transition = 'opacity 0.2s ease-in-out';
   
   // Add type-specific styling
   if (type === 'error') {
@@ -622,15 +623,14 @@ function showSettingsSavedMessage(message, type = 'success') {
   
   document.body.appendChild(messageEl);
   
-  // Animate in using CSS
+  // Fade in
   setTimeout(() => {
-    messageEl.classList.add('show');
+    messageEl.style.opacity = '1';
   }, 10);
   
-  // Remove after duration based on type
-  const duration = type === 'error' ? 5000 : 3000;
+  const duration = type === 'error' ? 3000 : 2000;
   setTimeout(() => {
-    messageEl.classList.remove('show');
+    messageEl.style.opacity = '0';
     setTimeout(() => {
       if (messageEl.parentNode) {
         messageEl.parentNode.removeChild(messageEl);
