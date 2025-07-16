@@ -207,7 +207,7 @@ body {
   transition: background-color 0.15s ease-in-out, color 0.15s ease-in-out;
 }
 
-/* Smooth transitions for theme switching */
+/* Smooth transitions for theme switching - exclude navigation elements */
 body,
 main,
 header,
@@ -215,16 +215,35 @@ footer,
 section,
 article,
 aside,
-div,
+div:not(.nav-item):not(.settings-sidebar):not(.sidebar-nav):not(.select-option),
 p,
 span,
 h1, h2, h3, h4, h5, h6,
 input,
-button,
+button:not(.nav-item),
 select,
 textarea,
 label,
 pre,
 code {
   transition: background-color 0.15s ease-in-out, color 0.15s ease-in-out, border-color 0.15s ease-in-out;
+}
+
+/* Controlled transitions for navigation elements */
+.settings-sidebar .nav-item {
+  transition: background-color 0.15s ease-in-out !important;
+}
+
+.settings-sidebar .nav-item span {
+  transition: color 0.15s ease-in-out !important;
+}
+
+/* Remove focus outline for sidebar nav items */
+.settings-sidebar .nav-item:focus {
+  outline: none;
+}
+
+[data-theme="light"] .settings-sidebar .nav-item:focus,
+[data-theme="dark"] .settings-sidebar .nav-item:focus {
+  outline: none;
 }

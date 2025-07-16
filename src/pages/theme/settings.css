@@ -96,9 +96,9 @@ body {
   align-items: center;
   justify-content: flex-start;
   padding: 1rem 1.5rem;
-  color: var(--settings-text-secondary);
+  color: var(--settings-text-secondary) !important;
   text-decoration: none;
-  transition: all 0.2s ease;
+  transition: background-color 0.15s ease-in-out;
   font-size: 0.9rem;
   margin: 0;
   box-sizing: border-box;
@@ -120,12 +120,12 @@ body {
 
 .settings-sidebar .nav-item:hover {
   background: var(--settings-card-bg);
-  color: var(--settings-text-primary);
+  color: var(--settings-text-primary) !important;
 }
 
 .settings-sidebar .nav-item.active {
   background: var(--settings-card-bg);
-  color: var(--settings-text-primary);
+  color: var(--settings-text-primary) !important;
 }
 
 /* Content Area */
@@ -214,7 +214,7 @@ body {
   border: 1px solid var(--settings-border);
   border-radius: 4px;
   background: var(--settings-bg-secondary);
-  color: var(--settings-text-primary);
+  color: var(--settings-text-primary) !important;
   cursor: pointer;
   display: flex;
   justify-content: space-between;
@@ -231,7 +231,7 @@ body {
 .select-display::after {
   content: "▼";
   font-size: 0.65rem;
-  color: var(--settings-text-secondary);
+  color: var(--settings-text-secondary) !important;
   margin-left: 0.5rem;
 }
 
@@ -256,11 +256,13 @@ body {
   padding: 0.5rem 0.75rem;
   cursor: pointer;
   font-size: 0.85rem;
+  color: var(--settings-text-primary) !important;
   transition: background-color 0.2s ease;
 }
 
 .select-option:hover {
   background: var(--settings-border);
+  color: var(--settings-text-primary) !important;
 }
 
 /* Toggle Switch */

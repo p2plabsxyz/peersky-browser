@@ -347,6 +347,13 @@ function populateFormFields(settings) {
   // Update custom dropdown displays after loading settings
   updateCustomDropdownDisplays();
   
+  // Remove any remaining loader
+  const loader = document.getElementById('theme-loader');
+  if (loader) {
+    loader.style.opacity = '0';
+    setTimeout(() => loader.remove(), 200);
+  }
+  
   console.log('Form fields populated with settings');
 }
 

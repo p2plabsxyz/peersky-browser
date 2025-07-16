@@ -195,6 +195,34 @@ window.addEventListener('DOMContentLoaded', async () => {
   try {
     // Initialize theme on page load for internal pages
     if (isInternal) {
+      // Only show loader on settings page where theme switching occurs
+      if (isSettings) {
+        // Create and show loader immediately
+        const loader = document.createElement('div');
+        loader.id = 'theme-loader';
+        loader.style.cssText = `
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: #18181b;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 9999;
+          font-family: sans-serif;
+          font-size: 14px;
+          color: #9ca3af;
+        `;
+        loader.textContent = 'Loading...';
+        document.body.appendChild(loader);
+
+        // Hide main content initially
+        document.body.style.visibility = 'hidden';
+      }
+
+      // Always initialize theme for all internal pages
       try {
         const currentTheme = await ipcRenderer.invoke('settings-get', 'theme');
         if (currentTheme) {
@@ -202,6 +230,16 @@ window.addEventListener('DOMContentLoaded', async () => {
         }
       } catch (error) {
         console.warn('Failed to initialize theme:', error);
+      }
+
+      // Show content and remove loader (only if settings page)
+      if (isSettings) {
+        document.body.style.visibility = 'visible';
+        const loader = document.getElementById('theme-loader');
+        if (loader) {
+          loader.style.opacity = '0';
+          setTimeout(() => loader.remove(), 200);
+        }
       }
     }
     
