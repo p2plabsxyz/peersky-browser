@@ -73,8 +73,8 @@
 
 /* Cyan Theme */
 [data-theme="cyan"] {
-  --browser-theme-background: #e0f7fa;
-  --browser-theme-text-color: #006064;
+  --browser-theme-background: #ffffff;
+  --browser-theme-text-color: #000000;
   --browser-theme-primary-highlight: #00acc1;
   --browser-theme-secondary-highlight: #0097a7;
   
@@ -83,7 +83,7 @@
   --peersky-nav-button-color: #004d5f;
   --peersky-nav-button-hover: #006064;
   --peersky-nav-button-active: #003d47;
-  --peersky-nav-button-inactive: #4dd0e1;
+  --peersky-nav-button-inactive: #4ccfe0;
   --peersky-background-url-input: #ffffff;
   --peersky-background-find-menu: #b2ebf2;
 
@@ -93,7 +93,7 @@
   --settings-text-primary: #003d47;
   --settings-text-secondary: #006064;
   --settings-card-bg: #d9f4f8;
-  --settings-border: #4dd0e1;
+  --settings-border: #81dbdd;
   --settings-border-hover: #26c6da;
   --settings-border-focus: #00acc1;
 
@@ -105,8 +105,8 @@
 
 /* Green Theme */
 [data-theme="green"] {
-  --browser-theme-background: #e8f5e8;
-  --browser-theme-text-color: #1b5e1f;
+  --browser-theme-background: #ffffff;
+  --browser-theme-text-color: #000000;
   --browser-theme-primary-highlight: #22c55e;
   --browser-theme-secondary-highlight: #16a34a;
   
@@ -115,17 +115,17 @@
   --peersky-nav-button-color: #166534;
   --peersky-nav-button-hover: #15803d;
   --peersky-nav-button-active: #14532d;
-  --peersky-nav-button-inactive: #86efac;
+  --peersky-nav-button-inactive: #8bf1b0;
   --peersky-background-url-input: #ffffff;
   --peersky-background-find-menu: #dcfce7;
 
   /* Settings Page */
-  --settings-bg-primary: #dcfce7;
-  --settings-bg-secondary: #bbf7d0;
+  --settings-bg-primary: #bbf7d0;
+  --settings-bg-secondary: #dcfce7;
   --settings-text-primary: #14532d;
   --settings-text-secondary: #166534;
-  --settings-card-bg: #bbf7d0;
-  --settings-border: #22c55e;
+  --settings-card-bg: #dcfce7;
+  --settings-border: #a7eabf;
   --settings-border-hover: #4ade80;
   --settings-border-focus: #22c55e;
 
@@ -137,8 +137,8 @@
 
 /* Yellow Theme */
 [data-theme="yellow"] {
-  --browser-theme-background: #fffbeb;
-  --browser-theme-text-color: #451a03;
+  --browser-theme-background: #ffffff;
+  --browser-theme-text-color: #000000;
   --browser-theme-primary-highlight: #f59e0b;
   --browser-theme-secondary-highlight: #d97706;
   
@@ -147,17 +147,17 @@
   --peersky-nav-button-color: #92400e;
   --peersky-nav-button-hover: #78350f;
   --peersky-nav-button-active: #451a03;
-  --peersky-nav-button-inactive: #fbbf24;
+  --peersky-nav-button-inactive: #f9be2b;
   --peersky-background-url-input: #ffffff;
   --peersky-background-find-menu: #fef3c7;
 
   /* Settings Page */
-  --settings-bg-primary: #f6f1d0;
-  --settings-bg-secondary: #f5e8b0;
+  --settings-bg-primary: #f5e8b0;
+  --settings-bg-secondary: #f6f1d0;
   --settings-text-primary: #451a03;
   --settings-text-secondary: #92400e;
-  --settings-card-bg: #f5e8b0;
-  --settings-border: #fbbf24;
+  --settings-card-bg: #f6f1d0;
+  --settings-border: #e3d9af;
   --settings-border-hover: #f59e0b;
   --settings-border-focus: #d97706;
 
@@ -169,8 +169,8 @@
 
 /* Violet Theme */
 [data-theme="violet"] {
-  --browser-theme-background: #faf5ff;
-  --browser-theme-text-color: #581c87;
+  --browser-theme-background: #ffffff;
+  --browser-theme-text-color: #000000;
   --browser-theme-primary-highlight: #8b5cf6;
   --browser-theme-secondary-highlight: #7c3aed;
   
@@ -179,17 +179,17 @@
   --peersky-nav-button-color: #6b21a8;
   --peersky-nav-button-hover: #581c87;
   --peersky-nav-button-active: #4c1d95;
-  --peersky-nav-button-inactive: #c084fc;
+  --peersky-nav-button-inactive: #c189f9;
   --peersky-background-url-input: #ffffff;
   --peersky-background-find-menu: #e9d5ff;
 
   /* Settings Page */
-  --settings-bg-primary: #f9f5fe;
-  --settings-bg-secondary: #e9d5ff;
+  --settings-bg-primary: #e9d5ff;
+  --settings-bg-secondary: #f9f5fe;
   --settings-text-primary: #4c1d95;
   --settings-text-secondary: #6b21a8;
-  --settings-card-bg: #e9d5ff;
-  --settings-border: #c084fc;
+  --settings-card-bg: #f9f5fe;
+  --settings-border: #e9d5ff;
   --settings-border-hover: #a855f7;
   --settings-border-focus: #8b5cf6;
 
@@ -212,11 +212,11 @@
 
 /* Controlled transitions for navigation elements */
 .settings-sidebar .nav-item {
-  transition: background-color 0.05s ease-in-out !important;
+  transition: background-color 0.12s ease-in-out !important;
 }
 
 .settings-sidebar .nav-item span {
-  transition: color 0.05s ease-in-out !important;
+  transition: color 0.12s ease-in-out !important;
 }
 
 /* Settings sidebar SVG colors - Non-dark themes (dark icons) */
@@ -231,7 +231,7 @@
 /* Theme Transition Effects */
 html,
 body {
-  transition: background-color 0.05s ease-in-out, color 0.05s ease-in-out;
+  transition: background-color 0.12s ease-in-out, color 0.12s ease-in-out;
 }
 
 /* Smooth transitions for theme switching - exclude navigation elements */
@@ -253,5 +253,5 @@ textarea,
 label,
 pre,
 code {
-  transition: background-color 0.05s ease-in-out, color 0.05s ease-in-out, border-color 0.05s ease-in-out;
+  transition: background-color 0.12s ease-in-out, color 0.12s ease-in-out, border-color 0.12s ease-in-out;
 }
