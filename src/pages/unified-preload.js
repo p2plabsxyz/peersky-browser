@@ -222,6 +222,9 @@ window.addEventListener('DOMContentLoaded', async () => {
         document.body.style.visibility = 'hidden';
       }
 
+      // Disable transitions temporarily for all internal pages
+      document.body.classList.add('transition-disabled');
+      
       // Always initialize theme for all internal pages
       try {
         const currentTheme = await ipcRenderer.invoke('settings-get', 'theme');
@@ -231,6 +234,11 @@ window.addEventListener('DOMContentLoaded', async () => {
       } catch (error) {
         console.warn('Failed to initialize theme:', error);
       }
+      
+      // Re-enable transitions after theme is applied
+      setTimeout(() => {
+        document.body.classList.remove('transition-disabled');
+      }, 50);
 
       // Show content and remove loader (only if settings page)
       if (isSettings) {

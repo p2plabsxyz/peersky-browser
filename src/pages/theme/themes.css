@@ -20,6 +20,7 @@
 
   /* Settings Page */
   --settings-bg-primary: #18181b;
+  --settings-bg-secondary: #27272a;
   --settings-text-primary: #ffffff;
   --settings-text-secondary: #9ca3af;
   --settings-card-bg: #27272a;
@@ -60,6 +61,7 @@
 
   /* Settings Page */
   --settings-bg-primary: #ffffff;
+  --settings-bg-secondary: #f9fafb;
   --settings-text-primary: #000000;
   --settings-text-secondary: #374151;
   --settings-card-bg: #f9fafb;
@@ -90,6 +92,7 @@
 
   /* Settings Page */
   --settings-bg-primary: #9edfd6;
+  --settings-bg-secondary: #d9f4f8;
   --settings-text-primary: #003d47;
   --settings-text-secondary: #006064;
   --settings-card-bg: #d9f4f8;
@@ -120,6 +123,7 @@
 
   /* Settings Page */
   --settings-bg-primary: #dcfce7;
+  --settings-bg-secondary: #bbf7d0;
   --settings-text-primary: #14532d;
   --settings-text-secondary: #166534;
   --settings-card-bg: #bbf7d0;
@@ -150,6 +154,7 @@
 
   /* Settings Page */
   --settings-bg-primary: #f6f1d0;
+  --settings-bg-secondary: #f5e8b0;
   --settings-text-primary: #451a03;
   --settings-text-secondary: #92400e;
   --settings-card-bg: #f5e8b0;
@@ -180,6 +185,7 @@
 
   /* Settings Page */
   --settings-bg-primary: #f9f5fe;
+  --settings-bg-secondary: #e9d5ff;
   --settings-text-primary: #4c1d95;
   --settings-text-secondary: #6b21a8;
   --settings-card-bg: #e9d5ff;
@@ -201,6 +207,12 @@
   filter: brightness(0) invert(0.2);
 }
 
+/* Disable transitions temporarily during page load */
+.transition-disabled,
+.transition-disabled * {
+  transition: none !important;
+}
+
 /* Theme Transition Effects */
 html,
 body {
@@ -215,12 +227,12 @@ footer,
 section,
 article,
 aside,
-div:not(.nav-item):not(.settings-sidebar):not(.sidebar-nav):not(.select-option),
+div:not(.nav-item):not(.settings-sidebar):not(.sidebar-nav):not(.select-option):not(.custom-select):not(.select-display):not(.select-dropdown),
 p,
 span,
 h1, h2, h3, h4, h5, h6,
 input,
-button:not(.nav-item),
+button:not(.nav-item):not(.select-display),
 select,
 textarea,
 label,
@@ -238,12 +250,7 @@ code {
   transition: color 0.15s ease-in-out !important;
 }
 
-/* Remove focus outline for sidebar nav items */
+/* Remove focus outline for sidebar nav items across all themes */
 .settings-sidebar .nav-item:focus {
-  outline: none;
-}
-
-[data-theme="light"] .settings-sidebar .nav-item:focus,
-[data-theme="dark"] .settings-sidebar .nav-item:focus {
   outline: none;
 }

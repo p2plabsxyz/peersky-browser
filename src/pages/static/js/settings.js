@@ -102,7 +102,8 @@ document.addEventListener('DOMContentLoaded', async () => {
           themeToggle.value = newTheme;
           updateCustomDropdownDisplays();
         }
-        reloadThemeCSS();
+        // Theme variables update automatically with unified theme system
+        // reloadThemeCSS(); // No longer needed
       });
       eventCleanupFunctions.push(cleanup1);
     }
@@ -328,8 +329,17 @@ function populateFormFields(settings) {
   }
   if (themeToggle && settings.theme) {
     themeToggle.value = settings.theme;
+    
+    // Disable transitions temporarily for initial page load
+    document.body.classList.add('transition-disabled');
+    
     // Apply theme immediately on page load
     applyThemeImmediately(settings.theme);
+    
+    // Re-enable transitions after a brief delay
+    setTimeout(() => {
+      document.body.classList.remove('transition-disabled');
+    }, 50);
   }
   if (showClock && typeof settings.showClock === 'boolean') {
     showClock.checked = settings.showClock;
@@ -424,10 +434,7 @@ async function resetSettingsToDefaults() {
 // Apply theme immediately to current page for instant feedback
 function applyThemeImmediately(themeName) {
   try {
-    // Reload theme CSS files to ensure unified theme system is loaded
-    reloadThemeCSS();
-    
-    // Update theme data attribute on document for unified theme system
+    // Set theme attribute FIRST for immediate variable updates
     document.documentElement.setAttribute('data-theme', themeName);
     
     // Remove old theme classes (legacy support)
@@ -437,28 +444,6 @@ function applyThemeImmediately(themeName) {
   } catch (error) {
     console.error('Failed to apply theme immediately:', error);
   }
-}
-
-function reloadThemeCSS() {
-  // Reload CSS imports for theme files
-  const styleElements = document.querySelectorAll('style');
-  styleElements.forEach(style => {
-    const text = style.textContent || style.innerText;
-    if (text && text.includes('browser://theme/')) {
-      const newStyle = document.createElement('style');
-      newStyle.textContent = text;
-      style.parentNode.replaceChild(newStyle, style);
-    }
-  });
-  
-  // Reload CSS links with cache busting
-  const linkElements = document.querySelectorAll('link[href*="browser://theme/"]');
-  linkElements.forEach(link => {
-    const href = link.href.split('?')[0];
-    link.href = `${href}?t=${Date.now()}`;
-  });
-  
-  console.log('Theme CSS reloaded');
 }
 
 // Sidebar navigation functionality for page switching
