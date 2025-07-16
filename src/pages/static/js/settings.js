@@ -330,16 +330,8 @@ function populateFormFields(settings) {
   if (themeToggle && settings.theme) {
     themeToggle.value = settings.theme;
     
-    // Disable transitions temporarily for initial page load
-    document.body.classList.add('transition-disabled');
-    
-    // Apply theme immediately on page load
+    // Apply theme immediately on page load (no transition disabling for settings)
     applyThemeImmediately(settings.theme);
-    
-    // Re-enable transitions after a brief delay
-    setTimeout(() => {
-      document.body.classList.remove('transition-disabled');
-    }, 50);
   }
   if (showClock && typeof settings.showClock === 'boolean') {
     showClock.checked = settings.showClock;
