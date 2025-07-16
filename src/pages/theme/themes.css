@@ -5,6 +5,7 @@
   --browser-theme-text-color: #ffffff;
   --browser-theme-primary-highlight: #3b82f6;
   --browser-theme-secondary-highlight: #1d4ed8;
+  --browser-theme-font-family: sans-serif;
   
   /* Navigation */
   --peersky-nav-background: #27272a;
