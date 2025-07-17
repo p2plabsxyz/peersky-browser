@@ -607,6 +607,16 @@ function showSettingsSavedMessage(message, type = 'success') {
   const messageEl = document.createElement('div');
   messageEl.className = `settings-saved-message ${type}`;
   messageEl.textContent = message;
+  
+  // Minimal styling
+  messageEl.style.position = 'fixed';
+  messageEl.style.top = '20px';
+  messageEl.style.right = '20px';
+  messageEl.style.padding = '12px 20px';
+  messageEl.style.borderRadius = '6px';
+  messageEl.style.fontFamily = 'Arial, sans-serif';
+  messageEl.style.zIndex = '10000';
+  messageEl.style.opacity = '0';
   messageEl.style.transition = 'opacity 0.2s ease-in-out';
   
   // Add type-specific styling

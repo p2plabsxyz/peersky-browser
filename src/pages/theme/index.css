@@ -69,6 +69,7 @@ input, button, textarea, select, select *, option  {
   margin-left: 6px;
   margin-right: 6px;
   color: var(--browser-theme-text-color);
+  font-family: Arial, sans-serif;
   font-size: medium;
   border-radius: 8px;
   display: block;

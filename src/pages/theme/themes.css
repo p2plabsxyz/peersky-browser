@@ -5,8 +5,7 @@
   --browser-theme-text-color: #ffffff;
   --browser-theme-primary-highlight: #3b82f6;
   --browser-theme-secondary-highlight: #1d4ed8;
-  --browser-theme-font-family: sans-serif;
-  
+
   /* Navigation */
   --peersky-nav-background: #27272a;
   --peersky-nav-button-color: #9ca3af;
@@ -29,16 +28,10 @@
   /* Danger colors */
   --settings-danger-color: #e53935;
   --settings-danger-color-hover: #c62828;
-}
 
-/* Dark Theme Specific Styling */
-.nav-icon {
-  filter: brightness(0) invert(1);
-}
-
-/* Settings sidebar SVG colors - Dark theme (white icons) */
-.settings-sidebar .nav-icon {
-  filter: brightness(0) invert(1);
+  .nav-icon {
+    filter: brightness(0) invert(1) drop-shadow(0.25px 0.25px 0 white);
+  }
 }
 
 /* Light Theme */
@@ -84,7 +77,7 @@
   --peersky-nav-button-color: #004d5f;
   --peersky-nav-button-hover: #006064;
   --peersky-nav-button-active: #003d47;
-  --peersky-nav-button-inactive: #4ccfe0;
+  --peersky-nav-button-inactive: #46c0d0;
   --peersky-background-url-input: #ffffff;
   --peersky-background-find-menu: #b2ebf2;
 
@@ -116,7 +109,7 @@
   --peersky-nav-button-color: #166534;
   --peersky-nav-button-hover: #15803d;
   --peersky-nav-button-active: #14532d;
-  --peersky-nav-button-inactive: #8bf1b0;
+  --peersky-nav-button-inactive: #77d198;
   --peersky-background-url-input: #ffffff;
   --peersky-background-find-menu: #dcfce7;
 
@@ -148,7 +141,7 @@
   --peersky-nav-button-color: #92400e;
   --peersky-nav-button-hover: #78350f;
   --peersky-nav-button-active: #451a03;
-  --peersky-nav-button-inactive: #f9be2b;
+  --peersky-nav-button-inactive: #c49520;
   --peersky-background-url-input: #ffffff;
   --peersky-background-find-menu: #fef3c7;
 
@@ -165,7 +158,6 @@
   /* Danger colors */
   --settings-danger-color: #e53935;
   --settings-danger-color-hover: #c62828;
-
 }
 
 /* Violet Theme */
@@ -180,7 +172,7 @@
   --peersky-nav-button-color: #6b21a8;
   --peersky-nav-button-hover: #581c87;
   --peersky-nav-button-active: #4c1d95;
-  --peersky-nav-button-inactive: #c189f9;
+  --peersky-nav-button-inactive: #9266be;
   --peersky-background-url-input: #ffffff;
   --peersky-background-find-menu: #e9d5ff;
 
@@ -226,7 +218,7 @@
 [data-theme="green"] .settings-sidebar .nav-icon,
 [data-theme="yellow"] .settings-sidebar .nav-icon,
 [data-theme="violet"] .settings-sidebar .nav-icon {
-  filter: brightness(0) invert(0.2);
+  filter: brightness(0) drop-shadow(0.4px 0.4px 0 black);
 }
 
 /* Theme Transition Effects */
