@@ -63,10 +63,6 @@ input, button, textarea, select, select *, option  {
   justify-content: center;
 }
 
-.nav-button svg {
-  filter: drop-shadow(0.45px 0.45px 0 currentColor);
-}
-
 #url {
   background-color: var(--peersky-background-url-input);
   border: none;
