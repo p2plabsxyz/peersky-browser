@@ -1,3 +1,5 @@
+@import url('browser://theme/vars.css');
+
 :host {
   --bg-color: var(--browser-theme-background, #18181b);
   --item-hover-bg: #27272a;
@@ -55,6 +57,7 @@ h1 {
   margin-right: 0.75rem;
   flex-shrink: 0;
   border-radius: 3px;
+  color: wheat;
 }
 
 .title {
