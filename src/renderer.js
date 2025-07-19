@@ -59,9 +59,7 @@ document.addEventListener("DOMContentLoaded", () => {
           .trim();
 
         const parsedUrl = new URL(url);
-        console.log("parsedUrl", parsedUrl);
         const favicon = await getFavicon(parsedUrl);
-        console.log("Adding bookmark:", { url, title, favicon });
         ipcRenderer.send("add-bookmark", { url, title, favicon });
       }
 
