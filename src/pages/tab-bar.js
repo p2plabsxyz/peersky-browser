@@ -9,7 +9,7 @@ class TabBar extends HTMLElement {
     this.pinnedTabs = new Set(); // Track pinned tabs
     this.tabGroups = new Map(); // Store tab groups
     this.tabGroupAssignments = new Map(); // Track tab group assignments
-    this.groupColors = ["#FF5733", "#33FF57", "#3357FF", "#FF33A1", "#A133FF"]; // Predefined group colors
+    this.groupColors = ["#6b7280", "#ffccff", "#90EE90", "#00ffff", "#d4a500"]; // Base16 colors: gray, violet, green, cyan, yellow
     this.draggedTabId = null;
     this.buildTabBar();
     this.setupBrowserCloseHandler();
@@ -26,12 +26,12 @@ class TabBar extends HTMLElement {
     setTimeout(() => this.forceActivateCurrentTab(), 300);
   }
 
-  // Force activate the current tab's webview
   forceActivateCurrentTab() {
     if (!this.activeTabId) {
-      // No active tab, select the first one
+      // No active tab, select the rightmost one (not the first one)
       if (this.tabs.length > 0) {
-        this.selectTab(this.tabs[0].id);
+        const rightmostTab = this.tabs[this.tabs.length - 1];
+        this.selectTab(rightmostTab.id);
       }
       return;
     }
@@ -170,79 +170,72 @@ class TabBar extends HTMLElement {
   }
 
   // Restore tabs from persisted data
-  restoreTabs(persistedData) {
-    this.tabCounter = persistedData.tabCounter || 0;
-    let restoredActiveTabId = null;
+restoreTabs(persistedData) {
+  this.tabCounter = persistedData.tabCounter || 0;
 
-    // Restore tab groups first
-    if (persistedData.tabGroups) {
-      persistedData.tabGroups.forEach(groupData => {
-        this.tabGroups.set(groupData.id, {
-          id: groupData.id,
-          name: groupData.name,
-          color: groupData.color,
-          expanded: groupData.expanded
-        });
+  // Restore tab groups first
+  if (persistedData.tabGroups) {
+    persistedData.tabGroups.forEach(groupData => {
+      this.tabGroups.set(groupData.id, {
+        id: groupData.id,
+        name: groupData.name,
+        color: groupData.color,
+        expanded: groupData.expanded
       });
-    }
+    });
+  }
 
-    // Restore each tab
-    persistedData.tabs.forEach(tabData => {
-      const tabId = this.addTabWithId(tabData.id, tabData.url, tabData.title);
-      
-      // Restore pinned state
-      if (tabData.isPinned) {
-        this.pinnedTabs.add(tabId);
-        setTimeout(() => {
-          const tabElement = document.getElementById(tabId);
-          if (tabElement) {
-            tabElement.classList.add('pinned');
-          }
-        }, 0);
-      }
-      
-      // Restore group assignment
-      if (tabData.groupId && this.tabGroups.has(tabData.groupId)) {
-        this.tabGroupAssignments.set(tabId, tabData.groupId);
-        
-        // Apply group styles to tab element
+  // Restore each tab
+  persistedData.tabs.forEach(tabData => {
+    const tabId = this.addTabWithId(tabData.id, tabData.url, tabData.title);
+    
+    // Restore pinned state
+    if (tabData.isPinned) {
+      this.pinnedTabs.add(tabId);
+      setTimeout(() => {
         const tabElement = document.getElementById(tabId);
-        const group = this.tabGroups.get(tabData.groupId);
-        if (tabElement && group) {
-          tabElement.dataset.groupId = tabData.groupId;
-          if (group.expanded) {
-            tabElement.style.borderTop = `2px solid ${group.color}`;
-          }
+        if (tabElement) {
+          tabElement.classList.add('pinned');
+        }
+      }, 0);
+    }
+    
+    // Restore group assignment
+    if (tabData.groupId && this.tabGroups.has(tabData.groupId)) {
+      this.tabGroupAssignments.set(tabId, tabData.groupId);
+      
+      // Apply group styles to tab element
+      const tabElement = document.getElementById(tabId);
+      const group = this.tabGroups.get(tabData.groupId);
+      if (tabElement && group) {
+        tabElement.dataset.groupId = tabData.groupId;
+        if (group.expanded) {
+          tabElement.style.borderTop = `2px solid ${group.color}`;
         }
       }
-      
-      if (tabData.id === persistedData.activeTabId) {
-        restoredActiveTabId = tabId;
-      }
-    });
-
-    // Render all group headers
-    for (const groupId of this.tabGroups.keys()) {
-      this.renderGroupHeader(groupId);
     }
-    
-    // Update grouped tabs UI
-    this.updateGroupedTabsUI();
+  });
 
-    // Select the previously active tab
-    if (restoredActiveTabId) {
-      this.selectTab(restoredActiveTabId);
-    } else if (this.tabs.length > 0) {
-      // Fallback to first tab if active tab ID not found
-      this.selectTab(this.tabs[0].id);
-    }
-
-    // Force activation after a delay
-    setTimeout(() => this.forceActivateCurrentTab(), 200);
-    
-    // Ensure group styles are applied after all DOM elements are ready
-    setTimeout(() => this.refreshGroupStyles(), 300);
+  // Render all group headers
+  for (const groupId of this.tabGroups.keys()) {
+    this.renderGroupHeader(groupId);
   }
+  
+  // Update grouped tabs UI
+  this.updateGroupedTabsUI();
+
+  // Always select the rightmost tab (last in array)
+  if (this.tabs.length > 0) {
+    const rightmostTab = this.tabs[this.tabs.length - 1];
+    this.selectTab(rightmostTab.id);
+  }
+
+  // Force activation after a delay
+  setTimeout(() => this.forceActivateCurrentTab(), 200);
+  
+  // Ensure group styles are applied after all DOM elements are ready
+  setTimeout(() => this.refreshGroupStyles(), 300);
+}
 
   // Add tab with specific ID (for restoration)
   addTabWithId(tabId, url = "peersky://home", title = "Home") {
@@ -277,6 +270,8 @@ class TabBar extends HTMLElement {
     
     tab.addEventListener("click", () => this.selectTab(tabId));
     
+    this.setupTabHoverCard(tab, tabId);
+    
     this.tabContainer.appendChild(tab);
     const protocol = this._getProtocol(url);
     this.tabs.push({id: tabId, url, title, protocol});
@@ -289,6 +284,96 @@ class TabBar extends HTMLElement {
     this._updateP2PIndicator(tabId);
     
     return tabId;
+  }
+
+  setupTabHoverCard(tabElement, tabId) {
+    let hoverCard = null;
+    let hoverTimeout = null;
+    
+    const showHoverCard = (e) => {
+      if (hoverTimeout) {
+        clearTimeout(hoverTimeout);
+      }
+      
+      // Delay showing the card
+      hoverTimeout = setTimeout(async() => {
+        const tab = this.tabs.find(t => t.id === tabId);
+        if (!tab) return;
+        
+        // Remove existing hover card
+        const existingCard = document.querySelector('.tab-hover-card');
+        if (existingCard) {
+          existingCard.remove();
+        }
+        
+        // Create hover card
+        hoverCard = document.createElement('div');
+        hoverCard.className = 'tab-hover-card';
+        
+        // Get webview to check memory usage (if available)
+        const webview = this.webviews.get(tabId);
+        let memoryInfo = 'Memory usage: Loading...';
+        
+        // Try to get memory usage (this is an approximation)
+        if (webview) {
+          try {
+            const processId = webview.getWebContentsId();
+            const { ipcRenderer } = require('electron');
+            const memoryUsage = await ipcRenderer.invoke('get-tab-memory-usage', processId);
+            
+            if (memoryUsage && memoryUsage.workingSetSize) {
+              // Convert bytes to MB
+              const memoryMB = Math.round(memoryUsage.workingSetSize / 1024 / 1024);
+              memoryInfo = `Memory usage: ${memoryMB} MB`;
+            } else {
+              memoryInfo = 'Memory usage: N/A';
+            }
+          } catch (e) {
+            console.error("Failed to get memory usage:", e);
+            memoryInfo = 'Memory usage: N/A';
+          }
+        }
+        
+        hoverCard.innerHTML = `
+          <div class="hover-card-title">${tab.title}</div>
+          <div class="hover-card-url">${tab.url}</div>
+          <div class="hover-card-separator"></div>
+          <div class="hover-card-memory">${memoryInfo}</div>
+        `;
+        
+        // Position the card
+        const tabRect = tabElement.getBoundingClientRect();
+        hoverCard.style.position = 'fixed';
+        hoverCard.style.left = `${tabRect.left}px`;
+        hoverCard.style.top = `${tabRect.bottom + 8}px`;
+        hoverCard.style.zIndex = '10002';
+        
+        // Ensure card doesn't go off screen
+        document.body.appendChild(hoverCard);
+        const cardRect = hoverCard.getBoundingClientRect();
+        if (cardRect.right > window.innerWidth) {
+          hoverCard.style.left = `${window.innerWidth - cardRect.width - 10}px`;
+        }
+        if (cardRect.bottom > window.innerHeight) {
+          hoverCard.style.top = `${tabRect.top - cardRect.height - 8}px`;
+        }
+      }, 800); // Show after 800ms hover
+    };
+    
+    const hideHoverCard = () => {
+      if (hoverTimeout) {
+        clearTimeout(hoverTimeout);
+        hoverTimeout = null;
+      }
+      
+      if (hoverCard) {
+        hoverCard.remove();
+        hoverCard = null;
+      }
+    };
+    
+    tabElement.addEventListener('mouseenter', showHoverCard);
+    tabElement.addEventListener('mouseleave', hideHoverCard);
   }
 
   addTab(url = "peersky://home", title = "Home") {
@@ -309,8 +394,8 @@ class TabBar extends HTMLElement {
     // Set important attributes
     webview.setAttribute("src", url);
     webview.setAttribute("allowpopups", "");
-    webview.setAttribute("webpreferences", "backgroundThrottling=false");
-    webview.setAttribute("nodeintegration", "");
+    // webview.setAttribute("webpreferences", "backgroundThrottling=false");
+    // webview.setAttribute("nodeintegration", "");
     
     // Set explicit height and width to ensure it fills the container
     webview.style.width = "100%";
@@ -670,39 +755,41 @@ class TabBar extends HTMLElement {
     const isPinned = this.pinnedTabs.has(tabId);
     const isMuted = webview?.isAudioMuted() || false;
 
+    const iconPath = 'peersky://static/assets/svg';
+
     menu.innerHTML = `
       <div class="context-menu-item" data-action="reload">
-        <span class="menu-icon">🔄</span>
+        <img class="menu-icon" src="${iconPath}/reload.svg" />
         Reload page
       </div>
       <div class="context-menu-item" data-action="duplicate">
-        <span class="menu-icon">📑</span>
+        <img class="menu-icon" src="${iconPath}/copy.svg" />
         Duplicate tab
       </div>
       <div class="context-menu-item" data-action="mute">
-        <span class="menu-icon">${isMuted ? '🔊' : '🔇'}</span>
+        <img class="menu-icon" src="${iconPath}/${isMuted ? 'volume-up.svg' : 'volume-mute.svg'}" />
         ${isMuted ? 'Unmute site' : 'Mute site'}
       </div>
       <div class="context-menu-item" data-action="new-tab-right">
-        <span class="menu-icon">➡️</span>
+        <img class="menu-icon" src="${iconPath}/tab-right.svg" />
         New tab to the right
       </div>
       <div class="context-menu-item" data-action="move-to-new-window">
-        <span class="menu-icon">🗔</span>
+        <img class="menu-icon" src="${iconPath}/arrow-bar-right.svg" />
         Move to new window
       </div>
       <div class="context-menu-separator"></div>
       <div class="context-menu-item" data-action="pin">
-        <span class="menu-icon">📌</span>
+        <img class="menu-icon" src="${iconPath}/pin-angle.svg" />
         ${isPinned ? 'Unpin tab' : 'Pin tab'}
       </div>
       <div class="context-menu-separator"></div>
       <div class="context-menu-item" data-action="close-others">
-        <span class="menu-icon">✖️</span>
+        <img class="menu-icon" src="${iconPath}/close.svg" />
         Close other tabs
       </div>
       <div class="context-menu-item" data-action="close">
-        <span class="menu-icon">❌</span>
+        <img class="menu-icon" src="${iconPath}/close.svg" />
         Close tab
       </div>
     `;
@@ -715,18 +802,18 @@ class TabBar extends HTMLElement {
       <div class="context-menu-separator"></div>
       ${isGrouped ? `
         <div class="context-menu-item" data-action="remove-from-group">
-          <span class="menu-icon">🔓</span>
+          <img class="menu-icon" src="${iconPath}/folder-minus.svg" />
           Remove from group
         </div>
       ` : `
         <div class="context-menu-item" data-action="add-to-new-group">
-          <span class="menu-icon">🔖</span>
+          <img class="menu-icon" src="${iconPath}/folder.svg" />
           Add to new group
         </div>
       `}
       ${this.tabGroups.size > 0 && !isGrouped ? `
         <div class="context-menu-item has-submenu" data-action="add-to-existing-group">
-          <span class="menu-icon">➕</span>
+          <img class="menu-icon" src="${iconPath}/folder.svg" />
           Add to group
           <span class="submenu-arrow">▸</span>
         </div>
@@ -1503,26 +1590,28 @@ class TabBar extends HTMLElement {
     menu.style.top = `${event.clientY}px`;
     menu.style.zIndex = '10000';
     
+    const iconPath = 'peersky://static/assets/svg';
+
     menu.innerHTML = `
       <div class="context-menu-item" data-action="add-tab">
-        <span class="menu-icon">+</span>
+        <img class="menu-icon" src="${iconPath}/add.svg" />
         Add new tab to group
       </div>
       <div class="context-menu-item" data-action="edit">
-        <span class="menu-icon">✎</span>
+        <img class="menu-icon" src="${iconPath}/pencil-square.svg" />
         Edit group
       </div>
       <div class="context-menu-item" data-action="toggle">
-        <span class="menu-icon">${group.expanded ? '▸' : '▾'}</span>
+        <img class="menu-icon" src="${iconPath}/collapse.svg" />
         ${group.expanded ? 'Collapse group' : 'Expand group'}
       </div>
       <div class="context-menu-separator"></div>
       <div class="context-menu-item" data-action="ungroup">
-        <span class="menu-icon">🔓</span>
+        <img class="menu-icon" src="${iconPath}/folder-minus.svg" />
         Ungroup tabs
       </div>
       <div class="context-menu-item" data-action="close-group">
-        <span class="menu-icon">❌</span>
+        <img class="menu-icon" src="${iconPath}/close.svg" />
         Close group
       </div>
     `;
@@ -1732,8 +1821,13 @@ class TabBar extends HTMLElement {
 
     if (['ipfs', 'hyper', 'web3'].includes(protocol)) {
       if (!indicator) {
-        indicator = document.createElement('span');
+        indicator = document.createElement('img');
         indicator.className = 'p2p-indicator';
+        indicator.src = 'peersky://static/assets/svg/diamond-fill.svg';
+        indicator.style.width = '12px';
+        indicator.style.height = '12px';
+        indicator.style.marginLeft = '4px';
+      
         const favicon = tabElement.querySelector('.tab-favicon');
         if (favicon) {
           favicon.insertAdjacentElement('afterend', indicator);
@@ -1741,7 +1835,26 @@ class TabBar extends HTMLElement {
           tabElement.prepend(indicator);
         }
       }
-      indicator.textContent = `⬢`; // Hexagon symbol
+    
+      let filterColor;
+      switch (protocol) {
+        case 'hyper':
+          // Light violet filter
+          filterColor = 'brightness(0) saturate(100%) invert(81%) sepia(36%) saturate(1211%) hue-rotate(266deg) brightness(95%) contrast(98%)';
+          break;
+        case 'ipfs':
+          // Cyan filter
+          filterColor = 'brightness(0) saturate(100%) invert(70%) sepia(98%) saturate(1780%) hue-rotate(154deg) brightness(101%) contrast(101%)';
+          break;
+        case 'ipns':
+          // Gray filter
+          filterColor = 'brightness(0) saturate(100%) invert(50%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(95%) contrast(95%)';
+          break;
+        default:
+          filterColor = 'brightness(0) saturate(100%) invert(50%)';
+      }
+    
+      indicator.style.filter = filterColor;
       indicator.title = `This tab is using the ${protocol} protocol.`;
       indicator.style.display = 'inline-block';
     } else {

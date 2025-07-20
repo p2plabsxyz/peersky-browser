@@ -164,12 +164,12 @@ find-menu {
   width: 0;
   flex: 1 1 auto;
   height: 30px;
-  padding: 0 2px 0 5px;
+  padding: 0 8px;
   margin: 3px 3px 0 0;
   background-color: var(--peersky-background-url-input);
   color: var(--browser-theme-text-color);
-  border-radius: 6px 6px 0 0;
-  font-size: 12px;
+  border-radius: 10px;
+  font-size: 14px;
   cursor: pointer;
   overflow: hidden;
   white-space: nowrap;
@@ -190,8 +190,13 @@ find-menu {
 }
 
 .tab.active {
-  background-color: var(--browser-theme-background);
+  background-color: var(--peersky-nav-background);
+  border-radius: 15px 15px 0 0;
+  border: gray 0.5px solid;
+  border-bottom: none;
   height: 32px;
+  margin-bottom: 0;
+  border-bottom: none;
 }
 
 .tab-title {
@@ -202,25 +207,34 @@ find-menu {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  padding-right: 2px;
+  padding-right: 8px;
   -webkit-app-region: no-drag;
-  font-size: 11px;
+  font-size: 13px;
+  color: var(--peersky-nav-button-color);
+  order: 2;
 }
 
 .close-tab {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 16px;
-  width: 16px;
-  height: 16px;
+  min-width: 20px;
+  width: 20px;
+  height: 20px;
   flex-shrink: 0;
   border-radius: 50%;
-  font-size: 14px;
+  font-size: 16px;
   cursor: pointer;
   color: var(--peersky-nav-button-color);
   -webkit-app-region: no-drag;
   margin-left: auto;
+  order: 3;
+  transition: background-color 0.2s ease
+}
+
+.close-tab:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: var(--peersky-nav-button-hover);
 }
 
 .add-tab-button {
@@ -341,11 +355,6 @@ tracked-box {
   -webkit-app-region: no-drag;
 }
 
-.tab.active {
-  background-color: var(--browser-theme-background);
-  height: 32px;
-}
-
 .webview-container {
   position: fixed;
   top: 88px;
@@ -385,25 +394,29 @@ tracked-box {
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
-  margin-right: 6px;
+  margin-right: 8px;
   flex-shrink: 0;
+  order: 1;
 }
 
 .p2p-indicator {
   font-size: 12px;
-  margin-right: 6px;
+  margin-right: 8px;
   color: var(--peersky-nav-button-color);
   opacity: 0.7;
   user-select: none;
   line-height: 1;
   display: inline-block;
+  order: 1;
 }
 
 .tab.loading .tab-title::before {
   content: "⟳";
   display: inline-block;
-  margin-right: 5px;
+  margin-right: 6px;
+  font-size: 14px;
   animation: spin 1s infinite linear;
+  color: var(--peersky-nav-button-active);
 }
 
 .tab.loading .tab-favicon[style*="display: block"] + .tab-title::before {
@@ -448,6 +461,7 @@ tracked-box {
   width: 16px;
   font-size: 12px;
   color: azure;
+  filter: brightness(0) saturate(100%) invert(87%) sepia(6%) saturate(346%) hue-rotate(183deg) brightness(98%) contrast(89%);
 }
 
 .context-menu-item[data-action="duplicate"] .menu-icon {
@@ -480,7 +494,7 @@ tracked-box {
   position: absolute;
   top: 2px;
   right: 2px;
-  font-size: 8px;
+  font-size: 12px;
   opacity: 0.7;
 }
 
@@ -494,7 +508,7 @@ tracked-box {
 
 .mute-indicator {
   opacity: 0.8;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 /* Tab Group Styles */
@@ -502,11 +516,11 @@ tracked-box {
   display: flex;
   align-items: center;
   height: 28px;
-  padding: 0 8px;
+  padding: 0 12px;
   margin-top: 8px;
-  border-radius: 8px 8px 0 0;
+  border-radius: 12px;
   color: white;
-  font-size: 11px;
+  font-size: 12px;
   cursor: default;
   user-select: none;
   -webkit-app-region: no-drag;
@@ -553,7 +567,8 @@ tracked-box {
 
 /* Tab styling for grouped tabs */
 .tab[data-group-id] {
-  margin-left: 8px;
+  /* margin-left: 8px; */
+  border-radius: 12px;
 }
 
 /* Group Edit Dialog */
@@ -688,3 +703,115 @@ tracked-box {
   from { transform: translate(-50%, -60%); opacity: 0; }
   to { transform: translate(-50%, -50%); opacity: 1; }
 }
+
+.tab-hover-card {
+  background: rgba(15, 15, 15, 0.85); /* Semi-transparent dark background */
+  backdrop-filter: blur(20px) saturate(180%); /* Glass blur effect */
+  -webkit-backdrop-filter: blur(20px) saturate(180%); /* Safari support */
+  border: 1px solid rgba(255, 255, 255, 0.1); /* Subtle glass border */
+  border-radius: 12px;
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset; /* Inner glow */
+  padding: 0;
+  font-size: 12px;
+  color: var(--browser-theme-text-color);
+  max-width: 300px;
+  min-width: 200px;
+  animation: fadeInCard 0.3s ease-out;
+  pointer-events: none;
+  overflow: hidden;
+  position: relative;
+}
+
+.tab-hover-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 60%; /* Cover top part only */
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.1) 0%,
+    rgba(255, 255, 255, 0.05) 50%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+  border-radius: 12px 12px 0 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.tab-hover-card > div {
+  position: relative;
+  z-index: 3;
+  padding: 12px;
+}
+
+.hover-card-title {
+  font-weight: bold;
+  margin-bottom: 6px;
+  color: rgba(255, 255, 255, 0.95);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  position: relative;
+  z-index: 4;
+}
+
+.hover-card-url {
+  color: rgba(255, 255, 255, 0.75);
+  margin-bottom: 2px;
+  word-break: break-all;
+  font-family: monospace;
+  font-size: 11px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  position: relative;
+  z-index: 4;
+}
+
+.hover-card-separator {
+  height: 1px;
+  position: relative;
+  z-index: 4;
+}
+
+.hover-card-memory {
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  margin-top: 0;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  position: relative;
+  z-index: 4;
+}
+
+.hover-card-memory::before {
+  content: '';
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 6px;
+  background-image: url('peersky://static/assets/svg/speedometer2.svg');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5)) brightness(0) saturate(100%) invert(65%);
+}
+
+/* Enhanced fade-in animation */
+@keyframes fadeInCard {
+  from { 
+    opacity: 0; 
+    transform: translateY(-8px) scale(0.95);
+    backdrop-filter: blur(0px);
+  }
+  to { 
+    opacity: 1; 
+    transform: translateY(0) scale(1);
+    backdrop-filter: blur(20px);
+  }
+}
+

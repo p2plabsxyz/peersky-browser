@@ -19,6 +19,7 @@ class TitleBar extends HTMLElement {
     this.tabsContainer.id = "tabbar-container";
     this.tabsContainer.className = "tabbar-container";
     
+    if(process.platform!== "darwin") {
     // Right side - Window controls
     const windowControls = document.createElement("div");
     windowControls.className = "window-controls";
@@ -59,6 +60,13 @@ class TitleBar extends HTMLElement {
     this.appendChild(appIcon);
     this.appendChild(this.tabsContainer);
     this.appendChild(windowControls);
+  }
+  else {
+    this.tabsContainer.style.marginLeft = "70px";
+    
+    this.appendChild(appIcon);
+    this.appendChild(this.tabsContainer);
+  }
   }
   
   connectTabBar(tabBar) {
