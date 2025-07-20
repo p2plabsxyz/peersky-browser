@@ -1,4 +1,16 @@
-const { ipcRenderer } = require('electron')
+const { ipcRenderer,contextBridge } = require('electron')
+
+const url = window.location.href;
+const isBookmarkPage = url.includes('peersky://bookmarks');
+
+if (isBookmarkPage) {
+  // Expose the bookmark API to the renderer process
+  contextBridge.exposeInMainWorld('electronAPI', {
+    getBookmarks: () => ipcRenderer.invoke('get-bookmarks'),
+    deleteBookmark: (url) => ipcRenderer.invoke('delete-bookmark', { url }),
+
+  })
+}
 
 const HAS_SHEET = `
   [...document.styleSheets].some(s => {

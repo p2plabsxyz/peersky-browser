@@ -1,8 +1,73 @@
 import { update, showSpinner, basicCSS } from './codeEditor.js';
 import { $, uploadButton, protocolSelect, fetchButton, fetchCidInput } from './common.js';
 
-// assemble code before uploading
+// Safe localStorage access helpers
+function safeLocalStorageGet(key) {
+    try {
+        return localStorage.getItem(key);
+    } catch (e) {
+        console.warn(`[safeLocalStorageGet] localStorage not available:`, e);
+        return null;
+    }
+}
+function safeLocalStorageSet(key, value) {
+    try {
+        localStorage.setItem(key, value);
+    } catch (e) {
+        console.warn(`[safeLocalStorageSet] localStorage not available:`, e);
+    }
+}
+
+// Read protocol from URL param or localStorage, default to 'ipfs'
+const urlParams = new URLSearchParams(window.location.search);
+const paramProtocol = urlParams.get('protocol');
+const storedProtocol = safeLocalStorageGet('lastProtocol');
+const initialProtocol = paramProtocol || storedProtocol || 'ipfs';
+protocolSelect.value = initialProtocol;
+
+// Toggle title input visibility based on protocol
+function toggleTitleInput() {
+    const titleInput = $('#titleInput');
+    if (protocolSelect.value === 'ipfs') {
+        titleInput.classList.add('hidden');
+        titleInput.removeAttribute('required');
+    } else {
+        titleInput.classList.remove('hidden');
+        titleInput.setAttribute('required', '');
+    }
+}
+
+// Initialize UI state
+toggleTitleInput();
+updateSelectorURL();
+
+// When protocol changes: update UI, localStorage, and URL
+protocolSelect.addEventListener('change', () => {
+    toggleTitleInput();
+    safeLocalStorageSet('lastProtocol', protocolSelect.value);
+    updateSelectorURL();
+});
+
+function updateSelectorURL() {
+    const base = window.location.pathname + window.location.hash;
+    const newURL = `${base}?protocol=${protocolSelect.value}`;
+    history.replaceState(null, '', newURL);
+}
+
+// Assemble code before uploading
 export async function assembleCode() {
+    const protocol = protocolSelect.value;
+    let fileName = 'index.html';
+
+    if (protocol === 'hyper') {
+        const title = $('#titleInput').value.trim();
+        if (!title) {
+            alert("Please enter a title for your project.");
+            return;
+        }
+        fileName = `${title.replace(/\s+/g, '-').toLowerCase()}.html`;
+    }
+
     // Display loading spinner
     showSpinner(true);
 
@@ -12,17 +77,17 @@ export async function assembleCode() {
     <html>
     <head>
         <style>${basicCSS}</style>
-        <style>${document.getElementById("cssCode").value}</style>
+        <style>${$('#cssCode').value}</style>
     </head>
     <body>
-        ${document.getElementById("htmlCode").value}
-        <script>${document.getElementById("javascriptCode").value}</script>
+        ${$('#htmlCode').value}
+        <script>${$('#javascriptCode').value}</script>
     </body>
     </html>`;
 
     // Convert the combined code into a Blob
     const blob = new Blob([combinedCode], { type: 'text/html' });
-    const file = new File([blob], "index.html", { type: 'text/html' });
+    const file = new File([blob], fileName, { type: 'text/html' });
 
     // Upload the file
     await uploadFile(file);
@@ -36,90 +101,61 @@ async function uploadFile(file) {
     const protocol = protocolSelect.value;
     console.log(`[uploadFile] Uploading ${file.name}, protocol: ${protocol}`);
 
+    let url;
     if (protocol === 'hyper') {
-        const hyperdriveUrl = await generateHyperdriveKey();
-        const url = `${hyperdriveUrl}${encodeURIComponent(file.name)}`;
-        const cleanUrl = url.replace(/index\.html$/, '');
+        const hyperdriveUrl = await getOrCreateHyperdrive();
+        url = `${hyperdriveUrl}${encodeURIComponent(file.name)}`;
         console.log(`[uploadFile] Hyper URL: ${url}`);
-
-        try {
-            const response = await fetch(url, {
-                method: 'PUT',
-                body: file, // Send raw file bytes
-                headers: {
-                    'Content-Type': file.type || 'text/html'
-                }
-            });
-
-            console.log(`[uploadFile] Response status: ${response.status}, ok: ${response.ok}`);
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error(`[uploadFile] Error uploading ${file.name}: ${errorText}`);
-                addError(file.name, errorText);
-                return;
-            }
-
-            addURL(cleanUrl);
-        } catch (error) {
-            console.error(`[uploadFile] Error uploading ${file.name}:`, error);
-            addError(file.name, error.message);
-        } finally {
-            showSpinner(false);
-        }
     } else {
-        // IPFS upload with FormData
-        const formData = new FormData();
-        console.log(`[uploadFile] Appending file for IPFS: ${file.name}`);
-        formData.append('file', file, file.name);
-
-        const url = `ipfs://bafyaabakaieac/`;
+        url = `ipfs://bafyaabakaieac/${encodeURIComponent(file.name)}`;
         console.log(`[uploadFile] IPFS URL: ${url}`);
+    }
 
-        try {
-            const response = await fetch(url, {
-                method: 'PUT',
-                body: formData,
-            });
-
-            console.log(`[uploadFile] IPFS Response status: ${response.status}, ok: ${response.ok}`);
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error(`[uploadFile] IPFS Error: ${errorText}`);
-                addError(file.name, errorText);
-                return;
+    try {
+        const response = await fetch(url, {
+            method: 'PUT',
+            body: file, // Send raw file bytes
+            headers: {
+                'Content-Type': file.type || 'text/html'
             }
+        });
 
-            const locationHeader = response.headers.get('Location');
-            console.log(`[uploadFile] IPFS Location header: ${locationHeader}`);
-            addURL(locationHeader);
-        } catch (error) {
-            console.error(`[uploadFile] Error uploading to IPFS:`, error);
-            addError(file.name, error.message);
-        } finally {
-            showSpinner(false);
+        console.log(`[uploadFile] Response status: ${response.status}, ok: ${response.ok}`);
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`[uploadFile] Error uploading ${file.name}: ${errorText}`);
+            addError(file.name, errorText);
+            return;
         }
+
+        const finalUrl = protocol === 'hyper' ? url : response.headers.get('Location');
+        addURL(finalUrl);
+    } catch (error) {
+        console.error(`[uploadFile] Error uploading ${file.name}:`, error);
+        addError(file.name, error.message);
+    } finally {
+        showSpinner(false);
     }
 }
 
-async function generateHyperdriveKey() {
-    // Generate a unique name using timestamp and random string
-    const timestamp = Date.now();
-    const randomStr = Math.random().toString(36).substring(2, 8);
-    const uniqueName = `p2p-editor-${timestamp}-${randomStr}`;
-    console.log(`[generateHyperdriveKey] Generating key for name: ${uniqueName}`);
+let hyperdriveUrl = null;
 
-    try {
-        const response = await fetch(`hyper://localhost/?key=${encodeURIComponent(uniqueName)}`, { method: 'POST' });
-        if (!response.ok) {
-            throw new Error(`Failed to generate Hyperdrive key: ${response.statusText}`);
+async function getOrCreateHyperdrive() {
+    if (!hyperdriveUrl) {
+        const name = 'p2p-editor';
+        try {
+            const response = await fetch(`hyper://localhost/?key=${encodeURIComponent(name)}`, { method: 'POST' });
+            if (!response.ok) {
+                throw new Error(`Failed to generate Hyperdrive key: ${response.statusText}`);
+            }
+            hyperdriveUrl = await response.text();
+            console.log(`[getOrCreateHyperdrive] Hyperdrive URL: ${hyperdriveUrl}`);
+        } catch (error) {
+            console.error('[getOrCreateHyperdrive] Error generating Hyperdrive key:', error);
+            throw error;
         }
-        const hyperUrl = await response.text();
-        console.log(`[generateHyperdriveKey] Hyperdrive URL: ${hyperUrl}`);
-        return hyperUrl; // Returns the hyper:// URL
-    } catch (error) {
-        console.error('[generateHyperdriveKey] Error generating Hyperdrive key:', error);
-        throw error;
     }
+    return hyperdriveUrl;
 }
 
 function addURL(url) {
@@ -191,11 +227,7 @@ function parseAndDisplayData(data) {
 
     // Extracting CSS
     const styleElements = Array.from(doc.querySelectorAll('style'));
-
-    // Remove the first element (agregore theme CSS)
-    styleElements.shift();
-
-    // Now combine the CSS from the remaining <style> elements
+    styleElements.shift(); // Remove the first element (basicCSS)
     let cssContent = styleElements.map(style => style.innerHTML).join('');
 
     // Extracting JavaScript
