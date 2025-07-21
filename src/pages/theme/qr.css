@@ -1,0 +1,93 @@
+.qr-popup {
+  position: fixed;
+  background-color: var(--browser-theme-background);
+  border: 1px solid var(--base04);
+  border-radius: 8px;
+
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  z-index: 1000;
+  opacity: 0;
+  transform: scale(0.8);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  max-width: 300px;
+  width: 100%;
+  font-family: var(--browser-theme-font-family);
+}
+
+.qr-popup.open {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.qr-popup.close {
+  opacity: 0;
+  transform: scale(0.8);
+}
+
+.qr-popup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.qr-popup-header p {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--browser-theme-text-color);
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.close-btn svg {
+  width: 18px;
+  height: 18px;
+  fill: var(--peersky-nav-button-color); 
+}
+
+.close-btn:hover svg {
+  fill: var(--peersky-nav-button-hover);
+}
+
+.qr-url {
+  font-size: 12px;
+  color: var(--base05);
+  word-break: break-all;
+  text-align: center;
+  max-width: 100%;
+}
+
+.download-btn {
+  background-color: var(--peersky-nav-button-color); 
+  color: var(--browser-theme-text-color); 
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  font-family: var(--browser-theme-font-family);
+}
+
+.download-btn:disabled {
+  background-color: var(--peersky-nav-button-inactive); 
+  cursor: not-allowed;
+}
+
+.download-btn:hover:not(:disabled) {
+  background-color: var(--peersky-nav-button-hover);
+
+}
+

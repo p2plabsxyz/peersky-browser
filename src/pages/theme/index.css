@@ -63,19 +63,41 @@ input, button, textarea, select, select *, option  {
   justify-content: center;
 }
 
-#url {
+.url-bar-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
   background-color: var(--peersky-background-url-input);
+  border-radius: 8px;
+  padding: 0 8px;
+  width: 60%;
+}
+
+#url {
+  flex: 1;
+  background: transparent;
   border: none;
-  margin-left: 6px;
-  margin-right: 6px;
+  padding: 0.4rem 10px;
   color: var(--browser-theme-text-color);
   font-size: medium;
-  border-radius: 8px;
-  display: block;
-  width: 60%;
-  padding: 0.4rem 10px;
-  text-indent: 6px;
+  outline: none;
 }
+
+.inside-urlbar {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--peersky-nav-button-color);
+}
+
+.inside-urlbar:hover {
+  color: var(--peersky-nav-button-hover);
+}
+
 
 #url:hover {
   background-color: var(--peersky-background-url-input);
