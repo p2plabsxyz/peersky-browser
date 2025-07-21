@@ -70,8 +70,8 @@ document.addEventListener("DOMContentLoaded", () => {
     async function getFavicon(parsedUrl) {
       const defaultFavicon = "peersky://static/assets/svg/globe.svg";
 
-      if (parsedUrl.protocol === "peersky") {
-        return defaultFavicon;
+      if (parsedUrl.protocol === "peersky:") {
+        return 'peersky://static/assets/favicon.ico';
       }
 
       const iconLink = document.querySelector(
