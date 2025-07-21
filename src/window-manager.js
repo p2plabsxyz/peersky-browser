@@ -320,6 +320,8 @@ class PeerskyWindow {
     this.window = new BrowserWindow({
       width: 800,
       height: 600,
+      frame:false,
+      titleBarStyle: 'hidden',
       webPreferences: {
         nodeIntegration: true,
         contextIsolation: false,
@@ -331,7 +333,7 @@ class PeerskyWindow {
 
     this.id = this.window.webContents.id;
 
-    const loadURL = path.join(__dirname, "./pages/index.html");
+    const loadURL = path.join(__dirname, "pages", "index.html");
     const query = { query: { url: url || "peersky://home" } };
     this.window.loadFile(loadURL, query);
 
@@ -379,7 +381,6 @@ class PeerskyWindow {
     });
 
     this.window.on("closed", () => {
-      // Clean up IPC listener
       ipcMain.removeListener(
         `webview-did-navigate-${this.id}`,
         this.navigateListener
@@ -408,6 +409,41 @@ class PeerskyWindow {
       return "peersky://home";
     }
   }
+}
+
+// handling for isolated windows
+export function createIsolatedWindow(options = {}) {
+  const win = new BrowserWindow({
+    width: 800,
+    height: 600,
+    frame: false,
+    titleBarStyle: 'hidden',
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+      nativeWindowOpen: true,
+      webviewTag: true,
+    },
+  });
+
+  if (options.isolate && options.singleTab) {
+    // For isolated windows, pass the specific tab data as URL parameters
+    const url = new URL(path.join(__dirname, 'pages', 'index.html'), 'file:');
+    url.searchParams.set('url', options.singleTab.url);
+    url.searchParams.set('title', options.singleTab.title);
+    url.searchParams.set('isolate', 'true'); 
+    win.loadURL(url.toString());
+  } else if (options.url) {
+    // Regular new window with specific URL
+    const url = new URL(path.join(__dirname, 'pages', 'index.html'), 'file:');
+    url.searchParams.set('url', options.url);
+    win.loadURL(url.toString());
+  } else {
+    // Default window
+    win.loadFile(path.join(__dirname, 'pages', 'index.html'));
+  }
+
+  return win;
 }
 
 export default WindowManager;
