@@ -28,7 +28,7 @@
   - [x] Search engine
     - DuckDuckGo (default)
     - Ecosia
-  - [ ] [Tabs](https://github.com/p2plabsxyz/peersky-browser/issues/11)
+  - [ ] 🚧 [Tabs](https://github.com/p2plabsxyz/peersky-browser/issues/11)
 
 - [x] IPFS protocol handler:
 
@@ -97,7 +97,7 @@
   - [x] Close: `CommandOrControl+W`
   - [x] Toggle Full Screen: `F11`
 
-- [ ] Settings (peersky://settings):
+- [ ] 🚧 Settings (peersky://settings):
 
   - [ ] Switch search engines
   - [ ] Set custom home page wallpapers
@@ -105,24 +105,18 @@
   - [ ] Change themes
   - [ ] Clear browser cache
 
-- [ ] [Web extensions](https://github.com/p2plabsxyz/peersky-browser/issues/19):
+- [ ] 🚧 [Web extensions](https://github.com/p2plabsxyz/peersky-browser/issues/19):
   - [ ] Ability to add and manage extensions
-  - [ ] Default extensions
-    - [Ad-blocker](https://github.com/gorhill/uBlock)
-    - [DScan](https://github.com/p2plabsxyz/dscan)
-    - ..
+  - [ ] [Default extensions](https://github.com/p2plabsxyz/essential-chromium-extensions)
+  - [ ] [Decentralized Extension Distribution](https://github.com/p2plabsxyz/peersky-browser/issues/42)
 
-- [ ] History (peersky://history):
+- [x] Bookmarks (peersky://bookmarks):
 
-  - [ ] Suggestions based on the browser history when typing in URL prompt
+  - [x] Option to add favourite pages in the nav bar (peersky://bookmarks)
 
-- [ ] QR Code generator:
+- [ ] 🚧 QR Code generator:
 
   - [ ] Option to generate QR Code for every page in the URL prompt
-
-- [ ] Bookmarks (peersky://bookmarks):
-
-  - [ ] Option to add favourite pages in the nav bar (peersky://bookmarks)
 
 - [ ] Archive (peersky://archive):
 
