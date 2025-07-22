@@ -155,7 +155,7 @@ class NavBox extends HTMLElement {
         </svg>
       </button>
     </div>
-    <qr-code src="${currentUrl} data-bg='white' data-fg="black" "></qr-code>
+    <qr-code src="${currentUrl}" data-bg="white" data-fg="black"></qr-code>
     <span class="qr-url">${currentUrl}</span>
     <button class="download-btn disabled">Download</button>
   `;

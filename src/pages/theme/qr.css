@@ -17,7 +17,11 @@
   width: 100%;
   font-family: var(--browser-theme-font-family);
 }
-
+.qr-popup img {
+  width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
 .qr-popup.open {
   opacity: 1;
   transform: scale(1);
