@@ -131,6 +131,51 @@ try {
     console.log('Unified-preload: Full Settings electronAPI exposed');
     
   } else if (isHome) {
+    // Zero-flicker wallpaper injection for home pages
+    // Get wallpaper URL synchronously but inject when DOM is ready
+    let wallpaperURL = null;
+    try {
+      wallpaperURL = ipcRenderer.sendSync('settings-get-wallpaper-url-sync');
+      console.log('Unified-preload: Wallpaper URL retrieved:', wallpaperURL);
+    } catch (error) {
+      console.warn('Unified-preload: Failed to get wallpaper URL:', error.message);
+    }
+
+    // Function to inject wallpaper style
+    const injectWallpaper = () => {
+      if (wallpaperURL && typeof wallpaperURL === 'string') {
+        const wallpaperStyle = document.createElement('style');
+        wallpaperStyle.id = 'zero-flicker-wallpaper';
+        wallpaperStyle.textContent = `
+          body {
+            background-image: url("${wallpaperURL.replace(/"/g, '\\"')}");
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+          }
+        `;
+        
+        // Inject at the very beginning of head to load before CSS imports
+        const head = document.head || document.getElementsByTagName('head')[0];
+        if (head) {
+          head.insertBefore(wallpaperStyle, head.firstChild);
+          console.log('Unified-preload: Zero-flicker wallpaper injected:', wallpaperURL);
+        } else {
+          console.warn('Unified-preload: No head element found for wallpaper injection');
+        }
+      } else {
+        console.log('Unified-preload: No wallpaper URL available, using CSS fallback');
+      }
+    };
+
+    // Inject wallpaper immediately if DOM is ready, otherwise wait
+    if (document.head || document.readyState !== 'loading') {
+      injectWallpaper();
+    } else {
+      document.addEventListener('DOMContentLoaded', injectWallpaper);
+    }
+    
     // Home pages get basic environment + CSS + limited settings
     contextBridge.exposeInMainWorld('peersky', {
       environment: environmentAPI,

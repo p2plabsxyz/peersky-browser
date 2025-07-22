@@ -122,14 +122,26 @@ class SettingsManager {
       }
     });
 
-    // Get wallpaper URL
+    // Get wallpaper URL (async)
     ipcMain.handle('settings-get-wallpaper-url', async () => {
       try {
-        logDebug('Request: get wallpaper URL');
+        logDebug('Request: get wallpaper URL (async)');
         return this.getWallpaperUrl();
       } catch (error) {
-        logDebug(`Error getting wallpaper URL: ${error.message}`);
+        logDebug(`Error getting wallpaper URL (async): ${error.message}`);
         throw error;
+      }
+    });
+
+    // Get wallpaper URL (sync) - for zero-flicker wallpaper injection
+    ipcMain.on('settings-get-wallpaper-url-sync', (event) => {
+      try {
+        logDebug('Request: get wallpaper URL (sync)');
+        const wallpaperUrl = this.getWallpaperUrl();
+        event.returnValue = wallpaperUrl;
+      } catch (error) {
+        logDebug(`Error getting wallpaper URL (sync): ${error.message}`);
+        event.returnValue = null;
       }
     });
 

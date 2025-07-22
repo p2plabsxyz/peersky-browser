@@ -6,9 +6,10 @@ html {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: url("peersky://static/assets/redwoods.jpg") no-repeat center
-    center fixed;
   background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
   font-family: monospace;
   position: relative;
   overflow-y: hidden;
