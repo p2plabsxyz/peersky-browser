@@ -204,23 +204,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.error("webviewElement not found in webviewContainer");
     }
 
-    const urlInput = nav.querySelector("#url");
-    if (urlInput) {
-      urlInput.addEventListener("keypress", async (e) => {
-        if (e.key === "Enter") {
-          const rawURL = urlInput.textContent.trim();
-          try {
-            const processedURL = await handleURL(rawURL);
-            webviewContainer.loadURL(processedURL);
-          } catch (error) {
-            console.error("Error processing URL:", error);
-            webviewContainer.loadURL(rawURL);
-          }
-        }
-      });
-    } else {
-      console.error("URL input not found within nav-box.");
-    }
 
     // Update URL display and send navigation event
     webviewContainer.addEventListener("did-navigate", (e) => {
