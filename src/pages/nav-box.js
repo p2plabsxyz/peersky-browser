@@ -7,43 +7,12 @@ class NavBox extends HTMLElement {
     this.attachThemeListener();
   }
 
-  parseUrlForStyling(url) {
-    if (!url || typeof url !== 'string') return { protocolDomain: '', path: '' };
-    
-    // Handle peersky:// URLs
-    if (url.startsWith('peersky://')) {
-      const match = url.match(/^(peersky:\/\/[^\/]*)(\/.*)?$/);
-      if (match) {
-        return {
-          protocolDomain: match[1] || '',
-          path: match[2] || ''
-        };
-      }
-    }
-    
-    // For non-peersky URLs, return as is (no styling)
-    return { protocolDomain: url, path: '' };
-  }
-
   setStyledUrl(url) {
-    const urlDisplay = this.querySelector("#url");
-    if (!urlDisplay) return;
-
-    const { protocolDomain, path } = this.parseUrlForStyling(url);
+    const urlInput = this.querySelector("#url");
+    if (!urlInput) return;
     
-    if (protocolDomain && path) {
-      // Create styled content for peersky URLs
-      urlDisplay.innerHTML = `<span class="url-protocol-domain-highlight">${protocolDomain}</span><span class="url-path-highlight">${path}</span>`;
-    } else if (protocolDomain) {
-      // Single colored content or regular URLs
-      if (protocolDomain.startsWith('peersky://')) {
-        urlDisplay.innerHTML = `<span class="url-protocol-domain-highlight">${protocolDomain}</span>`;
-      } else {
-        urlDisplay.textContent = protocolDomain;
-      }
-    } else {
-      urlDisplay.textContent = '';
-    }
+    // Simple URL display for input element
+    urlInput.value = url || "";
   }
 
   buildNavBox() {
@@ -72,15 +41,11 @@ class NavBox extends HTMLElement {
         this.buttonElements[button.id] = btnElement;
       });
 
-    const urlDisplay = document.createElement("div");
-    urlDisplay.id = "url";
-    urlDisplay.contentEditable = true;
-    urlDisplay.setAttribute("data-placeholder", "Search with DuckDuckGo or type a P2P URL");
-    urlDisplay.classList.add("transition-disabled"); // Prevent initial flicker
-    this.appendChild(urlDisplay);
-    
-    // Update placeholder based on search engine setting
-    this.updateSearchPlaceholder();
+    const urlInput = document.createElement("input");
+    urlInput.type = "text";
+    urlInput.id = "url";
+    urlInput.placeholder = "Search with DuckDuckGo or type a P2P URL";
+    this.appendChild(urlInput);
 
     // Create buttons that should appear after the URL input
     buttons
@@ -207,17 +172,16 @@ class NavBox extends HTMLElement {
       }
     });
 
-    const urlDisplay = this.querySelector("#url");
-    if (urlDisplay) {
-      urlDisplay.addEventListener("keypress", (event) => {
+    const urlInput = this.querySelector("#url");
+    if (urlInput) {
+      urlInput.addEventListener("keypress", (event) => {
         if (event.key === "Enter") {
-          event.preventDefault();
-          const url = event.target.textContent.trim();
+          const url = event.target.value.trim();
           this.dispatchEvent(new CustomEvent("navigate", { detail: { url } }));
         }
       });
     } else {
-      console.error("URL display not found within nav-box.");
+      console.error("URL input not found within nav-box.");
     }
   }
 
@@ -252,11 +216,6 @@ class NavBox extends HTMLElement {
       this.classList.add('theme-updating');
       console.log('NavBox theme updated to:', theme);
       
-      // Enable transitions after theme is applied
-      const urlDisplay = this.querySelector("#url");
-      if (urlDisplay) {
-        urlDisplay.classList.remove('transition-disabled');
-      }
       
       // Remove the temporary class after a brief moment
       setTimeout(() => {
@@ -265,27 +224,6 @@ class NavBox extends HTMLElement {
     });
   }
 
-  async updateSearchPlaceholder() {
-    const urlDisplay = this.querySelector("#url");
-    if (!urlDisplay) return;
-    
-    try {
-      const { ipcRenderer } = require('electron');
-      const searchEngine = await ipcRenderer.invoke('settings-get', 'searchEngine');
-      
-      const engineNames = {
-        'duckduckgo': 'DuckDuckGo',
-        'ecosia': 'Ecosia',
-        'startpage': 'Startpage'
-      };
-      
-      const engineName = engineNames[searchEngine] || 'DuckDuckGo';
-      urlDisplay.setAttribute("data-placeholder", `Search with ${engineName} or type a P2P URL`);
-    } catch (error) {
-      console.warn('NavBox: Could not get search engine setting:', error);
-      urlDisplay.setAttribute("data-placeholder", "Search with DuckDuckGo or type a P2P URL");
-    }
-  }
 }
 
 customElements.define("nav-box", NavBox);
