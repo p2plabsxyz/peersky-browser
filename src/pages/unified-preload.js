@@ -16,13 +16,14 @@ const { contextBridge, ipcRenderer } = require('electron');
 const url = window.location.href;
 const isSettings = url.startsWith('peersky://settings');
 const isHome = url.startsWith('peersky://home');
+const isBookmarks = url.includes('peersky://bookmarks');
 const isInternal = url.startsWith('peersky://');
 const isExternal = !isInternal;
 
-const context = { url, isSettings, isHome, isInternal, isExternal };
+const context = { url, isSettings, isHome, isBookmarks, isInternal, isExternal };
 
 console.log(`Unified-preload: Context detection - URL: ${url}`);
-console.log(`Unified-preload: isSettings: ${isSettings}, isHome: ${isHome}, isInternal: ${isInternal}, isExternal: ${isExternal}`);
+console.log(`Unified-preload: isSettings: ${isSettings}, isHome: ${isHome}, isBookmarks: ${isBookmarks}, isInternal: ${isInternal}, isExternal: ${isExternal}`);
 
 // Factory function to create context-appropriate settings API with access control
 function createSettingsAPI(pageContext) {
@@ -112,6 +113,11 @@ const environmentAPI = {
   userAgent: navigator.userAgent
 };
 
+const bookmarkAPI = {
+  getBookmarks: () => ipcRenderer.invoke('get-bookmarks'),
+  deleteBookmark: (url) => ipcRenderer.invoke('delete-bookmark', { url })
+};
+
 // Create context-appropriate APIs
 const settingsAPI = createSettingsAPI(context);
 
@@ -191,6 +197,20 @@ try {
     });
     
     console.log('Unified-preload: Home APIs exposed (showClock, wallpaper access only)');
+    
+  } else if (isBookmarks) {
+    // Bookmark pages get bookmark API + minimal environment
+    contextBridge.exposeInMainWorld('peersky', {
+      environment: environmentAPI,
+      css: cssAPI
+    });
+    
+    contextBridge.exposeInMainWorld('electronAPI', {
+      getBookmarks: bookmarkAPI.getBookmarks,
+      deleteBookmark: bookmarkAPI.deleteBookmark
+    });
+    
+    console.log('Unified-preload: Bookmark APIs exposed (getBookmarks, deleteBookmark)');
     
   } else if (isInternal) {
     // Other internal pages get minimal environment + very limited settings

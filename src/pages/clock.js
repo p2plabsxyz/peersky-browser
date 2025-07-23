@@ -13,7 +13,7 @@ class Clock extends HTMLElement {
     }
 
     setupIPC() {
-        // Use electronAPI exposed by settings-preload.js
+        // Use electronAPI exposed by unified-preload.js
         if (window.electronAPI) {
             this.electronAPI = window.electronAPI;
             

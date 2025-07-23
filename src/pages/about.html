@@ -2,7 +2,32 @@
 <meta charset="UTF-8" />
 <meta http-equiv="X-UA-Compatible" content="IE=edge" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="icon" type="image/png" href="peersky://static/assets/favicon.ico" />
 <title>About</title>
-<h1>List of Peersky URLs</h1>
-<a href="peersky://home">peersky://home</a>
-<br />...
+<style>
+  @import url("browser://theme/vars.css");
+  body {
+    background-color: var(--browser-theme-background);
+    color: var(--browser-theme-text-color);
+  }
+  a {
+    color: var(--browser-theme-text-color);
+    text-decoration: none;
+  }
+  a:hover {
+    text-decoration: underline;
+  }
+  li {
+    margin: 4px 0;
+  }
+</style>
+<body>
+  <ul>
+    <li><a href="peersky://home">peersky://home</a></li>
+    <li><a href="peersky://p2p">peersky://p2p</a></li>
+    <li><a href="peersky://settings">peersky://settings</a></li>
+    <li><a href="peersky://tabs">peersky://tabs</a></li>
+    <li><a href="peersky://bookmarks">peersky://bookmarks</a></li>
+    <li><a href="peersky://version">peersky://version</a></li>
+  </ul>
+</body>

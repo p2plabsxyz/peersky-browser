@@ -53,6 +53,7 @@ class NavBox extends HTMLElement {
       { id: "forward", svg: "right.svg", position: "start" },
       { id: "refresh", svg: "reload.svg", position: "start" },
       { id: "home", svg: "home.svg", position: "start" },
+      { id: "bookmark", svg: "bookmark.svg", position: "start" },
       { id: "plus", svg: "plus.svg", position: "end" },
       { id: "settings", svg: "settings.svg", position: "end" },
     ];
@@ -135,7 +136,16 @@ class NavBox extends HTMLElement {
       console.error("SVG container not found within the button.");
     }
   }
-
+  setBookmarkState(isBookmarked) {
+    const bookmarkButton = this.buttonElements["bookmark"];
+    if (bookmarkButton) {
+      if (isBookmarked) {
+        this.updateButtonIcon(bookmarkButton, "bookmark-fill.svg");
+      } else {
+        this.updateButtonIcon(bookmarkButton, "bookmark.svg");
+      }
+    }
+  }
   setLoading(isLoading) {
     this.isLoading = isLoading;
     const refreshButton = this.buttonElements["refresh"];
@@ -187,6 +197,8 @@ class NavBox extends HTMLElement {
           }
         } else if (button.id === "plus") {
           this.dispatchEvent(new CustomEvent("new-window"));
+        } else if (button.id === "bookmark") {
+          this.dispatchEvent(new CustomEvent("toggle-bookmark"));
         } else if (button.id === "settings") {
           this.dispatchEvent(new CustomEvent("navigate", { detail: { url: "peersky://settings" } }));
         } else if (!button.disabled) {

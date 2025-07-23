@@ -75,7 +75,7 @@ export async function createHandler() {
     try {
       const resolvedPath = await resolveFile(filePath);
       const format = path.extname(resolvedPath);
-      if (!['', '.html', '.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg'].includes(format)) {
+      if (!['', '.html', '.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico'].includes(format)) {
         sendResponse({
           statusCode: 403,
           headers: {

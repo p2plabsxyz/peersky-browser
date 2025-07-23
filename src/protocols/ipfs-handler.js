@@ -3,7 +3,7 @@ import mime from "mime-types";
 import path from "path";
 import { directoryListingHtml } from "./helia/directoryListingTemplate.js";
 import { createNode } from "./helia/helia.js";
-import { unixfs } from "@helia/unixfs";
+import { unixfs, globSource } from "@helia/unixfs";
 import { ipns } from "@helia/ipns";
 import fs from "fs-extra";
 import contentHash from "content-hash";
@@ -47,7 +47,6 @@ export async function createHandler(ipfsOptions, session) {
     const startTime = Date.now();
     node = await createNode(ipfsOptions);
     console.log(`IPFS node initialized in ${Date.now() - startTime}ms`);
-    console.log("Peer ID:", node.libp2p.peerId.toString());
 
     // Ensure the node's PeerId has toBytes()
     if (typeof node.libp2p.peerId.toBytes !== "function") {
@@ -69,41 +68,61 @@ export async function createHandler(ipfsOptions, session) {
   // Initialize Ethereum provider with configurable RPC URL
   const provider = new JsonRpcProvider(RPC_URL);
 
-  // Function to handle file uploads
+  // Function to handle file and directory uploads
   async function handleFileUpload(request, sendResponse) {
     try {
+      const startTime = Date.now();
       const entries = [];
       for (const data of request.uploadData || []) {
         if (data.type === "file" && data.file) {
-          const fileName = path.basename(data.file);
-          entries.push({
-            path: fileName,
-            content: fs.createReadStream(data.file),
-          });
+          const filePath = data.file;
+          const stats = await fs.stat(filePath);
+          if (stats.isDirectory()) {
+            // Handle directory with globSource for recursive upload
+            const source = globSource(filePath, '**/*');
+            for await (const entry of source) {
+              entries.push({
+                path: entry.path,
+                content: entry.content, // Readable stream for file content
+              });
+            }
+          } else {
+            // Handle individual file
+            const fileName = path.basename(filePath);
+            entries.push({
+              path: fileName,
+              content: fs.createReadStream(filePath, { highWaterMark: 1024 * 1024 }),
+            });
+          }
         } else if (data.type === "blob" && data.blobUUID) {
+          // Handle blob data
           const blobData = await session.getBlobData(data.blobUUID);
           const fileName = "index.html";
           entries.push({ path: fileName, content: blobData });
         }
       }
-
+  
       if (entries.length === 0) {
         throw new Error("No files found in the upload data.");
       }
-
-      // Use addAll to upload files with paths
+  
+      // Use addAll to upload files with paths, wrapping with a directory
       const options = { wrapWithDirectory: true };
       let rootCid;
-
+  
       for await (const result of unixFileSystem.addAll(entries, options)) {
+        console.log("Added:", result.path, result.cid.toString());
         rootCid = result.cid;
       }
-
-      // Return URL without appending filename
+      console.log(`Added all files in ${Date.now() - startTime}ms`);
+  
+      // Pin the root CID recursively
+      await node.pins.add(rootCid, { recursive: true });
+      console.log(`Pinned in ${Date.now() - startTime}ms`);
+  
       const fileUrl = `ipfs://${rootCid.toString()}/`;
-
-      console.log("Files uploaded with root CID:", rootCid.toString());
-
+  
+      // Send response immediately after pinning
       sendResponse({
         statusCode: 200,
         headers: {
@@ -113,6 +132,18 @@ export async function createHandler(ipfsOptions, session) {
         },
         data: Readable.from(Buffer.from(fileUrl)),
       });
+
+      const peerCount = node.libp2p.getPeers().length;
+      console.log(`Providing ${rootCid} with ${peerCount} peers connected`);
+  
+      // Provide the root CID to the DHT in the background
+      node.libp2p.contentRouting.provide(rootCid, {
+        signal: AbortSignal.timeout(30000),
+      }).then(() => {
+        console.log(`Provided ${rootCid} to DHT in ${Date.now() - startTime}ms`);
+      }).catch(err => console.log('Error providing:', err));
+  
+      console.log("Files uploaded with root CID:", rootCid.toString());
     } catch (e) {
       console.error("Error uploading file:", e);
       sendResponse({
@@ -141,7 +172,7 @@ export async function createHandler(ipfsOptions, session) {
         console.log("Patched peerId to include bytes property.");
       }
       const resolutionResult = await name.resolve(peerId, {
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(10000),
       });
 
       let resolvedCID = resolutionResult.cid;
@@ -164,7 +195,7 @@ export async function createHandler(ipfsOptions, session) {
         );
         try {
           const resolutionResult = await name.resolveDNSLink(ipnsName, {
-            signal: AbortSignal.timeout(5000),
+            signal: AbortSignal.timeout(10000),
           });
           // resolutionResult might contain a cid as a string
           let cid = resolutionResult.cid;
