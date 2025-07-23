@@ -66,6 +66,11 @@ export async function createHandler() {
 
     if (filePath === '/') filePath = 'home';
     if (filePath.startsWith('wallpaper/')) return handleWallpaper(filePath.slice(10), sendResponse);
+    
+    // Handle settings subpaths - map all /settings/* to settings.html
+    if (filePath.startsWith('settings/')) {
+      filePath = 'settings';
+    }
 
     try {
       const resolvedPath = await resolveFile(filePath);

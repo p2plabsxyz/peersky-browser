@@ -37,8 +37,6 @@ class TrackedBox extends HTMLElement {
       return;
     }
     
-    console.log(`TrackedBox: Navigating to ${url}`);
-    
     // Simply navigate - unified preload handles all contexts
     this.webview.src = url;
   }

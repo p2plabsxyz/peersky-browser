@@ -67,8 +67,8 @@
 
 /* Cyan Theme */
 [data-theme="cyan"] {
-  --browser-theme-background: #ffffff;
-  --browser-theme-text-color: #000000;
+  --browser-theme-background: #e0f7fa;
+  --browser-theme-text-color: #006064;
   --browser-theme-primary-highlight: #00acc1;
   --browser-theme-secondary-highlight: #0097a7;
   
@@ -99,8 +99,8 @@
 
 /* Green Theme */
 [data-theme="green"] {
-  --browser-theme-background: #ffffff;
-  --browser-theme-text-color: #000000;
+  --browser-theme-background: #e8f5e8;
+  --browser-theme-text-color: #1b5e1f;
   --browser-theme-primary-highlight: #22c55e;
   --browser-theme-secondary-highlight: #16a34a;
   
@@ -131,8 +131,8 @@
 
 /* Yellow Theme */
 [data-theme="yellow"] {
-  --browser-theme-background: #ffffff;
-  --browser-theme-text-color: #000000;
+  --browser-theme-background: #fffbeb;
+  --browser-theme-text-color: #451a03;
   --browser-theme-primary-highlight: #f59e0b;
   --browser-theme-secondary-highlight: #d97706;
   

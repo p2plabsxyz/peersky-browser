@@ -449,27 +449,70 @@ function initializeSidebarNavigation() {
       e.preventDefault();
       
       const sectionName = item.getAttribute('data-section');
-      const targetPageId = sectionName + '-section';
-      
-      // Update active nav item
-      navItems.forEach(nav => nav.classList.remove('active'));
-      item.classList.add('active');
-      
-      // Show corresponding page
-      pages.forEach(page => page.classList.remove('active'));
-      const targetPage = document.getElementById(targetPageId);
-      if (targetPage) {
-        targetPage.classList.add('active');
-      }
+      navigateToSection(sectionName);
     });
   });
   
-  // Set initial active state (appearance page)
-  if (navItems.length > 0) {
-    navItems[0].classList.add('active');
+  // Parse URL subpath and navigate to appropriate section
+  const currentPath = window.location.pathname || window.location.hash;
+  let targetSection = 'appearance'; // default
+  
+  // Check for URL subpath (e.g., /settings/search)
+  const subpathMatch = currentPath.match(/\/settings\/(\w+)/);
+  if (subpathMatch) {
+    targetSection = subpathMatch[1];
   }
-  if (pages.length > 0) {
-    pages[0].classList.add('active');
+  // Check for hash-based navigation (backward compatibility)
+  else if (currentPath.includes('#')) {
+    const hashSection = currentPath.replace('#', '');
+    if (hashSection && ['appearance', 'search', 'extensions'].includes(hashSection)) {
+      targetSection = hashSection;
+    }
+  }
+  
+  // Update UI to show the determined section (don't trigger navigation on page load)
+  updateSectionUI(targetSection);
+  
+  // TODO: Add back/forward history support for subpaths
+  // Future implementation should update browser history when switching sections
+  // and handle browser back/forward navigation within settings subpaths
+}
+
+// Navigate to a specific settings section
+function navigateToSection(sectionName) {
+  const currentPath = window.location.pathname || '';
+  const targetURL = `peersky://settings/${sectionName}`;
+  
+  // Check if we're already on the target section to avoid unnecessary navigation
+  if (currentPath.includes(`/settings/${sectionName}`)) {
+    // Just update the UI without navigation
+    updateSectionUI(sectionName);
+    return;
+  }
+  
+  // Navigate to the new URL - this will update the address bar and trigger a reload
+  // The page will parse the new URL and show the correct section
+  window.location.href = targetURL;
+}
+
+// Update the UI to show the correct section (separated for reuse)
+function updateSectionUI(sectionName) {
+  const navItems = document.querySelectorAll('.nav-item');
+  const pages = document.querySelectorAll('.settings-page');
+  const targetPageId = sectionName + '-section';
+  
+  // Update active nav item
+  navItems.forEach(nav => nav.classList.remove('active'));
+  const targetNavItem = document.querySelector(`[data-section="${sectionName}"]`);
+  if (targetNavItem) {
+    targetNavItem.classList.add('active');
+  }
+  
+  // Show corresponding page
+  pages.forEach(page => page.classList.remove('active'));
+  const targetPage = document.getElementById(targetPageId);
+  if (targetPage) {
+    targetPage.classList.add('active');
   }
 }
 
