@@ -446,9 +446,14 @@ function initializeSidebarNavigation() {
   // Handle nav clicks for page switching
   navItems.forEach(item => {
     item.addEventListener('click', (e) => {
-      e.preventDefault();
-      
       const sectionName = item.getAttribute('data-section');
+      
+      // If no data-section attribute, allow normal navigation (for external links like bookmarks)
+      if (!sectionName) {
+        return; // Allow default behavior
+      }
+      
+      e.preventDefault();
       navigateToSection(sectionName);
     });
   });
