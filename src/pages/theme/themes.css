@@ -162,8 +162,8 @@
 
 /* Violet Theme */
 [data-theme="violet"] {
-  --browser-theme-background: #ffffff;
-  --browser-theme-text-color: #000000;
+  --browser-theme-background: #faf5ff;
+  --browser-theme-text-color: #581c87;
   --browser-theme-primary-highlight: #8b5cf6;
   --browser-theme-secondary-highlight: #7c3aed;
   

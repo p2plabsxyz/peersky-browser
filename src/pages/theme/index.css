@@ -64,11 +64,10 @@ input, button, textarea, select, select *, option  {
 }
 
 #url {
-  background-color: var(--peersky-background-url-input);
+  background-color: var(--peersky-background-url-input, #ffffff);
   border: none;
   margin-left: 6px;
   margin-right: 6px;
-  color: var(--browser-theme-text-color);
   font-family: Arial, sans-serif;
   font-size: medium;
   border-radius: 8px;
@@ -76,15 +75,42 @@ input, button, textarea, select, select *, option  {
   width: 60%;
   padding: 0.4rem 10px;
   text-indent: 6px;
+  outline: none;
+  min-height: 1.2em;
+  transition: background-color 0.12s ease-in-out, color 0.12s ease-in-out;
+}
+
+/* Disable transitions during initial load */
+#url.transition-disabled {
+  transition: none !important;
+}
+
+#url:empty:before {
+  content: attr(data-placeholder);
+  color: color-mix(in srgb, var(--settings-text-primary), #999 80%);
+}
+
+.url-protocol-domain-highlight {
+  color: var(--settings-text-primary);
+}
+
+.url-path-highlight {
+  color: color-mix(in srgb, var(--settings-text-primary), #999 80%);
+}
+
+/* Consistent selection highlighting for URL */
+#url::selection,
+#url *::selection {
+  background-color: var(--browser-theme-primary-highlight);
 }
 
 #url:hover {
-  background-color: var(--peersky-background-url-input);
+  background-color: var(--peersky-background-url-input, #ffffff);
   box-shadow: 0 0 4px -1px #0a0a0a;
 }
 
 #url:focus {
-  background-color: var(--peersky-background-url-input);
+  background-color: var(--peersky-background-url-input, #ffffff);
   outline: none;
   box-shadow: 0 0 4px -1px #0a0a0a;
 }

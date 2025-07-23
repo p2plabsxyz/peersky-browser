@@ -24,9 +24,24 @@ document.addEventListener("DOMContentLoaded", async () => {
     const currentTheme = await ipcRenderer.invoke('settings-get', 'theme');
     if (currentTheme) {
       document.documentElement.setAttribute('data-theme', currentTheme);
+      
+      // Enable transitions after initial theme is loaded
+      setTimeout(() => {
+        const urlDisplay = document.querySelector('#url');
+        if (urlDisplay) {
+          urlDisplay.classList.remove('transition-disabled');
+        }
+      }, 50);
     }
   } catch (error) {
     console.warn('Failed to load theme on startup:', error);
+    // Fallback: enable transitions even if theme loading fails
+    setTimeout(() => {
+      const urlDisplay = document.querySelector('#url');
+      if (urlDisplay) {
+        urlDisplay.classList.remove('transition-disabled');
+      }
+    }, 100);
   }
   
   // Listen for theme changes from main process
@@ -64,7 +79,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     nav.addEventListener("stop", () => webviewContainer.stop());
     nav.addEventListener("home", () => {
       webviewContainer.loadURL("peersky://home");
-      nav.querySelector("#url").value = "";
+      nav.setStyledUrl("");
     });
     nav.addEventListener("navigate", ({ detail }) => {
       const { url } = detail;
@@ -107,7 +122,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (urlInput) {
       urlInput.addEventListener("keypress", async (e) => {
         if (e.key === "Enter") {
-          const rawURL = urlInput.value.trim();
+          const rawURL = urlInput.textContent.trim();
           try {
             const processedURL = await handleURL(rawURL);
             webviewContainer.loadURL(processedURL);
@@ -121,14 +136,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.error("URL input not found within nav-box.");
     }
 
-    // Update URL input and send navigation event
+    // Update URL display and send navigation event
     webviewContainer.addEventListener("did-navigate", (e) => {
-      if (urlInput) {
+      if (nav) {
         // Hide peersky://home URL, show all others
         if (e.detail.url === "peersky://home") {
-          urlInput.value = "";
+          nav.setStyledUrl("");
         } else {
-          urlInput.value = e.detail.url;
+          nav.setStyledUrl(e.detail.url);
         }
       }
       ipcRenderer.send("webview-did-navigate", e.detail.url);
