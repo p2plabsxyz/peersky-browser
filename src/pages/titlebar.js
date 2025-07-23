@@ -62,7 +62,7 @@ class TitleBar extends HTMLElement {
     this.appendChild(windowControls);
   }
   else {
-    this.tabsContainer.style.marginLeft = "70px";
+    this.tabsContainer.style.marginLeft = "50px";
     
     this.appendChild(appIcon);
     this.appendChild(this.tabsContainer);

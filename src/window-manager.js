@@ -316,7 +316,7 @@ class WindowManager {
 
 class PeerskyWindow {
   constructor(options = {}, windowManager) {
-    const { url, isMainWindow = false, ...windowOptions } = options;
+    const { url, isMainWindow = false, newWindow = false, ...windowOptions } = options;
     this.window = new BrowserWindow({
       width: 800,
       height: 600,
@@ -334,7 +334,12 @@ class PeerskyWindow {
     this.id = this.window.webContents.id;
 
     const loadURL = path.join(__dirname, "pages", "index.html");
-    const query = { query: { url: url || "peersky://home" } };
+    const query = { 
+      query: { 
+        url: url || "peersky://home",
+        ...(newWindow && { newWindow: 'true' })
+      } 
+    };
     this.window.loadFile(loadURL, query);
 
     // Attach context menus
@@ -399,8 +404,20 @@ class PeerskyWindow {
     try {
       const url = await this.window.webContents.executeJavaScript(`
         (function() {
-          const webview = document.querySelector('tracked-box').webviewElement;
-          return webview ? webview.src : 'peersky://home';
+          // Try to get URL from the tab bar system
+          const tabBar = document.querySelector('#tabbar');
+          if (tabBar && tabBar.activeTabId) {
+            const activeTab = tabBar.tabs.find(tab => tab.id === tabBar.activeTabId);
+            return activeTab ? activeTab.url : 'peersky://home';
+          }
+          
+          // Fallback: try to get from nav box URL input
+          const urlInput = document.querySelector('#url');
+          if (urlInput && urlInput.value) {
+            return urlInput.value;
+          }
+          
+          return 'peersky://home';
         })()
       `);
       return url;

@@ -45,7 +45,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     if (isXMLContent()) {
       const sheet = document.styleSheets[document.styleSheets.length - 1]
-      sheet.insertRule('body { background: #000; color: #fff }', sheet.cssRules.length)
+      sheet.insertRule('body,body pre { background: #000; color: #fff }', sheet.cssRules.length)
     }
   } catch (err) {
     console.error('Error injecting default styles:', err)

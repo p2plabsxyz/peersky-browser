@@ -28,10 +28,19 @@ class TabBar extends HTMLElement {
 
   forceActivateCurrentTab() {
     if (!this.activeTabId) {
-      // No active tab, select the rightmost one (not the first one)
       if (this.tabs.length > 0) {
-        const rightmostTab = this.tabs[this.tabs.length - 1];
-        this.selectTab(rightmostTab.id);
+        const persistedTabs = this.loadPersistedTabs();
+        let tabToSelect = null;
+      
+        if (persistedTabs && persistedTabs.activeTabId) {
+          tabToSelect = this.tabs.find(tab => tab.id === persistedTabs.activeTabId);
+        }
+      
+        if (!tabToSelect) {
+          tabToSelect = this.tabs[this.tabs.length - 1];
+        }
+      
+        this.selectTab(tabToSelect.id);
       }
       return;
     }
@@ -83,7 +92,7 @@ class TabBar extends HTMLElement {
     this.tabContainer.className = "tab-container";
     
     this.appendChild(this.tabContainer);
-    this.appendChild(addButton);
+    this.tabContainer.appendChild(addButton);
 
     // enable mouse-wheel => horizontal scroll
     this.tabContainer.addEventListener('wheel', e => {
@@ -115,6 +124,15 @@ class TabBar extends HTMLElement {
       const tabTitle = searchParams.get('title') || "New Tab";
       const homeTabId = this.addTab(initialUrl, tabTitle);
       // Don't call saveTabsState() here to avoid overwriting the main window's tabs
+      return;
+    }
+
+    // Check if it is a newly opened browser window
+    const isNewWindow = searchParams.get('newWindow') === 'true';
+
+    if(isNewWindow) {
+      const homeTabId = this.addTab("peersky://home", "Home");
+      this.saveTabsState();
       return;
     }
     
@@ -224,10 +242,19 @@ restoreTabs(persistedData) {
   // Update grouped tabs UI
   this.updateGroupedTabsUI();
 
-  // Always select the rightmost tab (last in array)
+  // Restore the last active tab
   if (this.tabs.length > 0) {
-    const rightmostTab = this.tabs[this.tabs.length - 1];
-    this.selectTab(rightmostTab.id);
+    const lastActiveTabId = persistedData.activeTabId;
+    const tabExists = lastActiveTabId && this.tabs.find(t => t.id === lastActiveTabId);
+    
+    if (tabExists) {
+      this.activeTabId = lastActiveTabId;
+      this.selectTab(lastActiveTabId);
+    } else {
+      // Fallback to first tab if persisted active tab doesn't exist
+      this.activeTabId = this.tabs[0].id;
+      this.selectTab(this.tabs[0].id);
+    }
   }
 
   // Force activation after a delay
@@ -578,8 +605,6 @@ restoreTabs(persistedData) {
 
   // Update the selectTab method to handle display properly
   selectTab(tabId) {
-    // Don't do anything if this tab is already active
-    if (this.activeTabId === tabId) return;
     
     // First, hide ALL webviews to ensure clean state
     this.webviews.forEach((webview) => {

@@ -16,7 +16,7 @@ export function createActions(windowManager) {
       label: "New Window",
       accelerator: "CommandOrControl+N",
       click: () => {
-        windowManager.open();
+        windowManager.open({newWindow: true});
       },
     },
     Forward: {

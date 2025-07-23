@@ -147,6 +147,7 @@ find-menu {
 .tab-container {
   display: flex;
   flex-grow: 1;
+  align-items: center;
   overflow-x: auto;
   overflow-y: hidden;
   scroll-behavior: smooth;;
@@ -209,7 +210,7 @@ find-menu {
   text-overflow: ellipsis;
   padding-right: 8px;
   -webkit-app-region: no-drag;
-  font-size: 13px;
+  font-size: 15px;
   color: var(--peersky-nav-button-color);
   order: 2;
 }
@@ -218,12 +219,12 @@ find-menu {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 20px;
-  width: 20px;
-  height: 20px;
+  min-width: 22px;
+  width: 22px;
+  height: 22px;
   flex-shrink: 0;
   border-radius: 50%;
-  font-size: 16px;
+  font-size: 25px;
   cursor: pointer;
   color: var(--peersky-nav-button-color);
   -webkit-app-region: no-drag;
@@ -240,18 +241,19 @@ find-menu {
 .add-tab-button {
   display: flex;
   flex: 0 0 auto;
-  align-items: center;
+  align-self: flex-start;
   justify-content: center;
   width: 28px;
   height: 28px;
   background: none;
   border: none;
   border-radius: 50%;
-  margin: 0 8px;
+  margin: 8px 8px 0 0;
   font-size: 20px;
   cursor: pointer;
   color: var(--peersky-nav-button-color);
   -webkit-app-region: no-drag;
+  order: 2;
 }
 
 .add-tab-button:hover {
@@ -273,7 +275,7 @@ find-menu {
   background-color: var(--peersky-nav-background);
 }
 
-tracked-box {
+.tracked-box {
   position: fixed;
   top: 88px;
   left: 0;
@@ -325,7 +327,7 @@ tracked-box {
   border: none;
   background: none;
   color: var(--peersky-nav-button-color);
-  font-size: 14px;
+  font-size: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -389,8 +391,8 @@ tracked-box {
 }
 
 .tab-favicon {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
@@ -414,7 +416,7 @@ tracked-box {
   content: "⟳";
   display: inline-block;
   margin-right: 6px;
-  font-size: 14px;
+  font-size: 16px;
   animation: spin 1s infinite linear;
   color: var(--peersky-nav-button-active);
 }
