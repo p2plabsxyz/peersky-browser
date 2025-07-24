@@ -3,9 +3,9 @@
 
 ## 1. Overview
 
-Peersky’s `peersky://settings` page provides a modular, isolated interface for configuring browser behavior, UI appearance, and local preferences. Each section (Appearance, Search, Bookmarks, Extensions) is routed through a single Electron context-aware page and powered by preload APIs that expose only what’s needed based on page origin.
+PeerSky’s `peersky://settings` page provides a modular, isolated interface for configuring browser behavior, UI appearance, and local preferences. Each section (Appearance, Search, Bookmarks, Extensions) is routed through a single Electron context-aware page and powered by preload APIs that expose only what’s needed based on page origin.
 
-![Appearance Settings](https://hackmd.io/_uploads/SJPyJGJDxe.png)
+![Appearance Settings](./images/peersky-settings.png)
 
 The settings system is built on top of:
 
@@ -86,7 +86,7 @@ Each section is built using simple HTML blocks styled with internal and theme-pr
 
 ### Wallpaper
 
-![Wallpaper](https://hackmd.io/_uploads/S11q7M1Dee.png)
+![Wallpaper](./images/peersky-home-mountains.png)
 
 - Built-in or uploaded image via `uploadWallpaper(data)`
 - Live updated via `wallpaper-changed` event
@@ -208,5 +208,3 @@ This fully wires up `autoSave`:
 | [Theme.css](src/pages/theme/Theme.css)             | Theme variables                  |
 | [home.js](src/pages/home.js)               | Applies wallpaper + clock        |
 | [peersky-protocol.js](src/protocols/peersky-protocol.js)   | Serves custom wallpaper files    |
-
-> 🔗 PeerSky : https://peersky.p2plabs.xyz/
