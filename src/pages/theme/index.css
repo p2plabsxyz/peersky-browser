@@ -65,6 +65,7 @@ input, button, textarea, select, select *, option  {
 
 #url {
   background-color: var(--peersky-background-url-input);
+  font-family: Arial, sans-serif;
   border: none;
   margin-left: 6px;
   margin-right: 6px;
@@ -78,12 +79,12 @@ input, button, textarea, select, select *, option  {
 }
 
 #url:hover {
-  background-color: var(--peersky-background-url-input);
+  background-color: var(--peersky-background-url-input, #ffffff);
   box-shadow: 0 0 4px -1px #0a0a0a;
 }
 
 #url:focus {
-  background-color: var(--peersky-background-url-input);
+  background-color: var(--peersky-background-url-input, #ffffff);
   outline: none;
   box-shadow: 0 0 4px -1px #0a0a0a;
 }
@@ -128,4 +129,8 @@ find-menu {
 
 .hidden {
   display: none !important;
+}
+
+#settings {
+  margin-left: auto;
 }
