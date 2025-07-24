@@ -1,4 +1,5 @@
 @import url('browser://theme/vars.css');
+@import url('browser://theme/themes.css');
 
 :host {
   --bg-color: var(--browser-theme-background, #18181b);
@@ -11,7 +12,7 @@
 }
 
 .bookmarks-container {
-  background-color: var(--bg-color);
+  background-color: var(--settings-bg-secondary);
   color: var(--text-color);
   padding: 1rem 1.5rem;
   max-width: 720px;
@@ -24,7 +25,7 @@
 h1 {
   font-size: 1.25rem;
   margin-bottom: 1rem;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--settings-border);
   padding-bottom: 0.5rem;
 }
 
@@ -33,12 +34,12 @@ h1 {
   align-items: center;
   justify-content: space-between;
   padding: 0.75rem 0.5rem;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--settings-border);
   transition: background 0.2s;
 }
 
 .bookmark-item:hover {
-  background-color: var(--item-hover-bg);
+  background-color: var(--settings-bg-primary);
   border-radius: 6px;
 }
 

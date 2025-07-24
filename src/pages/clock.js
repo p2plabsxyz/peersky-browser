@@ -2,11 +2,55 @@ class Clock extends HTMLElement {
     constructor() {
         super();
         this.updateTime();
+        this.isVisible = true; // Default state
+        this.setupIPC();
     }
 
     connectedCallback() {
         this.render();
         this.startClock();
+        this.loadInitialSettings();
+    }
+
+    setupIPC() {
+        // Use electronAPI exposed by unified-preload.js
+        if (window.electronAPI) {
+            this.electronAPI = window.electronAPI;
+            
+            // Listen for show-clock-changed events
+            try {
+                this.electronAPI.onShowClockChanged((showClock) => {
+                    console.log('Clock: Show clock setting changed to:', showClock);
+                    this.setVisibility(showClock);
+                });
+            } catch (error) {
+                console.error('Clock: Failed to set up event listener:', error);
+            }
+        } else {
+            console.warn('Clock: electronAPI not available, clock toggle will not work');
+        }
+    }
+
+    async loadInitialSettings() {
+        if (!this.electronAPI) {
+            console.warn('Clock: electronAPI not available, using default visibility');
+            return;
+        }
+
+        try {
+            const showClock = await this.electronAPI.settings.get('showClock');
+            console.log('Clock: Initial showClock setting:', showClock);
+            this.setVisibility(showClock);
+        } catch (error) {
+            console.error('Clock: Failed to load initial settings:', error);
+            // Keep default visibility on error
+        }
+    }
+
+    setVisibility(visible) {
+        this.isVisible = visible;
+        this.style.display = visible ? 'block' : 'none';
+        console.log('Clock: Visibility set to:', visible ? 'visible' : 'hidden');
     }
 
     render() {

@@ -39,6 +39,7 @@ main {
     height: 100%;
     overflow: auto; /* To handle content overflow */
     border: 1px solid var(--browser-theme-primary-highlight);
+    border-radius: 8px;
 }
 
 .grid-container > textarea {
