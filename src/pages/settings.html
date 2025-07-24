@@ -136,33 +136,64 @@
         <h1 class="section-title">Extensions</h1>
         
         <section class="settings-section">
-          <div class="coming-soon-notice">
-            Extension support coming soon
-          </div>
-          
-          <div class="extension-row">
-            <div class="extension-info">
-              <div class="extension-name">Ad Blocker</div>
-              <div class="extension-status">Coming soon</div>
-            </div>
-            <div class="extension-toggle">
+          <!-- TODO: Extension Settings Controls -->
+          <div class="setting-row">
+            <div class="setting-label">Load extensions from P2P networks</div>
+            <div class="setting-control">
               <label class="toggle-label">
-                <input type="checkbox" class="toggle-input" disabled>
+                <input type="checkbox" id="extension-p2p-toggle" class="toggle-input">
                 <span class="toggle-slider"></span>
               </label>
             </div>
           </div>
           
-          <div class="extension-row">
-            <div class="extension-info">
-              <div class="extension-name">DScan</div>
-              <div class="extension-status">Coming soon</div>
-            </div>
-            <div class="extension-toggle">
+          <div class="setting-row">
+            <div class="setting-label">Auto-update extensions</div>
+            <div class="setting-control">
               <label class="toggle-label">
-                <input type="checkbox" class="toggle-input" disabled>
+                <input type="checkbox" id="extension-auto-update-toggle" class="toggle-input" checked>
                 <span class="toggle-slider"></span>
               </label>
+            </div>
+          </div>
+          
+          <!-- TODO: Extension Management Actions -->
+          <div class="setting-row">
+            <div class="setting-label">Extension Management</div>
+            <div class="setting-control">
+              <button type="button" id="install-extension-btn" class="btn btn-secondary">Install Extension</button>
+              <button type="button" id="check-updates-btn" class="btn btn-secondary">Check for Updates</button>
+            </div>
+          </div>
+        </section>
+        
+        <!-- TODO: Installed Extensions List -->
+        <section class="settings-section">
+          <h2 class="section-subtitle">Installed Extensions</h2>
+          
+          <div id="extension-list" class="extension-list">
+            <!-- TODO: Extension list will be populated by JavaScript -->
+            <div class="coming-soon-notice">
+              Extension system initializing...
+            </div>
+          </div>
+        </section>
+        
+        <!-- TODO: P2P Network Status -->
+        <section class="settings-section">
+          <h2 class="section-subtitle">P2P Network Status</h2>
+          
+          <div class="network-status-grid">
+            <div class="network-status-item">
+              <div class="network-name">IPFS</div>
+              <div class="network-status offline" id="ipfs-status">Offline</div>
+              <div class="network-peers" id="ipfs-peers">0 peers</div>
+            </div>
+            
+            <div class="network-status-item">
+              <div class="network-name">Hypercore</div>
+              <div class="network-status offline" id="hyper-status">Offline</div>
+              <div class="network-peers" id="hyper-peers">0 peers</div>
             </div>
           </div>
         </section>

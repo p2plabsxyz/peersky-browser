@@ -285,6 +285,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // Load settings from backend
   loadSettingsFromBackend();
+  
+  // TODO: Initialize extension management
+  initializeExtensionSettings();
 });
 
 function loadDefaultSettings() {
@@ -711,3 +714,282 @@ function cleanup() {
 
 // Cleanup on page unload
 window.addEventListener('beforeunload', cleanup);
+
+// TODO: Extension Settings Management Functions
+
+async function initializeExtensionSettings() {
+  // TODO: Initialize extension management functionality
+  console.log('TODO: Initialize extension settings');
+  
+  try {
+    // TODO: Check if extension API is available
+    if (settingsAPI?.extensions) {
+      console.log('TODO: Extension API available, setting up extension management');
+      
+      // TODO: Load initial extension data
+      await loadExtensionData();
+      
+      // TODO: Setup extension-related event listeners
+      setupExtensionEventListeners();
+      
+      // TODO: Setup extension controls
+      setupExtensionControls();
+    } else {
+      console.log('TODO: Extension API not available, showing placeholder');
+      showExtensionAPIUnavailable();
+    }
+  } catch (error) {
+    console.error('TODO: Failed to initialize extension settings:', error);
+    showExtensionError('Failed to initialize extension management');
+  }
+}
+
+async function loadExtensionData() {
+  // TODO: Load extension list and settings
+  console.log('TODO: Load extension data from API');
+  
+  try {
+    // TODO: Get extension list
+    // const extensionsResult = await settingsAPI.extensions.list();
+    // TODO: Get extension settings  
+    // const settingsResult = await settingsAPI.extensions.getSettings();
+    // TODO: Get network status
+    // const networkResult = await settingsAPI.extensions.getNetworkStatus();
+    
+    // TODO: Update extension UI with loaded data
+    // populateExtensionList(extensionsResult.extensions);
+    // updateExtensionSettings(settingsResult.settings);
+    // updateNetworkStatus(networkResult.networks);
+    
+    console.log('TODO: Extension data loaded successfully');
+  } catch (error) {
+    console.error('TODO: Failed to load extension data:', error);
+    showExtensionError('Failed to load extension data');
+  }
+}
+
+function setupExtensionEventListeners() {
+  // TODO: Setup event listeners for extension changes
+  console.log('TODO: Setup extension event listeners');
+  
+  try {
+    // TODO: Listen for extension state changes
+    if (settingsAPI.onExtensionChanged) {
+      const cleanup = settingsAPI.onExtensionChanged((extensionData) => {
+        console.log('TODO: Extension changed:', extensionData);
+        // TODO: Update extension UI based on changes
+        // updateExtensionInList(extensionData);
+      });
+      eventCleanupFunctions.push(cleanup);
+    }
+    
+    // TODO: Listen for P2P setting changes  
+    // if (settingsAPI.onExtensionP2PChanged) {
+    //   const cleanup = settingsAPI.onExtensionP2PChanged((enabled) => {
+    //     console.log('TODO: Extension P2P setting changed:', enabled);
+    //     updateP2PToggle(enabled);
+    //   });
+    //   eventCleanupFunctions.push(cleanup);
+    // }
+  } catch (error) {
+    console.error('TODO: Failed to setup extension event listeners:', error);
+  }
+}
+
+function setupExtensionControls() {
+  // TODO: Setup extension management controls
+  console.log('TODO: Setup extension controls');
+  
+  // TODO: P2P toggle control
+  const p2pToggle = document.getElementById('extension-p2p-toggle');
+  if (p2pToggle) {
+    p2pToggle.addEventListener('change', async (e) => {
+      console.log('TODO: P2P toggle changed:', e.target.checked);
+      try {
+        // TODO: Save P2P setting
+        // await settingsAPI.extensions.setSetting('p2pEnabled', e.target.checked);
+        showSettingsSavedMessage('P2P setting updated', 'success');
+      } catch (error) {
+        console.error('TODO: Failed to update P2P setting:', error);
+        showSettingsSavedMessage('Failed to update P2P setting', 'error');
+        // TODO: Revert toggle state
+        e.target.checked = !e.target.checked;
+      }
+    });
+  }
+  
+  // TODO: Auto-update toggle control
+  const autoUpdateToggle = document.getElementById('extension-auto-update-toggle');
+  if (autoUpdateToggle) {
+    autoUpdateToggle.addEventListener('change', async (e) => {
+      console.log('TODO: Auto-update toggle changed:', e.target.checked);
+      try {
+        // TODO: Save auto-update setting
+        // await settingsAPI.extensions.setSetting('autoUpdate', e.target.checked);
+        showSettingsSavedMessage('Auto-update setting updated', 'success');
+      } catch (error) {
+        console.error('TODO: Failed to update auto-update setting:', error);
+        showSettingsSavedMessage('Failed to update auto-update setting', 'error');
+        // TODO: Revert toggle state
+        e.target.checked = !e.target.checked;
+      }
+    });
+  }
+  
+  // TODO: Install extension button
+  const installBtn = document.getElementById('install-extension-btn');
+  if (installBtn) {
+    installBtn.addEventListener('click', handleExtensionInstall);
+  }
+  
+  // TODO: Check updates button
+  const checkUpdatesBtn = document.getElementById('check-updates-btn');
+  if (checkUpdatesBtn) {
+    checkUpdatesBtn.addEventListener('click', handleCheckExtensionUpdates);
+  }
+}
+
+async function handleExtensionInstall() {
+  // TODO: Handle extension installation
+  console.log('TODO: Handle extension install button click');
+  
+  try {
+    // TODO: Show file picker or P2P URL input dialog
+    // TODO: Validate selected file/URL
+    // TODO: Install extension via API
+    // TODO: Refresh extension list
+    
+    showSettingsSavedMessage('Extension installation not yet implemented', 'warning');
+  } catch (error) {
+    console.error('TODO: Extension installation failed:', error);
+    showExtensionError('Extension installation failed');
+  }
+}
+
+async function handleCheckExtensionUpdates() {
+  // TODO: Check for extension updates
+  console.log('TODO: Check for extension updates');
+  
+  try {
+    // TODO: Call check updates API
+    // const result = await settingsAPI.extensions.checkForUpdates();
+    // TODO: Show update results to user
+    // displayUpdateResults(result.updates);
+    
+    showSettingsSavedMessage('Update check not yet implemented', 'warning');
+  } catch (error) {
+    console.error('TODO: Failed to check for updates:', error);
+    showExtensionError('Failed to check for updates');
+  }
+}
+
+function populateExtensionList(extensions) {
+  // TODO: Populate extension list in settings UI
+  console.log('TODO: Populate extension list:', extensions);
+  
+  const extensionList = document.getElementById('extension-list');
+  if (!extensionList) return;
+  
+  if (!extensions || extensions.length === 0) {
+    extensionList.innerHTML = `
+      <div class="extension-empty-state">
+        <p>No extensions installed</p>
+        <button class="btn btn-primary" onclick="handleExtensionInstall()">Install Extension</button>
+      </div>
+    `;
+    return;
+  }
+  
+  // TODO: Generate extension list HTML
+  extensionList.innerHTML = extensions.map(ext => `
+    <div class="extension-item" data-extension-id="${ext.id}">
+      <div class="extension-info">
+        <div class="extension-name">${ext.name}</div>
+        <div class="extension-version">v${ext.version}</div>
+        <div class="extension-publisher">${ext.publisher}</div>
+        <div class="extension-description">${ext.description}</div>
+      </div>
+      <div class="extension-controls">
+        <label class="toggle-label">
+          <input type="checkbox" class="toggle-input" ${ext.enabled ? 'checked' : ''} 
+                 onchange="handleExtensionToggle('${ext.id}', this.checked)">
+          <span class="toggle-slider"></span>
+        </label>
+        <button class="btn btn-danger btn-sm" onclick="handleExtensionUninstall('${ext.id}')">
+          Remove
+        </button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function handleExtensionToggle(extensionId, enabled) {
+  // TODO: Toggle extension enabled/disabled state
+  console.log(`TODO: Toggle extension ${extensionId} to ${enabled}`);
+  
+  try {
+    // TODO: Call toggle API
+    // const result = await settingsAPI.extensions.toggle(extensionId, enabled);
+    // if (!result.success) {
+    //   throw new Error(result.error);
+    // }
+    
+    showSettingsSavedMessage(`Extension ${enabled ? 'enabled' : 'disabled'}`, 'success');
+  } catch (error) {
+    console.error(`TODO: Failed to toggle extension ${extensionId}:`, error);
+    showExtensionError(`Failed to ${enabled ? 'enable' : 'disable'} extension`);
+    
+    // TODO: Revert toggle state on error
+    const toggle = document.querySelector(`[data-extension-id="${extensionId}"] .toggle-input`);
+    if (toggle) {
+      toggle.checked = !enabled;
+    }
+  }
+}
+
+async function handleExtensionUninstall(extensionId) {
+  // TODO: Uninstall extension
+  console.log(`TODO: Uninstall extension ${extensionId}`);
+  
+  if (!confirm('Are you sure you want to remove this extension?')) {
+    return;
+  }
+  
+  try {
+    // TODO: Call uninstall API
+    // const result = await settingsAPI.extensions.uninstall(extensionId);
+    // if (!result.success) {
+    //   throw new Error(result.error);
+    // }
+    
+    // TODO: Remove extension from UI
+    const extensionElement = document.querySelector(`[data-extension-id="${extensionId}"]`);
+    if (extensionElement) {
+      extensionElement.remove();
+    }
+    
+    showSettingsSavedMessage('Extension removed successfully', 'success');
+  } catch (error) {
+    console.error(`TODO: Failed to uninstall extension ${extensionId}:`, error);
+    showExtensionError('Failed to remove extension');
+  }
+}
+
+function showExtensionAPIUnavailable() {
+  // TODO: Show message when extension API is not available
+  console.log('TODO: Show extension API unavailable message');
+  
+  const extensionSection = document.getElementById('extensions-section');
+  if (extensionSection) {
+    const notice = extensionSection.querySelector('.coming-soon-notice');
+    if (notice) {
+      notice.textContent = 'Extension system not yet available';
+    }
+  }
+}
+
+function showExtensionError(message) {
+  // TODO: Show extension-specific error message
+  console.log('TODO: Show extension error:', message);
+  showSettingsSavedMessage(message, 'error');
+}

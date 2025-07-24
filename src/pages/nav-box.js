@@ -4,6 +4,8 @@ class NavBox extends HTMLElement {
     this.isLoading = false;
     this._qrPopup = null;
     this._qrButton = null;
+    this._extensionsPopup = null; // TODO: Add extensions popup state
+    this._extensionsButton = null; // TODO: Add extensions button reference
     this._outsideClickListener = null;
     this._resizeListener = null;
     this.buildNavBox();
@@ -28,6 +30,7 @@ class NavBox extends HTMLElement {
       { id: "home", svg: "home.svg", position: "start" },
       { id: "bookmark", svg: "bookmark.svg", position: "start" },
       { id: "plus", svg: "plus.svg", position: "end" },
+      { id: "extensions", svg: "puzzle.svg", position: "end" }, // TODO: Add extensions button
       { id: "settings", svg: "settings.svg", position: "end" },
     ];
 
@@ -304,6 +307,8 @@ class NavBox extends HTMLElement {
           this.dispatchEvent(new CustomEvent("toggle-bookmark"));
         } else if (button.id === "qr-code") {
           this._toggleQrCodePopup();
+        } else if (button.id === "extensions") {
+          this._toggleExtensionsPopup(); // TODO: Add extensions popup toggle
         } else if (button.id === "settings") {
           this.dispatchEvent(new CustomEvent("navigate", { detail: { url: "peersky://settings" } }));
         } else if (!button.disabled) {
@@ -362,6 +367,142 @@ class NavBox extends HTMLElement {
         this.classList.remove('theme-updating');
       }, 100);
     });
+  }
+
+  // TODO: Extensions Popup Management (similar to QR popup pattern)
+  
+  hideExtensionsPopup() {
+    // TODO: Hide extensions popup with animation
+    if (this._extensionsPopup) {
+      this._extensionsPopup.classList.remove("open");
+      this._extensionsPopup.classList.add("close");
+      setTimeout(() => {
+        this._extensionsPopup.remove();
+        this._extensionsPopup = null;
+      }, 300);
+    }
+
+    if (this._outsideClickListener) {
+      document.removeEventListener("mousedown", this._outsideClickListener);
+      this._outsideClickListener = null;
+    }
+
+    if (this._resizeListener) {
+      window.removeEventListener("resize", this._resizeListener);
+      this._resizeListener = null;
+    }
+  }
+
+  _toggleExtensionsPopup() {
+    // TODO: Toggle extensions popup (similar to QR popup)
+    if (this._extensionsPopup) {
+      this.hideExtensionsPopup();
+      return;
+    }
+
+    console.log('TODO: Create extensions popup');
+    
+    this._extensionsPopup = document.createElement("div");
+    this._extensionsPopup.className = "extensions-popup";
+    this._extensionsPopup.innerHTML = `
+      <div class="extensions-popup-header">
+        <p>Extensions</p>
+        <button class="close-btn">
+          <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+          </svg>
+        </button>
+      </div>
+      <div class="extensions-list">
+        <!-- TODO: Extension list will be populated here -->
+        <div class="extension-item">
+          <span class="extension-name">Ad Blocker</span>
+          <label class="toggle-label">
+            <input type="checkbox" class="toggle-input" disabled>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div class="extension-item">
+          <span class="extension-name">DScan</span>
+          <label class="toggle-label">
+            <input type="checkbox" class="toggle-input" disabled>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+      <div class="extensions-actions">
+        <button class="install-btn disabled">Install Extension</button>
+        <input type="text" class="p2p-input" placeholder="ipfs:// or hyper:// URL" disabled>
+        <button class="settings-btn">Manage Extensions</button>
+      </div>
+      <div class="network-status">
+        <span class="status-indicator offline">P2P: Offline</span>
+      </div>
+    `;
+
+    document.body.appendChild(this._extensionsPopup);
+    this._extensionsButton = this.buttonElements["extensions"];
+
+    this._positionExtensionsPopup();
+
+    // TODO: Setup event listeners (same pattern as QR popup)
+    this._outsideClickListener = (e) => {
+      if (
+        this._extensionsPopup &&
+        !this._extensionsPopup.contains(e.target) &&
+        !this._extensionsButton.contains(e.target)
+      ) {
+        this.hideExtensionsPopup();
+      }
+    };
+    document.addEventListener("mousedown", this._outsideClickListener);
+
+    this._resizeListener = () => {
+      this._positionExtensionsPopup();
+    };
+    window.addEventListener("resize", this._resizeListener);
+
+    setTimeout(() => {
+      this._extensionsPopup.classList.add("open");
+    }, 0);
+
+    // TODO: Setup popup button event listeners
+    const closeBtn = this._extensionsPopup.querySelector(".close-btn");
+    closeBtn.addEventListener("click", () => this.hideExtensionsPopup());
+
+    const installBtn = this._extensionsPopup.querySelector(".install-btn");
+    installBtn.addEventListener("click", () => this._handleExtensionInstall());
+
+    const settingsBtn = this._extensionsPopup.querySelector(".settings-btn");
+    settingsBtn.addEventListener("click", () => {
+      this.hideExtensionsPopup();
+      this.dispatchEvent(new CustomEvent("navigate", { detail: { url: "peersky://settings#extensions" } }));
+    });
+
+    // TODO: Load actual extension data
+    this._loadExtensionData();
+  }
+
+  _positionExtensionsPopup() {
+    // TODO: Position extensions popup (same as QR popup positioning)
+    if (!this._extensionsPopup || !this._extensionsButton) return;
+
+    const buttonRect = this._extensionsButton.getBoundingClientRect();
+    this._extensionsPopup.style.top = `${buttonRect.bottom + 10}px`;
+    this._extensionsPopup.style.right = `${window.innerWidth - buttonRect.right}px`;
+  }
+
+  _handleExtensionInstall() {
+    // TODO: Handle extension installation
+    console.log('TODO: Handle extension install button click');
+    // Would open file picker or handle P2P URL input
+  }
+
+  _loadExtensionData() {
+    // TODO: Load actual extension data from electronAPI
+    console.log('TODO: Load extension data via electronAPI.extensions');
+    // Would populate the extensions list with real data
+    // Would update network status indicator
   }
 
 }

@@ -10,6 +10,8 @@ import WindowManager from "./window-manager.js";
 import settingsManager from "./settings-manager.js";
 import { attachContextMenus, setWindowManager } from "./context-menu.js";
 // import { setupAutoUpdater } from "./auto-updater.js";
+import { initializeExtensionSystem } from "./extensions/index.js"; // TODO: Import extension system
+import extensionIPCHandlers from "./ipc-handlers/extensions.js"; // TODO: Import extension IPC handlers
 
 const P2P_PROTOCOL = {
   standard: true,
@@ -49,6 +51,24 @@ app.whenReady().then(async () => {
   setWindowManager(windowManager);
   await setupProtocols(session.defaultSession);
 
+  // TODO: Register extension IPC handlers
+  try {
+    console.log('TODO: Registering extension IPC handlers...');
+    extensionIPCHandlers.registerExtensionIpcHandlers();
+    console.log('TODO: Extension IPC handlers registered');
+  } catch (error) {
+    console.error('TODO: Failed to register extension IPC handlers:', error);
+  }
+
+  // TODO: Initialize extension system after protocols are ready
+  try {
+    console.log('TODO: Initializing extension system...');
+    await initializeExtensionSystem();
+    console.log('TODO: Extension system initialized successfully');
+  } catch (error) {
+    console.error('TODO: Failed to initialize extension system:', error);
+  }
+
   // Load saved windows or open a new one
   await windowManager.openSavedWindows();
   if (windowManager.all.length === 0) {
@@ -67,7 +87,7 @@ app.whenReady().then(async () => {
 // Introduce a flag to prevent multiple 'before-quit' handling
 let isQuitting = false;
 
-app.on("before-quit", (event) => {
+app.on("before-quit", async (event) => {
   if (isQuitting) {
     return;
   }
@@ -78,6 +98,20 @@ app.on("before-quit", (event) => {
   isQuitting = true; // Set the quitting flag
 
   windowManager.setQuitting(true); // Inform WindowManager that quitting is happening
+
+  // TODO: Cleanup extension system before quit
+  try {
+    console.log('TODO: Cleaning up extension system...');
+    const { cleanupExtensionSystem } = await import('./extensions/index.js');
+    await cleanupExtensionSystem();
+    
+    // TODO: Unregister extension IPC handlers
+    extensionIPCHandlers.unregisterHandlers();
+    
+    console.log('TODO: Extension system cleanup completed');
+  } catch (error) {
+    console.error('TODO: Failed to cleanup extension system:', error);
+  }
 
   windowManager
     .saveOpened()

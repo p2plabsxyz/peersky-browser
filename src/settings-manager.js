@@ -22,7 +22,10 @@ const DEFAULT_SETTINGS = {
   theme: 'dark',
   showClock: true,
   wallpaper: 'redwoods',
-  wallpaperCustomPath: null
+  wallpaperCustomPath: null,
+  // TODO: Add extension-related settings
+  extensionP2PEnabled: false, // TODO: Enable P2P extension loading
+  extensionAutoUpdate: true   // TODO: Auto-update extensions from P2P networks
 };
 
 class SettingsManager {
@@ -309,7 +312,10 @@ class SettingsManager {
       theme: (v) => ['light', 'dark', 'green', 'cyan', 'yellow', 'violet'].includes(v),
       showClock: (v) => typeof v === 'boolean',
       wallpaper: (v) => ['redwoods', 'mountains', 'custom'].includes(v),
-      wallpaperCustomPath: (v) => v === null || typeof v === 'string'
+      wallpaperCustomPath: (v) => v === null || typeof v === 'string',
+      // TODO: Add extension setting validators
+      extensionP2PEnabled: (v) => typeof v === 'boolean',
+      extensionAutoUpdate: (v) => typeof v === 'boolean'
     };
     
     const validator = validators[key];
@@ -375,6 +381,20 @@ class SettingsManager {
         windows.forEach(window => {
           if (window && !window.isDestroyed()) {
             window.webContents.send('wallpaper-changed', this.settings.wallpaper);
+          }
+        });
+      } else if (key === 'extensionP2PEnabled') {
+        // TODO: Notify windows of extension P2P setting change
+        windows.forEach(window => {
+          if (window && !window.isDestroyed()) {
+            window.webContents.send('extension-p2p-changed', value);
+          }
+        });
+      } else if (key === 'extensionAutoUpdate') {
+        // TODO: Notify extension system of auto-update setting change
+        windows.forEach(window => {
+          if (window && !window.isDestroyed()) {
+            window.webContents.send('extension-auto-update-changed', value);
           }
         });
       }

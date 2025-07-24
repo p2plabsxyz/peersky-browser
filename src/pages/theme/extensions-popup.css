@@ -1,0 +1,252 @@
+/* TODO: Extensions Popup Styles - Based on QR popup pattern */
+.extensions-popup {
+  position: fixed;
+  background-color: var(--browser-theme-background);
+  border: 1px solid var(--base04);
+  border-radius: 8px;
+
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 1000;
+  opacity: 0;
+  transform: scale(0.8);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  min-width: 320px;
+  max-width: 400px;
+  width: 100%;
+  font-family: var(--browser-theme-font-family);
+}
+
+.extensions-popup.open {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.extensions-popup.close {
+  opacity: 0;
+  transform: scale(0.8);
+}
+
+/* TODO: Popup Header */
+.extensions-popup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.extensions-popup-header p {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--browser-theme-text-color);
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.close-btn svg {
+  width: 18px;
+  height: 18px;
+  fill: var(--peersky-nav-button-color); 
+}
+
+.close-btn:hover svg {
+  fill: var(--peersky-nav-button-hover);
+}
+
+/* TODO: Extensions List */
+.extensions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.extension-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background-color: var(--base01);
+  border-radius: 6px;
+  border: 1px solid var(--base03);
+}
+
+.extension-name {
+  font-size: 14px;
+  color: var(--browser-theme-text-color);
+  font-weight: 400;
+}
+
+/* TODO: Toggle Switch Styles (similar to settings) */
+.toggle-label {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 20px;
+}
+
+.toggle-input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--base03);
+  transition: 0.4s;
+  border-radius: 20px;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 2px;
+  bottom: 2px;
+  background-color: var(--browser-theme-background);
+  transition: 0.4s;
+  border-radius: 50%;
+}
+
+.toggle-input:checked + .toggle-slider {
+  background-color: var(--peersky-nav-button-color);
+}
+
+.toggle-input:checked + .toggle-slider:before {
+  transform: translateX(20px);
+}
+
+.toggle-input:disabled + .toggle-slider {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* TODO: Extensions Actions */
+.extensions-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--base04);
+}
+
+.install-btn, .settings-btn {
+  background-color: var(--peersky-nav-button-color); 
+  color: var(--browser-theme-text-color); 
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  font-family: var(--browser-theme-font-family);
+  transition: background-color 0.2s ease;
+}
+
+.install-btn:disabled {
+  background-color: var(--peersky-nav-button-inactive); 
+  cursor: not-allowed;
+}
+
+.install-btn:hover:not(:disabled),
+.settings-btn:hover {
+  background-color: var(--peersky-nav-button-hover);
+}
+
+.p2p-input {
+  background-color: var(--base01);
+  border: 1px solid var(--base04);
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--browser-theme-text-color);
+  font-family: var(--browser-theme-font-family);
+}
+
+.p2p-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.p2p-input:focus {
+  outline: none;
+  border-color: var(--peersky-nav-button-color);
+}
+
+/* TODO: Network Status */
+.network-status {
+  display: flex;
+  justify-content: center;
+  padding-top: 8px;
+  border-top: 1px solid var(--base04);
+}
+
+.status-indicator {
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-weight: 500;
+}
+
+.status-indicator.offline {
+  background-color: var(--base02);
+  color: var(--base05);
+}
+
+.status-indicator.online {
+  background-color: var(--base0B);
+  color: var(--base00);
+}
+
+/* TODO: Empty State */
+.extensions-empty {
+  text-align: center;
+  padding: 20px;
+  color: var(--base05);
+  font-size: 14px;
+}
+
+.extensions-empty svg {
+  width: 32px;
+  height: 32px;
+  margin-bottom: 8px;
+  fill: var(--base04);
+}
+
+/* TODO: Scrollbar Styling */
+.extensions-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.extensions-list::-webkit-scrollbar-track {
+  background: var(--base01);
+  border-radius: 3px;
+}
+
+.extensions-list::-webkit-scrollbar-thumb {
+  background: var(--base04);
+  border-radius: 3px;
+}
+
+.extensions-list::-webkit-scrollbar-thumb:hover {
+  background: var(--base05);
+}

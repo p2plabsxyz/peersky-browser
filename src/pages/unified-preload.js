@@ -17,13 +17,14 @@ const url = window.location.href;
 const isSettings = url.startsWith('peersky://settings');
 const isHome = url.startsWith('peersky://home');
 const isBookmarks = url.includes('peersky://bookmarks');
+const isExtensions = url.includes('peersky://extensions'); // TODO: Add extension context detection
 const isInternal = url.startsWith('peersky://');
 const isExternal = !isInternal;
 
-const context = { url, isSettings, isHome, isBookmarks, isInternal, isExternal };
+const context = { url, isSettings, isHome, isBookmarks, isExtensions, isInternal, isExternal };
 
 console.log(`Unified-preload: Context detection - URL: ${url}`);
-console.log(`Unified-preload: isSettings: ${isSettings}, isHome: ${isHome}, isBookmarks: ${isBookmarks}, isInternal: ${isInternal}, isExternal: ${isExternal}`);
+console.log(`Unified-preload: isSettings: ${isSettings}, isHome: ${isHome}, isBookmarks: ${isBookmarks}, isExtensions: ${isExtensions}, isInternal: ${isInternal}, isExternal: ${isExternal}`);
 
 // Factory function to create context-appropriate settings API with access control
 function createSettingsAPI(pageContext) {
@@ -118,8 +119,69 @@ const bookmarkAPI = {
   deleteBookmark: (url) => ipcRenderer.invoke('delete-bookmark', { url })
 };
 
+// TODO: Extension API factory function (similar to createSettingsAPI pattern)
+function createExtensionAPI(pageContext) {
+  // TODO: Base extension API with minimal access
+  const baseAPI = {
+    // TODO: Get basic extension list for display
+    list: () => {
+      console.log('TODO: Get extension list via IPC');
+      return Promise.resolve({ success: false, error: 'Extension API not implemented' });
+    }
+  };
+
+  if (pageContext.isExtensions || pageContext.isSettings) {
+    // TODO: Full extension API for extension management pages
+    return {
+      ...baseAPI,
+      // TODO: Extension management functions
+      toggle: (id, enabled) => {
+        console.log(`TODO: Toggle extension ${id} to ${enabled}`);
+        return Promise.resolve({ success: false, error: 'Extension toggle not implemented' });
+      },
+      install: (source) => {
+        console.log(`TODO: Install extension from ${source}`);
+        return Promise.resolve({ success: false, error: 'Extension install not implemented' });
+      },
+      uninstall: (id) => {
+        console.log(`TODO: Uninstall extension ${id}`);
+        return Promise.resolve({ success: false, error: 'Extension uninstall not implemented' });
+      },
+      getInfo: (id) => {
+        console.log(`TODO: Get extension info for ${id}`);
+        return Promise.resolve({ success: false, error: 'Extension info not implemented' });
+      },
+      // TODO: Settings and network status
+      getSettings: () => {
+        console.log('TODO: Get extension settings');
+        return Promise.resolve({ success: false, error: 'Extension settings not implemented' });
+      },
+      setSetting: (key, value) => {
+        console.log(`TODO: Set extension setting ${key} = ${value}`);
+        return Promise.resolve({ success: false, error: 'Extension setting not implemented' });
+      },
+      getNetworkStatus: () => {
+        console.log('TODO: Get P2P network status');
+        return Promise.resolve({ success: false, error: 'Network status not implemented' });
+      }
+    };
+  } else if (pageContext.isInternal) {
+    // TODO: Limited API for internal pages - basic extension status only
+    return {
+      list: () => {
+        console.log('TODO: Get limited extension list for internal pages');
+        return Promise.resolve({ success: false, error: 'Limited extension API not implemented' });
+      }
+    };
+  } else {
+    // TODO: No extension API for external pages
+    return null;
+  }
+}
+
 // Create context-appropriate APIs
 const settingsAPI = createSettingsAPI(context);
+const extensionAPI = createExtensionAPI(context); // TODO: Create extension API based on context
 
 // Expose APIs based on context with enhanced granularity
 try {
@@ -127,14 +189,17 @@ try {
     // Settings pages get full electronAPI access (exactly what settings.js expects)
     contextBridge.exposeInMainWorld('electronAPI', {
       settings: settingsAPI,
+      extensions: extensionAPI, // TODO: Add extension API to settings pages
       onThemeChanged: (callback) => createEventListener('theme-changed', callback),
       onSearchEngineChanged: (callback) => createEventListener('search-engine-changed', callback),
       onShowClockChanged: (callback) => createEventListener('show-clock-changed', callback),
       onWallpaperChanged: (callback) => createEventListener('wallpaper-changed', callback),
+      // TODO: Add extension-related event listeners
+      onExtensionChanged: (callback) => createEventListener('extension-changed', callback),
       readCSS: cssAPI.readCSS
     });
     
-    console.log('Unified-preload: Full Settings electronAPI exposed');
+    console.log('Unified-preload: Full Settings electronAPI exposed with extension support');
     
   } else if (isHome) {
     // Zero-flicker wallpaper injection for home pages
@@ -191,12 +256,15 @@ try {
     // Limited electronAPI for home functionality only
     contextBridge.exposeInMainWorld('electronAPI', {
       settings: settingsAPI, // Uses limited home API automatically
+      extensions: extensionAPI, // TODO: Limited extension API for popup access
       getWallpaperUrl: () => ipcRenderer.invoke('settings-get-wallpaper-url'),
       onShowClockChanged: (callback) => createEventListener('show-clock-changed', callback),
-      onWallpaperChanged: (callback) => createEventListener('wallpaper-changed', callback)
+      onWallpaperChanged: (callback) => createEventListener('wallpaper-changed', callback),
+      // TODO: Add extension change listener for popup updates
+      onExtensionChanged: (callback) => createEventListener('extension-changed', callback)
     });
     
-    console.log('Unified-preload: Home APIs exposed (showClock, wallpaper access only)');
+    console.log('Unified-preload: Home APIs exposed (showClock, wallpaper, limited extension access)');
     
   } else if (isBookmarks) {
     // Bookmark pages get bookmark API + minimal environment
@@ -224,11 +292,12 @@ try {
     // Very minimal electronAPI for theme access only
     if (settingsAPI) {
       contextBridge.exposeInMainWorld('electronAPI', {
-        settings: settingsAPI // Uses minimal internal API (theme only)
+        settings: settingsAPI, // Uses minimal internal API (theme only)
+        extensions: extensionAPI // TODO: Minimal extension API for internal pages (status only)
       });
     }
     
-    console.log('Unified-preload: Internal minimal API exposed (theme only)');
+    console.log('Unified-preload: Internal minimal API exposed (theme and extension status only)');
     
   } else {
     // External pages get almost nothing - no settings API at all
