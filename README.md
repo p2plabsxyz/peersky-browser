@@ -97,13 +97,13 @@
   - [x] Close: `CommandOrControl+W`
   - [x] Toggle Full Screen: `F11`
 
-- [ ] 🚧 Settings (peersky://settings):
+- [x] Settings (peersky://settings):
 
-  - [ ] Switch search engines
-  - [ ] Set custom home page wallpapers
-  - [ ] Hide/show the home page clock
-  - [ ] Change themes
-  - [ ] Clear browser cache
+  - [x] Switch search engines
+  - [x] Set custom home page wallpapers
+  - [x] Hide/show the home page clock
+  - [x] Change themes
+  - [x] Clear browser cache
 
 - [ ] 🚧 [Web extensions](https://github.com/p2plabsxyz/peersky-browser/issues/19):
   - [ ] Ability to add and manage extensions
