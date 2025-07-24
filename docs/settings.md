@@ -198,15 +198,15 @@ This fully wires up `autoSave`:
 
 ## 7. File Reference:
 
-| File                    | Path                             | Purpose                          |
-|-------------------------|----------------------------------|----------------------------------|
-| `settings.html`         | `src/pages/settings.html`        | Settings layout & anchors        |
-| `settings.css`          | `src/pages/theme/settings.css`   | Styling for settings tabs        |
-| `settings.js`           | `src/pages/settings.js`          | DOM glue + preload calls         |
-| `unified-preload.js`    | `src/pages/unified-preload.js`   | Scoped API exposure              |
-| `settings-manager.js`   | `src/settings-manager.js`        | IPC handlers & persistence       |
-| `Theme.css`             | `src/pages/theme/Theme.css`      | Theme variables                  |
-| `home.js`               | `src/pages/home.js`              | Applies wallpaper + clock        |
-| `peersky-protocol.js`   | `src/protocols/peersky-protocol.js` | Serves custom wallpaper files    |
+| File                    | Purpose                          |
+|-------------------------|----------------------------------|
+| [settings.html](src/pages/settings.html)         | Settings layout & anchors        |
+| [settings.css](src/pages/theme/settings.css)          | Styling for settings tabs        |
+| [settings.js](src/pages/settings.js)           | DOM glue + preload calls         |
+| [unified-preload.js](src/pages/unified-preload.js)    | Scoped API exposure              |
+| [settings-manager.js](src/settings-manager.js)   | IPC handlers & persistence       |
+| [Theme.css](src/pages/theme/Theme.css)             | Theme variables                  |
+| [home.js](src/pages/home.js)               | Applies wallpaper + clock        |
+| [peersky-protocol.js](src/protocols/peersky-protocol.js)   | Serves custom wallpaper files    |
 
 > 🔗 PeerSky : https://peersky.p2plabs.xyz/
