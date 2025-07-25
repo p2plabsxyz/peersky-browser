@@ -118,6 +118,24 @@ const bookmarkAPI = {
   deleteBookmark: (url) => ipcRenderer.invoke('delete-bookmark', { url })
 };
 
+// Extension API - Available only to settings pages for security
+const extensionAPI = {
+  listExtensions: () => ipcRenderer.invoke('extensions-list'),
+  toggleExtension: (id, enabled) => ipcRenderer.invoke('extensions-toggle', id, enabled),
+  installExtension: (source) => ipcRenderer.invoke('extensions-install', source),
+  uninstallExtension: (id) => ipcRenderer.invoke('extensions-uninstall', id),
+  getExtensionInfo: (id) => ipcRenderer.invoke('extensions-get-info', id),
+  checkForUpdates: () => ipcRenderer.invoke('extensions-check-updates'),
+  toggleP2P: (enabled) => ipcRenderer.invoke('extensions-toggle-p2p', enabled),
+  
+  // TODO: Listen for change notifications via ipcRenderer.on()
+  // TODO: Hide APIs unless settings.extensionSupport is true
+  // TODO: Expose only secure functionality to renderer
+  onExtensionChanged: (callback) => createEventListener('extension-changed', callback),
+  onExtensionInstalled: (callback) => createEventListener('extension-installed', callback),
+  onExtensionUninstalled: (callback) => createEventListener('extension-uninstalled', callback)
+};
+
 // Create context-appropriate APIs
 const settingsAPI = createSettingsAPI(context);
 
@@ -133,8 +151,11 @@ try {
       onWallpaperChanged: (callback) => createEventListener('wallpaper-changed', callback),
       readCSS: cssAPI.readCSS
     });
+
+    // Extension API - Only available to settings pages for security
+    contextBridge.exposeInMainWorld('extensionAPI', extensionAPI);
     
-    console.log('Unified-preload: Full Settings electronAPI exposed');
+    console.log('Unified-preload: Full Settings electronAPI and extensionAPI exposed');
     
   } else if (isHome) {
     // Zero-flicker wallpaper injection for home pages
