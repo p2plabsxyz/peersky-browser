@@ -22,7 +22,9 @@ const DEFAULT_SETTINGS = {
   theme: 'dark',
   showClock: true,
   wallpaper: 'redwoods',
-  wallpaperCustomPath: null
+  wallpaperCustomPath: null,
+  extensionP2PEnabled: false,
+  extensionAutoUpdate: true
 };
 
 class SettingsManager {
