@@ -30,6 +30,26 @@ document.addEventListener("DOMContentLoaded", () => {
   // Connect the tabBar with the webviewContainer
   tabBar.connectWebviewContainer(webviewContainer);
   
+  ipcRenderer.on('close-tab', (_, id) => {
+    try {
+      if (tabBar && typeof tabBar.closeTab === 'function') {
+        tabBar.closeTab(id);
+      }
+    } catch (e) {
+      console.error('Error closing tab via IPC:', e);
+    }
+  });
+
+  ipcRenderer.on('activate-tab', (_, id) => {
+    try {
+      if (tabBar && typeof tabBar.selectTab === 'function') {
+        tabBar.selectTab(id);
+      }
+    } catch (e) {
+      console.error('Error activating tab via IPC:', e);
+    }
+  });
+  
   if (titleBar && tabBar) {
     titleBar.connectTabBar(tabBar);
   }

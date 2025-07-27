@@ -2,13 +2,19 @@ const { ipcRenderer,contextBridge } = require('electron')
 
 const url = window.location.href;
 const isBookmarkPage = url.includes('peersky://bookmarks');
+const isTabsPage = url.includes('peersky://tabs');
 
 if (isBookmarkPage) {
   // Expose the bookmark API to the renderer process
   contextBridge.exposeInMainWorld('electronAPI', {
     getBookmarks: () => ipcRenderer.invoke('get-bookmarks'),
-    deleteBookmark: (url) => ipcRenderer.invoke('delete-bookmark', { url }),
-
+    deleteBookmark: (url) => ipcRenderer.invoke('delete-bookmark', { url })
+  })
+} else if (isTabsPage) {
+  contextBridge.exposeInMainWorld('electronAPI', {
+    getTabs: () => ipcRenderer.invoke('get-tabs'),
+    closeTab: (id) => ipcRenderer.invoke('close-tab', id),
+    activateTab: (id) => ipcRenderer.invoke('activate-tab', id)
   })
 }
 

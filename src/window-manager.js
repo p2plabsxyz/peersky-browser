@@ -60,6 +60,18 @@ class WindowManager {
     ipcMain.handle("delete-bookmark", (event, { url }) => {
       return this.deleteBookmark(url);
     });
+
+    ipcMain.handle("get-tabs", () => {
+      return this.getTabs();
+    });
+
+    ipcMain.handle("close-tab", (event, id) => {
+      this.sendToMainWindow('close-tab', id);
+    });
+
+    ipcMain.handle("activate-tab", (event, id) => {
+      this.sendToMainWindow('activate-tab', id);
+    });
   }
 
   setQuitting(flag) {
@@ -134,6 +146,34 @@ class WindowManager {
     } catch (error) {
       console.error("Error loading bookmarks:", error);
       return [];
+    }
+  }
+
+  getMainWindow() {
+    const entry = this.windows.values().next();
+    if (entry && entry.value) {
+      return entry.value.window;
+    }
+    return null;
+  }
+
+  sendToMainWindow(channel, data) {
+    const win = this.getMainWindow();
+    if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
+      win.webContents.send(channel, data);
+    }
+  }
+
+  async getTabs() {
+    const win = this.getMainWindow();
+    if (!win || win.webContents.isDestroyed()) return null;
+    try {
+      return await win.webContents.executeJavaScript(
+        'localStorage.getItem("peersky-browser-tabs")'
+      );
+    } catch (e) {
+      console.error('Failed to read tabs from renderer:', e);
+      return null;
     }
   }
 

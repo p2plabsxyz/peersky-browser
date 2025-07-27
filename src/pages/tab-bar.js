@@ -417,6 +417,9 @@ restoreTabs(persistedData) {
     const webview = document.createElement("webview");
     webview.id = `webview-${tabId}`;
     webview.className = "tab-webview";
+
+    const path = require("path");
+    webview.preload = "file://" + path.join(__dirname, "preload.js");
     
     // Set important attributes
     webview.setAttribute("src", url);
