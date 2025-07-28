@@ -75,7 +75,6 @@ input, button, textarea, select, select *, option  {
   color: var(--browser-theme-text-color);
   font-size: medium;
   border-radius: 8px;
-  padding: 0 8px;
   width: 60%;
 }
 
@@ -83,7 +82,7 @@ input, button, textarea, select, select *, option  {
   flex: 1;
   background: transparent;
   border: none;
-  padding: 0.4rem 10px;
+  padding: 0.4rem 8px;
   color: var(--browser-theme-text-color);
   font-size: medium;
   outline: none;
@@ -104,8 +103,7 @@ input, button, textarea, select, select *, option  {
   color: var(--peersky-nav-button-hover);
 }
 
-
-#url:hover {
+#url:hover{
   background-color: var(--peersky-background-url-input, #ffffff);
   box-shadow: 0 0 4px -1px #0a0a0a;
 }

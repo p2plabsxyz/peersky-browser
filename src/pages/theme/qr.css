@@ -1,9 +1,9 @@
 .qr-popup {
   position: fixed;
   background-color: var(--browser-theme-background);
+  color: var(--browser-theme-text-color);
   border: 1px solid var(--base04);
   border-radius: 8px;
-
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -75,7 +75,7 @@
 }
 
 .download-btn {
-  background-color: var(--peersky-nav-button-color); 
+  background-color: var(--qr-download-bg); 
   color: var(--browser-theme-text-color); 
   border: none;
   border-radius: 4px;
@@ -83,6 +83,7 @@
   cursor: pointer;
   font-size: 14px;
   font-family: var(--browser-theme-font-family);
+  transition: background-color 0.2s ease;
 }
 
 .download-btn:disabled {
@@ -91,7 +92,5 @@
 }
 
 .download-btn:hover:not(:disabled) {
-  background-color: var(--peersky-nav-button-hover);
-
+  background-color: var(--qr-download-bg-hover);
 }
-

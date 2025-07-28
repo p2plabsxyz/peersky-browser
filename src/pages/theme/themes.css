@@ -24,7 +24,11 @@
   --settings-border: #6b7280;
   --settings-border-hover: #9ca3af;
   --settings-border-focus: #e5e7eb;
-  
+
+  /* QR Code Popup */
+  --qr-download-bg: #3b82f6;
+  --qr-download-bg-hover: #2563eb;
+
   /* Danger colors */
   --settings-danger-color: #e53935;
   --settings-danger-color-hover: #c62828;
@@ -60,6 +64,10 @@
   --settings-border-hover: #9ca3af;
   --settings-border-focus: #6b7280;
 
+  /* QR Code Popup */
+  --qr-download-bg: #3b82f6;
+  --qr-download-bg-hover: #1d4ed8;
+
   /* Danger colors */
   --settings-danger-color: #e53935;
   --settings-danger-color-hover: #c62828;
@@ -90,6 +98,10 @@
   --settings-border: #81dbdd;
   --settings-border-hover: #26c6da;
   --settings-border-focus: #00acc1;
+
+  /* QR Code Popup */
+  --qr-download-bg: #00acc1;
+  --qr-download-bg-hover: #0097a7;
 
   /* Danger colors */
   --settings-danger-color: #e53935;
@@ -123,6 +135,10 @@
   --settings-border-hover: #4ade80;
   --settings-border-focus: #22c55e;
 
+  /* QR Code Popup */
+  --qr-download-bg: #22c55e;
+  --qr-download-bg-hover: #16a34a;
+
   /* Danger colors */
   --settings-danger-color: #e53935;
   --settings-danger-color-hover: #c62828;
@@ -155,6 +171,10 @@
   --settings-border-hover: #f59e0b;
   --settings-border-focus: #d97706;
 
+  /* QR Code Popup */
+  --qr-download-bg: #f59e0b;
+  --qr-download-bg-hover: #d97706;
+
   /* Danger colors */
   --settings-danger-color: #e53935;
   --settings-danger-color-hover: #c62828;
@@ -185,6 +205,10 @@
   --settings-border: #e9d5ff;
   --settings-border-hover: #a855f7;
   --settings-border-focus: #8b5cf6;
+
+  /* QR Code Popup */
+  --qr-download-bg: #8b5cf6;
+  --qr-download-bg-hover: #7c3aed;
 
   /* Danger colors */
   --settings-danger-color: #e53935;
