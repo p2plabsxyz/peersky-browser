@@ -5,15 +5,6 @@ class QRPopup extends HTMLElement {
     this.querySelector(".download-btn").onclick = () => this.dispatchEvent(new Event("download"));
   }
 
-  static get observedAttributes() {
-    return ["url", "visible"];
-  }
-
-  attributeChangedCallback(name, oldValue, newValue) {
-    if (name === "url") this.updateUrl(newValue);
-    if (name === "visible") this.toggleVisibility();
-  }
-
   render() {
     const url = this.getAttribute("url") || "";
     this.innerHTML = `
@@ -29,19 +20,6 @@ class QRPopup extends HTMLElement {
     `;
   }
 
-  updateUrl(url) {
-    const qr = this.querySelector("qr-code");
-    if (qr) qr.setAttribute("src", url);
-    const label = this.querySelector(".qr-url");
-    if (label) label.textContent = url;
-  }
-
-  toggleVisibility() {
-    const popup = this.querySelector(".qr-popup");
-    if (!popup) return;
-    popup.classList.toggle("open", this.hasAttribute("visible"));
-    popup.classList.toggle("close", !this.hasAttribute("visible"));
-  }
 }
 
 customElements.define("qr-popup", QRPopup);

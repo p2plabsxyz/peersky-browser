@@ -162,13 +162,11 @@ class NavBox extends HTMLElement {
     };
     document.addEventListener("mousedown", this._outsideClickListener);
 
-    // Handle window resize to reposition popup
     this._resizeListener = () => {
       this._positionQrPopup();
     };
     window.addEventListener("resize", this._resizeListener);
 
-    // Listen for QRPopup events
     this._qrPopup.addEventListener("close", () => this.hideQrCodePopup());
     this._qrPopup.addEventListener("download", () => this._downloadQrCode());
   }
