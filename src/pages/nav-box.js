@@ -14,7 +14,7 @@ class NavBox extends HTMLElement {
   setStyledUrl(url) {
     const urlInput = this.querySelector("#url");
     if (!urlInput) return;
-    
+
     // Simple URL display for input element
     urlInput.value = url || "";
   }
@@ -134,17 +134,6 @@ class NavBox extends HTMLElement {
 
   // Qr-code State Management
 
-  hideQrCodePopup() {
-    if (this._qrPopup) {
-      this._qrPopup.classList.remove("open");
-      this._qrPopup.classList.add("close");
-      setTimeout(() => {
-        this._qrPopup.remove();
-        this._qrPopup = null;
-      }, 300);
-    }
-  }
-
   _toggleQrCodePopup() {
     if (this._qrPopup) {
       this.hideQrCodePopup();
@@ -154,25 +143,12 @@ class NavBox extends HTMLElement {
     const currentUrl = this.querySelector("#url").value;
     if (!currentUrl) return;
 
-    this._qrPopup = document.createElement("div");
-    this._qrPopup.className = "qr-popup";
-    this._qrPopup.innerHTML = `
-    <div class="qr-popup-header">
-      <p>Scan QR Code</p>
-      <button class="close-btn">
-        <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-        </svg>
-      </button>
-    </div>
-    <qr-code src="${currentUrl}" data-bg="white" data-fg="black"></qr-code>
-    <span class="qr-url">${currentUrl}</span>
-    <button class="download-btn disabled">Download</button>
-  `;
-
-    document.body.appendChild(this._qrPopup);
+    this._qrPopup = document.createElement("qr-popup");
+    this._qrPopup.setAttribute("url", currentUrl);
+    this._qrPopup.setAttribute("visible", "");
     this._qrButton = this.buttonElements["qr-code"];
 
+    document.body.appendChild(this._qrPopup);
     this._positionQrPopup();
 
     this._outsideClickListener = (e) => {
@@ -186,41 +162,31 @@ class NavBox extends HTMLElement {
     };
     document.addEventListener("mousedown", this._outsideClickListener);
 
+    // Handle window resize to reposition popup
     this._resizeListener = () => {
       this._positionQrPopup();
     };
     window.addEventListener("resize", this._resizeListener);
 
-    setTimeout(() => {
-      this._qrPopup.classList.add("open");
-    }, 0);
-
-    const closeBtn = this._qrPopup.querySelector(".close-btn");
-    closeBtn.addEventListener("click", () => this.hideQrCodePopup());
-
-    const downloadBtn = this._qrPopup.querySelector(".download-btn");
-    downloadBtn.addEventListener("click", () => this._downloadQrCode());
-
-    setTimeout(() => {
-      const qrCode = this._qrPopup.querySelector("qr-code img");
-      if (qrCode) {
-        downloadBtn.disabled = false;
-      }
-    }, 300);
+    // Listen for QRPopup events
+    this._qrPopup.addEventListener("close", () => this.hideQrCodePopup());
+    this._qrPopup.addEventListener("download", () => this._downloadQrCode());
   }
 
-  _positionQrPopup() {
+ _positionQrPopup() {
     if (!this._qrPopup || !this._qrButton) return;
 
     const buttonRect = this._qrButton.getBoundingClientRect();
-    this._qrPopup.style.top = `${buttonRect.bottom + 10}px`;
-    this._qrPopup.style.right = `${window.innerWidth - buttonRect.right}px`;
+    const navBoxRect = this.getBoundingClientRect();
+
+    this._qrPopup.style.position = "absolute";
+    this._qrPopup.style.top = `${buttonRect.bottom - navBoxRect.top + 10}px`; 
+    this._qrPopup.style.left = `${buttonRect.left - navBoxRect.left - 320}px`; 
   }
 
   hideQrCodePopup() {
     if (this._qrPopup) {
-      this._qrPopup.classList.remove("open");
-      this._qrPopup.classList.add("close");
+      this._qrPopup.removeAttribute("visible");
       setTimeout(() => {
         this._qrPopup.remove();
         this._qrPopup = null;
@@ -239,16 +205,16 @@ class NavBox extends HTMLElement {
   }
 
   _downloadQrCode() {
-    let img = this._qrPopup?.querySelector("qr-code img");
+    const img = this._qrPopup?.querySelector("qr-code img");
+    if (!img) return;
+
     const a = document.createElement("a");
     a.href = img.src;
     a.download = "qr-code.png";
-
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
   }
-
   setLoading(isLoading) {
     this.isLoading = isLoading;
     const refreshButton = this.buttonElements["refresh"];
@@ -305,7 +271,11 @@ class NavBox extends HTMLElement {
         } else if (button.id === "qr-code") {
           this._toggleQrCodePopup();
         } else if (button.id === "settings") {
-          this.dispatchEvent(new CustomEvent("navigate", { detail: { url: "peersky://settings" } }));
+          this.dispatchEvent(
+            new CustomEvent("navigate", {
+              detail: { url: "peersky://settings" },
+            })
+          );
         } else if (!button.disabled) {
           this.navigate(button.id);
         }
@@ -331,39 +301,37 @@ class NavBox extends HTMLElement {
 
   attachThemeListener() {
     // Listen for theme reload events from settings manager
-    window.addEventListener('theme-reload', (event) => {
-      console.log('NavBox received theme reload event:', event.detail);
+    window.addEventListener("theme-reload", (event) => {
+      console.log("NavBox received theme reload event:", event.detail);
       this.handleThemeChange(event.detail.theme);
     });
-    
+
     // Listen for search engine changes from settings manager
     try {
-      const { ipcRenderer } = require('electron');
-      ipcRenderer.on('search-engine-changed', (event, newEngine) => {
-        console.log('NavBox: Search engine changed to:', newEngine);
+      const { ipcRenderer } = require("electron");
+      ipcRenderer.on("search-engine-changed", (event, newEngine) => {
+        console.log("NavBox: Search engine changed to:", newEngine);
         this.updateSearchPlaceholder();
       });
     } catch (error) {
-      console.warn('NavBox: Could not setup search engine listener:', error);
+      console.warn("NavBox: Could not setup search engine listener:", error);
     }
   }
 
   handleThemeChange(theme) {
     // Force re-evaluation of CSS by toggling a class
-    this.classList.remove('theme-updating');
+    this.classList.remove("theme-updating");
     // Use requestAnimationFrame to ensure the class removal is processed
     requestAnimationFrame(() => {
-      this.classList.add('theme-updating');
-      console.log('NavBox theme updated to:', theme);
-      
-      
+      this.classList.add("theme-updating");
+      console.log("NavBox theme updated to:", theme);
+
       // Remove the temporary class after a brief moment
       setTimeout(() => {
-        this.classList.remove('theme-updating');
+        this.classList.remove("theme-updating");
       }, 100);
     });
   }
-
 }
 
 customElements.define("nav-box", NavBox);
