@@ -7,7 +7,7 @@ qr-popup {
   position: fixed;
   background-color: var(--browser-theme-background);
   color: var(--browser-theme-text-color);
-  border: 1px solid var(--base04);
+  border: 1px solid var(--peersky-nav-button-inactive);
   border-radius: 8px;
   padding: 16px;
   display: flex;
@@ -54,7 +54,7 @@ qr-popup {
 }
 
 .close-btn {
-  background: none;
+  color: var(--peersky-nav-button-inactive); 
   border: none;
   cursor: pointer;
   padding: 4px;
@@ -63,14 +63,8 @@ qr-popup {
   justify-content: center;
 }
 
-.close-btn svg {
-  width: 18px;
-  height: 18px;
-  fill: var(--peersky-nav-button-color); 
-}
-
-.close-btn:hover svg {
-  fill: var(--peersky-nav-button-hover);
+.close-btn:hover {
+  color: var(--peersky-nav-button-active);
 }
 
 .qr-url {
@@ -84,7 +78,7 @@ qr-popup {
 .download-btn {
   background-color: var(--peersky-nav-background); 
   color: var(--browser-theme-text-color); 
-  border: none;
+  border: 1px solid var(--peersky-nav-button-inactive);
   border-radius: 4px;
   padding: 8px 16px;
   cursor: pointer;
