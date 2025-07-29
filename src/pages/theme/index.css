@@ -85,6 +85,7 @@ input, button, textarea, select, select *, option  {
   padding: 0.4rem 8px;
   color: var(--browser-theme-text-color);
   font-size: medium;
+  font-family: inherit;
   outline: none;
 }
 
@@ -92,26 +93,21 @@ input, button, textarea, select, select *, option  {
   background: none;
   border: none;
   cursor: pointer;
-  padding: 6px;
+  padding: 6px 8px 6px 6px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--peersky-nav-button-color);
 }
 
-.inside-urlbar:hover {
-  color: var(--peersky-nav-button-hover);
-}
-
-#url:hover{
+.url-bar-wrapper:hover {
   background-color: var(--peersky-background-url-input, #ffffff);
   box-shadow: 0 0 4px -1px #0a0a0a;
 }
-
-#url:focus {
+.url-bar-wrapper:focus-within {
   background-color: var(--peersky-background-url-input, #ffffff);
+  box-shadow: 0 0 4px -1px #0a0a0a;
   outline: none;
-  box-shadow: 0 0 4px -1px #0a0a0a;
 }
 
 find-menu {

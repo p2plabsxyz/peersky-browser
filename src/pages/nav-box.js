@@ -207,12 +207,14 @@ class NavBox extends HTMLElement {
     if (!img) return;
 
     const a = document.createElement("a");
+    const randomId = Math.random().toString(36).substring(2, 15);
     a.href = img.src;
-    a.download = "qr-code.png";
+    a.download = `qr-code-${randomId}.png`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
   }
+
   setLoading(isLoading) {
     this.isLoading = isLoading;
     const refreshButton = this.buttonElements["refresh"];
