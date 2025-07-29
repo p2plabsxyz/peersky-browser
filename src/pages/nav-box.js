@@ -207,9 +207,9 @@ class NavBox extends HTMLElement {
     if (!img) return;
 
     const a = document.createElement("a");
-    const randomId = Math.random().toString(36).substring(2, 15);
+    const randomId = Math.random().toString(36).substring(2, 6);
     a.href = img.src;
-    a.download = `qr-code-${randomId}.png`;
+    a.download = `psky-code-${randomId}.png`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
