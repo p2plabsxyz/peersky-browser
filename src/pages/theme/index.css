@@ -82,7 +82,7 @@ input, button, textarea, select, select *, option  {
   flex: 1;
   background: transparent;
   border: none;
-  padding: 0.4rem 8px;
+  padding: 0.4rem 10px;
   color: var(--browser-theme-text-color);
   font-size: medium;
   font-family: inherit;
@@ -93,7 +93,7 @@ input, button, textarea, select, select *, option  {
   background: none;
   border: none;
   cursor: pointer;
-  padding: 6px 8px 6px 6px;
+  padding: 6px 12px;
   display: flex;
   align-items: center;
   justify-content: center;
