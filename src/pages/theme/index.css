@@ -63,7 +63,10 @@ input, button, textarea, select, select *, option  {
   justify-content: center;
 }
 
-#url {
+.url-bar-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
   background-color: var(--peersky-background-url-input);
   font-family: Arial, sans-serif;
   border: none;
@@ -72,21 +75,39 @@ input, button, textarea, select, select *, option  {
   color: var(--browser-theme-text-color);
   font-size: medium;
   border-radius: 8px;
-  display: block;
   width: 60%;
+}
+
+#url {
+  flex: 1;
+  background: transparent;
+  border: none;
   padding: 0.4rem 10px;
-  text-indent: 6px;
-}
-
-#url:hover {
-  background-color: var(--peersky-background-url-input, #ffffff);
-  box-shadow: 0 0 4px -1px #0a0a0a;
-}
-
-#url:focus {
-  background-color: var(--peersky-background-url-input, #ffffff);
+  color: var(--browser-theme-text-color);
+  font-size: medium;
+  font-family: inherit;
   outline: none;
+}
+
+.inside-urlbar {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--peersky-nav-button-color);
+}
+
+.url-bar-wrapper:hover {
+  background-color: var(--peersky-background-url-input, #ffffff);
   box-shadow: 0 0 4px -1px #0a0a0a;
+}
+.url-bar-wrapper:focus-within {
+  background-color: var(--peersky-background-url-input, #ffffff);
+  box-shadow: 0 0 4px -1px #0a0a0a;
+  outline: none;
 }
 
 find-menu {

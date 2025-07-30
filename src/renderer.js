@@ -110,14 +110,13 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
 
       setTimeout(() => updateBookmarkIcon(url), 100);
-
     });
 
     async function getFavicon(parsedUrl) {
       const defaultFavicon = "peersky://static/assets/svg/globe.svg";
 
       if (parsedUrl.protocol === "peersky:") {
-        return 'peersky://static/assets/favicon.ico';
+        return "peersky://static/assets/favicon.ico";
       }
 
       const iconLink = document.querySelector(
