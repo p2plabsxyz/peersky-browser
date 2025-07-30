@@ -86,20 +86,61 @@ export function attachContextMenus(browserWindow, windowManager) {
         new MenuItem({
           label: "Back",
           enabled: webContents.canGoBack(),
-          click: () => webContents.goBack(),
+          click: () => {
+            // Try tab-based navigation first, fallback to direct webContents
+            browserWindow.webContents.executeJavaScript(`
+              const tabBar = document.querySelector('#tabbar');
+              if (tabBar && typeof tabBar.goBackActiveTab === 'function') {
+                tabBar.goBackActiveTab();
+              } else {
+                // Direct webContents navigation for single webview
+                return 'fallback';
+              }
+            `).then(result => {
+              if (result === 'fallback') {
+                webContents.goBack();
+              }
+            }).catch(() => webContents.goBack());
+          },
         })
       );
       menu.append(
         new MenuItem({
           label: "Forward",
           enabled: webContents.canGoForward(),
-          click: () => webContents.goForward(),
+          click: () => {
+            browserWindow.webContents.executeJavaScript(`
+              const tabBar = document.querySelector('#tabbar');
+              if (tabBar && typeof tabBar.goForwardActiveTab === 'function') {
+                tabBar.goForwardActiveTab();
+              } else {
+                return 'fallback';
+              }
+            `).then(result => {
+              if (result === 'fallback') {
+                webContents.goForward();
+              }
+            }).catch(() => webContents.goForward());
+          },
         })
       );
       menu.append(
         new MenuItem({
           label: "Reload",
-          click: () => webContents.reload(),
+          click: () => {
+            browserWindow.webContents.executeJavaScript(`
+              const tabBar = document.querySelector('#tabbar');
+              if (tabBar && typeof tabBar.reloadActiveTab === 'function') {
+                tabBar.reloadActiveTab();
+              } else {
+                return 'fallback';
+              }
+            `).then(result => {
+              if (result === 'fallback') {
+                webContents.reload();
+              }
+            }).catch(() => webContents.reload());
+          },
         })
       );
 

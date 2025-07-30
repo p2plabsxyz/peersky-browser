@@ -206,12 +206,22 @@ class FindMenu extends HTMLElement {
   }
 
   getWebviewElement() {
-    // First try getting tracked-box's webviewElement property
+    // First try getting the active tab's webview from TabBar
+    const tabBar = document.querySelector('#tabbar');
+    if (tabBar && typeof tabBar.getActiveWebview === 'function') {
+      const activeWebview = tabBar.getActiveWebview();
+      if (activeWebview) {
+        return activeWebview;
+      }
+    }
+    
+    // Fallback to tracked-box for single webview mode
     const trackedBox = document.querySelector('tracked-box');
     if (trackedBox && trackedBox.webviewElement) {
       return trackedBox.webviewElement;
     }
-    // Fallback to direct webview element
+    
+    // Final fallback to direct webview element
     return document.querySelector('webview');
   }
 

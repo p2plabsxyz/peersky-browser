@@ -19,15 +19,43 @@ export function createActions(windowManager) {
         windowManager.open({newWindow: true});
       },
     },
+    NewTab: {
+      label: "New Tab",
+      accelerator: "CommandOrControl+T",
+      click: (focusedWindow) => {
+        if (focusedWindow) {
+          focusedWindow.webContents.executeJavaScript(`{
+            const tabBar = document.querySelector('#tabbar');
+            if (tabBar && typeof tabBar.addTab === 'function') {
+              tabBar.addTab();
+              // Focus on address bar after creating new tab
+              setTimeout(() => {
+                const urlInput = document.getElementById('url');
+                if (urlInput) {
+                  urlInput.focus();
+                  urlInput.select();
+                }
+              }, 100);
+            }
+          }`);
+        }
+      },
+    },
     Forward: {
       label: "Forward",
       accelerator: "CommandOrControl+]",
       click: (focusedWindow) => {
         if (focusedWindow) {
           focusedWindow.webContents.executeJavaScript(`{
-            const webview = document.querySelector('webview');
-            if (webview && webview.canGoForward()) {
-              webview.goForward();
+            const tabBar = document.querySelector('#tabbar');
+            if (tabBar && typeof tabBar.goForwardActiveTab === 'function') {
+              tabBar.goForwardActiveTab();
+            } else {
+              // Fallback for single webview
+              const webview = document.querySelector('webview');
+              if (webview && webview.canGoForward()) {
+                webview.goForward();
+              }
             }
           }`);
         }
@@ -39,9 +67,15 @@ export function createActions(windowManager) {
       click: (focusedWindow) => {
         if (focusedWindow) {
           focusedWindow.webContents.executeJavaScript(`{
-            const webview = document.querySelector('webview');
-            if (webview && webview.canGoBack()) {
-              webview.goBack();
+            const tabBar = document.querySelector('#tabbar');
+            if (tabBar && typeof tabBar.goBackActiveTab === 'function') {
+              tabBar.goBackActiveTab();
+            } else {
+              // Fallback for single webview
+              const webview = document.querySelector('webview');
+              if (webview && webview.canGoBack()) {
+                webview.goBack();
+              }
             }
           }`);
         }
@@ -53,7 +87,28 @@ export function createActions(windowManager) {
       click: (focusedWindow) => {
         if (focusedWindow) {
           focusedWindow.webContents.executeJavaScript(`
-            document.getElementById('url').focus();
+            function focusUrlBar() {
+              const urlInput = document.getElementById('url');
+              if (urlInput) {
+                urlInput.focus();
+                urlInput.select();
+                return true;
+              }
+              return false;
+            }
+            
+            // Try to focus immediately
+            if (!focusUrlBar()) {
+              // If not found, wait a bit for DOM to be ready
+              setTimeout(() => {
+                if (!focusUrlBar()) {
+                  // Last resort: wait longer for new tab/window initialization
+                  setTimeout(() => {
+                    focusUrlBar();
+                  }, 200);
+                }
+              }, 50);
+            }
           `);
         }
       },
@@ -64,11 +119,37 @@ export function createActions(windowManager) {
       click: (focusedWindow) => {
         if (focusedWindow) {
           focusedWindow.webContents.executeJavaScript(`{
-              const webview = document.querySelector('webview');
-              if (webview) {
-                webview.reload();
+            const tabBar = document.querySelector('#tabbar');
+            if (tabBar && typeof tabBar.reloadActiveTab === 'function' && tabBar.activeTabId) {
+              // Only use tab-based reload if we have an active tab
+              console.log('Reloading active tab:', tabBar.activeTabId);
+              tabBar.reloadActiveTab();
+            } else {
+              // Fallback: find the currently visible webview only
+              const webviews = document.querySelectorAll('webview');
+              let activeWebview = null;
+              
+              // Find the visible webview (not hidden)
+              for (const webview of webviews) {
+                if (webview.style.display !== 'none' && webview.offsetParent !== null) {
+                  activeWebview = webview;
+                  break;
+                }
               }
-            }`);
+              
+              if (activeWebview) {
+                console.log('Reloading visible webview:', activeWebview.src);
+                activeWebview.reload();
+              } else {
+                // Last resort: reload the first webview
+                const firstWebview = document.querySelector('webview');
+                if (firstWebview) {
+                  console.log('Reloading first webview as fallback');
+                  firstWebview.reload();
+                }
+              }
+            }
+          }`);
         }
       },
     },
@@ -133,26 +214,6 @@ export function createActions(windowManager) {
               }, 100); // Timeout to ensure the menu is visible and ready to receive focus
             }
           `);
-        }
-      },
-    },
-    NewTab: {
-      label: "New Tab",
-      accelerator: "CommandOrControl+T",
-      click: (focusedWindow) => {
-        if (focusedWindow) {
-          focusedWindow.webContents.executeJavaScript(`
-            try {
-              const tabBar = document.querySelector('#tabbar');
-              if (tabBar && typeof tabBar.addTab === 'function') {
-                tabBar.addTab();
-              }
-            } catch (error) {
-              console.error('Error adding tab:', error);
-            }
-          `).catch(error => {
-            console.error('Script execution failed:', error);
-          });
         }
       },
     },
