@@ -7,6 +7,7 @@ import { createHandler as createWeb3Handler } from "./protocols/web3-handler.js"
 import { ipfsOptions, hyperOptions } from "./protocols/config.js";
 import { registerShortcuts } from "./actions.js";
 import WindowManager, { createIsolatedWindow } from "./window-manager.js";
+import settingsManager from "./settings-manager.js";
 import { attachContextMenus, setWindowManager } from "./context-menu.js";
 // import { setupAutoUpdater } from "./auto-updater.js";
 

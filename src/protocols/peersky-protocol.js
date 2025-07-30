@@ -3,6 +3,9 @@ import { fileURLToPath } from 'url';
 import mime from "mime-types";
 import { Readable } from 'stream';
 import ScopedFS from 'scoped-fs';
+import { app } from 'electron';
+import { createReadStream } from 'fs';
+import { promises as fsPromises } from 'fs';
 
 const __dirname = fileURLToPath(new URL('./', import.meta.url));
 const pagesPath = path.join(__dirname, '../pages');
@@ -33,17 +36,46 @@ async function exists(filePath) {
   });
 }
 
+// Handle wallpaper requests cleanly
+async function handleWallpaper(filename, sendResponse) {
+  try {
+    const wallpaperPath = path.join(app.getPath("userData"), "wallpapers", filename);
+    await fsPromises.access(wallpaperPath);
+    
+    const data = createReadStream(wallpaperPath);
+    const contentType = mime.lookup(wallpaperPath) || 'image/jpeg';
+    
+    sendResponse({
+      statusCode: 200,
+      headers: { 'Content-Type': contentType, 'Cache-Control': 'public, max-age=3600' },
+      data
+    });
+  } catch {
+    sendResponse({
+      statusCode: 404,
+      headers: { 'Content-Type': 'text/plain' },
+      data: Readable.from(['Not found'])
+    });
+  }
+}
+
 export async function createHandler() {
   return async function protocolHandler({ url }, sendResponse) {
     const parsedUrl = new URL(url);
     let filePath = parsedUrl.hostname + parsedUrl.pathname;
 
-    if (filePath === '/') filePath = 'home'; // default to home page
+    if (filePath === '/') filePath = 'home';
+    if (filePath.startsWith('wallpaper/')) return handleWallpaper(filePath.slice(10), sendResponse);
+    
+    // Handle settings subpaths - map all /settings/* to settings.html
+    if (filePath.startsWith('settings/')) {
+      filePath = 'settings';
+    }
 
     try {
       const resolvedPath = await resolveFile(filePath);
       const format = path.extname(resolvedPath);
-      if (!['', '.html', '.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg'].includes(format)) {
+      if (!['', '.html', '.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico'].includes(format)) {
         sendResponse({
           statusCode: 403,
           headers: {

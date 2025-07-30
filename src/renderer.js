@@ -8,7 +8,7 @@ import {
 const { ipcRenderer } = require("electron");
 
 const DEFAULT_PAGE = "peersky://home";
-const webviewContainer = document.querySelector("#webview-container");
+let webviewContainer = null; // Will be set dynamically for tabs
 const nav = document.querySelector("#navbox");
 const findMenu = document.querySelector("#find");
 const pageTitle = document.querySelector("title");
@@ -17,12 +17,35 @@ const pageTitle = document.querySelector("title");
 const searchParams = new URL(window.location.href).searchParams;
 const toNavigate = searchParams.has("url") ? searchParams.get("url") : DEFAULT_PAGE;
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
+  // Initialize theme on page load
+  try {
+    const currentTheme = await ipcRenderer.invoke('settings-get', 'theme');
+    if (currentTheme) {
+      document.documentElement.setAttribute('data-theme', currentTheme);
+      
+      // Enable transitions after initial theme is loaded
+      setTimeout(() => {
+        const urlDisplay = document.querySelector('#url');
+        if (urlDisplay) {
+          urlDisplay.classList.remove('transition-disabled');
+        }
+      }, 100);
+    }
+  } catch (error) {
+    console.error('Error loading theme:', error);
+  }
+
+  // Listen for theme changes from main process
+  ipcRenderer.on('theme-changed', (event, newTheme) => {
+    document.documentElement.setAttribute('data-theme', newTheme);
+  });
+
   const titleBar = document.querySelector("#titlebar");
   const tabBar = document.querySelector("#tabbar") || new TabBar();
   
   // This is our webview container where all tab webviews will live
-  const webviewContainer = document.createElement("div");
+  webviewContainer = document.createElement("div");
   webviewContainer.id = "webview-container";
   webviewContainer.className = "webview-container";
   document.body.appendChild(webviewContainer);
@@ -59,7 +82,12 @@ document.addEventListener("DOMContentLoaded", () => {
     tabBar.addEventListener("tab-selected", (e) => {
       const { tabId, url } = e.detail;
       
-      nav.querySelector("#url").value = url;
+      // Hide peersky://home URL, show all others
+      if (url === "peersky://home") {
+        nav.setStyledUrl("");
+      } else {
+        nav.setStyledUrl(url);
+      }
       
       const tab = tabBar.tabs.find(t => t.id === tabId);
       if (tab) {
@@ -73,7 +101,12 @@ document.addEventListener("DOMContentLoaded", () => {
       const { tabId, url } = e.detail;
       
       if (tabId === tabBar.activeTabId) {
-        nav.querySelector("#url").value = url;
+        // Hide peersky://home URL, show all others
+        if (url === "peersky://home") {
+          nav.setStyledUrl("");
+        } else {
+          nav.setStyledUrl(url);
+        }
         
         setTimeout(() => updateNavigationButtons(tabBar), 100);
       }
@@ -118,28 +151,25 @@ document.addEventListener("DOMContentLoaded", () => {
     nav.addEventListener("forward", () => tabBar.goForwardActiveTab());
     nav.addEventListener("reload", () => tabBar.reloadActiveTab());
     nav.addEventListener("stop", () => tabBar.stopActiveTab());
-    nav.addEventListener("home", () => {
-      tabBar.navigateActiveTab("peersky://home");
+    nav.addEventListener("home", async () => {
+      await navigateTo("peersky://home");
       nav.querySelector("#url").value = "peersky://home";
     });
     
-    nav.addEventListener("navigate", ({ detail }) => {
+    nav.addEventListener("navigate", async ({ detail }) => {
       const { url } = detail;
-      const processedUrl = handleURL(url);
-      tabBar.navigateActiveTab(processedUrl);
+      await navigateTo(url);
     });
     
     nav.addEventListener("new-window", () => {
       ipcRenderer.send("new-window");
     });
     nav.addEventListener("toggle-bookmark", async () => {
-      const urlInput = nav.querySelector("#url");
-      if (!urlInput || !urlInput.value) {
-        console.error("URL input is empty, cannot toggle bookmark.");
+      const url = webviewContainer.getURL();
+      if (!url || url.trim() === '') {
+        console.error("No current URL available, cannot toggle bookmark.");
         return;
       }
-
-      const url = urlInput.value.trim();
       const bookmarks = await ipcRenderer.invoke("get-bookmarks");
       const existingBookmark = bookmarks.find((b) => b.url === url);
 
@@ -156,14 +186,13 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       setTimeout(() => updateBookmarkIcon(url), 100);
-
     });
 
     async function getFavicon(parsedUrl) {
       const defaultFavicon = "peersky://static/assets/svg/globe.svg";
 
-      if (parsedUrl.protocol === "peersky") {
-        return defaultFavicon;
+      if (parsedUrl.protocol === "peersky:") {
+        return "peersky://static/assets/favicon.ico";
       }
 
       const iconLink = document.querySelector(
@@ -255,16 +284,20 @@ document.addEventListener("DOMContentLoaded", () => {
       urlInput.addEventListener("keypress", async (e) => {
         if (e.key === "Enter") {
           const rawURL = urlInput.value.trim();
-          const url = handleURL(rawURL);
-          tabBar.navigateActiveTab(url);
+          await navigateTo(rawURL);
         }
       });
     }
 
-    // Update URL input and send navigation event
+    // Update URL display and send navigation event
     webviewContainer.addEventListener("did-navigate", (e) => {
-      if (urlInput) {
-        urlInput.value = e.detail.url;
+      if (nav) {
+        // Hide peersky://home URL, show all others
+        if (e.detail.url === "peersky://home") {
+          nav.setStyledUrl("");
+        } else {
+          nav.setStyledUrl(e.detail.url);
+        }
       }
       ipcRenderer.send("webview-did-navigate", e.detail.url);
       updateBookmarkIcon(e.detail.url);
@@ -321,6 +354,34 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 });
 
+async function navigateTo(url) {
+  try {
+    // Process URL through handleURL to ensure proper formatting
+    const processedURL = await handleURL(url);
+    
+    // Check if we have tab functionality
+    const tabBar = document.querySelector("#tabbar");
+    if (tabBar && typeof tabBar.navigateActiveTab === 'function') {
+      // Use tab-based navigation
+      tabBar.navigateActiveTab(processedURL);
+    } else if (webviewContainer && typeof webviewContainer.loadURL === 'function') {
+      // Fallback to direct webview navigation
+      webviewContainer.loadURL(processedURL);
+    } else {
+      console.error('No navigation method available');
+    }
+  } catch (error) {
+    console.error('Error processing URL:', error);
+    // Final fallback
+    const tabBar = document.querySelector("#tabbar");
+    if (tabBar && typeof tabBar.navigateActiveTab === 'function') {
+      tabBar.navigateActiveTab(url);
+    } else if (webviewContainer && typeof webviewContainer.loadURL === 'function') {
+      webviewContainer.loadURL(url);
+    }
+  }
+}
+
 function updateNavigationButtons(tabBar) {
   if (!nav) return;
   
@@ -362,3 +423,25 @@ document.addEventListener("keydown", (e) => {
     }
   }
 });
+
+function reloadThemeCSS() {
+  // Reload CSS imports for theme files
+  const styleElements = document.querySelectorAll('style');
+  styleElements.forEach(style => {
+    const text = style.textContent || style.innerText;
+    if (text && text.includes('browser://theme/')) {
+      const newStyle = document.createElement('style');
+      newStyle.textContent = text;
+      style.parentNode.replaceChild(newStyle, style);
+    }
+  });
+  
+  // Reload CSS links with cache busting
+  const linkElements = document.querySelectorAll('link[href*="browser://theme/"]');
+  linkElements.forEach(link => {
+    const href = link.href.split('?')[0];
+    link.href = `${href}?t=${Date.now()}`;
+  });
+  
+  console.log('Main window: Theme CSS reloaded');
+}

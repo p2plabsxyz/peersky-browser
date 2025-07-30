@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<meta charset="UTF-8" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="icon" type="image/png" href="peersky://static/assets/favicon.ico" />
+<title>P2P Apps</title>
+<style>
+  @import url("browser://theme/vars.css");
+  body {
+    background-color: var(--browser-theme-background);
+    color: var(--browser-theme-text-color);
+  }
+  #app-list ul {
+  list-style-type: disc;
+  }
+  #app-list li {
+    margin: 2px 0;
+  }
+  #app-list a {
+    color: var(--browser-theme-text-color);
+    text-decoration: none;
+    font-size: 1.1rem;
+  }
+  #app-list a:hover {
+    text-decoration: underline;
+  }
+</style>
+<body>
+  <div id="app-list">
+    Loading P2P apps…
+  </div>
+
+  <script type="module">
+    import p2pApps from "peersky://p2p/p2p-list.js";
+    const container = document.getElementById('app-list');
+    container.textContent = '';
+
+    // TODO: Add filtering UI & logic here for p2pApps
+    const ul = document.createElement('ul');
+
+    p2pApps
+      .slice()
+      .sort((a, b) => a.localeCompare(b))
+      .forEach(app => {
+        const li = document.createElement('li');
+        const link = document.createElement('a');
+        link.href = `peersky://p2p/${app}/`;
+        link.textContent = `${app}/`;
+        li.appendChild(link);
+        ul.appendChild(li);
+      });
+
+    container.appendChild(ul);
+  </script>
+</body>

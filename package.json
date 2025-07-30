@@ -1,6 +1,6 @@
 {
   "name": "peersky-browser",
-  "version": "1.0.0-beta.5",
+  "version": "1.0.0-beta.8",
   "description": "A minimal local-first p2p web browser: access, communicate, and publish offline.",
   "keywords": [
     "peersky",
@@ -65,7 +65,13 @@
         "--enable-accelerated-video"
       ],
       "target": [
-        "deb",
+        {
+          "target": "deb",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
         "AppImage",
         "apk",
         "pacman"
