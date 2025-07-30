@@ -114,9 +114,9 @@
 
   - [x] Option to add favourite pages in the nav bar (peersky://bookmarks)
 
-- [ ] 🚧 QR Code generator:
+- [x] QR Code generator:
 
-  - [ ] Option to generate QR Code for every page in the URL prompt
+  - [x] Option to generate QR Code for every page in the URL prompt with [plan1](./docs/Plan1.md).
 
 - [ ] Archive (peersky://archive):
 
