@@ -67,3 +67,34 @@ h1 {
 .activate-btn:hover {
   color: var(--btn-hover-color);
 }
+.group {
+  margin-top: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+}
+
+.group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem;
+  border-radius: 6px 6px 0 0;
+  color: var(--text-color);
+}
+
+.group-actions button {
+  margin-left: 0.25rem;
+  background: transparent;
+  border: none;
+  color: var(--btn-color);
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.group-actions button:hover {
+  color: var(--btn-hover-color);
+}
+
+.group-tabs {
+  padding: 0.5rem;
+}

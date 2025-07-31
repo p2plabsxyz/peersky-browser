@@ -217,7 +217,8 @@ try {
     contextBridge.exposeInMainWorld('electronAPI', {
       getTabs: () => ipcRenderer.invoke('get-tabs'),
       closeTab: (id) => ipcRenderer.invoke('close-tab', id),
-      activateTab: (id) => ipcRenderer.invoke('activate-tab', id)
+      activateTab: (id) => ipcRenderer.invoke('activate-tab', id),
+      groupAction: (action, groupId) => ipcRenderer.invoke('group-action', { action, groupId })
     })
   } else if (isInternal) {
     // Other internal pages get minimal environment + very limited settings

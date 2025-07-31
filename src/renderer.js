@@ -72,7 +72,16 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.error('Error activating tab via IPC:', e);
     }
   });
-  
+  ipcRenderer.on('group-action', (_, data) => {
+    try {
+      if (tabBar && typeof tabBar.handleGroupContextMenuAction === 'function') {
+        const { action, groupId } = data || {};
+        tabBar.handleGroupContextMenuAction(action, groupId);
+      }
+    } catch (e) {
+      console.error('Error handling group action via IPC:', e);
+    }
+  });
   if (titleBar && tabBar) {
     titleBar.connectTabBar(tabBar);
   }

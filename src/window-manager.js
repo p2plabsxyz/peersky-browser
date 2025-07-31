@@ -72,6 +72,10 @@ class WindowManager {
     ipcMain.handle("activate-tab", (event, id) => {
       this.sendToMainWindow('activate-tab', id);
     });
+    
+    ipcMain.handle("group-action", (event, data) => {
+      this.sendToMainWindow('group-action', data);
+    });
   }
 
   setQuitting(flag) {
