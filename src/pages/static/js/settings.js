@@ -3,6 +3,13 @@
  * 
  * Secure settings interface using unified preload script with context-aware API exposure.
  * Receives full electronAPI access when on settings pages with comprehensive fallbacks.
+ * 
+ * TODO: Add extension management functionality
+ * - Extension listing and display
+ * - Enable/disable extension toggles
+ * - Install/uninstall extension actions
+ * - Browser action integration
+ * - Extension error handling and user feedback
  */
 
 let settingsAPI;

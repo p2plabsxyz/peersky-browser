@@ -1,78 +1,72 @@
 /**
- * Extension System - Central Export Hub with Dependency Injection
+ * Extension Manager - Core Extension System
  * 
- * This module serves as the central export hub for the extension system,
- * implementing a dependency injection pattern that allows for easy testing,
- * modularity, and configuration of the extension subsystems.
+ * This module provides the main extension management system for Peersky Browser.
+ * It handles extension lifecycle, loading, validation, and metadata management.
  * 
  * Key Features:
- * - Central import/export for all extension components
- * - Dependency injection pattern for modular architecture
- * - Configuration management for extension system
- * - Initialization orchestration for all subsystems
- * - Error handling and logging coordination
+ * - Extension installation and management
+ * - Manifest validation and metadata handling
+ * - Extension enable/disable functionality
+ * - Browser action integration
+ * - Settings UI integration via IPC
  * 
  * Architecture:
- * - ExtensionLoader: Main orchestrator
- * - ExtensionRegistry: Metadata and persistence
- * - ExtensionSecurity: Security validation and enforcement
- * - ExtensionP2P: Decentralized distribution
- * - ExtensionFileHandler: File operations and conversion
- * - ManifestValidator: Schema validation for Manifest V3
+ * - ExtensionManager: Main class handling all extension operations
+ * - ManifestValidator: Manifest V3 validation and compliance checking
+ * - Electron integration: Built-in extension system integration
+ * - IPC communication: UI integration for extension management
  * 
  * Usage:
  * ```javascript
- * import { extensionSystem } from './extensions/index.js';
- * await extensionSystem.initialize();
+ * import extensionManager from './extensions/index.js';
+ * await extensionManager.initialize();
  * ```
- * 
- * Related Issues:
- * - Issue #19: Extension loading, signature validation, UI integration
- * - Issue #42: P2P trust model, decentralized fetch
  */
 
-// Import all extension system components
-import ExtensionLoader from './extension-loader.js';
-import ExtensionRegistry from './extension-registry.js';
-import ExtensionSecurity from './extension-security.js';
-import ExtensionP2P from './extension-p2p.js';
-import ExtensionFileHandler from './extension-file-handler.js';
+import { app } from 'electron';
+import path from 'path';
+import fs from 'fs-extra';
 import ManifestValidator from './manifest-validator.js';
 
 // Import IPC handlers
 import { setupExtensionIpcHandlers } from '../ipc-handlers/extensions.js';
 
+const EXTENSIONS_DATA_PATH = path.join(app.getPath('userData'), 'extensions');
+const EXTENSIONS_METADATA_FILE = path.join(EXTENSIONS_DATA_PATH, 'extensions.json');
+
 /**
- * ExtensionSystem - Central coordinator with dependency injection
+ * ExtensionManager - Main extension management class
  * 
- * Provides a unified interface to the extension system with proper
- * dependency injection and initialization orchestration.
+ * Handles all extension operations including installation, validation,
+ * lifecycle management, and integration with Electron's extension system.
  */
-class ExtensionSystem {
+class ExtensionManager {
   constructor(config = {}) {
     this.config = {
-      dataPath: null, // Will be set during initialization
-      enableP2P: false,
-      enableAutoUpdate: true,
-      strictSecurity: true,
+      extensionsEnabled: true,
+      extensionMaxSize: 10 * 1024 * 1024, // 10MB
+      extensionDevMode: false,
       ...config
     };
     
     this.isInitialized = false;
-    this.components = {};
+    this.loadedExtensions = new Map(); // extensionId -> extension metadata
+    this.manifestValidator = null;
     this.initializationPromise = null;
+    
+    // TODO: Add Electron session reference for extension loading
+    this.session = null;
+    
+    // TODO: Add browser action management
+    this.browserActions = new Map();
   }
 
   /**
-   * Initialize the complete extension system
+   * Initialize the extension system
    * 
-   * TODO:
-   * - Initialize all extension components in correct order
-   * - Set up dependency injection between components
-   * - Configure component settings from config
-   * - Set up IPC handlers for communication
-   * - Validate system integrity
-   * - Handle initialization errors gracefully
+   * Sets up extension directories, manifest validator, loads existing extensions,
+   * and integrates with Electron's extension system.
    */
   async initialize() {
     if (this.initializationPromise) {
@@ -85,120 +79,195 @@ class ExtensionSystem {
 
   async _doInitialize() {
     try {
-      console.log('ExtensionSystem: Initializing extension system...');
+      console.log('ExtensionManager: Initializing extension system...');
 
-      // TODO: Initialize components with dependency injection
-      await this._initializeComponents();
+      // Create extension directories
+      await fs.ensureDir(EXTENSIONS_DATA_PATH);
 
-      // TODO: Set up IPC handlers
-      setupExtensionIpcHandlers();
+      // Initialize manifest validator
+      this.manifestValidator = new ManifestValidator();
+
+      // TODO: Get Electron session reference
+      // this.session = session.defaultSession;
+
+      // Load existing extensions from metadata
+      await this._loadExtensionsFromMetadata();
+
+      // TODO: Load extensions into Electron's extension system
+      await this._loadExtensionsIntoElectron();
+
+      // Set up IPC handlers for UI communication
+      setupExtensionIpcHandlers(this);
 
       this.isInitialized = true;
-      console.log('ExtensionSystem: Extension system initialized successfully');
+      console.log('ExtensionManager: Extension system initialized successfully');
       
     } catch (error) {
-      console.error('ExtensionSystem: Failed to initialize:', error);
+      console.error('ExtensionManager: Failed to initialize:', error);
       throw error;
     }
   }
 
   /**
-   * Get extension loader instance
+   * Install extension from local directory
    * 
-   * @returns {ExtensionLoader} Extension loader instance
+   * @param {string} sourcePath - Path to extension directory
+   * @returns {Promise<Object>} Installation result
    */
-  getLoader() {
-    if (!this.isInitialized) {
-      throw new Error('Extension system not initialized');
+  async installExtension(sourcePath) {
+    await this.initialize();
+    
+    try {
+      console.log('ExtensionManager: Installing extension from:', sourcePath);
+
+      // Validate and prepare extension
+      const extensionData = await this._prepareExtension(sourcePath);
+      
+      // Validate manifest
+      const validationResult = await this.manifestValidator.validate(extensionData.manifest);
+      if (!validationResult.isValid) {
+        throw new Error(`Invalid manifest: ${validationResult.errors.join(', ')}`);
+      }
+
+      // Save extension metadata
+      await this._saveExtensionMetadata(extensionData);
+
+      // TODO: Load extension into Electron's extension system
+      // await this.session.loadExtension(extensionData.path);
+
+      this.loadedExtensions.set(extensionData.id, extensionData);
+      
+      console.log('ExtensionManager: Extension installed successfully:', extensionData.name);
+      return { success: true, extension: extensionData };
+      
+    } catch (error) {
+      console.error('ExtensionManager: Installation failed:', error);
+      throw error;
     }
-    return this.components.loader;
   }
 
   /**
-   * Get extension registry instance
+   * Enable or disable an extension
    * 
-   * @returns {ExtensionRegistry} Extension registry instance
+   * @param {string} extensionId - Extension identifier
+   * @param {boolean} enabled - Whether to enable or disable
+   * @returns {Promise<boolean>} Success status
    */
-  getRegistry() {
-    if (!this.isInitialized) {
-      throw new Error('Extension system not initialized');
+  async toggleExtension(extensionId, enabled) {
+    await this.initialize();
+    
+    try {
+      const extension = this.loadedExtensions.get(extensionId);
+      if (!extension) {
+        throw new Error(`Extension not found: ${extensionId}`);
+      }
+
+      extension.enabled = enabled;
+      await this._saveExtensionMetadata(extension);
+
+      // TODO: Enable/disable extension in Electron's system
+      // if (enabled) {
+      //   await this.session.loadExtension(extension.path);
+      // } else {
+      //   await this.session.removeExtension(extension.id);
+      // }
+
+      console.log(`ExtensionManager: Extension ${enabled ? 'enabled' : 'disabled'}:`, extensionId);
+      return true;
+      
+    } catch (error) {
+      console.error('ExtensionManager: Toggle failed:', error);
+      throw error;
     }
-    return this.components.registry;
   }
 
   /**
-   * Get extension security instance
+   * List all installed extensions
    * 
-   * @returns {ExtensionSecurity} Extension security instance
+   * @returns {Promise<Array>} Array of extension metadata
    */
-  getSecurity() {
-    if (!this.isInitialized) {
-      throw new Error('Extension system not initialized');
+  async listExtensions() {
+    await this.initialize();
+    
+    try {
+      return Array.from(this.loadedExtensions.values());
+    } catch (error) {
+      console.error('ExtensionManager: List failed:', error);
+      throw error;
     }
-    return this.components.security;
   }
 
   /**
-   * Get extension P2P instance
+   * Get browser actions for current window
    * 
-   * @returns {ExtensionP2P} Extension P2P instance
+   * @param {Object} window - Window instance
+   * @returns {Promise<Array>} Array of browser actions
    */
-  getP2P() {
-    if (!this.isInitialized) {
-      throw new Error('Extension system not initialized');
-    }
-    return this.components.p2p;
+  async listBrowserActions(window) {
+    // TODO: Implement browser action listing
+    // This should return extension browser actions for the current window
+    return [];
   }
 
   /**
-   * Get extension file handler instance
+   * Handle browser action click
    * 
-   * @returns {ExtensionFileHandler} Extension file handler instance
+   * @param {string} actionId - Browser action identifier
+   * @param {Object} window - Window instance
    */
-  getFileHandler() {
-    if (!this.isInitialized) {
-      throw new Error('Extension system not initialized');
-    }
-    return this.components.fileHandler;
+  async clickBrowserAction(actionId, window) {
+    // TODO: Implement browser action click handling
+    // This should trigger the extension's browser action click handler
   }
 
   /**
-   * Get manifest validator instance
+   * Uninstall an extension
    * 
-   * @returns {ManifestValidator} Manifest validator instance
+   * @param {string} extensionId - Extension identifier
+   * @returns {Promise<boolean>} Success status
    */
-  getManifestValidator() {
-    if (!this.isInitialized) {
-      throw new Error('Extension system not initialized');
+  async uninstallExtension(extensionId) {
+    await this.initialize();
+    
+    try {
+      const extension = this.loadedExtensions.get(extensionId);
+      if (!extension) {
+        throw new Error(`Extension not found: ${extensionId}`);
+      }
+
+      // TODO: Unload extension from Electron's system
+      // await this.session.removeExtension(extensionId);
+
+      // Remove extension files
+      const extensionPath = path.join(EXTENSIONS_DATA_PATH, extensionId);
+      await fs.remove(extensionPath);
+
+      // Remove from loaded extensions
+      this.loadedExtensions.delete(extensionId);
+
+      // Update metadata file
+      await this._saveAllExtensionMetadata();
+
+      console.log('ExtensionManager: Extension uninstalled:', extensionId);
+      return true;
+      
+    } catch (error) {
+      console.error('ExtensionManager: Uninstall failed:', error);
+      throw error;
     }
-    return this.components.manifestValidator;
   }
 
   /**
    * Update extension system configuration
    * 
    * @param {Object} newConfig - Configuration updates
-   * 
-   * TODO:
-   * - Validate configuration changes
-   * - Apply configuration to components
-   * - Handle configuration conflicts
-   * - Persist configuration changes
    */
   updateConfig(newConfig) {
     try {
-      console.log('ExtensionSystem: Updating configuration:', newConfig);
-
-      // TODO: Implement configuration update
+      console.log('ExtensionManager: Updating configuration:', newConfig);
       this.config = { ...this.config, ...newConfig };
-      
-      // TODO: Apply configuration to components
-      if (this.isInitialized) {
-        this._applyConfigToComponents();
-      }
-      
     } catch (error) {
-      console.error('ExtensionSystem: Configuration update failed:', error);
+      console.error('ExtensionManager: Configuration update failed:', error);
       throw error;
     }
   }
@@ -207,139 +276,157 @@ class ExtensionSystem {
    * Get system status and health information
    * 
    * @returns {Object} System status
-   * 
-   * TODO:
-   * - Check component health status
-   * - Validate system integrity
-   * - Check resource usage
-   * - Return comprehensive status
    */
   getStatus() {
     try {
-      const status = {
+      return {
         initialized: this.isInitialized,
         config: this.config,
-        components: {
-          loader: !!this.components.loader,
-          registry: !!this.components.registry,
-          security: !!this.components.security,
-          p2p: !!this.components.p2p,
-          fileHandler: !!this.components.fileHandler,
-          manifestValidator: !!this.components.manifestValidator
-        },
-        health: 'unknown' // TODO: Implement health checking
+        extensionCount: this.loadedExtensions.size,
+        enabledCount: Array.from(this.loadedExtensions.values()).filter(ext => ext.enabled).length
       };
-
-      return status;
-      
     } catch (error) {
-      console.error('ExtensionSystem: Status check failed:', error);
+      console.error('ExtensionManager: Status check failed:', error);
       throw error;
     }
   }
 
   /**
    * Shutdown the extension system
-   * 
-   * TODO:
-   * - Gracefully shutdown all components
-   * - Clean up resources and temporary files
-   * - Close P2P connections
-   * - Save final state
    */
   async shutdown() {
     try {
-      console.log('ExtensionSystem: Shutting down extension system...');
+      console.log('ExtensionManager: Shutting down extension system...');
 
-      // TODO: Implement graceful shutdown
       if (this.isInitialized) {
-        // Shutdown components in reverse order
-        // await this._shutdownComponents();
+        // Save final extension metadata
+        await this._saveAllExtensionMetadata();
+        
+        // TODO: Unload all extensions from Electron's system
+        // for (const extension of this.loadedExtensions.values()) {
+        //   await this.session.removeExtension(extension.id);
+        // }
       }
 
       this.isInitialized = false;
-      console.log('ExtensionSystem: Extension system shutdown complete');
+      console.log('ExtensionManager: Extension system shutdown complete');
       
     } catch (error) {
-      console.error('ExtensionSystem: Shutdown failed:', error);
+      console.error('ExtensionManager: Shutdown failed:', error);
       throw error;
     }
   }
 
   /**
-   * Private helper to initialize all components with dependency injection
-   * 
-   * TODO:
-   * - Create component instances with proper configuration
-   * - Set up dependency injection between components
-   * - Initialize components in correct order
-   * - Handle component initialization failures
+   * Load extensions from metadata file
    */
-  async _initializeComponents() {
+  async _loadExtensionsFromMetadata() {
     try {
-      console.log('ExtensionSystem: Initializing components...');
-
-      // TODO: Initialize components with dependency injection
-      // Order matters: Registry -> Security -> FileHandler -> P2P -> Loader
-      
-      // this.components.registry = new ExtensionRegistry(this.config.dataPath);
-      // this.components.security = new ExtensionSecurity();
-      // this.components.fileHandler = new ExtensionFileHandler(this.config.dataPath);
-      // this.components.p2p = new ExtensionP2P();
-      // this.components.manifestValidator = new ManifestValidator();
-      // this.components.loader = ExtensionLoader; // Singleton
-
-      // TODO: Inject dependencies between components
-      // this.components.loader.registry = this.components.registry;
-      // this.components.loader.security = this.components.security;
-      // this.components.loader.fileHandler = this.components.fileHandler;
-      // this.components.loader.p2p = this.components.p2p;
-
-      console.log('ExtensionSystem: Components initialized');
-      
+      if (await fs.pathExists(EXTENSIONS_METADATA_FILE)) {
+        const metadata = await fs.readJson(EXTENSIONS_METADATA_FILE);
+        for (const extensionData of metadata.extensions || []) {
+          this.loadedExtensions.set(extensionData.id, extensionData);
+        }
+        console.log(`ExtensionManager: Loaded ${this.loadedExtensions.size} extensions from metadata`);
+      }
     } catch (error) {
-      console.error('ExtensionSystem: Component initialization failed:', error);
-      throw error;
+      console.error('ExtensionManager: Failed to load extension metadata:', error);
     }
   }
 
   /**
-   * Private helper to apply configuration to components
-   * 
-   * TODO:
-   * - Update component configurations
-   * - Handle configuration validation
-   * - Apply changes without restart if possible
+   * Load extensions into Electron's extension system
    */
-  _applyConfigToComponents() {
-    try {
-      console.log('ExtensionSystem: Applying configuration to components...');
+  async _loadExtensionsIntoElectron() {
+    // TODO: Implement loading extensions into Electron's session
+    // for (const extension of this.loadedExtensions.values()) {
+    //   if (extension.enabled) {
+    //     await this.session.loadExtension(extension.path);
+    //   }
+    // }
+  }
 
-      // TODO: Apply configuration to each component
-      
-    } catch (error) {
-      console.error('ExtensionSystem: Configuration application failed:', error);
-      throw error;
+  /**
+   * Prepare extension from source path (directory or ZIP/CRX file)
+   */
+  async _prepareExtension(sourcePath) {
+    const stats = await fs.stat(sourcePath);
+    
+    if (stats.isDirectory()) {
+      return this._prepareFromDirectory(sourcePath);
+    } else {
+      return this._prepareFromArchive(sourcePath);
     }
+  }
+
+  /**
+   * Prepare extension from directory
+   */
+  async _prepareFromDirectory(dirPath) {
+    const manifestPath = path.join(dirPath, 'manifest.json');
+    if (!await fs.pathExists(manifestPath)) {
+      throw new Error('No manifest.json found in extension directory');
+    }
+
+    const manifest = await fs.readJson(manifestPath);
+    const extensionId = manifest.name.toLowerCase().replace(/[^a-z0-9]/g, '-');
+    
+    // Copy extension to extensions directory
+    const targetPath = path.join(EXTENSIONS_DATA_PATH, extensionId);
+    await fs.copy(dirPath, targetPath);
+
+    return {
+      id: extensionId,
+      name: manifest.name,
+      version: manifest.version,
+      description: manifest.description,
+      manifest,
+      path: targetPath,
+      enabled: true,
+      installDate: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Prepare extension from ZIP/CRX archive
+   */
+  async _prepareFromArchive(archivePath) {
+    // TODO: Implement ZIP/CRX extraction
+    // For now, throw error indicating this needs implementation
+    throw new Error('ZIP/CRX installation not yet implemented - use directory installation');
+  }
+
+  /**
+   * Save extension metadata
+   */
+  async _saveExtensionMetadata(extensionData) {
+    this.loadedExtensions.set(extensionData.id, extensionData);
+    await this._saveAllExtensionMetadata();
+  }
+
+  /**
+   * Save all extension metadata to file
+   */
+  async _saveAllExtensionMetadata() {
+    const metadata = {
+      version: '1.0.0',
+      extensions: Array.from(this.loadedExtensions.values())
+    };
+    await fs.writeJson(EXTENSIONS_METADATA_FILE, metadata, { spaces: 2 });
   }
 }
 
 // Create singleton instance
-const extensionSystem = new ExtensionSystem();
+const extensionManager = new ExtensionManager();
 
 // Export individual components for direct use if needed
 export {
-  ExtensionLoader,
-  ExtensionRegistry,
-  ExtensionSecurity,
-  ExtensionP2P,
-  ExtensionFileHandler,
   ManifestValidator,
   setupExtensionIpcHandlers
 };
 
-// Export singleton system instance as default
-export default extensionSystem;
+// Export singleton manager instance as default
+export default extensionManager;
 
-// Export system instance with explicit name for clarity
-export { extensionSystem };
+// Export manager instance with explicit name for clarity
+export { extensionManager };

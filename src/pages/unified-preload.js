@@ -8,6 +8,44 @@
  * - External pages: No settings access
  * 
  * Security Model: Principle of least privilege with granular access control.
+ * 
+ * TODO: Extension System Integration Requirements
+ * 
+ * 1. Extension API Security:
+ *    - Validate extension permissions before exposing APIs
+ *    - Implement extension sandboxing for external pages
+ *    - Add extension content script injection for web pages
+ *    - Implement extension message passing security
+ * 
+ * 2. Browser Action Integration:
+ *    - Expose browser action APIs to home pages for toolbar display
+ *    - Implement browser action click handling
+ *    - Add browser action badge and icon support
+ *    - Handle browser action popup windows
+ * 
+ * 3. Extension Development Support:
+ *    - Add extension reload functionality for development
+ *    - Implement extension debugging APIs
+ *    - Add extension log access for troubleshooting
+ *    - Support extension hot reloading
+ * 
+ * 4. Extension Management:
+ *    - Add extension installation progress tracking
+ *    - Implement extension update notifications
+ *    - Add extension error reporting and recovery
+ *    - Support extension backup and restore
+ * 
+ * 5. Context-Specific Extension APIs:
+ *    - Settings pages: Full extension management APIs
+ *    - Home pages: Browser action display and basic info
+ *    - Internal pages: Extension theme and content script support
+ *    - External pages: Extension content script injection only
+ * 
+ * 6. IPC Handler Integration:
+ *    - Add missing extension IPC handlers in main process
+ *    - Implement extension event broadcasting
+ *    - Add extension error handling and recovery
+ *    - Support extension background page communication
  */
 
 const { contextBridge, ipcRenderer } = require('electron');
@@ -124,16 +162,36 @@ const extensionAPI = {
   toggleExtension: (id, enabled) => ipcRenderer.invoke('extensions-toggle', id, enabled),
   installExtension: (source) => ipcRenderer.invoke('extensions-install', source),
   uninstallExtension: (id) => ipcRenderer.invoke('extensions-uninstall', id),
-  getExtensionInfo: (id) => ipcRenderer.invoke('extensions-get-info', id),
-  checkForUpdates: () => ipcRenderer.invoke('extensions-check-updates'),
-  toggleP2P: (enabled) => ipcRenderer.invoke('extensions-toggle-p2p', enabled),
+  // TODO: Add missing IPC handlers for these APIs
+  // getExtensionInfo: (id) => ipcRenderer.invoke('extensions-get-info', id),
+  // checkForUpdates: () => ipcRenderer.invoke('extensions-check-updates'),
+  // toggleP2P: (enabled) => ipcRenderer.invoke('extensions-toggle-p2p', enabled),
+  
+  // TODO: Add browser action APIs for extension toolbar integration
+  // getBrowserActions: () => ipcRenderer.invoke('extensions-browser-actions'),
+  // clickBrowserAction: (actionId) => ipcRenderer.invoke('extensions-click-action', actionId),
+  // getExtensionStatus: () => ipcRenderer.invoke('extensions-status'),
+  
+  // TODO: Add extension development APIs
+  // reloadExtension: (id) => ipcRenderer.invoke('extensions-reload', id),
+  // openExtensionFolder: (id) => ipcRenderer.invoke('extensions-open-folder', id),
+  // getExtensionLogs: (id) => ipcRenderer.invoke('extensions-get-logs', id),
+  
+  // TODO: Add extension security APIs
+  // getExtensionPermissions: (id) => ipcRenderer.invoke('extensions-get-permissions', id),
+  // validateExtension: (source) => ipcRenderer.invoke('extensions-validate', source),
+  // getExtensionSecurityReport: (id) => ipcRenderer.invoke('extensions-security-report', id),
   
   // TODO: Listen for change notifications via ipcRenderer.on()
   // TODO: Hide APIs unless settings.extensionSupport is true
   // TODO: Expose only secure functionality to renderer
   onExtensionChanged: (callback) => createEventListener('extension-changed', callback),
   onExtensionInstalled: (callback) => createEventListener('extension-installed', callback),
-  onExtensionUninstalled: (callback) => createEventListener('extension-uninstalled', callback)
+  onExtensionUninstalled: (callback) => createEventListener('extension-uninstalled', callback),
+  
+  // TODO: Add browser action event listeners
+  // onBrowserActionChanged: (callback) => createEventListener('browser-action-changed', callback),
+  // onExtensionError: (callback) => createEventListener('extension-error', callback)
 };
 
 // Create context-appropriate APIs
@@ -158,6 +216,11 @@ try {
     console.log('Unified-preload: Full Settings electronAPI and extensionAPI exposed');
     
   } else if (isHome) {
+    // TODO: Consider exposing limited extension APIs to home pages
+    // - Browser action display for extension toolbar buttons
+    // - Extension status indicators
+    // - Read-only extension information
+    
     // Zero-flicker wallpaper injection for home pages
     // Get wallpaper URL synchronously but inject when DOM is ready
     let wallpaperURL = null;
@@ -220,6 +283,10 @@ try {
     console.log('Unified-preload: Home APIs exposed (showClock, wallpaper access only)');
     
   } else if (isBookmarks) {
+    // TODO: Consider extension integration for bookmark pages
+    // - Extension bookmark sync capabilities
+    // - Extension bookmark management APIs
+    
     // Bookmark pages get bookmark API + minimal environment
     contextBridge.exposeInMainWorld('peersky', {
       environment: environmentAPI,
@@ -234,6 +301,11 @@ try {
     console.log('Unified-preload: Bookmark APIs exposed (getBookmarks, deleteBookmark)');
     
   } else if (isInternal) {
+    // TODO: Consider minimal extension APIs for internal pages
+    // - Extension theme integration
+    // - Extension content script injection
+    // - Extension popup support
+    
     // Other internal pages get minimal environment + very limited settings
     contextBridge.exposeInMainWorld('peersky', {
       environment: {
@@ -252,6 +324,11 @@ try {
     console.log('Unified-preload: Internal minimal API exposed (theme only)');
     
   } else {
+    // TODO: Consider extension content script injection for external pages
+    // - Extension content script APIs
+    // - Extension message passing
+    // - Extension popup and options page support
+    
     // External pages get almost nothing - no settings API at all
     contextBridge.exposeInMainWorld('peersky', {
       environment: {
