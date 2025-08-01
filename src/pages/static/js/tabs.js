@@ -36,15 +36,17 @@ displayTabs(tabsData) {
     });
   }
 
-  groups.set('ungrouped', { id: 'ungrouped', name: 'Ungrouped', color: '#6b7280', expanded: true, tabs: [] });
-
   tabsData.tabs.forEach(tab => {
-    const gId = tab.groupId && groups.has(tab.groupId) ? tab.groupId : 'ungrouped';
-    if (!groups.has(gId)) {
-      groups.set(gId, { id: gId, name: 'Group', color: '#6b7280', expanded: true, tabs: [] });
+    if (tab.groupId && groups.has(tab.groupId)) {
+      groups.get(tab.groupId).tabs.push(tab);
     }
-    groups.get(gId).tabs.push(tab);
   });
+
+  const hasGroupsWithTabs = Array.from(groups.values()).some(group => group.tabs.length > 0);
+  if (!hasGroupsWithTabs) {
+    container.innerHTML = '<p>No tab groups found.</p>';
+    return;
+  }
 
   groups.forEach(group => {
     if (group.tabs.length === 0) return;
@@ -73,10 +75,10 @@ displayTabs(tabsData) {
     group.tabs.forEach(tab => {
       const item = document.createElement('div');
       item.className = 'tab-item';
+      item.dataset.tabId = tab.id;
       item.innerHTML = `
         <span class="title">${tab.title || tab.url}</span>
         <div class="actions">
-          <button class="activate-btn" data-id="${tab.id}">Switch</button>
           <button class="close-btn" data-id="${tab.id}">×</button>
         </div>`;
       tabsWrap.appendChild(item);
@@ -91,25 +93,30 @@ displayTabs(tabsData) {
 }
 
 attachListeners() {
-    this.shadowRoot.querySelectorAll('.close-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const id = e.target.dataset.id;
-        if (window.electronAPI && window.electronAPI.closeTab) {
-          window.electronAPI.closeTab(id);
-        }
-        setTimeout(() => this.loadTabs(), 200);
-      });
+  // Handle close button clicks
+  this.shadowRoot.querySelectorAll('.close-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = e.target.dataset.id;
+      if (window.electronAPI && window.electronAPI.closeTab) {
+        window.electronAPI.closeTab(id);
+      }
+      setTimeout(() => this.loadTabs(), 200);
     });
+  });
 
-    this.shadowRoot.querySelectorAll('.activate-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const id = e.target.dataset.id;
-        if (window.electronAPI && window.electronAPI.activateTab) {
-          window.electronAPI.activateTab(id);
-        }
-      });
+  // Handle tab item clicks for switching tabs
+  this.shadowRoot.querySelectorAll('.tab-item').forEach(item => {
+    item.addEventListener('click', (e) => {
+      if (e.target.classList.contains('close-btn')) return;
+      
+      const tabId = item.dataset.tabId;
+      if (window.electronAPI && window.electronAPI.activateTab) {
+        window.electronAPI.activateTab(tabId);
+      }
     });
-  }
+  });
+}
 
   attachGroupListeners() {
     this.shadowRoot.querySelectorAll('.group-actions button').forEach(btn => {
