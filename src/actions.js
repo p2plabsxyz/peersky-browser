@@ -16,7 +16,20 @@ export function createActions(windowManager) {
       label: "New Window",
       accelerator: "CommandOrControl+N",
       click: () => {
-        windowManager.open({newWindow: true});
+        const newWin = windowManager.open({ newWindow: true });
+        if (newWin && newWin.webContents) {
+          newWin.webContents.once('did-finish-load', () => {
+            newWin.webContents.executeJavaScript(`
+              setTimeout(() => {
+                const urlInput = document.getElementById('url');
+                if (urlInput) {
+                  urlInput.focus();
+                  urlInput.select();
+                }
+              }, 400);
+            `);
+          });
+        }
       },
     },
     NewTab: {
@@ -28,14 +41,6 @@ export function createActions(windowManager) {
             const tabBar = document.querySelector('#tabbar');
             if (tabBar && typeof tabBar.addTab === 'function') {
               tabBar.addTab();
-              // Focus on address bar after creating new tab
-              setTimeout(() => {
-                const urlInput = document.getElementById('url');
-                if (urlInput) {
-                  urlInput.focus();
-                  urlInput.select();
-                }
-              }, 100);
             }
           }`);
         }

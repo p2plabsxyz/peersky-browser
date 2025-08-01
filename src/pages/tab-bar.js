@@ -413,8 +413,18 @@ restoreTabs(persistedData) {
   addTab(url = "peersky://home", title = "Home") {
     const tabId = `tab-${this.tabCounter++}`;
     this.addTabWithId(tabId, url, title);
-    this.selectTab(tabId);
-    this.saveTabsState(); // Save state when new tab is added
+    this.selectTab(tabId, true);
+    this.saveTabsState();
+    
+    // Focus address bar for new tabs
+    setTimeout(() => {
+      const urlInput = document.getElementById('url');
+      if (urlInput) {
+        urlInput.focus();
+        urlInput.select();
+      }
+    }, 100);
+    
     return tabId;
   }
 
@@ -614,7 +624,7 @@ restoreTabs(persistedData) {
   }
 
   // Update the selectTab method to handle display properly
-  selectTab(tabId) {
+  selectTab(tabId, isNewTab = false) {
     
     // First, hide ALL webviews to ensure clean state
     this.webviews.forEach((webview) => {
@@ -641,11 +651,14 @@ restoreTabs(persistedData) {
         newWebview.style.display = "flex";
         
         // Focus the webview after a short delay to ensure it's visible
-        setTimeout(() => {
-          if (newWebview && document.body.contains(newWebview)) {
-            newWebview.focus();
-          }
-        }, 10);
+        // Skip webview focus for new tabs to allow address bar focus
+        if (!isNewTab) {
+          setTimeout(() => {
+            if (newWebview && document.body.contains(newWebview)) {
+              newWebview.focus();
+            }
+          }, 10);
+        }
       }
       
       // Find the URL for this tab
