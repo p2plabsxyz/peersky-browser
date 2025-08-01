@@ -9,14 +9,14 @@ class TabBar extends HTMLElement {
     this.pinnedTabs = new Set(); // Track pinned tabs
     this.tabGroups = new Map(); // Store tab groups
     this.tabGroupAssignments = new Map(); // Track tab group assignments
-    const rootStyle = getComputedStyle(document.documentElement);
+    // const rootStyle = getComputedStyle(document.documentElement);
     this.groupColors = [
-      rootStyle.getPropertyValue('--browser-theme-primary-highlight').trim(),
-      rootStyle.getPropertyValue('--browser-theme-secondary-highlight').trim(),
-      rootStyle.getPropertyValue('--peersky-nav-button-active').trim(),
-      rootStyle.getPropertyValue('--peersky-nav-button-hover').trim(),
-      rootStyle.getPropertyValue('--peersky-nav-button-inactive').trim(),
-    ].filter(Boolean);
+      'var(--browser-theme-primary-highlight)',
+      'var(--browser-theme-secondary-highlight)',
+      'var(--peersky-nav-button-active)',
+      'var(--peersky-nav-button-hover)',
+      'var(--peersky-nav-button-inactive)',
+    ];
     this.draggedTabId = null;
     this.buildTabBar();
     this.setupBrowserCloseHandler();

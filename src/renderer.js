@@ -39,6 +39,18 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Listen for theme changes from main process
   ipcRenderer.on('theme-changed', (event, newTheme) => {
     document.documentElement.setAttribute('data-theme', newTheme);
+
+    reloadThemeCSS();
+
+    // Refresh tab bar styles if available
+    if (tabBar && typeof tabBar.refreshGroupStyles === 'function') {
+      tabBar.refreshGroupStyles();
+    }
+
+    // Notify other components
+    window.dispatchEvent(new CustomEvent('theme-reload', {
+      detail: { theme: newTheme }
+    }));
   });
 
   const titleBar = document.querySelector("#titlebar");

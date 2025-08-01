@@ -49,6 +49,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     window.dispatchEvent(new CustomEvent('theme-reload', { 
       detail: { theme: newTheme } 
     }));
+    
+    if (tabBar && typeof tabBar.refreshGroupStyles === 'function') {
+      tabBar.refreshGroupStyles();
+    }
   });
 
   // Check if we have tab functionality
