@@ -1409,7 +1409,7 @@ restoreTabs(persistedData) {
       
       closeButton.addEventListener('click', (e) => {
         e.stopPropagation();
-        this.deleteGroup(groupId);
+        this.closeTabsInGroup(groupId);
       });
       
       // Add right-click context menu for the header
