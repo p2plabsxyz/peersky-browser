@@ -41,7 +41,12 @@ class WindowManager {
     this.saverInterval = DEFAULT_SAVE_INTERVAL;
     this.isSaving = false; // Flag to prevent concurrent saves
     this.isQuitting = false; // Flag to indicate app is quitting
+    this.shutdownInProgress = false; // New flag to prevent multiple shutdown attempts
     this.registerListeners();
+    
+    // Add signal handlers for graceful shutdown
+    process.on('SIGINT', this.handleGracefulShutdown.bind(this));
+    process.on('SIGTERM', this.handleGracefulShutdown.bind(this));
   }
 
   registerListeners() {
@@ -217,8 +222,35 @@ class WindowManager {
     return [...this.windows.values()];
   }
 
-  async saveOpened() {
-    if (this.isSaving) {
+  async handleGracefulShutdown() {
+    if (this.shutdownInProgress) {
+      console.log('Shutdown already in progress, ignoring additional signals');
+      return;
+    }
+    
+    this.shutdownInProgress = true;
+    console.log('Graceful shutdown initiated...');
+    this.isQuitting = true;
+    this.stopSaver();
+    
+    const forceExitTimeout = setTimeout(() => {
+      console.log('Forced exit after timeout');
+      process.exit(0);
+    }, 3000);
+    
+    try {
+      await this.saveOpened(true);
+      console.log('Tab states saved successfully, exiting now.');
+    } catch (error) {
+      console.error('Error during shutdown save:', error);
+    } finally {
+      clearTimeout(forceExitTimeout);
+      app.exit(0);
+    }
+  }
+
+  async saveOpened(forceSave = false) {
+    if ((this.isSaving && !forceSave) || this.shutdownInProgress && this.isSaving) {
       console.warn("saveOpened is already in progress.");
       return;
     }
@@ -260,6 +292,7 @@ class WindowManager {
     }
 
     this.isSaving = false;
+    return true; 
   }
 
   async loadSaved() {
@@ -442,11 +475,18 @@ class PeerskyWindow {
   }
 
   async getURL() {
+    // First check if window is destroyed to avoid unnecessary errors
     if (this.window.isDestroyed() || this.window.webContents.isDestroyed()) {
       return "peersky://home";
     }
+    
     try {
-      const url = await this.window.webContents.executeJavaScript(`
+      // Add timeout to prevent hanging during shutdown
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('getURL timeout')), 1000);
+      });
+      
+      const urlPromise = this.window.webContents.executeJavaScript(`
         (function() {
           // Try to get URL from the tab bar system
           const tabBar = document.querySelector('#tabbar');
@@ -464,6 +504,9 @@ class PeerskyWindow {
           return 'peersky://home';
         })()
       `);
+      
+      // Race the promises to ensure we don't hang
+      const url = await Promise.race([urlPromise, timeoutPromise]);
       return url;
     } catch (error) {
       console.error("Error getting URL:", error);
