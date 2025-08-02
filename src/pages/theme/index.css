@@ -1,11 +1,15 @@
 @import url('browser://theme/vars.css');
 
+:root {
+  --browser-theme-font-family: Arial, sans-serif;
+}
+
 html, body {
   margin: 0;
   padding: 0;
   height: 100%;
   width: 100%;
-  font-family: var(--browser-theme-font-family);
+  font-family: var(--browser-theme-font-family, Arial, sans-serif);
   overflow: hidden;
 }
 
@@ -71,7 +75,7 @@ input, button, textarea, select, select *, option  {
   display: flex;
   align-items: center;
   background-color: var(--peersky-background-url-input);
-  font-family: Arial, sans-serif;
+  font-family: var(--browser-theme-font-family, Arial, sans-serif);
   border: none;
   margin-left: 6px;
   margin-right: 6px;
@@ -233,6 +237,7 @@ find-menu {
   padding-right: 8px;
   -webkit-app-region: no-drag;
   font-size: 15px;
+  font-family: var(--browser-theme-font-family, Arial, sans-serif);
   color: var(--peersky-nav-button-color);
   order: 2;
 }
@@ -241,16 +246,17 @@ find-menu {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 22px;
-  width: 22px;
-  height: 22px;
+  min-width: 20px;
+  width: 20px;
+  height: 20px;
   flex-shrink: 0;
   border-radius: 50%;
-  font-size: 25px;
+  font-size: 20px;
+  line-height: 1;
   cursor: pointer;
   color: var(--peersky-nav-button-color);
   -webkit-app-region: no-drag;
-  margin-left: auto;
+  margin-left: 6px;
   order: 3;
   transition: background-color 0.2s ease, opacity 0.3s ease;
   opacity: 0;
@@ -268,15 +274,17 @@ find-menu {
 .add-tab-button {
   display: flex;
   flex: 0 0 auto;
-  align-self: flex-start;
+  align-self: center;
+  align-items: center;
   justify-content: center;
   width: 28px;
   height: 28px;
   background: none;
   border: none;
   border-radius: 50%;
-  margin: 8px 8px 0 0;
+  margin: 6px 8px 0 0;
   font-size: 20px;
+  line-height: 1;
   cursor: pointer;
   color: var(--peersky-nav-button-color);
   -webkit-app-region: no-drag;
@@ -572,8 +580,8 @@ find-menu {
   justify-content: center;
   min-width: 20px;
   height: 20px;
-  border-radius: 3px;
-  font-size: 12px;
+  border-radius: 4px;
+  font-size: 16px;
   cursor: pointer;
   transition: background-color 0.2s;
   user-select: none;
@@ -594,12 +602,14 @@ find-menu {
 
 .tab-group-controls {
   display: flex;
-  gap: 8px;
+  gap: 6px;
 }
 
 .tab-group-edit, .tab-group-close {
   cursor: pointer;
   opacity: 0.7;
+  font-size: 16px;
+  transition: all 0.2s ease;
 }
 
 .tab-group-edit:hover, .tab-group-close:hover {
@@ -626,7 +636,7 @@ find-menu {
   width: 90%;
 }
 
-.tab-group-dialog h3 {
+.tab-group-dialog h1 {
   margin-top: 0;
   margin-bottom: 16px;
   font-size: 16px;
@@ -637,11 +647,6 @@ find-menu {
   margin-bottom: 12px;
   display: flex;
   align-items: center;
-}
-
-.dialog-row label {
-  width: 60px;
-  color: var(--browser-theme-text-color);
 }
 
 .dialog-row input {
@@ -687,7 +692,7 @@ find-menu {
 }
 
 .dialog-buttons button {
-  padding: 8px 16px;
+  padding: 6px 12px;
   background: var(--peersky-nav-background);
   border: 1px solid var(--peersky-nav-border-color);
   color: var(--browser-theme-text-color);

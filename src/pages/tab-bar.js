@@ -510,9 +510,15 @@ restoreTabs(persistedData) {
         tabElement.classList.remove("loading");
         
         const faviconElement = tabElement.querySelector('.tab-favicon');
-        if (faviconElement && faviconElement.style.display === "none") {
-          faviconElement.style.backgroundImage = "url(peersky://static/assets/icon16.png)";
-          faviconElement.style.display = "block";
+        if (faviconElement) {
+          // Always show favicon after loading, but only set default if no custom favicon exists
+          if (faviconElement.style.display === "none") {
+            faviconElement.style.display = "block";
+          }
+          // Only set default icon if no background image is set
+          if (!faviconElement.style.backgroundImage || faviconElement.style.backgroundImage === 'none') {
+            faviconElement.style.backgroundImage = "url(peersky://static/assets/icon16.png)";
+          }
         }
       }
       
@@ -1569,13 +1575,11 @@ restoreTabs(persistedData) {
     
     // Populate dialog
     dialog.innerHTML = `
-      <h3>${dialogTitle}</h3>
+      <h1>${dialogTitle}</h1>
       <div class="dialog-row">
-        <label for="group-name">Name:</label>
         <input type="text" id="group-name" value="${group.name || ''}" placeholder="Enter group name">
       </div>
       <div class="dialog-row">
-        <label>Color:</label>
         <div class="color-options">
           ${this.groupColors.map(color => 
             `<div class="color-option ${color === group.color ? 'selected' : ''}" 
