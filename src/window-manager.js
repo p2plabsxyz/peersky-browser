@@ -185,9 +185,7 @@ class WindowManager {
   async getTabs() {
     const peerskyWin = this.getMainPeerskyWindow();
     const win = peerskyWin?.window;
-    console.log("AAAAAAAAAAAAAAA", win);
     if (!win || win.webContents.isDestroyed()) return null;
-    console.log("BBBBBBBBB", win);
     try {
       // Get the window ID from the PeerskyWindow instance
       const windowId = peerskyWin.windowId || 'main';
@@ -206,8 +204,6 @@ class WindowManager {
           }
         })()
       `);
-
-      console.log("CCCCCCCCCCC", allTabsData);
       
       return allTabsData ? JSON.stringify(allTabsData) : null;
     } catch (e) {
