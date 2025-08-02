@@ -116,6 +116,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
       
       updateNavigationButtons(tabBar);
+      
+      // Update bookmark icon for the selected tab
+      if (url) {
+        updateBookmarkIcon(url);
+      }
     });
     
     tabBar.addEventListener("tab-navigated", (e) => {
@@ -130,6 +135,11 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
         
         setTimeout(() => updateNavigationButtons(tabBar), 100);
+        
+        // Update bookmark icon when active tab navigates
+        if (url) {
+          updateBookmarkIcon(url);
+        }
       }
       
       ipcRenderer.send("webview-did-navigate", url);
@@ -161,10 +171,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     }
     
-    // Update URL input with active tab's URL
+    // Update URL input with active tab's URL and bookmark icon
     const activeTab = tabBar.getActiveTab();
     if (activeTab && nav.querySelector("#url")) {
       nav.querySelector("#url").value = activeTab.url;
+      // Update bookmark icon for initial tab
+      if (activeTab.url) {
+        updateBookmarkIcon(activeTab.url);
+      }
     }
 
     // Navigation Button Event Listeners
@@ -186,60 +200,73 @@ document.addEventListener("DOMContentLoaded", async () => {
       ipcRenderer.send("new-window");
     });
     nav.addEventListener("toggle-bookmark", async () => {
-      const url = webviewContainer.getURL();
-      if (!url || url.trim() === '') {
-        console.error("No current URL available, cannot toggle bookmark.");
+      const activeTab = tabBar.getActiveTab();
+      if (!activeTab || !activeTab.url || activeTab.url.trim() === '') {
+        console.error("No active tab or URL available, cannot toggle bookmark.");
         return;
       }
+      
+      const url = activeTab.url;
       const bookmarks = await ipcRenderer.invoke("get-bookmarks");
       const existingBookmark = bookmarks.find((b) => b.url === url);
 
       if (existingBookmark) {
         ipcRenderer.invoke("delete-bookmark", { url });
       } else {
-        const title = pageTitle.innerText
+        const title = activeTab.title || pageTitle.innerText
           .replace(" - Peersky Browser", "")
           .trim();
 
         const parsedUrl = new URL(url);
-        const favicon = await getFavicon(parsedUrl);
+        const favicon = await getFavicon(parsedUrl, activeTab);
         ipcRenderer.send("add-bookmark", { url, title, favicon });
       }
 
       setTimeout(() => updateBookmarkIcon(url), 100);
     });
 
-    async function getFavicon(parsedUrl) {
+    async function getFavicon(parsedUrl, activeTab) {
       const defaultFavicon = "peersky://static/assets/svg/globe.svg";
 
       if (parsedUrl.protocol === "peersky:") {
         return "peersky://static/assets/favicon.ico";
       }
 
-      const iconLink = document.querySelector(
-        'link[rel="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"]'
-      );
-
-      if (iconLink?.href) {
+      // Try to get favicon from the active tab's webview
+      const activeWebview = tabBar.getActiveWebview();
+      if (activeWebview) {
         try {
-          const iconUrl = new URL(
-            iconLink.getAttribute("href"),
-            parsedUrl.origin
-          ).href;
-          console.log("Using favicon from link tag:", iconUrl);
-          const response = await fetch(iconUrl);
-
-          if (
-            response.ok &&
-            response.headers.get("content-type")?.startsWith("image")
-          ) {
-            return iconUrl;
+          const faviconFromWebview = await activeWebview.executeJavaScript(`
+            (() => {
+              const iconLink = document.querySelector(
+                'link[rel="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"]'
+              );
+              return iconLink ? iconLink.href : null;
+            })()
+          `);
+          
+          if (faviconFromWebview) {
+            try {
+              const iconUrl = new URL(faviconFromWebview, parsedUrl.origin).href;
+              console.log("Using favicon from webview:", iconUrl);
+              const response = await fetch(iconUrl);
+              
+              if (
+                response.ok &&
+                response.headers.get("content-type")?.startsWith("image")
+              ) {
+                return iconUrl;
+              }
+            } catch (error) {
+              console.warn("Error fetching favicon from webview:", error);
+            }
           }
         } catch (error) {
-          console.warn("Error fetching favicon from link tag:", error);
+          console.warn("Error executing script in webview for favicon:", error);
         }
       }
 
+      // Fallback to standard favicon.ico
       try {
         const fallbackUrl = new URL("/favicon.ico", parsedUrl.origin).href;
         const response = await fetch(fallbackUrl);
@@ -290,7 +317,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       webviewContainer.webviewElement.addEventListener("did-fail-load", () => {
         nav.setLoading(false);
         updateNavigationButtons();
-        updateBookmarkIcon(webviewContainer.getURL());
+        const activeTab = tabBar.getActiveTab();
+        if (activeTab && activeTab.url) {
+          updateBookmarkIcon(activeTab.url);
+        }
       });
 
       webviewContainer.webviewElement.addEventListener("did-navigate", () => {
