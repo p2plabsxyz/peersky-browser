@@ -4,6 +4,7 @@ import fs from "fs-extra";
 import ScopedFS from 'scoped-fs';
 import { fileURLToPath } from "url";
 import { attachContextMenus } from "./context-menu.js";
+import { randomUUID } from "crypto";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
@@ -270,9 +271,10 @@ class WindowManager {
         const url = await window.getURL();
         const position = window.window.getPosition();
         const size = window.window.getSize();
-        windowStates.push({ url, position, size });
+        const windowId = window.windowId;
+        windowStates.push({ windowId, url, position, size });
         console.log(
-          `Saved window ${window.id}: URL=${url}, Position=${position}, Size=${size}`
+          `Saved window ${window.id}: ID=${windowId}, URL=${url}, Position=${position}, Size=${size}`
         );
       } catch (error) {
         console.error(
@@ -351,7 +353,7 @@ class WindowManager {
 
     for (const [index, state] of windowStates.entries()) {
       console.log(`Opening saved window ${index + 1}:`, state);
-      const options = {};
+      const options = { windowId: state.windowId };
       if (state.position && Array.isArray(state.position)) {
         const [x, y] = state.position;
         options.x = x;
@@ -393,7 +395,7 @@ class WindowManager {
 
 class PeerskyWindow {
   constructor(options = {}, windowManager) {
-    const { url, isMainWindow = false, newWindow = false, ...windowOptions } = options;
+    const { url, isMainWindow = false, newWindow = false, windowId, ...windowOptions } = options;
     this.window = new BrowserWindow({
       width: 800,
       height: 600,
@@ -409,13 +411,14 @@ class PeerskyWindow {
     });
 
     this.id = this.window.webContents.id;
-
+    this.windowId = windowId || randomUUID();
     const loadURL = path.join(__dirname, "pages", "index.html");
     const query = { 
       query: { 
         url: url || "peersky://home",
-        ...(newWindow && { newWindow: 'true' })
-      } 
+        ...(newWindow && { newWindow: 'true' }),
+        windowId: this.windowId
+      }
     };
     this.window.loadFile(loadURL, query);
 

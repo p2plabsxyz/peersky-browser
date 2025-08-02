@@ -24,11 +24,20 @@ displayTabs(tabsData) {
   const container = this.shadowRoot.querySelector('.tabs-container');
   container.innerHTML = '';
 
-  if (!tabsData || !tabsData.tabs) {
+  if (!tabsData) {
     container.innerHTML = '<p>No tabs found.</p>';
     return;
   }
 
+  if (!tabsData.tabs) {
+    const entries = Object.values(tabsData);
+    if (entries.length === 0) {
+      container.innerHTML = '<p>No tabs found.</p>';
+      return;
+    }
+    tabsData = entries[0];
+  }
+  
   const groups = new Map();
   if (Array.isArray(tabsData.tabGroups)) {
     tabsData.tabGroups.forEach(g => {

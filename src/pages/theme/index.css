@@ -486,11 +486,13 @@ find-menu {
   margin-right: 8px;
   width: 16px;
   font-size: 12px;
-  filter: brightness(0) saturate(100%) invert(0%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(100%) contrast(100%);
+  /* Use theme-aware icon color */
+  filter: var(--context-menu-icon-filter);
 }
 
 .context-menu-item:hover .menu-icon {
-  filter: brightness(0) saturate(100%) invert(100%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(100%) contrast(100%);
+  /* Use theme-aware hover icon color */
+  filter: var(--context-menu-icon-hover-filter);
 }
 
 .context-menu-item[data-action="duplicate"] .menu-icon {

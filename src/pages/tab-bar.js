@@ -18,6 +18,8 @@ class TabBar extends HTMLElement {
       'var(--peersky-nav-button-inactive)',
     ];
     this.draggedTabId = null;
+    const params = new URLSearchParams(window.location.search);
+    this.windowId = params.get('windowId') || 'main';
     this.buildTabBar();
     this.setupBrowserCloseHandler();
     this.setupTabContextMenu();
@@ -160,7 +162,9 @@ class TabBar extends HTMLElement {
   loadPersistedTabs() {
     try {
       const stored = localStorage.getItem("peersky-browser-tabs");
-      return stored ? JSON.parse(stored) : null;
+      if (!stored) return null;
+      const allTabs = JSON.parse(stored);
+      return allTabs[this.windowId] || null;
     } catch (error) {
       console.error("Failed to load persisted tabs:", error);
       return null;
@@ -188,7 +192,17 @@ class TabBar extends HTMLElement {
           expanded: group.expanded
         }))
       };
-      localStorage.setItem("peersky-browser-tabs", JSON.stringify(tabsData));
+      const stored = localStorage.getItem("peersky-browser-tabs");
+      let allTabs = {};
+      if (stored) {
+        try {
+          allTabs = JSON.parse(stored);
+        } catch (e) {
+          console.error("Failed to parse existing tabs state:", e);
+        }
+      }
+      allTabs[this.windowId] = tabsData;
+      localStorage.setItem("peersky-browser-tabs", JSON.stringify(allTabs));
     } catch (error) {
       console.error("Failed to save tabs state:", error);
     }
