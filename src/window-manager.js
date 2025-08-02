@@ -4,6 +4,7 @@ import fs from "fs-extra";
 import ScopedFS from 'scoped-fs';
 import { fileURLToPath } from "url";
 import { attachContextMenus } from "./context-menu.js";
+import { randomUUID } from "crypto";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
@@ -41,7 +42,12 @@ class WindowManager {
     this.saverInterval = DEFAULT_SAVE_INTERVAL;
     this.isSaving = false; // Flag to prevent concurrent saves
     this.isQuitting = false; // Flag to indicate app is quitting
+    this.shutdownInProgress = false; // New flag to prevent multiple shutdown attempts
     this.registerListeners();
+    
+    // Add signal handlers for graceful shutdown
+    process.on('SIGINT', this.handleGracefulShutdown.bind(this));
+    process.on('SIGTERM', this.handleGracefulShutdown.bind(this));
   }
 
   registerListeners() {
@@ -59,6 +65,22 @@ class WindowManager {
 
     ipcMain.handle("delete-bookmark", (event, { url }) => {
       return this.deleteBookmark(url);
+    });
+
+    ipcMain.handle("get-tabs", () => {
+      return this.getTabs();
+    });
+
+    ipcMain.handle("close-tab", (event, id) => {
+      this.sendToMainWindow('close-tab', id);
+    });
+
+    ipcMain.handle("activate-tab", (event, id) => {
+      this.sendToMainWindow('activate-tab', id);
+    });
+    
+    ipcMain.handle("group-action", (event, data) => {
+      this.sendToMainWindow('group-action', data);
     });
   }
 
@@ -137,6 +159,34 @@ class WindowManager {
     }
   }
 
+  getMainWindow() {
+    const entry = this.windows.values().next();
+    if (entry && entry.value) {
+      return entry.value.window;
+    }
+    return null;
+  }
+
+  sendToMainWindow(channel, data) {
+    const win = this.getMainWindow();
+    if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
+      win.webContents.send(channel, data);
+    }
+  }
+
+  async getTabs() {
+    const win = this.getMainWindow();
+    if (!win || win.webContents.isDestroyed()) return null;
+    try {
+      return await win.webContents.executeJavaScript(
+        'localStorage.getItem("peersky-browser-tabs")'
+      );
+    } catch (e) {
+      console.error('Failed to read tabs from renderer:', e);
+      return null;
+    }
+  }
+
   open(options = {}) {
     const window = new PeerskyWindow(options, this);
     this.windows.add(window);
@@ -173,8 +223,35 @@ class WindowManager {
     return [...this.windows.values()];
   }
 
-  async saveOpened() {
-    if (this.isSaving) {
+  async handleGracefulShutdown() {
+    if (this.shutdownInProgress) {
+      console.log('Shutdown already in progress, ignoring additional signals');
+      return;
+    }
+    
+    this.shutdownInProgress = true;
+    console.log('Graceful shutdown initiated...');
+    this.isQuitting = true;
+    this.stopSaver();
+    
+    const forceExitTimeout = setTimeout(() => {
+      console.log('Forced exit after timeout');
+      process.exit(0);
+    }, 3000);
+    
+    try {
+      await this.saveOpened(true);
+      console.log('Tab states saved successfully, exiting now.');
+    } catch (error) {
+      console.error('Error during shutdown save:', error);
+    } finally {
+      clearTimeout(forceExitTimeout);
+      app.exit(0);
+    }
+  }
+
+  async saveOpened(forceSave = false) {
+    if ((this.isSaving && !forceSave) || this.shutdownInProgress && this.isSaving) {
       console.warn("saveOpened is already in progress.");
       return;
     }
@@ -194,9 +271,10 @@ class WindowManager {
         const url = await window.getURL();
         const position = window.window.getPosition();
         const size = window.window.getSize();
-        windowStates.push({ url, position, size });
+        const windowId = window.windowId;
+        windowStates.push({ windowId, url, position, size });
         console.log(
-          `Saved window ${window.id}: URL=${url}, Position=${position}, Size=${size}`
+          `Saved window ${window.id}: ID=${windowId}, URL=${url}, Position=${position}, Size=${size}`
         );
       } catch (error) {
         console.error(
@@ -216,6 +294,7 @@ class WindowManager {
     }
 
     this.isSaving = false;
+    return true; 
   }
 
   async loadSaved() {
@@ -274,7 +353,7 @@ class WindowManager {
 
     for (const [index, state] of windowStates.entries()) {
       console.log(`Opening saved window ${index + 1}:`, state);
-      const options = {};
+      const options = { windowId: state.windowId };
       if (state.position && Array.isArray(state.position)) {
         const [x, y] = state.position;
         options.x = x;
@@ -316,10 +395,12 @@ class WindowManager {
 
 class PeerskyWindow {
   constructor(options = {}, windowManager) {
-    const { url, isMainWindow = false, ...windowOptions } = options;
+    const { url, isMainWindow = false, newWindow = false, windowId, ...windowOptions } = options;
     this.window = new BrowserWindow({
       width: 800,
       height: 600,
+      frame:false,
+      titleBarStyle: 'hidden',
       webPreferences: {
         nodeIntegration: true,
         contextIsolation: false,
@@ -330,9 +411,15 @@ class PeerskyWindow {
     });
 
     this.id = this.window.webContents.id;
-
-    const loadURL = path.join(__dirname, "./pages/index.html");
-    const query = { query: { url: url || "peersky://home" } };
+    this.windowId = windowId || randomUUID();
+    const loadURL = path.join(__dirname, "pages", "index.html");
+    const query = { 
+      query: { 
+        url: url || "peersky://home",
+        ...(newWindow && { newWindow: 'true' }),
+        windowId: this.windowId
+      }
+    };
     this.window.loadFile(loadURL, query);
 
     // Attach context menus
@@ -379,7 +466,6 @@ class PeerskyWindow {
     });
 
     this.window.on("closed", () => {
-      // Clean up IPC listener
       ipcMain.removeListener(
         `webview-did-navigate-${this.id}`,
         this.navigateListener
@@ -392,22 +478,79 @@ class PeerskyWindow {
   }
 
   async getURL() {
+    // First check if window is destroyed to avoid unnecessary errors
     if (this.window.isDestroyed() || this.window.webContents.isDestroyed()) {
       return "peersky://home";
     }
+    
     try {
-      const url = await this.window.webContents.executeJavaScript(`
+      // Add timeout to prevent hanging during shutdown
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('getURL timeout')), 1000);
+      });
+      
+      const urlPromise = this.window.webContents.executeJavaScript(`
         (function() {
-          const webview = document.querySelector('tracked-box').webviewElement;
-          return webview ? webview.src : 'peersky://home';
+          // Try to get URL from the tab bar system
+          const tabBar = document.querySelector('#tabbar');
+          if (tabBar && tabBar.activeTabId) {
+            const activeTab = tabBar.tabs.find(tab => tab.id === tabBar.activeTabId);
+            return activeTab ? activeTab.url : 'peersky://home';
+          }
+          
+          // Fallback: try to get from nav box URL input
+          const urlInput = document.querySelector('#url');
+          if (urlInput && urlInput.value) {
+            return urlInput.value;
+          }
+          
+          return 'peersky://home';
         })()
       `);
+      
+      // Race the promises to ensure we don't hang
+      const url = await Promise.race([urlPromise, timeoutPromise]);
       return url;
     } catch (error) {
       console.error("Error getting URL:", error);
       return "peersky://home";
     }
   }
+}
+
+// handling for isolated windows
+export function createIsolatedWindow(options = {}) {
+  const win = new BrowserWindow({
+    width: 800,
+    height: 600,
+    frame: false,
+    titleBarStyle: 'hidden',
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+      nativeWindowOpen: true,
+      webviewTag: true,
+    },
+  });
+
+  if (options.isolate && options.singleTab) {
+    // For isolated windows, pass the specific tab data as URL parameters
+    const url = new URL(path.join(__dirname, 'pages', 'index.html'), 'file:');
+    url.searchParams.set('url', options.singleTab.url);
+    url.searchParams.set('title', options.singleTab.title);
+    url.searchParams.set('isolate', 'true'); 
+    win.loadURL(url.toString());
+  } else if (options.url) {
+    // Regular new window with specific URL
+    const url = new URL(path.join(__dirname, 'pages', 'index.html'), 'file:');
+    url.searchParams.set('url', options.url);
+    win.loadURL(url.toString());
+  } else {
+    // Default window
+    win.loadFile(path.join(__dirname, 'pages', 'index.html'));
+  }
+
+  return win;
 }
 
 export default WindowManager;

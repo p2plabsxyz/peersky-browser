@@ -44,4 +44,8 @@
   --settings-backdrop-blur: blur(10px);
   --settings-danger-color: #e53935;
   --settings-danger-color-hover: #c62828;
+
+  /* Context Menu Icon Filters */
+  --context-menu-icon-filter: brightness(0) saturate(100%) invert(88%) sepia(79%) saturate(2476%) hue-rotate(86deg) brightness(118%) contrast(119%);
+  --context-menu-icon-hover-filter: brightness(0) saturate(100%) invert(100%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(100%) contrast(100%);
 }

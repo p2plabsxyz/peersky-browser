@@ -27,7 +27,6 @@ class NavBox extends HTMLElement {
       { id: "refresh", svg: "reload.svg", position: "start" },
       { id: "home", svg: "home.svg", position: "start" },
       { id: "bookmark", svg: "bookmark.svg", position: "start" },
-      { id: "plus", svg: "plus.svg", position: "end" },
       { id: "settings", svg: "settings.svg", position: "end" },
     ];
 
@@ -178,8 +177,8 @@ class NavBox extends HTMLElement {
     const navBoxRect = this.getBoundingClientRect();
 
     this._qrPopup.style.position = "absolute";
-    this._qrPopup.style.top = `${buttonRect.bottom - navBoxRect.top + 10}px`; 
-    this._qrPopup.style.left = `${buttonRect.left - navBoxRect.left - 320}px`; 
+    this._qrPopup.style.top = `${buttonRect.bottom - navBoxRect.top + 50}px`; 
+    this._qrPopup.style.left = `${buttonRect.left - navBoxRect.left - 310}px`; 
   }
 
   hideQrCodePopup() {
@@ -264,8 +263,6 @@ class NavBox extends HTMLElement {
           } else {
             this.dispatchEvent(new CustomEvent("reload"));
           }
-        } else if (button.id === "plus") {
-          this.dispatchEvent(new CustomEvent("new-window"));
         } else if (button.id === "bookmark") {
           this.dispatchEvent(new CustomEvent("toggle-bookmark"));
         } else if (button.id === "qr-code") {
