@@ -139,8 +139,10 @@ class TabBar extends HTMLElement {
     // Check if it is a newly opened browser window
     const isNewWindow = searchParams.get('newWindow') === 'true';
 
-    if(isNewWindow) {
-      const homeTabId = this.addTab("peersky://home", "Home");
+    if (isNewWindow) {
+      const urlToLoad = initialUrl || "peersky://home";
+      const title = initialUrl ? "New Tab" : "Home";
+      this.addTab(urlToLoad, title);
       this.saveTabsState();
       return;
     }

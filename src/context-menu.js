@@ -170,7 +170,7 @@ export function attachContextMenus(browserWindow, windowManager) {
             label: "Open Link in New Window",
             click: () => {
               if (windowManagerInstance) {
-                windowManagerInstance.open({ url: params.linkURL });
+                windowManagerInstance.open({ url: params.linkURL, newWindow: true });
               } else {
                 console.error("WindowManager instance not set.");
               }
