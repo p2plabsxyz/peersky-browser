@@ -167,6 +167,14 @@ class WindowManager {
     return null;
   }
 
+  getMainPeerskyWindow() {
+    const entry = this.windows.values().next();
+    if (entry && entry.value) {
+      return entry.value;
+    }
+    return null;
+  }
+
   sendToMainWindow(channel, data) {
     const win = this.getMainWindow();
     if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
@@ -175,12 +183,33 @@ class WindowManager {
   }
 
   async getTabs() {
-    const win = this.getMainWindow();
+    const peerskyWin = this.getMainPeerskyWindow();
+    const win = peerskyWin?.window;
+    console.log("AAAAAAAAAAAAAAA", win);
     if (!win || win.webContents.isDestroyed()) return null;
+    console.log("BBBBBBBBB", win);
     try {
-      return await win.webContents.executeJavaScript(
-        'localStorage.getItem("peersky-browser-tabs")'
-      );
+      // Get the window ID from the PeerskyWindow instance
+      const windowId = peerskyWin.windowId || 'main';
+      
+      // Get all tabs data and extract this window's tabs
+      const allTabsData = await win.webContents.executeJavaScript(`
+        (() => {
+          try {
+            const stored = localStorage.getItem("peersky-browser-tabs");
+            if (!stored) return null;
+            const allTabs = JSON.parse(stored);
+            return allTabs["${windowId}"] || null;
+          } catch (e) {
+            console.error("Failed to parse tabs data:", e);
+            return null;
+          }
+        })()
+      `);
+
+      console.log("CCCCCCCCCCC", allTabsData);
+      
+      return allTabsData ? JSON.stringify(allTabsData) : null;
     } catch (e) {
       console.error('Failed to read tabs from renderer:', e);
       return null;
