@@ -40,19 +40,67 @@ class WindowManager {
     this.windows = new Set();
     this.saverTimer = null;
     this.saverInterval = DEFAULT_SAVE_INTERVAL;
-    this.isSaving = false; // Flag to prevent concurrent saves
-    this.isQuitting = false; // Flag to indicate app is quitting
-    this.shutdownInProgress = false; // New flag to prevent multiple shutdown attempts
+    this.isSaving = false;
+    this.isQuitting = false;
+    this.shutdownInProgress = false;
+    this.saveQueue = Promise.resolve();
     this.registerListeners();
     
     // Add signal handlers for graceful shutdown
     process.on('SIGINT', this.handleGracefulShutdown.bind(this));
     process.on('SIGTERM', this.handleGracefulShutdown.bind(this));
+    
+    // Enhanced app event handlers for proper UI quit handling
+    app.on('before-quit', (event) => {
+      if (!this.isQuitting && !this.shutdownInProgress) {
+        event.preventDefault();
+        this.handleGracefulShutdown();
+      }
+    });
+    
+    // Handle when all windows are closed (UI quit)
+    app.on('window-all-closed', () => {
+      if (!this.isQuitting && !this.shutdownInProgress) {
+        // On macOS, keep app running, on other platforms quit
+        if (process.platform !== 'darwin') {
+          this.handleGracefulShutdown();
+        }
+      }
+    });
+
+    // Handle app activation (macOS specific)
+    app.on('activate', () => {
+      if (this.windows.size === 0 && !this.isQuitting) {
+        this.open();
+      }
+    });
   }
 
   registerListeners() {
     ipcMain.on("new-window", () => {
       this.open();
+    });
+
+    // Add quit handler for UI quit button
+    ipcMain.on("quit-app", () => {
+      console.log("Quit app requested from UI");
+      this.handleGracefulShutdown();
+    });
+
+    // Add window close handler that checks if it's the last window
+    ipcMain.on("close-window", (event) => {
+      const senderId = event.sender.id;
+      const window = this.findWindowBySenderId(senderId);
+      
+      if (window) {
+        // If this is the last window, trigger graceful shutdown
+        if (this.windows.size === 1 && !this.isQuitting) {
+          this.handleGracefulShutdown();
+        } else {
+          // Otherwise just close this window normally
+          window.window.close();
+        }
+      }
     });
 
     ipcMain.on("add-bookmark", (_, { url, title, favicon }) => {
@@ -82,6 +130,15 @@ class WindowManager {
     ipcMain.handle("group-action", (event, data) => {
       this.sendToMainWindow('group-action', data);
     });
+  }
+
+  findWindowBySenderId(senderId) {
+    for (const window of this.windows) {
+      if (window.window.webContents.id === senderId) {
+        return window;
+      }
+    }
+    return null;
   }
 
   setQuitting(flag) {
@@ -183,33 +240,37 @@ class WindowManager {
   }
 
   async getTabs() {
-    const peerskyWin = this.getMainPeerskyWindow();
-    const win = peerskyWin?.window;
-    if (!win || win.webContents.isDestroyed()) return null;
-    try {
-      // Get the window ID from the PeerskyWindow instance
-      const windowId = peerskyWin.windowId || 'main';
+    const results = {};
+    
+    for (const peerskyWin of this.windows) {
+      const win = peerskyWin.window;
+      if (!win || win.webContents.isDestroyed()) continue;
       
-      // Get all tabs data and extract this window's tabs
-      const allTabsData = await win.webContents.executeJavaScript(`
-        (() => {
-          try {
-            const stored = localStorage.getItem("peersky-browser-tabs");
-            if (!stored) return null;
-            const allTabs = JSON.parse(stored);
-            return allTabs["${windowId}"] || null;
-          } catch (e) {
-            console.error("Failed to parse tabs data:", e);
-            return null;
-          }
-        })()
-      `);
-      
-      return allTabsData ? JSON.stringify(allTabsData) : null;
-    } catch (e) {
-      console.error('Failed to read tabs from renderer:', e);
-      return null;
+      try {
+        const windowId = peerskyWin.windowId;
+        const tabsData = await win.webContents.executeJavaScript(`
+          (() => {
+            try {
+              const stored = localStorage.getItem("peersky-browser-tabs");
+              if (!stored) return null;
+              const allTabs = JSON.parse(stored);
+              return allTabs["${windowId}"] || null;
+            } catch (e) {
+              console.error("Failed to parse tabs data:", e);
+              return null;
+            }
+          })()
+        `);
+        
+        if (tabsData) {
+          results[windowId] = tabsData;
+        }
+      } catch (e) {
+        console.error(`Failed to read tabs from window ${peerskyWin.windowId}:`, e);
+      }
     }
+    
+    return Object.keys(results).length > 0 ? results : null;
   }
 
   open(options = {}) {
@@ -224,21 +285,39 @@ class WindowManager {
         `webview-did-navigate-${window.id}`,
         window.navigateListener
       );
-      // Save the state after the window is closed, only if not quitting
-      if (!this.isQuitting) {
+      
+      // Save state after window is closed, only if not quitting
+      if (!this.isQuitting && !this.shutdownInProgress) {
         this.saveOpened();
+      }
+      
+      // If this was the last window and we're not already quitting, trigger shutdown
+      if (this.windows.size === 0 && !this.isQuitting && !this.shutdownInProgress) {
+        if (process.platform !== 'darwin') {
+          this.handleGracefulShutdown();
+        }
+      }
+    });
+
+    // Enhanced window event handlers with better quit detection
+    window.window.on("close", (event) => {
+      // If we're not in shutdown mode and this is the last window, prevent close and trigger shutdown
+      if (!this.isQuitting && !this.shutdownInProgress && this.windows.size === 1) {
+        event.preventDefault();
+        this.handleGracefulShutdown();
+        return;
       }
     });
 
     // Save state when the window is moved, resized, or navigated, only if not quitting
     window.window.on("move", () => {
-      if (!this.isQuitting) this.saveOpened();
+      if (!this.isQuitting && !this.shutdownInProgress) this.saveOpened();
     });
     window.window.on("resize", () => {
-      if (!this.isQuitting) this.saveOpened();
+      if (!this.isQuitting && !this.shutdownInProgress) this.saveOpened();
     });
     window.webContents.on("did-navigate", () => {
-      if (!this.isQuitting) this.saveOpened();
+      if (!this.isQuitting && !this.shutdownInProgress) this.saveOpened();
     });
 
     return window;
@@ -255,71 +334,132 @@ class WindowManager {
     }
     
     this.shutdownInProgress = true;
-    console.log('Graceful shutdown initiated...');
     this.isQuitting = true;
+    console.log('Graceful shutdown initiated...');
+    
     this.stopSaver();
+    
+    // Wait for any ongoing saves to complete
+    await this.saveQueue;
     
     const forceExitTimeout = setTimeout(() => {
       console.log('Forced exit after timeout');
-      process.exit(0);
-    }, 3000);
+      process.exit(1);
+    }, 5000);
     
     try {
-      await this.saveOpened(true);
-      console.log('Tab states saved successfully, exiting now.');
+      // Save both window states and tabs
+      await this.saveCompleteState();
+      console.log('Application state saved successfully, exiting now.');
+      
+      // Close all windows
+      for (const window of this.windows) {
+        if (!window.window.isDestroyed()) {
+          window.window.destroy();
+        }
+      }
+      
     } catch (error) {
       console.error('Error during shutdown save:', error);
     } finally {
       clearTimeout(forceExitTimeout);
-      app.exit(0);
+      app.quit();
     }
   }
 
-  async saveOpened(forceSave = false) {
-    if ((this.isSaving && !forceSave) || this.shutdownInProgress && this.isSaving) {
-      console.warn("saveOpened is already in progress.");
-      return;
-    }
-    this.isSaving = true;
-    console.log("Saving window states...");
+  async saveCompleteState() {
+    // Save both window positions/sizes and tab data
+    const savePromises = [
+      this.saveWindowStates(),
+      this.saveAllTabsData()
+    ];
+    
+    await Promise.allSettled(savePromises);
+  }
 
+  async saveWindowStates() {
+    console.log("Saving window states...");
     const windowStates = [];
+    
     for (const window of this.all) {
-      if (
-        window.window.isDestroyed() ||
-        window.window.webContents.isDestroyed()
-      ) {
+      if (window.window.isDestroyed() || window.window.webContents.isDestroyed()) {
         console.log(`Skipping destroyed window: ${window.id}`);
         continue;
       }
+      
       try {
         const url = await window.getURL();
         const position = window.window.getPosition();
         const size = window.window.getSize();
         const windowId = window.windowId;
+        
         windowStates.push({ windowId, url, position, size });
-        console.log(
-          `Saved window ${window.id}: ID=${windowId}, URL=${url}, Position=${position}, Size=${size}`
-        );
+        console.log(`Saved window ${window.id}: ID=${windowId}, URL=${url}`);
       } catch (error) {
-        console.error(
-          `Error saving window state for window ${window.id}:`,
-          error
-        );
+        console.error(`Error saving window state for window ${window.id}:`, error);
       }
     }
 
     try {
       const tempPath = PERSIST_FILE + ".tmp";
-      fs.outputJsonSync(tempPath, windowStates);
-      fs.moveSync(tempPath, PERSIST_FILE, { overwrite: true });
+      await fs.outputJson(tempPath, windowStates, { spaces: 2 });
+      await fs.move(tempPath, PERSIST_FILE, { overwrite: true });
       console.log(`Window states saved to ${PERSIST_FILE}`);
     } catch (error) {
       console.error("Error writing window states to file:", error);
+      throw error;
     }
+  }
 
-    this.isSaving = false;
-    return true; 
+  async saveAllTabsData() {
+    console.log("Saving all tabs data...");
+    const allTabsData = await this.getTabs();
+    
+    if (!allTabsData) {
+      console.log("No tabs data to save");
+      return;
+    }
+    
+    const TABS_FILE = path.join(USER_DATA_PATH, "tabs.json");
+    
+    try {
+      const tempPath = TABS_FILE + ".tmp";
+      await fs.outputJson(tempPath, allTabsData, { spaces: 2 });
+      await fs.move(tempPath, TABS_FILE, { overwrite: true });
+      console.log(`Tabs data saved to ${TABS_FILE}`);
+    } catch (error) {
+      console.error("Error writing tabs data to file:", error);
+      throw error;
+    }
+  }
+
+  async saveOpened(forceSave = false) {
+    // Queue saves to prevent concurrent operations
+    this.saveQueue = this.saveQueue.then(async () => {
+      if (this.isSaving && !forceSave) {
+        console.warn("saveOpened is already in progress.");
+        return;
+      }
+      
+      if (this.shutdownInProgress && !forceSave) {
+        console.warn("Shutdown in progress, skipping regular save.");
+        return;
+      }
+      
+      this.isSaving = true;
+      
+      try {
+        await this.saveWindowStates();
+        return true;
+      } catch (error) {
+        console.error("Error in saveOpened:", error);
+        return false;
+      } finally {
+        this.isSaving = false;
+      }
+    });
+    
+    return this.saveQueue;
   }
 
   async loadSaved() {
@@ -332,35 +472,27 @@ class WindowManager {
 
       const data = await fs.readFile(PERSIST_FILE, "utf8");
       if (!data.trim()) {
-        // Check for empty or whitespace-only content
         console.log("Persist file is empty.");
         return [];
       }
 
-      // Attempt to parse JSON, handle unexpected characters gracefully
       let windowStates;
       try {
         windowStates = JSON.parse(data);
       } catch (parseError) {
         console.error("Error parsing JSON from lastOpened.json:", parseError);
-        // Backup the corrupted file and reset the state
         const backupPath = PERSIST_FILE + ".backup";
-        fs.moveSync(PERSIST_FILE, backupPath, { overwrite: true });
-        console.warn(
-          `Corrupted lastOpened.json backed up to ${backupPath}. Starting fresh.`
-        );
+        await fs.move(PERSIST_FILE, backupPath, { overwrite: true });
+        console.warn(`Corrupted lastOpened.json backed up to ${backupPath}. Starting fresh.`);
         windowStates = [];
       }
 
-      // Validate that windowStates is an array
       if (!Array.isArray(windowStates)) {
         console.error("Invalid format for window states. Expected an array.");
         return [];
       }
 
-      console.log(
-        `Loaded ${windowStates.length} window state(s) from persist file.`
-      );
+      console.log(`Loaded ${windowStates.length} window state(s) from persist file.`);
       return windowStates;
     } catch (e) {
       console.error("Error loading saved windows", e);
@@ -368,32 +500,78 @@ class WindowManager {
     }
   }
 
+  async loadSavedTabs() {
+    const TABS_FILE = path.join(USER_DATA_PATH, "tabs.json");
+    
+    try {
+      const exists = await fs.pathExists(TABS_FILE);
+      if (!exists) {
+        console.log("Tabs file does not exist.");
+        return {};
+      }
+
+      const data = await fs.readFile(TABS_FILE, "utf8");
+      if (!data.trim()) {
+        console.log("Tabs file is empty.");
+        return {};
+      }
+
+      let tabsData;
+      try {
+        tabsData = JSON.parse(data);
+      } catch (parseError) {
+        console.error("Error parsing JSON from tabs.json:", parseError);
+        const backupPath = TABS_FILE + ".backup";
+        await fs.move(TABS_FILE, backupPath, { overwrite: true });
+        console.warn(`Corrupted tabs.json backed up to ${backupPath}. Starting fresh.`);
+        tabsData = {};
+      }
+
+      console.log(`Loaded tabs data for ${Object.keys(tabsData).length} window(s).`);
+      return tabsData;
+    } catch (e) {
+      console.error("Error loading saved tabs", e);
+      return {};
+    }
+  }
+
   async openSavedWindows() {
-    const windowStates = await this.loadSaved();
+    const [windowStates, savedTabs] = await Promise.all([
+      this.loadSaved(),
+      this.loadSavedTabs()
+    ]);
 
     if (windowStates.length === 0) {
-      console.log("No windows to restore.");
+      console.log("No windows to restore, creating default window.");
+      this.open(); // Create default window
       return;
     }
 
     for (const [index, state] of windowStates.entries()) {
       console.log(`Opening saved window ${index + 1}:`, state);
-      const options = { windowId: state.windowId };
+      const options = { 
+        windowId: state.windowId,
+        savedTabs: savedTabs[state.windowId] || null
+      };
+      
       if (state.position && Array.isArray(state.position)) {
         const [x, y] = state.position;
         options.x = x;
         options.y = y;
       }
+      
       if (state.size && Array.isArray(state.size)) {
         const [width, height] = state.size;
         options.width = width;
         options.height = height;
       }
+      
       if (state.url) {
         options.url = state.url;
       } else {
         options.url = "peersky://home";
       }
+      
       this.open(options);
     }
 
@@ -420,7 +598,7 @@ class WindowManager {
 
 class PeerskyWindow {
   constructor(options = {}, windowManager) {
-    const { url, isMainWindow = false, newWindow = false, windowId, ...windowOptions } = options;
+    const { url, isMainWindow = false, newWindow = false, windowId, savedTabs, ...windowOptions } = options;
     this.window = new BrowserWindow({
       width: 800,
       height: 600,
@@ -437,12 +615,15 @@ class PeerskyWindow {
 
     this.id = this.window.webContents.id;
     this.windowId = windowId || randomUUID();
+    this.savedTabs = savedTabs; // Store saved tabs for restoration
+    
     const loadURL = path.join(__dirname, "pages", "index.html");
     const query = { 
       query: { 
         url: url || "peersky://home",
         ...(newWindow && { newWindow: 'true' }),
-        windowId: this.windowId
+        windowId: this.windowId,
+        ...(savedTabs && { restoreTabs: 'true' })
       }
     };
     this.window.loadFile(loadURL, query);
@@ -465,28 +646,36 @@ class PeerskyWindow {
 
     // Inject JavaScript into renderer to set up IPC communication
     this.window.webContents.on("did-finish-load", () => {
-      // Check if the window is still alive
-      if (
-        !this.window.isDestroyed() &&
-        !this.window.webContents.isDestroyed()
-      ) {
-        this.window.webContents
-          .executeJavaScript(
-            `
-            const { ipcRenderer } = require('electron');
-            const webview = document.querySelector('tracked-box').webviewElement;
-            if (webview) {
-              webview.addEventListener('did-navigate', (e) => {
-                ipcRenderer.send('webview-did-navigate-${this.id}', webview.src);
-              });
-            }
-            // Send window ID to renderer for correct IPC event naming
-            ipcRenderer.send('set-window-id', ${this.id});
-          `
-          )
-          .catch((error) => {
-            console.error("Error injecting script into webContents:", error);
+      if (!this.window.isDestroyed() && !this.window.webContents.isDestroyed()) {
+        // Restore tabs if available
+        if (this.savedTabs) {
+          this.window.webContents.executeJavaScript(`
+            // Restore tabs data to localStorage
+            localStorage.setItem('peersky-browser-tabs', JSON.stringify({
+              '${this.windowId}': ${JSON.stringify(this.savedTabs)}
+            }));
+            
+            // Trigger tab restoration in the renderer
+            window.dispatchEvent(new CustomEvent('restore-tabs', { 
+              detail: { windowId: '${this.windowId}' }
+            }));
+          `).catch(error => {
+            console.error("Error restoring tabs:", error);
           });
+        }
+        
+        this.window.webContents.executeJavaScript(`
+          const { ipcRenderer } = require('electron');
+          const webview = document.querySelector('tracked-box').webviewElement;
+          if (webview) {
+            webview.addEventListener('did-navigate', (e) => {
+              ipcRenderer.send('webview-did-navigate-${this.id}', webview.src);
+            });
+          }
+          ipcRenderer.send('set-window-id', ${this.id});
+        `).catch((error) => {
+          console.error("Error injecting script into webContents:", error);
+        });
       }
     });
 
