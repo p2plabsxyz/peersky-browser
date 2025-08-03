@@ -98,17 +98,9 @@ displayTabs(tabsData) {
         const item = document.createElement('div');
         item.className = 'tab-item';
         item.dataset.tabId = tab.id;
-        
-        // Check if this is the active tab
-        const isActive = tab.id === windowData.activeTabId;
-        if (isActive) {
-          item.classList.add('active');
-        }
 
         item.innerHTML = `
           <span class="title">${tab.title || tab.url}</span>
-          <span class="url">${tab.url}</span>
-          ${isActive ? '<span class="active-indicator">●</span>' : ''}
           <div class="actions">
             <button class="close-btn" data-id="${tab.id}">×</button>
           </div>`;
