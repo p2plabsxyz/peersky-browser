@@ -41,6 +41,14 @@ export function createActions(windowManager) {
             const tabBar = document.querySelector('#tabbar');
             if (tabBar && typeof tabBar.addTab === 'function') {
               tabBar.addTab();
+              // Ensure URL bar gets focus after tab creation
+              setTimeout(() => {
+                const urlInput = document.getElementById('url');
+                if (urlInput) {
+                  urlInput.focus();
+                  urlInput.select();
+                }
+              }, 150);
             }
           }`);
         }

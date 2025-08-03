@@ -17,5 +17,11 @@
   <body>
     <tabs-box></tabs-box>
     <script src="peersky://static/js/tabs.js" type="module"></script>
+    <script>
+      console.log('tabs.html loaded');
+      window.addEventListener('error', (e) => {
+        console.error('Script loading error:', e);
+      });
+      </script>
   </body>
 </html>
