@@ -34,84 +34,83 @@ displayTabs(tabsData) {
   }
 
   // The data structure is: { windowId: { activeTabId, tabCounter, tabGroups: [...], tabs: [...] } }
-  const windows = Object.values(tabsData);
+  const windows = Object.entries(tabsData);
   
   if (windows.length === 0) {
     container.innerHTML += '<p>No windows found.</p>';
     return;
   }
 
-  // Process each window
-  windows.forEach((windowData, windowIndex) => {
+  // Collect all tab groups from all windows
+  const allGroups = new Map();
+  const allTabs = [];
+
+  windows.forEach(([windowId, windowData]) => {
     if (!windowData.tabs || !Array.isArray(windowData.tabs)) {
       return;
     }
 
-    // Create window section
-    const windowEl = document.createElement('div');
-    windowEl.className = 'window-section';
-    windowEl.innerHTML = `<h4>Window ${windowIndex + 1}</h4>`;
-
-    // Create groups map for this window
-    const groups = new Map();
+    // Collect tab groups from this window
     if (Array.isArray(windowData.tabGroups)) {
       windowData.tabGroups.forEach(group => {
-        groups.set(group.id, { ...group, tabs: [] });
+        if (!allGroups.has(group.id)) {
+          allGroups.set(group.id, { ...group, tabs: [] });
+        }
       });
     }
 
-    const groupedTabs = [];
-
+    // Collect all tabs and mark them with window info
     windowData.tabs.forEach(tab => {
-      if (tab.groupId && groups.has(tab.groupId)) {
-        groups.get(tab.groupId).tabs.push(tab);
-        groupedTabs.push(tab);
+      const tabWithWindow = { ...tab, windowId, windowIndex: windows.findIndex(([id]) => id === windowId) + 1 };
+      allTabs.push(tabWithWindow);
+      
+      if (tab.groupId && allGroups.has(tab.groupId)) {
+        allGroups.get(tab.groupId).tabs.push(tabWithWindow);
       }
     });
+  });
 
-    // Display grouped tabs
-    groups.forEach(group => {
-      if (group.tabs.length === 0) return;
+  // Display grouped tabs (cross-window groups)
+  allGroups.forEach(group => {
+    if (group.tabs.length === 0) return;
 
-      const groupEl = document.createElement('div');
-      groupEl.className = 'group';
+    const groupEl = document.createElement('div');
+    groupEl.className = 'group';
 
-      const header = document.createElement('div');
-      header.className = 'group-header';
-      header.style.backgroundColor = group.color || '#ccc';
-      header.innerHTML = `
-        <div class="group-title">${group.name || 'Unnamed group'} (${group.tabs.length} tabs)</div>
-        <div class="group-actions">
-          <button data-action="add-tab" data-id="${group.id}">Add tab</button>
-          <button data-action="edit" data-id="${group.id}">Edit</button>
-          <button data-action="toggle" data-id="${group.id}">${group.expanded ? 'Collapse' : 'Expand'}</button>
-          <button data-action="ungroup" data-id="${group.id}">Ungroup</button>
-          <button data-action="close-group" data-id="${group.id}">Close</button>
+    const header = document.createElement('div');
+    header.className = 'group-header';
+    header.style.backgroundColor = group.color || '#ccc';
+    header.innerHTML = `
+      <div class="group-title">${group.name || 'Unnamed group'} (${group.tabs.length} tabs across ${new Set(group.tabs.map(t => t.windowId)).size} windows)</div>
+      <div class="group-actions">
+        <button data-action="add-tab" data-id="${group.id}">Add tab</button>
+        <button data-action="edit" data-id="${group.id}">Edit</button>
+        <button data-action="toggle" data-id="${group.id}">${group.expanded ? 'Collapse' : 'Expand'}</button>
+        <button data-action="ungroup" data-id="${group.id}">Ungroup</button>
+        <button data-action="close-group" data-id="${group.id}">Close</button>
+      </div>`;
+    groupEl.appendChild(header);
+
+    const tabsWrap = document.createElement('div');
+    tabsWrap.className = 'group-tabs';
+    if (!group.expanded) tabsWrap.style.display = 'none';
+
+    group.tabs.forEach(tab => {
+      const item = document.createElement('div');
+      item.className = 'tab-item';
+      item.dataset.tabId = tab.id;
+
+      item.innerHTML = `
+        <span class="title">${tab.title || tab.url}</span>
+        <span class="window-indicator">Window ${tab.windowIndex}</span>
+        <div class="actions">
+          <button class="close-btn" data-id="${tab.id}">×</button>
         </div>`;
-      groupEl.appendChild(header);
-
-      const tabsWrap = document.createElement('div');
-      tabsWrap.className = 'group-tabs';
-      if (!group.expanded) tabsWrap.style.display = 'none';
-
-      group.tabs.forEach(tab => {
-        const item = document.createElement('div');
-        item.className = 'tab-item';
-        item.dataset.tabId = tab.id;
-
-        item.innerHTML = `
-          <span class="title">${tab.title || tab.url}</span>
-          <div class="actions">
-            <button class="close-btn" data-id="${tab.id}">×</button>
-          </div>`;
-        tabsWrap.appendChild(item);
-      });
-
-      groupEl.appendChild(tabsWrap);
-      windowEl.appendChild(groupEl);
+      tabsWrap.appendChild(item);
     });
 
-    container.appendChild(windowEl);
+    groupEl.appendChild(tabsWrap);
+    container.appendChild(groupEl);
   });
 
   // Show message if no tabs found

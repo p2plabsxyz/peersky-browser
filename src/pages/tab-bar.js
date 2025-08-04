@@ -172,6 +172,37 @@ class TabBar extends HTMLElement {
       return null;
     }
   }
+  loadAllPersistedTabs() {
+    try {
+      const stored = localStorage.getItem("peersky-browser-tabs");
+      if (!stored) return null;
+      return JSON.parse(stored);
+    } catch (error) {
+      console.error("Failed to load persisted tabs:", error);
+      return {};
+    }
+  }
+
+  // Get all tab groups from all windows
+getAllTabGroups() {
+  const allTabsData = this.loadAllPersistedTabs();
+  const allGroups = new Map();
+  
+  Object.entries(allTabsData).forEach(([windowId, windowData]) => {
+    if (windowData.tabGroups && Array.isArray(windowData.tabGroups)) {
+      windowData.tabGroups.forEach(group => {
+        // Add window info to group
+        allGroups.set(group.id, {
+          ...group,
+          windowId,
+          windowName: windowId === 'main' ? 'Main Window' : `Window ${windowId}`
+        });
+      });
+    }
+  });
+  
+  return allGroups;
+}
 
   // Save current tabs state to localStorage
   saveTabsState() {
@@ -812,7 +843,7 @@ restoreTabs(persistedData) {
     if (existingMenu) {
       existingMenu.remove();
     }
-
+  
     const menu = document.createElement('div');
     menu.className = 'tab-context-menu';
     menu.style.position = 'fixed';
@@ -867,6 +898,10 @@ restoreTabs(persistedData) {
     const tabGroupId = this.tabGroupAssignments.get(tabId);
     const isGrouped = !!tabGroupId;
     
+    // Get all groups from all windows to check if any exist
+    const allGroups = this.getAllTabGroups();
+    const hasAnyGroups = allGroups.size > 0;
+    
     // Add group-related menu items before the last separator
     const groupMenuItems = `
       <div class="context-menu-separator"></div>
@@ -881,7 +916,7 @@ restoreTabs(persistedData) {
           Add to new group
         </div>
       `}
-      ${this.tabGroups.size > 0 && !isGrouped ? `
+      ${hasAnyGroups && !isGrouped ? `
         <div class="context-menu-item has-submenu" data-action="add-to-existing-group">
           <img class="menu-icon" src="${iconPath}/folder.svg" />
           Add to group
@@ -1756,14 +1791,22 @@ restoreTabs(persistedData) {
     const submenu = document.createElement('div');
     submenu.className = 'tab-context-submenu';
     
+    // Get all groups from all windows
+    const allGroups = this.getAllTabGroups();
+    
     let submenuHtml = '';
-    for (const [groupId, group] of this.tabGroups.entries()) {
-      submenuHtml += `
-        <div class="context-menu-item" data-group-id="${groupId}">
-          <span class="menu-icon" style="background-color: ${group.color}; width: 10px; height: 10px; border-radius: 50%;"></span>
-          ${group.name || 'Unnamed group'}
-        </div>
-      `;
+    
+    if (allGroups.size > 0) {
+      for (const [groupId, group] of allGroups) {
+        submenuHtml += `
+          <div class="context-menu-item" data-group-id="${groupId}">
+            <span class="menu-icon" style="background-color: ${group.color}; width: 10px; height: 10px; border-radius: 50%;"></span>
+            ${group.name || 'Unnamed group'}
+          </div>
+        `;
+      }
+    } else {
+      submenuHtml = '<div class="context-menu-item disabled">No groups available</div>';
     }
     
     submenu.innerHTML = submenuHtml;
@@ -1772,21 +1815,68 @@ restoreTabs(persistedData) {
     const menuItem = document.querySelector('.context-menu-item[data-action="add-to-existing-group"]');
     if (menuItem) {
       const rect = menuItem.getBoundingClientRect();
+      submenu.style.position = 'fixed';
       submenu.style.left = `${rect.right}px`;
       submenu.style.top = `${rect.top}px`;
+      submenu.style.zIndex = '10001';
     }
     
     // Add event listeners
     submenu.addEventListener('click', (e) => {
       const groupId = e.target.closest('.context-menu-item')?.dataset.groupId;
-      if (groupId) {
-        this.addTabToGroup(tabId, groupId);
+      if (groupId && !e.target.closest('.context-menu-item').classList.contains('disabled')) {
+        this.addTabToGroupAcrossWindows(tabId, groupId);
         document.querySelector('.tab-context-menu')?.remove();
         submenu.remove();
       }
     });
     
+    // Ensure submenu doesn't go off screen
     document.body.appendChild(submenu);
+    const submenuRect = submenu.getBoundingClientRect();
+    if (submenuRect.right > window.innerWidth) {
+      submenu.style.left = `${window.innerWidth - submenuRect.width - 10}px`;
+    }
+    if (submenuRect.bottom > window.innerHeight) {
+      submenu.style.top = `${window.innerHeight - submenuRect.height - 10}px`;
+    }
+  }
+
+  // Add a tab to a group that might be in another window
+  addTabToGroupAcrossWindows(tabId, groupId) {
+    // Check if group exists in current window
+    if (this.tabGroups.has(groupId)) {
+      // Local group - use existing method
+      this.addTabToGroup(tabId, groupId);
+      return;
+    }
+    
+    // Group is in another window - need to create it locally first
+    const allGroups = this.getAllTabGroups();
+    const targetGroup = allGroups.get(groupId);
+    
+    if (!targetGroup) {
+      console.error(`Group ${groupId} not found`);
+      return;
+    }
+    
+    // Create the group in current window with same properties
+    this.tabGroups.set(groupId, {
+      id: groupId,
+      name: targetGroup.name,
+      color: targetGroup.color,
+      expanded: targetGroup.expanded !== undefined ? targetGroup.expanded : true
+    });
+    
+    // Add tab to the group
+    this.addTabToGroup(tabId, groupId);
+    
+    // Render group header and update UI
+    this.renderGroupHeader(groupId);
+    this.updateGroupedTabsUI();
+    
+    // Save state
+    this.saveTabsState();
   }
 
   // Drag and Drop Handlers
