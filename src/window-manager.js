@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, webContents } from "electron";
 import path from "path";
 import fs from "fs-extra";
 import ScopedFS from 'scoped-fs';
@@ -128,13 +128,70 @@ class WindowManager {
     });
     
     ipcMain.handle("group-action", (event, data) => {
-      this.sendToMainWindow('group-action', data);
+      console.log('=== GROUP ACTION DEBUG ===');
+      console.log('Sender webContents ID:', event.sender.id);
+      console.log('Action data:', data);
+      console.log('Total windows:', this.windows.size);
+      
+      // Log all windows and their webContents IDs
+      for (const [index, window] of this.windows.entries()) {
+        console.log(`Window ${index}: webContents ID = ${window.window.webContents.id}, windowId = ${window.windowId}`);
+      }
+      
+      // Find the window that sent this request
+      let senderWindow = this.findWindowByWebContentsId(event.sender.id);
+      
+      // If not found directly, it might be a webview - try to find parent window
+      if (!senderWindow) {
+        console.log('Sender not found in main windows, checking if it\'s a webview...');
+        
+        // Try to find the parent window by checking all webContents
+        const allWebContents = webContents.getAllWebContents();
+        
+        for (const wc of allWebContents) {
+          if (wc.id === event.sender.id) {
+            console.log('Found sender webContents, checking for parent...');
+            
+            // Check if this webContents has a hostWebContents (parent)
+            if (wc.hostWebContents) {
+              console.log('Found parent webContents ID:', wc.hostWebContents.id);
+              senderWindow = this.findWindowByWebContentsId(wc.hostWebContents.id);
+              if (senderWindow) {
+                console.log('Found parent window:', senderWindow.windowId);
+                break;
+              }
+            }
+          }
+        }
+      }
+      
+      console.log('Final sender window:', senderWindow ? `windowId=${senderWindow.windowId}` : 'null');
+      
+      if (senderWindow) {
+        // Send the action to the originating window (or its parent if it was a webview)
+        console.log('Sending group action to sender window:', senderWindow.windowId);
+        this.sendToSpecificWindow(senderWindow, 'group-action', data);
+      } else {
+        // Fallback to main window if sender not found
+        console.warn('Could not find sender window for group action, falling back to main window');
+        this.sendToMainWindow('group-action', data);
+      }
+      console.log('=== END GROUP ACTION DEBUG ===');
     });
   }
 
   findWindowBySenderId(senderId) {
     for (const window of this.windows) {
       if (window.window.webContents.id === senderId) {
+        return window;
+      }
+    }
+    return null;
+  }
+
+  findWindowByWebContentsId(webContentsId) {
+    for (const window of this.windows) {
+      if (window.window.webContents.id === webContentsId) {
         return window;
       }
     }
@@ -234,6 +291,13 @@ class WindowManager {
 
   sendToMainWindow(channel, data) {
     const win = this.getMainWindow();
+    if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
+      win.webContents.send(channel, data);
+    }
+  }
+
+  sendToSpecificWindow(peerskyWindow, channel, data) {
+    const win = peerskyWindow.window;
     if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
       win.webContents.send(channel, data);
     }
