@@ -35,7 +35,22 @@ document.addEventListener("DOMContentLoaded", async () => {
   } catch (error) {
     console.error('Error loading theme:', error);
   }
+  
+  ipcRenderer.on('group-properties-updated', (_, groupId, properties) => {
+    console.log('Received group properties update:', groupId, properties);
+    if (tabBar && typeof tabBar.updateGroupPropertiesFromExternal === 'function') {
+      tabBar.updateGroupPropertiesFromExternal(groupId, properties);
+    }
+  });
 
+  ipcRenderer.on('check-has-tab', (event, tabId) => {
+    let hasTab = false;
+    if (tabBar && typeof tabBar.hasTab === 'function') {
+      hasTab = tabBar.hasTab(tabId);
+    }
+    event.returnValue = hasTab;
+  });
+  
   // Listen for theme changes from main process
   ipcRenderer.on('theme-changed', (event, newTheme) => {
     document.documentElement.setAttribute('data-theme', newTheme);

@@ -123,8 +123,61 @@ class WindowManager {
       this.sendToMainWindow('close-tab', id);
     });
 
-    ipcMain.handle("activate-tab", (event, id) => {
-      this.sendToMainWindow('activate-tab', id);
+    ipcMain.handle("activate-tab", async (event, id) => {
+      console.log('Activating tab:', id);
+      
+      // Find which window contains this tab
+      let targetWindow = null;
+      
+      for (const peerskyWindow of this.windows.values()) {
+        if (peerskyWindow.window && !peerskyWindow.window.isDestroyed()) {
+          try {
+            // Use executeJavaScript instead of sendSync to check for the tab
+            const hasTab = await peerskyWindow.window.webContents.executeJavaScript(`
+              (function() {
+                try {
+                  const tabBar = document.querySelector('#tabbar');
+                  if (tabBar && tabBar.tabs) {
+                    return tabBar.tabs.some(tab => tab.id === '${id}');
+                  }
+                  return false;
+                } catch (error) {
+                  console.error('Error checking for tab:', error);
+                  return false;
+                }
+              })()
+            `);
+            
+            if (hasTab) {
+              targetWindow = peerskyWindow;
+              break;
+            }
+          } catch (error) {
+            console.log('Error checking tab in window:', error);
+            // Continue to next window
+          }
+        }
+      }
+      
+      if (targetWindow) {
+        // Bring the window to front
+        if (targetWindow.window.isMinimized()) {
+          targetWindow.window.restore();
+        }
+        targetWindow.window.focus();
+        targetWindow.window.show();
+        
+        // Activate the tab in that window
+        targetWindow.window.webContents.send('activate-tab', id);
+        
+        console.log(`Activated tab ${id} in window ${targetWindow.windowId} and brought window to front`);
+        return { success: true, windowId: targetWindow.windowId };
+      } else {
+        // Fallback to main window if tab not found
+        console.warn(`Tab ${id} not found in any window, falling back to main window`);
+        this.sendToMainWindow('activate-tab', id);
+        return { success: false, message: 'Tab not found, sent to main window' };
+      }
     });
     
     ipcMain.handle("group-action", (event, data) => {
@@ -133,50 +186,69 @@ class WindowManager {
       console.log('Action data:', data);
       console.log('Total windows:', this.windows.size);
       
-      // Log all windows and their webContents IDs
-      for (const [index, window] of this.windows.entries()) {
-        console.log(`Window ${index}: webContents ID = ${window.window.webContents.id}, windowId = ${window.windowId}`);
-      }
+      const { action, groupId } = data;
       
-      // Find the window that sent this request
-      let senderWindow = this.findWindowByWebContentsId(event.sender.id);
-      
-      // If not found directly, it might be a webview - try to find parent window
-      if (!senderWindow) {
-        console.log('Sender not found in main windows, checking if it\'s a webview...');
+      // For "add-tab" action, send to specific window (existing behavior)
+      if (action === 'add-tab' || action === 'edit') {
+        console.log('Handling add-tab action - sending to specific window');
         
-        // Try to find the parent window by checking all webContents
-        const allWebContents = webContents.getAllWebContents();
+        // Log all windows and their webContents IDs
+        for (const [index, window] of this.windows.entries()) {
+          console.log(`Window ${index}: webContents ID = ${window.window.webContents.id}, windowId = ${window.windowId}`);
+        }
         
-        for (const wc of allWebContents) {
-          if (wc.id === event.sender.id) {
-            console.log('Found sender webContents, checking for parent...');
-            
-            // Check if this webContents has a hostWebContents (parent)
-            if (wc.hostWebContents) {
-              console.log('Found parent webContents ID:', wc.hostWebContents.id);
-              senderWindow = this.findWindowByWebContentsId(wc.hostWebContents.id);
-              if (senderWindow) {
-                console.log('Found parent window:', senderWindow.windowId);
-                break;
+        // Find the window that sent this request
+        let senderWindow = this.findWindowByWebContentsId(event.sender.id);
+        
+        // If not found directly, it might be a webview - try to find parent window
+        if (!senderWindow) {
+          console.log('Sender not found in main windows, checking if it\'s a webview...');
+          
+          // Try to find the parent window by checking all webContents
+          const allWebContents = webContents.getAllWebContents();
+          
+          for (const wc of allWebContents) {
+            if (wc.id === event.sender.id) {
+              console.log('Found sender webContents, checking for parent...');
+              
+              // Check if this webContents has a hostWebContents (parent)
+              if (wc.hostWebContents) {
+                console.log('Found parent webContents ID:', wc.hostWebContents.id);
+                senderWindow = this.findWindowByWebContentsId(wc.hostWebContents.id);
+                if (senderWindow) {
+                  console.log('Found parent window:', senderWindow.windowId);
+                  break;
+                }
               }
             }
           }
         }
+        
+        console.log('Final sender window:', senderWindow ? `windowId=${senderWindow.windowId}` : 'null');
+        
+        if (senderWindow) {
+          // Send the action to the originating window (or its parent if it was a webview)
+          console.log('Sending group action to sender window:', senderWindow.windowId);
+          this.sendToSpecificWindow(senderWindow, 'group-action', data);
+        } else {
+          // Fallback to main window if sender not found
+          console.warn('Could not find sender window for group action, falling back to main window');
+          this.sendToMainWindow('group-action', data);
+        }
+      } else{
+        // For edit, toggle, ungroup, close-group actions, broadcast to ALL windows
+        console.log(`Broadcasting ${action} action to all windows`);
+        
+        this.windows.forEach(peerskyWindow => {
+          if (peerskyWindow.window && !peerskyWindow.window.isDestroyed()) {
+            console.log(`Sending ${action} to window ${peerskyWindow.windowId}`);
+            peerskyWindow.window.webContents.send('group-action', data);
+          }
+        });
       }
       
-      console.log('Final sender window:', senderWindow ? `windowId=${senderWindow.windowId}` : 'null');
-      
-      if (senderWindow) {
-        // Send the action to the originating window (or its parent if it was a webview)
-        console.log('Sending group action to sender window:', senderWindow.windowId);
-        this.sendToSpecificWindow(senderWindow, 'group-action', data);
-      } else {
-        // Fallback to main window if sender not found
-        console.warn('Could not find sender window for group action, falling back to main window');
-        this.sendToMainWindow('group-action', data);
-      }
       console.log('=== END GROUP ACTION DEBUG ===');
+      return { success: true };
     });
   }
 

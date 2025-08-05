@@ -762,7 +762,9 @@ restoreTabs(persistedData) {
   getActiveTab() {
     return this.tabs.find(tab => tab.id === this.activeTabId);
   }
-  
+  hasTab(tabId) {
+    return this.tabs.some(tab => tab.id === tabId);
+  }
   getActiveWebview() {
     if (!this.activeTabId) return null;
     return this.webviews.get(this.activeTabId);
@@ -1363,11 +1365,186 @@ restoreTabs(persistedData) {
     if (properties.color !== undefined) group.color = properties.color;
     if (properties.expanded !== undefined) group.expanded = properties.expanded;
     
-    // Update UI
+    // Update local UI
     this.renderGroupHeader(groupId);
     this.updateGroupedTabsUI();
     
     // Update all tab borders for this group
+    if (properties.color !== undefined) {
+      for (const [tabId, gId] of this.tabGroupAssignments.entries()) {
+        if (gId === groupId) {
+          const tabElement = document.getElementById(tabId);
+          if (tabElement && group.expanded) {
+            tabElement.style.borderTop = '2px solid ' + properties.color;
+          }
+        }
+      }
+    }
+    
+    // Broadcast changes to all other windows
+    const { ipcRenderer } = require('electron');
+    ipcRenderer.send('update-group-properties', groupId, properties);
+    
+    // Save state
+    this.saveTabsState();
+  }
+
+  // Enhanced handleGroupContextMenuAction to work with groups from any window
+  handleGroupContextMenuAction(action, groupId) {
+    console.log(`Handling group action: ${action} for group: ${groupId}`);
+    
+    switch (action) {
+      case 'add-tab':
+        const newTabId = this.addTab("peersky://home", "Home");
+        this.addTabToGroupAcrossWindows(newTabId, groupId);
+        break;
+        
+      case 'edit':
+        this.showGroupEditDialogAcrossWindows(groupId);
+        break;
+        
+      case 'toggle':
+        this.toggleGroupCollapseAcrossWindows(groupId);
+        break;
+        
+      case 'ungroup':
+        this.deleteGroupAcrossWindows(groupId);
+        break;
+        
+      case 'close-group':
+        this.closeTabsInGroupAcrossWindows(groupId);
+        break;
+    }
+  }
+
+  // Show group edit dialog for groups that might exist in other windows
+  showGroupEditDialogAcrossWindows(groupId) {
+    let group = this.tabGroups.get(groupId);
+    
+    // If group doesn't exist locally, get it from all windows data
+    if (!group) {
+      const allGroups = this.getAllTabGroups();
+      group = allGroups.get(groupId);
+      
+      if (!group) {
+        console.error(`Group ${groupId} not found in any window`);
+        return;
+      }
+      
+      // Create the group locally with same properties
+      this.tabGroups.set(groupId, {
+        id: groupId,
+        name: group.name,
+        color: group.color,
+        expanded: group.expanded !== undefined ? group.expanded : true
+      });
+    }
+    
+    // Show the edit dialog
+    this.showGroupEditDialog(groupId);
+  }
+
+  // Toggle group collapse across all windows
+  toggleGroupCollapseAcrossWindows(groupId) {
+    let group = this.tabGroups.get(groupId);
+    
+    if (!group) {
+      // Group doesn't exist locally, get from all windows
+      const allGroups = this.getAllTabGroups();
+      const sourceGroup = allGroups.get(groupId);
+      
+      if (!sourceGroup) {
+        console.error(`Group ${groupId} not found`);
+        return;
+      }
+      
+      // Create local group
+      group = {
+        id: groupId,
+        name: sourceGroup.name,
+        color: sourceGroup.color,
+        expanded: sourceGroup.expanded !== undefined ? sourceGroup.expanded : true
+      };
+      this.tabGroups.set(groupId, group);
+    }
+    
+    // Toggle the state
+    group.expanded = !group.expanded;
+    
+    // Broadcast the change to all windows
+    const { ipcRenderer } = require('electron');
+    ipcRenderer.send('update-group-properties', groupId, { expanded: group.expanded });
+    
+    // Update local UI
+    this.updateGroupedTabsUI();
+    this.updateGroupToggleButton(groupId);
+    this.saveTabsState();
+  }
+
+  // Delete group across all windows
+  deleteGroupAcrossWindows(groupId) {
+    // Remove local group if it exists
+    if (this.tabGroups.has(groupId)) {
+      this.deleteGroup(groupId);
+    }
+    
+    // Broadcast deletion to all windows
+    const { ipcRenderer } = require('electron');
+    ipcRenderer.send('update-group-properties', groupId, { delete: true });
+  }
+
+  // Close tabs in group across all windows
+  closeTabsInGroupAcrossWindows(groupId) {
+    // Close local tabs in this group
+    const tabIds = Array.from(this.tabGroupAssignments.entries())
+      .filter(([_, gId]) => gId === groupId)
+      .map(([tabId, _]) => tabId);
+    
+    [...tabIds].forEach(tabId => {
+      this.closeTab(tabId);
+    });
+    
+    // The group deletion will be handled by deleteGroupAcrossWindows if empty
+    if (tabIds.length > 0) {
+      this.deleteGroupAcrossWindows(groupId);
+    }
+  }
+
+  // Method to handle external group property updates
+  updateGroupPropertiesFromExternal(groupId, properties) {
+    console.log(`External update for group ${groupId}:`, properties);
+    
+    // Handle group deletion
+    if (properties.delete) {
+      if (this.tabGroups.has(groupId)) {
+        this.deleteGroup(groupId);
+      }
+      return;
+    }
+    
+    let group = this.tabGroups.get(groupId);
+    
+    // Create group locally if it doesn't exist
+    if (!group) {
+      group = {
+        id: groupId,
+        name: properties.name || '',
+        color: properties.color || this.groupColors[0],
+        expanded: properties.expanded !== undefined ? properties.expanded : true
+      };
+      this.tabGroups.set(groupId, group);
+    } else {
+      // Update existing group
+      if (properties.name !== undefined) group.name = properties.name;
+      if (properties.color !== undefined) group.color = properties.color;
+      if (properties.expanded !== undefined) group.expanded = properties.expanded;
+    }
+    
+    // Update UI
+    this.renderGroupHeader(groupId);
+    this.updateGroupedTabsUI();
+    
+    // Update tab borders for this group
     if (properties.color !== undefined) {
       for (const [tabId, gId] of this.tabGroupAssignments.entries()) {
         if (gId === groupId) {

@@ -201,4 +201,28 @@ ipcMain.handle('get-tab-memory-usage', async (event, webContentsId) => {
   }
 });
 
+ipcMain.on('group-action', (event, data) => {
+  console.log('Group action received:', data);
+  const { action, groupId } = data;
+  
+  // Broadcast to all windows
+  windowManager.all.forEach(peerskyWindow => {
+    if (peerskyWindow.window && !peerskyWindow.window.isDestroyed()) {
+      peerskyWindow.window.webContents.send('group-action', { action, groupId });
+    }
+  });
+  
+  return { success: true }; 
+});
+
+ipcMain.on('update-group-properties', (event, groupId, properties) => {
+  console.log('Updating group properties across all windows:', groupId, properties);
+  
+  // Broadcast to all windows
+  windowManager.all.forEach(peerskyWindow => {
+    if (peerskyWindow.window && !peerskyWindow.window.isDestroyed()) {
+      peerskyWindow.window.webContents.send('group-properties-updated', groupId, properties);
+    }
+  });
+});
 export { windowManager };

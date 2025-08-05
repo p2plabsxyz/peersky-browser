@@ -4,6 +4,15 @@ class TabsBox extends HTMLElement {
     this.attachShadow({ mode: 'open' });
     this.render();
     this.loadTabs();
+
+    // Listen for group property updates
+    if (window.electronAPI && window.electronAPI.onGroupPropertiesUpdated) {
+      window.electronAPI.onGroupPropertiesUpdated((groupId, properties) => {
+        console.log('Tabs page received group update:', groupId, properties);
+        // Refresh the tabs display
+        setTimeout(() => this.loadTabs(), 100);
+      });
+    }
   }
 
 async loadTabs() {
