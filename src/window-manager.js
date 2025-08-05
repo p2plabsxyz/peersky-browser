@@ -132,7 +132,6 @@ class WindowManager {
       for (const peerskyWindow of this.windows.values()) {
         if (peerskyWindow.window && !peerskyWindow.window.isDestroyed()) {
           try {
-            // Use executeJavaScript instead of sendSync to check for the tab
             const hasTab = await peerskyWindow.window.webContents.executeJavaScript(`
               (function() {
                 try {
@@ -170,7 +169,6 @@ class WindowManager {
         // Activate the tab in that window
         targetWindow.window.webContents.send('activate-tab', id);
         
-        console.log(`Activated tab ${id} in window ${targetWindow.windowId} and brought window to front`);
         return { success: true, windowId: targetWindow.windowId };
       } else {
         // Fallback to main window if tab not found
@@ -181,54 +179,34 @@ class WindowManager {
     });
     
     ipcMain.handle("group-action", (event, data) => {
-      console.log('=== GROUP ACTION DEBUG ===');
-      console.log('Sender webContents ID:', event.sender.id);
-      console.log('Action data:', data);
-      console.log('Total windows:', this.windows.size);
-      
       const { action, groupId } = data;
       
-      // For "add-tab" action, send to specific window (existing behavior)
+      // For "add-tab" action, send to specific window
       if (action === 'add-tab' || action === 'edit') {
-        console.log('Handling add-tab action - sending to specific window');
-        
-        // Log all windows and their webContents IDs
-        for (const [index, window] of this.windows.entries()) {
-          console.log(`Window ${index}: webContents ID = ${window.window.webContents.id}, windowId = ${window.windowId}`);
-        }
-        
         // Find the window that sent this request
         let senderWindow = this.findWindowByWebContentsId(event.sender.id);
         
         // If not found directly, it might be a webview - try to find parent window
-        if (!senderWindow) {
-          console.log('Sender not found in main windows, checking if it\'s a webview...');
-          
+        if (!senderWindow) {          
           // Try to find the parent window by checking all webContents
           const allWebContents = webContents.getAllWebContents();
           
           for (const wc of allWebContents) {
             if (wc.id === event.sender.id) {
-              console.log('Found sender webContents, checking for parent...');
               
               // Check if this webContents has a hostWebContents (parent)
               if (wc.hostWebContents) {
-                console.log('Found parent webContents ID:', wc.hostWebContents.id);
                 senderWindow = this.findWindowByWebContentsId(wc.hostWebContents.id);
                 if (senderWindow) {
-                  console.log('Found parent window:', senderWindow.windowId);
                   break;
                 }
               }
             }
           }
         }
-        
-        console.log('Final sender window:', senderWindow ? `windowId=${senderWindow.windowId}` : 'null');
-        
+                
         if (senderWindow) {
           // Send the action to the originating window (or its parent if it was a webview)
-          console.log('Sending group action to sender window:', senderWindow.windowId);
           this.sendToSpecificWindow(senderWindow, 'group-action', data);
         } else {
           // Fallback to main window if sender not found
@@ -236,18 +214,13 @@ class WindowManager {
           this.sendToMainWindow('group-action', data);
         }
       } else{
-        // For edit, toggle, ungroup, close-group actions, broadcast to ALL windows
-        console.log(`Broadcasting ${action} action to all windows`);
-        
+        // For edit, toggle, ungroup, close-group actions, broadcast to ALL windows        
         this.windows.forEach(peerskyWindow => {
           if (peerskyWindow.window && !peerskyWindow.window.isDestroyed()) {
-            console.log(`Sending ${action} to window ${peerskyWindow.windowId}`);
             peerskyWindow.window.webContents.send('group-action', data);
           }
         });
       }
-      
-      console.log('=== END GROUP ACTION DEBUG ===');
       return { success: true };
     });
   }
@@ -514,12 +487,10 @@ class WindowManager {
   }
 
   async saveWindowStates() {
-    console.log("Saving window states...");
     const windowStates = [];
     
     for (const window of this.all) {
       if (window.window.isDestroyed() || window.window.webContents.isDestroyed()) {
-        console.log(`Skipping destroyed window: ${window.id}`);
         continue;
       }
       
@@ -530,7 +501,6 @@ class WindowManager {
         const windowId = window.windowId;
         
         windowStates.push({ windowId, url, position, size });
-        console.log(`Saved window ${window.id}: ID=${windowId}, URL=${url}`);
       } catch (error) {
         console.error(`Error saving window state for window ${window.id}:`, error);
       }
@@ -663,7 +633,6 @@ class WindowManager {
         tabsData = {};
       }
 
-      console.log(`Loaded tabs data for ${Object.keys(tabsData).length} window(s).`);
       return tabsData;
     } catch (e) {
       console.error("Error loading saved tabs", e);

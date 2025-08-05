@@ -20,10 +20,7 @@ async loadTabs() {
       if (!window.electronAPI || !window.electronAPI.getTabs) {
         throw new Error('electronAPI not available');
       }
-      const data = await window.electronAPI.getTabs();
-      console.log('Raw tabs data:', data);
-      
-      // Don't parse JSON - data is already an object
+      const data = await window.electronAPI.getTabs();      
       this.displayTabs(data);
     } catch (e) {
       console.error('Failed to load tabs', e);
@@ -34,8 +31,6 @@ async loadTabs() {
 displayTabs(tabsData) {
   const container = this.shadowRoot.querySelector('.tabs-container');
   container.innerHTML = '<h1>Tabs</h1>';
-
-  console.log('Displaying tabs:', tabsData);
 
   if (!tabsData) {
     container.innerHTML += '<p>No tabs found.</p>';
