@@ -1,9 +1,9 @@
 import { app } from "electron";
+import { LevelBlockstore } from "blockstore-level";
+import { LevelDatastore } from "datastore-level";
 import path from "path";
 import fs from "fs-extra";
 import crypto from "hypercore-crypto";
-import { FsBlockstore } from "blockstore-fs";
-import { FsDatastore } from "datastore-fs";
 import { getDefaultChainList } from "web3protocol/chains";
 import { generateKeyPair, privateKeyFromProtobuf, privateKeyToProtobuf } from "@libp2p/crypto/keys";
 
@@ -82,8 +82,8 @@ export async function ipfsOptions() {
   await fs.ensureDir(DATASTORE_PATH);
   return {
     repo: DEFAULT_IPFS_DIR,
-    blockstore: new FsBlockstore(BLOCKSTORE_PATH),
-    datastore: new FsDatastore(DATASTORE_PATH),
+    blockstore: new LevelBlockstore(BLOCKSTORE_PATH),
+    datastore: new LevelDatastore(DATASTORE_PATH),
   };
 }
 
