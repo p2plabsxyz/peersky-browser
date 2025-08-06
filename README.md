@@ -29,6 +29,7 @@
     - DuckDuckGo (default)
     - Ecosia
   - [ ] 🚧 [Tabs](https://github.com/p2plabsxyz/peersky-browser/issues/11)
+    - Vertical tabs toggle
 
 - [x] IPFS protocol handler:
 
@@ -153,15 +154,15 @@ npm start
 
 ```bash
 npm run build
-# For Intel and M1 macs
+# For Intel and Silicon macs
 ```
-
-Now, the `dist` folder will appear in the root directory.
 
 ```bash
 npm run build-all
 # For macOS, Linux, and Windows
 ```
+
+Now, the `dist` folder will appear in the root directory.
 
 ## Contribute
 
