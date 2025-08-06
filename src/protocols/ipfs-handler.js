@@ -171,8 +171,10 @@ export async function createHandler(ipfsOptions, session) {
         peerId.bytes = peerId.toBytes();
         console.log("Patched peerId to include bytes property.");
       }
-      const resolutionResult = await name.resolve(peerId);
-
+      const resolutionResult = await name.resolve(peerId, {
+        signal: AbortSignal.timeout(10000),
+      });
+      
       let resolvedCID = resolutionResult.cid;
       if (!(resolvedCID instanceof CID)) {
         // If cid is a string, parse it
