@@ -86,7 +86,11 @@ export async function createNode() {
         validators: { ipns: ipnsValidator },
         selectors: { ipns: ipnsSelector },
         peerInfoMapper: removePrivateAddressesMapper,
-        reprovide: { concurrency: 10 }
+        reprovide: { 
+          concurrency: 10,
+          interval: 60 * 60 * 1000,
+          threshold: 12 * 60 * 60 * 1000
+        }
       }),
       identify: identify(),
       identifyPush: identifyPush(),
