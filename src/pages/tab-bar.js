@@ -67,9 +67,12 @@ class TabBar extends HTMLElement {
     
     // Get current URL and reload if needed
     const tab = this.tabs.find(tab => tab.id === this.activeTabId);
-    if (tab && tab.url) {
-      // Force reload the current URL
-      activeWebview.setAttribute("src", tab.url);
+    if (activeWebview && tab) {
+      const currentSrc = activeWebview.getAttribute('src');
+      // Avoid aborting in-flight navigation with a duplicate src
+      if (currentSrc !== tab.url && !activeWebview.isLoading?.()) {
+        activeWebview.setAttribute('src', tab.url);
+      }
     }
     
     // Multiple focus attempts with increasing delay
