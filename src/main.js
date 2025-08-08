@@ -11,8 +11,8 @@ import settingsManager from "./settings-manager.js";
 import { attachContextMenus, setWindowManager } from "./context-menu.js";
 // import { setupAutoUpdater } from "./auto-updater.js";
 
-// TODO: Import and initialize extension system
-// import extensionManager from "./extensions/index.js";
+// Import and initialize extension system
+import extensionManager from "./extensions/index.js";
 
 const P2P_PROTOCOL = {
   standard: true,
@@ -52,14 +52,14 @@ app.whenReady().then(async () => {
   setWindowManager(windowManager);
   await setupProtocols(session.defaultSession);
 
-  // TODO: Initialize extension system
-  // try {
-  //   console.log("Initializing extension system...");
-  //   await extensionManager.initialize();
-  //   console.log("Extension system initialized successfully");
-  // } catch (error) {
-  //   console.error("Failed to initialize extension system:", error);
-  // }
+  // Initialize extension system
+  try {
+    console.log("Initializing extension system...");
+    await extensionManager.initialize(session.defaultSession);
+    console.log("Extension system initialized successfully");
+  } catch (error) {
+    console.error("Failed to initialize extension system:", error);
+  }
 
   // Load saved windows or open a new one
   await windowManager.openSavedWindows();
@@ -79,7 +79,7 @@ app.whenReady().then(async () => {
 // Introduce a flag to prevent multiple 'before-quit' handling
 let isQuitting = false;
 
-app.on("before-quit", (event) => {
+app.on("before-quit", async (event) => {
   if (isQuitting) {
     return;
   }
@@ -91,10 +91,13 @@ app.on("before-quit", (event) => {
 
   windowManager.setQuitting(true); // Inform WindowManager that quitting is happening
 
-  // TODO: Shutdown extension system
-  // extensionManager.shutdown().catch(error => {
-  //   console.error("Error shutting down extension system:", error);
-  // });
+  // Shutdown extension system
+  try {
+    await extensionManager.shutdown();
+    console.log("Extension system shutdown successfully");
+  } catch (error) {
+    console.error("Error shutting down extension system:", error);
+  }
 
   windowManager
     .saveOpened()
