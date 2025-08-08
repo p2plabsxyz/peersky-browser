@@ -770,14 +770,18 @@ class PeerskyWindow {
         }
         
         this.window.webContents.executeJavaScript(`
-          const { ipcRenderer } = require('electron');
-          const webview = document.querySelector('tracked-box').webviewElement;
-          if (webview) {
-            webview.addEventListener('did-navigate', (e) => {
-              ipcRenderer.send('webview-did-navigate-${this.id}', webview.src);
-            });
-          }
-          ipcRenderer.send('set-window-id', ${this.id});
+          (function () {
+            const { ipcRenderer } = require('electron');
+            const sendNav = (url) => ipcRenderer.send('webview-did-navigate-${this.id}', url);
+            const tabBar = document.querySelector('#tabbar');
+
+            if (tabBar) {
+              tabBar.addEventListener('tab-navigated', (e) => {
+                if (e && e.detail && e.detail.url) sendNav(e.detail.url);
+              });
+            }
+            ipcRenderer.send('set-window-id', ${this.id});
+          })();
         `).catch((error) => {
           console.error("Error injecting script into webContents:", error);
         });

@@ -310,17 +310,6 @@ find-menu {
   background-color: var(--peersky-nav-background);
 }
 
-.tracked-box {
-  position: fixed;
-  top: 88px;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: calc(100vh - 88px) !important;
-  width: 100%;
-  overflow: hidden;
-}
-
 .titlebar {
   display: flex;
   height: 38px;

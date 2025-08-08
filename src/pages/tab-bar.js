@@ -483,8 +483,11 @@ restoreTabs(persistedData) {
     webview.className = "tab-webview";
 
     const path = require("path");
-    webview.preload = "file://" + path.join(__dirname, "unified-preload.js");
-    
+    const { pathToFileURL } = require("url");
+    const preloadPath = path.join(__dirname, "unified-preload.js");
+    const preloadURL = pathToFileURL(preloadPath).href;
+    webview.setAttribute("preload", preloadURL);
+    webview.setAttribute("webpreferences", "contextIsolation=yes,nativeWindowOpen=yes");
     // Set important attributes
     webview.setAttribute("src", url);
     webview.setAttribute("allowpopups", "");

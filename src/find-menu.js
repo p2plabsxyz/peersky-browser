@@ -215,12 +215,6 @@ class FindMenu extends HTMLElement {
       }
     }
     
-    // Fallback to tracked-box for single webview mode
-    const trackedBox = document.querySelector('tracked-box');
-    if (trackedBox && trackedBox.webviewElement) {
-      return trackedBox.webviewElement;
-    }
-    
     // Final fallback to direct webview element
     return document.querySelector('webview');
   }
