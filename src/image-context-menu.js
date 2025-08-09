@@ -266,6 +266,21 @@ export function createImageMenuItems(params, browserWindow) {
 
 
 
+// Helper: Show  native success notification after copy and download of image 
+function showSuccessNotification(title, body) {
+  try {
+    new Notification({
+      title,
+      body,
+      silent: false
+    }).show();
+  } catch (error) {
+    logError('showSuccessNotification', error, `Notification failed`);
+  }
+}
+
+
+
 
 //  * Adds image menu items to an existing menu
 
