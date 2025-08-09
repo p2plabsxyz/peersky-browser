@@ -1,4 +1,7 @@
 @import url('browser://theme/vars.css');
+:root {
+  --vertical-tabs-transition-duration: 0.3s;
+}
 
 .tabbar.vertical-tabs {
   position: fixed;
@@ -10,12 +13,14 @@
   background-color: var(--peersky-nav-background);
   border-right: 1px solid var(--peersky-nav-border-color);
   z-index: 1000;
-  transition: width 0.3s ease;
+  transition: width var(--vertical-tabs-transition-duration) ease,
+              background-color var(--vertical-tabs-transition-duration) ease,
+              border-color var(--vertical-tabs-transition-duration) ease;
   overflow: hidden;
   display: flex; /* Ensure flex layout */
 }
 
-.tabbar.vertical-tabs:hover {
+.tabbar.vertical-tabs.expanded {
   width: 200px; /* Expanded width on hover */
 }
 
@@ -38,7 +43,7 @@
   min-height: min-content; /* Grow with content */
 }
 
-/* Add tab button - positioned after tabs in DOM but styled to appear as part of flow */
+/* Add tab button styling */
 .tabbar.vertical-tabs .add-tab-button {
   width: 40px;
   height: 32px;
@@ -47,14 +52,16 @@
   margin: 4px 0;
   border-radius: 8px;
   font-size: 18px;
-  transition: width 0.3s ease;
+  transition: width var(--vertical-tabs-transition-duration) ease,
+              background-color var(--vertical-tabs-transition-duration) ease,
+              border-color var(--vertical-tabs-transition-duration) ease;
   flex-shrink: 0;
   background-color: var(--peersky-nav-background);
   border: 1px solid var(--peersky-nav-border-color);
   align-self: flex-start; /* Align to start of container */
 }
 
-.tabbar.vertical-tabs:hover .add-tab-button {
+.tabbar.vertical-tabs.expanded .add-tab-button {
   width: calc(100% - 8px);
   height: 32px;
   min-height: 32px;
@@ -82,7 +89,7 @@
 }
 
 /* Hide scrollbar when collapsed */
-.tabbar.vertical-tabs:not(:hover) .tab-container::-webkit-scrollbar {
+.tabbar.vertical-tabs:not(.expanded) .tab-container::-webkit-scrollbar {
   width: 0;
 }
 
@@ -97,7 +104,7 @@
   border-radius: 8px;
   padding: 8px;
   justify-content: center;
-  transition: width 0.3s ease; /* Only animate width */
+  transition: width var(--vertical-tabs-transition-duration) ease; /* Only animate width */
   position: relative;
   overflow: hidden;
   display: flex;
@@ -105,7 +112,7 @@
   flex-shrink: 0;
 }
 
-.tabbar.vertical-tabs:hover .tab {
+.tabbar.vertical-tabs.expanded .tab {
   width: calc(100% - 8px); /* Full width when expanded */
   height: 40px;
   min-height: 40px;
@@ -143,9 +150,9 @@
   order: 1;
 }
 
-/* Tab title - hidden by default, shown on hover */
+/* Tab title - hidden by default, shown on expansion */
 .tabbar.vertical-tabs .tab-title {
-  display: none ;
+  display: none;
   margin-left: 8px;
   white-space: nowrap;
   overflow: hidden;
@@ -155,11 +162,11 @@
   max-width: 120px;
 }
 
-.tabbar.vertical-tabs:hover .tab-title {
+.tabbar.vertical-tabs.expanded .tab-title {
   display: block;
 }
 
-/* Close button - hidden by default, shown on hover */
+/* Close button - hidden by default, shown on expansion */
 .tabbar.vertical-tabs .close-tab {
   display: none;
   margin-left: auto;
@@ -171,7 +178,7 @@
   opacity: 0.7;
 }
 
-.tabbar.vertical-tabs:hover .close-tab {
+.tabbar.vertical-tabs.expanded .close-tab {
   display: flex;
 }
 
@@ -207,11 +214,11 @@
   margin: 4px 0;
   padding: 0;
   justify-content: center;
-  transition: all 0.3s ease;
+  transition: all var(--vertical-tabs-transition-duration) ease;
   flex-shrink: 0;
 }
 
-.tabbar.vertical-tabs:hover .tab-group-header {
+.tabbar.vertical-tabs.expanded .tab-group-header {
   width: calc(100% - 8px);
   height: 28px;
   min-height: 28px;
@@ -224,7 +231,7 @@
   display: none;
 }
 
-.tabbar.vertical-tabs:hover .tab-group-title {
+.tabbar.vertical-tabs.expanded .tab-group-title {
   display: block;
 }
 
@@ -232,7 +239,7 @@
   display: none;
 }
 
-.tabbar.vertical-tabs:hover .tab-group-controls {
+.tabbar.vertical-tabs.expanded .tab-group-controls {
   display: flex;
 }
 
@@ -240,10 +247,11 @@
 body:has(.tabbar.vertical-tabs) .webview-container {
   left: 48px;
   width: calc(100% - 48px);
-  transition: left 0.3s ease, width 0.3s ease;
+  transition: left var(--vertical-tabs-transition-duration) ease,
+              width var(--vertical-tabs-transition-duration) ease;
 }
 
-body:has(.tabbar.vertical-tabs:hover) .webview-container {
+body:has(.tabbar.vertical-tabs.expanded) .webview-container {
   left: 200px;
   width: calc(100% - 200px);
 }
