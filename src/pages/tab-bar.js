@@ -1046,9 +1046,30 @@ restoreTabs(persistedData) {
     if (!tab) return;
     
     const newTitle = tab.title === 'Home' ? 'Home' : `${tab.title} (Copy)`;
-    const newTabId = this.addTab(tab.url, newTitle);
     
-    this.moveTabToPosition(newTabId, this.tabs.findIndex(t => t.id === tabId) + 1);
+    // Find the position where we want to insert the duplicate tab
+    const originalTabIndex = this.tabs.findIndex(t => t.id === tabId);
+    const insertPosition = originalTabIndex + 1;
+    
+    // Create the new tab
+    const newTabId = `tab-${this.tabCounter++}`;
+    this.addTabWithId(newTabId, tab.url, newTitle);
+    
+    // Move it to the correct position immediately
+    this.moveTabToPosition(newTabId, insertPosition);
+    
+    // Select the new tab and save state
+    this.selectTab(newTabId, true);
+    this.saveTabsState();
+    
+    // Focus address bar for new tabs
+    setTimeout(() => {
+      const urlInput = document.getElementById('url');
+      if (urlInput) {
+        urlInput.focus();
+        urlInput.select();
+      }
+    }, 100);
     
     return newTabId;
   }
