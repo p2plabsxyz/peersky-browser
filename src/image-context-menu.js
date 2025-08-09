@@ -45,3 +45,30 @@ function logError(functionName, error, shortMessage = '') {
 
 
 }
+
+
+
+
+
+// Get filename from URL or generate default      ////// this function is used for giving a name to the image that we are going to download 
+function getImageFileName(url, altText = '') {
+  try {
+    if (altText && altText.length > 2 && !altText.toLowerCase().includes('image')) {
+      const sanitized = altText.replace(/[<>:"/\\|?*]/g, '').trim().substring(0, 50);
+      if (sanitized) return sanitized + '.jpg';
+    }
+    try {
+      const urlObj = new URL(url);
+      const filename = path.basename(urlObj.pathname);
+      if (filename && filename.includes('.') && filename !== 'iu') {
+        return filename;
+      }
+    } catch (urlError) {
+      logError('getImageFileName', urlError, `Failed to parse URL`);
+    }
+    return `image_${Date.now()}.jpg`;
+  } catch (error) {
+    logError('getImageFileName', error, `Filename generation error`);
+    return `image_${Date.now()}.jpg`;
+  }
+}
