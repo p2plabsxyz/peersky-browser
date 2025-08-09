@@ -21,6 +21,7 @@ const DEFAULT_SETTINGS = {
   searchEngine: 'duckduckgo',
   theme: 'dark',
   showClock: true,
+  verticalTabs: false,
   wallpaper: 'redwoods',
   wallpaperCustomPath: null
 };
@@ -308,6 +309,7 @@ class SettingsManager {
       searchEngine: (v) => ['duckduckgo', 'ecosia', 'startpage'].includes(v),
       theme: (v) => ['light', 'dark', 'green', 'cyan', 'yellow', 'violet'].includes(v),
       showClock: (v) => typeof v === 'boolean',
+      verticalTabs: (v) => typeof v === 'boolean',
       wallpaper: (v) => ['redwoods', 'mountains', 'custom'].includes(v),
       wallpaperCustomPath: (v) => v === null || typeof v === 'string'
     };
@@ -331,6 +333,7 @@ class SettingsManager {
     this.applySettingChange('theme', this.settings.theme);
     this.applySettingChange('searchEngine', this.settings.searchEngine);
     this.applySettingChange('showClock', this.settings.showClock);
+    this.applySettingChange('verticalTabs', this.settings.verticalTabs);
     this.applySettingChange('wallpaper', this.settings.wallpaper);
   }
 
@@ -368,6 +371,12 @@ class SettingsManager {
         windows.forEach(window => {
           if (window && !window.isDestroyed()) {
             window.webContents.send('wallpaper-changed', value);
+          }
+        });
+      } else if (key === 'verticalTabs') {
+        windows.forEach(window => {
+          if (window && !window.isDestroyed()) {
+            window.webContents.send('vertical-tabs-changed', value);
           }
         });
       } else if (key === 'wallpaperCustomPath') {

@@ -72,7 +72,7 @@ function createSettingsAPI(pageContext) {
     // Minimal API for other internal pages - only theme
     return {
       get: (key) => {
-        const allowedKeys = ['theme'];
+        const allowedKeys = ['theme','verticalTabs'];
         if (!allowedKeys.includes(key)) {
           throw new Error(`Access denied: Internal pages can only access: ${allowedKeys.join(', ')}`);
         }
@@ -138,6 +138,9 @@ try {
           callback(groupId, properties);
         });
       },
+      onVerticalTabsChanged: (callback) => createEventListener('vertical-tabs-changed', callback),
+      hideTabComponents: () => ipcRenderer.send('hide-tab-components'),
+      loadTabComponents: () => ipcRenderer.send('load-tab-components'),
       onThemeChanged: (callback) => createEventListener('theme-changed', callback),
       onSearchEngineChanged: (callback) => createEventListener('search-engine-changed', callback),
       onShowClockChanged: (callback) => createEventListener('show-clock-changed', callback),
@@ -234,7 +237,10 @@ try {
         ipcRenderer.on('group-properties-updated', (_, groupId, properties) => {
           callback(groupId, properties);
         });
-      }
+      },
+      hideTabComponents: () => ipcRenderer.send('hide-tab-components'),
+      loadTabComponents: () => ipcRenderer.send('load-tab-components'),
+      onVerticalTabsChanged: (callback) => createEventListener('vertical-tabs-changed', callback)
     })
   } else if (isInternal) {
     // Other internal pages get minimal environment + very limited settings
@@ -245,10 +251,10 @@ try {
       }
     });
     
-    // Very minimal electronAPI for theme access only
+    // Very minimal electronAPI for theme and tabs settings
     if (settingsAPI) {
       contextBridge.exposeInMainWorld('electronAPI', {
-        settings: settingsAPI // Uses minimal internal API (theme only)
+        settings: settingsAPI // Uses minimal internal API (theme, verticalTabs)
       });
     }
     

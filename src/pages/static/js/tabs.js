@@ -30,10 +30,10 @@ async loadTabs() {
 
 displayTabs(tabsData) {
   const container = this.shadowRoot.querySelector('.tabs-container');
-  container.innerHTML = '<h1>Tabs</h1>';
+  container.innerHTML = '<h1>Tab Groups</h1>';
 
   if (!tabsData) {
-    container.innerHTML += '<p>No tabs found.</p>';
+    container.innerHTML += '<p>No tabs groups found.</p>';
     return;
   }
 

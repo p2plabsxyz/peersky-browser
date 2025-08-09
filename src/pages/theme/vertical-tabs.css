@@ -1,0 +1,299 @@
+@import url('browser://theme/vars.css');
+
+.tabbar.vertical-tabs {
+  position: fixed;
+  left: 0;
+  top: 88px; /* Below the nav bar */
+  width: 48px; /* Collapsed width - just enough for favicons */
+  height: calc(100vh - 88px);
+  flex-direction: column;
+  background-color: var(--peersky-nav-background);
+  border-right: 1px solid var(--peersky-nav-border-color);
+  z-index: 1000;
+  transition: width 0.3s ease;
+  overflow: hidden;
+  display: flex; /* Ensure flex layout */
+}
+
+.tabbar.vertical-tabs:hover {
+  width: 200px; /* Expanded width on hover */
+}
+
+/* Main scrollable container for tabs */
+.tabbar.vertical-tabs .tab-container {
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1; /* Take up available space */
+  width: 100%;
+  padding: 4px;
+  display: flex;
+  min-height: 0; /* Allow flex shrinking */
+}
+
+/* Wrapper for tabs and add button */
+.tabbar.vertical-tabs .tabs-wrapper {
+  display: flex;
+  flex-direction: column;
+  min-height: min-content; /* Grow with content */
+}
+
+/* Add tab button - positioned after tabs in DOM but styled to appear as part of flow */
+.tabbar.vertical-tabs .add-tab-button {
+  width: 40px;
+  height: 32px;
+  min-height: 32px;
+  max-height: 32px;
+  margin: 4px 0;
+  border-radius: 8px;
+  font-size: 18px;
+  transition: width 0.3s ease;
+  flex-shrink: 0;
+  background-color: var(--peersky-nav-background);
+  border: 1px solid var(--peersky-nav-border-color);
+  align-self: flex-start; /* Align to start of container */
+}
+
+.tabbar.vertical-tabs:hover .add-tab-button {
+  width: calc(100% - 8px);
+  height: 32px;
+  min-height: 32px;
+  max-height: 32px;
+}
+
+/* Enhanced scrollbar styling */
+.tabbar.vertical-tabs .tab-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.tabbar.vertical-tabs .tab-container::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.tabbar.vertical-tabs .tab-container::-webkit-scrollbar-thumb {
+  background: var(--peersky-nav-border-color);
+  border-radius: 3px;
+  transition: background 0.2s ease;
+}
+
+.tabbar.vertical-tabs .tab-container::-webkit-scrollbar-thumb:hover {
+  background: var(--peersky-nav-button-color);
+}
+
+/* Hide scrollbar when collapsed */
+.tabbar.vertical-tabs:not(:hover) .tab-container::-webkit-scrollbar {
+  width: 0;
+}
+
+/* Ensure tabs don't interfere with scrolling */
+.tabbar.vertical-tabs .tab {
+  max-width: none;
+  width: 40px; /* Square tab size when collapsed */
+  height: 40px;
+  min-height: 40px;
+  max-height: 40px;
+  margin: 2px 0;
+  border-radius: 8px;
+  padding: 8px;
+  justify-content: center;
+  transition: width 0.3s ease; /* Only animate width */
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.tabbar.vertical-tabs:hover .tab {
+  width: calc(100% - 8px); /* Full width when expanded */
+  height: 40px;
+  min-height: 40px;
+  max-height: 40px;
+  justify-content: flex-start;
+  padding: 8px 12px;
+}
+
+/* Sticky add button when scrolling - only when tabs overflow */
+.tabbar.vertical-tabs .add-tab-button.sticky {
+  position: sticky;
+  bottom: 0;
+  background-color: var(--peersky-nav-background);
+  box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.1);
+  z-index: 5;
+}
+
+/* Alternative: Fixed button when content overflows */
+@media (max-height: 600px) {
+  .tabbar.vertical-tabs .add-tab-button {
+    position: sticky;
+    bottom: 4px;
+    margin-top: auto;
+    background-color: var(--peersky-nav-background);
+    box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.1);
+  }
+}
+
+/* Tab favicon styling */
+.tabbar.vertical-tabs .tab-favicon {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  flex-shrink: 0;
+  order: 1;
+}
+
+/* Tab title - hidden by default, shown on hover */
+.tabbar.vertical-tabs .tab-title {
+  display: none ;
+  margin-left: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  order: 2;
+  max-width: 120px;
+}
+
+.tabbar.vertical-tabs:hover .tab-title {
+  display: block;
+}
+
+/* Close button - hidden by default, shown on hover */
+.tabbar.vertical-tabs .close-tab {
+  display: none;
+  margin-left: auto;
+  margin-right: 0;
+  width: 16px;
+  height: 16px;
+  font-size: 14px;
+  order: 3;
+  opacity: 0.7;
+}
+
+.tabbar.vertical-tabs:hover .close-tab {
+  display: flex;
+}
+
+.tabbar.vertical-tabs .tab:hover .close-tab {
+  opacity: 1;
+}
+
+/* Active tab styling */
+.tabbar.vertical-tabs .tab.active {
+  background-color: var(--browser-theme-primary-highlight);
+  border-radius: 8px;
+  border: none;
+  height: 40px;
+  min-height: 40px;
+  max-height: 40px;
+  margin-bottom: 2px;
+}
+
+.tabbar.vertical-tabs .tab.active .tab-title {
+  color: var(--browser-theme-background);
+}
+
+.tabbar.vertical-tabs .tab.active .close-tab {
+  color: var(--browser-theme-background);
+}
+
+/* Tab group headers in vertical mode */
+.tabbar.vertical-tabs .tab-group-header {
+  width: 40px;
+  height: 28px;
+  min-height: 28px;
+  max-height: 28px;
+  margin: 4px 0;
+  padding: 0;
+  justify-content: center;
+  transition: all 0.3s ease;
+  flex-shrink: 0;
+}
+
+.tabbar.vertical-tabs:hover .tab-group-header {
+  width: calc(100% - 8px);
+  height: 28px;
+  min-height: 28px;
+  max-height: 28px;
+  justify-content: flex-start;
+  padding: 0 8px;
+}
+
+.tabbar.vertical-tabs .tab-group-title {
+  display: none;
+}
+
+.tabbar.vertical-tabs:hover .tab-group-title {
+  display: block;
+}
+
+.tabbar.vertical-tabs .tab-group-controls {
+  display: none;
+}
+
+.tabbar.vertical-tabs:hover .tab-group-controls {
+  display: flex;
+}
+
+/* Adjust webview container when vertical tabs are enabled */
+body:has(.tabbar.vertical-tabs) .webview-container {
+  left: 48px;
+  width: calc(100% - 48px);
+  transition: left 0.3s ease, width 0.3s ease;
+}
+
+body:has(.tabbar.vertical-tabs:hover) .webview-container {
+  left: 200px;
+  width: calc(100% - 200px);
+}
+
+/* Loading indicator for vertical tabs */
+.tabbar.vertical-tabs .tab.loading .tab-favicon::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--peersky-nav-button-color);
+  border-top: 2px solid var(--peersky-nav-button-active);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: translate(-50%, -50%) rotate(0deg); }
+  100% { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+/* P2P indicator positioning for vertical tabs */
+.tabbar.vertical-tabs .p2p-indicator {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 8px;
+  height: 8px;
+  margin: 0;
+  border-radius: 50%;
+  background-color: var(--browser-theme-primary-highlight);
+}
+
+/* Pinned tabs indicator */
+.tabbar.vertical-tabs .tab.pinned::before {
+  content: '📌';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  font-size: 8px;
+}
+
+/* Mute indicator */
+.tabbar.vertical-tabs .mute-indicator {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  font-size: 8px;
+  margin: 0;
+}

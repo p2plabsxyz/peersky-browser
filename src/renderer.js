@@ -9,6 +9,7 @@ const { ipcRenderer } = require("electron");
 
 const DEFAULT_PAGE = "peersky://home";
 let webviewContainer = null; // Will be set dynamically for tabs
+let tabBar; // Holds current tab bar component
 const nav = document.querySelector("#navbox");
 const findMenu = document.querySelector("#find");
 const pageTitle = document.querySelector("title");
@@ -69,7 +70,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   const titleBar = document.querySelector("#titlebar");
-  const tabBar = document.querySelector("#tabbar") || new TabBar();
+  const verticalTabsEnabled = await ipcRenderer.invoke('settings-get', 'verticalTabs');
+  if (verticalTabsEnabled) {
+    const { default: VerticalTabs } = await import('./pages/vertical-tabs.js');
+    tabBar = document.querySelector('#tabbar') || new VerticalTabs();
+  } else {
+    tabBar = document.querySelector('#tabbar') || new TabBar();
+  }
   
   // This is our webview container where all tab webviews will live
   webviewContainer = document.createElement("div");
@@ -109,6 +116,68 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.error('Error handling group action via IPC:', e);
     }
   });
+
+  ipcRenderer.on('vertical-tabs-changed', async (_, enabled) => {
+    const oldBar = tabBar;
+    
+    // Clean up old webviews before creating new tab bar
+    if (oldBar && oldBar.webviews) {
+      oldBar.webviews.forEach((webview) => {
+        if (webview && webview.parentNode) {
+          webview.remove();
+        }
+      });
+      oldBar.webviews.clear();
+    }
+    
+    // Clear existing webviews from container
+    if (webviewContainer) {
+      while (webviewContainer.firstChild) {
+        webviewContainer.removeChild(webviewContainer.firstChild);
+      }
+    }
+    
+    // Remove old tab bar from DOM
+    if (oldBar && oldBar.parentElement) {
+      oldBar.remove();
+    }
+    
+    if (enabled) {
+      const { default: VerticalTabs } = await import('./pages/vertical-tabs.js');
+      tabBar = new VerticalTabs();
+      // Position vertical tabs correctly
+      document.body.appendChild(tabBar);
+    } else {
+      tabBar = new TabBar();
+    }
+    if (titleBar) {
+      titleBar.connectTabBar(tabBar);
+    }
+    
+    tabBar.connectWebviewContainer(webviewContainer);
+    
+    // Force a layout update
+    setTimeout(() => {
+      if (tabBar.style) {
+        tabBar.style.display = 'none';
+        tabBar.offsetHeight; // Trigger reflow
+        tabBar.style.display = '';
+      }
+    }, 100);
+  });
+
+  ipcRenderer.on('hide-tab-components', () => {
+    if (tabBar) {
+      tabBar.style.display = 'none';
+    }
+  });
+
+  ipcRenderer.on('load-tab-components', () => {
+    if (tabBar) {
+      tabBar.style.display = '';
+    }
+  });
+  
   if (titleBar && tabBar) {
     titleBar.connectTabBar(tabBar);
   }
