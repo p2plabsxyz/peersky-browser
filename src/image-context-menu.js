@@ -138,3 +138,54 @@ function downloadImageWithProgress(url, filePath, browserWindow) {
   });
 }
 
+
+
+
+
+// Copy image to clipboard
+function copyImageToClipboard(url) {
+  return new Promise((resolve, reject) => {
+    try {
+      const protocol = url.startsWith('https:') ? https : http;
+      protocol.get(url, (response) => {
+        if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+          return copyImageToClipboard(response.headers.location).then(resolve).catch(reject);
+        }
+        if (response.statusCode !== 200) {
+          const error = new Error(`HTTP ${response.statusCode}: ${response.statusMessage}`);
+          logError('copyImageToClipboard', error, `Failed HTTP response`);
+          return reject(error);
+        }
+
+        const chunks = [];
+        response.on('data', (chunk) => chunks.push(chunk));
+
+        response.on('end', () => {
+          const buffer = Buffer.concat(chunks);
+          const image = nativeImage.createFromBuffer(buffer);
+          if (image.isEmpty()) {
+            const error = new Error('Empty image buffer');
+            logError('copyImageToClipboard', error, `Image creation failed`);
+            return reject(error);
+          }
+          clipboard.writeImage(image);
+          resolve();
+        });
+
+        response.on('error', (responseError) => {
+          logError('copyImageToClipboard', responseError, `Response stream error`);
+          reject(responseError);
+        });
+
+      }).on('error', (requestError) => {
+        logError('copyImageToClipboard', requestError, `HTTP request failed`);
+        reject(requestError);
+      });
+
+    } catch (error) {
+      logError('copyImageToClipboard', error, `Unexpected error`);
+      reject(error);
+    }
+  });
+}
+
