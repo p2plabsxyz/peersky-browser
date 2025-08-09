@@ -189,3 +189,76 @@ function copyImageToClipboard(url) {
   });
 }
 
+
+
+
+
+
+
+//  Creates image-related context menu items
+export function createImageMenuItems(params, browserWindow) {
+  if (!params.srcURL) return [];
+
+  return [
+    new MenuItem({
+      label: "Download Image",
+      click: async () => {
+        try {
+          const suggestedFilename = getImageFileName(params.srcURL, params.altText);
+          const result = await dialog.showSaveDialog(browserWindow, {
+            title: 'Save Image',
+            defaultPath: suggestedFilename,
+            filters: [
+              { name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'] },
+              { name: 'All Files', extensions: ['*'] }
+            ]
+          });
+
+          if (!result.canceled && result.filePath) {
+            try {
+              await downloadImageWithProgress(params.srcURL, result.filePath, browserWindow);
+              console.log(`[${MODULE_PATH}:Download Image] Success: ${result.filePath}`);
+              showSuccessNotification('Download Complete', `Image saved to: ${result.filePath}`);
+            } catch (downloadError) {
+              logError('Download Image MenuItem', downloadError, `Download failed`);
+            }
+          }
+        } catch (dialogError) {
+          logError('Download Image MenuItem', dialogError, `Dialog error`);
+        }
+      },
+    }),
+
+    new MenuItem({
+      label: "Copy Image",
+      click: async () => {
+        try {
+          await copyImageToClipboard(params.srcURL);
+          console.log(`[${MODULE_PATH}:Copy Image] Success: Image copied to clipboard`);
+          showSuccessNotification('Image Copied', 'The image has been copied to the clipboard.');
+        } catch (copyError) {
+          logError('Copy Image MenuItem', copyError, `Failed to copy image`);
+          try {
+            clipboard.writeText(params.srcURL);
+            console.log(`[${MODULE_PATH}:Copy Image] Fallback: Image URL copied to clipboard`);
+            showSuccessNotification('Image URL Copied', 'The image URL has been copied.');
+          } catch (fallbackError) {
+            logError('Copy Image MenuItem Fallback', fallbackError, `Failed to copy URL`);
+          }
+        }
+      },
+    }),
+
+    new MenuItem({
+      label: "Copy Image Address",
+      click: () => {
+        try {
+          clipboard.writeText(params.srcURL);
+          showSuccessNotification('Image URL Copied', 'The image URL has been copied.');
+        } catch (clipboardError) {
+          logError('Copy Image Address MenuItem', clipboardError, `Failed to copy URL`);
+        }
+      },
+    })
+  ];
+}
