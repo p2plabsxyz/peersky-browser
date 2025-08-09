@@ -390,7 +390,6 @@ find-menu {
   width: 100%;
   height: calc(100vh - 88px);
   overflow: hidden;
-  background-color: var(--browser-theme-background, #333);
   display: flex;
 }
 
