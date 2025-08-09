@@ -396,6 +396,7 @@ restoreTabs(persistedData) {
         // Create hover card
         hoverCard = document.createElement('div');
         hoverCard.className = 'tab-hover-card';
+        hoverCard.dataset.tabId = tabId; // allow identification
         
         // Get webview to check memory usage (if available)
         const webview = this.webviews.get(tabId);
@@ -468,6 +469,12 @@ restoreTabs(persistedData) {
     
     tabElement.addEventListener('mouseenter', showHoverCard);
     tabElement.addEventListener('mouseleave', hideHoverCard);
+  }
+
+  // Helper to remove any visible hover card (used when tab removed)
+  destroyHoverCard() {
+    const card = document.querySelector('.tab-hover-card');
+    if (card) card.remove();
   }
 
   addTab(url = "peersky://home", title = "Home") {
@@ -646,6 +653,7 @@ restoreTabs(persistedData) {
   }
 
   closeTab(tabId) {
+    this.destroyHoverCard(); // remove lingering hover card
     const tabElement = document.getElementById(tabId);
     if (!tabElement) return;
     
@@ -1090,6 +1098,7 @@ restoreTabs(persistedData) {
   }
 
   moveTabToNewWindow(tabId) {
+    this.destroyHoverCard(); // ensure card removed if this tab had it
     const tab = this.tabs.find(t => t.id === tabId);
     if (!tab) return;
     

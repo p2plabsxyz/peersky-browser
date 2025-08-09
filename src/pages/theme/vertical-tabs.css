@@ -294,7 +294,7 @@ body:has(.tabbar.vertical-tabs.expanded) .webview-container {
   position: absolute;
   top: 2px;
   left: 2px;
-  font-size: 8px;
+  font-size: 12px;
 }
 
 /* Mute indicator */
