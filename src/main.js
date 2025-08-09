@@ -156,8 +156,10 @@ ipcMain.on("window-control", (event, command) => {
 
 // IPC handler for moving tabs to new window
 ipcMain.on('new-window-with-tab', (event, tabData) => {
-  // Create new isolated window with the specific tab
-  createIsolatedWindow({
+  // Create new window using WindowManager for proper persistence
+  windowManager.open({
+    url: tabData.url,
+    newWindow: true,
     isolate: true,
     singleTab: {
       url: tabData.url,

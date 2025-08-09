@@ -703,7 +703,7 @@ class WindowManager {
 
 class PeerskyWindow {
   constructor(options = {}, windowManager) {
-    const { url, isMainWindow = false, newWindow = false, windowId, savedTabs, ...windowOptions } = options;
+    const { url, isMainWindow = false, newWindow = false, windowId, savedTabs, isolate, singleTab, ...windowOptions } = options;
     this.window = new BrowserWindow({
       width: 800,
       height: 600,
@@ -728,7 +728,12 @@ class PeerskyWindow {
         url: url || "peersky://home",
         ...(newWindow && { newWindow: 'true' }),
         windowId: this.windowId,
-        ...(savedTabs && { restoreTabs: 'true' })
+        ...(savedTabs && { restoreTabs: 'true' }),
+        ...(isolate && { isolate: 'true' }),
+        ...(singleTab && { 
+          singleTabUrl: singleTab.url,
+          singleTabTitle: singleTab.title
+        })
       }
     };
     this.window.loadFile(loadURL, query);

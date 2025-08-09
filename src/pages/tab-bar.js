@@ -130,11 +130,14 @@ class TabBar extends HTMLElement {
     const searchParams = new URL(window.location.href).searchParams;
     const isIsolated = searchParams.get('isolate') === 'true';
     const initialUrl = searchParams.get('url');
+    const singleTabUrl = searchParams.get('singleTabUrl');
+    const singleTabTitle = searchParams.get('singleTabTitle');
     
-    if (isIsolated && initialUrl) {
+    if (isIsolated && (singleTabUrl || initialUrl)) {
       // For isolated windows, ONLY create the specified tab and don't load any persisted tabs
-      const tabTitle = searchParams.get('title') || "New Tab";
-      const homeTabId = this.addTab(initialUrl, tabTitle);
+      const tabUrl = singleTabUrl || initialUrl;
+      const tabTitle = singleTabTitle || searchParams.get('title') || "New Tab";
+      const homeTabId = this.addTab(tabUrl, tabTitle);
       // Don't call saveTabsState() here to avoid overwriting the main window's tabs
       return;
     }
