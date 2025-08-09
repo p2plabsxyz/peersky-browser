@@ -1,4 +1,4 @@
-import { app, session, protocol as globalProtocol } from "electron";
+import { app, session, protocol as globalProtocol, ipcMain, BrowserWindow,Menu,shell,dialog, webContents} from "electron";
 import { createHandler as createBrowserHandler } from "./protocols/peersky-protocol.js";
 import { createHandler as createBrowserThemeHandler } from "./protocols/theme-handler.js";
 import { createHandler as createIPFSHandler } from "./protocols/ipfs-handler.js";
@@ -6,7 +6,7 @@ import { createHandler as createHyperHandler } from "./protocols/hyper-handler.j
 import { createHandler as createWeb3Handler } from "./protocols/web3-handler.js";
 import { ipfsOptions, hyperOptions } from "./protocols/config.js";
 import { registerShortcuts } from "./actions.js";
-import WindowManager from "./window-manager.js";
+import WindowManager, { createIsolatedWindow } from "./window-manager.js";
 import settingsManager from "./settings-manager.js";
 import { attachContextMenus, setWindowManager } from "./context-menu.js";
 // import { setupAutoUpdater } from "./auto-updater.js";
@@ -133,4 +133,98 @@ app.on("activate", () => {
   }
 });
 
+ipcMain.on("window-control", (event, command) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  if (!window) return;
+  
+  switch (command) {
+    case "minimize":
+      window.minimize();
+      break;
+    case "maximize":
+      if (window.isMaximized()) {
+        window.unmaximize();
+      } else {
+        window.maximize();
+      }
+      break;
+    case "close":
+      window.close();
+      break;
+  }
+});
+
+// IPC handler for moving tabs to new window
+ipcMain.on('new-window-with-tab', (event, tabData) => {
+  // Create new window using WindowManager for proper persistence
+  windowManager.open({
+    url: tabData.url,
+    newWindow: true,
+    isolate: true,
+    singleTab: {
+      url: tabData.url,
+      title: tabData.title
+    }
+  });
+});
+
+ipcMain.on('new-window', (event, options = {}) => {
+  if (options.isolate) {
+    windowManager.open({ ...options, restoreTabs: false }); // not restoring other tabs of isolated window
+  } else {
+    windowManager.open(options);
+  }
+});
+
+ipcMain.handle('get-tab-memory-usage', async (event, webContentsId) => {
+  try{
+    const wc = webContents.fromId(webContentsId);
+    if (!wc) {
+      throw new Error(`WebContents with ID ${webContentsId} not found`);
+    }
+
+    const processId = wc.getOSProcessId();
+    const metrics = app.getAppMetrics();
+
+    const processMetrics = metrics.find(m => m.pid === processId);
+
+    if(processMetrics && processMetrics.memory) {
+      return {
+        workingSetSize : processMetrics.memory.workingSetSize*1024, // KB to Bytes
+        peakWorkingSetSize : processMetrics.memory.peakWorkingSetSize*1024,
+        privateBytes : processMetrics.memory.privateBytes*1024,
+      }
+    }
+    return null;
+  }
+  catch (error) {
+    console.error(`Error getting memory usage for webContents ID ${webContentsId}:`, error);
+    return null;
+  }
+});
+
+ipcMain.on('group-action', (event, data) => {
+  console.log('Group action received:', data);
+  const { action, groupId } = data;
+  
+  // Broadcast to all windows
+  windowManager.all.forEach(peerskyWindow => {
+    if (peerskyWindow.window && !peerskyWindow.window.isDestroyed()) {
+      peerskyWindow.window.webContents.send('group-action', { action, groupId });
+    }
+  });
+  
+  return { success: true }; 
+});
+
+ipcMain.on('update-group-properties', (event, groupId, properties) => {
+  console.log('Updating group properties across all windows:', groupId, properties);
+  
+  // Broadcast to all windows
+  windowManager.all.forEach(peerskyWindow => {
+    if (peerskyWindow.window && !peerskyWindow.window.isDestroyed()) {
+      peerskyWindow.window.webContents.send('group-properties-updated', groupId, properties);
+    }
+  });
+});
 export { windowManager };

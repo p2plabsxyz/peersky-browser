@@ -233,6 +233,7 @@ function onMessageReceived(sender, message, timestamp, roomKey) {
 }
 
 // Convert detected URLs in the message into clickable links
+// TODO: Add XSS protection by escaping HTML content before processing URLs
 function formatMessageWithLinks(msg) {
   const pattern = /(\b(https?|ftp|file|hyper|ipfs|ipns):\/\/\S+)/gi;
   return msg.replace(pattern, (url) => {

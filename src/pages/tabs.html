@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="peersky://static/assets/favicon.ico" />
+    <title>Tabs</title>
+    <style>
+      @import url("browser://theme/vars.css");
+      body {
+        background-color: var(--browser-theme-background);
+        color: var(--browser-theme-text-color);
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <tabs-box></tabs-box>
+    <script src="peersky://static/js/tabs.js" type="module"></script>
+    <script>
+      console.log('tabs.html loaded');
+      window.addEventListener('error', (e) => {
+        console.error('Script loading error:', e);
+      });
+      </script>
+  </body>
+</html>

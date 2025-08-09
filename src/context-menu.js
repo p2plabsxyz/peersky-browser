@@ -86,20 +86,61 @@ export function attachContextMenus(browserWindow, windowManager) {
         new MenuItem({
           label: "Back",
           enabled: webContents.canGoBack(),
-          click: () => webContents.goBack(),
+          click: () => {
+            // Try tab-based navigation first, fallback to direct webContents
+            browserWindow.webContents.executeJavaScript(`
+              const tabBar = document.querySelector('#tabbar');
+              if (tabBar && typeof tabBar.goBackActiveTab === 'function') {
+                tabBar.goBackActiveTab();
+              } else {
+                // Direct webContents navigation for single webview
+                return 'fallback';
+              }
+            `).then(result => {
+              if (result === 'fallback') {
+                webContents.goBack();
+              }
+            }).catch(() => webContents.goBack());
+          },
         })
       );
       menu.append(
         new MenuItem({
           label: "Forward",
           enabled: webContents.canGoForward(),
-          click: () => webContents.goForward(),
+          click: () => {
+            browserWindow.webContents.executeJavaScript(`
+              const tabBar = document.querySelector('#tabbar');
+              if (tabBar && typeof tabBar.goForwardActiveTab === 'function') {
+                tabBar.goForwardActiveTab();
+              } else {
+                return 'fallback';
+              }
+            `).then(result => {
+              if (result === 'fallback') {
+                webContents.goForward();
+              }
+            }).catch(() => webContents.goForward());
+          },
         })
       );
       menu.append(
         new MenuItem({
           label: "Reload",
-          click: () => webContents.reload(),
+          click: () => {
+            browserWindow.webContents.executeJavaScript(`
+              const tabBar = document.querySelector('#tabbar');
+              if (tabBar && typeof tabBar.reloadActiveTab === 'function') {
+                tabBar.reloadActiveTab();
+              } else {
+                return 'fallback';
+              }
+            `).then(result => {
+              if (result === 'fallback') {
+                webContents.reload();
+              }
+            }).catch(() => webContents.reload());
+          },
         })
       );
 
@@ -129,7 +170,7 @@ export function attachContextMenus(browserWindow, windowManager) {
             label: "Open Link in New Window",
             click: () => {
               if (windowManagerInstance) {
-                windowManagerInstance.open({ url: params.linkURL });
+                windowManagerInstance.open({ url: params.linkURL, newWindow: true });
               } else {
                 console.error("WindowManager instance not set.");
               }
@@ -151,13 +192,38 @@ export function attachContextMenus(browserWindow, windowManager) {
     (event, webviewWebContents) => {
       attachMenuToWebContents(webviewWebContents);
 
+      // Intercept window.open / target="_blank" requests and try to add them as tabs
       webviewWebContents.setWindowOpenHandler(({ url }) => {
-        if (windowManagerInstance) {
-          windowManagerInstance.open({ url });
-        } else {
-          console.error("WindowManager instance not set.");
-        }
-        return { action: "deny" };
+        // First, attempt to add the URL as a new tab in the current window (renderer side)
+        const escapedUrl = url.replace(/'/g, "\\'");
+
+        browserWindow.webContents
+          .executeJavaScript(`
+            const tabBar = document.querySelector('#tabbar');
+            if (tabBar && typeof tabBar.addTab === 'function') {
+              tabBar.addTab('${escapedUrl}');
+              // Indicate success so main process knows no fallback is required
+              true;
+            } else {
+              // Tab bar not available – signal fallback
+              false;
+            }
+          `)
+          .then((added) => {
+            if (!added && windowManagerInstance) {
+              // Fallback: open in new window if tab creation failed
+              windowManagerInstance.open({ url });
+            }
+          })
+          .catch((err) => {
+            console.error('Failed to add tab from windowOpenHandler:', err);
+            if (windowManagerInstance) {
+              windowManagerInstance.open({ url });
+            }
+          });
+
+        // Always deny the automatic window creation – we will handle it ourselves
+        return { action: 'deny' };
       });
     }
   );

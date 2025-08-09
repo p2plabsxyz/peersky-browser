@@ -37,14 +37,30 @@ class BookmarkBox extends HTMLElement {
     bookmarks.forEach((bookmark) => {
       const bookmarkElement = document.createElement("div");
       bookmarkElement.className = "bookmark-item";
+      // Helper function to escape HTML
+      function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+      }
+      
+      function escapeHtmlAttribute(text) {
+        return text
+          .replace(/&/g, '&amp;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#x27;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+      }
+
       bookmarkElement.innerHTML = `
-        <a href="${bookmark.url}" class="bookmark-link" title="${bookmark.url}">
-          <img src="${
+        <a href="${escapeHtmlAttribute(bookmark.url)}" class="bookmark-link" title="${escapeHtmlAttribute(bookmark.url)}">
+          <img src="${escapeHtmlAttribute(
             bookmark.favicon || "peersky://static/assets/svg/favicon.svg"
-          }" alt="favicon" class="favicon">
-          <span class="title">${bookmark.title}</span>
+          )}" alt="favicon" class="favicon">
+          <span class="title">${escapeHtml(bookmark.title)}</span>
         </a>
-        <button class="delete-btn" data-url="${bookmark.url}">×</button>
+        <button class="delete-btn" data-url="${escapeHtmlAttribute(bookmark.url)}">×</button>
       `;
       container.appendChild(bookmarkElement);
     });
