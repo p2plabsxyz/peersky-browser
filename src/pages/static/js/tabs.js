@@ -81,17 +81,24 @@ displayTabs(tabsData) {
     const groupEl = document.createElement('div');
     groupEl.className = 'group';
 
+    // Helper function to escape HTML
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
     const header = document.createElement('div');
     header.className = 'group-header';
     header.style.backgroundColor = group.color || '#ccc';
     header.innerHTML = `
-      <div class="group-title">${group.name || 'Unnamed group'} (${group.tabs.length} tabs across ${new Set(group.tabs.map(t => t.windowId)).size} windows)</div>
+      <div class="group-title">${escapeHtml(group.name || 'Unnamed group')} (${group.tabs.length} tabs across ${new Set(group.tabs.map(t => t.windowId)).size} windows)</div>
       <div class="group-actions">
-        <button data-action="add-tab" data-id="${group.id}">Add tab</button>
-        <button data-action="edit" data-id="${group.id}">Edit</button>
-        <button data-action="toggle" data-id="${group.id}">${group.expanded ? 'Collapse' : 'Expand'}</button>
-        <button data-action="ungroup" data-id="${group.id}">Ungroup</button>
-        <button data-action="close-group" data-id="${group.id}">Close</button>
+        <button data-action="add-tab" data-id="${escapeHtml(group.id)}">Add tab</button>
+        <button data-action="edit" data-id="${escapeHtml(group.id)}">Edit</button>
+        <button data-action="toggle" data-id="${escapeHtml(group.id)}">${group.expanded ? 'Collapse' : 'Expand'}</button>
+        <button data-action="ungroup" data-id="${escapeHtml(group.id)}">Ungroup</button>
+        <button data-action="close-group" data-id="${escapeHtml(group.id)}">Close</button>
       </div>`;
     groupEl.appendChild(header);
 

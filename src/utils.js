@@ -88,16 +88,95 @@ async function handleURL(rawURL) {
   }
 }
 
+// Security utilities for preventing XSS attacks
+
+/**
+ * Escapes HTML special characters to prevent XSS
+ * @param {string} text - The text to escape
+ * @returns {string} - The escaped text
+ */
+function escapeHtml(text) {
+  if (typeof text !== 'string') {
+    return String(text);
+  }
+  
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+/**
+ * Escapes HTML attributes to prevent XSS in attribute values
+ * @param {string} text - The text to escape
+ * @returns {string} - The escaped text
+ */
+function escapeHtmlAttribute(text) {
+  if (typeof text !== 'string') {
+    return String(text);
+  }
+  
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/**
+ * Safely sets innerHTML with escaped user content
+ * @param {HTMLElement} element - The element to set innerHTML on
+ * @param {string} htmlTemplate - HTML template with placeholders
+ * @param {Object} data - Data to interpolate (will be escaped)
+ */
+function safeSetInnerHTML(element, htmlTemplate, data = {}) {
+  let safeHtml = htmlTemplate;
+  
+  // Replace placeholders with escaped data
+  for (const [key, value] of Object.entries(data)) {
+    const placeholder = new RegExp(`\\$\\{${key}\\}`, 'g');
+    safeHtml = safeHtml.replace(placeholder, escapeHtml(value));
+    
+    const attrPlaceholder = new RegExp(`\\$\\{${key}:attr\\}`, 'g');
+    safeHtml = safeHtml.replace(attrPlaceholder, escapeHtmlAttribute(value));
+  }
+  
+  element.innerHTML = safeHtml;
+}
+
+/**
+ * Creates a safe template literal function for HTML
+ * @param {Array} strings - Template literal strings
+ * @param {...any} values - Template literal values
+ * @returns {string} - Safe HTML string
+ */
+function html(strings, ...values) {
+  let result = strings[0];
+  
+  for (let i = 0; i < values.length; i++) {
+    result += escapeHtml(values[i]) + strings[i + 1];
+  }
+  
+  return result;
+}
+
 export {
   IPFS_PREFIX,
   IPNS_PREFIX,
   HYPER_PREFIX,
   WEB3_PREFIX,
-  handleURL,
+  isURL,
+  looksLikeDomain,
+  isBareLocalhost,
   makeHttp,
   makeHttps,
   makeDuckDuckGo,
   makeEcosia,
   makeStartpage,
   makeSearch,
+  handleURL,
+  escapeHtml,
+  escapeHtmlAttribute,
+  safeSetInnerHTML,
+  html,
 };

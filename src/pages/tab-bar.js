@@ -418,11 +418,18 @@ restoreTabs(persistedData) {
           }
         }
         
+        // Helper function to escape HTML
+        function escapeHtml(text) {
+          const div = document.createElement('div');
+          div.textContent = text;
+          return div.innerHTML;
+        }
+
         hoverCard.innerHTML = `
-          <div class="hover-card-title">${tab.title}</div>
-          <div class="hover-card-url">${tab.url}</div>
+          <div class="hover-card-title">${escapeHtml(tab.title)}</div>
+          <div class="hover-card-url">${escapeHtml(tab.url)}</div>
           <div class="hover-card-separator"></div>
-          <div class="hover-card-memory">${memoryInfo}</div>
+          <div class="hover-card-memory">${escapeHtml(memoryInfo)}</div>
         `;
         
         // Position the card
