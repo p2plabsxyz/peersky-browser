@@ -72,3 +72,69 @@ function getImageFileName(url, altText = '') {
     return `image_${Date.now()}.jpg`;
   }
 }
+
+
+
+
+
+
+
+
+
+// Download image with progress bar
+function downloadImageWithProgress(url, filePath, browserWindow) {
+  return new Promise((resolve, reject) => {
+    try {
+      const protocol = url.startsWith('https:') ? https : http;
+
+      protocol.get(url, (response) => {
+        if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+          return downloadImageWithProgress(response.headers.location, filePath, browserWindow)
+            .then(resolve).catch(reject);
+        }
+        if (response.statusCode !== 200) {
+          const error = new Error(`HTTP ${response.statusCode}: ${response.statusMessage}`);
+          logError('downloadImageWithProgress', error, `Failed HTTP response`);
+          return reject(error);
+        }
+
+        const total = parseInt(response.headers['content-length'], 10) || 0;
+        let downloaded = 0;
+
+        const fileStream = fs.createWriteStream(filePath);
+        response.pipe(fileStream);
+
+        response.on('data', (chunk) => {
+          downloaded += chunk.length;
+          if (total) {
+            const progress = downloaded / total;
+            browserWindow.setProgressBar(progress);
+          }
+        });
+
+        fileStream.on('finish', () => {
+          browserWindow.setProgressBar(-1); // remove progress bar
+          fileStream.close();
+          resolve();
+        });
+
+        fileStream.on('error', (streamError) => {
+          browserWindow.setProgressBar(-1);
+          fs.unlink(filePath, () => {});
+          logError('downloadImageWithProgress', streamError, `File stream error`);
+          reject(streamError);
+        });
+
+      }).on('error', (requestError) => {
+        browserWindow.setProgressBar(-1);
+        logError('downloadImageWithProgress', requestError, `HTTP request failed`);
+        reject(requestError);
+      });
+
+    } catch (error) {
+      logError('downloadImageWithProgress', error, `Unexpected error`);
+      reject(error);
+    }
+  });
+}
+
