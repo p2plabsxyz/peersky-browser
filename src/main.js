@@ -11,6 +11,9 @@ import settingsManager from "./settings-manager.js";
 import { attachContextMenus, setWindowManager } from "./context-menu.js";
 // import { setupAutoUpdater } from "./auto-updater.js";
 
+// TODO: Import and initialize extension system
+// import extensionManager from "./extensions/index.js";
+
 const P2P_PROTOCOL = {
   standard: true,
   secure: true,
@@ -49,6 +52,15 @@ app.whenReady().then(async () => {
   setWindowManager(windowManager);
   await setupProtocols(session.defaultSession);
 
+  // TODO: Initialize extension system
+  // try {
+  //   console.log("Initializing extension system...");
+  //   await extensionManager.initialize();
+  //   console.log("Extension system initialized successfully");
+  // } catch (error) {
+  //   console.error("Failed to initialize extension system:", error);
+  // }
+
   // Load saved windows or open a new one
   await windowManager.openSavedWindows();
   if (windowManager.all.length === 0) {
@@ -78,6 +90,11 @@ app.on("before-quit", (event) => {
   isQuitting = true; // Set the quitting flag
 
   windowManager.setQuitting(true); // Inform WindowManager that quitting is happening
+
+  // TODO: Shutdown extension system
+  // extensionManager.shutdown().catch(error => {
+  //   console.error("Error shutting down extension system:", error);
+  // });
 
   windowManager
     .saveOpened()
