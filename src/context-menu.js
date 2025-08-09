@@ -1,5 +1,7 @@
 import { Menu, MenuItem, clipboard } from "electron";
 import WindowManager from "./window-manager.js";
+import {addImageMenuItems} from './image-context-menu.js'
+
 
 const isMac = process.platform === "darwin";
 
@@ -156,6 +158,15 @@ export function attachContextMenus(browserWindow, windowManager) {
           },
         })
       );
+
+
+            //////////////////////// by adarshtech251  ////////////////////////
+            // ← ADDED IMAGE MENU ITEMS HERE (ONLY NEW CODE IN THIS FILE)
+      addImageMenuItems(menu, params, browserWindow);
+      /////////////////////////////////////////////////////////////////
+
+
+      
 
       // Link handling
       if (params.linkURL) {
