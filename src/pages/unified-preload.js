@@ -128,6 +128,16 @@ try {
     // Settings pages get full electronAPI access (exactly what settings.js expects)
     contextBridge.exposeInMainWorld('electronAPI', {
       settings: settingsAPI,
+      getTabs: () => ipcRenderer.invoke('get-tabs'),
+      closeTab: (id) => ipcRenderer.invoke('close-tab', id),
+      activateTab: (id) => ipcRenderer.invoke('activate-tab', id),
+      groupAction: (action, groupId) => ipcRenderer.invoke('group-action', { action, groupId }),
+      updateGroupProperties: (groupId, properties) => ipcRenderer.send('update-group-properties', groupId, properties),
+      onGroupPropertiesUpdated: (callback) => {
+        ipcRenderer.on('group-properties-updated', (_, groupId, properties) => {
+          callback(groupId, properties);
+        });
+      },
       onThemeChanged: (callback) => createEventListener('theme-changed', callback),
       onSearchEngineChanged: (callback) => createEventListener('search-engine-changed', callback),
       onShowClockChanged: (callback) => createEventListener('show-clock-changed', callback),

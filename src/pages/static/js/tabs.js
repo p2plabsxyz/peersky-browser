@@ -175,7 +175,7 @@ attachListeners() {
   render() {
     const link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = 'peersky://theme/tabs.css';
+    link.href = 'browser://theme/tabs.css';
 
     const container = document.createElement('div');
     container.className = 'tabs-container';
