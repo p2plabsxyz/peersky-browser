@@ -262,3 +262,14 @@ export function createImageMenuItems(params, browserWindow) {
     })
   ];
 }
+
+
+
+
+
+//  * Adds image menu items to an existing menu
+
+export function addImageMenuItems(menu, params, browserWindow) {
+  const imageMenuItems = createImageMenuItems(params, browserWindow);
+  imageMenuItems.forEach(item => menu.append(item));
+}
