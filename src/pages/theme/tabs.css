@@ -51,6 +51,7 @@ h1 {
   color: var(--browser-theme-text-color);
   flex-grow: 1;
   margin-right: 1rem;
+  text-align: left;
 }
 
 .actions {
@@ -111,7 +112,7 @@ h1 {
   align-items: center;
   padding: 0.5rem;
   border-radius: 6px 6px 0 0;
-  color: var(--browser-theme-text-color);
+  color: var(--settings-bg-primary);
   background: var(--settings-bg-secondary);
   border-bottom: 1px solid var(--settings-border);
 }
@@ -120,7 +121,7 @@ h1 {
   margin-left: 0.25rem;
   background: transparent;
   border: none;
-  color: var(--browser-theme-text-color);
+  color: var(--settings-bg-primary);
   cursor: pointer;
   font-size: 0.8rem;
   transition: color 0.2s;
