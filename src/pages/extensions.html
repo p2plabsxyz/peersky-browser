@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' peersky:; object-src 'none'; style-src 'self' 'unsafe-inline' browser:;">
+  <link rel="icon" type="image/png" href="peersky://static/assets/logo.png" />
+  <style>
+    @import url("browser://theme/index.css");
+    @import url("browser://theme/vars.css");
+    @import url("browser://theme/settings.css");
+    @import url("browser://theme/extensions-page.css");
+  </style>
+  <title>Extension Management</title>
+</head>
+<body>
+
+<div class="settings-wrapper">
+  <div class="settings-layout">
+    <main class="settings-content">
+      <h1 class="section-title">Extension Management</h1>
+      <div id="extensions-list" class="extensions-list"></div>
+    </main>
+  </div>
+</div>
+
+<script src="peersky://static/js/extensions-page.js" defer></script>
+</body>
+</html>

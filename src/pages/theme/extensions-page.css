@@ -1,0 +1,259 @@
+@import url('browser://theme/vars.css');
+
+/* Extensions Page Scrolling Override - Move scrolling to wrapper level */
+.settings-wrapper {
+  overflow-y: auto !important;
+  height: 100vh;
+}
+
+.settings-layout {
+  overflow: visible !important;
+}
+
+.settings-content {
+  overflow: visible !important;
+  height: auto;
+}
+
+/* Show scrollbar on extensions page at wrapper level */
+.settings-wrapper::-webkit-scrollbar {
+  display: block !important;
+  width: 8px;
+}
+
+.settings-wrapper::-webkit-scrollbar-track {
+  background: var(--settings-bg-primary);
+}
+
+.settings-wrapper::-webkit-scrollbar-thumb {
+  background: var(--settings-border);
+  border-radius: 4px;
+}
+
+.settings-wrapper::-webkit-scrollbar-thumb:hover {
+  background: var(--settings-text-secondary);
+}
+
+/* For Firefox */
+.settings-wrapper {
+  scrollbar-width: thin !important;
+  scrollbar-color: var(--settings-border) var(--settings-bg-primary) !important;
+}
+
+/* Extensions List Container */
+.extensions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+/* Extension Card - inherit settings section styling */
+.extension-card {
+  background: var(--settings-card-bg);
+  border: 1px solid var(--settings-border);
+  border-radius: 8px;
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+  margin-bottom: 0.8rem;
+}
+
+.extension-card:hover {
+  border-color: var(--settings-border-hover);
+  background: var(--settings-card-bg);
+}
+
+.extension-card:focus-within {
+  outline: 2px solid var(--browser-theme-secondary-highlight);
+  outline-offset: 2px;
+}
+
+/* Extension Icon */
+.extension-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  background: var(--settings-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.extension-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.extension-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.extension-icon-placeholder {
+  width: 24px;
+  height: 24px;
+  opacity: 0.6;
+  fill: var(--settings-text-secondary);
+}
+
+/* Extension Info */
+.extension-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0; /* Allow text truncation */
+}
+
+.extension-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--settings-text-primary);
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Remove ### prefix from extension names */
+.extension-name::before {
+  content: none !important;
+}
+
+.extension-meta {
+  font-size: 0.8rem;
+  color: var(--settings-text-secondary);
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.extension-permissions {
+  font-size: 0.75rem;
+  color: var(--settings-text-secondary);
+  opacity: 0.8;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Extension Toggle - reuse exact settings toggle styles */
+.extension-toggle {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* Toggle Switch Styling - Match settings.css exactly */
+.extension-toggle .toggle-label {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.extension-toggle .toggle-input {
+  display: none;
+}
+
+.extension-toggle .toggle-slider {
+  width: 36px;
+  height: 20px;
+  background: #6b7280;
+  border-radius: 10px;
+  position: relative;
+  transition: background-color 0.2s ease;
+  opacity: 1;
+}
+
+.extension-toggle .toggle-slider::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 0.2s ease;
+}
+
+.extension-toggle .toggle-input:checked + .toggle-slider {
+  background: #3b82f6;
+}
+
+.extension-toggle .toggle-input:checked + .toggle-slider::before {
+  transform: translateX(16px);
+  background: white;
+}
+
+.extension-toggle .toggle-input:disabled + .toggle-slider {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Override toggle focus to work within card focus */
+.extension-toggle .toggle-label:focus-within {
+  outline: 2px solid var(--browser-theme-secondary-highlight);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Extension Card Focus Management */
+.extension-card:focus-within .toggle-label {
+  /* Remove individual toggle focus when card is focused */
+  outline: none;
+}
+
+/* Responsive Design */
+@media (max-width: 749px) {
+  .extension-card {
+    padding: 0.75rem;
+    gap: 0.75rem;
+  }
+  
+  .extension-icon {
+    width: 40px;
+    height: 40px;
+  }
+  
+  .extension-name {
+    font-size: 0.85rem;
+  }
+  
+  .extension-meta {
+    font-size: 0.75rem;
+  }
+  
+  .extension-permissions {
+    display: none; /* Hide permissions on small screens */
+  }
+}
+
+@media (max-width: 600px) {
+  .extensions-list {
+    gap: 0.125rem;
+  }
+}
+
+/* Empty State */
+.extensions-empty {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--settings-text-secondary);
+  font-size: 0.9rem;
+  opacity: 0.8;
+}
+
+.extensions-empty-icon {
+  width: 48px;
+  height: 48px;
+  opacity: 0.5;
+  margin: 0 auto 1rem auto;
+  fill: var(--settings-text-secondary);
+}

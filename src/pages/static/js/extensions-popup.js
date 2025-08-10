@@ -34,11 +34,6 @@ export class ExtensionsPopup {
             <div class="extensions-popup-list" role="list">
                 ${this.generateExtensionItems()}
             </div>
-            <div class="extensions-popup-footer">
-                <button class="manage-extensions-button" type="button">
-                    Manage Extensions
-                </button>
-            </div>
         `;
 
         document.body.appendChild(popup);
@@ -198,16 +193,6 @@ export class ExtensionsPopup {
             }
         });
 
-        // Manage extensions button
-        this.popup.addEventListener('click', (event) => {
-            if (event.target.classList.contains('manage-extensions-button')) {
-                event.preventDefault();
-                event.stopPropagation();
-                this.hide();
-                // Placeholder for opening extensions management page
-                console.log('Navigate to extensions management');
-            }
-        });
 
         // Close button
         this.popup.addEventListener('click', (event) => {

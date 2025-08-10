@@ -179,42 +179,19 @@
     color: var(--browser-theme-primary-highlight);
 }
 
+.pin-button.pinned svg {
+    fill: var(--browser-theme-primary-highlight);
+}
+
 .pin-button.pinned:hover {
     color: var(--browser-theme-primary-highlight);
     background-color: rgba(0, 255, 255, 0.1);
 }
 
-/* Footer */
-.extensions-popup-footer {
-    padding: 12px 16px 16px 16px;
-    border-top: 1px solid var(--peersky-nav-button-inactive);
+.pin-button.pinned:hover svg {
+    fill: var(--browser-theme-primary-highlight);
 }
 
-/* Manage Extensions button */
-.manage-extensions-button {
-    width: 100%;
-    padding: 8px 16px;
-    background: var(--peersky-nav-background);
-    border: 1px solid var(--peersky-nav-button-inactive);
-    border-radius: 6px;
-    color: var(--browser-theme-text-color);
-    font-family: var(--browser-theme-font-family);
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
-}
-
-.manage-extensions-button:hover {
-    background-color: rgba(255, 255, 255, 0.05);
-    border-color: var(--peersky-nav-button-color);
-    color: var(--peersky-nav-button-hover);
-}
-
-.manage-extensions-button:active {
-    background-color: rgba(255, 255, 255, 0.1);
-    color: var(--peersky-nav-button-active);
-}
 
 /* Scrollbar styling for webkit browsers */
 .extensions-popup-list::-webkit-scrollbar {
@@ -248,7 +225,8 @@
 .extensions-popup:focus-within .extension-item:focus,
 .extensions-popup .pin-button:focus,
 .extensions-popup .kebab-button:focus,
-.extensions-popup .manage-extensions-button:focus {
+.extensions-popup .pin-button:focus,
+.extensions-popup .kebab-button:focus {
     outline: 2px solid var(--browser-theme-primary-highlight);
     outline-offset: 1px;
 }
