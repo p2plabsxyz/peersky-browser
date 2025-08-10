@@ -1,5 +1,5 @@
-@import "./vars.css";
-@import "./style.css";
+@import url('browser://theme/vars.css');
+@import url('browser://theme/style.css');
 
 body {
   padding: 0;

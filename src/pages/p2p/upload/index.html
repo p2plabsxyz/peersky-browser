@@ -175,7 +175,10 @@
   
   function addURL(url) {
       const li = document.createElement('li');
-      li.innerHTML = `<a href="${url}">${url}</a>`;
+      const a = document.createElement('a');
+      a.href = url;
+      a.textContent = url;
+      li.appendChild(a);
       uploadListBox.appendChild(li);
   }
   

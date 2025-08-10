@@ -10,7 +10,7 @@
     <img src="https://img.shields.io/github/release-date-pre/p2plabsxyz/peersky-browser?color=green" alt="GitHub Pre-release" />
     <!-- <img src="https://img.shields.io/github/v/release/p2plabsxyz/peersky-browser?color=green" alt="GitHub Release"> -->
     <img src="https://img.shields.io/mastodon/follow/113323887574214930" alt="Mastodon Follow">
-    <img src="./banner.png" alt="Peersky, displaying multiple overlapping windows. The foreground window shows a search bar with DuckDuckGo, while the background contains a Wikipedia page on ipns:// about Earth and a private hyper:// chat. The central window features a scenic forest image with sunlight filtering through tall trees, and a clock">
+    <img src="./banner.gif" width="639" alt="Peersky, displaying multiple overlapping windows. The foreground window shows a search bar with DuckDuckGo, while the background contains a Wikipedia page on ipns:// about Earth and a private hyper:// chat. The central window features a scenic forest image with sunlight filtering through tall trees, and a clock">
 </div>
 
 💻 [Download](https://peersky.p2plabs.xyz/)
@@ -115,9 +115,9 @@
 
   - [x] Option to add favourite pages in the nav bar (peersky://bookmarks)
 
-- [ ] 🚧 QR Code generator:
+- [x] QR Code generator:
 
-  - [ ] Option to generate QR Code for every page in the URL prompt
+  - [x] Option to generate QR Code for every page in the URL prompt with [plan1](./docs/Plan1.md).
 
 - [ ] Archive (peersky://archive):
 

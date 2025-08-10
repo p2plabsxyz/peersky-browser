@@ -55,6 +55,7 @@ const url = window.location.href;
 const isSettings = url.startsWith('peersky://settings');
 const isHome = url.startsWith('peersky://home');
 const isBookmarks = url.includes('peersky://bookmarks');
+const isTabsPage = url.includes('peersky://tabs');
 const isInternal = url.startsWith('peersky://');
 const isExternal = !isInternal;
 
@@ -300,6 +301,19 @@ try {
     
     console.log('Unified-preload: Bookmark APIs exposed (getBookmarks, deleteBookmark)');
     
+  } else if (isTabsPage) {
+    contextBridge.exposeInMainWorld('electronAPI', {
+      getTabs: () => ipcRenderer.invoke('get-tabs'),
+      closeTab: (id) => ipcRenderer.invoke('close-tab', id),
+      activateTab: (id) => ipcRenderer.invoke('activate-tab', id),
+      groupAction: (action, groupId) => ipcRenderer.invoke('group-action', { action, groupId }),
+      updateGroupProperties: (groupId, properties) => ipcRenderer.send('update-group-properties', groupId, properties),
+      onGroupPropertiesUpdated: (callback) => {
+        ipcRenderer.on('group-properties-updated', (_, groupId, properties) => {
+          callback(groupId, properties);
+        });
+      }
+    })
   } else if (isInternal) {
     // TODO: Consider minimal extension APIs for internal pages
     // - Extension theme integration

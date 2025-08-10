@@ -6,7 +6,6 @@ import { noise } from "@chainsafe/libp2p-noise";
 import { yamux } from "@chainsafe/libp2p-yamux";
 import { mdns } from "@libp2p/mdns";
 import { tcp } from "@libp2p/tcp";
-import { quic } from '@chainsafe/libp2p-quic'
 import { webRTC, webRTCDirect } from "@libp2p/webrtc";
 import { webSockets } from "@libp2p/websockets";
 import { webTransport } from '@libp2p/webtransport'
@@ -60,14 +59,11 @@ export async function createNode() {
         '/ip4/0.0.0.0/tcp/0/ws',
         '/ip4/0.0.0.0/udp/0/webrtc-direct',
         '/ip6/::/udp/0/webrtc-direct',
-        '/ip4/0.0.0.0/udp/0/quic-v1',
-        '/ip4/0.0.0.0/udp/0/quic-v1/webtransport',
         '/p2p-circuit'
       ],
     },
     transports: [
       tcp(),
-      quic(),
       webSockets(),
       webRTC(),
       webRTCDirect(),
@@ -90,7 +86,11 @@ export async function createNode() {
         validators: { ipns: ipnsValidator },
         selectors: { ipns: ipnsSelector },
         peerInfoMapper: removePrivateAddressesMapper,
-        reprovide: { concurrency: 10 }
+        reprovide: { 
+          concurrency: 10,
+          interval: 60 * 60 * 1000,
+          threshold: 12 * 60 * 60 * 1000
+        }
       }),
       identify: identify(),
       identifyPush: identifyPush(),
