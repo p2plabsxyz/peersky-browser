@@ -164,6 +164,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const themeToggle = document.getElementById('theme-toggle');
   const showClock = document.getElementById('show-clock');
   const verticalTabs = document.getElementById('vertical-tabs');
+  const keepTabsExpanded = document.getElementById('keep-tabs-expanded');
   const wallpaperSelector = document.getElementById('wallpaper-selector');
   const wallpaperFile = document.getElementById('wallpaper-file');
   const wallpaperBrowse = document.getElementById('wallpaper-browse');
@@ -306,6 +307,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
+  keepTabsExpanded?.addEventListener('change', async (e) => {
+    const keepExpanded = e.target.checked;
+    console.log('Keep tabs expanded changed:', keepExpanded);
+    await saveSettingToBackend('keepTabsExpanded', keepExpanded);
+  });
+
   // Initialize custom wallpaper UI state
   updateCustomWallpaperUI(false);
   
@@ -317,11 +324,15 @@ function loadDefaultSettings() {
   const searchEngine = document.getElementById('search-engine');
   const themeToggle = document.getElementById('theme-toggle');
   const showClock = document.getElementById('show-clock');
+  const verticalTabs = document.getElementById('vertical-tabs');
+  const keepTabsExpanded = document.getElementById('keep-tabs-expanded');
   const wallpaperSelector = document.getElementById('wallpaper-selector');
   
   if (searchEngine) searchEngine.value = 'duckduckgo';
   if (themeToggle) themeToggle.value = 'dark';
   if (showClock) showClock.checked = true;
+  if (verticalTabs) verticalTabs.checked = false;
+  if (keepTabsExpanded) keepTabsExpanded.checked = false;
   if (wallpaperSelector) wallpaperSelector.value = 'redwoods';
 }
 
@@ -349,6 +360,7 @@ function populateFormFields(settings) {
   const themeToggle = document.getElementById('theme-toggle');
   const showClock = document.getElementById('show-clock');
   const verticalTabs = document.getElementById('vertical-tabs');
+  const keepTabsExpanded = document.getElementById('keep-tabs-expanded');
   const wallpaperSelector = document.getElementById('wallpaper-selector');
   
   if (searchEngine && settings.searchEngine) {
@@ -365,6 +377,9 @@ function populateFormFields(settings) {
   }
   if (verticalTabs && typeof settings.verticalTabs === 'boolean') {
     verticalTabs.checked = settings.verticalTabs;
+  }
+  if (keepTabsExpanded && typeof settings.keepTabsExpanded === 'boolean') {
+    keepTabsExpanded.checked = settings.keepTabsExpanded;
   }
   if (wallpaperSelector && settings.wallpaper) {
     // Only set built-in wallpaper values, ignore custom

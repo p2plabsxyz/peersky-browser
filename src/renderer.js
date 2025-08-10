@@ -74,17 +74,30 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (verticalTabsEnabled) {
     const { default: VerticalTabs } = await import('./pages/vertical-tabs.js');
     tabBar = document.querySelector('#tabbar') || new VerticalTabs();
+    const keepExpanded = await ipcRenderer.invoke('settings-get', 'keepTabsExpanded');
+    if (keepExpanded) {
+      tabBar.updateKeepExpandedState(keepExpanded);
+    }
+    // IMPORTANT: append to body before creating / restoring tabs
+    if (!tabBar.isConnected) {
+      document.body.appendChild(tabBar);
+    }
   } else {
     tabBar = document.querySelector('#tabbar') || new TabBar();
+    if (titleBar && !tabBar.isConnected) {
+      titleBar.connectTabBar(tabBar);
+    } else if (!tabBar.isConnected) {
+      document.body.appendChild(tabBar);
+    }
   }
-  
-  // This is our webview container where all tab webviews will live
+
+  // Create webview container AFTER tabBar is in DOM
   webviewContainer = document.createElement("div");
   webviewContainer.id = "webview-container";
   webviewContainer.className = "webview-container";
   document.body.appendChild(webviewContainer);
-  
-  // Connect the tabBar with the webviewContainer
+
+  // Now safe to wire them
   tabBar.connectWebviewContainer(webviewContainer);
   
   ipcRenderer.on('close-tab', (_, id) => {
@@ -145,15 +158,20 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (enabled) {
       const { default: VerticalTabs } = await import('./pages/vertical-tabs.js');
       tabBar = new VerticalTabs();
-      // Position vertical tabs correctly
-      document.body.appendChild(tabBar);
+      const keepExpanded = await ipcRenderer.invoke('settings-get', 'keepTabsExpanded');
+      if (keepExpanded) {
+        tabBar.updateKeepExpandedState(true);
+      }
+      document.body.appendChild(tabBar); // do NOT connect to titleBar
     } else {
       tabBar = new TabBar();
+      if (titleBar) {
+        titleBar.connectTabBar(tabBar);
+      } else {
+        document.body.appendChild(tabBar);
+      }
     }
-    if (titleBar) {
-      titleBar.connectTabBar(tabBar);
-    }
-    
+    // Only connect AFTER append
     tabBar.connectWebviewContainer(webviewContainer);
     
     // Force a layout update
@@ -164,6 +182,20 @@ document.addEventListener("DOMContentLoaded", async () => {
         tabBar.style.display = '';
       }
     }, 100);
+  });
+
+  ipcRenderer.on('keep-tabs-expanded-changed', async (_, keepExpanded) => {
+    const verticalTabsElement = document.querySelector('.tabbar.vertical-tabs');
+    if (verticalTabsElement && typeof verticalTabsElement.updateKeepExpandedState === 'function') {
+      verticalTabsElement.updateKeepExpandedState(keepExpanded);
+    } else if (verticalTabsElement) {
+      // Fallback for basic class toggle
+      if (keepExpanded) {
+        verticalTabsElement.classList.add('keep-expanded');
+      } else {
+        verticalTabsElement.classList.remove('keep-expanded');
+      }
+    }
   });
 
   ipcRenderer.on('hide-tab-components', () => {
@@ -178,7 +210,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
   
-  if (titleBar && tabBar) {
+  if (!verticalTabsEnabled && titleBar && tabBar.parentElement !== titleBar) {
     titleBar.connectTabBar(tabBar);
   }
 

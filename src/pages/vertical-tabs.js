@@ -38,6 +38,7 @@ export default class VerticalTabs extends BaseTabBar {
 
     // Add hover event listeners with delays for smooth expansion
     this.addEventListener('mouseenter', () => {
+      if (this.classList.contains('keep-expanded')) return;
       // Clear any pending leave timeout
       if (this.leaveTimeout) {
         clearTimeout(this.leaveTimeout);
@@ -52,6 +53,7 @@ export default class VerticalTabs extends BaseTabBar {
     });
     
     this.addEventListener('mouseleave', () => {
+      if (this.classList.contains('keep-expanded')) return;
       // Clear any pending hover timeout
       if (this.hoverTimeout) {
         clearTimeout(this.hoverTimeout);
@@ -127,6 +129,30 @@ export default class VerticalTabs extends BaseTabBar {
     const shouldStick =
       this.tabContainer.scrollHeight > this.tabContainer.clientHeight;
     this.addButton.classList.toggle('sticky', shouldStick);
+  }
+
+  // Override hover behavior when keep-expanded is active
+  updateKeepExpandedState(keepExpanded) {
+    if (keepExpanded) {
+      this.classList.add('keep-expanded');
+      // Clear any timeouts
+      if (this.hoverTimeout) {
+        clearTimeout(this.hoverTimeout);
+        this.hoverTimeout = null;
+      }
+      if (this.leaveTimeout) {
+        clearTimeout(this.leaveTimeout);
+        this.leaveTimeout = null;
+      }
+      // Force expanded state
+      this.isExpanded = true;
+      this.classList.add('expanded');
+    } else {
+      this.classList.remove('keep-expanded');
+      // Re-enable hover behavior
+      this.isExpanded = false;
+      this.classList.remove('expanded');
+    }
   }
 }
 

@@ -305,3 +305,36 @@ body:has(.tabbar.vertical-tabs.expanded) .webview-container {
   font-size: 8px;
   margin: 0;
 }
+
+/* Keep tabs expanded override */
+.tabbar.vertical-tabs.keep-expanded {
+  width: 200px !important; /* Force expanded width permanently */
+}
+
+.tabbar.vertical-tabs.keep-expanded .tab {
+  width: calc(100% - 8px) !important; /* Force full tab width */
+  justify-content: flex-start !important;
+  padding: 8px 12px !important;
+}
+
+.tabbar.vertical-tabs.keep-expanded .tab-title {
+  display: block !important;
+}
+
+.tabbar.vertical-tabs.keep-expanded .close-tab {
+  display: flex !important;
+}
+
+.tabbar.vertical-tabs.keep-expanded .tab-group-header {
+  width: calc(100% - 8px) !important;
+  justify-content: flex-start !important;
+  padding: 0 8px !important;
+}
+
+.tabbar.vertical-tabs.keep-expanded .tab-group-title {
+  display: block !important;
+}
+
+.tabbar.vertical-tabs.keep-expanded .tab-group-controls {
+  display: flex !important;
+}
