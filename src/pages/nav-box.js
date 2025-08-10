@@ -6,9 +6,11 @@ class NavBox extends HTMLElement {
     this._qrButton = null;
     this._outsideClickListener = null;
     this._resizeListener = null;
+    this._extensionsPopup = null;
     this.buildNavBox();
     this.attachEvents();
     this.attachThemeListener();
+    this.initializeExtensionsPopup();
   }
 
   setStyledUrl(url) {
@@ -275,7 +277,7 @@ class NavBox extends HTMLElement {
         } else if (button.id === "qr-code") {
           this._toggleQrCodePopup();
         } else if (button.id === "extensions") {
-          this.dispatchEvent(new CustomEvent("toggle-extensions"));
+          this._toggleExtensionsPopup();
         } else if (button.id === "settings") {
           this.dispatchEvent(
             new CustomEvent("navigate", {
@@ -337,6 +339,28 @@ class NavBox extends HTMLElement {
         this.classList.remove("theme-updating");
       }, 100);
     });
+  }
+
+  // Extensions Popup Management
+  async initializeExtensionsPopup() {
+    try {
+      const { ExtensionsPopup } = await import('./static/js/extensions-popup.js');
+      this._extensionsPopup = new ExtensionsPopup();
+    } catch (error) {
+      console.error('Failed to initialize extensions popup:', error);
+    }
+  }
+
+  _toggleExtensionsPopup() {
+    if (!this._extensionsPopup) {
+      console.error('Extensions popup not initialized');
+      return;
+    }
+
+    const extensionsButton = this.buttonElements["extensions"];
+    if (extensionsButton) {
+      this._extensionsPopup.toggle(extensionsButton);
+    }
   }
 }
 

@@ -1,0 +1,269 @@
+/* Extensions Popup Styles */
+/* Follows existing popup patterns from qr-popup.css and theme conventions */
+
+.extensions-popup {
+    position: fixed;
+    z-index: 1000;
+    background: var(--browser-theme-background);
+    border: 1px solid var(--peersky-nav-button-inactive);
+    border-radius: 8px;
+    width: 320px;
+    max-height: 420px;
+    display: flex;
+    flex-direction: column;
+    font-family: var(--browser-theme-font-family);
+    color: var(--browser-theme-text-color);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    
+    /* Initial state - hidden */
+    opacity: 0;
+    transform: scale(0.8);
+    pointer-events: none;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.extensions-popup.open {
+    opacity: 1;
+    transform: scale(1);
+    pointer-events: auto;
+}
+
+/* Header */
+.extensions-popup-header {
+    padding: 16px 16px 12px 16px;
+    border-bottom: 1px solid var(--peersky-nav-button-inactive);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.extensions-popup-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--browser-theme-text-color);
+}
+
+/* Close button */
+.close-button {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--peersky-nav-button-color);
+    transition: background-color 0.2s ease, color 0.2s ease;
+    flex-shrink: 0;
+}
+
+.close-button:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: var(--peersky-nav-button-hover);
+}
+
+.close-button:active {
+    background-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Scrollable list container */
+.extensions-popup-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0;
+    max-height: 300px;
+}
+
+/* Individual extension item */
+.extension-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 16px;
+    gap: 12px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.extension-item:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Extension icon */
+.extension-icon {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    flex-shrink: 0;
+    color: var(--peersky-nav-button-color);
+}
+
+.extension-icon .svg-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+}
+
+/* Extension name */
+.extension-name {
+    flex: 1;
+    font-size: 14px;
+    color: var(--browser-theme-text-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.4;
+}
+
+/* Extension controls container */
+.extension-controls {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+/* Pin and kebab buttons */
+.pin-button,
+.kebab-button {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--peersky-nav-button-color);
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.pin-button .svg-container,
+.kebab-button .svg-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+}
+
+.close-button .svg-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+}
+
+.pin-button:hover,
+.kebab-button:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: var(--peersky-nav-button-hover);
+}
+
+.pin-button:active,
+.kebab-button:active {
+    background-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Pin button states */
+.pin-button.pinned {
+    color: var(--browser-theme-primary-highlight);
+}
+
+.pin-button.pinned:hover {
+    color: var(--browser-theme-primary-highlight);
+    background-color: rgba(0, 255, 255, 0.1);
+}
+
+/* Footer */
+.extensions-popup-footer {
+    padding: 12px 16px 16px 16px;
+    border-top: 1px solid var(--peersky-nav-button-inactive);
+}
+
+/* Manage Extensions button */
+.manage-extensions-button {
+    width: 100%;
+    padding: 8px 16px;
+    background: var(--peersky-nav-background);
+    border: 1px solid var(--peersky-nav-button-inactive);
+    border-radius: 6px;
+    color: var(--browser-theme-text-color);
+    font-family: var(--browser-theme-font-family);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.manage-extensions-button:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+    border-color: var(--peersky-nav-button-color);
+    color: var(--peersky-nav-button-hover);
+}
+
+.manage-extensions-button:active {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: var(--peersky-nav-button-active);
+}
+
+/* Scrollbar styling for webkit browsers */
+.extensions-popup-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.extensions-popup-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.extensions-popup-list::-webkit-scrollbar-thumb {
+    background: var(--peersky-nav-button-inactive);
+    border-radius: 3px;
+}
+
+.extensions-popup-list::-webkit-scrollbar-thumb:hover {
+    background: var(--peersky-nav-button-color);
+}
+
+/* Responsive adjustments for smaller screens */
+@media (max-width: 360px) {
+    .extensions-popup {
+        width: calc(100vw - 40px);
+        max-width: 320px;
+        left: 20px !important;
+        right: 20px;
+    }
+}
+
+/* Focus management for accessibility */
+.extensions-popup:focus-within .extension-item:focus,
+.extensions-popup .pin-button:focus,
+.extensions-popup .kebab-button:focus,
+.extensions-popup .manage-extensions-button:focus {
+    outline: 2px solid var(--browser-theme-primary-highlight);
+    outline-offset: 1px;
+}
+
+/* Ensure popup appears above all other content */
+.extensions-popup {
+    isolation: isolate;
+}
+
+/* Animation for smooth list interactions */
+.extension-item {
+    transform: translateX(0);
+    transition: transform 0.15s ease, background-color 0.2s ease;
+}
+
+.extension-item:active {
+    transform: translateX(1px);
+}
