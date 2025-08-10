@@ -27,6 +27,7 @@ class NavBox extends HTMLElement {
       { id: "refresh", svg: "reload.svg", position: "start" },
       { id: "home", svg: "home.svg", position: "start" },
       { id: "bookmark", svg: "bookmark.svg", position: "start" },
+      { id: "extensions", svg: "extensions.svg", position: "end" },
       { id: "settings", svg: "settings.svg", position: "end" },
     ];
 
@@ -99,8 +100,14 @@ class NavBox extends HTMLElement {
         container.innerHTML = svgContent;
         const svgElement = container.querySelector("svg");
         if (svgElement) {
-          svgElement.setAttribute("width", "18");
-          svgElement.setAttribute("height", "18");
+          // Set larger size specifically for extensions icon
+          if (svgPath.includes("extensions.svg")) {
+            svgElement.setAttribute("width", "22");
+            svgElement.setAttribute("height", "22");
+          } else {
+            svgElement.setAttribute("width", "18");
+            svgElement.setAttribute("height", "18");
+          }
           svgElement.setAttribute("fill", "currentColor");
         }
       })
@@ -267,6 +274,8 @@ class NavBox extends HTMLElement {
           this.dispatchEvent(new CustomEvent("toggle-bookmark"));
         } else if (button.id === "qr-code") {
           this._toggleQrCodePopup();
+        } else if (button.id === "extensions") {
+          this.dispatchEvent(new CustomEvent("toggle-extensions"));
         } else if (button.id === "settings") {
           this.dispatchEvent(
             new CustomEvent("navigate", {
