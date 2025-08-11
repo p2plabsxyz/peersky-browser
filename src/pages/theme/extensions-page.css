@@ -40,6 +40,32 @@
   scrollbar-color: var(--settings-border) var(--settings-bg-primary) !important;
 }
 
+/* Page Title */
+.page-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--settings-text-primary);
+  margin: 0 0 2rem 0;
+}
+
+/* Installed Extensions Header */
+.installed-extensions-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  margin-top: 2rem;
+}
+
+.installed-extensions-header .section-title {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+#update-all-btn {
+  flex-shrink: 0;
+}
+
 /* Install Section Layout */
 .install-section-header {
   margin-bottom: 1rem;
@@ -149,6 +175,11 @@
 .extension-buttons {
   display: flex;
   gap: 0.5rem;
+}
+
+/* Hide individual update buttons */
+.extension-buttons .btn[data-action="update"] {
+  display: none;
 }
 
 
@@ -324,5 +355,16 @@
   .extension-buttons .btn {
     font-size: 0.75rem;
     padding: 0.4rem 0.6rem;
+  }
+  
+  /* Stack header on mobile */
+  .installed-extensions-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1rem;
+  }
+  
+  #update-all-btn {
+    align-self: stretch;
   }
 }

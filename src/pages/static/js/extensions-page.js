@@ -84,9 +84,6 @@ function createExtensionCard(extension) {
         <button type="button" class="btn btn-danger" data-action="remove" data-extension-id="${extension.id}" title="Remove extension">
           Remove
         </button>
-        <button type="button" class="btn btn-secondary" data-action="update" data-extension-id="${extension.id}" title="Update extension">
-          Update
-        </button>
       </div>
       <div class="extension-toggle">
         <label class="toggle-label" aria-label="Enable ${extension.name}">
@@ -138,13 +135,24 @@ function handleRemoveExtension(extensionId) {
   }
 }
 
-// Handle extension update
-function handleUpdateExtension(extensionId) {
-  const extension = EXTENSIONS.find(ext => ext.id === extensionId);
-  if (!extension) return;
+// Handle update all extensions
+function handleUpdateAll() {
+  console.log('Update all extensions');
   
-  console.log(`Update extension: ${extension.name}`);
-  // TODO: Implement actual update logic
+  // Get all enabled extensions
+  const enabledExtensions = EXTENSIONS.filter(ext => ext.enabled);
+  
+  if (enabledExtensions.length === 0) {
+    console.log('No enabled extensions to update');
+    return;
+  }
+  
+  console.log(`Updating ${enabledExtensions.length} enabled extensions:`);
+  enabledExtensions.forEach(ext => {
+    console.log(`- ${ext.name} (v${ext.version})`);
+  });
+  
+  // TODO: Implement actual update all logic
 }
 
 // Handle toggle changes
@@ -203,6 +211,12 @@ function init() {
     installBtn.addEventListener('click', handleInstallFromURL);
   }
   
+  // Add event listener for update all button
+  const updateAllBtn = document.getElementById('update-all-btn');
+  if (updateAllBtn) {
+    updateAllBtn.addEventListener('click', handleUpdateAll);
+  }
+  
   // Add enter key support for install input
   const installInput = document.getElementById('install-url');
   if (installInput) {
@@ -225,8 +239,6 @@ function init() {
     container.addEventListener('click', (event) => {
       if (event.target.dataset.action === 'remove') {
         handleRemoveExtension(event.target.dataset.extensionId);
-      } else if (event.target.dataset.action === 'update') {
-        handleUpdateExtension(event.target.dataset.extensionId);
       }
     });
   }

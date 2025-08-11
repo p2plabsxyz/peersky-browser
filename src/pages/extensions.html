@@ -12,14 +12,14 @@
     @import url("browser://theme/settings.css");
     @import url("browser://theme/extensions-page.css");
   </style>
-  <title>Extension Management</title>
+  <title>PeerSky Extensions</title>
 </head>
 <body>
 
 <div class="settings-wrapper">
   <div class="settings-layout">
     <main class="settings-content">
-      <h1 class="section-title">Extension Management</h1>
+      <h1 class="page-title">Extension Management</h1>
       
       <!-- Install from URL Section -->
       <section class="settings-section" id="install-section">
@@ -31,6 +31,12 @@
           <button type="button" id="install-btn" class="btn btn-secondary">Install</button>
         </div>
       </section>
+      
+      <!-- Installed Extensions Section -->
+      <div class="installed-extensions-header">
+        <h1 class="section-title">Installed Extensions</h1>
+        <button type="button" id="update-all-btn" class="btn btn-secondary">Update All</button>
+      </div>
       
       <!-- Extensions Grid -->
       <div id="extensions-grid" class="extensions-grid"></div>
