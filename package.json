@@ -17,6 +17,7 @@
   "repository": "https://github.com/p2plabsxyz/peersky-browser",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
+    "test:unit": "node tests/run-util-tests.js",
     "start": "electron .",
     "build": "electron-builder build --publish never",
     "build-all": "electron-builder build -mwl",
