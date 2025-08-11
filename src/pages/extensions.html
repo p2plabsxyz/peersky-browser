@@ -20,7 +20,20 @@
   <div class="settings-layout">
     <main class="settings-content">
       <h1 class="section-title">Extension Management</h1>
-      <div id="extensions-list" class="extensions-list"></div>
+      
+      <!-- Install from URL Section -->
+      <section class="settings-section" id="install-section">
+        <div class="install-section-header">
+          <div class="setting-label">Install from Chrome Web Store URL</div>
+        </div>
+        <div class="install-section-controls">
+          <input type="url" id="install-url" class="install-input" placeholder="https://chrome.google.com/webstore/detail/...">
+          <button type="button" id="install-btn" class="btn btn-secondary">Install</button>
+        </div>
+      </section>
+      
+      <!-- Extensions Grid -->
+      <div id="extensions-grid" class="extensions-grid"></div>
     </main>
   </div>
 </div>

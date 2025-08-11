@@ -1,59 +1,45 @@
 // Extensions page - UI-only implementation with mock data
 // No IPC calls, no persistence - toggles are local state only
 
-const EXTENSIONS = [
+let EXTENSIONS = [
+  {
+    id: 'adblocker-plus',
+    name: 'AdBlocker Plus',
+    version: '3.15.1',
+    description: 'Block ads and trackers across the web for a cleaner browsing experience',
+    enabled: true,
+    icon: null
+  },
   {
     id: 'grammarly',
     name: 'Grammarly',
-    version: '2.1.4',
-    desc: 'AI writing assistant',
-    permissions: ['activeTab', 'storage'],
+    version: '2.1.4', 
+    description: 'AI writing assistant for better communication and grammar checking',
     enabled: true,
+    icon: null
+  },
+  {
+    id: 'p2p-messenger',
+    name: 'P2P Messenger',
+    version: '1.0.0',
+    description: 'Decentralized messaging extension for peer-to-peer communication',
+    enabled: false,
+    icon: null
+  },
+  {
+    id: 'dev-tools-custom',
+    name: 'Custom Dev Tools',
+    version: '0.8.2',
+    description: 'Developer utilities for debugging and web development',
+    enabled: false,
     icon: null
   },
   {
     id: 'color-picker',
     name: 'Color Picker',
     version: '1.0.3',
-    desc: 'Eyedropper & palette',
-    permissions: ['tabs'],
-    enabled: false,
-    icon: null
-  },
-  {
-    id: 'pie-adblock',
-    name: 'Pie Adblock',
-    version: '5.2.0',
-    desc: 'Content blocker',
-    permissions: ['declarativeNetRequest'],
+    description: 'Eyedropper tool and color palette for designers and developers',
     enabled: true,
-    icon: null
-  },
-  {
-    id: 'simplify',
-    name: 'Simplify Copilot',
-    version: '0.9.1',
-    desc: 'Autofill & assistant',
-    permissions: ['storage'],
-    enabled: false,
-    icon: null
-  },
-  {
-    id: 'dark-reader',
-    name: 'Dark Reader',
-    version: '4.9.58',
-    desc: 'Dark theme for every website',
-    permissions: ['activeTab', 'storage', 'scripting'],
-    enabled: true,
-    icon: null
-  },
-  {
-    id: 'ublock-origin',
-    name: 'uBlock Origin',
-    version: '1.52.0',
-    desc: 'Efficient wide-spectrum blocker',
-    permissions: ['declarativeNetRequest', 'storage', 'tabs'],
-    enabled: false,
     icon: null
   }
 ];
@@ -75,32 +61,10 @@ function initializeStates() {
   });
 }
 
-// Format permissions for display
-function formatPermissions(permissions) {
-  if (!permissions || permissions.length === 0) {
-    return '';
-  }
-  
-  const permissionLabels = {
-    'activeTab': 'active tab',
-    'storage': 'storage',
-    'tabs': 'browser tabs',
-    'declarativeNetRequest': 'web requests',
-    'scripting': 'page scripts',
-    'webNavigation': 'navigation'
-  };
-  
-  const formatted = permissions
-    .map(perm => permissionLabels[perm] || perm)
-    .join(', ');
-  
-  return `Permissions: ${formatted}`;
-}
 
-// Create extension card HTML
+// Create extension card HTML with new vertical layout
 function createExtensionCard(extension) {
   const isEnabled = extensionStates[extension.id];
-  const permissionsText = formatPermissions(extension.permissions);
   
   const card = document.createElement('div');
   card.className = 'extension-card settings-section';
@@ -108,23 +72,79 @@ function createExtensionCard(extension) {
   card.setAttribute('aria-labelledby', `ext-${extension.id}-name`);
   
   card.innerHTML = `
-    <div class="extension-icon">
-      ${extension.icon || DEFAULT_ICON_SVG}
-    </div>
-    <div class="extension-info">
+    <div class="extension-header">
+      <div class="extension-icon">
+        ${extension.icon || DEFAULT_ICON_SVG}
+      </div>
       <h3 id="ext-${extension.id}-name" class="extension-name">${extension.name}</h3>
-      <p class="extension-meta">v${extension.version} • ${extension.desc}</p>
-      ${permissionsText ? `<p class="extension-permissions">${permissionsText}</p>` : ''}
+      <p class="extension-description">${extension.description}</p>
     </div>
-    <div class="extension-toggle">
-      <label class="toggle-label" aria-label="Enable ${extension.name}">
-        <input type="checkbox" class="toggle-input" ${isEnabled ? 'checked' : ''} data-extension-id="${extension.id}">
-        <span class="toggle-slider"></span>
-      </label>
+    <div class="extension-actions">
+      <div class="extension-buttons">
+        <button type="button" class="btn btn-danger" data-action="remove" data-extension-id="${extension.id}" title="Remove extension">
+          Remove
+        </button>
+        <button type="button" class="btn btn-secondary" data-action="update" data-extension-id="${extension.id}" title="Update extension">
+          Update
+        </button>
+      </div>
+      <div class="extension-toggle">
+        <label class="toggle-label" aria-label="Enable ${extension.name}">
+          <input type="checkbox" class="toggle-input" ${isEnabled ? 'checked' : ''} data-extension-id="${extension.id}">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
     </div>
   `;
   
   return card;
+}
+
+// Handle install from URL
+function handleInstallFromURL() {
+  const urlInput = document.getElementById('install-url');
+  const url = urlInput.value.trim();
+  
+  if (!url) {
+    console.log('No URL entered');
+    return;
+  }
+  
+  console.log(`Install extension from URL: ${url}`);
+  // TODO: Implement actual installation logic
+  
+  // Clear input after logging
+  urlInput.value = '';
+}
+
+// Handle extension removal
+function handleRemoveExtension(extensionId) {
+  const extension = EXTENSIONS.find(ext => ext.id === extensionId);
+  if (!extension) return;
+  
+  const confirmed = confirm(`Remove "${extension.name}" extension?\n\nThis action cannot be undone.`);
+  if (confirmed) {
+    // Remove from array
+    const index = EXTENSIONS.findIndex(ext => ext.id === extensionId);
+    if (index !== -1) {
+      EXTENSIONS.splice(index, 1);
+      delete extensionStates[extensionId];
+      
+      console.log(`Extension "${extension.name}" removed`);
+      
+      // Re-render the grid
+      renderExtensions();
+    }
+  }
+}
+
+// Handle extension update
+function handleUpdateExtension(extensionId) {
+  const extension = EXTENSIONS.find(ext => ext.id === extensionId);
+  if (!extension) return;
+  
+  console.log(`Update extension: ${extension.name}`);
+  // TODO: Implement actual update logic
 }
 
 // Handle toggle changes
@@ -135,16 +155,20 @@ function handleToggleChange(event) {
   // Update local state (UI only)
   extensionStates[extensionId] = isEnabled;
   
-  // Find the extension for logging
+  // Update the extension object
   const extension = EXTENSIONS.find(ext => ext.id === extensionId);
+  if (extension) {
+    extension.enabled = isEnabled;
+  }
+  
   console.log(`Extension "${extension?.name}" ${isEnabled ? 'enabled' : 'disabled'} (UI only)`);
 }
 
-// Render extensions list
+// Render extensions grid
 function renderExtensions() {
-  const container = document.getElementById('extensions-list');
+  const container = document.getElementById('extensions-grid');
   if (!container) {
-    console.error('Extensions list container not found');
+    console.error('Extensions grid container not found');
     return;
   }
   
@@ -166,18 +190,46 @@ function renderExtensions() {
     const card = createExtensionCard(extension);
     container.appendChild(card);
   });
-  
-  // Add event listeners to toggles
-  const toggles = container.querySelectorAll('.toggle-input');
-  toggles.forEach(toggle => {
-    toggle.addEventListener('change', handleToggleChange);
-  });
 }
 
 // Initialize the page
 function init() {
   initializeStates();
   renderExtensions();
+  
+  // Add event listener for install button
+  const installBtn = document.getElementById('install-btn');
+  if (installBtn) {
+    installBtn.addEventListener('click', handleInstallFromURL);
+  }
+  
+  // Add enter key support for install input
+  const installInput = document.getElementById('install-url');
+  if (installInput) {
+    installInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        handleInstallFromURL();
+      }
+    });
+  }
+  
+  // Add event delegation for extension cards
+  const container = document.getElementById('extensions-grid');
+  if (container) {
+    container.addEventListener('change', (event) => {
+      if (event.target.classList.contains('toggle-input')) {
+        handleToggleChange(event);
+      }
+    });
+    
+    container.addEventListener('click', (event) => {
+      if (event.target.dataset.action === 'remove') {
+        handleRemoveExtension(event.target.dataset.extensionId);
+      } else if (event.target.dataset.action === 'update') {
+        handleUpdateExtension(event.target.dataset.extensionId);
+      }
+    });
+  }
   
   // Focus management
   const firstToggle = document.querySelector('.toggle-input');
