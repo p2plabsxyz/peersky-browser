@@ -20,7 +20,9 @@
  * - Performance-optimized handlers
  */
 
-import { ipcMain } from 'electron';
+import electron from 'electron';
+const { ipcMain } = electron;
+import { ERR } from '../extensions/util.js';
 
 /**
  * Setup extension IPC handlers
@@ -40,8 +42,11 @@ export function setupExtensionIpcHandlers(extensionManager) {
         const extensions = await extensionManager.listExtensions();
         return { success: true, extensions };
       } catch (error) {
-        console.error('ExtensionIPC: extensions-list failed:', error);
-        return { success: false, error: error.message };
+        return {
+          success: false,
+          code: error.code || 'E_UNKNOWN',
+          error: error.message
+        };
       }
     });
 
@@ -49,14 +54,17 @@ export function setupExtensionIpcHandlers(extensionManager) {
     ipcMain.handle('extensions-install', async (event, sourcePath) => {
       try {
         if (!sourcePath || typeof sourcePath !== 'string') {
-          throw new Error('Invalid source path');
+          throw Object.assign(new Error('Invalid source path'), { code: ERR.E_INVALID_ID });
         }
 
         const result = await extensionManager.installExtension(sourcePath);
         return { success: true, ...result };
       } catch (error) {
-        console.error('ExtensionIPC: extensions-install failed:', error);
-        return { success: false, error: error.message };
+        return {
+          success: false,
+          code: error.code || 'E_UNKNOWN',
+          error: error.message
+        };
       }
     });
 
@@ -64,17 +72,20 @@ export function setupExtensionIpcHandlers(extensionManager) {
     ipcMain.handle('extensions-toggle', async (event, extensionId, enabled) => {
       try {
         if (!extensionId || typeof extensionId !== 'string') {
-          throw new Error('Invalid extension ID');
+          throw Object.assign(new Error('Invalid extension ID'), { code: ERR.E_INVALID_ID });
         }
         if (typeof enabled !== 'boolean') {
-          throw new Error('Enabled status must be boolean');
+          throw Object.assign(new Error('Enabled status must be boolean'), { code: ERR.E_INVALID_ID });
         }
 
         const result = await extensionManager.toggleExtension(extensionId, enabled);
         return { success: true, result };
       } catch (error) {
-        console.error('ExtensionIPC: extensions-toggle failed:', error);
-        return { success: false, error: error.message };
+        return {
+          success: false,
+          code: error.code || 'E_UNKNOWN',
+          error: error.message
+        };
       }
     });
 
@@ -82,14 +93,21 @@ export function setupExtensionIpcHandlers(extensionManager) {
     ipcMain.handle('extensions-uninstall', async (event, extensionId) => {
       try {
         if (!extensionId || typeof extensionId !== 'string') {
-          throw new Error('Invalid extension ID');
+          throw Object.assign(new Error('Invalid extension ID'), { code: ERR.E_INVALID_ID });
         }
 
-        const result = await extensionManager.uninstallExtension(extensionId);
-        return { success: true, result };
+        // TODO: Session 1 scope - uninstall not implemented
+        return {
+          success: false,
+          code: 'E_NOT_IMPLEMENTED',
+          error: 'Extension uninstall not implemented in Session 1'
+        };
       } catch (error) {
-        console.error('ExtensionIPC: extensions-uninstall failed:', error);
-        return { success: false, error: error.message };
+        return {
+          success: false,
+          code: error.code || 'E_UNKNOWN',
+          error: error.message
+        };
       }
     });
 
@@ -99,8 +117,11 @@ export function setupExtensionIpcHandlers(extensionManager) {
         const status = extensionManager.getStatus();
         return { success: true, status };
       } catch (error) {
-        console.error('ExtensionIPC: extensions-status failed:', error);
-        return { success: false, error: error.message };
+        return {
+          success: false,
+          code: error.code || 'E_UNKNOWN',
+          error: error.message
+        };
       }
     });
 
@@ -109,20 +130,23 @@ export function setupExtensionIpcHandlers(extensionManager) {
     ipcMain.handle('extensions-get-info', async (event, extensionId) => {
       try {
         if (!extensionId || typeof extensionId !== 'string') {
-          throw new Error('Invalid extension ID');
+          throw Object.assign(new Error('Invalid extension ID'), { code: ERR.E_INVALID_ID });
         }
 
         const extensions = await extensionManager.listExtensions();
         const extension = extensions.find(ext => ext.id === extensionId);
         
         if (!extension) {
-          throw new Error('Extension not found');
+          throw Object.assign(new Error('Extension not found'), { code: ERR.E_INVALID_ID });
         }
 
         return { success: true, extension };
       } catch (error) {
-        console.error('ExtensionIPC: extensions-get-info failed:', error);
-        return { success: false, error: error.message };
+        return {
+          success: false,
+          code: error.code || 'E_UNKNOWN',
+          error: error.message
+        };
       }
     });
 
@@ -178,6 +202,3 @@ export function setupExtensionIpcHandlers(extensionManager) {
   }
 }
 
-export default {
-  setupExtensionIpcHandlers
-};

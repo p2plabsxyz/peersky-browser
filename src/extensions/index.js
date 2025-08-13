@@ -24,16 +24,12 @@
  * ```
  */
 
-import { app, session } from 'electron';
+import electron from 'electron';
+const { app } = electron;
 import path from 'path';
-import fs from 'fs-extra';
+import { promises as fs } from 'fs';
 import ManifestValidator from './manifest-validator.js';
-
-// Import IPC handlers
-import { setupExtensionIpcHandlers } from '../ipc-handlers/extensions.js';
-
-const EXTENSIONS_DATA_PATH = path.join(app.getPath('userData'), 'extensions');
-const EXTENSIONS_METADATA_FILE = path.join(EXTENSIONS_DATA_PATH, 'extensions.json');
+import { ensureDir, readJsonSafe, writeJsonAtomic, KeyedMutex, ERR } from './util.js';
 
 /**
  * ExtensionManager - Main extension management class
@@ -42,68 +38,64 @@ const EXTENSIONS_METADATA_FILE = path.join(EXTENSIONS_DATA_PATH, 'extensions.jso
  * lifecycle management, and integration with Electron's extension system.
  */
 class ExtensionManager {
-  constructor(config = {}) {
-    this.config = {
-      extensionsEnabled: true,
-      extensionMaxSize: 10 * 1024 * 1024, // 10MB
-      extensionDevMode: false,
-      ...config
-    };
-    
+  constructor() {
     this.isInitialized = false;
-    this.loadedExtensions = new Map(); // extensionId -> extension metadata
+    this.loadedExtensions = new Map();
     this.manifestValidator = null;
     this.initializationPromise = null;
-    
-    // TODO: Add Electron session reference for extension loading
+    this.mutex = new KeyedMutex();
+
+    // Session and app (set in initialize)
     this.session = null;
-    
-    // TODO: Add browser action management
-    this.browserActions = new Map();
+    this.app = null;
+
+    // Paths (set in initialize)
+    this.extensionsBaseDir = null;
+    this.extensionsRegistryFile = null;
   }
 
   /**
    * Initialize the extension system
    * 
-   * Sets up extension directories, manifest validator, loads existing extensions,
-   * and integrates with Electron's extension system.
-   * 
-   * @param {Electron.Session} electronSession - Electron session for extension loading
+   * @param {Object} options - Configuration options
+   * @param {Electron.App} options.app - Electron app instance
+   * @param {Electron.Session} options.session - Electron session for extension loading
    */
-  async initialize(electronSession) {
+  async initialize(options) {
     if (this.initializationPromise) {
       return this.initializationPromise;
     }
-
-    this.initializationPromise = this._doInitialize(electronSession);
+    this.initializationPromise = this._doInitialize(options);
     return this.initializationPromise;
   }
 
-  async _doInitialize(electronSession) {
+  async _doInitialize(options) {
     try {
       console.log('ExtensionManager: Initializing extension system...');
 
-      // Create extension directories
-      await fs.ensureDir(EXTENSIONS_DATA_PATH);
+      // Store references
+      this.app = options.app;
+      this.session = options.session;
 
-      // Initialize manifest validator
+      // Set up paths
+      this.extensionsBaseDir = path.join(this.app.getPath('userData'), 'extensions');
+      this.extensionsRegistryFile = path.join(this.extensionsBaseDir, 'extensions.json');
+
+      // Create directories
+      await ensureDir(this.extensionsBaseDir);
+
+      // Initialize validator
       this.manifestValidator = new ManifestValidator();
 
-      // Get Electron session reference
-      this.session = electronSession || session.defaultSession;
+      // Load registry
+      await this._readRegistry();
 
-      // Load existing extensions from metadata
-      await this._loadExtensionsFromMetadata();
-
-      // Load extensions into Electron's extension system
+      // Load enabled extensions
       await this._loadExtensionsIntoElectron();
-
-      // Set up IPC handlers for UI communication
-      setupExtensionIpcHandlers(this);
 
       this.isInitialized = true;
       console.log('ExtensionManager: Extension system initialized successfully');
-      
+
     } catch (error) {
       console.error('ExtensionManager: Failed to initialize:', error);
       throw error;
@@ -138,7 +130,8 @@ class ExtensionManager {
       if (this.session && extensionData.enabled) {
         try {
           console.log(`ExtensionManager: Loading installed extension into Electron: ${extensionData.name}`);
-          const electronExtension = await this.session.loadExtension(extensionData.path);
+          const electronExtension = await this.session.loadExtension(extensionData.installedPath, { allowFileAccess: true });
+          extensionData.electronId = electronExtension.id;
           console.log(`ExtensionManager: Extension loaded in Electron: ${extensionData.name} (${electronExtension.id})`);
         } catch (error) {
           console.error(`ExtensionManager: Failed to load extension into Electron:`, error);
@@ -164,42 +157,43 @@ class ExtensionManager {
    * @returns {Promise<boolean>} Success status
    */
   async toggleExtension(extensionId, enabled) {
-    await this.initialize();
-    
-    try {
-      const extension = this.loadedExtensions.get(extensionId);
-      if (!extension) {
-        throw new Error(`Extension not found: ${extensionId}`);
-      }
+    return this.mutex.run(extensionId, async () => {
+      await this.initialize();
 
-      extension.enabled = enabled;
-      await this._saveExtensionMetadata(extension);
-
-      // Enable/disable extension in Electron's system
-      if (this.session) {
-        try {
-          if (enabled) {
-            console.log(`ExtensionManager: Loading extension into Electron: ${extension.name}`);
-            await this.session.loadExtension(extension.path);
-            console.log(`ExtensionManager: Extension loaded in Electron: ${extension.name}`);
-          } else {
-            console.log(`ExtensionManager: Removing extension from Electron: ${extension.name}`);
-            // Note: Electron doesn't provide removeExtension by extension ID directly
-            // We'll need to track Electron extension IDs separately in a future enhancement
-            console.log(`ExtensionManager: Extension disable requested: ${extension.name}`);
-          }
-        } catch (error) {
-          console.error(`ExtensionManager: Failed to toggle extension in Electron:`, error);
+      try {
+        const extension = this._getById(extensionId);
+        if (!extension) {
+          throw Object.assign(new Error(`Extension not found: ${extensionId}`), { code: ERR.E_INVALID_ID });
         }
-      }
 
-      console.log(`ExtensionManager: Extension ${enabled ? 'enabled' : 'disabled'}:`, extensionId);
-      return true;
-      
-    } catch (error) {
-      console.error('ExtensionManager: Toggle failed:', error);
-      throw error;
-    }
+        extension.enabled = enabled;
+
+        if (this.session) {
+          try {
+            if (enabled) {
+              const electronExtension = await this.session.loadExtension(extension.installedPath, { allowFileAccess: true });
+              extension.electronId = electronExtension.id;
+            } else {
+              if (extension.electronId) {
+                await this.session.removeExtension(extension.electronId);
+              }
+            }
+          } catch (error) {
+            throw Object.assign(
+              new Error(enabled ? 'Failed to load extension' : 'Failed to remove extension'),
+              { code: enabled ? ERR.E_LOAD_FAILED : ERR.E_REMOVE_FAILED }
+            );
+          }
+        }
+
+        await this._writeRegistry();
+        return true;
+
+      } catch (error) {
+        console.error('ExtensionManager: Toggle failed:', error);
+        throw error;
+      }
+    });
   }
 
   /**
@@ -269,14 +263,14 @@ class ExtensionManager {
       }
 
       // Remove extension files
-      const extensionPath = path.join(EXTENSIONS_DATA_PATH, extensionId);
-      await fs.remove(extensionPath);
+      const extensionPath = path.join(this.extensionsBaseDir, extensionId);
+      await fs.rm(extensionPath, { recursive: true, force: true });
 
       // Remove from loaded extensions
       this.loadedExtensions.delete(extensionId);
 
-      // Update metadata file
-      await this._saveAllExtensionMetadata();
+      // Update registry file
+      await this._writeRegistry();
 
       console.log('ExtensionManager: Extension uninstalled:', extensionId);
       return true;
@@ -329,16 +323,22 @@ class ExtensionManager {
       console.log('ExtensionManager: Shutting down extension system...');
 
       if (this.isInitialized) {
-        // Save final extension metadata
-        await this._saveAllExtensionMetadata();
+        // Save final registry
+        await this._writeRegistry();
         
         // Unload all extensions from Electron's system
         if (this.session) {
           try {
             console.log('ExtensionManager: Unloading all extensions from Electron...');
-            // Note: Future enhancement will track and properly remove Electron extensions
             for (const extension of this.loadedExtensions.values()) {
-              console.log(`ExtensionManager: Extension shutdown requested: ${extension.name}`);
+              if (extension.electronId) {
+                try {
+                  await this.session.removeExtension(extension.electronId);
+                  console.log(`ExtensionManager: Extension unloaded: ${extension.name}`);
+                } catch (error) {
+                  console.error(`ExtensionManager: Failed to unload extension ${extension.name}:`, error);
+                }
+              }
             }
           } catch (error) {
             console.error('ExtensionManager: Failed to unload extensions from Electron:', error);
@@ -356,20 +356,36 @@ class ExtensionManager {
   }
 
   /**
-   * Load extensions from metadata file
+   * Read registry from file
    */
-  async _loadExtensionsFromMetadata() {
+  async _readRegistry() {
     try {
-      if (await fs.pathExists(EXTENSIONS_METADATA_FILE)) {
-        const metadata = await fs.readJson(EXTENSIONS_METADATA_FILE);
-        for (const extensionData of metadata.extensions || []) {
-          this.loadedExtensions.set(extensionData.id, extensionData);
-        }
-        console.log(`ExtensionManager: Loaded ${this.loadedExtensions.size} extensions from metadata`);
+      const registry = await readJsonSafe(this.extensionsRegistryFile, { extensions: [] });
+      this.loadedExtensions.clear();
+      for (const extensionData of registry.extensions || []) {
+        this.loadedExtensions.set(extensionData.id, extensionData);
       }
+      console.log(`ExtensionManager: Loaded ${this.loadedExtensions.size} extensions from registry`);
     } catch (error) {
-      console.error('ExtensionManager: Failed to load extension metadata:', error);
+      console.error('ExtensionManager: Failed to read registry:', error);
     }
+  }
+
+  /**
+   * Write registry to file
+   */
+  async _writeRegistry() {
+    const registry = {
+      extensions: Array.from(this.loadedExtensions.values())
+    };
+    await writeJsonAtomic(this.extensionsRegistryFile, registry);
+  }
+
+  /**
+   * Get extension by ID, internal helper
+   */
+  _getById(extensionId) {
+    return this.loadedExtensions.get(extensionId);
   }
 
   /**
@@ -384,16 +400,19 @@ class ExtensionManager {
     try {
       // Load all enabled extensions into Electron's session
       for (const extension of this.loadedExtensions.values()) {
-        if (extension.enabled && extension.path) {
+        if (extension.enabled && extension.installedPath) {
           try {
             console.log(`ExtensionManager: Loading extension into Electron: ${extension.name}`);
-            const electronExtension = await this.session.loadExtension(extension.path);
+            const electronExtension = await this.session.loadExtension(extension.installedPath, { allowFileAccess: true });
+            extension.electronId = electronExtension.id;
             console.log(`ExtensionManager: Extension loaded successfully: ${extension.name} (${electronExtension.id})`);
           } catch (error) {
             console.error(`ExtensionManager: Failed to load extension ${extension.name}:`, error);
           }
         }
       }
+      // Save updated registry with electronIds
+      await this._writeRegistry();
     } catch (error) {
       console.error('ExtensionManager: Error loading extensions into Electron:', error);
     }
@@ -417,16 +436,18 @@ class ExtensionManager {
    */
   async _prepareFromDirectory(dirPath) {
     const manifestPath = path.join(dirPath, 'manifest.json');
-    if (!await fs.pathExists(manifestPath)) {
+    const stats = await fs.stat(manifestPath).catch(() => null);
+    if (!stats) {
       throw new Error('No manifest.json found in extension directory');
     }
 
-    const manifest = await fs.readJson(manifestPath);
+    const manifestContent = await fs.readFile(manifestPath, 'utf8');
+    const manifest = JSON.parse(manifestContent);
     const extensionId = manifest.name.toLowerCase().replace(/[^a-z0-9]/g, '-');
     
     // Copy extension to extensions directory
-    const targetPath = path.join(EXTENSIONS_DATA_PATH, extensionId);
-    await fs.copy(dirPath, targetPath);
+    const targetPath = path.join(this.extensionsBaseDir, extensionId);
+    await fs.cp(dirPath, targetPath, { recursive: true });
 
     return {
       id: extensionId,
@@ -434,8 +455,9 @@ class ExtensionManager {
       version: manifest.version,
       description: manifest.description,
       manifest,
-      path: targetPath,
+      installedPath: targetPath,
       enabled: true,
+      source: 'unpacked',
       installDate: new Date().toISOString()
     };
   }
@@ -450,22 +472,18 @@ class ExtensionManager {
   }
 
   /**
-   * Save extension metadata
+   * Save extension metadata (deprecated - use _writeRegistry)
    */
   async _saveExtensionMetadata(extensionData) {
     this.loadedExtensions.set(extensionData.id, extensionData);
-    await this._saveAllExtensionMetadata();
+    await this._writeRegistry();
   }
 
   /**
-   * Save all extension metadata to file
+   * Save all extension metadata (deprecated - use _writeRegistry)
    */
   async _saveAllExtensionMetadata() {
-    const metadata = {
-      version: '1.0.0',
-      extensions: Array.from(this.loadedExtensions.values())
-    };
-    await fs.writeJson(EXTENSIONS_METADATA_FILE, metadata, { spaces: 2 });
+    await this._writeRegistry();
   }
 }
 
@@ -474,8 +492,7 @@ const extensionManager = new ExtensionManager();
 
 // Export individual components for direct use if needed
 export {
-  ManifestValidator,
-  setupExtensionIpcHandlers
+  ManifestValidator
 };
 
 // Export singleton manager instance as default

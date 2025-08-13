@@ -1,4 +1,5 @@
-import { app, session, protocol as globalProtocol, ipcMain, BrowserWindow,Menu,shell,dialog, webContents} from "electron";
+import electron from "electron";
+const { app, session, protocol: globalProtocol, ipcMain, BrowserWindow, Menu, shell, dialog, webContents } = electron;
 import { createHandler as createBrowserHandler } from "./protocols/peersky-protocol.js";
 import { createHandler as createBrowserThemeHandler } from "./protocols/theme-handler.js";
 import { createHandler as createIPFSHandler } from "./protocols/ipfs-handler.js";
@@ -13,6 +14,7 @@ import { attachContextMenus, setWindowManager } from "./context-menu.js";
 
 // Import and initialize extension system
 import extensionManager from "./extensions/index.js";
+import { setupExtensionIpcHandlers } from "./ipc-handlers/extensions.js";
 
 const P2P_PROTOCOL = {
   standard: true,
@@ -55,8 +57,12 @@ app.whenReady().then(async () => {
   // Initialize extension system
   try {
     console.log("Initializing extension system...");
-    await extensionManager.initialize(session.defaultSession);
+    await extensionManager.initialize({ app, session: session.defaultSession });
     console.log("Extension system initialized successfully");
+
+    // Setup extension IPC handlers
+    setupExtensionIpcHandlers(extensionManager);
+    console.log("Extension IPC handlers registered");
   } catch (error) {
     console.error("Failed to initialize extension system:", error);
   }

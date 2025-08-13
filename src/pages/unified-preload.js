@@ -163,8 +163,10 @@ const extensionAPI = {
   toggleExtension: (id, enabled) => ipcRenderer.invoke('extensions-toggle', id, enabled),
   installExtension: (source) => ipcRenderer.invoke('extensions-install', source),
   uninstallExtension: (id) => ipcRenderer.invoke('extensions-uninstall', id),
-  // TODO: Add missing IPC handlers for these APIs
-  // getExtensionInfo: (id) => ipcRenderer.invoke('extensions-get-info', id),
+  // Session 1 implemented APIs
+  getExtensionInfo: (id) => ipcRenderer.invoke('extensions-get-info', id),
+  getStatus: () => ipcRenderer.invoke('extensions-status'),
+  // TODO: Add missing IPC handlers for these APIs (Session 2+)
   // checkForUpdates: () => ipcRenderer.invoke('extensions-check-updates'),
   // toggleP2P: (enabled) => ipcRenderer.invoke('extensions-toggle-p2p', enabled),
   
