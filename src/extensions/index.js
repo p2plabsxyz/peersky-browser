@@ -109,44 +109,46 @@ class ExtensionManager {
    * @returns {Promise<Object>} Installation result
    */
   async installExtension(sourcePath) {
-    await this.initialize();
-    
-    try {
-      console.log('ExtensionManager: Installing extension from:', sourcePath);
-
-      // Validate and prepare extension
-      const extensionData = await this._prepareExtension(sourcePath);
+    return this.mutex.run('install-' + sourcePath, async () => {
+      await this.initialize();
       
-      // Validate manifest
-      const validationResult = await this.manifestValidator.validate(extensionData.manifest);
-      if (!validationResult.isValid) {
-        throw new Error(`Invalid manifest: ${validationResult.errors.join(', ')}`);
-      }
+      try {
+        console.log('ExtensionManager: Installing extension from:', sourcePath);
 
-      // Save extension metadata
-      await this._saveExtensionMetadata(extensionData);
-
-      // Load extension into Electron's extension system
-      if (this.session && extensionData.enabled) {
-        try {
-          console.log(`ExtensionManager: Loading installed extension into Electron: ${extensionData.name}`);
-          const electronExtension = await this.session.loadExtension(extensionData.installedPath, { allowFileAccess: true });
-          extensionData.electronId = electronExtension.id;
-          console.log(`ExtensionManager: Extension loaded in Electron: ${extensionData.name} (${electronExtension.id})`);
-        } catch (error) {
-          console.error(`ExtensionManager: Failed to load extension into Electron:`, error);
+        // Validate and prepare extension
+        const extensionData = await this._prepareExtension(sourcePath);
+        
+        // Validate manifest
+        const validationResult = await this.manifestValidator.validate(extensionData.manifest);
+        if (!validationResult.isValid) {
+          throw new Error(`Invalid manifest: ${validationResult.errors.join(', ')}`);
         }
-      }
 
-      this.loadedExtensions.set(extensionData.id, extensionData);
-      
-      console.log('ExtensionManager: Extension installed successfully:', extensionData.name);
-      return { success: true, extension: extensionData };
-      
-    } catch (error) {
-      console.error('ExtensionManager: Installation failed:', error);
-      throw error;
-    }
+        // Save extension metadata
+        await this._saveExtensionMetadata(extensionData);
+
+        // Load extension into Electron's extension system
+        if (this.session && extensionData.enabled) {
+          try {
+            console.log(`ExtensionManager: Loading installed extension into Electron: ${extensionData.name}`);
+            const electronExtension = await this.session.loadExtension(extensionData.installedPath, { allowFileAccess: true });
+            extensionData.electronId = electronExtension.id;
+            console.log(`ExtensionManager: Extension loaded in Electron: ${extensionData.name} (${electronExtension.id})`);
+          } catch (error) {
+            console.error(`ExtensionManager: Failed to load extension into Electron:`, error);
+          }
+        }
+
+        this.loadedExtensions.set(extensionData.id, extensionData);
+        
+        console.log('ExtensionManager: Extension installed successfully:', extensionData.name);
+        return { success: true, extension: extensionData };
+        
+      } catch (error) {
+        console.error('ExtensionManager: Installation failed:', error);
+        throw error;
+      }
+    });
   }
 
   /**
@@ -242,43 +244,45 @@ class ExtensionManager {
    * @returns {Promise<boolean>} Success status
    */
   async uninstallExtension(extensionId) {
-    await this.initialize();
-    
-    try {
-      const extension = this.loadedExtensions.get(extensionId);
-      if (!extension) {
-        throw new Error(`Extension not found: ${extensionId}`);
-      }
-
-      // Unload extension from Electron's system
-      if (this.session) {
-        try {
-          console.log(`ExtensionManager: Attempting to unload extension from Electron: ${extension.name}`);
-          // Note: Electron's removeExtension method needs the Electron extension ID
-          // For now, we'll log the action. Future enhancement will track Electron IDs.
-          console.log(`ExtensionManager: Extension unload requested: ${extension.name}`);
-        } catch (error) {
-          console.error(`ExtensionManager: Failed to unload extension from Electron:`, error);
-        }
-      }
-
-      // Remove extension files
-      const extensionPath = path.join(this.extensionsBaseDir, extensionId);
-      await fs.rm(extensionPath, { recursive: true, force: true });
-
-      // Remove from loaded extensions
-      this.loadedExtensions.delete(extensionId);
-
-      // Update registry file
-      await this._writeRegistry();
-
-      console.log('ExtensionManager: Extension uninstalled:', extensionId);
-      return true;
+    return this.mutex.run(extensionId, async () => {
+      await this.initialize();
       
-    } catch (error) {
-      console.error('ExtensionManager: Uninstall failed:', error);
-      throw error;
-    }
+      try {
+        const extension = this.loadedExtensions.get(extensionId);
+        if (!extension) {
+          throw new Error(`Extension not found: ${extensionId}`);
+        }
+
+        // Unload extension from Electron's system
+        if (this.session) {
+          try {
+            console.log(`ExtensionManager: Attempting to unload extension from Electron: ${extension.name}`);
+            // Note: Electron's removeExtension method needs the Electron extension ID
+            // For now, we'll log the action. Future enhancement will track Electron IDs.
+            console.log(`ExtensionManager: Extension unload requested: ${extension.name}`);
+          } catch (error) {
+            console.error(`ExtensionManager: Failed to unload extension from Electron:`, error);
+          }
+        }
+
+        // Remove extension files
+        const extensionPath = path.join(this.extensionsBaseDir, extensionId);
+        await fs.rm(extensionPath, { recursive: true, force: true });
+
+        // Remove from loaded extensions
+        this.loadedExtensions.delete(extensionId);
+
+        // Update registry file
+        await this._writeRegistry();
+
+        console.log('ExtensionManager: Extension uninstalled:', extensionId);
+        return true;
+        
+      } catch (error) {
+        console.error('ExtensionManager: Uninstall failed:', error);
+        throw error;
+      }
+    });
   }
 
   /**
@@ -465,7 +469,7 @@ class ExtensionManager {
   /**
    * Prepare extension from ZIP/CRX archive
    */
-  async _prepareFromArchive(archivePath) {
+  async _prepareFromArchive(_archivePath) {
     // TODO: Implement ZIP/CRX extraction
     // For now, throw error indicating this needs implementation
     throw new Error('ZIP/CRX installation not yet implemented - use directory installation');
