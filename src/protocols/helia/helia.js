@@ -24,7 +24,7 @@ import { ipnsValidator } from "ipns/validator";
 import { ipnsSelector } from "ipns/selector";
 import { userAgent } from "libp2p/user-agent";
 import { ipfsOptions, getLibp2pPrivateKey } from "../config.js";
-import pkg from '../../../package.json' assert { type: 'json' };
+import pkg from '../../../package.json' with { type: 'json' };
 const { version } = pkg;
 
 // https://github.com/libp2p/js-libp2p-amino-dht-bootstrapper/blob/main/src/utils/default-config.ts

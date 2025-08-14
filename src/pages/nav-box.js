@@ -6,9 +6,11 @@ class NavBox extends HTMLElement {
     this._qrButton = null;
     this._outsideClickListener = null;
     this._resizeListener = null;
+    this._extensionsPopup = null;
     this.buildNavBox();
     this.attachEvents();
     this.attachThemeListener();
+    this.initializeExtensionsPopup();
   }
 
   setStyledUrl(url) {
@@ -27,6 +29,7 @@ class NavBox extends HTMLElement {
       { id: "refresh", svg: "reload.svg", position: "start" },
       { id: "home", svg: "home.svg", position: "start" },
       { id: "bookmark", svg: "bookmark.svg", position: "start" },
+      { id: "extensions", svg: "extensions.svg", position: "end" },
       { id: "settings", svg: "settings.svg", position: "end" },
     ];
 
@@ -99,8 +102,14 @@ class NavBox extends HTMLElement {
         container.innerHTML = svgContent;
         const svgElement = container.querySelector("svg");
         if (svgElement) {
-          svgElement.setAttribute("width", "18");
-          svgElement.setAttribute("height", "18");
+          // Set larger size specifically for extensions icon
+          if (svgPath.includes("extensions.svg")) {
+            svgElement.setAttribute("width", "22");
+            svgElement.setAttribute("height", "22");
+          } else {
+            svgElement.setAttribute("width", "18");
+            svgElement.setAttribute("height", "18");
+          }
           svgElement.setAttribute("fill", "currentColor");
         }
       })
@@ -267,6 +276,8 @@ class NavBox extends HTMLElement {
           this.dispatchEvent(new CustomEvent("toggle-bookmark"));
         } else if (button.id === "qr-code") {
           this._toggleQrCodePopup();
+        } else if (button.id === "extensions") {
+          this._toggleExtensionsPopup();
         } else if (button.id === "settings") {
           this.dispatchEvent(
             new CustomEvent("navigate", {
@@ -328,6 +339,28 @@ class NavBox extends HTMLElement {
         this.classList.remove("theme-updating");
       }, 100);
     });
+  }
+
+  // Extensions Popup Management
+  async initializeExtensionsPopup() {
+    try {
+      const { ExtensionsPopup } = await import('./static/js/extensions-popup.js');
+      this._extensionsPopup = new ExtensionsPopup();
+    } catch (error) {
+      console.error('Failed to initialize extensions popup:', error);
+    }
+  }
+
+  _toggleExtensionsPopup() {
+    if (!this._extensionsPopup) {
+      console.error('Extensions popup not initialized');
+      return;
+    }
+
+    const extensionsButton = this.buttonElements["extensions"];
+    if (extensionsButton) {
+      this._extensionsPopup.toggle(extensionsButton);
+    }
   }
 }
 

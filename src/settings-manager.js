@@ -2,10 +2,11 @@
 // Handles settings storage, defaults, validation, and IPC communication
 // Pattern: Similar to window-manager.js
 
-import { app, ipcMain, BrowserWindow, session } from 'electron';
+import { app, ipcMain, BrowserWindow } from 'electron';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
+import { getBrowserSession } from './utils/session.js';
 
 const SETTINGS_FILE = path.join(app.getPath("userData"), "settings.json");
 const DEBUG_LOG = path.join(os.homedir(), '.peersky', 'debug.log');
@@ -22,7 +23,9 @@ const DEFAULT_SETTINGS = {
   theme: 'dark',
   showClock: true,
   wallpaper: 'redwoods',
-  wallpaperCustomPath: null
+  wallpaperCustomPath: null,
+  extensionP2PEnabled: false,
+  extensionAutoUpdate: true
 };
 
 class SettingsManager {
@@ -151,7 +154,8 @@ class SettingsManager {
         logDebug('Starting cache clearing operation');
         
         // 1. Clear Electron session data (browser cache, cookies, storage)
-        await session.defaultSession.clearStorageData({
+        const userSession = getBrowserSession();
+        await userSession.clearStorageData({
           storages: [
             'cookies',
             'localStorage', 
@@ -163,7 +167,7 @@ class SettingsManager {
         });
         
         // Clear HTTP cache separately
-        await session.defaultSession.clearCache();
+        await userSession.clearCache();
         
         logDebug('Electron session data cleared successfully');
         

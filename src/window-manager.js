@@ -1,10 +1,12 @@
-import { app, BrowserWindow, ipcMain, webContents } from "electron";
+import electron from "electron";
+const { app, BrowserWindow, ipcMain, webContents } = electron;
 import path from "path";
 import fs from "fs-extra";
 import ScopedFS from 'scoped-fs';
 import { fileURLToPath } from "url";
 import { attachContextMenus } from "./context-menu.js";
 import { randomUUID } from "crypto";
+import { getPartition } from "./utils/session.js";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
@@ -16,7 +18,7 @@ const DEFAULT_SAVE_INTERVAL = 30 * 1000;
 const cssPath = path.join(__dirname, "pages", "theme");
 const cssFS = new ScopedFS(cssPath);
 
-ipcMain.handle("peersky-read-css", async (event, name) => {
+ipcMain.handle("peersky-read-css", async (_event, name) => {
   try {
     const safeName = path.basename(name).replace(/\.css$/, '') + '.css';
     const data = await new Promise((resolve, reject) => {
@@ -111,7 +113,7 @@ class WindowManager {
       return this.loadBookmarks();
     });
 
-    ipcMain.handle("delete-bookmark", (event, { url }) => {
+    ipcMain.handle("delete-bookmark", (_event, { url }) => {
       return this.deleteBookmark(url);
     });
 
@@ -119,11 +121,11 @@ class WindowManager {
       return this.getTabs();
     });
 
-    ipcMain.handle("close-tab", (event, id) => {
+    ipcMain.handle("close-tab", (_event, id) => {
       this.sendToMainWindow('close-tab', id);
     });
 
-    ipcMain.handle("activate-tab", async (event, id) => {
+    ipcMain.handle("activate-tab", async (_event, id) => {
       console.log('Activating tab:', id);
       
       // Find which window contains this tab
@@ -178,7 +180,7 @@ class WindowManager {
       }
     });
     
-    ipcMain.handle("group-action", (event, data) => {
+    ipcMain.handle("group-action", (_event, data) => {
       const { action, groupId } = data;
       
       // For "add-tab" action, send to specific window
@@ -710,6 +712,7 @@ class PeerskyWindow {
       frame:false,
       titleBarStyle: 'hidden',
       webPreferences: {
+        partition: getPartition(),
         nodeIntegration: true,
         contextIsolation: false,
         nativeWindowOpen: true,
@@ -745,7 +748,7 @@ class PeerskyWindow {
     this.windowManager = windowManager;
 
     // Define the listener function
-    this.navigateListener = (event, url) => {
+    this.navigateListener = (_event, url) => {
       this.currentURL = url;
       console.log(`Navigation detected in window ${this.id}: ${url}`);
       windowManager.saveOpened();
@@ -854,6 +857,7 @@ export function createIsolatedWindow(options = {}) {
     frame: false,
     titleBarStyle: 'hidden',
     webPreferences: {
+      partition: getPartition(),
       nodeIntegration: true,
       contextIsolation: false,
       nativeWindowOpen: true,
