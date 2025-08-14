@@ -157,7 +157,7 @@ class ExtensionManager {
         if (this.session && extensionData.enabled) {
           try {
             console.log(`ExtensionManager: Loading installed extension into Electron: ${extensionData.name}`);
-            const electronExtension = await this.session.loadExtension(extensionData.installedPath, { allowFileAccess: true });
+            const electronExtension = await this.session.extensions.loadExtension(extensionData.installedPath, { allowFileAccess: true });
             extensionData.electronId = electronExtension.id;
             console.log(`ExtensionManager: Extension loaded in Electron: ${extensionData.name} (${electronExtension.id})`);
           } catch (error) {
@@ -199,11 +199,11 @@ class ExtensionManager {
         if (this.session) {
           try {
             if (enabled) {
-              const electronExtension = await this.session.loadExtension(extension.installedPath, { allowFileAccess: true });
+              const electronExtension = await this.session.extensions.loadExtension(extension.installedPath, { allowFileAccess: true });
               extension.electronId = electronExtension.id;
             } else {
               if (extension.electronId) {
-                await this.session.removeExtension(extension.electronId);
+                await this.session.extensions.removeExtension(extension.electronId);
               }
             }
           } catch (error) {
@@ -283,7 +283,7 @@ class ExtensionManager {
         if (this.session) {
           try {
             console.log(`ExtensionManager: Attempting to unload extension from Electron: ${extension.name}`);
-            // Note: Electron's removeExtension method needs the Electron extension ID
+            // Note: Electron's session.extensions.removeExtension method needs the Electron extension ID
             // For now, we'll log the action. Future enhancement will track Electron IDs.
             console.log(`ExtensionManager: Extension unload requested: ${extension.name}`);
           } catch (error) {
@@ -472,7 +472,7 @@ class ExtensionManager {
             for (const extension of this.loadedExtensions.values()) {
               if (extension.electronId) {
                 try {
-                  await this.session.removeExtension(extension.electronId);
+                  await this.session.extensions.removeExtension(extension.electronId);
                   console.log(`ExtensionManager: Extension unloaded: ${extension.name}`);
                 } catch (error) {
                   console.error(`ExtensionManager: Failed to unload extension ${extension.name}:`, error);
@@ -542,7 +542,7 @@ class ExtensionManager {
         if (extension.enabled && extension.installedPath) {
           try {
             console.log(`ExtensionManager: Loading extension into Electron: ${extension.name}`);
-            const electronExtension = await this.session.loadExtension(extension.installedPath, { allowFileAccess: true });
+            const electronExtension = await this.session.extensions.loadExtension(extension.installedPath, { allowFileAccess: true });
             extension.electronId = electronExtension.id;
             console.log(`ExtensionManager: Extension loaded successfully: ${extension.name} (${electronExtension.id})`);
           } catch (error) {

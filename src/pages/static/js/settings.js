@@ -485,25 +485,42 @@ function initializeSidebarNavigation() {
   // Update UI to show the determined section (don't trigger navigation on page load)
   updateSectionUI(targetSection);
   
-  // TODO: Add back/forward history support for subpaths
-  // Future implementation should update browser history when switching sections
-  // and handle browser back/forward navigation within settings subpaths
+  // Handle browser back/forward navigation
+  window.addEventListener('popstate', (event) => {
+    let sectionFromHistory = 'appearance'; // default
+    
+    if (event.state && event.state.section) {
+      sectionFromHistory = event.state.section;
+    } else {
+      // Parse current URL to determine section
+      const currentPath = window.location.pathname || window.location.hash;
+      const subpathMatch = currentPath.match(/\/settings\/(\w+)/);
+      if (subpathMatch) {
+        sectionFromHistory = subpathMatch[1];
+      } else if (currentPath.includes('#')) {
+        const hashSection = currentPath.replace('#', '');
+        if (hashSection && ['appearance', 'search', 'extensions'].includes(hashSection)) {
+          sectionFromHistory = hashSection;
+        }
+      }
+    }
+    
+    updateSectionUI(sectionFromHistory);
+  });
 }
 
 // Navigate to a specific settings section
 function navigateToSection(sectionName) {
-  const currentPath = window.location.pathname || '';
   const targetURL = `peersky://settings/${sectionName}`;
   
-  // Check if we're already on the target section to avoid unnecessary navigation
-  if (currentPath.includes(`/settings/${sectionName}`)) {
-    // Just update the UI without navigation
+  // Check if we're already on the target URL to avoid unnecessary reloads
+  const currentURL = window.location.href.split('#')[0]; // Remove any hash
+  if (currentURL === targetURL) {
     updateSectionUI(sectionName);
     return;
   }
   
-  // Navigate to the new URL - this will update the address bar and trigger a reload
-  // The page will parse the new URL and show the correct section
+  // Navigate to the new URL - this will cause a reload but give us proper URLs
   window.location.href = targetURL;
 }
 
