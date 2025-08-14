@@ -1,48 +1,8 @@
-// Extensions page - UI-only implementation with mock data
-// No IPC calls, no persistence - toggles are local state only
+// Extensions page - Real backend implementation with Chrome Web Store support
+// Uses IPC calls for all operations, full persistence
 
-let EXTENSIONS = [
-  {
-    id: 'adblocker-plus',
-    name: 'AdBlocker Plus',
-    version: '3.15.1',
-    description: 'Block ads and trackers across the web for a cleaner browsing experience',
-    enabled: true,
-    icon: null
-  },
-  {
-    id: 'grammarly',
-    name: 'Grammarly',
-    version: '2.1.4', 
-    description: 'AI writing assistant for better communication and grammar checking',
-    enabled: true,
-    icon: null
-  },
-  {
-    id: 'p2p-messenger',
-    name: 'P2P Messenger',
-    version: '1.0.0',
-    description: 'Decentralized messaging extension for peer-to-peer communication',
-    enabled: false,
-    icon: null
-  },
-  {
-    id: 'dev-tools-custom',
-    name: 'Custom Dev Tools',
-    version: '0.8.2',
-    description: 'Developer utilities for debugging and web development',
-    enabled: false,
-    icon: null
-  },
-  {
-    id: 'color-picker',
-    name: 'Color Picker',
-    version: '1.0.3',
-    description: 'Eyedropper tool and color palette for designers and developers',
-    enabled: true,
-    icon: null
-  }
-];
+let EXTENSIONS = [];
+let extensionStates = {};
 
 // Default extension icon SVG
 const DEFAULT_ICON_SVG = `
@@ -51,11 +11,30 @@ const DEFAULT_ICON_SVG = `
   </svg>
 `;
 
-// Extension state management (UI only)
-let extensionStates = {};
+// Load real extension data from backend
+async function loadExtensions() {
+  try {
+    console.log('[Extensions] Loading extensions from backend...');
+    const result = await window.electronAPI.extensions.listExtensions();
+    
+    if (result.success) {
+      EXTENSIONS = result.extensions || [];
+      initializeStates();
+      renderExtensions();
+      console.log(`[Extensions] Loaded ${EXTENSIONS.length} extensions`);
+    } else {
+      console.error('[Extensions] Failed to load extensions:', result.error);
+      showStatusMessage('Failed to load extensions: ' + result.error, 'error');
+    }
+  } catch (error) {
+    console.error('[Extensions] Error loading extensions:', error);
+    showStatusMessage('Failed to load extensions', 'error');
+  }
+}
 
-// Initialize extension states from mock data
+// Initialize extension states from loaded data
 function initializeStates() {
+  extensionStates = {};
   EXTENSIONS.forEach(ext => {
     extensionStates[ext.id] = ext.enabled;
   });
@@ -98,78 +77,118 @@ function createExtensionCard(extension) {
 }
 
 // Handle install from URL
-function handleInstallFromURL() {
+async function handleInstallFromURL() {
   const urlInput = document.getElementById('install-url');
   const url = urlInput.value.trim();
   
   if (!url) {
-    console.log('No URL entered');
+    console.log('[Extensions] No URL entered');
     return;
   }
   
-  console.log(`Install extension from URL: ${url}`);
-  // TODO: Implement actual installation logic
+  // Show installing status
+  showStatusMessage('Installing extension...', 'info');
   
-  // Clear input after logging
-  urlInput.value = '';
+  try {
+    console.log(`[Extensions] Installing extension from Chrome Web Store: ${url}`);
+    const result = await window.electronAPI.extensions.installFromWebStore(url);
+    
+    if (result.success) {
+      showStatusMessage(`Extension "${result.extension.name}" installed successfully!`, 'success');
+      await loadExtensions(); // Refresh list
+      urlInput.value = ''; // Clear input
+    } else {
+      console.error('[Extensions] Installation failed:', result.error);
+      showStatusMessage('Installation failed: ' + result.error, 'error');
+    }
+  } catch (error) {
+    console.error('[Extensions] Installation error:', error);
+    showStatusMessage('Installation failed', 'error');
+  }
 }
 
 // Handle extension removal
-function handleRemoveExtension(extensionId) {
+async function handleRemoveExtension(extensionId) {
   const extension = EXTENSIONS.find(ext => ext.id === extensionId);
   if (!extension) return;
   
   const confirmed = confirm(`Remove "${extension.name}" extension?\n\nThis action cannot be undone.`);
   if (confirmed) {
-    // Remove from array
-    const index = EXTENSIONS.findIndex(ext => ext.id === extensionId);
-    if (index !== -1) {
-      EXTENSIONS.splice(index, 1);
-      delete extensionStates[extensionId];
+    try {
+      console.log(`[Extensions] Removing extension: ${extension.name}`);
+      const result = await window.electronAPI.extensions.uninstallExtension(extensionId);
       
-      console.log(`Extension "${extension.name}" removed`);
-      
-      // Re-render the grid
-      renderExtensions();
+      if (result.success) {
+        showStatusMessage(`Extension "${extension.name}" removed successfully`, 'success');
+        await loadExtensions(); // Refresh list
+      } else {
+        console.error('[Extensions] Removal failed:', result.error);
+        showStatusMessage('Failed to remove extension: ' + result.error, 'error');
+      }
+    } catch (error) {
+      console.error('[Extensions] Removal error:', error);
+      showStatusMessage('Failed to remove extension', 'error');
     }
   }
 }
 
 // Handle update all extensions
-function handleUpdateAll() {
-  console.log('Update all extensions');
+async function handleUpdateAll() {
+  console.log('[Extensions] Updating all extensions...');
+  showStatusMessage('Checking for updates...', 'info');
   
-  // Get all enabled extensions
-  const enabledExtensions = EXTENSIONS.filter(ext => ext.enabled);
-  
-  if (enabledExtensions.length === 0) {
-    console.log('No enabled extensions to update');
-    return;
+  try {
+    const result = await window.electronAPI.extensions.updateAll();
+    
+    if (result.success) {
+      const { updated, skipped, errors } = result;
+      let message = `Update complete: ${updated.length} updated, ${skipped.length} skipped`;
+      if (errors.length > 0) message += `, ${errors.length} errors`;
+      
+      showStatusMessage(message, updated.length > 0 ? 'success' : 'info');
+      
+      if (updated.length > 0) {
+        await loadExtensions(); // Refresh if updates occurred
+      }
+    } else {
+      console.error('[Extensions] Update failed:', result.error);
+      showStatusMessage('Update failed: ' + result.error, 'error');
+    }
+  } catch (error) {
+    console.error('[Extensions] Update error:', error);
+    showStatusMessage('Update failed', 'error');
   }
-  
-  console.log(`Updating ${enabledExtensions.length} enabled extensions:`);
-  enabledExtensions.forEach(ext => {
-    console.log(`- ${ext.name} (v${ext.version})`);
-  });
-  
-  // TODO: Implement actual update all logic
 }
 
 // Handle toggle changes
-function handleToggleChange(event) {
+async function handleToggleChange(event) {
   const extensionId = event.target.dataset.extensionId;
   const isEnabled = event.target.checked;
   
-  // Update local state (UI only)
-  extensionStates[extensionId] = isEnabled;
-  
-  // Update the extension object
-  const extension = EXTENSIONS.find(ext => ext.id === extensionId);
-  if (extension) {
-    extension.enabled = isEnabled;
+  try {
+    console.log(`[Extensions] Toggling extension ${extensionId}: ${isEnabled}`);
+    const result = await window.electronAPI.extensions.toggleExtension(extensionId, isEnabled);
+    
+    if (result.success) {
+      // Update local state
+      extensionStates[extensionId] = isEnabled;
+      const extension = EXTENSIONS.find(ext => ext.id === extensionId);
+      if (extension) {
+        extension.enabled = isEnabled;
+        console.log(`[Extensions] Extension "${extension.name}" ${isEnabled ? 'enabled' : 'disabled'}`);
+      }
+    } else {
+      // Revert toggle on failure
+      event.target.checked = !isEnabled;
+      console.error('[Extensions] Toggle failed:', result.error);
+      showStatusMessage('Failed to toggle extension: ' + result.error, 'error');
+    }
+  } catch (error) {
+    // Revert toggle on error
+    event.target.checked = !isEnabled;
+    console.error('[Extensions] Toggle error:', error);
+    showStatusMessage('Failed to toggle extension', 'error');
   }
-  
-  console.log(`Extension "${extension?.name}" ${isEnabled ? 'enabled' : 'disabled'} (UI only)`);
 }
 
 // Render extensions grid
@@ -200,10 +219,15 @@ function renderExtensions() {
   });
 }
 
+// Status messaging system
+function showStatusMessage(message, type = 'info') {
+  console.log(`[Extensions] ${type.toUpperCase()}: ${message}`);
+  // TODO: Add visual status display to UI
+}
+
 // Initialize the page
-function init() {
-  initializeStates();
-  renderExtensions();
+async function init() {
+  await loadExtensions();
   
   // Add event listener for install button
   const installBtn = document.getElementById('install-btn');

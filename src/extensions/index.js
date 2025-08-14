@@ -28,8 +28,12 @@ import electron from 'electron';
 const { app } = electron;
 import path from 'path';
 import { promises as fs } from 'fs';
+import { installChromeWebStore } from '@iamevan/electron-chrome-web-store';
 import ManifestValidator from './manifest-validator.js';
 import { ensureDir, readJsonSafe, writeJsonAtomic, KeyedMutex, ERR } from './util.js';
+import ChromeWebStoreManager from './chrome-web-store.js';
+import { parseUrlOrId, buildWebStoreUrl } from './url-utils.js';
+import { withExtensionLock, withInstallLock, withUpdateLock } from './mutex.js';
 
 /**
  * ExtensionManager - Main extension management class
@@ -48,6 +52,9 @@ class ExtensionManager {
     // Session and app (set in initialize)
     this.session = null;
     this.app = null;
+
+    // Chrome Web Store manager
+    this.chromeWebStore = null;
 
     // Paths (set in initialize)
     this.extensionsBaseDir = null;
@@ -83,6 +90,25 @@ class ExtensionManager {
 
       // Create directories
       await ensureDir(this.extensionsBaseDir);
+
+      // Initialize Chrome Web Store support
+      console.log('ExtensionManager: Initializing Chrome Web Store support...');
+      try {
+        await installChromeWebStore({
+          session: this.session,
+          extensionsPath: this.extensionsBaseDir,
+          autoUpdate: false, // Manual updates only for MVP
+          loadExtensions: false, // We'll handle loading manually
+          allowlist: [], // No restrictions for MVP
+          denylist: [] // No restrictions for MVP
+        });
+        this.chromeWebStore = new ChromeWebStoreManager(this.session);
+        console.log('ExtensionManager: Chrome Web Store support initialized');
+      } catch (error) {
+        console.warn('ExtensionManager: Chrome Web Store initialization failed:', error.message);
+        console.warn('ExtensionManager: Continuing without Chrome Web Store support');
+        this.chromeWebStore = null;
+      }
 
       // Initialize validator
       this.manifestValidator = new ManifestValidator();
@@ -280,6 +306,115 @@ class ExtensionManager {
         
       } catch (error) {
         console.error('ExtensionManager: Uninstall failed:', error);
+        throw error;
+      }
+    });
+  }
+
+  /**
+   * Install extension from Chrome Web Store URL or ID
+   * 
+   * @param {string} urlOrId - Chrome Web Store URL or extension ID
+   * @returns {Promise<Object>} Installation result with extension metadata
+   */
+  async installFromWebStore(urlOrId) {
+    return withInstallLock(async () => {
+      await this.initialize();
+      
+      try {
+        console.log('ExtensionManager: Installing from Chrome Web Store:', urlOrId);
+
+        // Parse URL or ID
+        const extensionId = parseUrlOrId(urlOrId);
+        if (!extensionId) {
+          throw Object.assign(
+            new Error('Invalid Chrome Web Store URL or extension ID format'),
+            { code: ERR.E_INVALID_URL }
+          );
+        }
+
+        // Check if already installed
+        const existing = this.loadedExtensions.get(extensionId);
+        if (existing) {
+          throw Object.assign(
+            new Error(`Extension ${extensionId} is already installed`),
+            { code: ERR.E_ALREADY_EXISTS }
+          );
+        }
+
+        // Check if Chrome Web Store is available
+        if (!this.chromeWebStore) {
+          throw Object.assign(
+            new Error('Chrome Web Store support not available - check startup logs for initialization errors'),
+            { code: ERR.E_NOT_AVAILABLE }
+          );
+        }
+
+        // Install via Chrome Web Store
+        const electronExtension = await this.chromeWebStore.installById(extensionId);
+        
+        // Create extension metadata
+        const extensionData = {
+          id: extensionId,
+          name: electronExtension.name,
+          version: electronExtension.version,
+          description: electronExtension.manifest?.description || '',
+          enabled: true,
+          installedPath: electronExtension.path,
+          source: 'webstore',
+          webStoreUrl: buildWebStoreUrl(extensionId),
+          electronId: electronExtension.id,
+          permissions: electronExtension.manifest?.permissions || [],
+          manifest: electronExtension.manifest,
+          installDate: new Date().toISOString(),
+          update: {
+            lastChecked: Date.now(),
+            lastResult: 'installed'
+          }
+        };
+
+        // Add to loaded extensions and save registry
+        this.loadedExtensions.set(extensionId, extensionData);
+        await this._writeRegistry();
+
+        console.log('ExtensionManager: Chrome Web Store installation successful:', extensionData.name);
+        return { success: true, extension: extensionData };
+        
+      } catch (error) {
+        console.error('ExtensionManager: Chrome Web Store installation failed:', error);
+        throw error;
+      }
+    });
+  }
+
+  /**
+   * Update all extensions to latest versions
+   * 
+   * @returns {Promise<Object>} Update results with counts and errors
+   */
+  async updateAllExtensions() {
+    return withUpdateLock(async () => {
+      await this.initialize();
+      
+      try {
+        console.log('ExtensionManager: Checking for extension updates...');
+
+        // For MVP, we'll use the Chrome Web Store's bulk update
+        await this.chromeWebStore.updateAll();
+        
+        // Re-read registry to get updated versions
+        // Note: This is a simplified implementation for MVP
+        await this._readRegistry();
+        
+        console.log('ExtensionManager: Extension update check completed');
+        return {
+          updated: [], // Chrome Web Store doesn't provide detailed results
+          skipped: [],
+          errors: []
+        };
+        
+      } catch (error) {
+        console.error('ExtensionManager: Extension updates failed:', error);
         throw error;
       }
     });

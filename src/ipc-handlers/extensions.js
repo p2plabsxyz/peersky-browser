@@ -96,12 +96,8 @@ export function setupExtensionIpcHandlers(extensionManager) {
           throw Object.assign(new Error('Invalid extension ID'), { code: ERR.E_INVALID_ID });
         }
 
-        // TODO: Session 1 scope - uninstall not implemented
-        return {
-          success: false,
-          code: 'E_NOT_IMPLEMENTED',
-          error: 'Extension uninstall not implemented in Session 1'
-        };
+        const result = await extensionManager.uninstallExtension(extensionId);
+        return { success: true, result };
       } catch (error) {
         return {
           success: false,
@@ -146,6 +142,41 @@ export function setupExtensionIpcHandlers(extensionManager) {
           success: false,
           code: error.code || 'E_UNKNOWN',
           error: error.message
+        };
+      }
+    });
+
+    // Install extension from Chrome Web Store URL or ID
+    ipcMain.handle('extensions-install-webstore', async (event, urlOrId) => {
+      try {
+        if (!urlOrId || typeof urlOrId !== 'string') {
+          throw Object.assign(new Error('Invalid Chrome Web Store URL or ID'), { code: ERR.E_INVALID_URL });
+        }
+
+        const result = await extensionManager.installFromWebStore(urlOrId);
+        return { success: true, id: result.extension.id, extension: result.extension };
+      } catch (error) {
+        return {
+          success: false,
+          code: error.code || 'E_UNKNOWN',
+          error: error.message
+        };
+      }
+    });
+
+    // Update all extensions
+    ipcMain.handle('extensions-update-all', async () => {
+      try {
+        const result = await extensionManager.updateAllExtensions();
+        return { success: true, ...result };
+      } catch (error) {
+        return {
+          success: false,
+          code: error.code || 'E_UNKNOWN',
+          error: error.message,
+          updated: [],
+          skipped: [],
+          errors: []
         };
       }
     });

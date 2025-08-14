@@ -131,6 +131,7 @@
   "dependencies": {
     "@helia/ipns": "^8.2.3",
     "@helia/unixfs": "^5.0.3",
+    "@iamevan/electron-chrome-web-store": "^0.11.2",
     "@libp2p/webtransport": "^5.0.47",
     "b4a": "^1.6.7",
     "blockstore-level": "^2.0.3",
