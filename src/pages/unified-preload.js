@@ -163,6 +163,9 @@ const extensionAPI = {
   toggleExtension: (id, enabled) => ipcRenderer.invoke('extensions-toggle', id, enabled),
   installExtension: (source) => ipcRenderer.invoke('extensions-install', source),
   uninstallExtension: (id) => ipcRenderer.invoke('extensions-uninstall', id),
+  // Chrome Web Store APIs
+  installFromWebStore: (urlOrId) => ipcRenderer.invoke('extensions-install-webstore', urlOrId),
+  updateAll: () => ipcRenderer.invoke('extensions-update-all'),
   // Session 1 implemented APIs
   getExtensionInfo: (id) => ipcRenderer.invoke('extensions-get-info', id),
   getStatus: () => ipcRenderer.invoke('extensions-status'),
