@@ -210,11 +210,10 @@ try {
       onSearchEngineChanged: (callback) => createEventListener('search-engine-changed', callback),
       onShowClockChanged: (callback) => createEventListener('show-clock-changed', callback),
       onWallpaperChanged: (callback) => createEventListener('wallpaper-changed', callback),
-      readCSS: cssAPI.readCSS
+      readCSS: cssAPI.readCSS,
+      // Extension API - Available under electronAPI.extensions for consistency
+      extensions: extensionAPI
     });
-
-    // Extension API - Only available to settings pages for security
-    contextBridge.exposeInMainWorld('extensionAPI', extensionAPI);
     
     console.log('Unified-preload: Full Settings electronAPI and extensionAPI exposed');
     

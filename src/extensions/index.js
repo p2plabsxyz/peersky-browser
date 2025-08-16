@@ -27,6 +27,7 @@
 import electron from 'electron';
 const { app } = electron;
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { promises as fs } from 'fs';
 import { installChromeWebStore } from '@iamevan/electron-chrome-web-store';
 import ManifestValidator from './manifest-validator.js';
@@ -34,6 +35,8 @@ import { ensureDir, readJsonSafe, writeJsonAtomic, KeyedMutex, ERR } from './uti
 import ChromeWebStoreManager from './chrome-web-store.js';
 import { parseUrlOrId, buildWebStoreUrl } from './url-utils.js';
 import { withExtensionLock, withInstallLock, withUpdateLock } from './mutex.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * ExtensionManager - Main extension management class
