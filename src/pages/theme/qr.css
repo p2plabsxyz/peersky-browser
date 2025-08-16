@@ -22,6 +22,10 @@ qr-popup {
   width: 100%;
   font-family: var(--browser-theme-font-family);
 }
+
+[data-theme="transparent"] .qr-popup {
+  background-color: #18181b;
+}
 .qr-popup img {
   width: 100%;
   max-width: 200px;
