@@ -129,7 +129,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.error('Error handling group action via IPC:', e);
     }
   });
-
   ipcRenderer.on('vertical-tabs-changed', async (_, enabled) => {
     const oldBar = tabBar;
     
@@ -162,7 +161,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (keepExpanded) {
         tabBar.updateKeepExpandedState(true);
       }
-      document.body.appendChild(tabBar); // do NOT connect to titleBar
+      document.body.appendChild(tabBar);
     } else {
       tabBar = new TabBar();
       if (titleBar) {
@@ -171,8 +170,36 @@ document.addEventListener("DOMContentLoaded", async () => {
         document.body.appendChild(tabBar);
       }
     }
-    // Only connect AFTER append
+    
+    // Connect webview container
     tabBar.connectWebviewContainer(webviewContainer);
+    
+    // RE-ATTACH event listeners for the new tab bar
+    if (webviewContainer && nav && tabBar) {
+      // Remove old event listeners first
+      tabBar.removeEventListener("tab-selected", handleTabSelected);
+      tabBar.removeEventListener("tab-navigated", handleTabNavigated);
+      
+      // Add fresh event listeners ( to prevent same url states in all tabs)
+      tabBar.addEventListener("tab-selected", handleTabSelected);
+      tabBar.addEventListener("tab-navigated", handleTabNavigated);
+    }
+    
+    // Force update URL input field after restoration is complete
+    setTimeout(() => {
+      const activeTab = tabBar.getActiveTab();
+      const urlInput = nav.querySelector("#url");
+      if (activeTab && urlInput) {
+        if (activeTab.url === "peersky://home") {
+          urlInput.value = "";
+        } else {
+          urlInput.value = activeTab.url;
+        }
+        
+        // Also update the nav display
+        nav.setStyledUrl(activeTab.url === "peersky://home" ? "" : activeTab.url);
+      }
+    }, 300);
     
     // Force a layout update
     setTimeout(() => {
@@ -183,7 +210,51 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     }, 100);
   });
-
+  
+  function handleTabSelected(e) {
+    const { tabId, url } = e.detail;
+    
+    // Hide peersky://home URL, show all others
+    if (url === "peersky://home") {
+      nav.setStyledUrl("");
+    } else {
+      nav.setStyledUrl(url);
+    }
+    
+    const tab = tabBar.tabs.find(t => t.id === tabId);
+    if (tab) {
+      pageTitle.innerText = `${tab.title} - Peersky Browser`;
+    }
+    
+    updateNavigationButtons(tabBar);
+    
+    // Update bookmark icon for the selected tab
+    if (url) {
+      updateBookmarkIcon(url);
+    }
+  }
+  
+  function handleTabNavigated(e) {
+    const { tabId, url } = e.detail;
+    
+    if (tabId === tabBar.activeTabId) {
+      // Hide peersky://home URL, show all others
+      if (url === "peersky://home") {
+        nav.setStyledUrl("");
+      } else {
+        nav.setStyledUrl(url);
+      }
+      
+      setTimeout(() => updateNavigationButtons(tabBar), 100);
+      
+      // Update bookmark icon when active tab navigates
+      if (url) {
+        updateBookmarkIcon(url);
+      }
+    }
+    
+    ipcRenderer.send("webview-did-navigate", url);
+  }
   ipcRenderer.on('keep-tabs-expanded-changed', async (_, keepExpanded) => {
     const verticalTabsElement = document.querySelector('.tabbar.vertical-tabs');
     if (verticalTabsElement && typeof verticalTabsElement.updateKeepExpandedState === 'function') {
@@ -216,52 +287,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (webviewContainer && nav && tabBar) {
     // Setup tab event handlers
-    tabBar.addEventListener("tab-selected", (e) => {
-      const { tabId, url } = e.detail;
-      
-      // Hide peersky://home URL, show all others
-      if (url === "peersky://home") {
-        nav.setStyledUrl("");
-      } else {
-        nav.setStyledUrl(url);
-      }
-      
-      const tab = tabBar.tabs.find(t => t.id === tabId);
-      if (tab) {
-        pageTitle.innerText = `${tab.title} - Peersky Browser`;
-      }
-      
-      updateNavigationButtons(tabBar);
-      
-      // Update bookmark icon for the selected tab
-      if (url) {
-        updateBookmarkIcon(url);
-      }
-    });
+    tabBar.addEventListener("tab-selected", handleTabSelected);
+    tabBar.addEventListener("tab-navigated", handleTabNavigated);
     
-    tabBar.addEventListener("tab-navigated", (e) => {
-      const { tabId, url } = e.detail;
-      
-      if (tabId === tabBar.activeTabId) {
-        // Hide peersky://home URL, show all others
-        if (url === "peersky://home") {
-          nav.setStyledUrl("");
-        } else {
-          nav.setStyledUrl(url);
-        }
-        
-        setTimeout(() => updateNavigationButtons(tabBar), 100);
-        
-        // Update bookmark icon when active tab navigates
-        if (url) {
-          updateBookmarkIcon(url);
-        }
-      }
-      
-      ipcRenderer.send("webview-did-navigate", url);
-    });
-    
-    // Handle tab loading state changes
     tabBar.addEventListener("tab-loading", (e) => {
       const { tabId, isLoading } = e.detail;
       
