@@ -49,7 +49,7 @@ export default class VerticalTabs extends BaseTabBar {
       this.hoverTimeout = setTimeout(() => {
         this.isExpanded = true;
         this.classList.add('expanded');
-      }, 500);
+      }, 100);
     });
     
     this.addEventListener('mouseleave', () => {
@@ -64,7 +64,7 @@ export default class VerticalTabs extends BaseTabBar {
       this.leaveTimeout = setTimeout(() => {
         this.isExpanded = false;
         this.classList.remove('expanded');
-      }, 900);
+      }, 300);
     });
     
     window.addEventListener('resize', () => this.updateAddButtonSticky());

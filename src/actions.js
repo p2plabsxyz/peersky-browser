@@ -26,7 +26,7 @@ export function createActions(windowManager) {
                   urlInput.focus();
                   urlInput.select();
                 }
-              }, 400);
+              }, 900);
             `);
           });
         }

@@ -24,7 +24,6 @@
 h1 {
   font-size: 1.25rem;
   margin-bottom: 1rem;
-  border-bottom: 1px solid var(--settings-border);
   padding-bottom: 0.5rem;
   color: var(--browser-theme-text-color);
 }
