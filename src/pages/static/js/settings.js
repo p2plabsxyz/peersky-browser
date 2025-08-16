@@ -14,6 +14,7 @@
 
 let settingsAPI;
 let eventCleanupFunctions = [];
+let navigationInProgress = false;
 
 // Initialize API access with fallback handling
 function initializeAPI() {
@@ -467,10 +468,11 @@ function initializeSidebarNavigation() {
   
   // Parse URL subpath and navigate to appropriate section
   const currentPath = window.location.pathname || window.location.hash;
+  const currentHref = window.location.href;
   let targetSection = 'appearance'; // default
   
-  // Check for URL subpath (e.g., /settings/search)
-  const subpathMatch = currentPath.match(/\/settings\/(\w+)/);
+  // Check for URL subpath (e.g., /settings/search or peersky://settings/search)
+  const subpathMatch = currentPath.match(/\/settings\/(\w+)/) || currentHref.match(/\/settings\/(\w+)/);
   if (subpathMatch) {
     targetSection = subpathMatch[1];
   }
@@ -494,7 +496,8 @@ function initializeSidebarNavigation() {
     } else {
       // Parse current URL to determine section
       const currentPath = window.location.pathname || window.location.hash;
-      const subpathMatch = currentPath.match(/\/settings\/(\w+)/);
+      const currentHref = window.location.href;
+      const subpathMatch = currentPath.match(/\/settings\/(\w+)/) || currentHref.match(/\/settings\/(\w+)/);
       if (subpathMatch) {
         sectionFromHistory = subpathMatch[1];
       } else if (currentPath.includes('#')) {
@@ -511,6 +514,11 @@ function initializeSidebarNavigation() {
 
 // Navigate to a specific settings section
 function navigateToSection(sectionName) {
+  // Prevent rapid successive navigation attempts
+  if (navigationInProgress) {
+    return;
+  }
+  
   const targetURL = `peersky://settings/${sectionName}`;
   
   // Check if we're already on the target URL to avoid unnecessary reloads
@@ -519,6 +527,10 @@ function navigateToSection(sectionName) {
     updateSectionUI(sectionName);
     return;
   }
+  
+  // Set navigation lock
+  navigationInProgress = true;
+  setTimeout(() => { navigationInProgress = false; }, 300);
   
   // Navigate to the new URL - this will cause a reload but give us proper URLs
   window.location.href = targetURL;
