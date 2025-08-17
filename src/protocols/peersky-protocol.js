@@ -59,6 +59,71 @@ async function handleWallpaper(filename, sendResponse) {
   }
 }
 
+// Handle extension icon requests
+async function handleExtensionIcon(extensionId, size, sendResponse) {
+  try {
+    // Path to extension: userData/Extensions/{extensionId}/{version}/
+    const extensionsPath = path.join(app.getPath("userData"), "Extensions", extensionId);
+    
+    // Find the extension version directory (there should be only one)
+    const versionDirs = await fsPromises.readdir(extensionsPath);
+    const versionDir = versionDirs.find(dir => dir.includes('_0')); // Extension versions end with _0
+    
+    if (!versionDir) {
+      throw new Error('Extension version directory not found');
+    }
+    
+    const extensionRoot = path.join(extensionsPath, versionDir);
+    
+    // Read manifest to get actual icon path
+    const manifestPath = path.join(extensionRoot, 'manifest.json');
+    const manifestContent = await fsPromises.readFile(manifestPath, 'utf8');
+    const manifest = JSON.parse(manifestContent);
+    
+    // Get icon path from manifest for the requested size
+    const icons = manifest.icons || {};
+    let iconRelativePath = icons[size];
+    
+    // If exact size not found, try alternatives in order of preference
+    if (!iconRelativePath) {
+      const alternativeSizes = size === '64' ? ['48', '32', '16'] : 
+                               size === '48' ? ['64', '32', '16'] :
+                               size === '32' ? ['48', '64', '16'] : ['32', '48', '64'];
+      
+      for (const altSize of alternativeSizes) {
+        if (icons[altSize]) {
+          iconRelativePath = icons[altSize];
+          break;
+        }
+      }
+    }
+    
+    if (!iconRelativePath) {
+      throw new Error('No icon found in manifest');
+    }
+    
+    // Build full path to icon file
+    const iconPath = path.join(extensionRoot, iconRelativePath);
+    await fsPromises.access(iconPath);
+    
+    const data = createReadStream(iconPath);
+    const contentType = mime.lookup(iconPath) || 'image/png';
+    
+    sendResponse({
+      statusCode: 200,
+      headers: { 'Content-Type': contentType, 'Cache-Control': 'public, max-age=3600' },
+      data
+    });
+  } catch (error) {
+    console.log(`Extension icon not found: ${extensionId}/${size} - ${error.message}`);
+    sendResponse({
+      statusCode: 404,
+      headers: { 'Content-Type': 'text/plain' },
+      data: Readable.from(['Extension icon not found'])
+    });
+  }
+}
+
 export async function createHandler() {
   return async function protocolHandler({ url }, sendResponse) {
     const parsedUrl = new URL(url);
@@ -66,6 +131,11 @@ export async function createHandler() {
 
     if (filePath === '/') filePath = 'home';
     if (filePath.startsWith('wallpaper/')) return handleWallpaper(filePath.slice(10), sendResponse);
+    if (filePath.startsWith('extension-icon/')) {
+      const iconPath = filePath.slice(15); // Remove 'extension-icon/'
+      const [extensionId, size] = iconPath.split('/');
+      return handleExtensionIcon(extensionId, size || '64', sendResponse);
+    }
     
     // Handle settings subpaths - map all /settings/* to settings.html
     if (filePath.startsWith('settings/')) {

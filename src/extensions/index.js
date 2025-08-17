@@ -356,6 +356,21 @@ class ExtensionManager {
         // Install via Chrome Web Store
         const electronExtension = await this.chromeWebStore.installById(extensionId);
         
+        // Extract icon path from manifest (prefer larger sizes)
+        let iconPath = null;
+        const icons = electronExtension.manifest?.icons;
+        if (icons) {
+          // Try to get the best icon size (64, 48, 32, 16)
+          const iconSizes = ['64', '48', '32', '16'];
+          for (const size of iconSizes) {
+            if (icons[size]) {
+              // Use peersky protocol which works reliably in renderer
+              iconPath = `peersky://extension-icon/${extensionId}/${size}`;
+              break;
+            }
+          }
+        }
+
         // Create extension metadata
         const extensionData = {
           id: extensionId,
@@ -364,6 +379,7 @@ class ExtensionManager {
           description: electronExtension.manifest?.description || '',
           enabled: true,
           installedPath: electronExtension.path,
+          iconPath: iconPath,
           source: 'webstore',
           webStoreUrl: buildWebStoreUrl(extensionId),
           electronId: electronExtension.id,
@@ -498,16 +514,51 @@ class ExtensionManager {
   }
 
   /**
-   * Read registry from file
+   * Read registry from file with validation
    */
   async _readRegistry() {
     try {
       const registry = await readJsonSafe(this.extensionsRegistryFile, { extensions: [] });
       this.loadedExtensions.clear();
+      const validExtensions = [];
+      
       for (const extensionData of registry.extensions || []) {
-        this.loadedExtensions.set(extensionData.id, extensionData);
+        // Validate that extension directory exists
+        try {
+          if (extensionData.installedPath) {
+            const fs = await import('fs/promises');
+            await fs.access(extensionData.installedPath);
+          }
+          
+          // Fix legacy icon paths to use peersky:// protocol
+          if (extensionData.iconPath && (extensionData.iconPath.startsWith('file://') || extensionData.iconPath.startsWith('chrome-extension://'))) {
+            const icons = extensionData.manifest?.icons;
+            if (icons) {
+              const iconSizes = ['64', '48', '32', '16'];
+              for (const size of iconSizes) {
+                if (icons[size]) {
+                  extensionData.iconPath = `peersky://extension-icon/${extensionData.id}/${size}`;
+                  break;
+                }
+              }
+            }
+          }
+          
+          this.loadedExtensions.set(extensionData.id, extensionData);
+          validExtensions.push(extensionData);
+        } catch (accessError) {
+          console.log(`ExtensionManager: Removing stale registry entry for ${extensionData.name} (${extensionData.id}) - directory not found`);
+        }
       }
+      
       console.log(`ExtensionManager: Loaded ${this.loadedExtensions.size} extensions from registry`);
+      
+      // If we removed any stale entries, save the cleaned registry
+      const originalCount = (registry.extensions || []).length;
+      if (validExtensions.length !== originalCount) {
+        console.log(`ExtensionManager: Cleaned ${originalCount - validExtensions.length} stale entries from registry`);
+        await this._writeRegistry();
+      }
     } catch (error) {
       console.error('ExtensionManager: Failed to read registry:', error);
     }
@@ -521,6 +572,49 @@ class ExtensionManager {
       extensions: Array.from(this.loadedExtensions.values())
     };
     await writeJsonAtomic(this.extensionsRegistryFile, registry);
+  }
+
+  /**
+   * Validate and clean registry by removing entries with missing directories
+   * @returns {Object} Cleanup results
+   */
+  async validateAndCleanRegistry() {
+    try {
+      const fs = await import('fs/promises');
+      const initialCount = this.loadedExtensions.size;
+      const removedExtensions = [];
+      
+      for (const [extensionId, extensionData] of this.loadedExtensions.entries()) {
+        try {
+          if (extensionData.installedPath) {
+            await fs.access(extensionData.installedPath);
+          }
+        } catch (accessError) {
+          console.log(`ExtensionManager: Removing stale entry: ${extensionData.name} (${extensionId})`);
+          removedExtensions.push({
+            id: extensionId,
+            name: extensionData.name,
+            reason: 'Directory not found'
+          });
+          this.loadedExtensions.delete(extensionId);
+        }
+      }
+      
+      // Save cleaned registry if changes were made
+      if (removedExtensions.length > 0) {
+        await this._writeRegistry();
+      }
+      
+      return {
+        initialCount,
+        finalCount: this.loadedExtensions.size,
+        removedCount: removedExtensions.length,
+        removedExtensions
+      };
+    } catch (error) {
+      console.error('ExtensionManager: Failed to validate registry:', error);
+      throw error;
+    }
   }
 
   /**

@@ -181,6 +181,56 @@ export function setupExtensionIpcHandlers(extensionManager) {
       }
     });
 
+    // Get extension icon URL via peersky protocol
+    ipcMain.handle('extensions-get-icon-url', async (event, extensionId, size = '64') => {
+      try {
+        if (!extensionId || typeof extensionId !== 'string') {
+          throw Object.assign(new Error('Invalid extension ID'), { code: ERR.E_INVALID_ID });
+        }
+
+        const extensions = await extensionManager.listExtensions();
+        const extension = extensions.find(ext => ext.id === extensionId);
+        
+        if (!extension) {
+          throw Object.assign(new Error('Extension not found'), { code: ERR.E_INVALID_ID });
+        }
+
+        // Validate size parameter
+        const validSizes = ['16', '32', '48', '64', '128'];
+        const iconSize = validSizes.includes(size) ? size : '64';
+
+        // Return peersky protocol URL for extension icon
+        const iconUrl = `peersky://extension-icon/${extensionId}/${iconSize}`;
+        
+        return { success: true, iconUrl };
+      } catch (error) {
+        return {
+          success: false,
+          code: error.code || 'E_UNKNOWN',
+          error: error.message,
+          iconUrl: null
+        };
+      }
+    });
+
+    // Clean up registry by removing entries with missing directories
+    ipcMain.handle('extensions-cleanup-registry', async () => {
+      try {
+        const result = await extensionManager.validateAndCleanRegistry();
+        return { success: true, ...result };
+      } catch (error) {
+        return {
+          success: false,
+          code: error.code || 'E_UNKNOWN',
+          error: error.message,
+          initialCount: 0,
+          finalCount: 0,
+          removedCount: 0,
+          removedExtensions: []
+        };
+      }
+    });
+
     // TODO: Add extension update checking
     // ipcMain.handle('extensions-check-updates', async () => {
     //   try {

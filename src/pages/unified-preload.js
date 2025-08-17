@@ -53,16 +53,17 @@ const { contextBridge, ipcRenderer } = require('electron');
 // Context detection using window.location for immediate synchronous access
 const url = window.location.href;
 const isSettings = url.startsWith('peersky://settings');
+const isExtensions = url.startsWith('peersky://extensions');
 const isHome = url.startsWith('peersky://home');
 const isBookmarks = url.includes('peersky://bookmarks');
 const isTabsPage = url.includes('peersky://tabs');
 const isInternal = url.startsWith('peersky://');
 const isExternal = !isInternal;
 
-const context = { url, isSettings, isHome, isBookmarks, isInternal, isExternal };
+const context = { url, isSettings, isExtensions, isHome, isBookmarks, isInternal, isExternal };
 
 console.log(`Unified-preload: Context detection - URL: ${url}`);
-console.log(`Unified-preload: isSettings: ${isSettings}, isHome: ${isHome}, isBookmarks: ${isBookmarks}, isInternal: ${isInternal}, isExternal: ${isExternal}`);
+console.log(`Unified-preload: isSettings: ${isSettings}, isExtensions: ${isExtensions}, isHome: ${isHome}, isBookmarks: ${isBookmarks}, isInternal: ${isInternal}, isExternal: ${isExternal}`);
 
 // Factory function to create context-appropriate settings API with access control
 function createSettingsAPI(pageContext) {
@@ -93,6 +94,17 @@ function createSettingsAPI(pageContext) {
           throw new Error('File data must include name and content');
         }
         return ipcRenderer.invoke('settings-upload-wallpaper', fileData);
+      }
+    };
+  } else if (pageContext.isExtensions) {
+    // Extensions pages get limited settings API - only theme access
+    return {
+      get: (key) => {
+        const allowedKeys = ['theme'];
+        if (!allowedKeys.includes(key)) {
+          throw new Error(`Access denied: Extensions pages can only access: ${allowedKeys.join(', ')}`);
+        }
+        return baseAPI.get(key);
       }
     };
   } else if (pageContext.isHome) {
@@ -169,6 +181,10 @@ const extensionAPI = {
   // Session 1 implemented APIs
   getExtensionInfo: (id) => ipcRenderer.invoke('extensions-get-info', id),
   getStatus: () => ipcRenderer.invoke('extensions-status'),
+  // Icon API
+  getIconUrl: (id, size) => ipcRenderer.invoke('extensions-get-icon-url', id, size),
+  // Registry cleanup API
+  cleanupRegistry: () => ipcRenderer.invoke('extensions-cleanup-registry'),
   // TODO: Add missing IPC handlers for these APIs (Session 2+)
   // checkForUpdates: () => ipcRenderer.invoke('extensions-check-updates'),
   // toggleP2P: (enabled) => ipcRenderer.invoke('extensions-toggle-p2p', enabled),
@@ -219,6 +235,18 @@ try {
     });
     
     console.log('Unified-preload: Full Settings electronAPI and extensionAPI exposed');
+    
+  } else if (isExtensions) {
+    // Extensions pages get full extension API + limited settings API (theme only)
+    contextBridge.exposeInMainWorld('electronAPI', {
+      settings: settingsAPI, // Limited to theme access only
+      onThemeChanged: (callback) => createEventListener('theme-changed', callback),
+      readCSS: cssAPI.readCSS,
+      // Extension API - Full access for extension management
+      extensions: extensionAPI
+    });
+    
+    console.log('Unified-preload: Extensions electronAPI and full extensionAPI exposed');
     
   } else if (isHome) {
     // TODO: Consider exposing limited extension APIs to home pages

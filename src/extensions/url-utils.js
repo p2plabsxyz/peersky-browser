@@ -8,8 +8,8 @@
 // Chrome Web Store extension ID format: 32 characters, letters a-p only
 const ID_RE = /^[a-p]{32}$/i;
 
-// Chrome Web Store URL format with extension ID extraction
-const URL_RE = /^https?:\/\/chrome\.google\.com\/webstore\/detail\/[^/]+\/([a-p]{32})(?:\b|\/)?/i;
+// Chrome Web Store URL format with extension ID extraction (supports both domains)
+const URL_RE = /^https?:\/\/(?:chrome\.google\.com\/webstore\/detail|chromewebstore\.google\.com\/detail)\/[^/]+\/([a-p]{32})(?:\b|\/)?/i;
 
 /**
  * Parse Chrome Web Store URL or extension ID
@@ -66,6 +66,7 @@ function runTests() {
   console.assert(parseUrlOrId('cjpalhdlnbpafiamejdnhcphjbkeiagm') === 'cjpalhdlnbpafiamejdnhcphjbkeiagm', 'Direct ID should work');
   console.assert(parseUrlOrId('https://chrome.google.com/webstore/detail/ublock-origin/cjpalhdlnbpafiamejdnhcphjbkeiagm') === 'cjpalhdlnbpafiamejdnhcphjbkeiagm', 'Full URL should work');
   console.assert(parseUrlOrId('https://chrome.google.com/webstore/detail/ublock-origin/cjpalhdlnbpafiamejdnhcphjbkeiagm/') === 'cjpalhdlnbpafiamejdnhcphjbkeiagm', 'URL with trailing slash should work');
+  console.assert(parseUrlOrId('https://chromewebstore.google.com/detail/ublock-origin-lite/ddkjiahejlhfcafbddmgiahcphecmpfh') === 'ddkjiahejlhfcafbddmgiahcphecmpfh', 'New Chrome Web Store URL format should work');
   console.assert(parseUrlOrId('invalid-id') === null, 'Invalid ID should return null');
   console.assert(parseUrlOrId('') === null, 'Empty string should return null');
   console.assert(parseUrlOrId(null) === null, 'Null input should return null');
