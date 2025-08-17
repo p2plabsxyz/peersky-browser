@@ -510,7 +510,6 @@ class WindowManager {
       const tempPath = PERSIST_FILE + ".tmp";
       await fs.outputJson(tempPath, windowStates, { spaces: 2 });
       await fs.move(tempPath, PERSIST_FILE, { overwrite: true });
-      console.log(`Window states saved to ${PERSIST_FILE}`);
     } catch (error) {
       console.error("Error writing window states to file:", error);
       throw error;
