@@ -119,9 +119,6 @@ class ExtensionManager {
       // Load registry
       await this._readRegistry();
 
-      // Install default extensions if needed
-      await this._installDefaultExtensions();
-
       // Load enabled extensions
       await this._loadExtensionsIntoElectron();
 
@@ -654,43 +651,6 @@ class ExtensionManager {
       await this._writeRegistry();
     } catch (error) {
       console.error('ExtensionManager: Error loading extensions into Electron:', error);
-    }
-  }
-
-  /**
-   * Install default extensions if they haven't been installed yet
-   */
-  async _installDefaultExtensions() {
-    const defaultExtensions = [
-      {
-        id: 'eimadpbcbfnmbkopoojfekhnkhdbieeh', // Dark Reader
-        name: 'Dark Reader',
-        reason: 'Popular dark mode extension for better reading experience'
-      }
-    ];
-
-    console.log('ExtensionManager: Checking for default extensions to install...');
-    
-    for (const defaultExt of defaultExtensions) {
-      // Check if extension is already installed
-      if (this.loadedExtensions.has(defaultExt.id)) {
-        console.log(`ExtensionManager: Default extension '${defaultExt.name}' already installed`);
-        continue;
-      }
-
-      try {
-        console.log(`ExtensionManager: Installing default extension: ${defaultExt.name} (${defaultExt.reason})`);
-        const result = await this.installFromWebStore(defaultExt.id);
-        
-        if (result.success) {
-          console.log(`ExtensionManager: Successfully installed default extension: ${defaultExt.name}`);
-        } else {
-          console.warn(`ExtensionManager: Failed to install default extension ${defaultExt.name}: ${result.error}`);
-        }
-      } catch (error) {
-        console.warn(`ExtensionManager: Error installing default extension ${defaultExt.name}:`, error);
-        // Don't throw - continue with other extensions and startup
-      }
     }
   }
 
