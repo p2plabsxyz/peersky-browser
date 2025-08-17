@@ -138,6 +138,7 @@
     "content-hash": "^2.5.2",
     "content-type": "^1.0.5",
     "datastore-level": "^11.0.3",
+    "electron-chrome-extensions": "^4.9.0",
     "electron-find": "^1.0.7",
     "electron-log": "^5.3.0",
     "electron-updater": "^6.2.1",

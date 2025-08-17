@@ -21,7 +21,7 @@
  */
 
 import electron from 'electron';
-const { ipcMain } = electron;
+const { ipcMain, BrowserWindow } = electron;
 import { ERR } from '../extensions/util.js';
 
 /**
@@ -253,27 +253,42 @@ export function setupExtensionIpcHandlers(extensionManager) {
     //   }
     // });
 
-    // TODO: Add browser action IPC handlers
-    // ipcMain.handle('extensions-browser-actions', async (event, windowId) => {
-    //   try {
-    //     const actions = await extensionManager.listBrowserActions(windowId);
-    //     return { success: true, actions };
-    //   } catch (error) {
-    //     console.error('ExtensionIPC: extensions-browser-actions failed:', error);
-    //     return { success: false, error: error.message };
-    //   }
-    // });
+    // List browser actions for current window
+    ipcMain.handle('extensions-list-browser-actions', async (event) => {
+      try {
+        const senderWindow = BrowserWindow.fromWebContents(event.sender);
+        const actions = await extensionManager.listBrowserActions(senderWindow);
+        return { success: true, actions };
+      } catch (error) {
+        console.error('ExtensionIPC: extensions-list-browser-actions failed:', error);
+        return { 
+          success: false, 
+          code: error.code || 'E_UNKNOWN',
+          error: error.message,
+          actions: []
+        };
+      }
+    });
 
-    // TODO: Add browser action click handler
-    // ipcMain.handle('extensions-click-action', async (event, actionId, windowId) => {
-    //   try {
-    //     await extensionManager.clickBrowserAction(actionId, windowId);
-    //     return { success: true };
-    //   } catch (error) {
-    //     console.error('ExtensionIPC: extensions-click-action failed:', error);
-    //     return { success: false, error: error.message };
-    //   }
-    // });
+    // Handle browser action click
+    ipcMain.handle('extensions-click-browser-action', async (event, actionId) => {
+      try {
+        if (!actionId || typeof actionId !== 'string') {
+          throw Object.assign(new Error('Invalid action ID'), { code: ERR.E_INVALID_ID });
+        }
+
+        const senderWindow = BrowserWindow.fromWebContents(event.sender);
+        await extensionManager.clickBrowserAction(actionId, senderWindow);
+        return { success: true };
+      } catch (error) {
+        console.error('ExtensionIPC: extensions-click-browser-action failed:', error);
+        return {
+          success: false,
+          code: error.code || 'E_UNKNOWN', 
+          error: error.message
+        };
+      }
+    });
 
     console.log('ExtensionIPC: Extension IPC handlers registered successfully');
     

@@ -857,3 +857,61 @@ find-menu {
 #settings {
   margin-left: auto;
 }
+
+/* Extension Browser Action Styles */
+.extension-icons-container {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+}
+
+.extension-action-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  padding: 2px;
+}
+
+.extension-action-btn:hover {
+  background-color: var(--peersky-nav-button-hover);
+}
+
+.extension-action-btn:active {
+  background-color: var(--peersky-nav-button-active);
+}
+
+.extension-icon {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  border-radius: 2px;
+}
+
+.extension-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  background-color: #dc3545;
+  color: white;
+  font-size: 10px;
+  font-weight: bold;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  box-sizing: border-box;
+  text-align: center;
+  line-height: 1;
+}

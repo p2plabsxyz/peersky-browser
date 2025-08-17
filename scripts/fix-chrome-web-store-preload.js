@@ -21,7 +21,7 @@ const projectRoot = path.dirname(__dirname);
 
 // Paths
 const stubSource = path.join(projectRoot, 'src/extensions/chrome-web-store-preload-stub.js');
-const targetDir = path.join(projectRoot, 'node_modules/electron-chrome-web-store');
+const targetDir = path.join(projectRoot, 'node_modules/@iamevan/electron-chrome-web-store');
 const targetFile = path.join(targetDir, 'preload.js');
 
 console.log('🔧 Chrome Web Store Preload Fix');

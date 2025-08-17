@@ -7,6 +7,7 @@ import { fileURLToPath } from "url";
 import { attachContextMenus } from "./context-menu.js";
 import { randomUUID } from "crypto";
 import { getPartition } from "./utils/session.js";
+import extensionManager from "./extensions/index.js";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
@@ -744,6 +745,13 @@ class PeerskyWindow {
     // Attach context menus
     attachContextMenus(this.window, windowManager);
 
+    // Register window with extension system for browser actions
+    try {
+      extensionManager.addWindow(this.window, this.window.webContents);
+    } catch (error) {
+      console.warn('Failed to register window with extension system:', error);
+    }
+
     // Reference to windowManager for saving state
     this.windowManager = windowManager;
 
@@ -797,6 +805,15 @@ class PeerskyWindow {
     });
 
     this.window.on("closed", () => {
+      // Unregister window from extension system
+      try {
+        if (!this.window.webContents.isDestroyed()) {
+          extensionManager.removeWindow(this.window.webContents);
+        }
+      } catch (error) {
+        console.warn('Failed to unregister window from extension system:', error);
+      }
+
       ipcMain.removeListener(
         `webview-did-navigate-${this.id}`,
         this.navigateListener

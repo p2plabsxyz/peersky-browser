@@ -10,6 +10,7 @@ class NavBox extends HTMLElement {
     this.buildNavBox();
     this.attachEvents();
     this.attachThemeListener();
+    this.attachExtensionListeners();
     this.initializeExtensionsPopup();
   }
 
@@ -77,6 +78,11 @@ class NavBox extends HTMLElement {
         );
         this.appendChild(btnElement);
         this.buttonElements[button.id] = btnElement;
+        
+        // Add extension icons container after extensions button
+        if (button.id === "extensions") {
+          this.createExtensionIconsContainer();
+        }
       });
   }
 
@@ -93,6 +99,72 @@ class NavBox extends HTMLElement {
     this.loadSVG(svgContainer, svgPath);
 
     return button;
+  }
+
+  createExtensionIconsContainer() {
+    const container = document.createElement("div");
+    container.className = "extension-icons-container";
+    container.id = "extension-icons";
+    this.appendChild(container);
+    
+    // Load browser actions immediately
+    this.renderBrowserActions();
+  }
+
+  async renderBrowserActions() {
+    const container = this.querySelector("#extension-icons");
+    if (!container) return;
+
+    try {
+      // Get browser actions from extension system
+      const result = await window.electronAPI?.extensions?.getBrowserActions();
+      
+      if (result?.success && result.actions?.length > 0) {
+        container.innerHTML = result.actions.map(action => `
+          <button class="extension-action-btn" 
+                  data-extension-id="${action.id}" 
+                  title="${action.title || action.name}">
+            <img src="${action.icon}" alt="${action.name}" class="extension-icon">
+            ${action.badgeText ? `<span class="extension-badge">${action.badgeText}</span>` : ''}
+          </button>
+        `).join('');
+        
+        // Add click listeners to extension action buttons
+        container.querySelectorAll('.extension-action-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.handleExtensionActionClick(btn.dataset.extensionId);
+          });
+        });
+        
+        console.log(`NavBox: Rendered ${result.actions.length} browser action${result.actions.length !== 1 ? 's' : ''}`);
+      } else {
+        // Clear container if no actions
+        container.innerHTML = '';
+      }
+    } catch (error) {
+      console.error('NavBox: Failed to render browser actions:', error);
+      container.innerHTML = '';
+    }
+  }
+
+  async handleExtensionActionClick(extensionId) {
+    if (!extensionId) {
+      console.warn('NavBox: No extension ID provided for browser action click');
+      return;
+    }
+
+    try {
+      console.log(`NavBox: Triggering browser action for extension: ${extensionId}`);
+      const result = await window.electronAPI?.extensions?.clickBrowserAction(extensionId);
+      
+      if (!result?.success) {
+        console.error('NavBox: Browser action click failed:', result?.error);
+      }
+    } catch (error) {
+      console.error('NavBox: Extension action click error:', error);
+    }
   }
 
   loadSVG(container, svgPath) {
@@ -305,6 +377,16 @@ class NavBox extends HTMLElement {
 
   navigate(action) {
     this.dispatchEvent(new CustomEvent(action));
+  }
+
+  attachExtensionListeners() {
+    // Listen for browser action changes
+    if (window.electronAPI?.extensions?.onBrowserActionChanged) {
+      window.electronAPI.extensions.onBrowserActionChanged(() => {
+        console.log("NavBox: Browser actions changed, refreshing...");
+        this.renderBrowserActions();
+      });
+    }
   }
 
   attachThemeListener() {

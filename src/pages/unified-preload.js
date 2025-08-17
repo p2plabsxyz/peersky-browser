@@ -189,10 +189,9 @@ const extensionAPI = {
   // checkForUpdates: () => ipcRenderer.invoke('extensions-check-updates'),
   // toggleP2P: (enabled) => ipcRenderer.invoke('extensions-toggle-p2p', enabled),
   
-  // TODO: Add browser action APIs for extension toolbar integration
-  // getBrowserActions: () => ipcRenderer.invoke('extensions-browser-actions'),
-  // clickBrowserAction: (actionId) => ipcRenderer.invoke('extensions-click-action', actionId),
-  // getExtensionStatus: () => ipcRenderer.invoke('extensions-status'),
+  // Browser action APIs for extension toolbar integration
+  getBrowserActions: () => ipcRenderer.invoke('extensions-list-browser-actions'),
+  clickBrowserAction: (actionId) => ipcRenderer.invoke('extensions-click-browser-action', actionId),
   
   // TODO: Add extension development APIs
   // reloadExtension: (id) => ipcRenderer.invoke('extensions-reload', id),
@@ -211,9 +210,9 @@ const extensionAPI = {
   onExtensionInstalled: (callback) => createEventListener('extension-installed', callback),
   onExtensionUninstalled: (callback) => createEventListener('extension-uninstalled', callback),
   
-  // TODO: Add browser action event listeners
-  // onBrowserActionChanged: (callback) => createEventListener('browser-action-changed', callback),
-  // onExtensionError: (callback) => createEventListener('extension-error', callback)
+  // Browser action event listeners
+  onBrowserActionChanged: (callback) => createEventListener('browser-action-changed', callback),
+  onExtensionError: (callback) => createEventListener('extension-error', callback)
 };
 
 // Create context-appropriate APIs
@@ -249,10 +248,7 @@ try {
     console.log('Unified-preload: Extensions electronAPI and full extensionAPI exposed');
     
   } else if (isHome) {
-    // TODO: Consider exposing limited extension APIs to home pages
-    // - Browser action display for extension toolbar buttons
-    // - Extension status indicators
-    // - Read-only extension information
+    // Home pages need browser action APIs for extension toolbar integration
     
     // Zero-flicker wallpaper injection for home pages
     // Get wallpaper URL synchronously but inject when DOM is ready
@@ -305,15 +301,21 @@ try {
       css: cssAPI
     });
     
-    // Limited electronAPI for home functionality only
+    // Home electronAPI with browser action support for extension toolbar
     contextBridge.exposeInMainWorld('electronAPI', {
       settings: settingsAPI, // Uses limited home API automatically
       getWallpaperUrl: () => ipcRenderer.invoke('settings-get-wallpaper-url'),
       onShowClockChanged: (callback) => createEventListener('show-clock-changed', callback),
-      onWallpaperChanged: (callback) => createEventListener('wallpaper-changed', callback)
+      onWallpaperChanged: (callback) => createEventListener('wallpaper-changed', callback),
+      // Extension browser action APIs for home page toolbar
+      extensions: {
+        getBrowserActions: () => ipcRenderer.invoke('extensions-list-browser-actions'),
+        clickBrowserAction: (actionId) => ipcRenderer.invoke('extensions-click-browser-action', actionId),
+        onBrowserActionChanged: (callback) => createEventListener('browser-action-changed', callback)
+      }
     });
     
-    console.log('Unified-preload: Home APIs exposed (showClock, wallpaper access only)');
+    console.log('Unified-preload: Home APIs exposed (showClock, wallpaper, browser actions)');
     
   } else if (isBookmarks) {
     // TODO: Consider extension integration for bookmark pages

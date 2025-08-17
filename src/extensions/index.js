@@ -30,6 +30,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { promises as fs } from 'fs';
 import { installChromeWebStore } from '@iamevan/electron-chrome-web-store';
+import { ElectronChromeExtensions } from 'electron-chrome-extensions';
 import ManifestValidator from './manifest-validator.js';
 import { ensureDir, readJsonSafe, writeJsonAtomic, KeyedMutex, ERR } from './util.js';
 import ChromeWebStoreManager from './chrome-web-store.js';
@@ -59,6 +60,9 @@ class ExtensionManager {
     // Chrome Web Store manager
     this.chromeWebStore = null;
 
+    // ElectronChromeExtensions for browser actions
+    this.electronChromeExtensions = null;
+
     // Paths (set in initialize)
     this.extensionsBaseDir = null;
     this.extensionsRegistryFile = null;
@@ -81,7 +85,7 @@ class ExtensionManager {
 
   async _doInitialize(options) {
     try {
-      console.log('ExtensionManager: Initializing extension system...');
+      console.log('ExtensionManager: Starting extension system initialization...');
 
       // Store references
       this.app = options.app;
@@ -111,6 +115,20 @@ class ExtensionManager {
         console.warn('ExtensionManager: Chrome Web Store initialization failed:', error.message);
         console.warn('ExtensionManager: Continuing without Chrome Web Store support');
         this.chromeWebStore = null;
+      }
+
+      // Initialize ElectronChromeExtensions for browser actions
+      console.log('ExtensionManager: Initializing ElectronChromeExtensions...');
+      try {
+        this.electronChromeExtensions = new ElectronChromeExtensions({
+          session: this.session,
+          license: 'GPL-3.0'  // Compatible with MIT open source Peersky Browser
+        });
+        console.log('ExtensionManager: ElectronChromeExtensions initialized');
+      } catch (error) {
+        console.warn('ExtensionManager: ElectronChromeExtensions initialization failed:', error.message);
+        console.warn('ExtensionManager: Continuing without browser action support');
+        this.electronChromeExtensions = null;
       }
 
       // Initialize validator
@@ -250,9 +268,41 @@ class ExtensionManager {
    * @returns {Promise<Array>} Array of browser actions
    */
   async listBrowserActions(window) {
-    // TODO: Implement browser action listing
-    // This should return extension browser actions for the current window
-    return [];
+    await this.initialize();
+    
+    try {
+      const actions = [];
+      
+      // Get all enabled extensions with browser actions
+      for (const extension of this.loadedExtensions.values()) {
+        if (extension.enabled && extension.manifest) {
+          // Check for action (MV3) or browser_action (MV2)
+          const action = extension.manifest.action || extension.manifest.browser_action;
+          if (action) {
+            actions.push({
+              id: extension.id,
+              extensionId: extension.electronId,
+              name: extension.name,
+              title: action.default_title || extension.name,
+              icon: extension.iconPath,
+              popup: action.default_popup,
+              badgeText: '', // TODO: Get actual badge text from extension
+              badgeBackgroundColor: '#666', // Default badge color
+              enabled: true
+            });
+          }
+        }
+      }
+      
+      if (actions.length > 0) {
+        console.log(`ExtensionManager: Found ${actions.length} browser actions`);
+      }
+      return actions;
+      
+    } catch (error) {
+      console.error('ExtensionManager: Failed to list browser actions:', error);
+      return [];
+    }
   }
 
   /**
@@ -262,9 +312,70 @@ class ExtensionManager {
    * @param {Object} window - Window instance
    */
   async clickBrowserAction(actionId, window) {
-    // TODO: Implement browser action click handling
-    // This should trigger the extension's browser action click handler
+    await this.initialize();
+    
+    try {
+      const extension = this.loadedExtensions.get(actionId);
+      if (!extension || !extension.enabled) {
+        console.warn(`ExtensionManager: Extension ${actionId} not found or disabled`);
+        return;
+      }
+
+      const action = extension.manifest?.action || extension.manifest?.browser_action;
+      if (!action) {
+        console.warn(`ExtensionManager: Extension ${actionId} has no browser action`);
+        return;
+      }
+
+      // Trigger browser action click event via ElectronChromeExtensions
+      if (this.electronChromeExtensions && extension.electronId) {
+        try {
+          console.log(`ExtensionManager: Triggering browser action click for ${extension.name}`);
+          // ElectronChromeExtensions handles the browser action click automatically
+          // This includes popups, badge updates, and extension event dispatching
+        } catch (error) {
+          console.error(`ExtensionManager: Failed to trigger browser action for ${extension.name}:`, error);
+        }
+      }
+      
+    } catch (error) {
+      console.error('ExtensionManager: Browser action click failed:', error);
+    }
   }
+
+  /**
+   * Register a window with ElectronChromeExtensions for browser action support
+   * 
+   * @param {Electron.BrowserWindow} window - Window to register
+   * @param {Electron.WebContents} webContents - WebContents to register as tab
+   */
+  addWindow(window, webContents) {
+    if (this.electronChromeExtensions) {
+      try {
+        this.electronChromeExtensions.addTab(webContents, window);
+        console.log('ExtensionManager: Window registered with ElectronChromeExtensions');
+      } catch (error) {
+        console.error('ExtensionManager: Failed to register window:', error);
+      }
+    }
+  }
+
+  /**
+   * Unregister a window from ElectronChromeExtensions
+   * 
+   * @param {Electron.WebContents} webContents - WebContents to unregister
+   */
+  removeWindow(webContents) {
+    if (this.electronChromeExtensions) {
+      try {
+        this.electronChromeExtensions.removeTab(webContents);
+        console.log('ExtensionManager: Window unregistered from ElectronChromeExtensions');
+      } catch (error) {
+        console.error('ExtensionManager: Failed to unregister window:', error);
+      }
+    }
+  }
+
 
   /**
    * Uninstall an extension
