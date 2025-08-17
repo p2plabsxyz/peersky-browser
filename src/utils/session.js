@@ -20,7 +20,8 @@ const { session } = electron;
  * @returns {boolean} True if using persist:peersky session
  */
 export function usePersist() {
-  return process.env.PEERSKY_USE_PERSIST_SESSION === 'true';
+  // Default to true for extension support, allow opt-out with 'false'
+  return process.env.PEERSKY_USE_PERSIST_SESSION !== 'false';
 }
 
 /**
