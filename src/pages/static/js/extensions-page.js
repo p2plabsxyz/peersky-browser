@@ -50,10 +50,18 @@ function createExtensionCard(extension) {
   card.setAttribute('role', 'region');
   card.setAttribute('aria-labelledby', `ext-${extension.id}-name`);
   
+  // Create icon HTML - use iconPath if available, otherwise default SVG
+  const iconHTML = extension.iconPath 
+    ? `<img src="${extension.iconPath}" alt="${extension.name} icon" class="extension-icon-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">`
+    : '';
+  
   card.innerHTML = `
     <div class="extension-header">
       <div class="extension-icon">
-        ${extension.icon || DEFAULT_ICON_SVG}
+        ${iconHTML}
+        <div class="extension-icon-fallback" style="${extension.iconPath ? 'display:none' : 'display:block'}">
+          ${DEFAULT_ICON_SVG}
+        </div>
       </div>
       <h3 id="ext-${extension.id}-name" class="extension-name">${extension.name}</h3>
       <p class="extension-description">${extension.description}</p>
@@ -132,32 +140,10 @@ async function handleRemoveExtension(extensionId) {
   }
 }
 
-// Handle update all extensions
+// Handle update all extensions - Placeholder for future implementation
 async function handleUpdateAll() {
-  console.log('[Extensions] Updating all extensions...');
-  showStatusMessage('Checking for updates...', 'info');
-  
-  try {
-    const result = await window.electronAPI.extensions.updateAll();
-    
-    if (result.success) {
-      const { updated, skipped, errors } = result;
-      let message = `Update complete: ${updated.length} updated, ${skipped.length} skipped`;
-      if (errors.length > 0) message += `, ${errors.length} errors`;
-      
-      showStatusMessage(message, updated.length > 0 ? 'success' : 'info');
-      
-      if (updated.length > 0) {
-        await loadExtensions(); // Refresh if updates occurred
-      }
-    } else {
-      console.error('[Extensions] Update failed:', result.error);
-      showStatusMessage('Update failed: ' + result.error, 'error');
-    }
-  } catch (error) {
-    console.error('[Extensions] Update error:', error);
-    showStatusMessage('Update failed', 'error');
-  }
+  console.log('[Extensions] Update All clicked - showing coming soon message');
+  showStatusMessage('Update All feature coming soon!', 'info');
 }
 
 // Handle toggle changes
@@ -219,10 +205,63 @@ function renderExtensions() {
   });
 }
 
-// Status messaging system
-function showStatusMessage(message, type = 'info') {
+// Status messaging system - Same as settings.js showSettingsSavedMessage
+function showStatusMessage(message, type = 'success') {
   console.log(`[Extensions] ${type.toUpperCase()}: ${message}`);
-  // TODO: Add visual status display to UI
+  
+  // Remove any existing message
+  const existingMessage = document.querySelector('.settings-saved-message');
+  if (existingMessage) {
+    existingMessage.remove();
+  }
+  
+  // Create new message element with appropriate styling
+  const messageEl = document.createElement('div');
+  messageEl.className = `settings-saved-message ${type}`;
+  messageEl.textContent = message;
+  
+  // Minimal styling
+  messageEl.style.position = 'fixed';
+  messageEl.style.top = '20px';
+  messageEl.style.right = '20px';
+  messageEl.style.padding = '12px 20px';
+  messageEl.style.borderRadius = '6px';
+  messageEl.style.fontFamily = 'Arial, sans-serif';
+  messageEl.style.zIndex = '10000';
+  messageEl.style.opacity = '0';
+  messageEl.style.transition = 'opacity 0.2s ease-in-out';
+  
+  // Add type-specific styling
+  if (type === 'error') {
+    messageEl.style.backgroundColor = '#f44336';
+    messageEl.style.color = 'white';
+  } else if (type === 'warning') {
+    messageEl.style.backgroundColor = '#ff9800';
+    messageEl.style.color = 'white';
+  } else if (type === 'info') {
+    messageEl.style.backgroundColor = '#2196f3';
+    messageEl.style.color = 'white';
+  } else {
+    messageEl.style.backgroundColor = '#0fba84';
+    messageEl.style.color = 'white';
+  }
+  
+  document.body.appendChild(messageEl);
+  
+  // Fade in
+  setTimeout(() => {
+    messageEl.style.opacity = '1';
+  }, 10);
+  
+  const duration = type === 'error' ? 3000 : 2000;
+  setTimeout(() => {
+    messageEl.style.opacity = '0';
+    setTimeout(() => {
+      if (messageEl.parentNode) {
+        messageEl.parentNode.removeChild(messageEl);
+      }
+    }, 300);
+  }, duration);
 }
 
 // Initialize the page

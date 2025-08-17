@@ -197,10 +197,12 @@
   margin-bottom: 0.75rem;
 }
 
-.extension-icon img {
+.extension-icon img,
+.extension-icon-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  border-radius: 6px;
 }
 
 .extension-icon svg {
@@ -367,4 +369,28 @@
   #update-all-btn {
     align-self: stretch;
   }
+}
+
+/* Message Notification System - Same as settings.css */
+.settings-saved-message {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background-color: var(--success-color, #0fba84);
+  color: var(--success-text-color, white);
+  padding: 12px 20px;
+  border-radius: 6px;
+  font-weight: 500;
+  z-index: 10000;
+  opacity: 0;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--success-border-color, transparent);
+  transform: translateY(-10px);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.settings-saved-message.show {
+  opacity: 1;
+  transform: translateY(0);
 }
