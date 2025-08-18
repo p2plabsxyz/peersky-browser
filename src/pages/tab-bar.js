@@ -517,11 +517,38 @@ restoreTabs(persistedData) {
     
     // Add a load event to ensure webview is properly initialized
     webview.addEventListener('dom-ready', () => {
+      console.log(`[TabBar] DOM ready for webview in tab ${tabId}`);
+      
       // Ensure this webview is visible if it's the active tab
       if (this.activeTabId === tabId) {
         webview.style.display = "flex";
         webview.focus();
       }
+      
+      // Register webview with extension system for proper tab context
+      // Use a small delay to ensure webview is fully attached
+      setTimeout(() => {
+        try {
+          console.log(`[TabBar] Attempting to get WebContents ID for tab ${tabId}`);
+          const webContentsId = webview.getWebContentsId();
+          console.log(`[TabBar] Got WebContents ID ${webContentsId} for tab ${tabId}`);
+          
+          // Use direct IPC like other browser components
+          const { ipcRenderer } = require('electron');
+          console.log(`[TabBar] Registering webview ${webContentsId} with extension system via direct IPC`);
+          ipcRenderer.invoke('extensions-register-webview', webContentsId).then(result => {
+            if (result.success) {
+              console.log(`[TabBar] ✅ Successfully registered webview ${webContentsId} with extension system for tab ${tabId}`);
+            } else {
+              console.warn(`[TabBar] ❌ Failed to register webview ${webContentsId}:`, result.error);
+            }
+          }).catch(error => {
+            console.error(`[TabBar] ❌ Error registering webview ${webContentsId}:`, error);
+          });
+        } catch (error) {
+          console.warn(`[TabBar] ❌ Could not register webview with extension system for tab ${tabId}:`, error);
+        }
+      }, 100); // Small delay to ensure webview is fully ready
     });
     
     // Set up event listeners for this webview
@@ -669,8 +696,31 @@ restoreTabs(persistedData) {
     // Remove associated webview
     const webview = this.webviews.get(tabId);
     if (webview) {
+      console.log(`[TabBar] Removing webview for tab ${tabId}`);
+      
+      // Unregister webview from extension system before removing
+      try {
+        const webContentsId = webview.getWebContentsId();
+        console.log(`[TabBar] Unregistering webview ${webContentsId} from extension system`);
+        
+        // Use direct IPC like other browser components
+        const { ipcRenderer } = require('electron');
+        ipcRenderer.invoke('extensions-unregister-webview', webContentsId).then(result => {
+          if (result.success) {
+            console.log(`[TabBar] ✅ Successfully unregistered webview ${webContentsId} from extension system for tab ${tabId}`);
+          } else {
+            console.warn(`[TabBar] ❌ Failed to unregister webview ${webContentsId}:`, result.error);
+          }
+        }).catch(error => {
+          console.error(`[TabBar] ❌ Error unregistering webview ${webContentsId}:`, error);
+        });
+      } catch (error) {
+        console.warn(`[TabBar] ❌ Could not unregister webview from extension system for tab ${tabId}:`, error);
+      }
+      
       webview.remove();
       this.webviews.delete(tabId);
+      console.log(`[TabBar] Webview removed for tab ${tabId}`);
     }
     
     // Remove tab from group

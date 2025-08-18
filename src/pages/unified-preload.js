@@ -194,6 +194,10 @@ const extensionAPI = {
   clickBrowserAction: (actionId) => ipcRenderer.invoke('extensions-click-browser-action', actionId),
   openBrowserActionPopup: (actionId, anchorRect) => ipcRenderer.invoke('extensions-open-browser-action-popup', { actionId, anchorRect }),
   
+  // Webview registration APIs for tab context
+  registerWebview: (webContentsId) => ipcRenderer.invoke('extensions-register-webview', webContentsId),
+  unregisterWebview: (webContentsId) => ipcRenderer.invoke('extensions-unregister-webview', webContentsId),
+  
   // TODO: Add extension development APIs
   // reloadExtension: (id) => ipcRenderer.invoke('extensions-reload', id),
   // openExtensionFolder: (id) => ipcRenderer.invoke('extensions-open-folder', id),
@@ -313,7 +317,10 @@ try {
         getBrowserActions: () => ipcRenderer.invoke('extensions-list-browser-actions'),
         clickBrowserAction: (actionId) => ipcRenderer.invoke('extensions-click-browser-action', actionId),
         openBrowserActionPopup: (actionId, anchorRect) => ipcRenderer.invoke('extensions-open-browser-action-popup', { actionId, anchorRect }),
-        onBrowserActionChanged: (callback) => createEventListener('browser-action-changed', callback)
+        onBrowserActionChanged: (callback) => createEventListener('browser-action-changed', callback),
+        // Webview registration APIs for tab context
+        registerWebview: (webContentsId) => ipcRenderer.invoke('extensions-register-webview', webContentsId),
+        unregisterWebview: (webContentsId) => ipcRenderer.invoke('extensions-unregister-webview', webContentsId),
       }
     });
     

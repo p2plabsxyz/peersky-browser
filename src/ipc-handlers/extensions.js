@@ -319,6 +319,83 @@ export function setupExtensionIpcHandlers(extensionManager) {
       }
     });
 
+    // Register webview with extension system for tab context
+    ipcMain.handle('extensions-register-webview', async (event, webContentsId) => {
+      try {
+        console.log(`[ExtensionIPC] Register webview request for WebContents ID: ${webContentsId}`);
+        
+        if (!webContentsId || typeof webContentsId !== 'number') {
+          console.error(`[ExtensionIPC] Invalid webContents ID: ${webContentsId}`);
+          throw Object.assign(new Error('Invalid webContents ID'), { code: ERR.E_INVALID_ID });
+        }
+
+        const senderWindow = BrowserWindow.fromWebContents(event.sender);
+        if (!senderWindow) {
+          console.error('[ExtensionIPC] Sender window not found');
+          throw Object.assign(new Error('Window not found'), { code: ERR.E_INVALID_ID });
+        }
+        console.log(`[ExtensionIPC] Sender window ID: ${senderWindow.id}`);
+
+        // Get the webview's WebContents by ID
+        const { webContents } = await import('electron');
+        const webviewContents = webContents.fromId(webContentsId);
+        if (!webviewContents) {
+          console.error(`[ExtensionIPC] WebContents not found for ID: ${webContentsId}`);
+          throw Object.assign(new Error('WebContents not found'), { code: ERR.E_INVALID_ID });
+        }
+        console.log(`[ExtensionIPC] Found webview WebContents: ${webContentsId}, URL: ${webviewContents.getURL()}`);
+
+        // Register webview with extension system
+        console.log(`[ExtensionIPC] Registering webview ${webContentsId} with extension manager`);
+        extensionManager.addWindow(senderWindow, webviewContents);
+        console.log(`[ExtensionIPC] ✅ Successfully registered webview ${webContentsId} with extension system`);
+        
+        return { success: true };
+      } catch (error) {
+        console.error(`[ExtensionIPC] ❌ extensions-register-webview failed:`, error);
+        return {
+          success: false,
+          code: error.code || 'E_UNKNOWN',
+          error: error.message
+        };
+      }
+    });
+
+    // Unregister webview from extension system
+    ipcMain.handle('extensions-unregister-webview', async (_event, webContentsId) => {
+      try {
+        console.log(`[ExtensionIPC] Unregister webview request for WebContents ID: ${webContentsId}`);
+        
+        if (!webContentsId || typeof webContentsId !== 'number') {
+          console.error(`[ExtensionIPC] Invalid webContents ID: ${webContentsId}`);
+          throw Object.assign(new Error('Invalid webContents ID'), { code: ERR.E_INVALID_ID });
+        }
+
+        // Get the webview's WebContents by ID
+        const { webContents } = await import('electron');
+        const webviewContents = webContents.fromId(webContentsId);
+        if (!webviewContents) {
+          // WebContents might already be destroyed, which is fine
+          console.log(`[ExtensionIPC] WebContents already destroyed for unregister: ${webContentsId}`);
+          return { success: true };
+        }
+
+        // Unregister webview from extension system
+        console.log(`[ExtensionIPC] Unregistering webview ${webContentsId} from extension manager`);
+        extensionManager.removeWindow(webviewContents);
+        console.log(`[ExtensionIPC] ✅ Successfully unregistered webview ${webContentsId} from extension system`);
+        
+        return { success: true };
+      } catch (error) {
+        console.error(`[ExtensionIPC] ❌ extensions-unregister-webview failed:`, error);
+        return {
+          success: false,
+          code: error.code || 'E_UNKNOWN',
+          error: error.message
+        };
+      }
+    });
+
     console.log('ExtensionIPC: Extension IPC handlers registered successfully');
     
   } catch (error) {

@@ -427,6 +427,7 @@ class ExtensionManager {
           
           // Get the active tab for the popup context
           const activeTab = window.webContents;
+          console.log(`[ExtensionManager] Opening popup for ${extension.name}, window WebContents ID: ${activeTab.id}, URL: ${activeTab.getURL()}`);
           
           // Try to trigger the browser action via ElectronChromeExtensions
           // This should open the popup if the extension has one
@@ -446,9 +447,11 @@ class ExtensionManager {
               // Attempt to open popup directly if possible
               const api = this.electronChromeExtensions.api;
               if (api.browserAction && api.browserAction.openPopup) {
-                // ElectronChromeExtensions openPopup expects a tab object with id
-                const tabInfo = { id: activeTab.id, windowId: window.id };
-                await api.browserAction.openPopup(tabInfo);
+                // ElectronChromeExtensions openPopup expects an event object with extension context
+                await api.browserAction.openPopup(
+                  { extension: { id: extension.electronId } }, 
+                  { windowId: window.id }
+                );
                 console.log(`ExtensionManager: Popup opened directly for ${extension.name}`);
                 return { success: true };
               }
@@ -524,19 +527,22 @@ class ExtensionManager {
    * @param {Electron.WebContents} webContents - WebContents to register as tab
    */
   addWindow(window, webContents) {
+    console.log(`[ExtensionManager] addWindow called with window ${window.id}, webContents ${webContents.id}`);
+    
     if (this.electronChromeExtensions) {
       try {
+        console.log(`[ExtensionManager] Registering webContents ${webContents.id} with ElectronChromeExtensions`);
         this.electronChromeExtensions.addTab(webContents, window);
-        console.log('ExtensionManager: Window registered with ElectronChromeExtensions', {
+        console.log(`[ExtensionManager] ✅ Successfully registered with ElectronChromeExtensions`, {
           windowId: window.id,
           webContentsId: webContents.id,
           url: webContents.getURL()
         });
       } catch (error) {
-        console.error('ExtensionManager: Failed to register window:', error);
+        console.error(`[ExtensionManager] ❌ Failed to register window:`, error);
       }
     } else {
-      console.warn('ExtensionManager: addWindow called but ElectronChromeExtensions not available');
+      console.warn('[ExtensionManager] addWindow called but ElectronChromeExtensions not available');
     }
   }
 
@@ -546,13 +552,18 @@ class ExtensionManager {
    * @param {Electron.WebContents} webContents - WebContents to unregister
    */
   removeWindow(webContents) {
+    console.log(`[ExtensionManager] removeWindow called for webContents ${webContents.id}`);
+    
     if (this.electronChromeExtensions) {
       try {
+        console.log(`[ExtensionManager] Unregistering webContents ${webContents.id} from ElectronChromeExtensions`);
         this.electronChromeExtensions.removeTab(webContents);
-        console.log('ExtensionManager: Window unregistered from ElectronChromeExtensions');
+        console.log(`[ExtensionManager] ✅ Successfully unregistered webContents ${webContents.id} from ElectronChromeExtensions`);
       } catch (error) {
-        console.error('ExtensionManager: Failed to unregister window:', error);
+        console.error(`[ExtensionManager] ❌ Failed to unregister window:`, error);
       }
+    } else {
+      console.warn('[ExtensionManager] removeWindow called but ElectronChromeExtensions not available');
     }
   }
 
