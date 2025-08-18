@@ -63,6 +63,9 @@ class ExtensionManager {
     // ElectronChromeExtensions for browser actions
     this.electronChromeExtensions = null;
 
+    // Track active popups for auto-close on tab switch
+    this.activePopups = new Set();
+
     // Paths (set in initialize)
     this.extensionsBaseDir = null;
     this.extensionsRegistryFile = null;
@@ -425,16 +428,35 @@ class ExtensionManager {
         try {
           console.log(`ExtensionManager: Opening popup for ${extension.name} at`, anchorRect);
           
-          // Get the active tab for the popup context
-          const activeTab = window.webContents;
-          console.log(`[ExtensionManager] Opening popup for ${extension.name}, window WebContents ID: ${activeTab.id}, URL: ${activeTab.getURL()}`);
+          // Find and register the active webview with the extension system
+          const activeWebview = await this._getAndRegisterActiveWebview(window);
+          const activeTab = activeWebview || window.webContents; // Use webview if available, fallback to main window
+          
+          if (!activeWebview) {
+            console.warn(`[ExtensionManager] No active webview found for ${extension.name} popup, using main window fallback`);
+          } else {
+            console.log(`[ExtensionManager] Using active webview for ${extension.name} popup: ${activeTab.getURL()}`);
+            
+            // Try to set active tab in ElectronChromeExtensions if methods are available
+            try {
+              if (this.electronChromeExtensions.setActiveTab) {
+                this.electronChromeExtensions.setActiveTab(activeTab);
+              } else if (this.electronChromeExtensions.activateTab) {
+                this.electronChromeExtensions.activateTab(activeTab);
+              } else if (this.electronChromeExtensions.selectTab) {
+                this.electronChromeExtensions.selectTab(activeTab);
+              }
+            } catch (error) {
+              console.warn(`[ExtensionManager] Could not set active tab:`, error);
+            }
+          }
           
           // Try to trigger the browser action via ElectronChromeExtensions
           // This should open the popup if the extension has one
           if (this.electronChromeExtensions.getBrowserAction) {
             const browserAction = this.electronChromeExtensions.getBrowserAction(extension.electronId);
             if (browserAction && browserAction.onClicked) {
-              // Trigger the browser action click which should open popup
+              // Trigger the browser action click which should open popup using the active webview
               browserAction.onClicked.trigger(activeTab);
               console.log(`ExtensionManager: Browser action triggered for ${extension.name}`);
               return { success: true };
@@ -489,6 +511,14 @@ class ExtensionManager {
               await popupWindow.loadURL(popupUrl);
               popupWindow.show();
               
+              // Track this popup for auto-close on tab switch
+              this.activePopups.add(popupWindow);
+              
+              // Remove from tracking when closed
+              popupWindow.on('closed', () => {
+                this.activePopups.delete(popupWindow);
+              });
+              
               // Auto-close popup when main window loses focus or after timeout
               setTimeout(() => {
                 if (!popupWindow.isDestroyed()) {
@@ -527,22 +557,15 @@ class ExtensionManager {
    * @param {Electron.WebContents} webContents - WebContents to register as tab
    */
   addWindow(window, webContents) {
-    console.log(`[ExtensionManager] addWindow called with window ${window.id}, webContents ${webContents.id}`);
-    
     if (this.electronChromeExtensions) {
       try {
-        console.log(`[ExtensionManager] Registering webContents ${webContents.id} with ElectronChromeExtensions`);
         this.electronChromeExtensions.addTab(webContents, window);
-        console.log(`[ExtensionManager] ✅ Successfully registered with ElectronChromeExtensions`, {
-          windowId: window.id,
-          webContentsId: webContents.id,
-          url: webContents.getURL()
-        });
+        console.log(`[ExtensionManager] Registered webContents ${webContents.id} with extension system`);
       } catch (error) {
-        console.error(`[ExtensionManager] ❌ Failed to register window:`, error);
+        console.error(`[ExtensionManager] Failed to register window:`, error);
       }
     } else {
-      console.warn('[ExtensionManager] addWindow called but ElectronChromeExtensions not available');
+      console.warn('[ExtensionManager] ElectronChromeExtensions not available');
     }
   }
 
@@ -552,18 +575,13 @@ class ExtensionManager {
    * @param {Electron.WebContents} webContents - WebContents to unregister
    */
   removeWindow(webContents) {
-    console.log(`[ExtensionManager] removeWindow called for webContents ${webContents.id}`);
-    
     if (this.electronChromeExtensions) {
       try {
-        console.log(`[ExtensionManager] Unregistering webContents ${webContents.id} from ElectronChromeExtensions`);
         this.electronChromeExtensions.removeTab(webContents);
-        console.log(`[ExtensionManager] ✅ Successfully unregistered webContents ${webContents.id} from ElectronChromeExtensions`);
+        console.log(`[ExtensionManager] Unregistered webContents ${webContents.id} from extension system`);
       } catch (error) {
-        console.error(`[ExtensionManager] ❌ Failed to unregister window:`, error);
+        console.error(`[ExtensionManager] Failed to unregister window:`, error);
       }
-    } else {
-      console.warn('[ExtensionManager] removeWindow called but ElectronChromeExtensions not available');
     }
   }
 
@@ -1022,6 +1040,86 @@ class ExtensionManager {
    */
   async _saveAllExtensionMetadata() {
     await this._writeRegistry();
+  }
+
+  /**
+   * Get the active webview and register it with the extension system
+   * Uses the same reliable approach as bookmarks
+   * 
+   * @param {Electron.BrowserWindow} window - Browser window
+   * @returns {Promise<Electron.WebContents|null>} Active webview WebContents or null
+   */
+  async _getAndRegisterActiveWebview(window) {
+    try {
+      // Use the same approach that bookmarks use - simple and reliable
+      const activeTabData = await window.webContents.executeJavaScript(`
+        (function() {
+          try {
+            const tabBar = document.querySelector('#tabbar');
+            if (!tabBar || !tabBar.getActiveTab) return null;
+            
+            // Use the same method bookmarks use
+            const activeTab = tabBar.getActiveTab();
+            if (!activeTab) return null;
+            
+            // Also get the webview for this tab
+            const activeWebview = tabBar.getActiveWebview();
+            if (!activeWebview) return null;
+            
+            return {
+              tabId: activeTab.id,
+              url: activeTab.url,
+              title: activeTab.title,
+              webContentsId: activeWebview.getWebContentsId()
+            };
+          } catch (error) {
+            console.error('[ExtensionManager] Error getting active tab:', error);
+            return null;
+          }
+        })();
+      `);
+
+      if (!activeTabData || !activeTabData.webContentsId) {
+        return null;
+      }
+
+      // Get the actual WebContents object
+      const { webContents } = await import('electron');
+      const activeWebviewContents = webContents.fromId(activeTabData.webContentsId);
+      
+      if (!activeWebviewContents) {
+        console.warn(`[ExtensionManager] WebContents ${activeTabData.webContentsId} not found`);
+        return null;
+      }
+
+      // Register this webview with the extension system
+      this.addWindow(window, activeWebviewContents);
+      return activeWebviewContents;
+    } catch (error) {
+      console.error('[ExtensionManager] Failed to get and register active webview:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Close all active extension popups
+   */
+  closeAllPopups() {
+    if (this.activePopups.size > 0) {
+      console.log(`[ExtensionManager] Closing ${this.activePopups.size} active popups`);
+      
+      for (const popup of this.activePopups) {
+        try {
+          if (!popup.isDestroyed()) {
+            popup.close();
+          }
+        } catch (error) {
+          console.warn('[ExtensionManager] Error closing popup:', error);
+        }
+      }
+      
+      this.activePopups.clear();
+    }
   }
 }
 
