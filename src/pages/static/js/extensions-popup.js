@@ -7,11 +7,67 @@ export class ExtensionsPopup {
         this.popup = null;
         this.isVisible = false;
         this.targetButton = null;
+        this.extensions = []; // Store real extension data
+        this.isLoading = false;
         
         // Bind methods to preserve context
         this.hide = this.hide.bind(this);
         this.handleClickOutside = this.handleClickOutside.bind(this);
         this.handleKeyDown = this.handleKeyDown.bind(this);
+        
+        // Setup IPC access (same pattern as nav-box)
+        this.ipc = (() => {
+            const { ipcRenderer } = require('electron');
+            return ipcRenderer;
+        })();
+        
+        // Setup real-time extension state listening
+        this.setupExtensionListeners();
+    }
+
+    /**
+     * Setup real-time extension state listeners
+     */
+    setupExtensionListeners() {
+        // Listen for browser action changes (enable/disable, install/uninstall)
+        this.ipc.on('browser-action-changed', (event, data) => {
+            console.log('[ExtensionsPopup] Browser action changed:', data);
+            
+            // If popup is visible, refresh the extension list
+            if (this.isVisible) {
+                this.refreshExtensionList();
+            }
+        });
+
+        // Listen for general extension state changes
+        this.ipc.on('extension-toggled', (event, extensionId, enabled) => {
+            console.log(`[ExtensionsPopup] Extension ${extensionId} toggled: ${enabled}`);
+            
+            // If popup is visible, refresh the extension list
+            if (this.isVisible) {
+                this.refreshExtensionList();
+            }
+        });
+
+        // Listen for extension installations
+        this.ipc.on('extension-installed', (event, extensionData) => {
+            console.log('[ExtensionsPopup] Extension installed:', extensionData);
+            
+            // If popup is visible, refresh the extension list
+            if (this.isVisible) {
+                this.refreshExtensionList();
+            }
+        });
+
+        // Listen for extension uninstalls
+        this.ipc.on('extension-uninstalled', (event, extensionId) => {
+            console.log('[ExtensionsPopup] Extension uninstalled:', extensionId);
+            
+            // If popup is visible, refresh the extension list
+            if (this.isVisible) {
+                this.refreshExtensionList();
+            }
+        });
     }
 
     /**
@@ -65,25 +121,62 @@ export class ExtensionsPopup {
     }
 
     /**
-     * Generate sample extension items for the static UI (secured)
+     * Load real extension data from backend
+     */
+    async loadExtensions() {
+        this.isLoading = true;
+        
+        try {
+            // Use same IPC call as nav-box to get enabled extensions with browser actions
+            const result = await this.ipc.invoke('extensions-list-browser-actions');
+            
+            if (result?.success) {
+                this.extensions = result.actions || [];
+                console.log(`[ExtensionsPopup] Loaded ${this.extensions.length} enabled extensions`);
+            } else {
+                console.error('[ExtensionsPopup] Failed to load extensions:', result?.error);
+                this.extensions = [];
+            }
+        } catch (error) {
+            console.error('[ExtensionsPopup] Extension loading error:', error);
+            this.extensions = [];
+        } finally {
+            this.isLoading = false;
+        }
+    }
+
+    /**
+     * Generate extension items from real data (secured)
      */
     generateExtensionItems() {
-        const sampleExtensions = [
-            { id: '1', name: 'Extension One', pinned: true },
-            { id: '2', name: 'Extension Two', pinned: false },
-            { id: '3', name: 'Extension Three', pinned: false },
-        ];
+        if (this.isLoading) {
+            return `
+                <div class="extension-loading">
+                    <div class="loading-spinner"></div>
+                    <p>Loading extensions...</p>
+                </div>
+            `;
+        }
 
-        return sampleExtensions.map(ext => {
-            const escapedId = this.escapeHtmlAttribute(ext.id);
-            const escapedName = this.escapeHtml(ext.name);
-            const escapedNameAttr = this.escapeHtmlAttribute(ext.name);
-            const pinLabel = ext.pinned ? 'Unpin' : 'Pin';
+        if (this.extensions.length === 0) {
+            return `
+                <div class="extensions-empty">
+                    <p>No enabled extensions</p>
+                </div>
+            `;
+        }
+
+        return this.extensions.map(ext => {
+            const escapedId = this.escapeHtmlAttribute(ext.id || '');
+            const escapedName = this.escapeHtml(ext.name || 'Unknown Extension');
+            const escapedNameAttr = this.escapeHtmlAttribute(ext.name || 'Unknown Extension');
+            const pinLabel = ext.pinned ? 'Unpin' : 'Pin'; // TODO: Add pinning logic
             
             return `
                 <div class="extension-item" role="listitem" data-extension-id="${escapedId}">
                     <div class="extension-icon" role="img" aria-label="${escapedNameAttr} icon">
-                        <div class="svg-container"></div>
+                        ${ext.icon ? `<img src="${this.escapeHtmlAttribute(ext.icon)}" alt="${escapedNameAttr} icon" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">` : ''}
+                        <div class="svg-container" style="${ext.icon ? 'display:none' : 'display:block'}"></div>
                     </div>
                     <div class="extension-name" title="${escapedNameAttr}">
                         ${escapedName}
@@ -147,7 +240,7 @@ export class ExtensionsPopup {
     /**
      * Show the popup
      */
-    show(targetButton) {
+    async show(targetButton) {
         if (this.isVisible) return;
 
         this.targetButton = targetButton;
@@ -160,6 +253,9 @@ export class ExtensionsPopup {
         this.popup.classList.add('open');
         this.isVisible = true;
 
+        // Load extension data and update popup content
+        await this.refreshExtensionList();
+
         // Position after DOM update
         requestAnimationFrame(() => {
             this.positionPopup();
@@ -168,6 +264,28 @@ export class ExtensionsPopup {
         // Setup global event listeners
         document.addEventListener('click', this.handleClickOutside);
         document.addEventListener('keydown', this.handleKeyDown);
+    }
+
+    /**
+     * Refresh the extension list in the popup
+     */
+    async refreshExtensionList() {
+        if (!this.popup) return;
+
+        const listContainer = this.popup.querySelector('.extensions-popup-list');
+        if (!listContainer) return;
+
+        // Show loading state
+        this.isLoading = true;
+        listContainer.innerHTML = this.generateExtensionItems();
+        this.loadPopupSVGs(this.popup); // Load loading spinner if any
+
+        // Load real data
+        await this.loadExtensions();
+        
+        // Update with real data
+        listContainer.innerHTML = this.generateExtensionItems();
+        this.loadPopupSVGs(this.popup); // Load all SVGs for the new content
     }
 
     /**
@@ -251,11 +369,18 @@ export class ExtensionsPopup {
             return;
         }
 
+        // Find the extension data for the clicked item
+        const extension = this.extensions.find(ext => ext.id === extensionId);
+        if (!extension) {
+            console.warn('ExtensionsPopup: Extension data not found for', extensionId);
+            return;
+        }
+
         // Get the nav-box instance to trigger the extension action
         const navBox = document.querySelector('nav-box');
         if (navBox) {
             // Create a temporary icon next to the puzzle button for anchoring
-            const tempIcon = this.insertTempIconNextToPuzzle(extensionId);
+            const tempIcon = this.insertTempIconNextToPuzzle(extensionId, extension);
             if (tempIcon) {
                 // Trigger the extension action with the temp icon as anchor
                 navBox.handleExtensionActionClick(extensionId, tempIcon, { isPinned: false });
@@ -271,7 +396,7 @@ export class ExtensionsPopup {
     /**
      * Insert temporary icon next to puzzle button for non-pinned extensions
      */
-    insertTempIconNextToPuzzle(extensionId) {
+    insertTempIconNextToPuzzle(extensionId, extension) {
         const navBox = document.querySelector('nav-box');
         const puzzleButton = navBox?.querySelector('#extensions');
         
@@ -280,15 +405,31 @@ export class ExtensionsPopup {
             return null;
         }
 
-        // Create temporary icon
+        // Create temporary icon (same structure as nav-box renderBrowserActions)
         const tempIcon = document.createElement('button');
         tempIcon.className = 'extension-action-btn temp-icon';
-        tempIcon.dataset.extensionId = extensionId;
+        tempIcon.dataset.extensionId = this.escapeHtmlAttribute(extensionId);
+        tempIcon.title = this.escapeHtmlAttribute(extension.title || extension.name || '');
         tempIcon.style.cssText = `
             opacity: 0;
             transform: scale(0.8);
             transition: all 0.12s ease;
         `;
+        
+        // Create and validate icon (same pattern as nav-box)
+        const img = document.createElement('img');
+        img.className = 'extension-icon';
+        img.src = extension.icon || 'peersky://static/assets/svg/puzzle.svg';
+        img.alt = this.escapeHtmlAttribute(extension.name || 'Extension');
+        tempIcon.appendChild(img);
+        
+        // Add badge if present (same as nav-box)
+        if (extension.badgeText) {
+            const badge = document.createElement('span');
+            badge.className = 'extension-badge';
+            badge.textContent = extension.badgeText;
+            tempIcon.appendChild(badge);
+        }
         
         // Insert after puzzle button
         puzzleButton.parentNode.insertBefore(tempIcon, puzzleButton.nextSibling);
@@ -299,7 +440,6 @@ export class ExtensionsPopup {
             tempIcon.style.transform = 'scale(1)';
         });
 
-        // Set up cleanup after popup closes (will be handled by nav-box)
         return tempIcon;
     }
 
@@ -358,6 +498,12 @@ export class ExtensionsPopup {
     destroy() {
         this.hide();
         
+        // Clean up extension event listeners
+        this.ipc.removeAllListeners('browser-action-changed');
+        this.ipc.removeAllListeners('extension-toggled');
+        this.ipc.removeAllListeners('extension-installed');
+        this.ipc.removeAllListeners('extension-uninstalled');
+        
         if (this.popup) {
             this.popup.remove();
             this.popup = null;
@@ -388,11 +534,19 @@ export class ExtensionsPopup {
             this.loadSVG(container, 'peersky://static/assets/svg/three-dots.svg');
         });
 
-        // Load extension icons (placeholder puzzle piece icons)
+        // Load extension fallback icons (puzzle piece for fallback)
         const extensionIcons = popup.querySelectorAll('.extension-icon .svg-container');
         extensionIcons.forEach(container => {
             this.loadSVG(container, 'peersky://static/assets/svg/puzzle.svg');
         });
+
+        // Empty state no longer has an icon - removed for cleaner UI
+
+        // Load loading state elements (if any specific icons needed)
+        const loadingIcon = popup.querySelector('.extension-loading .svg-container');
+        if (loadingIcon) {
+            this.loadSVG(loadingIcon, 'peersky://static/assets/svg/puzzle.svg');
+        }
     }
 
     /**
