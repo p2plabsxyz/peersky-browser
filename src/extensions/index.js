@@ -35,7 +35,7 @@ import { ElectronChromeExtensions } from 'electron-chrome-extensions';
 import ManifestValidator from './manifest-validator.js';
 import { ensureDir, readJsonSafe, writeJsonAtomic, KeyedMutex, ERR } from './util.js';
 import ChromeWebStoreManager from './chrome-web-store.js';
-import { parseUrlOrId, buildWebStoreUrl } from './url-utils.js';
+// URL parsing now handled by ManifestValidator
 import { withExtensionLock, withInstallLock, withUpdateLock } from './mutex.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -169,10 +169,13 @@ class ExtensionManager {
         // Validate and prepare extension
         const extensionData = await this._prepareExtension(sourcePath);
         
-        // Validate manifest
-        const validationResult = await this.manifestValidator.validate(extensionData.manifest);
+        // Use consolidated validation
+        const validationResult = await this.manifestValidator.validateExtension(
+          extensionData.installedPath, 
+          extensionData.manifest
+        );
         if (!validationResult.isValid) {
-          throw new Error(`Invalid manifest: ${validationResult.errors.join(', ')}`);
+          throw new Error(`Extension validation failed: ${validationResult.errors.join(', ')}`);
         }
 
         // Save extension metadata
@@ -662,8 +665,8 @@ class ExtensionManager {
       try {
         console.log('ExtensionManager: Installing from Chrome Web Store:', urlOrId);
 
-        // Parse URL or ID
-        const extensionId = parseUrlOrId(urlOrId);
+        // Parse URL or ID using consolidated validator
+        const extensionId = this.manifestValidator.parseWebStoreUrl(urlOrId);
         if (!extensionId) {
           throw Object.assign(
             new Error('Invalid Chrome Web Store URL or extension ID format'),
@@ -716,7 +719,7 @@ class ExtensionManager {
           installedPath: electronExtension.path,
           iconPath: iconPath,
           source: 'webstore',
-          webStoreUrl: buildWebStoreUrl(extensionId),
+          webStoreUrl: this.manifestValidator.buildWebStoreUrl(extensionId),
           electronId: electronExtension.id,
           permissions: electronExtension.manifest?.permissions || [],
           manifest: electronExtension.manifest,
@@ -1016,8 +1019,7 @@ class ExtensionManager {
         throw new Error('Source must be a directory');
       }
       
-      // Validate extension files before copying
-      await this._validateExtensionFiles(resolvedSource, manifest);
+      // Basic file validation is now handled by ManifestValidator.validateExtension()
       
       // Use atomic operations: copy to temporary location first
       const tempPath = `${resolvedTarget}.tmp.${Date.now()}`;
@@ -1054,131 +1056,7 @@ class ExtensionManager {
     }
   }
 
-  /**
-   * Validate extension files for security issues
-   * Prevents malicious file injection and validates file types
-   * 
-   * @param {string} extensionPath - Extension directory path
-   * @param {Object} manifest - Extension manifest for validation
-   * @returns {Promise<void>}
-   */
-  async _validateExtensionFiles(extensionPath, manifest) {
-    try {
-      // Allowed file extensions for extensions
-      const allowedExtensions = [
-        '.js', '.json', '.html', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg',
-        '.woff', '.woff2', '.ttf', '.eot', '.ico', '.md', '.txt'
-      ];
-      
-      // Dangerous file patterns to block
-      const dangerousPatterns = [
-        /\.exe$/i, /\.dll$/i, /\.bat$/i, /\.cmd$/i, /\.sh$/i,
-        /\.scr$/i, /\.vbs$/i, /\.ps1$/i, /\.bin$/i, /\.dmg$/i
-      ];
-      
-      // Maximum file size (10MB)
-      const maxFileSize = 10 * 1024 * 1024;
-      
-      // Maximum total files
-      const maxFiles = 1000;
-      
-      let fileCount = 0;
-      
-      // Recursively validate all files
-      async function validateDirectory(dirPath) {
-        const entries = await fs.readdir(dirPath, { withFileTypes: true });
-        
-        for (const entry of entries) {
-          const fullPath = path.join(dirPath, entry.name);
-          const relativePath = path.relative(extensionPath, fullPath);
-          
-          if (entry.isDirectory()) {
-            // Skip hidden directories and node_modules
-            if (entry.name.startsWith('.') || entry.name === 'node_modules') {
-              console.warn(`ExtensionManager: Skipping hidden/system directory: ${relativePath}`);
-              continue;
-            }
-            
-            await validateDirectory(fullPath);
-          } else {
-            fileCount++;
-            
-            // Check file count limit
-            if (fileCount > maxFiles) {
-              throw new Error(`Too many files in extension (max: ${maxFiles})`);
-            }
-            
-            // Check file extension
-            const ext = path.extname(entry.name).toLowerCase();
-            if (!allowedExtensions.includes(ext)) {
-              throw new Error(`Disallowed file extension: ${ext} in file ${relativePath}`);
-            }
-            
-            // Check for dangerous patterns
-            if (dangerousPatterns.some(pattern => pattern.test(entry.name))) {
-              throw new Error(`Dangerous file pattern detected: ${relativePath}`);
-            }
-            
-            // Check file size
-            const stats = await fs.stat(fullPath);
-            if (stats.size > maxFileSize) {
-              throw new Error(`File too large: ${relativePath} (${stats.size} bytes, max: ${maxFileSize})`);
-            }
-            
-            // Validate specific file types
-            if (ext === '.js') {
-              await this._validateJavaScriptFile(fullPath, relativePath);
-            } else if (ext === '.json' && entry.name === 'manifest.json') {
-              // Manifest is already validated elsewhere
-            }
-          }
-        }
-      }
-      
-      await validateDirectory(extensionPath);
-      
-      console.log(`ExtensionManager: Validated ${fileCount} files in extension: ${manifest.name}`);
-      
-    } catch (error) {
-      console.error('ExtensionManager: File validation failed:', error);
-      throw new Error(`File validation failed: ${error.message}`);
-    }
-  }
-
-  /**
-   * Validate JavaScript files for basic security issues
-   * 
-   * @param {string} filePath - JavaScript file path
-   * @param {string} relativePath - Relative path for error reporting
-   * @returns {Promise<void>}
-   */
-  async _validateJavaScriptFile(filePath, relativePath) {
-    try {
-      const content = await fs.readFile(filePath, 'utf8');
-      
-      // Dangerous patterns to detect in JavaScript
-      const dangerousPatterns = [
-        /eval\s*\(/i,
-        /Function\s*\(/i,
-        /execSync|exec\s*\(/i,
-        /child_process/i,
-        /require\s*\(\s*['"]fs['"]|require\s*\(\s*['"]path['"]/i,
-        /document\.write\s*\(/i,
-        /innerHTML\s*=.*<script/i
-      ];
-      
-      for (const pattern of dangerousPatterns) {
-        if (pattern.test(content)) {
-          console.warn(`ExtensionManager: Potentially dangerous code in ${relativePath}: ${pattern}`);
-          // Log warning but don't block - some patterns might be legitimate
-        }
-      }
-      
-    } catch (error) {
-      console.warn(`ExtensionManager: Could not validate JavaScript file ${relativePath}:`, error.message);
-      // Don't block installation for file read errors
-    }
-  }
+  // File validation methods removed - now handled by ManifestValidator.validateExtensionFiles()
 
   /**
    * Load extensions into Electron's extension system
@@ -1241,7 +1119,7 @@ class ExtensionManager {
     // Generate secure extension ID using cryptographic hashing
     const extensionId = this._generateSecureExtensionId(manifest);
     
-    // Securely copy extension to extensions directory with validation
+    // Copy extension to extensions directory (validation happens in installExtension)
     const targetPath = path.join(this.extensionsBaseDir, extensionId);
     await this._secureFileCopy(dirPath, targetPath, manifest);
 

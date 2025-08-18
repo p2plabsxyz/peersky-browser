@@ -25,6 +25,12 @@
  * 
  * Provides comprehensive validation of extension manifests with detailed
  * error reporting and security-focused validation rules.
+ * 
+ * Consolidated validation system that handles:
+ * - Manifest V3 validation
+ * - Chrome Web Store URL parsing
+ * - Basic file security validation
+ * - Permission risk assessment
  */
 class ManifestValidator {
   constructor() {
@@ -39,6 +45,58 @@ class ManifestValidator {
     this.patterns = {
       version: /^\d+(\.\d+)*$/,
       name: /^[\w\s\-\.]{1,50}$/
+    };
+
+    // Chrome Web Store URL parsing
+    this.webStore = {
+      // Chrome Web Store extension ID format: 32 characters, letters a-p only
+      idPattern: /^[a-p]{32}$/i,
+      
+      // Chrome Web Store URL format with extension ID extraction
+      urlPattern: /^https?:\/\/(?:chrome\.google\.com\/webstore\/detail|chromewebstore\.google\.com\/detail)\/[^/]+\/([a-p]{32})(?:\b|\/)?/i,
+      
+      // Allowed domains
+      allowedDomains: [
+        'chrome.google.com',
+        'chromewebstore.google.com'
+      ],
+      
+      // Blocked malicious domains
+      blockedDomains: [
+        'chrome-store.com',
+        'chrome-webstore.com', 
+        'google-chrome.com',
+        'chromium-store.com',
+        'fake-chrome-store.com',
+        'malicious-extensions.com'
+      ],
+      
+      // Suspicious URL patterns
+      suspiciousPatterns: [
+        /bit\.ly|tinyurl|t\.co/i,  // URL shorteners
+        /[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/,  // IP addresses
+        /localhost|127\.0\.0\.1|0\.0\.0\.0/i,  // Local addresses
+        /\.tk$|\.ml$|\.ga$|\.cf$/i,  // Suspicious TLDs
+      ]
+    };
+
+    // File validation settings
+    this.fileValidation = {
+      // Allowed file extensions
+      allowedExtensions: [
+        '.js', '.json', '.html', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg',
+        '.woff', '.woff2', '.ttf', '.eot', '.ico', '.md', '.txt'
+      ],
+      
+      // Blocked executable patterns
+      blockedPatterns: [
+        /\.exe$/i, /\.dll$/i, /\.bat$/i, /\.cmd$/i, /\.sh$/i,
+        /\.scr$/i, /\.vbs$/i, /\.ps1$/i, /\.bin$/i, /\.dmg$/i
+      ],
+      
+      // Size limits
+      maxFileSize: 10 * 1024 * 1024, // 10MB
+      maxTotalFiles: 1000
     };
 
     // Permission security configuration
@@ -382,6 +440,229 @@ class ManifestValidator {
       permissions: manifest.permissions || [],
       hostPermissions: manifest.host_permissions || []
     };
+  }
+
+  /**
+   * Parse Chrome Web Store URL or extension ID with security validation
+   * 
+   * @param {string} input - URL or extension ID to parse
+   * @returns {string|null} - Extension ID if valid, null if invalid or unsafe
+   */
+  parseWebStoreUrl(input) {
+    if (!input || typeof input !== 'string') {
+      return null;
+    }
+    
+    const trimmed = input.trim();
+    
+    // Check for suspicious patterns first
+    if (this.webStore.suspiciousPatterns.some(pattern => pattern.test(trimmed))) {
+      console.warn('ManifestValidator: Blocked suspicious URL pattern:', trimmed);
+      return null;
+    }
+    
+    // Try to extract ID from URL first
+    const urlMatch = trimmed.match(this.webStore.urlPattern);
+    if (urlMatch) {
+      try {
+        const url = new URL(trimmed);
+        
+        // Validate domain is in allowlist
+        if (!this.webStore.allowedDomains.includes(url.hostname.toLowerCase())) {
+          console.warn('ManifestValidator: Domain not in allowlist:', url.hostname);
+          return null;
+        }
+        
+        // Check domain is not in blocklist
+        if (this.webStore.blockedDomains.includes(url.hostname.toLowerCase())) {
+          console.warn('ManifestValidator: Blocked malicious domain:', url.hostname);
+          return null;
+        }
+        
+        // Validate HTTPS
+        if (url.protocol !== 'https:') {
+          console.warn('ManifestValidator: Non-HTTPS URL rejected:', trimmed);
+          return null;
+        }
+        
+        return urlMatch[1].toLowerCase();
+      } catch (error) {
+        console.warn('ManifestValidator: Invalid URL format:', trimmed);
+        return null;
+      }
+    }
+    
+    // Check if input is a direct extension ID
+    if (this.webStore.idPattern.test(trimmed)) {
+      return trimmed.toLowerCase();
+    }
+    
+    return null;
+  }
+
+  /**
+   * Validate Chrome Web Store extension ID format
+   * 
+   * @param {string} id - Extension ID to validate
+   * @returns {boolean} - True if valid format
+   */
+  isValidExtensionId(id) {
+    return this.webStore.idPattern.test(id);
+  }
+
+  /**
+   * Build Chrome Web Store URL from extension ID
+   * 
+   * @param {string} id - Extension ID
+   * @returns {string} - Chrome Web Store URL
+   */
+  buildWebStoreUrl(id) {
+    if (!this.isValidExtensionId(id)) {
+      throw new Error('Invalid extension ID format');
+    }
+    return `https://chrome.google.com/webstore/detail/${id}`;
+  }
+
+  /**
+   * Validate extension files for basic security issues
+   * Simplified version focusing on essential security checks
+   * 
+   * @param {string} extensionPath - Extension directory path
+   * @returns {Promise<Object>} Validation result
+   */
+  async validateExtensionFiles(extensionPath) {
+    const result = {
+      isValid: true,
+      errors: [],
+      warnings: [],
+      fileCount: 0
+    };
+
+    try {
+      const fs = await import('fs/promises');
+      const path = await import('path');
+      
+      // Recursively check files
+      async function checkDirectory(dirPath) {
+        const entries = await fs.readdir(dirPath, { withFileTypes: true });
+        
+        for (const entry of entries) {
+          const fullPath = path.join(dirPath, entry.name);
+          const relativePath = path.relative(extensionPath, fullPath);
+          
+          if (entry.isDirectory()) {
+            // Skip hidden directories and node_modules
+            if (entry.name.startsWith('.') || entry.name === 'node_modules') {
+              continue;
+            }
+            await checkDirectory(fullPath);
+          } else {
+            result.fileCount++;
+            
+            // Check file count limit
+            if (result.fileCount > this.fileValidation.maxTotalFiles) {
+              result.errors.push(`Too many files in extension (max: ${this.fileValidation.maxTotalFiles})`);
+              result.isValid = false;
+              return;
+            }
+            
+            // Check file extension
+            const ext = path.extname(entry.name).toLowerCase();
+            if (!this.fileValidation.allowedExtensions.includes(ext)) {
+              result.errors.push(`Disallowed file extension: ${ext} in file ${relativePath}`);
+              result.isValid = false;
+            }
+            
+            // Check for dangerous patterns
+            if (this.fileValidation.blockedPatterns.some(pattern => pattern.test(entry.name))) {
+              result.errors.push(`Dangerous file pattern detected: ${relativePath}`);
+              result.isValid = false;
+            }
+            
+            // Check file size
+            const stats = await fs.stat(fullPath);
+            if (stats.size > this.fileValidation.maxFileSize) {
+              result.errors.push(`File too large: ${relativePath} (${stats.size} bytes, max: ${this.fileValidation.maxFileSize})`);
+              result.isValid = false;
+            }
+          }
+        }
+      }
+      
+      await checkDirectory(extensionPath);
+      
+      if (result.isValid) {
+        console.log(`ManifestValidator: Validated ${result.fileCount} files - all passed security checks`);
+      }
+      
+    } catch (error) {
+      console.error('ManifestValidator: File validation failed:', error);
+      result.errors.push(`File validation failed: ${error.message}`);
+      result.isValid = false;
+    }
+
+    return result;
+  }
+
+  /**
+   * Comprehensive extension validation - single entry point
+   * 
+   * @param {string} extensionPath - Extension directory path  
+   * @param {Object} manifest - Extension manifest object
+   * @param {string} [sourceUrl] - Optional Chrome Web Store URL for validation
+   * @returns {Promise<Object>} Complete validation result
+   */
+  async validateExtension(extensionPath, manifest, sourceUrl = null) {
+    const result = {
+      isValid: true,
+      errors: [],
+      warnings: [],
+      manifestValidation: null,
+      fileValidation: null,
+      urlValidation: null
+    };
+
+    try {
+      // 1. Validate manifest
+      result.manifestValidation = this.validate(manifest);
+      if (!result.manifestValidation.isValid) {
+        result.errors.push(...result.manifestValidation.errors);
+        result.isValid = false;
+      }
+      result.warnings.push(...result.manifestValidation.warnings);
+
+      // 2. Validate files
+      result.fileValidation = await this.validateExtensionFiles(extensionPath);
+      if (!result.fileValidation.isValid) {
+        result.errors.push(...result.fileValidation.errors);
+        result.isValid = false;
+      }
+      result.warnings.push(...result.fileValidation.warnings);
+
+      // 3. Validate source URL if provided
+      if (sourceUrl) {
+        const parsedId = this.parseWebStoreUrl(sourceUrl);
+        result.urlValidation = {
+          isValid: parsedId !== null,
+          parsedExtensionId: parsedId,
+          originalUrl: sourceUrl
+        };
+        
+        if (!result.urlValidation.isValid) {
+          result.errors.push('Invalid Chrome Web Store URL format');
+          result.isValid = false;
+        }
+      }
+
+      console.log(`ManifestValidator: Complete validation ${result.isValid ? 'passed' : 'failed'} for ${manifest.name || 'unknown'}`);
+      return result;
+
+    } catch (error) {
+      console.error('ManifestValidator: Extension validation error:', error);
+      result.errors.push('Internal validation error');
+      result.isValid = false;
+      return result;
+    }
   }
 }
 
