@@ -45,7 +45,27 @@ export class ExtensionsPopup {
     }
 
     /**
-     * Generate sample extension items for the static UI
+     * HTML sanitization utilities for extension security
+     */
+    escapeHtml(text) {
+        if (!text || typeof text !== 'string') return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    escapeHtmlAttribute(text) {
+        if (!text || typeof text !== 'string') return '';
+        return text
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#x27;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+
+    /**
+     * Generate sample extension items for the static UI (secured)
      */
     generateExtensionItems() {
         const sampleExtensions = [
@@ -54,34 +74,41 @@ export class ExtensionsPopup {
             { id: '3', name: 'Extension Three', pinned: false },
         ];
 
-        return sampleExtensions.map(ext => `
-            <div class="extension-item" role="listitem" data-extension-id="${ext.id}">
-                <div class="extension-icon" role="img" aria-label="${ext.name} icon">
-                    <div class="svg-container"></div>
-                </div>
-                <div class="extension-name" title="${ext.name}">
-                    ${ext.name}
-                </div>
-                <div class="extension-controls">
-                    <button 
-                        class="pin-button ${ext.pinned ? 'pinned' : ''}" 
-                        type="button"
-                        aria-label="${ext.pinned ? 'Unpin' : 'Pin'} ${ext.name}"
-                        title="${ext.pinned ? 'Unpin' : 'Pin'} extension"
-                    >
+        return sampleExtensions.map(ext => {
+            const escapedId = this.escapeHtmlAttribute(ext.id);
+            const escapedName = this.escapeHtml(ext.name);
+            const escapedNameAttr = this.escapeHtmlAttribute(ext.name);
+            const pinLabel = ext.pinned ? 'Unpin' : 'Pin';
+            
+            return `
+                <div class="extension-item" role="listitem" data-extension-id="${escapedId}">
+                    <div class="extension-icon" role="img" aria-label="${escapedNameAttr} icon">
                         <div class="svg-container"></div>
-                    </button>
-                    <button 
-                        class="kebab-button" 
-                        type="button"
-                        aria-label="More options for ${ext.name}"
-                        title="More options"
-                    >
-                        <div class="svg-container"></div>
-                    </button>
+                    </div>
+                    <div class="extension-name" title="${escapedNameAttr}">
+                        ${escapedName}
+                    </div>
+                    <div class="extension-controls">
+                        <button 
+                            class="pin-button ${ext.pinned ? 'pinned' : ''}" 
+                            type="button"
+                            aria-label="${this.escapeHtmlAttribute(pinLabel + ' ' + ext.name)}"
+                            title="${this.escapeHtmlAttribute(pinLabel + ' extension')}"
+                        >
+                            <div class="svg-container"></div>
+                        </button>
+                        <button 
+                            class="kebab-button" 
+                            type="button"
+                            aria-label="${this.escapeHtmlAttribute('More options for ' + ext.name)}"
+                            title="More options"
+                        >
+                            <div class="svg-container"></div>
+                        </button>
+                    </div>
                 </div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
     }
 
     /**

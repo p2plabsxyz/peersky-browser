@@ -118,6 +118,44 @@ class NavBox extends HTMLElement {
     this.renderBrowserActions();
   }
 
+  // HTML sanitization utilities for extension security
+  escapeHtml(text) {
+    if (!text || typeof text !== 'string') return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  escapeHtmlAttribute(text) {
+    if (!text || typeof text !== 'string') return '';
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#x27;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  // Validate and sanitize extension icon URLs
+  validateIconUrl(url) {
+    if (!url || typeof url !== 'string') {
+      return 'peersky://static/assets/svg/puzzle.svg'; // Fallback icon
+    }
+
+    // Allow only safe schemes
+    const allowedSchemes = ['peersky:', 'data:', 'blob:'];
+    const urlLower = url.toLowerCase();
+    
+    const isAllowed = allowedSchemes.some(scheme => urlLower.startsWith(scheme));
+    
+    if (!isAllowed) {
+      console.warn(`[NavBox] Blocked unsafe icon URL: ${url}`);
+      return 'peersky://static/assets/svg/puzzle.svg'; // Fallback icon
+    }
+
+    return url;
+  }
+
   async renderBrowserActions() {
     console.log('[NavBox] renderBrowserActions() called');
     const container = this.querySelector("#extension-icons");
@@ -131,25 +169,49 @@ class NavBox extends HTMLElement {
       const result = await navBoxIPC.invoke('extensions-list-browser-actions');
       
       if (result?.success && result.actions?.length > 0) {
-        container.innerHTML = result.actions.map(action => `
-          <button class="extension-action-btn" 
-                  data-extension-id="${action.id}" 
-                  title="${action.title || action.name}">
-            <img src="${action.icon}" alt="${action.name}" class="extension-icon">
-            ${action.badgeText ? `<span class="extension-badge">${action.badgeText}</span>` : ''}
-          </button>
-        `).join('');
+        // Clear container first for security
+        container.innerHTML = '';
         
-        // Add click listeners to extension action buttons
-        container.querySelectorAll('.extension-action-btn').forEach(btn => {
-          btn.addEventListener('click', (e) => {
+        // Create extension buttons with proper sanitization
+        result.actions.forEach(action => {
+          const button = document.createElement('button');
+          button.className = 'extension-action-btn';
+          
+          // Sanitize extension ID for data attribute
+          const sanitizedId = this.escapeHtmlAttribute(action.id || '');
+          button.dataset.extensionId = sanitizedId;
+          
+          // Sanitize title attribute
+          const sanitizedTitle = this.escapeHtmlAttribute(action.title || action.name || '');
+          button.title = sanitizedTitle;
+          
+          // Create and validate icon
+          const img = document.createElement('img');
+          img.className = 'extension-icon';
+          img.src = this.validateIconUrl(action.icon);
+          img.alt = this.escapeHtmlAttribute(action.name || 'Extension');
+          
+          button.appendChild(img);
+          
+          // Add badge if present (sanitized)
+          if (action.badgeText) {
+            const badge = document.createElement('span');
+            badge.className = 'extension-badge';
+            badge.textContent = action.badgeText; // textContent auto-escapes
+            button.appendChild(badge);
+          }
+          
+          // Add click listener
+          button.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            this.handleExtensionActionClick(btn.dataset.extensionId, btn);
+            this.handleExtensionActionClick(sanitizedId, button);
           });
+          
+          container.appendChild(button);
         });
         
-        console.log(`[NavBox] Rendered ${result.actions.length} extension${result.actions.length !== 1 ? 's' : ''}`);
+        console.log(`[NavBox] Rendered ${result.actions.length} extension${result.actions.length !== 1 ? 's' : ''} (secured)`);
       } else {
         // Clear container if no actions
         container.innerHTML = '';
