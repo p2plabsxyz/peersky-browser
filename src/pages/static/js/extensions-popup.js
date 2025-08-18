@@ -395,14 +395,34 @@ export class ExtensionsPopup {
         // Get the nav-box instance to trigger the extension action
         const navBox = document.querySelector('nav-box');
         if (navBox) {
-            // Create a temporary icon next to the puzzle button for anchoring
-            const tempIcon = this.insertTempIconNextToPuzzle(extensionId, extension);
-            if (tempIcon) {
-                // Trigger the extension action with the temp icon as anchor
-                navBox.handleExtensionActionClick(extensionId, tempIcon, { isPinned: false });
+            let anchorElement = null;
+            let options = { isPinned: false };
+
+            // Check if extension is already pinned and use existing icon
+            if (extension.pinned) {
+                anchorElement = this.findPinnedExtensionIcon(extensionId);
+                if (anchorElement) {
+                    options.isPinned = true;
+                    console.log(`[ExtensionsPopup] Using existing pinned icon for ${extensionId}`);
+                }
+            }
+
+            // If no pinned icon found, create temporary icon for unpinned extensions
+            if (!anchorElement) {
+                anchorElement = this.insertTempIconNextToPuzzle(extensionId, extension);
+                if (anchorElement) {
+                    console.log(`[ExtensionsPopup] Created temporary icon for extension: ${extensionId}`);
+                }
+            }
+
+            if (anchorElement) {
+                // Trigger the extension action with the appropriate anchor
+                navBox.handleExtensionActionClick(extensionId, anchorElement, options);
                 
                 // Hide the dropdown after triggering the action
                 this.hide();
+            } else {
+                console.error(`[ExtensionsPopup] Failed to create anchor element for extension: ${extensionId}`);
             }
         } else {
             console.error('ExtensionsPopup: Nav-box not found');
@@ -410,7 +430,34 @@ export class ExtensionsPopup {
     }
 
     /**
+     * Find existing pinned extension icon in the toolbar
+     * @param {string} extensionId - Extension ID to find
+     * @returns {HTMLElement|null} The pinned extension button or null if not found
+     */
+    findPinnedExtensionIcon(extensionId) {
+        const navBox = document.querySelector('nav-box');
+        if (!navBox) {
+            console.warn('[ExtensionsPopup] Nav-box not found');
+            return null;
+        }
+
+        // Look for pinned extension button with matching extension ID
+        const escapedId = this.escapeHtmlAttribute(extensionId);
+        const pinnedIcon = navBox.querySelector(`.extension-action-btn.pinned-extension[data-extension-id="${escapedId}"]`);
+        
+        if (pinnedIcon) {
+            console.log(`[ExtensionsPopup] Found existing pinned icon for extension: ${extensionId}`);
+            return pinnedIcon;
+        }
+        
+        return null;
+    }
+
+    /**
      * Insert temporary icon next to puzzle button for non-pinned extensions
+     * @param {string} extensionId - Extension ID
+     * @param {Object} extension - Extension data object
+     * @returns {HTMLElement|null} The created temporary button element or null if failed
      */
     insertTempIconNextToPuzzle(extensionId, extension) {
         const navBox = document.querySelector('nav-box');
