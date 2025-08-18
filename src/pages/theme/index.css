@@ -874,6 +874,19 @@ find-menu {
   opacity: 0.3;
   margin: 0 4px;
   flex-shrink: 0;
+  animation: separatorFadeIn 0.12s ease;
+  transform-origin: center;
+}
+
+@keyframes separatorFadeIn {
+  from {
+    opacity: 0;
+    transform: scaleX(0);
+  }
+  to {
+    opacity: 0.3;
+    transform: scaleX(1);
+  }
 }
 
 .extension-action-btn {
@@ -887,17 +900,47 @@ find-menu {
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  transition: all 0.2s ease;
   padding: 2px;
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Smooth animations for pinned extensions appearing/disappearing */
+.extension-action-btn.pinned-extension {
+  animation: extensionPinIn 0.12s ease;
+}
+
+.extension-action-btn.unpinning {
+  animation: extensionPinOut 0.12s ease forwards;
+}
+
+@keyframes extensionPinIn {
+  from {
+    opacity: 0;
+    transform: scale(0.8) translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes extensionPinOut {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.8) translateY(-2px);
+  }
 }
 
 .extension-action-btn:hover {
   background-color: var(--peersky-nav-button-hover);
 }
 
-.extension-action-btn:active {
-  background-color: var(--peersky-nav-button-active);
-}
 
 .extension-icon {
   width: 20px;
