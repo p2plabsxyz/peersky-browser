@@ -29,6 +29,7 @@ const { app } = electron;
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { promises as fs } from 'fs';
+import { createHash } from 'crypto';
 import { installChromeWebStore } from '@iamevan/electron-chrome-web-store';
 import { ElectronChromeExtensions } from 'electron-chrome-extensions';
 import ManifestValidator from './manifest-validator.js';
@@ -177,11 +178,13 @@ class ExtensionManager {
         // Save extension metadata
         await this._saveExtensionMetadata(extensionData);
 
-        // Load extension into Electron's extension system
+        // Load extension into Electron's extension system with security restrictions
         if (this.session && extensionData.enabled) {
           try {
             console.log(`ExtensionManager: Loading installed extension into Electron: ${extensionData.name}`);
-            const electronExtension = await this.session.extensions.loadExtension(extensionData.installedPath, { allowFileAccess: true });
+            const electronExtension = await this.session.extensions.loadExtension(extensionData.installedPath, {
+              allowFileAccess: false  // Restrict file system access for security
+            });
             extensionData.electronId = electronExtension.id;
             console.log(`ExtensionManager: Extension loaded in Electron: ${extensionData.name} (${electronExtension.id})`);
           } catch (error) {
@@ -223,7 +226,9 @@ class ExtensionManager {
         if (this.session) {
           try {
             if (enabled) {
-              const electronExtension = await this.session.extensions.loadExtension(extension.installedPath, { allowFileAccess: true });
+              const electronExtension = await this.session.extensions.loadExtension(extension.installedPath, {
+                allowFileAccess: false  // Restrict file system access for security
+              });
               extension.electronId = electronExtension.id;
             } else {
               if (extension.electronId) {
@@ -550,6 +555,7 @@ class ExtensionManager {
     }
   }
 
+
   /**
    * Register a window with ElectronChromeExtensions for browser action support
    * 
@@ -575,13 +581,22 @@ class ExtensionManager {
    * @param {Electron.WebContents} webContents - WebContents to unregister
    */
   removeWindow(webContents) {
-    if (this.electronChromeExtensions) {
-      try {
-        this.electronChromeExtensions.removeTab(webContents);
-        console.log(`[ExtensionManager] Unregistered webContents ${webContents.id} from extension system`);
-      } catch (error) {
-        console.error(`[ExtensionManager] Failed to unregister window:`, error);
+    if (!this.electronChromeExtensions || !webContents) {
+      return; // Extension system not available or webContents is null
+    }
+    
+    try {
+      // Additional safety check for destroyed webContents
+      if (webContents.isDestroyed && webContents.isDestroyed()) {
+        console.debug(`[ExtensionManager] Skipping unregister of destroyed webContents`);
+        return;
       }
+      
+      this.electronChromeExtensions.removeTab(webContents);
+      console.log(`[ExtensionManager] Unregistered webContents ${webContents.id} from extension system`);
+    } catch (error) {
+      // During shutdown, this is expected and not an error
+      console.debug(`[ExtensionManager] Extension system cleanup during shutdown:`, error.message);
     }
   }
 
@@ -945,6 +960,227 @@ class ExtensionManager {
   }
 
   /**
+   * Generate secure extension ID using cryptographic hashing
+   * Prevents path traversal attacks through malicious extension names
+   * 
+   * @param {Object} manifest - Extension manifest object
+   * @returns {string} Secure 32-character hexadecimal extension ID
+   */
+  _generateSecureExtensionId(manifest) {
+    try {
+      // Create deterministic hash based on extension metadata
+      const hashContent = JSON.stringify({
+        name: manifest.name,
+        version: manifest.version,
+        description: manifest.description || '',
+        author: manifest.author || '',
+        homepage_url: manifest.homepage_url || ''
+      });
+      
+      // Generate SHA-256 hash and use first 32 characters for compatibility
+      const hash = createHash('sha256').update(hashContent).digest('hex');
+      const extensionId = hash.substring(0, 32);
+      
+      console.log(`ExtensionManager: Generated secure ID for "${manifest.name}": ${extensionId}`);
+      return extensionId;
+      
+    } catch (error) {
+      console.error('ExtensionManager: Failed to generate secure extension ID:', error);
+      throw new Error('Failed to generate secure extension ID');
+    }
+  }
+
+  /**
+   * Securely copy extension files with path validation and atomic operations
+   * Prevents directory traversal and malicious file injection
+   * 
+   * @param {string} sourcePath - Source directory path
+   * @param {string} targetPath - Target directory path
+   * @param {Object} manifest - Extension manifest for validation
+   * @returns {Promise<void>}
+   */
+  async _secureFileCopy(sourcePath, targetPath, manifest) {
+    try {
+      // Validate source and target paths
+      const resolvedSource = path.resolve(sourcePath);
+      const resolvedTarget = path.resolve(targetPath);
+      
+      // Ensure target is within extensions directory (prevent directory traversal)
+      if (!resolvedTarget.startsWith(this.extensionsBaseDir)) {
+        throw new Error('Invalid target path: outside extensions directory');
+      }
+      
+      // Validate source directory exists and is readable
+      const sourceStats = await fs.stat(resolvedSource);
+      if (!sourceStats.isDirectory()) {
+        throw new Error('Source must be a directory');
+      }
+      
+      // Validate extension files before copying
+      await this._validateExtensionFiles(resolvedSource, manifest);
+      
+      // Use atomic operations: copy to temporary location first
+      const tempPath = `${resolvedTarget}.tmp.${Date.now()}`;
+      
+      try {
+        // Copy to temporary location
+        await fs.cp(resolvedSource, tempPath, { recursive: true });
+        
+        // Remove target if it exists
+        try {
+          await fs.rm(resolvedTarget, { recursive: true, force: true });
+        } catch (error) {
+          // Target might not exist, which is fine
+        }
+        
+        // Atomic move from temp to final location
+        await fs.rename(tempPath, resolvedTarget);
+        
+        console.log(`ExtensionManager: Securely copied extension to: ${resolvedTarget}`);
+        
+      } catch (error) {
+        // Clean up temp directory on error
+        try {
+          await fs.rm(tempPath, { recursive: true, force: true });
+        } catch (cleanupError) {
+          console.warn('ExtensionManager: Failed to cleanup temp directory:', cleanupError);
+        }
+        throw error;
+      }
+      
+    } catch (error) {
+      console.error('ExtensionManager: Secure file copy failed:', error);
+      throw new Error(`Secure file copy failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Validate extension files for security issues
+   * Prevents malicious file injection and validates file types
+   * 
+   * @param {string} extensionPath - Extension directory path
+   * @param {Object} manifest - Extension manifest for validation
+   * @returns {Promise<void>}
+   */
+  async _validateExtensionFiles(extensionPath, manifest) {
+    try {
+      // Allowed file extensions for extensions
+      const allowedExtensions = [
+        '.js', '.json', '.html', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg',
+        '.woff', '.woff2', '.ttf', '.eot', '.ico', '.md', '.txt'
+      ];
+      
+      // Dangerous file patterns to block
+      const dangerousPatterns = [
+        /\.exe$/i, /\.dll$/i, /\.bat$/i, /\.cmd$/i, /\.sh$/i,
+        /\.scr$/i, /\.vbs$/i, /\.ps1$/i, /\.bin$/i, /\.dmg$/i
+      ];
+      
+      // Maximum file size (10MB)
+      const maxFileSize = 10 * 1024 * 1024;
+      
+      // Maximum total files
+      const maxFiles = 1000;
+      
+      let fileCount = 0;
+      
+      // Recursively validate all files
+      async function validateDirectory(dirPath) {
+        const entries = await fs.readdir(dirPath, { withFileTypes: true });
+        
+        for (const entry of entries) {
+          const fullPath = path.join(dirPath, entry.name);
+          const relativePath = path.relative(extensionPath, fullPath);
+          
+          if (entry.isDirectory()) {
+            // Skip hidden directories and node_modules
+            if (entry.name.startsWith('.') || entry.name === 'node_modules') {
+              console.warn(`ExtensionManager: Skipping hidden/system directory: ${relativePath}`);
+              continue;
+            }
+            
+            await validateDirectory(fullPath);
+          } else {
+            fileCount++;
+            
+            // Check file count limit
+            if (fileCount > maxFiles) {
+              throw new Error(`Too many files in extension (max: ${maxFiles})`);
+            }
+            
+            // Check file extension
+            const ext = path.extname(entry.name).toLowerCase();
+            if (!allowedExtensions.includes(ext)) {
+              throw new Error(`Disallowed file extension: ${ext} in file ${relativePath}`);
+            }
+            
+            // Check for dangerous patterns
+            if (dangerousPatterns.some(pattern => pattern.test(entry.name))) {
+              throw new Error(`Dangerous file pattern detected: ${relativePath}`);
+            }
+            
+            // Check file size
+            const stats = await fs.stat(fullPath);
+            if (stats.size > maxFileSize) {
+              throw new Error(`File too large: ${relativePath} (${stats.size} bytes, max: ${maxFileSize})`);
+            }
+            
+            // Validate specific file types
+            if (ext === '.js') {
+              await this._validateJavaScriptFile(fullPath, relativePath);
+            } else if (ext === '.json' && entry.name === 'manifest.json') {
+              // Manifest is already validated elsewhere
+            }
+          }
+        }
+      }
+      
+      await validateDirectory(extensionPath);
+      
+      console.log(`ExtensionManager: Validated ${fileCount} files in extension: ${manifest.name}`);
+      
+    } catch (error) {
+      console.error('ExtensionManager: File validation failed:', error);
+      throw new Error(`File validation failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Validate JavaScript files for basic security issues
+   * 
+   * @param {string} filePath - JavaScript file path
+   * @param {string} relativePath - Relative path for error reporting
+   * @returns {Promise<void>}
+   */
+  async _validateJavaScriptFile(filePath, relativePath) {
+    try {
+      const content = await fs.readFile(filePath, 'utf8');
+      
+      // Dangerous patterns to detect in JavaScript
+      const dangerousPatterns = [
+        /eval\s*\(/i,
+        /Function\s*\(/i,
+        /execSync|exec\s*\(/i,
+        /child_process/i,
+        /require\s*\(\s*['"]fs['"]|require\s*\(\s*['"]path['"]/i,
+        /document\.write\s*\(/i,
+        /innerHTML\s*=.*<script/i
+      ];
+      
+      for (const pattern of dangerousPatterns) {
+        if (pattern.test(content)) {
+          console.warn(`ExtensionManager: Potentially dangerous code in ${relativePath}: ${pattern}`);
+          // Log warning but don't block - some patterns might be legitimate
+        }
+      }
+      
+    } catch (error) {
+      console.warn(`ExtensionManager: Could not validate JavaScript file ${relativePath}:`, error.message);
+      // Don't block installation for file read errors
+    }
+  }
+
+  /**
    * Load extensions into Electron's extension system
    */
   async _loadExtensionsIntoElectron() {
@@ -959,7 +1195,9 @@ class ExtensionManager {
         if (extension.enabled && extension.installedPath) {
           try {
             console.log(`ExtensionManager: Loading extension into Electron: ${extension.name}`);
-            const electronExtension = await this.session.extensions.loadExtension(extension.installedPath, { allowFileAccess: true });
+            const electronExtension = await this.session.extensions.loadExtension(extension.installedPath, {
+              allowFileAccess: false  // Restrict file system access for security
+            });
             extension.electronId = electronExtension.id;
             console.log(`ExtensionManager: Extension loaded successfully: ${extension.name} (${electronExtension.id})`);
           } catch (error) {
@@ -988,7 +1226,7 @@ class ExtensionManager {
   }
 
   /**
-   * Prepare extension from directory
+   * Prepare extension from directory (secured)
    */
   async _prepareFromDirectory(dirPath) {
     const manifestPath = path.join(dirPath, 'manifest.json');
@@ -999,11 +1237,13 @@ class ExtensionManager {
 
     const manifestContent = await fs.readFile(manifestPath, 'utf8');
     const manifest = JSON.parse(manifestContent);
-    const extensionId = manifest.name.toLowerCase().replace(/[^a-z0-9]/g, '-');
     
-    // Copy extension to extensions directory
+    // Generate secure extension ID using cryptographic hashing
+    const extensionId = this._generateSecureExtensionId(manifest);
+    
+    // Securely copy extension to extensions directory with validation
     const targetPath = path.join(this.extensionsBaseDir, extensionId);
-    await fs.cp(dirPath, targetPath, { recursive: true });
+    await this._secureFileCopy(dirPath, targetPath, manifest);
 
     return {
       id: extensionId,

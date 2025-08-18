@@ -807,11 +807,14 @@ class PeerskyWindow {
     this.window.on("closed", () => {
       // Unregister window from extension system
       try {
-        if (!this.window.webContents.isDestroyed()) {
-          extensionManager.removeWindow(this.window.webContents);
+        // Store webContents reference before window is fully destroyed
+        const webContents = this.window?.webContents;
+        if (webContents && !webContents.isDestroyed()) {
+          extensionManager.removeWindow(webContents);
         }
       } catch (error) {
-        console.warn('Failed to unregister window from extension system:', error);
+        // Silently ignore errors during shutdown - the extension system is likely shutting down too
+        console.debug('Extension system cleanup during shutdown:', error.message);
       }
 
       ipcMain.removeListener(
