@@ -194,6 +194,16 @@ export class ExtensionsPopup {
         });
 
 
+        // Extension item clicks (for popup opening from dropdown)
+        this.popup.addEventListener('click', (event) => {
+            const extensionItem = event.target.closest('.extension-item');
+            if (extensionItem && !event.target.closest('.extension-controls')) {
+                event.preventDefault();
+                event.stopPropagation();
+                this.handleExtensionClick(extensionItem);
+            }
+        });
+
         // Close button
         this.popup.addEventListener('click', (event) => {
             if (event.target.closest('.close-button')) {
@@ -202,6 +212,68 @@ export class ExtensionsPopup {
                 this.hide();
             }
         });
+    }
+
+    /**
+     * Handle extension item click (for opening browser action popup)
+     */
+    handleExtensionClick(extensionItem) {
+        const extensionId = extensionItem.dataset.extensionId;
+        if (!extensionId) {
+            console.warn('ExtensionsPopup: No extension ID found');
+            return;
+        }
+
+        // Get the nav-box instance to trigger the extension action
+        const navBox = document.querySelector('nav-box');
+        if (navBox) {
+            // Create a temporary icon next to the puzzle button for anchoring
+            const tempIcon = this.insertTempIconNextToPuzzle(extensionId);
+            if (tempIcon) {
+                // Trigger the extension action with the temp icon as anchor
+                navBox.handleExtensionActionClick(extensionId, tempIcon, { isPinned: false });
+                
+                // Hide the dropdown after triggering the action
+                this.hide();
+            }
+        } else {
+            console.error('ExtensionsPopup: Nav-box not found');
+        }
+    }
+
+    /**
+     * Insert temporary icon next to puzzle button for non-pinned extensions
+     */
+    insertTempIconNextToPuzzle(extensionId) {
+        const navBox = document.querySelector('nav-box');
+        const puzzleButton = navBox?.querySelector('#extensions');
+        
+        if (!puzzleButton) {
+            console.warn('ExtensionsPopup: Puzzle button not found');
+            return null;
+        }
+
+        // Create temporary icon
+        const tempIcon = document.createElement('button');
+        tempIcon.className = 'extension-action-btn temp-icon';
+        tempIcon.dataset.extensionId = extensionId;
+        tempIcon.style.cssText = `
+            opacity: 0;
+            transform: scale(0.8);
+            transition: all 0.12s ease;
+        `;
+        
+        // Insert after puzzle button
+        puzzleButton.parentNode.insertBefore(tempIcon, puzzleButton.nextSibling);
+        
+        // Animate in
+        requestAnimationFrame(() => {
+            tempIcon.style.opacity = '1';
+            tempIcon.style.transform = 'scale(1)';
+        });
+
+        // Set up cleanup after popup closes (will be handled by nav-box)
+        return tempIcon;
     }
 
     /**

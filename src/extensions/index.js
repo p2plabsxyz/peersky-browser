@@ -331,8 +331,54 @@ class ExtensionManager {
       if (this.electronChromeExtensions && extension.electronId) {
         try {
           console.log(`ExtensionManager: Triggering browser action click for ${extension.name}`);
-          // ElectronChromeExtensions handles the browser action click automatically
-          // This includes popups, badge updates, and extension event dispatching
+          
+          // Get the active tab for the browser action context
+          const activeTab = window.webContents;
+          
+          // Try using the browserAction API directly
+          if (this.electronChromeExtensions.api && this.electronChromeExtensions.api.browserAction) {
+            const browserActionAPI = this.electronChromeExtensions.api.browserAction;
+            
+            // Create tab context for the browser action
+            const tabInfo = { 
+              id: activeTab.id, 
+              windowId: window.id,
+              url: activeTab.getURL(),
+              active: true
+            };
+            
+            try {
+              // Try to trigger browser action click via the API
+              if (browserActionAPI.onClicked) {
+                browserActionAPI.onClicked.trigger(tabInfo);
+                console.log(`ExtensionManager: Browser action API triggered for ${extension.name}`);
+                return;
+              }
+              
+              // Alternative: Try to simulate a click event
+              if (browserActionAPI.click) {
+                await browserActionAPI.click(extension.electronId, tabInfo);
+                console.log(`ExtensionManager: Browser action click API called for ${extension.name}`);
+                return;
+              }
+            } catch (apiError) {
+              console.warn(`ExtensionManager: Browser action API failed for ${extension.name}:`, apiError);
+            }
+          }
+          
+          // Try to get and trigger the browser action
+          if (this.electronChromeExtensions.getBrowserAction) {
+            const browserAction = this.electronChromeExtensions.getBrowserAction(extension.electronId);
+            if (browserAction && browserAction.onClicked) {
+              const tabInfo = { id: activeTab.id, windowId: window.id, url: activeTab.getURL() };
+              browserAction.onClicked.trigger(tabInfo);
+              console.log(`ExtensionManager: Browser action onClicked triggered for ${extension.name}`);
+              return;
+            }
+          }
+          
+          console.warn(`ExtensionManager: No suitable browser action trigger found for ${extension.name}`);
+          
         } catch (error) {
           console.error(`ExtensionManager: Failed to trigger browser action for ${extension.name}:`, error);
         }
@@ -340,6 +386,134 @@ class ExtensionManager {
       
     } catch (error) {
       console.error('ExtensionManager: Browser action click failed:', error);
+    }
+  }
+
+  /**
+   * Open browser action popup
+   * 
+   * @param {string} actionId - Browser action identifier
+   * @param {Object} window - Window instance
+   * @param {Object} anchorRect - Anchor rectangle for popup positioning
+   * @returns {Promise<Object>} Success result
+   */
+  async openBrowserActionPopup(actionId, window, anchorRect = {}) {
+    await this.initialize();
+    
+    try {
+      const extension = this.loadedExtensions.get(actionId);
+      if (!extension || !extension.enabled) {
+        console.warn(`ExtensionManager: Extension ${actionId} not found or disabled`);
+        return { success: false, error: 'Extension not found or disabled' };
+      }
+
+      const action = extension.manifest?.action || extension.manifest?.browser_action;
+      if (!action) {
+        console.warn(`ExtensionManager: Extension ${actionId} has no browser action`);
+        return { success: false, error: 'No browser action found' };
+      }
+
+      // Check if action has a popup
+      if (!action.default_popup) {
+        console.log(`ExtensionManager: Extension ${extension.name} has no popup, triggering click instead`);
+        await this.clickBrowserAction(actionId, window);
+        return { success: true };
+      }
+
+      // Open popup via ElectronChromeExtensions
+      if (this.electronChromeExtensions && extension.electronId) {
+        try {
+          console.log(`ExtensionManager: Opening popup for ${extension.name} at`, anchorRect);
+          
+          // Get the active tab for the popup context
+          const activeTab = window.webContents;
+          
+          // Try to trigger the browser action via ElectronChromeExtensions
+          // This should open the popup if the extension has one
+          if (this.electronChromeExtensions.getBrowserAction) {
+            const browserAction = this.electronChromeExtensions.getBrowserAction(extension.electronId);
+            if (browserAction && browserAction.onClicked) {
+              // Trigger the browser action click which should open popup
+              browserAction.onClicked.trigger(activeTab);
+              console.log(`ExtensionManager: Browser action triggered for ${extension.name}`);
+              return { success: true };
+            }
+          }
+          
+          // Fallback: Try direct ElectronChromeExtensions API
+          if (this.electronChromeExtensions.api) {
+            try {
+              // Attempt to open popup directly if possible
+              const api = this.electronChromeExtensions.api;
+              if (api.browserAction && api.browserAction.openPopup) {
+                // ElectronChromeExtensions openPopup expects a tab object with id
+                const tabInfo = { id: activeTab.id, windowId: window.id };
+                await api.browserAction.openPopup(tabInfo);
+                console.log(`ExtensionManager: Popup opened directly for ${extension.name}`);
+                return { success: true };
+              }
+            } catch (directError) {
+              console.warn(`ExtensionManager: Direct popup API failed for ${extension.name}:`, directError);
+            }
+          }
+          
+          // Final fallback: trigger a regular click which should open popup
+          console.log(`ExtensionManager: Falling back to regular click for ${extension.name}`);
+          await this.clickBrowserAction(actionId, window);
+          
+          // Ultimate fallback: Try to open popup by simulating Chrome extension behavior
+          if (action.default_popup) {
+            console.log(`ExtensionManager: Attempting manual popup creation for ${extension.name}`);
+            try {
+              // Create a popup window manually if all else fails
+              const popupUrl = `chrome-extension://${extension.electronId}/${action.default_popup}`;
+              const popupWindow = new (await import('electron')).BrowserWindow({
+                width: 400,
+                height: 600,
+                x: Math.round(anchorRect.x),
+                y: Math.round(anchorRect.bottom + 5),
+                show: false,
+                frame: false,
+                resizable: false,
+                webPreferences: {
+                  nodeIntegration: false,
+                  contextIsolation: true,
+                  enableRemoteModule: false,
+                  partition: window.webContents.session.partition
+                }
+              });
+              
+              await popupWindow.loadURL(popupUrl);
+              popupWindow.show();
+              
+              // Auto-close popup when main window loses focus or after timeout
+              setTimeout(() => {
+                if (!popupWindow.isDestroyed()) {
+                  popupWindow.close();
+                }
+              }, 30000); // 30 second timeout
+              
+              console.log(`ExtensionManager: Manual popup created for ${extension.name}`);
+              return { success: true };
+              
+            } catch (manualError) {
+              console.error(`ExtensionManager: Manual popup creation failed for ${extension.name}:`, manualError);
+            }
+          }
+          
+          return { success: true };
+          
+        } catch (error) {
+          console.error(`ExtensionManager: Failed to open popup for ${extension.name}:`, error);
+          return { success: false, error: error.message };
+        }
+      }
+
+      return { success: false, error: 'Extension system not available' };
+      
+    } catch (error) {
+      console.error('ExtensionManager: Browser action popup failed:', error);
+      return { success: false, error: error.message };
     }
   }
 
@@ -353,10 +527,16 @@ class ExtensionManager {
     if (this.electronChromeExtensions) {
       try {
         this.electronChromeExtensions.addTab(webContents, window);
-        console.log('ExtensionManager: Window registered with ElectronChromeExtensions');
+        console.log('ExtensionManager: Window registered with ElectronChromeExtensions', {
+          windowId: window.id,
+          webContentsId: webContents.id,
+          url: webContents.getURL()
+        });
       } catch (error) {
         console.error('ExtensionManager: Failed to register window:', error);
       }
+    } else {
+      console.warn('ExtensionManager: addWindow called but ElectronChromeExtensions not available');
     }
   }
 

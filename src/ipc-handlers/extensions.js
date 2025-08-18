@@ -290,6 +290,35 @@ export function setupExtensionIpcHandlers(extensionManager) {
       }
     });
 
+    // Handle browser action popup (NEW - matches existing patterns)
+    ipcMain.handle('extensions-open-browser-action-popup', async (event, { actionId, anchorRect }) => {
+      try {
+        if (!actionId || typeof actionId !== 'string') {
+          throw Object.assign(new Error('Invalid action ID'), { code: ERR.E_INVALID_ID });
+        }
+
+        const senderWindow = BrowserWindow.fromWebContents(event.sender);
+        
+        // Validate anchorRect has required fields
+        const safeRect = anchorRect && typeof anchorRect === 'object' ? {
+          x: Number(anchorRect.x) || 100,
+          y: Number(anchorRect.y) || 40,
+          width: Number(anchorRect.width) || 20,
+          height: Number(anchorRect.height) || 20,
+          left: Number(anchorRect.left) || 100,
+          top: Number(anchorRect.top) || 40,
+          right: Number(anchorRect.right) || 120,
+          bottom: Number(anchorRect.bottom) || 60
+        } : { x: 100, y: 40, width: 20, height: 20, left: 100, top: 40, right: 120, bottom: 60 };
+        
+        const result = await extensionManager.openBrowserActionPopup(actionId, senderWindow, safeRect);
+        return result || { success: true };
+      } catch (error) {
+        console.error('ExtensionIPC: extensions-open-browser-action-popup failed:', error);
+        return { success: false, error: error.message };
+      }
+    });
+
     console.log('ExtensionIPC: Extension IPC handlers registered successfully');
     
   } catch (error) {

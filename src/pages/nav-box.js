@@ -1,3 +1,10 @@
+// Direct IPC access for nav-box (browser chrome with nodeIntegration: true)
+// Use scoped import to avoid collision with titlebar.js
+const navBoxIPC = (() => {
+  const { ipcRenderer } = require('electron');
+  return ipcRenderer;
+})();
+
 class NavBox extends HTMLElement {
   constructor() {
     super();
@@ -112,12 +119,16 @@ class NavBox extends HTMLElement {
   }
 
   async renderBrowserActions() {
+    console.log('[NavBox] renderBrowserActions() called');
     const container = this.querySelector("#extension-icons");
-    if (!container) return;
+    if (!container) {
+      console.warn('[NavBox] Extension icons container not found');
+      return;
+    }
 
     try {
-      // Get browser actions from extension system
-      const result = await window.electronAPI?.extensions?.getBrowserActions();
+      // Get browser actions from extension system via direct IPC
+      const result = await navBoxIPC.invoke('extensions-list-browser-actions');
       
       if (result?.success && result.actions?.length > 0) {
         container.innerHTML = result.actions.map(action => `
@@ -134,37 +145,134 @@ class NavBox extends HTMLElement {
           btn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            this.handleExtensionActionClick(btn.dataset.extensionId);
+            this.handleExtensionActionClick(btn.dataset.extensionId, btn);
           });
         });
         
-        console.log(`NavBox: Rendered ${result.actions.length} browser action${result.actions.length !== 1 ? 's' : ''}`);
+        console.log(`[NavBox] Rendered ${result.actions.length} extension${result.actions.length !== 1 ? 's' : ''}`);
       } else {
         // Clear container if no actions
         container.innerHTML = '';
       }
     } catch (error) {
-      console.error('NavBox: Failed to render browser actions:', error);
+      console.error('[NavBox] Failed to render browser actions:', error);
       container.innerHTML = '';
     }
   }
 
-  async handleExtensionActionClick(extensionId) {
+  async handleExtensionActionClick(extensionId, anchorElement, options = {}) {
     if (!extensionId) {
-      console.warn('NavBox: No extension ID provided for browser action click');
+      console.warn('[NavBox] No extension ID provided for browser action click');
       return;
     }
 
     try {
-      console.log(`NavBox: Triggering browser action for extension: ${extensionId}`);
-      const result = await window.electronAPI?.extensions?.clickBrowserAction(extensionId);
+      // Get the anchor element for positioning (could be pinned icon or temp icon)
+      const anchor = anchorElement || this.querySelector(`[data-extension-id="${extensionId}"]`);
+      if (!anchor) {
+        console.warn('[NavBox] No anchor element found for popup positioning');
+        return;
+      }
+
+      // Measure bounding rect for popup positioning
+      const rect = anchor.getBoundingClientRect();
+      const anchorRect = {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom
+      };
+
+      // Try to open popup first, fall back to click if no popup
+      const result = await navBoxIPC.invoke('extensions-open-browser-action-popup', { actionId: extensionId, anchorRect });
       
       if (!result?.success) {
-        console.error('NavBox: Browser action click failed:', result?.error);
+        // Clean up temp icon if this was from dropdown
+        if (options.isPinned === false && anchor && anchor.classList.contains('temp-icon')) {
+          this.removeTempIcon(anchor);
+        }
+        
+        // Fallback to regular click
+        const clickResult = await navBoxIPC.invoke('extensions-click-browser-action', extensionId);
+        
+        if (!clickResult?.success) {
+          console.error('[NavBox] Extension action failed:', clickResult?.error);
+          this.showToast('Extension action failed');
+        }
+      } else {
+        // Set up cleanup for temp icon when popup closes (if applicable)
+        if (options.isPinned === false && anchor && anchor.classList.contains('temp-icon')) {
+          this.setupTempIconCleanup(anchor);
+        }
       }
     } catch (error) {
-      console.error('NavBox: Extension action click error:', error);
+      console.error('[NavBox] Extension action error:', error);
+      this.showToast('Extension action failed');
     }
+  }
+
+  removeTempIcon(tempIcon) {
+    if (!tempIcon || !tempIcon.parentNode) return;
+    
+    // Animate out
+    tempIcon.style.opacity = '0';
+    tempIcon.style.transform = 'scale(0.8)';
+    
+    // Remove from DOM after animation
+    setTimeout(() => {
+      if (tempIcon.parentNode) {
+        tempIcon.parentNode.removeChild(tempIcon);
+      }
+    }, 120);
+  }
+
+  setupTempIconCleanup(tempIcon) {
+    // For now, remove temp icon after a delay
+    // TODO: In a full implementation, we'd listen for popup close events
+    // from the extension system and clean up accordingly
+    setTimeout(() => {
+      this.removeTempIcon(tempIcon);
+    }, 5000); // Remove after 5 seconds as fallback
+  }
+
+  showToast(message) {
+    // Simple toast notification for user feedback
+    const toast = document.createElement('div');
+    toast.textContent = message;
+    toast.style.cssText = `
+      position: fixed;
+      top: 80px;
+      right: 20px;
+      background: var(--peersky-nav-button-inactive, #666);
+      color: white;
+      padding: 8px 16px;
+      border-radius: 4px;
+      font-size: 14px;
+      z-index: 10000;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    `;
+    
+    document.body.appendChild(toast);
+    
+    // Animate in
+    requestAnimationFrame(() => {
+      toast.style.opacity = '1';
+    });
+    
+    // Remove after 3 seconds
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      setTimeout(() => {
+        if (toast.parentNode) {
+          toast.parentNode.removeChild(toast);
+        }
+      }, 300);
+    }, 3000);
   }
 
   loadSVG(container, svgPath) {
@@ -398,8 +506,7 @@ class NavBox extends HTMLElement {
 
     // Listen for search engine changes from settings manager
     try {
-      const { ipcRenderer } = require("electron");
-      ipcRenderer.on("search-engine-changed", (event, newEngine) => {
+      navBoxIPC.on("search-engine-changed", (event, newEngine) => {
         console.log("NavBox: Search engine changed to:", newEngine);
         this.updateSearchPlaceholder();
       });

@@ -192,6 +192,7 @@ const extensionAPI = {
   // Browser action APIs for extension toolbar integration
   getBrowserActions: () => ipcRenderer.invoke('extensions-list-browser-actions'),
   clickBrowserAction: (actionId) => ipcRenderer.invoke('extensions-click-browser-action', actionId),
+  openBrowserActionPopup: (actionId, anchorRect) => ipcRenderer.invoke('extensions-open-browser-action-popup', { actionId, anchorRect }),
   
   // TODO: Add extension development APIs
   // reloadExtension: (id) => ipcRenderer.invoke('extensions-reload', id),
@@ -311,6 +312,7 @@ try {
       extensions: {
         getBrowserActions: () => ipcRenderer.invoke('extensions-list-browser-actions'),
         clickBrowserAction: (actionId) => ipcRenderer.invoke('extensions-click-browser-action', actionId),
+        openBrowserActionPopup: (actionId, anchorRect) => ipcRenderer.invoke('extensions-open-browser-action-popup', { actionId, anchorRect }),
         onBrowserActionChanged: (callback) => createEventListener('browser-action-changed', callback)
       }
     });
