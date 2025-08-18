@@ -896,7 +896,7 @@ find-menu {
   justify-content: center;
   width: 24px;
   height: 24px;
-  background: none;
+  background: transparent;
   border: none;
   border-radius: 4px;
   cursor: pointer;
@@ -909,6 +909,16 @@ find-menu {
 /* Smooth animations for pinned extensions appearing/disappearing */
 .extension-action-btn.pinned-extension {
   animation: extensionPinIn 0.12s ease;
+  background: transparent !important;
+  padding: 2px !important;
+}
+
+.extension-action-btn.pinned-extension:hover {
+  background: transparent !important;
+}
+
+.extension-action-btn.pinned-extension:active {
+  background: transparent !important;
 }
 
 .extension-action-btn.unpinning {
@@ -941,12 +951,17 @@ find-menu {
   background-color: var(--peersky-nav-button-hover);
 }
 
+.extension-action-btn:active {
+  background-color: var(--peersky-nav-button-active);
+}
 
 .extension-icon {
   width: 20px;
   height: 20px;
   object-fit: contain;
-  border-radius: 2px;
+  border-radius: 0;
+  background: transparent !important;
+  mix-blend-mode: normal;
 }
 
 .extension-badge {
