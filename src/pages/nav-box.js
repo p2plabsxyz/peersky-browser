@@ -166,52 +166,64 @@ class NavBox extends HTMLElement {
 
     try {
       // Get browser actions from extension system via direct IPC
-      const result = await navBoxIPC.invoke('extensions-list-browser-actions');
+      const actionsResult = await navBoxIPC.invoke('extensions-list-browser-actions');
+      const pinnedResult = await navBoxIPC.invoke('extensions-get-pinned');
       
-      if (result?.success && result.actions?.length > 0) {
+      if (actionsResult?.success && actionsResult.actions?.length > 0) {
+        const allActions = actionsResult.actions;
+        const pinnedExtensions = pinnedResult?.success ? pinnedResult.pinnedExtensions || [] : [];
+        
+        // Filter to only show pinned extensions (max 3)
+        const pinnedActions = allActions.filter(action => pinnedExtensions.includes(action.id));
+        
         // Clear container first for security
         container.innerHTML = '';
         
-        // Create extension buttons with proper sanitization
-        result.actions.forEach(action => {
-          const button = document.createElement('button');
-          button.className = 'extension-action-btn';
+        if (pinnedActions.length > 0) {
+          // Add visual separator before pinned extensions
+          this.addExtensionSeparator(container);
           
-          // Sanitize extension ID for data attribute
-          const sanitizedId = this.escapeHtmlAttribute(action.id || '');
-          button.dataset.extensionId = sanitizedId;
-          
-          // Sanitize title attribute
-          const sanitizedTitle = this.escapeHtmlAttribute(action.title || action.name || '');
-          button.title = sanitizedTitle;
-          
-          // Create and validate icon
-          const img = document.createElement('img');
-          img.className = 'extension-icon';
-          img.src = this.validateIconUrl(action.icon);
-          img.alt = this.escapeHtmlAttribute(action.name || 'Extension');
-          
-          button.appendChild(img);
-          
-          // Add badge if present (sanitized)
-          if (action.badgeText) {
-            const badge = document.createElement('span');
-            badge.className = 'extension-badge';
-            badge.textContent = action.badgeText; // textContent auto-escapes
-            button.appendChild(badge);
-          }
-          
-          // Add click listener
-          button.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            this.handleExtensionActionClick(sanitizedId, button);
+          // Create extension buttons for pinned extensions only
+          pinnedActions.forEach(action => {
+            const button = document.createElement('button');
+            button.className = 'extension-action-btn pinned-extension';
+            
+            // Sanitize extension ID for data attribute
+            const sanitizedId = this.escapeHtmlAttribute(action.id || '');
+            button.dataset.extensionId = sanitizedId;
+            
+            // Sanitize title attribute
+            const sanitizedTitle = this.escapeHtmlAttribute(action.title || action.name || '');
+            button.title = sanitizedTitle;
+            
+            // Create and validate icon
+            const img = document.createElement('img');
+            img.className = 'extension-icon';
+            img.src = this.validateIconUrl(action.icon);
+            img.alt = this.escapeHtmlAttribute(action.name || 'Extension');
+            
+            button.appendChild(img);
+            
+            // Add badge if present (sanitized)
+            if (action.badgeText) {
+              const badge = document.createElement('span');
+              badge.className = 'extension-badge';
+              badge.textContent = action.badgeText; // textContent auto-escapes
+              button.appendChild(badge);
+            }
+            
+            // Add click listener
+            button.addEventListener('click', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              this.handleExtensionActionClick(sanitizedId, button);
+            });
+            
+            container.appendChild(button);
           });
-          
-          container.appendChild(button);
-        });
+        }
         
-        console.log(`[NavBox] Rendered ${result.actions.length} extension${result.actions.length !== 1 ? 's' : ''} (secured)`);
+        console.log(`[NavBox] Rendered ${pinnedActions.length} pinned extension${pinnedActions.length !== 1 ? 's' : ''} out of ${allActions.length} total (max 3)`);
       } else {
         // Clear container if no actions
         container.innerHTML = '';
@@ -220,6 +232,16 @@ class NavBox extends HTMLElement {
       console.error('[NavBox] Failed to render browser actions:', error);
       container.innerHTML = '';
     }
+  }
+
+  /**
+   * Add visual separator between puzzle button and pinned extensions
+   */
+  addExtensionSeparator(container) {
+    const separator = document.createElement('div');
+    separator.className = 'extension-separator';
+    separator.setAttribute('aria-hidden', 'true');
+    container.appendChild(separator);
   }
 
   async handleExtensionActionClick(extensionId, anchorElement, options = {}) {

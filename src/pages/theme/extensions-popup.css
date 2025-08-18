@@ -195,19 +195,63 @@
 /* Pin button states */
 .pin-button.pinned {
     color: var(--browser-theme-primary-highlight);
+    background-color: rgba(0, 255, 255, 0.1);
 }
 
 .pin-button.pinned svg {
     fill: var(--browser-theme-primary-highlight);
+    transform: scale(1.1);
 }
 
 .pin-button.pinned:hover {
     color: var(--browser-theme-primary-highlight);
-    background-color: rgba(0, 255, 255, 0.1);
+    background-color: rgba(0, 255, 255, 0.15);
 }
 
 .pin-button.pinned:hover svg {
     fill: var(--browser-theme-primary-highlight);
+}
+
+/* Pin button interaction improvements */
+.pin-button {
+    position: relative;
+    z-index: 1000; /* Ensure pin button is above other elements */
+}
+
+/* Prevent any layout shifts when pin button is clicked */
+.extension-item:has(.pin-button:active) {
+    transform: none !important;
+}
+
+/* Ensure pin button clicks don't trigger other events */
+.pin-button * {
+    pointer-events: none;
+}
+
+/* Smooth animations for pin state changes */
+.pin-button svg {
+    transition: all 0.12s ease;
+    transform-origin: center;
+}
+
+.pin-button:not(.pinned) svg {
+    transform: scale(1);
+    opacity: 1;
+}
+
+
+/* Animation when pin state changes */
+.pin-button.pin-animating svg {
+    transform: scale(0.8);
+    opacity: 0.6;
+    transition: all 0.08s ease-in;
+}
+
+
+/* Animation for pin button hover state */
+.pin-button:hover svg {
+    transform: scale(1.05);
+    transition: all 0.12s ease;
 }
 
 

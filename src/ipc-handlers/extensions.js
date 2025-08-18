@@ -394,6 +394,60 @@ export function setupExtensionIpcHandlers(extensionManager) {
       }
     });
 
+    // Get pinned extensions list
+    ipcMain.handle('extensions-get-pinned', async () => {
+      try {
+        const pinnedExtensions = await extensionManager.getPinnedExtensions();
+        return { success: true, pinnedExtensions };
+      } catch (error) {
+        console.error('[ExtensionIPC] extensions-get-pinned failed:', error);
+        return {
+          success: false,
+          code: error.code || 'E_UNKNOWN',
+          error: error.message,
+          pinnedExtensions: []
+        };
+      }
+    });
+
+    // Pin extension to toolbar
+    ipcMain.handle('extensions-pin', async (event, extensionId) => {
+      try {
+        if (!extensionId || typeof extensionId !== 'string') {
+          throw Object.assign(new Error('Invalid extension ID'), { code: ERR.E_INVALID_ID });
+        }
+
+        const result = await extensionManager.pinExtension(extensionId);
+        return { success: true, pinned: result };
+      } catch (error) {
+        console.error('[ExtensionIPC] extensions-pin failed:', error);
+        return {
+          success: false,
+          code: error.code || 'E_UNKNOWN',
+          error: error.message
+        };
+      }
+    });
+
+    // Unpin extension from toolbar
+    ipcMain.handle('extensions-unpin', async (event, extensionId) => {
+      try {
+        if (!extensionId || typeof extensionId !== 'string') {
+          throw Object.assign(new Error('Invalid extension ID'), { code: ERR.E_INVALID_ID });
+        }
+
+        const result = await extensionManager.unpinExtension(extensionId);
+        return { success: true, unpinned: result };
+      } catch (error) {
+        console.error('[ExtensionIPC] extensions-unpin failed:', error);
+        return {
+          success: false,
+          code: error.code || 'E_UNKNOWN',
+          error: error.message
+        };
+      }
+    });
+
     console.log('ExtensionIPC: Extension IPC handlers registered successfully');
     
   } catch (error) {

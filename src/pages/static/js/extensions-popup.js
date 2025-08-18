@@ -127,14 +127,22 @@ export class ExtensionsPopup {
         this.isLoading = true;
         
         try {
-            // Use same IPC call as nav-box to get enabled extensions with browser actions
-            const result = await this.ipc.invoke('extensions-list-browser-actions');
+            // Get enabled extensions with browser actions
+            const extensionsResult = await this.ipc.invoke('extensions-list-browser-actions');
+            const pinnedResult = await this.ipc.invoke('extensions-get-pinned');
             
-            if (result?.success) {
-                this.extensions = result.actions || [];
-                console.log(`[ExtensionsPopup] Loaded ${this.extensions.length} enabled extensions`);
+            if (extensionsResult?.success) {
+                this.extensions = extensionsResult.actions || [];
+                const pinnedExtensions = pinnedResult?.success ? pinnedResult.pinnedExtensions || [] : [];
+                
+                // Mark pinned extensions in the extension data
+                this.extensions.forEach(ext => {
+                    ext.pinned = pinnedExtensions.includes(ext.id);
+                });
+                
+                console.log(`[ExtensionsPopup] Loaded ${this.extensions.length} enabled extensions, ${pinnedExtensions.length} pinned`);
             } else {
-                console.error('[ExtensionsPopup] Failed to load extensions:', result?.error);
+                console.error('[ExtensionsPopup] Failed to load extensions:', extensionsResult?.error);
                 this.extensions = [];
             }
         } catch (error) {
@@ -170,7 +178,7 @@ export class ExtensionsPopup {
             const escapedId = this.escapeHtmlAttribute(ext.id || '');
             const escapedName = this.escapeHtml(ext.name || 'Unknown Extension');
             const escapedNameAttr = this.escapeHtmlAttribute(ext.name || 'Unknown Extension');
-            const pinLabel = ext.pinned ? 'Unpin' : 'Pin'; // TODO: Add pinning logic
+            const pinLabel = ext.pinned ? 'Unpin' : 'Pin';
             
             return `
                 <div class="extension-item" role="listitem" data-extension-id="${escapedId}">
@@ -319,14 +327,22 @@ export class ExtensionsPopup {
     setupEventListeners() {
         if (!this.popup) return;
 
-        // Pin button interactions
+        // Pin button interactions - prevent any dropdown behavior
         this.popup.addEventListener('click', (event) => {
-            if (event.target.classList.contains('pin-button')) {
+            if (event.target.classList.contains('pin-button') || event.target.closest('.pin-button')) {
                 event.preventDefault();
                 event.stopPropagation();
-                this.togglePin(event.target);
+                event.stopImmediatePropagation();
+                
+                // Get the actual pin button element
+                const pinButton = event.target.classList.contains('pin-button') 
+                    ? event.target 
+                    : event.target.closest('.pin-button');
+                
+                this.togglePin(pinButton);
+                return false;
             }
-        });
+        }, true); // Use capture phase to ensure we get the event first
 
         // Kebab menu interactions
         this.popup.addEventListener('click', (event) => {
@@ -446,18 +462,81 @@ export class ExtensionsPopup {
     /**
      * Toggle pin state for an extension
      */
-    togglePin(pinButton) {
+    async togglePin(pinButton) {
         const isPinned = pinButton.classList.contains('pinned');
-        const extensionName = pinButton.closest('.extension-item')?.querySelector('.extension-name')?.textContent;
+        const extensionItem = pinButton.closest('.extension-item');
+        const extensionId = extensionItem?.dataset.extensionId;
+        const extensionName = extensionItem?.querySelector('.extension-name')?.textContent;
+        const svgContainer = pinButton.querySelector('.svg-container');
         
-        if (isPinned) {
-            pinButton.classList.remove('pinned');
-            pinButton.setAttribute('aria-label', `Pin ${extensionName}`);
-            pinButton.setAttribute('title', 'Pin extension');
-        } else {
-            pinButton.classList.add('pinned');
-            pinButton.setAttribute('aria-label', `Unpin ${extensionName}`);
-            pinButton.setAttribute('title', 'Unpin extension');
+        if (!extensionId) {
+            console.error('[ExtensionsPopup] No extension ID found for pin toggle');
+            return;
+        }
+
+        try {
+            // Add animation class before state change
+            pinButton.classList.add('pin-animating');
+            
+            let result;
+            if (isPinned) {
+                // Unpin extension
+                result = await this.ipc.invoke('extensions-unpin', extensionId);
+                if (result?.success) {
+                    // Animate out, then change state
+                    setTimeout(() => {
+                        pinButton.classList.remove('pinned', 'pin-animating');
+                        pinButton.setAttribute('aria-label', `Pin ${extensionName}`);
+                        pinButton.setAttribute('title', 'Pin extension');
+                        
+                        // Load outline pin icon for unpinned state
+                        if (svgContainer) {
+                            this.loadSVG(svgContainer, 'peersky://static/assets/svg/pin-angle.svg');
+                        }
+                    }, 80);
+                    
+                    console.log(`[ExtensionsPopup] Extension ${extensionName} unpinned successfully`);
+                } else {
+                    pinButton.classList.remove('pin-animating');
+                    console.error('[ExtensionsPopup] Failed to unpin extension:', result?.error);
+                }
+            } else {
+                // Pin extension
+                result = await this.ipc.invoke('extensions-pin', extensionId);
+                if (result?.success) {
+                    // Animate out, then change state
+                    setTimeout(() => {
+                        pinButton.classList.remove('pin-animating');
+                        pinButton.classList.add('pinned');
+                        pinButton.setAttribute('aria-label', `Unpin ${extensionName}`);
+                        pinButton.setAttribute('title', 'Unpin extension');
+                        
+                        // Load filled pin icon for pinned state
+                        if (svgContainer) {
+                            this.loadSVG(svgContainer, 'peersky://static/assets/svg/pin-angle-fill.svg');
+                        }
+                    }, 80);
+                    
+                    console.log(`[ExtensionsPopup] Extension ${extensionName} pinned successfully`);
+                } else {
+                    pinButton.classList.remove('pin-animating');
+                    console.error('[ExtensionsPopup] Failed to pin extension:', result?.error);
+                    
+                    // Show user-friendly error for pin limit
+                    if (result?.error?.includes('Maximum 3 extensions')) {
+                        console.warn('[ExtensionsPopup] Pin limit reached (3 extensions maximum)');
+                    }
+                }
+            }
+            
+            // Refresh the toolbar to show/hide pinned icons
+            const navBox = document.querySelector('nav-box');
+            if (navBox && result?.success) {
+                navBox.renderBrowserActions();
+            }
+            
+        } catch (error) {
+            console.error('[ExtensionsPopup] Pin toggle IPC error:', error);
         }
     }
 
@@ -522,10 +601,15 @@ export class ExtensionsPopup {
             this.loadSVG(closeButton, 'peersky://static/assets/svg/close.svg');
         }
 
-        // Load pin button icons
-        const pinButtons = popup.querySelectorAll('.pin-button .svg-container');
-        pinButtons.forEach(container => {
-            this.loadSVG(container, 'peersky://static/assets/svg/pin-angle.svg');
+        // Load pin button icons - different icons for pinned vs unpinned state
+        const pinButtons = popup.querySelectorAll('.pin-button');
+        pinButtons.forEach(button => {
+            const container = button.querySelector('.svg-container');
+            const isPinned = button.classList.contains('pinned');
+            const iconPath = isPinned 
+                ? 'peersky://static/assets/svg/pin-angle-fill.svg'
+                : 'peersky://static/assets/svg/pin-angle.svg';
+            this.loadSVG(container, iconPath);
         });
 
         // Load kebab menu icons

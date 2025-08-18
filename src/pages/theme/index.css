@@ -866,6 +866,16 @@ find-menu {
   margin-left: 4px;
 }
 
+/* Visual separator between puzzle button and pinned extensions */
+.extension-separator {
+  width: 1px;
+  height: 16px;
+  background-color: var(--peersky-nav-button-inactive);
+  opacity: 0.3;
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
 .extension-action-btn {
   position: relative;
   display: inline-flex;

@@ -1239,6 +1239,110 @@ class ExtensionManager {
       this.activePopups.clear();
     }
   }
+
+  /**
+   * Get list of pinned extension IDs
+   * 
+   * @returns {Promise<Array<string>>} Array of pinned extension IDs
+   */
+  async getPinnedExtensions() {
+    await this.initialize();
+    
+    try {
+      // Read pinned extensions from registry or separate file
+      const pinnedData = await readJsonSafe(path.join(this.extensionsBaseDir, 'pinned.json'));
+      return pinnedData?.pinnedExtensions || [];
+    } catch (error) {
+      console.warn('[ExtensionManager] Error reading pinned extensions:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Pin extension to toolbar (max 3 extensions)
+   * 
+   * @param {string} extensionId - Extension ID to pin
+   * @returns {Promise<boolean>} Success status
+   */
+  async pinExtension(extensionId) {
+    await this.initialize();
+    
+    try {
+      // Validate extension exists and is enabled
+      const extension = this._getById(extensionId);
+      if (!extension) {
+        throw Object.assign(new Error(`Extension not found: ${extensionId}`), { code: ERR.E_INVALID_ID });
+      }
+      
+      if (!extension.enabled) {
+        throw Object.assign(new Error('Cannot pin disabled extension'), { code: ERR.E_INVALID_STATE });
+      }
+
+      // Get current pinned extensions
+      const pinnedExtensions = await this.getPinnedExtensions();
+      
+      // Check if already pinned
+      if (pinnedExtensions.includes(extensionId)) {
+        console.log(`[ExtensionManager] Extension ${extensionId} is already pinned`);
+        return true;
+      }
+
+      // Check pin limit (max 3 extensions)
+      if (pinnedExtensions.length >= 3) {
+        throw Object.assign(new Error('Maximum 3 extensions can be pinned'), { code: ERR.E_PIN_LIMIT });
+      }
+
+      // Add to pinned list
+      pinnedExtensions.push(extensionId);
+      
+      // Save pinned extensions
+      const pinnedFilePath = path.join(this.extensionsBaseDir, 'pinned.json');
+      await writeJsonAtomic(pinnedFilePath, { pinnedExtensions });
+      
+      console.log(`[ExtensionManager] Extension ${extensionId} pinned successfully`);
+      return true;
+      
+    } catch (error) {
+      console.error('[ExtensionManager] Pin extension failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Unpin extension from toolbar
+   * 
+   * @param {string} extensionId - Extension ID to unpin
+   * @returns {Promise<boolean>} Success status
+   */
+  async unpinExtension(extensionId) {
+    await this.initialize();
+    
+    try {
+      // Get current pinned extensions
+      const pinnedExtensions = await this.getPinnedExtensions();
+      
+      // Check if extension is pinned
+      const pinnedIndex = pinnedExtensions.indexOf(extensionId);
+      if (pinnedIndex === -1) {
+        console.log(`[ExtensionManager] Extension ${extensionId} is not pinned`);
+        return true;
+      }
+
+      // Remove from pinned list
+      pinnedExtensions.splice(pinnedIndex, 1);
+      
+      // Save pinned extensions
+      const pinnedFilePath = path.join(this.extensionsBaseDir, 'pinned.json');
+      await writeJsonAtomic(pinnedFilePath, { pinnedExtensions });
+      
+      console.log(`[ExtensionManager] Extension ${extensionId} unpinned successfully`);
+      return true;
+      
+    } catch (error) {
+      console.error('[ExtensionManager] Unpin extension failed:', error);
+      throw error;
+    }
+  }
 }
 
 // Create singleton instance
