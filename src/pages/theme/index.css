@@ -908,6 +908,7 @@ find-menu {
   padding: 2px;
   opacity: 1;
   transform: scale(1);
+  -webkit-app-region: no-drag;
 }
 
 /* Smooth animations for pinned extensions appearing/disappearing */
