@@ -8,6 +8,44 @@
  * - External pages: No settings access
  * 
  * Security Model: Principle of least privilege with granular access control.
+ * 
+ * TODO: Extension System Integration Requirements
+ * 
+ * 1. Extension API Security:
+ *    - Validate extension permissions before exposing APIs
+ *    - Implement extension sandboxing for external pages
+ *    - Add extension content script injection for web pages
+ *    - Implement extension message passing security
+ * 
+ * 2. Browser Action Integration:
+ *    - Expose browser action APIs to home pages for toolbar display
+ *    - Implement browser action click handling
+ *    - Add browser action badge and icon support
+ *    - Handle browser action popup windows
+ * 
+ * 3. Extension Development Support:
+ *    - Add extension reload functionality for development
+ *    - Implement extension debugging APIs
+ *    - Add extension log access for troubleshooting
+ *    - Support extension hot reloading
+ * 
+ * 4. Extension Management:
+ *    - Add extension installation progress tracking
+ *    - Implement extension update notifications
+ *    - Add extension error reporting and recovery
+ *    - Support extension backup and restore
+ * 
+ * 5. Context-Specific Extension APIs:
+ *    - Settings pages: Full extension management APIs
+ *    - Home pages: Browser action display and basic info
+ *    - Internal pages: Extension theme and content script support
+ *    - External pages: Extension content script injection only
+ * 
+ * 6. IPC Handler Integration:
+ *    - Add missing extension IPC handlers in main process
+ *    - Implement extension event broadcasting
+ *    - Add extension error handling and recovery
+ *    - Support extension background page communication
  */
 
 const { contextBridge, ipcRenderer } = require('electron');
@@ -15,16 +53,17 @@ const { contextBridge, ipcRenderer } = require('electron');
 // Context detection using window.location for immediate synchronous access
 const url = window.location.href;
 const isSettings = url.startsWith('peersky://settings');
+const isExtensions = url.startsWith('peersky://extensions');
 const isHome = url.startsWith('peersky://home');
 const isBookmarks = url.includes('peersky://bookmarks');
 const isTabsPage = url.includes('peersky://tabs');
 const isInternal = url.startsWith('peersky://');
 const isExternal = !isInternal;
 
-const context = { url, isSettings, isHome, isBookmarks, isInternal, isExternal };
+const context = { url, isSettings, isExtensions, isHome, isBookmarks, isInternal, isExternal };
 
 console.log(`Unified-preload: Context detection - URL: ${url}`);
-console.log(`Unified-preload: isSettings: ${isSettings}, isHome: ${isHome}, isBookmarks: ${isBookmarks}, isInternal: ${isInternal}, isExternal: ${isExternal}`);
+console.log(`Unified-preload: isSettings: ${isSettings}, isExtensions: ${isExtensions}, isHome: ${isHome}, isBookmarks: ${isBookmarks}, isInternal: ${isInternal}, isExternal: ${isExternal}`);
 
 // Factory function to create context-appropriate settings API with access control
 function createSettingsAPI(pageContext) {
@@ -55,6 +94,17 @@ function createSettingsAPI(pageContext) {
           throw new Error('File data must include name and content');
         }
         return ipcRenderer.invoke('settings-upload-wallpaper', fileData);
+      }
+    };
+  } else if (pageContext.isExtensions) {
+    // Extensions pages get limited settings API - only theme access
+    return {
+      get: (key) => {
+        const allowedKeys = ['theme'];
+        if (!allowedKeys.includes(key)) {
+          throw new Error(`Access denied: Extensions pages can only access: ${allowedKeys.join(', ')}`);
+        }
+        return baseAPI.get(key);
       }
     };
   } else if (pageContext.isHome) {
@@ -119,6 +169,57 @@ const bookmarkAPI = {
   deleteBookmark: (url) => ipcRenderer.invoke('delete-bookmark', { url })
 };
 
+// Extension API - Available only to settings pages for security
+const extensionAPI = {
+  listExtensions: () => ipcRenderer.invoke('extensions-list'),
+  toggleExtension: (id, enabled) => ipcRenderer.invoke('extensions-toggle', id, enabled),
+  installExtension: (source) => ipcRenderer.invoke('extensions-install', source),
+  uninstallExtension: (id) => ipcRenderer.invoke('extensions-uninstall', id),
+  // Chrome Web Store APIs
+  installFromWebStore: (urlOrId) => ipcRenderer.invoke('extensions-install-webstore', urlOrId),
+  updateAll: () => ipcRenderer.invoke('extensions-update-all'),
+  // Session 1 implemented APIs
+  getExtensionInfo: (id) => ipcRenderer.invoke('extensions-get-info', id),
+  getStatus: () => ipcRenderer.invoke('extensions-status'),
+  // Icon API
+  getIconUrl: (id, size) => ipcRenderer.invoke('extensions-get-icon-url', id, size),
+  // Registry cleanup API
+  cleanupRegistry: () => ipcRenderer.invoke('extensions-cleanup-registry'),
+  // TODO: Add missing IPC handlers for these APIs (Session 2+)
+  // checkForUpdates: () => ipcRenderer.invoke('extensions-check-updates'),
+  // toggleP2P: (enabled) => ipcRenderer.invoke('extensions-toggle-p2p', enabled),
+  
+  // Browser action APIs for extension toolbar integration
+  getBrowserActions: () => ipcRenderer.invoke('extensions-list-browser-actions'),
+  clickBrowserAction: (actionId) => ipcRenderer.invoke('extensions-click-browser-action', actionId),
+  openBrowserActionPopup: (actionId, anchorRect) => ipcRenderer.invoke('extensions-open-browser-action-popup', { actionId, anchorRect }),
+  
+  // Webview registration APIs for tab context
+  registerWebview: (webContentsId) => ipcRenderer.invoke('extensions-register-webview', webContentsId),
+  unregisterWebview: (webContentsId) => ipcRenderer.invoke('extensions-unregister-webview', webContentsId),
+  
+  // TODO: Add extension development APIs
+  // reloadExtension: (id) => ipcRenderer.invoke('extensions-reload', id),
+  // openExtensionFolder: (id) => ipcRenderer.invoke('extensions-open-folder', id),
+  // getExtensionLogs: (id) => ipcRenderer.invoke('extensions-get-logs', id),
+  
+  // TODO: Add extension security APIs
+  // getExtensionPermissions: (id) => ipcRenderer.invoke('extensions-get-permissions', id),
+  // validateExtension: (source) => ipcRenderer.invoke('extensions-validate', source),
+  // getExtensionSecurityReport: (id) => ipcRenderer.invoke('extensions-security-report', id),
+  
+  // TODO: Listen for change notifications via ipcRenderer.on()
+  // TODO: Hide APIs unless settings.extensionSupport is true
+  // TODO: Expose only secure functionality to renderer
+  onExtensionChanged: (callback) => createEventListener('extension-changed', callback),
+  onExtensionInstalled: (callback) => createEventListener('extension-installed', callback),
+  onExtensionUninstalled: (callback) => createEventListener('extension-uninstalled', callback),
+  
+  // Browser action event listeners
+  onBrowserActionChanged: (callback) => createEventListener('browser-action-changed', callback),
+  onExtensionError: (callback) => createEventListener('extension-error', callback)
+};
+
 // Create context-appropriate APIs
 const settingsAPI = createSettingsAPI(context);
 
@@ -132,12 +233,28 @@ try {
       onSearchEngineChanged: (callback) => createEventListener('search-engine-changed', callback),
       onShowClockChanged: (callback) => createEventListener('show-clock-changed', callback),
       onWallpaperChanged: (callback) => createEventListener('wallpaper-changed', callback),
-      readCSS: cssAPI.readCSS
+      readCSS: cssAPI.readCSS,
+      // Extension API - Available under electronAPI.extensions for consistency
+      extensions: extensionAPI
     });
     
-    console.log('Unified-preload: Full Settings electronAPI exposed');
+    console.log('Unified-preload: Full Settings electronAPI and extensionAPI exposed');
+    
+  } else if (isExtensions) {
+    // Extensions pages get full extension API + limited settings API (theme only)
+    contextBridge.exposeInMainWorld('electronAPI', {
+      settings: settingsAPI, // Limited to theme access only
+      onThemeChanged: (callback) => createEventListener('theme-changed', callback),
+      readCSS: cssAPI.readCSS,
+      // Extension API - Full access for extension management
+      extensions: extensionAPI
+    });
+    
+    console.log('Unified-preload: Extensions electronAPI and full extensionAPI exposed');
     
   } else if (isHome) {
+    // Home pages need browser action APIs for extension toolbar integration
+    
     // Zero-flicker wallpaper injection for home pages
     // Get wallpaper URL synchronously but inject when DOM is ready
     let wallpaperURL = null;
@@ -189,17 +306,31 @@ try {
       css: cssAPI
     });
     
-    // Limited electronAPI for home functionality only
+    // Home electronAPI with browser action support for extension toolbar
     contextBridge.exposeInMainWorld('electronAPI', {
       settings: settingsAPI, // Uses limited home API automatically
       getWallpaperUrl: () => ipcRenderer.invoke('settings-get-wallpaper-url'),
       onShowClockChanged: (callback) => createEventListener('show-clock-changed', callback),
-      onWallpaperChanged: (callback) => createEventListener('wallpaper-changed', callback)
+      onWallpaperChanged: (callback) => createEventListener('wallpaper-changed', callback),
+      // Extension browser action APIs for home page toolbar
+      extensions: {
+        getBrowserActions: () => ipcRenderer.invoke('extensions-list-browser-actions'),
+        clickBrowserAction: (actionId) => ipcRenderer.invoke('extensions-click-browser-action', actionId),
+        openBrowserActionPopup: (actionId, anchorRect) => ipcRenderer.invoke('extensions-open-browser-action-popup', { actionId, anchorRect }),
+        onBrowserActionChanged: (callback) => createEventListener('browser-action-changed', callback),
+        // Webview registration APIs for tab context
+        registerWebview: (webContentsId) => ipcRenderer.invoke('extensions-register-webview', webContentsId),
+        unregisterWebview: (webContentsId) => ipcRenderer.invoke('extensions-unregister-webview', webContentsId),
+      }
     });
     
-    console.log('Unified-preload: Home APIs exposed (showClock, wallpaper access only)');
+    console.log('Unified-preload: Home APIs exposed (showClock, wallpaper, browser actions)');
     
   } else if (isBookmarks) {
+    // TODO: Consider extension integration for bookmark pages
+    // - Extension bookmark sync capabilities
+    // - Extension bookmark management APIs
+    
     // Bookmark pages get bookmark API + minimal environment
     contextBridge.exposeInMainWorld('peersky', {
       environment: environmentAPI,
@@ -227,6 +358,11 @@ try {
       }
     })
   } else if (isInternal) {
+    // TODO: Consider minimal extension APIs for internal pages
+    // - Extension theme integration
+    // - Extension content script injection
+    // - Extension popup support
+    
     // Other internal pages get minimal environment + very limited settings
     contextBridge.exposeInMainWorld('peersky', {
       environment: {
@@ -245,6 +381,11 @@ try {
     console.log('Unified-preload: Internal minimal API exposed (theme only)');
     
   } else {
+    // TODO: Consider extension content script injection for external pages
+    // - Extension content script APIs
+    // - Extension message passing
+    // - Extension popup and options page support
+    
     // External pages get almost nothing - no settings API at all
     contextBridge.exposeInMainWorld('peersky', {
       environment: {

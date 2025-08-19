@@ -1,0 +1,669 @@
+/**
+ * Manifest Validator - Extension Manifest Validation
+ * 
+ * This module provides validation for WebExtension manifest files,
+ * ensuring compliance with Manifest V3 specifications and basic
+ * security requirements.
+ * 
+ * Key Features:
+ * - Manifest V3 schema validation
+ * - Required field verification
+ * - Permission validation
+ * - Version format validation
+ * - Security requirement checking
+ * 
+ * Validation Approach:
+ * - Comprehensive field validation
+ * - Security-focused permission checking
+ * - Clear error reporting
+ * - Performance-optimized validation
+ * - Extensible validation framework
+ */
+
+/**
+ * ManifestValidator - Extension manifest validation engine
+ * 
+ * Provides comprehensive validation of extension manifests with detailed
+ * error reporting and security-focused validation rules.
+ * 
+ * Consolidated validation system that handles:
+ * - Manifest V3 validation
+ * - Chrome Web Store URL parsing
+ * - Basic file security validation
+ * - Permission risk assessment
+ */
+class ManifestValidator {
+  constructor() {
+    // Required fields for validation
+    this.requiredFields = [
+      'manifest_version',
+      'name',
+      'version'
+    ];
+    
+    // Validation patterns
+    this.patterns = {
+      version: /^\d+(\.\d+)*$/,
+      name: /^[\w\s\-\.]{1,50}$/
+    };
+
+    // Chrome Web Store URL parsing
+    this.webStore = {
+      // Chrome Web Store extension ID format: 32 characters, letters a-p only
+      idPattern: /^[a-p]{32}$/i,
+      
+      // Chrome Web Store URL format with extension ID extraction
+      urlPattern: /^https?:\/\/(?:chrome\.google\.com\/webstore\/detail|chromewebstore\.google\.com\/detail)\/[^/]+\/([a-p]{32})(?:\b|\/)?/i,
+      
+      // Allowed domains
+      allowedDomains: [
+        'chrome.google.com',
+        'chromewebstore.google.com'
+      ],
+      
+      // Blocked malicious domains
+      blockedDomains: [
+        'chrome-store.com',
+        'chrome-webstore.com', 
+        'google-chrome.com',
+        'chromium-store.com',
+        'fake-chrome-store.com',
+        'malicious-extensions.com'
+      ],
+      
+      // Suspicious URL patterns
+      suspiciousPatterns: [
+        /bit\.ly|tinyurl|t\.co/i,  // URL shorteners
+        /[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/,  // IP addresses
+        /localhost|127\.0\.0\.1|0\.0\.0\.0/i,  // Local addresses
+        /\.tk$|\.ml$|\.ga$|\.cf$/i,  // Suspicious TLDs
+      ]
+    };
+
+    // File validation settings
+    this.fileValidation = {
+      // Allowed file extensions
+      allowedExtensions: [
+        '.js', '.json', '.html', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg',
+        '.woff', '.woff2', '.ttf', '.eot', '.ico', '.md', '.txt'
+      ],
+      
+      // Blocked executable patterns
+      blockedPatterns: [
+        /\.exe$/i, /\.dll$/i, /\.bat$/i, /\.cmd$/i, /\.sh$/i,
+        /\.scr$/i, /\.vbs$/i, /\.ps1$/i, /\.bin$/i, /\.dmg$/i
+      ],
+      
+      // Size limits
+      maxFileSize: 10 * 1024 * 1024, // 10MB
+      maxTotalFiles: 1000
+    };
+
+    // Permission security configuration
+    this.permissionConfig = {
+      // Safe permissions (low risk)
+      safe: {
+        'storage': { risk: 'low', description: 'Local storage access' },
+        'alarms': { risk: 'low', description: 'Schedule alarms' },
+        'notifications': { risk: 'low', description: 'Show notifications' },
+        'idle': { risk: 'low', description: 'Detect idle state' },
+        'power': { risk: 'low', description: 'Override power management' },
+        'system.cpu': { risk: 'low', description: 'CPU information' },
+        'system.memory': { risk: 'low', description: 'Memory information' },
+        'system.storage': { risk: 'low', description: 'Storage information' }
+      },
+      
+      // Medium risk permissions (require justification)
+      medium: {
+        'activeTab': { risk: 'medium', description: 'Current active tab access' },
+        'tabs': { risk: 'medium', description: 'Tab information access' },
+        'bookmarks': { risk: 'medium', description: 'Bookmark access' },
+        'history': { risk: 'medium', description: 'Browsing history access' },
+        'contextMenus': { risk: 'medium', description: 'Context menu creation' },
+        'cookies': { risk: 'medium', description: 'Cookie access' },
+        'downloads': { risk: 'medium', description: 'Download management' },
+        'webNavigation': { risk: 'medium', description: 'Navigation events' }
+      },
+      
+      // High risk permissions (dangerous, require special approval)
+      dangerous: {
+        '<all_urls>': { risk: 'high', description: 'Access to all websites' },
+        'webRequest': { risk: 'high', description: 'Intercept web requests' },
+        'webRequestBlocking': { risk: 'high', description: 'Block web requests' },
+        'proxy': { risk: 'high', description: 'Proxy configuration' },
+        'privacy': { risk: 'high', description: 'Privacy settings access' },
+        'management': { risk: 'high', description: 'Extension management' },
+        'system.display': { risk: 'high', description: 'Display configuration' },
+        'enterprise.platformKeys': { risk: 'high', description: 'Platform keys access' }
+      },
+      
+      // Blocked permissions (not allowed)
+      blocked: {
+        'nativeMessaging': { risk: 'critical', description: 'Native application communication' },
+        'debugger': { risk: 'critical', description: 'Debugger API access' },
+        'desktopCapture': { risk: 'critical', description: 'Desktop capture' },
+        'experimental': { risk: 'critical', description: 'Experimental APIs' },
+        'mdns': { risk: 'critical', description: 'Multicast DNS access' },
+        'serial': { risk: 'critical', description: 'Serial port access' },
+        'usb': { risk: 'critical', description: 'USB device access' },
+        'fileSystem': { risk: 'critical', description: 'File system access' },
+        'fileSystemProvider': { risk: 'critical', description: 'File system provider' }
+      }
+    };
+  }
+
+  /**
+   * Validate a manifest object
+   * 
+   * @param {Object} manifest - Parsed manifest.json object
+   * @returns {Object} Validation result with errors and warnings
+   */
+  validate(manifest) {
+    const result = {
+      isValid: true,
+      errors: [],
+      warnings: []
+    };
+
+    try {
+      // Basic structure validation
+      if (!manifest || typeof manifest !== 'object') {
+        result.errors.push('Manifest must be a valid JSON object');
+        result.isValid = false;
+        return result;
+      }
+
+      // Required fields validation
+      for (const field of this.requiredFields) {
+        if (!(field in manifest)) {
+          result.errors.push(`Required field missing: ${field}`);
+          result.isValid = false;
+        }
+      }
+
+      // Manifest version validation
+      if (manifest.manifest_version !== 3) {
+        result.errors.push('Only Manifest V3 is supported (manifest_version: 3)');
+        result.isValid = false;
+      }
+
+      // Name validation
+      if (manifest.name) {
+        if (typeof manifest.name !== 'string' || manifest.name.length === 0) {
+          result.errors.push('Name must be a non-empty string');
+          result.isValid = false;
+        } else if (manifest.name.length > 50) {
+          result.errors.push('Name must be 50 characters or less');
+          result.isValid = false;
+        }
+      }
+
+      // Version validation
+      if (manifest.version) {
+        if (!this.patterns.version.test(manifest.version)) {
+          result.errors.push('Version must follow semantic versioning (e.g., 1.0.0)');
+          result.isValid = false;
+        }
+      }
+
+      // Comprehensive permission security validation
+      const permissionValidation = this.validatePermissions(manifest.permissions || []);
+      if (!permissionValidation.allowed) {
+        result.errors.push(...permissionValidation.errors);
+        result.isValid = false;
+      }
+      result.warnings.push(...permissionValidation.warnings);
+      result.securityInfo = permissionValidation;
+
+      // Host permissions validation with security checks
+      const hostValidation = this.validateHostPermissions(manifest.host_permissions || []);
+      if (!hostValidation.allowed) {
+        result.errors.push(...hostValidation.errors);
+        result.isValid = false;
+      }
+      result.warnings.push(...hostValidation.warnings);
+      
+      // Combine security risk scores
+      result.riskScore = (permissionValidation.riskScore || 0) + (hostValidation.riskScore || 0);
+
+      // Background script validation
+      if (manifest.background) {
+        if (!manifest.background.service_worker) {
+          result.warnings.push('Background scripts should use service_worker in Manifest V3');
+        }
+      }
+
+      console.log(`ManifestValidator: Validation ${result.isValid ? 'passed' : 'failed'} for ${manifest.name || 'unknown'}`);
+      return result;
+
+    } catch (error) {
+      console.error('ManifestValidator: Validation error:', error);
+      result.errors.push('Internal validation error');
+      result.isValid = false;
+      return result;
+    }
+  }
+
+  /**
+   * Validate extension permissions with security risk assessment
+   * 
+   * @param {Array} permissions - Array of permission strings
+   * @returns {Object} Validation result with risk assessment
+   */
+  validatePermissions(permissions) {
+    const result = {
+      allowed: true,
+      errors: [],
+      warnings: [],
+      riskScore: 0,
+      riskLevel: 'low',
+      permissionDetails: []
+    };
+
+    if (!Array.isArray(permissions)) {
+      result.errors.push('Permissions must be an array');
+      result.allowed = false;
+      return result;
+    }
+
+    for (const permission of permissions) {
+      if (typeof permission !== 'string') {
+        result.errors.push('All permissions must be strings');
+        result.allowed = false;
+        continue;
+      }
+
+      const permissionInfo = this.assessPermission(permission);
+      result.permissionDetails.push(permissionInfo);
+      
+      // Handle different risk levels
+      if (permissionInfo.category === 'blocked') {
+        result.errors.push(`Blocked permission: ${permission} - ${permissionInfo.description}`);
+        result.allowed = false;
+        result.riskScore += 50;
+      } else if (permissionInfo.category === 'dangerous') {
+        result.warnings.push(`High-risk permission: ${permission} - ${permissionInfo.description}`);
+        result.riskScore += 20;
+      } else if (permissionInfo.category === 'medium') {
+        result.warnings.push(`Medium-risk permission: ${permission} - ${permissionInfo.description}`);
+        result.riskScore += 10;
+      } else if (permissionInfo.category === 'safe') {
+        result.riskScore += 2;
+      } else {
+        result.warnings.push(`Unknown permission: ${permission} - Please verify this is a valid Chrome extension permission`);
+        result.riskScore += 15;
+      }
+    }
+
+    // Determine overall risk level
+    if (result.riskScore >= 50) {
+      result.riskLevel = 'critical';
+    } else if (result.riskScore >= 30) {
+      result.riskLevel = 'high';
+    } else if (result.riskScore >= 15) {
+      result.riskLevel = 'medium';
+    } else {
+      result.riskLevel = 'low';
+    }
+
+    return result;
+  }
+
+  /**
+   * Validate host permissions with domain security checking
+   * 
+   * @param {Array} hostPermissions - Array of host permission patterns
+   * @returns {Object} Validation result with security assessment
+   */
+  validateHostPermissions(hostPermissions) {
+    const result = {
+      allowed: true,
+      errors: [],
+      warnings: [],
+      riskScore: 0,
+      hostDetails: []
+    };
+
+    if (!Array.isArray(hostPermissions)) {
+      result.errors.push('Host permissions must be an array');
+      result.allowed = false;
+      return result;
+    }
+
+    // Dangerous host patterns
+    const dangerousPatterns = [
+      '<all_urls>',
+      '*://*/*',
+      'http://*/*',
+      'https://*/*',
+      'file:///*'
+    ];
+
+    // Suspicious domains (known malicious or high-risk)
+    const suspiciousDomains = [
+      'localhost',
+      '127.0.0.1',
+      '0.0.0.0',
+      '*.local'
+    ];
+
+    for (const hostPattern of hostPermissions) {
+      if (typeof hostPattern !== 'string') {
+        result.errors.push('All host permissions must be strings');
+        result.allowed = false;
+        continue;
+      }
+
+      const hostInfo = {
+        pattern: hostPattern,
+        risk: 'low',
+        description: ''
+      };
+
+      // Check for dangerous patterns
+      if (dangerousPatterns.includes(hostPattern)) {
+        hostInfo.risk = 'high';
+        hostInfo.description = 'Broad access pattern - can access any website';
+        result.warnings.push(`High-risk host permission: ${hostPattern} - ${hostInfo.description}`);
+        result.riskScore += 25;
+      }
+      // Check for suspicious domains
+      else if (suspiciousDomains.some(domain => hostPattern.includes(domain))) {
+        hostInfo.risk = 'medium';
+        hostInfo.description = 'Local/internal network access';
+        result.warnings.push(`Medium-risk host permission: ${hostPattern} - ${hostInfo.description}`);
+        result.riskScore += 10;
+      }
+      // Check for overly broad wildcards
+      else if (hostPattern.includes('*://*/') || hostPattern.includes('*.*')) {
+        hostInfo.risk = 'medium';
+        hostInfo.description = 'Broad wildcard pattern';
+        result.warnings.push(`Medium-risk host permission: ${hostPattern} - ${hostInfo.description}`);
+        result.riskScore += 8;
+      }
+      else {
+        hostInfo.risk = 'low';
+        hostInfo.description = 'Specific domain access';
+        result.riskScore += 2;
+      }
+
+      result.hostDetails.push(hostInfo);
+    }
+
+    return result;
+  }
+
+  /**
+   * Assess individual permission risk and category
+   * 
+   * @param {string} permission - Permission string to assess
+   * @returns {Object} Permission assessment details
+   */
+  assessPermission(permission) {
+    // Check each category
+    for (const [category, permissions] of Object.entries(this.permissionConfig)) {
+      if (permissions[permission]) {
+        return {
+          permission,
+          category,
+          risk: permissions[permission].risk,
+          description: permissions[permission].description
+        };
+      }
+    }
+
+    // Unknown permission
+    return {
+      permission,
+      category: 'unknown',
+      risk: 'medium',
+      description: 'Unknown or experimental permission'
+    };
+  }
+
+  /**
+   * Get basic manifest information for display
+   * 
+   * @param {Object} manifest - Parsed manifest.json object
+   * @returns {Object} Basic manifest info for UI display
+   */
+  getBasicInfo(manifest) {
+    if (!manifest || typeof manifest !== 'object') {
+      return null;
+    }
+
+    return {
+      name: manifest.name || 'Unknown Extension',
+      version: manifest.version || '0.0.0',
+      description: manifest.description || 'No description provided',
+      manifestVersion: manifest.manifest_version,
+      permissions: manifest.permissions || [],
+      hostPermissions: manifest.host_permissions || []
+    };
+  }
+
+  /**
+   * Parse Chrome Web Store URL or extension ID with security validation
+   * 
+   * @param {string} input - URL or extension ID to parse
+   * @returns {string|null} - Extension ID if valid, null if invalid or unsafe
+   */
+  parseWebStoreUrl(input) {
+    if (!input || typeof input !== 'string') {
+      return null;
+    }
+    
+    const trimmed = input.trim();
+    
+    // Check for suspicious patterns first
+    if (this.webStore.suspiciousPatterns.some(pattern => pattern.test(trimmed))) {
+      console.warn('ManifestValidator: Blocked suspicious URL pattern:', trimmed);
+      return null;
+    }
+    
+    // Try to extract ID from URL first
+    const urlMatch = trimmed.match(this.webStore.urlPattern);
+    if (urlMatch) {
+      try {
+        const url = new URL(trimmed);
+        
+        // Validate domain is in allowlist
+        if (!this.webStore.allowedDomains.includes(url.hostname.toLowerCase())) {
+          console.warn('ManifestValidator: Domain not in allowlist:', url.hostname);
+          return null;
+        }
+        
+        // Check domain is not in blocklist
+        if (this.webStore.blockedDomains.includes(url.hostname.toLowerCase())) {
+          console.warn('ManifestValidator: Blocked malicious domain:', url.hostname);
+          return null;
+        }
+        
+        // Validate HTTPS
+        if (url.protocol !== 'https:') {
+          console.warn('ManifestValidator: Non-HTTPS URL rejected:', trimmed);
+          return null;
+        }
+        
+        return urlMatch[1].toLowerCase();
+      } catch (error) {
+        console.warn('ManifestValidator: Invalid URL format:', trimmed);
+        return null;
+      }
+    }
+    
+    // Check if input is a direct extension ID
+    if (this.webStore.idPattern.test(trimmed)) {
+      return trimmed.toLowerCase();
+    }
+    
+    return null;
+  }
+
+  /**
+   * Validate Chrome Web Store extension ID format
+   * 
+   * @param {string} id - Extension ID to validate
+   * @returns {boolean} - True if valid format
+   */
+  isValidExtensionId(id) {
+    return this.webStore.idPattern.test(id);
+  }
+
+  /**
+   * Build Chrome Web Store URL from extension ID
+   * 
+   * @param {string} id - Extension ID
+   * @returns {string} - Chrome Web Store URL
+   */
+  buildWebStoreUrl(id) {
+    if (!this.isValidExtensionId(id)) {
+      throw new Error('Invalid extension ID format');
+    }
+    return `https://chrome.google.com/webstore/detail/${id}`;
+  }
+
+  /**
+   * Validate extension files for basic security issues
+   * Simplified version focusing on essential security checks
+   * 
+   * @param {string} extensionPath - Extension directory path
+   * @returns {Promise<Object>} Validation result
+   */
+  async validateExtensionFiles(extensionPath) {
+    const result = {
+      isValid: true,
+      errors: [],
+      warnings: [],
+      fileCount: 0
+    };
+
+    try {
+      const fs = await import('fs/promises');
+      const path = await import('path');
+      
+      // Recursively check files
+      async function checkDirectory(dirPath) {
+        const entries = await fs.readdir(dirPath, { withFileTypes: true });
+        
+        for (const entry of entries) {
+          const fullPath = path.join(dirPath, entry.name);
+          const relativePath = path.relative(extensionPath, fullPath);
+          
+          if (entry.isDirectory()) {
+            // Skip hidden directories and node_modules
+            if (entry.name.startsWith('.') || entry.name === 'node_modules') {
+              continue;
+            }
+            await checkDirectory(fullPath);
+          } else {
+            result.fileCount++;
+            
+            // Check file count limit
+            if (result.fileCount > this.fileValidation.maxTotalFiles) {
+              result.errors.push(`Too many files in extension (max: ${this.fileValidation.maxTotalFiles})`);
+              result.isValid = false;
+              return;
+            }
+            
+            // Check file extension
+            const ext = path.extname(entry.name).toLowerCase();
+            if (!this.fileValidation.allowedExtensions.includes(ext)) {
+              result.errors.push(`Disallowed file extension: ${ext} in file ${relativePath}`);
+              result.isValid = false;
+            }
+            
+            // Check for dangerous patterns
+            if (this.fileValidation.blockedPatterns.some(pattern => pattern.test(entry.name))) {
+              result.errors.push(`Dangerous file pattern detected: ${relativePath}`);
+              result.isValid = false;
+            }
+            
+            // Check file size
+            const stats = await fs.stat(fullPath);
+            if (stats.size > this.fileValidation.maxFileSize) {
+              result.errors.push(`File too large: ${relativePath} (${stats.size} bytes, max: ${this.fileValidation.maxFileSize})`);
+              result.isValid = false;
+            }
+          }
+        }
+      }
+      
+      await checkDirectory(extensionPath);
+      
+      if (result.isValid) {
+        console.log(`ManifestValidator: Validated ${result.fileCount} files - all passed security checks`);
+      }
+      
+    } catch (error) {
+      console.error('ManifestValidator: File validation failed:', error);
+      result.errors.push(`File validation failed: ${error.message}`);
+      result.isValid = false;
+    }
+
+    return result;
+  }
+
+  /**
+   * Comprehensive extension validation - single entry point
+   * 
+   * @param {string} extensionPath - Extension directory path  
+   * @param {Object} manifest - Extension manifest object
+   * @param {string} [sourceUrl] - Optional Chrome Web Store URL for validation
+   * @returns {Promise<Object>} Complete validation result
+   */
+  async validateExtension(extensionPath, manifest, sourceUrl = null) {
+    const result = {
+      isValid: true,
+      errors: [],
+      warnings: [],
+      manifestValidation: null,
+      fileValidation: null,
+      urlValidation: null
+    };
+
+    try {
+      // 1. Validate manifest
+      result.manifestValidation = this.validate(manifest);
+      if (!result.manifestValidation.isValid) {
+        result.errors.push(...result.manifestValidation.errors);
+        result.isValid = false;
+      }
+      result.warnings.push(...result.manifestValidation.warnings);
+
+      // 2. Validate files
+      result.fileValidation = await this.validateExtensionFiles(extensionPath);
+      if (!result.fileValidation.isValid) {
+        result.errors.push(...result.fileValidation.errors);
+        result.isValid = false;
+      }
+      result.warnings.push(...result.fileValidation.warnings);
+
+      // 3. Validate source URL if provided
+      if (sourceUrl) {
+        const parsedId = this.parseWebStoreUrl(sourceUrl);
+        result.urlValidation = {
+          isValid: parsedId !== null,
+          parsedExtensionId: parsedId,
+          originalUrl: sourceUrl
+        };
+        
+        if (!result.urlValidation.isValid) {
+          result.errors.push('Invalid Chrome Web Store URL format');
+          result.isValid = false;
+        }
+      }
+
+      console.log(`ManifestValidator: Complete validation ${result.isValid ? 'passed' : 'failed'} for ${manifest.name || 'unknown'}`);
+      return result;
+
+    } catch (error) {
+      console.error('ManifestValidator: Extension validation error:', error);
+      result.errors.push('Internal validation error');
+      result.isValid = false;
+      return result;
+    }
+  }
+}
+
+export default ManifestValidator;
