@@ -310,7 +310,7 @@ class SettingsManager {
   validateSetting(key, value) {
     const validators = {
       searchEngine: (v) => ['duckduckgo', 'ecosia', 'startpage'].includes(v),
-      theme: (v) => ['light', 'dark', 'green', 'cyan', 'yellow', 'violet'].includes(v),
+      theme: (v) => ['transparent', 'light', 'dark', 'green', 'cyan', 'yellow', 'violet'].includes(v),
       showClock: (v) => typeof v === 'boolean',
       wallpaper: (v) => ['redwoods', 'mountains', 'custom'].includes(v),
       wallpaperCustomPath: (v) => v === null || typeof v === 'string'
