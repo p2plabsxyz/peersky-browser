@@ -172,7 +172,7 @@ export async function createHandler(ipfsOptions, session) {
         console.log("Patched peerId to include bytes property.");
       }
       const resolutionResult = await name.resolve(peerId, {
-        signal: AbortSignal.timeout(10000),
+        signal: AbortSignal.timeout(5000),
       });
       
       let resolvedCID = resolutionResult.cid;
@@ -195,7 +195,7 @@ export async function createHandler(ipfsOptions, session) {
         );
         try {
           const resolutionResult = await name.resolveDNSLink(ipnsName, {
-            signal: AbortSignal.timeout(10000),
+            signal: AbortSignal.timeout(5000),
           });
           // resolutionResult might contain a cid as a string
           let cid = resolutionResult.cid;
