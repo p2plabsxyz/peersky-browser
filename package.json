@@ -21,11 +21,10 @@
     "start": "electron .",
     "build": "electron-builder build --publish never",
     "build-all": "electron-builder build -mwl",
-    "postinstall": "electron-builder install-app-deps && node scripts/fix-chrome-web-store-preload.js"
+    "postinstall": "node scripts/fix-chrome-web-store-preload.js"
   },
   "build": {
-    "buildDependenciesFromSource": true,
-    "npmRebuild": true,
+    "npmRebuild": false,
     "asar": true,
     "appId": "peersky.p2plabs.xyz",
     "productName": "Peersky Browser",
@@ -42,6 +41,7 @@
     "mac": {
       "artifactName": "${name}-${version}-${os}-${arch}.${ext}",
       "gatekeeperAssess": false,
+      "identity": null,
       "extendInfo": {
         "NSMicrophoneUsageDescription": "The current page is asking to use your microphone",
         "NSCameraUsageDescription": "The current page is asking to use your camera",
