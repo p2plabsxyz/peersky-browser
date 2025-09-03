@@ -4,12 +4,34 @@
 let EXTENSIONS = [];
 let extensionStates = {};
 
-// Default extension icon SVG
-const DEFAULT_ICON_SVG = `
-  <svg class="extension-icon-placeholder" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5C13 2.12 11.88 1 10.5 1S8 2.12 8 3.5V5H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2v-5.5c0-.83-.67-1.5-1.5-1.5zM10.5 3c.28 0 .5.22.5.5V5H9V3.5c0-.28.22-.5.5-.5zM20 17H4V7h16v10z"/>
-  </svg>
-`;
+// Default extension icon (loaded from asset, not inlined)
+const DEFAULT_ICON_SVG_PATH = 'peersky://static/assets/svg/default-extension-icon.svg';
+
+function loadSVG(container, svgPath) {
+  fetch(svgPath)
+    .then(response => response.text())
+    .then(svgContent => {
+      // Strip any XML headers/comments; keep only the SVG element
+      const start = svgContent.indexOf('<svg');
+      const content = start >= 0 ? svgContent.slice(start) : svgContent;
+      container.innerHTML = content;
+      const svgElement = container.querySelector('svg');
+      if (svgElement) {
+        const isEmptyIcon = container.classList.contains('extensions-empty-icon');
+        svgElement.setAttribute('width', isEmptyIcon ? '48' : '24');
+        svgElement.setAttribute('height', isEmptyIcon ? '48' : '24');
+        svgElement.classList.add('extension-icon-placeholder');
+        // Ensure color follows theme
+        svgElement.setAttribute('fill', 'currentColor');
+        // Force stroke-based icons to adopt theme color
+        const stroked = svgElement.querySelectorAll('[stroke]');
+        stroked.forEach(el => el.setAttribute('stroke', 'currentColor'));
+      }
+    })
+    .catch(error => {
+      console.error(`Error loading SVG from ${svgPath}:`, error);
+    });
+}
 
 // Load real extension data from backend
 async function loadExtensions() {
@@ -59,9 +81,7 @@ function createExtensionCard(extension) {
     <div class="extension-header">
       <div class="extension-icon">
         ${iconHTML}
-        <div class="extension-icon-fallback" style="${extension.iconPath ? 'display:none' : 'display:block'}">
-          ${DEFAULT_ICON_SVG}
-        </div>
+        <div class="extension-icon-fallback" style="${extension.iconPath ? 'display:none' : 'display:block'}"></div>
       </div>
       <h3 id="ext-${extension.id}-name" class="extension-name">${extension.name}</h3>
       <p class="extension-description">${extension.description}</p>
@@ -81,6 +101,12 @@ function createExtensionCard(extension) {
     </div>
   `;
   
+  // Load fallback SVG into the placeholder container
+  const fallback = card.querySelector('.extension-icon-fallback');
+  if (fallback && !extension.iconPath) {
+    loadSVG(fallback, DEFAULT_ICON_SVG_PATH);
+  }
+
   return card;
 }
 
@@ -191,10 +217,15 @@ function renderExtensions() {
   if (EXTENSIONS.length === 0) {
     container.innerHTML = `
       <div class="extensions-empty">
-        <div class="extensions-empty-icon">${DEFAULT_ICON_SVG}</div>
+        <div class="extensions-empty-icon"></div>
         <p>No extensions installed</p>
       </div>
     `;
+    // Inject SVG into the empty state icon
+    const emptyIcon = container.querySelector('.extensions-empty-icon');
+    if (emptyIcon) {
+      loadSVG(emptyIcon, DEFAULT_ICON_SVG_PATH);
+    }
     return;
   }
   
