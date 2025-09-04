@@ -30,7 +30,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { promises as fs } from 'fs';
 import { createHash } from 'crypto';
-import { installChromeWebStore } from '@iamevan/electron-chrome-web-store';
+import { installChromeWebStore } from 'electron-chrome-web-store';
 import { ElectronChromeExtensions } from 'electron-chrome-extensions';
 import ManifestValidator from './manifest-validator.js';
 import { ensureDir, readJsonSafe, writeJsonAtomic, KeyedMutex, ERR } from './util.js';

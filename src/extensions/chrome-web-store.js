@@ -5,7 +5,7 @@
  * with error handling and session management for Peersky Browser.
  */
 
-import { installExtension, updateExtensions, uninstallExtension } from '@iamevan/electron-chrome-web-store';
+import { installExtension, updateExtensions, uninstallExtension } from 'electron-chrome-web-store';
 
 /**
  * Chrome Web Store Manager
