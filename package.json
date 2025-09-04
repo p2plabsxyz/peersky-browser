@@ -20,8 +20,7 @@
     "test:unit": "node tests/run-util-tests.js",
     "start": "electron .",
     "build": "electron-builder build --publish never",
-    "build-all": "electron-builder build -mwl",
-    "postinstall": "node scripts/fix-chrome-web-store-preload.js"
+    "build-all": "electron-builder build -mwl"
   },
   "build": {
     "npmRebuild": false,
