@@ -166,10 +166,34 @@ async function handleRemoveExtension(extensionId) {
   }
 }
 
-// Handle update all extensions - Placeholder for future implementation
+// Handle update all extensions
 async function handleUpdateAll() {
-  console.log('[Extensions] Update All clicked - showing coming soon message');
-  showStatusMessage('Update All feature coming soon!', 'info');
+  const updateAllBtn = document.getElementById('update-all-btn');
+  if (updateAllBtn) {
+    updateAllBtn.disabled = true;
+  }
+  showStatusMessage('Checking for extension updates…', 'info');
+
+  try {
+    const result = await window.electronAPI.extensions.updateAll();
+    if (result && result.success !== false) {
+      const updated = Array.isArray(result.updated) ? result.updated.length : 0;
+      const skipped = Array.isArray(result.skipped) ? result.skipped.length : 0;
+      const failed = Array.isArray(result.errors) ? result.errors.length : 0;
+      showStatusMessage(`${updated} updated, ${skipped} skipped, ${failed} failed`, failed > 0 ? 'warning' : 'success');
+      await loadExtensions();
+    } else {
+      const msg = result && result.error ? result.error : 'Unknown error';
+      showStatusMessage(`Update failed: ${msg}`, 'error');
+    }
+  } catch (e) {
+    console.error('[Extensions] Update All error:', e);
+    showStatusMessage('Update failed', 'error');
+  } finally {
+    if (updateAllBtn) {
+      updateAllBtn.disabled = false;
+    }
+  }
 }
 
 // Handle toggle changes

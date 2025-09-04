@@ -3,9 +3,10 @@
  * 
  * Provides a clean abstraction over the electron-chrome-web-store package
  * with error handling and session management for Peersky Browser.
+ *
+ * Note: We lazy-load electron-chrome-web-store via dynamic import so that
+ * unit tests can import this module without requiring Electron runtime.
  */
-
-import { installExtension, updateExtensions, uninstallExtension } from 'electron-chrome-web-store';
 
 /**
  * Chrome Web Store Manager
@@ -23,6 +24,26 @@ export class ChromeWebStoreManager {
   }
 
   /**
+   * Create a shim session that exposes only the modern extension APIs and
+   * intentionally omits the legacy `session.extensions` object to avoid
+   * conflicts with other libraries. The web store helpers prefer
+   * `session.extensions || session`, so by passing this shim (without
+   * `.extensions`) we ensure it uses the real Session methods.
+   */
+  _getSessionShim() {
+    const s = this.session;
+    // Use bracket access to avoid TS deprecated signature warnings in editors.
+    const shim = {
+      // @ts-expect-error Electron typings mark getAllExtensions deprecated; still required by dependency
+      getAllExtensions: (...args) => s["getAllExtensions"]?.(...args),
+      getExtension: (...args) => s["getExtension"]?.(...args),
+      loadExtension: (...args) => s["loadExtension"]?.(...args),
+      removeExtension: (...args) => s["removeExtension"]?.(...args)
+    };
+    return Object.freeze(shim);
+  }
+
+  /**
    * Install extension by ID from Chrome Web Store
    * 
    * @param {string} extensionId - Chrome Web Store extension ID
@@ -35,9 +56,10 @@ export class ChromeWebStoreManager {
     }
 
     try {
+      const { installExtension } = await import('electron-chrome-web-store');
       console.log(`[ChromeWebStore] Installing extension: ${extensionId}`);
       const extension = await installExtension(extensionId, { 
-        session: this.session 
+        session: this._getSessionShim() 
       });
       console.log(`[ChromeWebStore] Successfully installed: ${extension.name} v${extension.version}`);
       return extension;
@@ -68,8 +90,9 @@ export class ChromeWebStoreManager {
     }
 
     try {
+      const { updateExtensions } = await import('electron-chrome-web-store');
       console.log('[ChromeWebStore] Checking for extension updates...');
-      await updateExtensions({ session: this.session });
+      await updateExtensions(this._getSessionShim());
       
       // Note: The updateExtensions API doesn't return detailed results
       // We'll need to track this at the ExtensionManager level
@@ -97,8 +120,9 @@ export class ChromeWebStoreManager {
     }
 
     try {
+      const { uninstallExtension } = await import('electron-chrome-web-store');
       console.log(`[ChromeWebStore] Uninstalling extension: ${extensionId}`);
-      await uninstallExtension(extensionId, { session: this.session });
+      await uninstallExtension(extensionId, { session: this._getSessionShim() });
       console.log(`[ChromeWebStore] Successfully uninstalled: ${extensionId}`);
       return true;
     } catch (error) {

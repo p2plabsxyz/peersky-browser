@@ -65,14 +65,33 @@ async function handleExtensionIcon(extensionId, size, sendResponse) {
     // Path to extension: userData/Extensions/{extensionId}/{version}/
     const extensionsPath = path.join(app.getPath("userData"), "Extensions", extensionId);
     
-    // Find the extension version directory (there should be only one)
+    // Find the latest extension version directory (format: "<version>_0")
     const versionDirs = await fsPromises.readdir(extensionsPath);
-    const versionDir = versionDirs.find(dir => dir.includes('_0')); // Extension versions end with _0
-    
+    if (!versionDirs || versionDirs.length === 0) {
+      throw new Error('No version directories');
+    }
+    const pickLatest = (dirs) => {
+      const parseVer = (d) => {
+        const base = String(d).split('_')[0];
+        return base.split('.').map(n => parseInt(n, 10) || 0);
+      };
+      return dirs
+        .filter(Boolean)
+        .sort((a, b) => {
+          const va = parseVer(a);
+          const vb = parseVer(b);
+          const len = Math.max(va.length, vb.length);
+          for (let i = 0; i < len; i++) {
+            const ai = va[i] || 0; const bi = vb[i] || 0;
+            if (ai !== bi) return bi - ai;
+          }
+          return 0;
+        })[0];
+    };
+    const versionDir = pickLatest(versionDirs);
     if (!versionDir) {
       throw new Error('Extension version directory not found');
     }
-    
     const extensionRoot = path.join(extensionsPath, versionDir);
     
     // Read manifest to get actual icon path

@@ -415,7 +415,7 @@ class ExtensionManager {
         if (this.session && extensionData.enabled) {
           try {
             console.log(`ExtensionManager: Loading installed extension into Electron: ${extensionData.name}`);
-            const electronExtension = await this.session.extensions.loadExtension(extensionData.installedPath, {
+            const electronExtension = await this.session.loadExtension(extensionData.installedPath, {
               allowFileAccess: false  // Restrict file system access for security
             });
             extensionData.electronId = electronExtension.id;
@@ -459,13 +459,13 @@ class ExtensionManager {
         if (this.session) {
           try {
             if (enabled) {
-              const electronExtension = await this.session.extensions.loadExtension(extension.installedPath, {
+              const electronExtension = await this.session.loadExtension(extension.installedPath, {
                 allowFileAccess: false  // Restrict file system access for security
               });
               extension.electronId = electronExtension.id;
             } else {
               if (extension.electronId) {
-                await this.session.extensions.removeExtension(extension.electronId);
+                await this.session.removeExtension(extension.electronId);
               }
             }
           } catch (error) {
@@ -897,14 +897,23 @@ class ExtensionManager {
         }
 
         // Unload extension from Electron's system
-        if (this.session) {
+        if (this.session && extension.electronId) {
           try {
-            console.log(`ExtensionManager: Attempting to unload extension from Electron: ${extension.name}`);
-            // Note: Electron's session.extensions.removeExtension method needs the Electron extension ID
-            // For now, we'll log the action. Future enhancement will track Electron IDs.
-            console.log(`ExtensionManager: Extension unload requested: ${extension.name}`);
+            console.log(`ExtensionManager: Unloading extension from Electron: ${extension.name}`);
+            await this.session.removeExtension(extension.electronId);
           } catch (error) {
             console.error(`ExtensionManager: Failed to unload extension from Electron:`, error);
+          }
+        }
+
+        // If installed from Chrome Web Store, uninstall there as well
+        if (extension.source === 'webstore' && this.chromeWebStore) {
+          try {
+            console.log(`ExtensionManager: Uninstalling from Chrome Web Store: ${extension.name} (${extensionId})`);
+            await this.chromeWebStore.uninstallById(extensionId);
+          } catch (error) {
+            console.error(`ExtensionManager: Chrome Web Store uninstall failed for ${extension.name}:`, error);
+            // Continue with local removal regardless
           }
         }
 
@@ -978,8 +987,8 @@ class ExtensionManager {
           const iconSizes = ['64', '48', '32', '16'];
           for (const size of iconSizes) {
             if (icons[size]) {
-              // Use peersky protocol which works reliably in renderer
-              iconPath = `peersky://extension-icon/${extensionId}/${size}`;
+              // Use peersky protocol and append version for cache-busting
+              iconPath = `peersky://extension-icon/${extensionId}/${size}?v=${encodeURIComponent(electronExtension.version)}`;
               break;
             }
           }
@@ -1032,20 +1041,132 @@ class ExtensionManager {
       try {
         console.log('ExtensionManager: Checking for extension updates...');
 
-        // For MVP, we'll use the Chrome Web Store's bulk update
+        if (!this.chromeWebStore) {
+          throw Object.assign(new Error('Chrome Web Store support not available'), { code: ERR.E_NOT_AVAILABLE });
+        }
+
+        // Consider only extensions installed from the Web Store
+        const webStoreExtensions = Array.from(this.loadedExtensions.values()).filter(ext => ext.source === 'webstore');
+
+        const updated = [];
+        const skipped = [];
+        const errors = [];
+
+        // Snapshot current versions
+        const beforeVersions = new Map();
+        for (const ext of webStoreExtensions) {
+          beforeVersions.set(ext.id, String(ext.version || ''));
+        }
+
+        // Trigger update across all webstore extensions
         await this.chromeWebStore.updateAll();
-        
-        // Re-read registry to get updated versions
-        // Note: This is a simplified implementation for MVP
-        await this._readRegistry();
-        
+
+        const userDataDir = this.app.getPath('userData');
+
+        // For each webstore extension, identify latest installed version and reload if required
+        for (const ext of webStoreExtensions) {
+          try {
+            const extRoot = path.join(userDataDir, 'Extensions', ext.id);
+            const entries = await fs.readdir(extRoot).catch(() => []);
+            if (!entries || entries.length === 0) {
+              skipped.push({ id: ext.id, reason: 'no-installation-dir' });
+              continue;
+            }
+
+            const chooseLatest = (dirs) => {
+              const parseVer = (d) => {
+                const base = String(d).split('_')[0];
+                return base.split('.').map(n => parseInt(n, 10) || 0);
+              };
+              return dirs
+                .filter(Boolean)
+                .sort((a, b) => {
+                  const va = parseVer(a);
+                  const vb = parseVer(b);
+                  const len = Math.max(va.length, vb.length);
+                  for (let i = 0; i < len; i++) {
+                    const ai = va[i] || 0; const bi = vb[i] || 0;
+                    if (ai !== bi) return bi - ai;
+                  }
+                  return 0;
+                })[0];
+            };
+
+            const latestDir = chooseLatest(entries);
+            if (!latestDir) {
+              skipped.push({ id: ext.id, reason: 'no-version-dir' });
+              continue;
+            }
+
+            const latestPath = path.join(extRoot, latestDir);
+            const manifestPath = path.join(latestPath, 'manifest.json');
+            const manifestRaw = await fs.readFile(manifestPath, 'utf8');
+            const manifest = JSON.parse(manifestRaw);
+            const newVersion = String(manifest.version || '').trim();
+            const oldVersion = beforeVersions.get(ext.id) || '';
+            const versionChanged = newVersion && newVersion !== oldVersion;
+
+            // Refresh icon path with version cache-busting
+            let iconPath = ext.iconPath || null;
+            const icons = manifest.icons || {};
+            if (icons) {
+              const sizes = ['64', '48', '32', '16'];
+              for (const s of sizes) {
+                if (icons[s]) {
+                  iconPath = `peersky://extension-icon/${ext.id}/${s}?v=${encodeURIComponent(newVersion || oldVersion)}`;
+                  break;
+                }
+              }
+            }
+
+            // Update registry metadata
+            ext.installedPath = latestPath;
+            ext.version = newVersion || ext.version;
+            ext.manifest = manifest;
+            if (iconPath) ext.iconPath = iconPath;
+
+            // Clean reload when version changed and extension is enabled
+            if (ext.enabled && versionChanged) {
+              try {
+                if (ext.electronId) {
+                  await this.session.removeExtension(ext.electronId);
+                } else if (this.session.getExtension && this.session.getExtension(ext.id)) {
+                  await this.session.removeExtension(ext.id);
+                }
+              } catch (rmErr) {
+                console.warn(`ExtensionManager: removeExtension failed for ${ext.name}:`, rmErr);
+              }
+              try {
+                const electronExtension = await this.session.loadExtension(latestPath, { allowFileAccess: false });
+                ext.electronId = electronExtension.id;
+              } catch (ldErr) {
+                throw Object.assign(new Error(`Reload failed for ${ext.name}`), { cause: ldErr, code: ERR.E_LOAD_FAILED });
+              }
+            }
+
+            if (versionChanged) {
+              updated.push({ id: ext.id, name: ext.name, from: oldVersion, to: newVersion });
+            } else {
+              skipped.push({ id: ext.id, reason: 'already-latest' });
+            }
+          } catch (e) {
+            console.error('ExtensionManager: Update handling failed:', e);
+            errors.push({ id: ext.id, message: e?.message || 'update failed' });
+          }
+        }
+
+        // Mark non-webstore extensions as skipped (preinstalled/unpacked)
+        for (const ext of this.loadedExtensions.values()) {
+          if (ext.source !== 'webstore') {
+            skipped.push({ id: ext.id, reason: 'skipped-preinstalled' });
+          }
+        }
+
+        await this._writeRegistry();
+
         console.log('ExtensionManager: Extension update check completed');
-        return {
-          updated: [], // Chrome Web Store doesn't provide detailed results
-          skipped: [],
-          errors: []
-        };
-        
+        return { updated, skipped, errors };
+
       } catch (error) {
         console.error('ExtensionManager: Extension updates failed:', error);
         throw error;
@@ -1105,7 +1226,7 @@ class ExtensionManager {
             for (const extension of this.loadedExtensions.values()) {
               if (extension.electronId) {
                 try {
-                  await this.session.extensions.removeExtension(extension.electronId);
+                  await this.session.removeExtension(extension.electronId);
                   console.log(`ExtensionManager: Extension unloaded: ${extension.name}`);
                 } catch (error) {
                   console.error(`ExtensionManager: Failed to unload extension ${extension.name}:`, error);
@@ -1144,14 +1265,15 @@ class ExtensionManager {
             await fs.access(extensionData.installedPath);
           }
           
-          // Fix legacy icon paths to use peersky:// protocol
+          // Fix legacy icon paths to use peersky:// protocol with cache-busting by version
           if (extensionData.iconPath && (extensionData.iconPath.startsWith('file://') || extensionData.iconPath.startsWith('chrome-extension://'))) {
             const icons = extensionData.manifest?.icons;
             if (icons) {
               const iconSizes = ['64', '48', '32', '16'];
               for (const size of iconSizes) {
                 if (icons[size]) {
-                  extensionData.iconPath = `peersky://extension-icon/${extensionData.id}/${size}`;
+                  const v = extensionData.version ? `?v=${encodeURIComponent(String(extensionData.version))}` : '';
+                  extensionData.iconPath = `peersky://extension-icon/${extensionData.id}/${size}${v}`;
                   break;
                 }
               }
@@ -1349,7 +1471,7 @@ class ExtensionManager {
         if (extension.enabled && extension.installedPath) {
           try {
             console.log(`ExtensionManager: Loading extension into Electron: ${extension.name}`);
-            const electronExtension = await this.session.extensions.loadExtension(extension.installedPath, {
+            const electronExtension = await this.session.loadExtension(extension.installedPath, {
               allowFileAccess: false  // Restrict file system access for security
             });
             extension.electronId = electronExtension.id;
