@@ -186,6 +186,40 @@ export function attachContextMenus(browserWindow, windowManager) {
   // Attach to main window's webContents
   attachMenuToWebContents(browserWindow.webContents);
 
+  // Ensure window.open from overlays (e.g., extension popups rendered in this webContents) opens as a tab
+  browserWindow.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      const escapedUrl = url.replace(/'/g, "\\'");
+      browserWindow.webContents
+        .executeJavaScript(`
+          const tabBar = document.querySelector('#tabbar');
+          if (tabBar && typeof tabBar.addTab === 'function') {
+            tabBar.addTab('${escapedUrl}', 'New Tab');
+            return true;
+          } else {
+            return false;
+          }
+        `)
+        .then((added) => {
+          if (!added && windowManagerInstance) {
+            windowManagerInstance.open({ url });
+          }
+        })
+        .catch((err) => {
+          console.error('Failed to add tab from main windowOpenHandler:', err);
+          if (windowManagerInstance) {
+            windowManagerInstance.open({ url });
+          }
+        });
+    } catch (e) {
+      console.warn('Error in main windowOpenHandler:', e);
+      if (windowManagerInstance) {
+        windowManagerInstance.open({ url });
+      }
+    }
+    return { action: 'deny' };
+  });
+
   // Attach to all existing webviews
   browserWindow.webContents.on(
     "did-attach-webview",

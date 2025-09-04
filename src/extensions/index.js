@@ -25,7 +25,7 @@
  */
 
 import electron from 'electron';
-const { app } = electron;
+const { app, BrowserWindow, webContents } = electron;
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { promises as fs } from 'fs';
@@ -124,9 +124,149 @@ class ExtensionManager {
       // Initialize ElectronChromeExtensions for browser actions
       console.log('ExtensionManager: Initializing ElectronChromeExtensions...');
       try {
+        // Provide minimal impl so extensions can open tabs
         this.electronChromeExtensions = new ElectronChromeExtensions({
           session: this.session,
-          license: 'GPL-3.0'  // Compatible with MIT open source Peersky Browser
+          license: "GPL-3.0", // Compatible with MIT open source Peersky Browser
+          /**
+           * Create a new tab in the existing window and return [tabWebContents, window].
+           * details: { url?: string, active?: boolean, windowId?: number }
+           */
+          createTab: async (details = {}) => {
+            try {
+              console.log("[ExtensionManager] createTab called with:", details);
+              // Resolve target window
+              let win = null;
+              if (details.windowId && typeof details.windowId === "number") {
+                win = BrowserWindow.fromId(details.windowId) || null;
+              }
+              if (!win) {
+                win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0] || null;
+              }
+              if (!win) {
+                throw new Error("No browser window available for createTab");
+              }
+
+              // Ensure we are targeting a Peersky window that contains the tab bar
+              const hasTabBar = async (w) => {
+                try {
+                  return await w.webContents.executeJavaScript(`
+                    (function () {
+                      const tb = document.getElementById('tabbar');
+                      return !!(tb && typeof tb.addTab === 'function');
+                    })();
+                  `, true);
+                } catch (_) { return false; }
+              };
+
+              if (!(await hasTabBar(win))) {
+                const parent = win.getParentWindow && win.getParentWindow();
+                if (parent && await hasTabBar(parent)) {
+                  win = parent;
+                } else {
+                  const windows = BrowserWindow.getAllWindows();
+                  for (const w of windows) {
+                    if (await hasTabBar(w)) { win = w; break; }
+                  }
+                }
+              }
+
+              const url = typeof details.url === "string" && details.url.length > 0 ? details.url : "peersky://home";
+              const js = `
+                (async () => {
+                  const tabBar = document.getElementById('tabbar');
+                  if (!tabBar || typeof tabBar.addTab !== 'function') {
+                    return { tabId: null, webContentsId: null };
+                  }
+                  const tabId = tabBar.addTab(${JSON.stringify(url)}, "New Tab");
+                  const getId = () => {
+                    try {
+                      const wv = tabBar.getWebviewForTab(tabId);
+                      if (wv && typeof wv.getWebContentsId === 'function') {
+                        return wv.getWebContentsId();
+                      }
+                    } catch (_) {}
+                    return null;
+                  };
+                  let webContentsId = getId();
+                  let attempts = 0;
+                  while (!webContentsId && attempts < 200) { // wait up to ~10s
+                    await new Promise(r => setTimeout(r, 50));
+                    webContentsId = getId();
+                    attempts++;
+                  }
+                  return { tabId, webContentsId };
+                })();
+              `;
+
+              const result = await win.webContents.executeJavaScript(js, true);
+              const wcId = result && typeof result.webContentsId === "number" ? result.webContentsId : null;
+              let tabWc = wcId ? webContents.fromId(wcId) : null;
+
+              // Fallback: try to locate the webview by scanning all webContents
+              if (!tabWc) {
+                try {
+                  const all = webContents.getAllWebContents();
+                  const candidates = all.filter(wc => {
+                    try { 
+                      return wc.getType && wc.getType() === 'webview'; 
+                    } catch (_) { 
+                      return false; 
+                    }
+                  });
+                  // Prefer webviews whose host is this window
+                  const byHost = candidates.filter(wc => wc.hostWebContents && wc.hostWebContents.id === win.webContents.id);
+                  // If URL is already set, try to match it
+                  tabWc = byHost.find(wc => {
+                    try { 
+                      return typeof wc.getURL === 'function' && wc.getURL() === url; 
+                    } catch (_) { 
+                      return false; 
+                    }
+                  }) || byHost[0] || candidates[0] || null;
+                } catch (scanErr) {
+                  console.warn('[ExtensionManager] createTab fallback scan failed:', scanErr);
+                }
+              }
+
+              // Fallback to the window's webContents if we couldn't get the webview yet
+              const retWc = tabWc && !tabWc.isDestroyed() ? tabWc : win.webContents;
+              return [retWc, win];
+            } catch (err) {
+              console.error("[ExtensionManager] createTab impl failed:", err);
+              throw err;
+            }
+          },
+          /**
+           * Select/focus a tab given its WebContents
+           */
+          selectTab: async (tab, win) => {
+            try {
+              if (!win || win.isDestroyed()) return;
+              const tabId = tab && typeof tab.id === "number" ? tab.id : null;
+              if (!tabId) return;
+              const js = `
+                (function () {
+                  const tabBar = document.getElementById('tabbar');
+                  if (!tabBar) return false;
+                  try {
+                    for (const [tid, wv] of tabBar.webviews.entries()) {
+                      if (wv && typeof wv.getWebContentsId === 'function' && wv.getWebContentsId() === ${String(tabId)}) {
+                        if (typeof tabBar.selectTab === 'function') {
+                          tabBar.selectTab(tid);
+                        }
+                        return true;
+                      }
+                    }
+                  } catch (_) {}
+                  return false;
+                })();
+              `;
+              await win.webContents.executeJavaScript(js, true);
+            } catch (err) {
+              console.warn("[ExtensionManager] selectTab impl failed:", err);
+            }
+          },
         });
         console.log('ExtensionManager: ElectronChromeExtensions initialized');
       } catch (error) {
@@ -144,6 +284,13 @@ class ExtensionManager {
       // Load enabled extensions
       await this._loadExtensionsIntoElectron();
 
+      // Attach navigation guards for extension popups so external URLs open in tabs
+      try {
+        this._installExtensionPopupGuards();
+      } catch (guardErr) {
+        console.warn('[ExtensionManager] Failed to install popup navigation guards:', guardErr);
+      }
+
       this.isInitialized = true;
       console.log('ExtensionManager: Extension system initialized successfully');
 
@@ -151,6 +298,89 @@ class ExtensionManager {
       console.error('ExtensionManager: Failed to initialize:', error);
       throw error;
     }
+  }
+
+  /**
+   * Install global guards so that extension popups cannot directly navigate to
+   * external URLs. Instead, open those URLs in a regular Peersky tab.
+   */
+  _installExtensionPopupGuards() {
+    if (!this.app) return;
+
+    const isExternalUrl = (url) => /^(https?:|ipfs:|ipns:|hyper:|web3:)/i.test(url);
+
+    const openInPeerskyTab = async (url) => {
+      try {
+        if (this.electronChromeExtensions && this.electronChromeExtensions.createTab) {
+          await this.electronChromeExtensions.createTab({ url, active: true });
+          return true;
+        }
+      } catch (err) {
+        console.warn('[ExtensionManager] createTab failed, falling back to UI script:', err);
+      }
+
+      // Fallback: find a peersky window with a tab bar
+      const windows = BrowserWindow.getAllWindows();
+      for (const win of windows) {
+        if (!win || win.isDestroyed()) continue;
+        try {
+          const ok = await win.webContents.executeJavaScript(`
+            (function () {
+              const tabBar = document.getElementById('tabbar');
+              if (tabBar && typeof tabBar.addTab === 'function') {
+                tabBar.addTab(${JSON.stringify(url)}, 'New Tab');
+                return true;
+              }
+              return false;
+            })();
+          `, true);
+          if (ok) return true;
+        } catch (_) {}
+      }
+      return false;
+    };
+
+    const attachGuards = (wc) => {
+      // Only attach once
+      if (wc.__peerskyPopupGuardsInstalled) return;
+      wc.__peerskyPopupGuardsInstalled = true;
+
+      let isExtensionPopup = false;
+
+      // Determine if this contents is an extension popup when navigation starts
+      wc.on('did-start-navigation', (_e, url, _isInPlace, isMainFrame) => {
+        if (!isMainFrame) return;
+        if (url && url.startsWith('chrome-extension://')) {
+          isExtensionPopup = true;
+        }
+      });
+
+      // Guard window.open from popups
+      wc.setWindowOpenHandler((details) => {
+        if (isExtensionPopup && isExternalUrl(details.url)) {
+          openInPeerskyTab(details.url);
+          return { action: 'deny' };
+        }
+        return { action: 'allow' };
+      });
+
+      // Guard top-level navigation from popups
+      wc.on('will-navigate', (event, url) => {
+        if (isExtensionPopup && isExternalUrl(url)) {
+          event.preventDefault();
+          openInPeerskyTab(url);
+          const popupWin = BrowserWindow.fromWebContents(wc);
+          if (popupWin && !popupWin.isDestroyed()) {
+            try { popupWin.close(); } catch (_) {}
+          }
+        }
+      });
+    };
+
+    this.app.on('web-contents-created', (_e, wc) => {
+      // Only act on BrowserWindow webContents; ignore webviews (handled in tab-bar)
+      try { attachGuards(wc); } catch (_) {}
+    });
   }
 
   /**
@@ -515,7 +745,53 @@ class ExtensionManager {
                   partition: window.webContents.session.partition
                 }
               });
-              
+
+              // Ensure external URLs from popup open in regular tabs
+              const isExternalUrl = (u) => /^(https?:|ipfs:|ipns:|hyper:|web3:)/i.test(u);
+              popupWindow.webContents.setWindowOpenHandler(({ url }) => {
+                if (isExternalUrl(url)) {
+                  // Prefer built-in createTab; fallback to injecting addTab
+                  if (this.electronChromeExtensions && this.electronChromeExtensions.createTab) {
+                    this.electronChromeExtensions.createTab({ url, active: true });
+                  } else {
+                    window.webContents.executeJavaScript(
+                      `(() => { 
+                        const tabBar = document.getElementById('tabbar'); 
+                        if (tabBar && tabBar.addTab) { 
+                          tabBar.addTab(${JSON.stringify(url)}, 'New Tab'); 
+                          return true; 
+                        } 
+                        return false; 
+                      })()`,
+                      true
+                    ).catch(() => {});
+                  }
+                  return { action: 'deny' };
+                }
+                return { action: 'allow' };
+              });
+              popupWindow.webContents.on('will-navigate', (evt, targetUrl) => {
+                if (isExternalUrl(targetUrl)) {
+                  evt.preventDefault();
+                  if (this.electronChromeExtensions && this.electronChromeExtensions.createTab) {
+                    this.electronChromeExtensions.createTab({ url: targetUrl, active: true });
+                  } else {
+                    window.webContents.executeJavaScript(
+                      `(() => { 
+                        const tabBar = document.getElementById('tabbar'); 
+                        if (tabBar && tabBar.addTab) { 
+                          tabBar.addTab(${JSON.stringify(targetUrl)}, 'New Tab'); 
+                          return true; 
+                        } 
+                        return false; 
+                      })()`,
+                      true
+                    ).catch(() => {});
+                  }
+                  try { popupWindow.close(); } catch (_) {}
+                }
+              });
+
               await popupWindow.loadURL(popupUrl);
               popupWindow.show();
               
