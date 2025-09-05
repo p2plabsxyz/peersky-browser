@@ -207,13 +207,13 @@
 }
 
 .extension-icon svg {
-  width: 24px;
-  height: 24px;
+  width: 36px;
+  height: 36px;
 }
 
 .extension-icon-placeholder {
-  width: 24px;
-  height: 24px;
+  width: 36px;
+  height: 36px;
   opacity: 0.6;
   fill: var(--settings-text-secondary);
 }

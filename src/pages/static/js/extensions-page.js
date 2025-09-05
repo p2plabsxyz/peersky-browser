@@ -18,8 +18,8 @@ function loadSVG(container, svgPath) {
       const svgElement = container.querySelector('svg');
       if (svgElement) {
         const isEmptyIcon = container.classList.contains('extensions-empty-icon');
-        svgElement.setAttribute('width', isEmptyIcon ? '48' : '24');
-        svgElement.setAttribute('height', isEmptyIcon ? '48' : '24');
+        svgElement.setAttribute('width', isEmptyIcon ? '48' : '36');
+        svgElement.setAttribute('height', isEmptyIcon ? '48' : '36');
         svgElement.classList.add('extension-icon-placeholder');
         // Ensure color follows theme
         svgElement.setAttribute('fill', 'currentColor');

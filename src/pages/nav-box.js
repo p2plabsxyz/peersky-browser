@@ -197,12 +197,31 @@ class NavBox extends HTMLElement {
             button.title = sanitizedTitle;
             
             // Create and validate icon
-            const img = document.createElement('img');
-            img.className = 'extension-icon';
-            img.src = this.validateIconUrl(action.icon);
-            img.alt = this.escapeHtmlAttribute(action.name || 'Extension');
-            
-            button.appendChild(img);
+            const iconUrl = this.validateIconUrl(action.icon);
+            const isInlineSvg = typeof iconUrl === 'string' && iconUrl.startsWith('peersky://') && iconUrl.endsWith('.svg');
+
+            if (isInlineSvg) {
+              // Inline SVG so it can inherit theme color via currentColor
+              const iconContainer = document.createElement('div');
+              iconContainer.className = 'extension-icon';
+              this.loadSVG(iconContainer, iconUrl);
+              button.appendChild(iconContainer);
+            } else {
+              const img = document.createElement('img');
+              img.className = 'extension-icon';
+              img.src = iconUrl;
+              img.alt = this.escapeHtmlAttribute(action.name || 'Extension');
+              // Fallback to inline puzzle icon if image fails
+              img.onerror = () => {
+                const fallback = document.createElement('div');
+                fallback.className = 'extension-icon';
+                this.loadSVG(fallback, 'peersky://static/assets/svg/puzzle.svg');
+                if (img.parentNode) {
+                  img.parentNode.replaceChild(fallback, img);
+                }
+              };
+              button.appendChild(img);
+            }
             
             // Add badge if present (sanitized)
             if (action.badgeText) {
@@ -381,15 +400,25 @@ class NavBox extends HTMLElement {
         container.innerHTML = svgContent;
         const svgElement = container.querySelector("svg");
         if (svgElement) {
-          // Set larger size specifically for extensions icon
-          if (svgPath.includes("extensions.svg")) {
+          // Set sizes by context
+          if (container.closest('.extension-action-btn')) {
+            // Toolbar extension icons
+            svgElement.setAttribute('width', '20');
+            svgElement.setAttribute('height', '20');
+          } else if (svgPath.includes("extensions.svg")) {
+            // Extensions puzzle button icon
             svgElement.setAttribute("width", "22");
             svgElement.setAttribute("height", "22");
           } else {
+            // Default small icons for nav controls
             svgElement.setAttribute("width", "18");
             svgElement.setAttribute("height", "18");
           }
           svgElement.setAttribute("fill", "currentColor");
+          // Ensure stroke-based icons adopt theme color
+          try {
+            svgElement.querySelectorAll('[stroke]').forEach(el => el.setAttribute('stroke', 'currentColor'));
+          } catch (_) {}
         }
       })
       .catch((error) => {

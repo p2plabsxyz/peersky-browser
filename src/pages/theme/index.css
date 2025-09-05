@@ -909,6 +909,7 @@ find-menu {
   opacity: 1;
   transform: scale(1);
   -webkit-app-region: no-drag;
+  color: var(--peersky-nav-button-color);
 }
 
 /* Smooth animations for pinned extensions appearing/disappearing */
@@ -954,10 +955,12 @@ find-menu {
 
 .extension-action-btn:hover {
   background-color: var(--peersky-nav-button-hover);
+  color: var(--peersky-nav-button-hover);
 }
 
 .extension-action-btn:active {
   background-color: var(--peersky-nav-button-active);
+  color: var(--peersky-nav-button-active);
 }
 
 .extension-icon {
@@ -968,6 +971,15 @@ find-menu {
   background: transparent !important;
   mix-blend-mode: normal;
 }
+
+/* Inline SVG inside toolbar extension icons should follow theme color */
+.extension-action-btn .extension-icon svg {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+  display: block;
+}
+
 
 .extension-badge {
   position: absolute;

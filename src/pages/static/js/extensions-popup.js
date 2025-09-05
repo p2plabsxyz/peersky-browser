@@ -480,11 +480,29 @@ export class ExtensionsPopup {
         `;
         
         // Create and validate icon (same pattern as nav-box)
-        const img = document.createElement('img');
-        img.className = 'extension-icon';
-        img.src = extension.icon || 'peersky://static/assets/svg/puzzle.svg';
-        img.alt = this.escapeHtmlAttribute(extension.name || 'Extension');
-        tempIcon.appendChild(img);
+        const iconUrl = extension.icon || 'peersky://static/assets/svg/puzzle.svg';
+        const isInlineSvg = typeof iconUrl === 'string' && iconUrl.startsWith('peersky://') && iconUrl.endsWith('.svg');
+
+        if (isInlineSvg) {
+            const iconContainer = document.createElement('div');
+            iconContainer.className = 'extension-icon';
+            this.loadSVG(iconContainer, iconUrl);
+            tempIcon.appendChild(iconContainer);
+        } else {
+            const img = document.createElement('img');
+            img.className = 'extension-icon';
+            img.src = iconUrl;
+            img.alt = this.escapeHtmlAttribute(extension.name || 'Extension');
+            img.onerror = () => {
+                const fallback = document.createElement('div');
+                fallback.className = 'extension-icon';
+                this.loadSVG(fallback, 'peersky://static/assets/svg/puzzle.svg');
+                if (img.parentNode) {
+                    img.parentNode.replaceChild(fallback, img);
+                }
+            };
+            tempIcon.appendChild(img);
+        }
         
         // Add badge if present (same as nav-box)
         if (extension.badgeText) {
@@ -701,13 +719,15 @@ export class ExtensionsPopup {
                         svgElement.setAttribute('width', '14');
                         svgElement.setAttribute('height', '14');
                     } else if (container.closest('.extension-icon')) {
-                        svgElement.setAttribute('width', '16');
-                        svgElement.setAttribute('height', '16');
+                        svgElement.setAttribute('width', '20');
+                        svgElement.setAttribute('height', '20');
                     } else {
                         svgElement.setAttribute('width', '12');
                         svgElement.setAttribute('height', '12');
                     }
                     svgElement.setAttribute('fill', 'currentColor');
+                    // Ensure stroke-based icons adopt theme color
+                    svgElement.querySelectorAll('[stroke]').forEach(el => el.setAttribute('stroke', 'currentColor'));
                 }
             })
             .catch(error => {
