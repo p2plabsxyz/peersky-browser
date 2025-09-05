@@ -14,6 +14,7 @@ import { promises as fs } from 'fs';
 import { existsSync } from 'fs';
 import path from 'path';
 import { randomBytes } from 'crypto';
+import { createHash } from 'crypto';
 
 // Constants for Chrome Web Store validation
 /**
@@ -43,7 +44,10 @@ export const ERR = {
   E_ALREADY_EXISTS: 'E_ALREADY_EXISTS',
   E_NOT_AVAILABLE: 'E_NOT_AVAILABLE',
   E_PIN_LIMIT: 'E_PIN_LIMIT',
-  E_INVALID_STATE: 'E_INVALID_STATE'
+  E_INVALID_STATE: 'E_INVALID_STATE',
+  E_INVALID_PATH: 'E_INVALID_PATH',
+  E_PATH_TRAVERSAL: 'E_PATH_TRAVERSAL',
+  E_RATE_LIMIT: 'E_RATE_LIMIT'
 };
 
 /**
@@ -231,4 +235,91 @@ export class KeyedMutex {
     
     return newPromise;
   }
+}
+
+/**
+ * Validate and sanitize a local source path for extension installation.
+ * - Normalizes and resolves the path
+ * - Rejects traversal patterns
+ * - Ensures the path exists and is a directory
+ * - Restricts to allowed user directories (Downloads, Desktop, Documents)
+ * - Resolves symlinks and validates final realpath is within allowlist
+ *
+ * @param {string} sourcePath - User-provided source path
+ * @returns {Promise<string>} Sanitized absolute path
+ * @throws {Error} With codes E_INVALID_PATH or E_PATH_TRAVERSAL
+ */
+export async function validateSourcePath(sourcePath) {
+  const osMod = await import('os');
+
+  // Basic type/length checks
+  if (!sourcePath || typeof sourcePath !== 'string') {
+    throw Object.assign(new Error('Invalid source path'), { code: ERR.E_INVALID_PATH });
+  }
+  if (sourcePath.length > 4096) {
+    throw Object.assign(new Error('Source path too long'), { code: ERR.E_INVALID_PATH });
+  }
+
+  // Pre-normalization traversal checks on raw input
+  if (sourcePath.includes('..') || sourcePath.includes('~')) {
+    throw Object.assign(new Error('Path traversal detected'), { code: ERR.E_PATH_TRAVERSAL });
+  }
+
+  // Normalize and resolve
+  const normalizedPath = path.normalize(sourcePath);
+  const resolvedPath = path.resolve(normalizedPath);
+
+  // Quick traversal pattern detection on the normalized path
+  if (normalizedPath.includes('..') || normalizedPath.includes('~')) {
+    throw Object.assign(new Error('Path traversal detected'), { code: ERR.E_PATH_TRAVERSAL });
+  }
+
+  // Ensure exists and is directory
+  let stats;
+  try {
+    stats = await fs.lstat(resolvedPath);
+  } catch (e) {
+    throw Object.assign(new Error('Source path does not exist'), { code: ERR.E_INVALID_PATH });
+  }
+  if (!stats.isDirectory()) {
+    throw Object.assign(new Error('Source must be a directory'), { code: ERR.E_INVALID_PATH });
+  }
+
+  // Resolve symlinks to real path
+  let realPath;
+  try {
+    realPath = await fs.realpath(resolvedPath);
+  } catch (e) {
+    throw Object.assign(new Error('Failed to resolve source path'), { code: ERR.E_INVALID_PATH });
+  }
+
+  // Restrict to allowlisted user directories
+  // NOTE: The allowlist is fixed for now (Downloads/Desktop/Documents).
+  // It can be made user-configurable via Settings in a future update.
+  const home = osMod.homedir();
+  const allowedDirectories = [
+    path.join(home, 'Downloads'),
+    path.join(home, 'Desktop'),
+    path.join(home, 'Documents')
+  ];
+
+  const isAllowed = allowedDirectories.some((allowedDir) => {
+    const allowed = path.resolve(allowedDir);
+    return realPath === allowed || realPath.startsWith(allowed + path.sep);
+  });
+
+  if (!isAllowed) {
+    throw Object.assign(new Error('Source path not in allowed directories'), { code: ERR.E_PATH_TRAVERSAL });
+  }
+
+  return realPath;
+}
+
+/**
+ * Compute SHA-256 hex digest of input string.
+ * @param {string} input
+ * @returns {string}
+ */
+export function sha256Hex(input) {
+  return createHash('sha256').update(input).digest('hex');
 }

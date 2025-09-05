@@ -13,7 +13,7 @@ import { setWindowManager } from "./context-menu.js";
 
 // Import and initialize extension system
 import extensionManager from "./extensions/index.js";
-import { setupExtensionIpcHandlers } from "./ipc-handlers/extensions.js";
+import { setupExtensionIpcHandlers } from "./extensions/extensions-ipc.js";
 import { getBrowserSession, usePersist } from "./utils/session.js";
 
 const P2P_PROTOCOL = {

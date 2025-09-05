@@ -22,7 +22,25 @@
 
 import electron from "electron";
 const { ipcMain, BrowserWindow } = electron;
-import { ERR } from "./util.js";
+import { ERR, validateSourcePath, sha256Hex } from "./util.js";
+import path from "path";
+
+// Simple in-memory rate limiter for install attempts per sender WebContents
+const INSTALL_RATE_WINDOW_MS = 60_000; // 1 minute window
+const INSTALL_RATE_LIMIT = 5;          // up to 5 attempts per window
+/** @type {Map<number, number[]>} */
+const installAttempts = new Map();
+
+function checkInstallRateLimit(senderId) {
+  const now = Date.now();
+  const times = installAttempts.get(senderId) || [];
+  const recent = times.filter((t) => now - t < INSTALL_RATE_WINDOW_MS);
+  if (recent.length >= INSTALL_RATE_LIMIT) {
+    throw Object.assign(new Error("Too many installation attempts"), { code: ERR.E_RATE_LIMIT });
+  }
+  recent.push(now);
+  installAttempts.set(senderId, recent);
+}
 
 /**
  * Setup extension IPC handlers
@@ -53,11 +71,26 @@ export function setupExtensionIpcHandlers(extensionManager) {
     // Install extension from local path
     ipcMain.handle("extensions-install", async (event, sourcePath) => {
       try {
-        if (!sourcePath || typeof sourcePath !== "string") {
-          throw Object.assign(new Error("Invalid source path"), { code: ERR.E_INVALID_ID });
+        // Rate limit per sender
+        try { checkInstallRateLimit(event.sender.id); } catch (rlErr) {
+          console.warn("[ExtensionIPC] Install rate limited:", rlErr.message);
+          throw rlErr;
         }
 
-        const result = await extensionManager.installExtension(sourcePath);
+        // Validate and sanitize path before passing to manager
+        const sanitizedPath = await validateSourcePath(sourcePath);
+
+        // Logging hygiene: only basename + hash by default
+        const baseName = path.basename(sanitizedPath);
+        const realpathHash = sha256Hex(sanitizedPath).slice(0, 16);
+        const debugExt = process.env.DEBUG_EXT === "1";
+        if (debugExt) {
+          console.log("[ExtensionIPC] Install request", { senderId: event.sender.id, baseName, realpathHash, fullPath: sanitizedPath });
+        } else {
+          console.log("[ExtensionIPC] Install request", { senderId: event.sender.id, baseName, realpathHash });
+        }
+
+        const result = await extensionManager.installExtension(sanitizedPath);
         return { success: true, ...result };
       } catch (error) {
         return {
@@ -428,3 +461,6 @@ export function setupExtensionIpcHandlers(extensionManager) {
     throw error;
   }
 }
+
+// Export internal for lightweight tests (no Electron side-effects)
+export { checkInstallRateLimit };
