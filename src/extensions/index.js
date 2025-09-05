@@ -1657,7 +1657,7 @@ class ExtensionManager {
   }
 
   /**
-   * Pin extension to toolbar (max 3 extensions)
+   * Pin extension to toolbar (max 6 extensions)
    * 
    * @param {string} extensionId - Extension ID to pin
    * @returns {Promise<boolean>} Success status
@@ -1685,9 +1685,9 @@ class ExtensionManager {
         return true;
       }
 
-      // Check pin limit (max 3 extensions)
-      if (pinnedExtensions.length >= 3) {
-        throw Object.assign(new Error('Maximum 3 extensions can be pinned'), { code: ERR.E_PIN_LIMIT });
+      // Check pin limit (max 6 extensions)
+      if (pinnedExtensions.length >= 6) {
+        throw Object.assign(new Error('Maximum 6 extensions can be pinned'), { code: ERR.E_PIN_LIMIT });
       }
 
       // Add to pinned list

@@ -570,8 +570,14 @@ export class ExtensionsPopup {
                     console.error('[ExtensionsPopup] Failed to pin extension:', result?.error);
                     
                     // Show user-friendly error for pin limit
-                    if (result?.error?.includes('Maximum 3 extensions')) {
-                        console.warn('[ExtensionsPopup] Pin limit reached (3 extensions maximum)');
+                    if (result?.code === 'E_PIN_LIMIT') {
+                        console.warn('[ExtensionsPopup] Pin limit reached (6 extensions maximum)');
+                        const navBox = document.querySelector('nav-box');
+                        if (navBox && typeof navBox.showToast === 'function') {
+                            navBox.showToast('Maximum 6 pinned extensions', 'error');
+                        } else {
+                            alert('Maximum 6 pinned extensions');
+                        }
                     }
                 }
             }

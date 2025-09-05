@@ -173,7 +173,7 @@ class NavBox extends HTMLElement {
         const allActions = actionsResult.actions;
         const pinnedExtensions = pinnedResult?.success ? pinnedResult.pinnedExtensions || [] : [];
         
-        // Filter to only show pinned extensions (max 3)
+        // Filter to only show pinned extensions (max 6)
         const pinnedActions = allActions.filter(action => pinnedExtensions.includes(action.id));
         
         // Clear container first for security
@@ -223,7 +223,7 @@ class NavBox extends HTMLElement {
           });
         }
         
-        console.log(`[NavBox] Rendered ${pinnedActions.length} pinned extension${pinnedActions.length !== 1 ? 's' : ''} out of ${allActions.length} total (max 3)`);
+        console.log(`[NavBox] Rendered ${pinnedActions.length} pinned extension${pinnedActions.length !== 1 ? 's' : ''} out of ${allActions.length} total (max 6)`);
       } else {
         // Clear container if no actions
         container.innerHTML = '';
@@ -283,10 +283,10 @@ class NavBox extends HTMLElement {
         // Fallback to regular click
         const clickResult = await navBoxIPC.invoke('extensions-click-browser-action', extensionId);
         
-        if (!clickResult?.success) {
-          console.error('[NavBox] Extension action failed:', clickResult?.error);
-          this.showToast('Extension action failed');
-        }
+      if (!clickResult?.success) {
+        console.error('[NavBox] Extension action failed:', clickResult?.error);
+        this.showToast('Extension action failed', 'error');
+      }
       } else {
         // Set up cleanup for temp icon when popup closes (if applicable)
         if (options.isPinned === false && anchor && anchor.classList.contains('temp-icon')) {
@@ -295,7 +295,7 @@ class NavBox extends HTMLElement {
       }
     } catch (error) {
       console.error('[NavBox] Extension action error:', error);
-      this.showToast('Extension action failed');
+      this.showToast('Extension action failed', 'error');
     }
   }
 
@@ -323,32 +323,47 @@ class NavBox extends HTMLElement {
     }, 5000); // Remove after 5 seconds as fallback
   }
 
-  showToast(message) {
-    // Simple toast notification for user feedback
+  showToast(message, type = 'info') {
+    // Simple toast notification for user feedback, with type styling
     const toast = document.createElement('div');
     toast.textContent = message;
     toast.style.cssText = `
       position: fixed;
-      top: 80px;
       right: 20px;
-      background: var(--peersky-nav-button-inactive, #666);
       color: white;
-      padding: 8px 16px;
-      border-radius: 4px;
+      padding: 12px 20px;
+      border-radius: 6px;
       font-size: 14px;
       z-index: 10000;
       opacity: 0;
       transition: opacity 0.3s ease;
     `;
+
+    // Type-specific background colors (aligned with settings messages)
+    let bg = '#2196f3'; // info
+    if (type === 'error') bg = '#f44336';
+    else if (type === 'warning') bg = '#ff9800';
+    else if (type === 'success') bg = '#0fba84';
+    toast.style.backgroundColor = bg;
     
     document.body.appendChild(toast);
+
+    // Position below the nav bar to avoid overlap
+    try {
+      const navRect = this.getBoundingClientRect();
+      const topOffset = Math.max(0, (navRect?.bottom || 0) + 16);
+      toast.style.top = `${topOffset}px`;
+    } catch (_) {
+      toast.style.top = '20px';
+    }
     
     // Animate in
     requestAnimationFrame(() => {
       toast.style.opacity = '1';
     });
     
-    // Remove after 3 seconds
+    // Remove after a short delay (longer for errors)
+    const duration = type === 'error' ? 3000 : 2000;
     setTimeout(() => {
       toast.style.opacity = '0';
       setTimeout(() => {
@@ -356,7 +371,7 @@ class NavBox extends HTMLElement {
           toast.parentNode.removeChild(toast);
         }
       }, 300);
-    }, 3000);
+    }, duration);
   }
 
   loadSVG(container, svgPath) {
