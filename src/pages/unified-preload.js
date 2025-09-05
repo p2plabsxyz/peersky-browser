@@ -8,44 +8,6 @@
  * - External pages: No settings access
  * 
  * Security Model: Principle of least privilege with granular access control.
- * 
- * TODO: Extension System Integration Requirements
- * 
- * 1. Extension API Security:
- *    - Validate extension permissions before exposing APIs
- *    - Implement extension sandboxing for external pages
- *    - Add extension content script injection for web pages
- *    - Implement extension message passing security
- * 
- * 2. Browser Action Integration:
- *    - Expose browser action APIs to home pages for toolbar display
- *    - Implement browser action click handling
- *    - Add browser action badge and icon support
- *    - Handle browser action popup windows
- * 
- * 3. Extension Development Support:
- *    - Add extension reload functionality for development
- *    - Implement extension debugging APIs
- *    - Add extension log access for troubleshooting
- *    - Support extension hot reloading
- * 
- * 4. Extension Management:
- *    - Add extension installation progress tracking
- *    - Implement extension update notifications
- *    - Add extension error reporting and recovery
- *    - Support extension backup and restore
- * 
- * 5. Context-Specific Extension APIs:
- *    - Settings pages: Full extension management APIs
- *    - Home pages: Browser action display and basic info
- *    - Internal pages: Extension theme and content script support
- *    - External pages: Extension content script injection only
- * 
- * 6. IPC Handler Integration:
- *    - Add missing extension IPC handlers in main process
- *    - Implement extension event broadcasting
- *    - Add extension error handling and recovery
- *    - Support extension background page communication
  */
 
 const { contextBridge, ipcRenderer } = require('electron');
