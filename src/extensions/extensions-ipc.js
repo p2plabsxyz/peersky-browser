@@ -31,6 +31,9 @@ const INSTALL_RATE_LIMIT = 5;          // up to 5 attempts per window
 /** @type {Map<number, number[]>} */
 const installAttempts = new Map();
 
+// Upload size cap (bytes) for in-memory payloads
+const MAX_UPLOAD_BYTES = 60 * 1024 * 1024; // 60 MB
+
 function checkInstallRateLimit(senderId) {
   const now = Date.now();
   const times = installAttempts.get(senderId) || [];
@@ -90,6 +93,12 @@ export function setupExtensionIpcHandlers(extensionManager) {
     // Install extension from uploaded blob (ArrayBuffer) from renderer
     ipcMain.handle("extensions-install-upload", async (event, payload) => {
       try {
+        // Rate limit per sender
+        try { checkInstallRateLimit(event.sender.id); } catch (rlErr) {
+          console.warn("[ExtensionIPC] Upload install rate limited:", rlErr.message);
+          throw rlErr;
+        }
+
         // Basic payload validation
         if (!payload || typeof payload.name !== "string" || !payload.data) {
           throw Object.assign(new Error("Invalid upload payload"), { code: ERR.E_INVALID_PATH });
@@ -101,6 +110,20 @@ export function setupExtensionIpcHandlers(extensionManager) {
           throw Object.assign(new Error("Unsupported file type"), { code: ERR.E_INVALID_PATH });
         }
 
+        // Enforce size cap before buffering/writing
+        const dataAny = payload.data;
+        const byteLength = Buffer.isBuffer(dataAny)
+          ? dataAny.length
+          : (typeof dataAny === 'object' && dataAny !== null && typeof dataAny.byteLength === 'number')
+            ? dataAny.byteLength
+            : (ArrayBuffer.isView(dataAny) ? dataAny.byteLength : 0);
+        if (!Number.isFinite(byteLength) || byteLength <= 0) {
+          throw Object.assign(new Error("Invalid upload data"), { code: ERR.E_INVALID_PATH });
+        }
+        if (byteLength > MAX_UPLOAD_BYTES) {
+          throw Object.assign(new Error(`Upload too large (max ${MAX_UPLOAD_BYTES} bytes)`), { code: ERR.E_INVALID_PATH });
+        }
+
         // Create uploads dir inside userData/extensions/_uploads
         const uploadsDir = path.join(app.getPath('userData'), 'extensions', '_uploads');
         await (await import('fs/promises')).mkdir(uploadsDir, { recursive: true });
@@ -109,7 +132,9 @@ export function setupExtensionIpcHandlers(extensionManager) {
         const destPath = path.join(uploadsDir, tmpName);
 
         // Write file
-        const buf = Buffer.isBuffer(payload.data) ? payload.data : Buffer.from(new Uint8Array(payload.data));
+        const buf = Buffer.isBuffer(payload.data)
+          ? payload.data
+          : Buffer.from(Buffer.from(payload.data instanceof ArrayBuffer ? new Uint8Array(payload.data) : payload.data));
         await (await import('fs/promises')).writeFile(destPath, buf);
 
         // Install using manager
@@ -241,6 +266,11 @@ export function setupExtensionIpcHandlers(extensionManager) {
     // Install extension from Chrome Web Store URL or ID
     ipcMain.handle("extensions-install-webstore", async (event, urlOrId) => {
       try {
+        // Rate limit per sender
+        try { checkInstallRateLimit(event.sender.id); } catch (rlErr) {
+          console.warn("[ExtensionIPC] Webstore install rate limited:", rlErr.message);
+          throw rlErr;
+        }
         if (!urlOrId || typeof urlOrId !== "string") {
           throw Object.assign(new Error("Invalid Chrome Web Store URL or ID"), { code: ERR.E_INVALID_URL });
         }
@@ -403,6 +433,12 @@ export function setupExtensionIpcHandlers(extensionManager) {
           throw Object.assign(new Error("WebContents not found"), { code: ERR.E_INVALID_ID });
         }
 
+        // Verify ownership/embedding relationship
+        const host = webviewContents.hostWebContents || BrowserWindow.fromWebContents(webviewContents)?.webContents;
+        if (!host || (host.id !== event.sender.id && BrowserWindow.fromWebContents(webviewContents) !== BrowserWindow.fromWebContents(event.sender))) {
+          throw Object.assign(new Error("WebContents not owned by sender"), { code: ERR.E_INVALID_ID });
+        }
+
         const senderWindow = BrowserWindow.fromWebContents(event.sender);
         // Register webview with extension system
         extensionManager.addWindow(senderWindow, webviewContents);
@@ -418,7 +454,7 @@ export function setupExtensionIpcHandlers(extensionManager) {
     });
 
     // Unregister webview from extension system
-    ipcMain.handle("extensions-unregister-webview", async (_event, webContentsId) => {
+    ipcMain.handle("extensions-unregister-webview", async (event, webContentsId) => {
       try {
         if (!webContentsId || typeof webContentsId !== "number") {
           throw Object.assign(new Error("Invalid webContents ID"), { code: ERR.E_INVALID_ID });
@@ -430,6 +466,12 @@ export function setupExtensionIpcHandlers(extensionManager) {
         if (!webviewContents) {
           // WebContents might already be destroyed, which is fine
           return { success: true };
+        }
+
+        // Verify ownership/embedding relationship before unregistering
+        const host = webviewContents.hostWebContents || BrowserWindow.fromWebContents(webviewContents)?.webContents;
+        if (!host || (host.id !== event.sender.id && BrowserWindow.fromWebContents(webviewContents) !== BrowserWindow.fromWebContents(event.sender))) {
+          throw Object.assign(new Error("WebContents not owned by sender"), { code: ERR.E_INVALID_ID });
         }
 
         // Unregister webview from extension system

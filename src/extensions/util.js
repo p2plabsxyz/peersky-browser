@@ -261,7 +261,10 @@ export async function validateSourcePath(sourcePath) {
   }
 
   // Pre-normalization traversal checks on raw input
-  if (sourcePath.includes('..') || sourcePath.includes('~')) {
+  const raw = sourcePath.trim();
+  const hasDotDot = raw.split(/[\\\/]+/).some(seg => seg === '..');
+  const hasTildeAtStart = raw.startsWith('~');
+  if (hasDotDot || hasTildeAtStart) {
     throw Object.assign(new Error('Path traversal detected'), { code: ERR.E_PATH_TRAVERSAL });
   }
 
@@ -269,8 +272,9 @@ export async function validateSourcePath(sourcePath) {
   const normalizedPath = path.normalize(sourcePath);
   const resolvedPath = path.resolve(normalizedPath);
 
-  // Quick traversal pattern detection on the normalized path
-  if (normalizedPath.includes('..') || normalizedPath.includes('~')) {
+  // Quick traversal pattern detection on the normalized path (segment-aware)
+  const normHasDotDot = normalizedPath.split(path.sep).some(seg => seg === '..');
+  if (normHasDotDot) {
     throw Object.assign(new Error('Path traversal detected'), { code: ERR.E_PATH_TRAVERSAL });
   }
 
@@ -334,13 +338,19 @@ export async function validateInstallSource(sourcePath, opts = {}) {
   if (sourcePath.length > 4096) {
     throw Object.assign(new Error('Source path too long'), { code: ERR.E_INVALID_PATH });
   }
-  if (sourcePath.includes('..') || sourcePath.includes('~')) {
-    throw Object.assign(new Error('Path traversal detected'), { code: ERR.E_PATH_TRAVERSAL });
+  {
+    const raw = sourcePath.trim();
+    const hasDotDot = raw.split(/[\\\/]+/).some(seg => seg === '..');
+    const hasTildeAtStart = raw.startsWith('~');
+    if (hasDotDot || hasTildeAtStart) {
+      throw Object.assign(new Error('Path traversal detected'), { code: ERR.E_PATH_TRAVERSAL });
+    }
   }
 
   const normalizedPath = path.normalize(sourcePath);
   const resolvedPath = path.resolve(normalizedPath);
-  if (normalizedPath.includes('..') || normalizedPath.includes('~')) {
+  const normHasDotDot = normalizedPath.split(path.sep).some(seg => seg === '..');
+  if (normHasDotDot) {
     throw Object.assign(new Error('Path traversal detected'), { code: ERR.E_PATH_TRAVERSAL });
   }
 

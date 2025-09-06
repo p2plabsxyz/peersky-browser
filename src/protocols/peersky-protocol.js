@@ -63,10 +63,22 @@ async function handleWallpaper(filename, sendResponse) {
 async function handleExtensionIcon(extensionId, size, sendResponse) {
   try {
     // Path to extension: userData/extensions/{extensionId}/{version}/
-    const extensionsPath = path.join(app.getPath("userData"), "extensions", extensionId);
+    let extensionsPath = path.join(app.getPath("userData"), "extensions", extensionId);
     
     // Find the latest extension version directory (format: "<version>_0")
-    const versionDirs = await fsPromises.readdir(extensionsPath);
+    let versionDirs;
+    try {
+      versionDirs = await fsPromises.readdir(extensionsPath);
+    } catch (e) {
+      // Backward-compat: try legacy uppercase "Extensions" directory
+      const legacyPath = path.join(app.getPath("userData"), "Extensions", extensionId);
+      try {
+        versionDirs = await fsPromises.readdir(legacyPath);
+        extensionsPath = legacyPath;
+      } catch (_) {
+        throw e; // propagate original error if legacy also fails
+      }
+    }
     if (!versionDirs || versionDirs.length === 0) {
       throw new Error('No version directories');
     }

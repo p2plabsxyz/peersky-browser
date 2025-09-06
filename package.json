@@ -17,7 +17,6 @@
   "repository": "https://github.com/p2plabsxyz/peersky-browser",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "test:unit": "node tests/run-tests.js",
     "start": "electron .",
     "build": "electron-builder build --publish never",
     "build-all": "electron-builder build -mwl"
@@ -151,7 +150,6 @@
     "hyperdht": "^6.20.1",
     "hyperswarm": "^4.8.4",
     "jquery": "^3.7.1",
-    "level-supports": "^4.0.1",
     "libp2p": "^2.8.8",
     "mime-types": "^2.1.35",
     "multiformats": "^13.3.2",

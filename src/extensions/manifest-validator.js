@@ -561,6 +561,8 @@ class ManifestValidator {
         for (const entry of entries) {
           const fullPath = path.join(dirPath, entry.name);
           const relativePath = path.relative(extensionPath, fullPath);
+          // Normalize for cross-platform pattern matching (use POSIX separators)
+          const relativePathPosix = String(relativePath).split(path.sep).join('/');
           
           if (entry.isDirectory()) {
             // Skip hidden directories and node_modules
@@ -589,15 +591,15 @@ class ManifestValidator {
             const ext = path.extname(entry.name).toLowerCase();
             const base = (ext ? entry.name.slice(0, -ext.length) : entry.name).toLowerCase();
             if (f.blockedExtensions.includes(ext)) {
-              result.errors.push(`Blocked file type: ${relativePath}`);
+              result.errors.push(`Blocked file type: ${relativePathPosix}`);
               result.isValid = false;
-            } else if (f.blockedPatterns.some((re) => re.test(relativePath))) {
-              result.errors.push(`Blocked file pattern: ${relativePath}`);
+            } else if (f.blockedPatterns.some((re) => re.test(relativePathPosix))) {
+              result.errors.push(`Blocked file pattern: ${relativePathPosix}`);
               result.isValid = false;
             } else {
               const isKnown = f.allowedExtensions.includes(ext) || f.allowedBasenames?.includes(base);
               if (!isKnown && f.warnUnknownExtensions) {
-                result.warnings.push(`Unknown file type: ${relativePath}`);
+                result.warnings.push(`Unknown file type: ${relativePathPosix}`);
               }
             }
             
@@ -607,10 +609,10 @@ class ManifestValidator {
             const stats = await fs.stat(fullPath);
             result.totalBytes += stats.size;
             if (stats.size > f.maxFileSizeBlock) {
-              result.errors.push(`File too large: ${relativePath} (${stats.size} bytes, max: ${f.maxFileSizeBlock})`);
+              result.errors.push(`File too large: ${relativePathPosix} (${stats.size} bytes, max: ${f.maxFileSizeBlock})`);
               result.isValid = false;
             } else if (stats.size > f.maxFileSizeWarn) {
-              result.warnings.push(`Large file: ${relativePath} (${stats.size} bytes)`);
+              result.warnings.push(`Large file: ${relativePathPosix} (${stats.size} bytes)`);
             }
           }
         }

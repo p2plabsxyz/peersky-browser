@@ -137,7 +137,27 @@ const extensionAPI = {
   toggleExtension: (id, enabled) => ipcRenderer.invoke('extensions-toggle', id, enabled),
   installExtension: (source) => ipcRenderer.invoke('extensions-install', source),
   openInstallFileDialog: () => ipcRenderer.invoke('extensions-show-open-dialog'),
-  installFromBlob: (name, arrayBuffer) => ipcRenderer.invoke('extensions-install-upload', { name, data: arrayBuffer }),
+  installFromBlob: (name, arrayBuffer) => {
+    if (!name || typeof name !== 'string' || !arrayBuffer) {
+      throw new Error('Invalid upload arguments');
+    }
+    const lower = name.toLowerCase();
+    const allowed = lower.endsWith('.zip') || lower.endsWith('.crx') || lower.endsWith('.crx3');
+    if (!allowed) {
+      throw new Error('Unsupported file type');
+    }
+    const size = typeof arrayBuffer === 'object' && arrayBuffer !== null && typeof arrayBuffer.byteLength === 'number'
+      ? arrayBuffer.byteLength
+      : 0;
+    const MAX_UPLOAD_BYTES = 60 * 1024 * 1024; // 60MB
+    if (!Number.isFinite(size) || size <= 0) {
+      throw new Error('Invalid file content');
+    }
+    if (size > MAX_UPLOAD_BYTES) {
+      throw new Error(`File too large (max ${MAX_UPLOAD_BYTES} bytes)`);
+    }
+    return ipcRenderer.invoke('extensions-install-upload', { name, data: arrayBuffer });
+  },
   uninstallExtension: (id) => ipcRenderer.invoke('extensions-uninstall', id),
   unpinExtension: (id) => {
     ipcRenderer.invoke("extensions-unpin", id);
@@ -368,7 +388,7 @@ try {
   console.error('Unified-preload: Failed to expose APIs via contextBridge:', error);
   
   // Fallback only for settings pages in development
-  if (isSettings) {
+  if (isSettings && process?.env?.NODE_ENV === 'development') {
     try {
       window.electronIPC = ipcRenderer;
       console.log('Unified-preload: Fallback IPC exposed for settings (development mode)');
