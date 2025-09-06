@@ -132,6 +132,7 @@
     "@helia/unixfs": "^5.0.3",
     "b4a": "^1.6.7",
     "blockstore-level": "^2.0.3",
+    "chrome-extension-fetch": "1.0.0",
     "content-hash": "^2.5.2",
     "content-type": "^1.0.5",
     "datastore-level": "^11.0.3",
@@ -150,11 +151,13 @@
     "hyperdht": "^6.20.1",
     "hyperswarm": "^4.8.4",
     "jquery": "^3.7.1",
+    "level-supports": "^4.0.1",
     "libp2p": "^2.8.8",
     "mime-types": "^2.1.35",
     "multiformats": "^13.3.2",
     "node-cache": "^5.1.2",
     "scoped-fs": "^1.4.1",
+    "unzipper": "^0.10.14",
     "web3protocol": "^0.6.0"
   },
   "devDependencies": {

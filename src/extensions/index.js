@@ -29,12 +29,15 @@ const { app, BrowserWindow, webContents } = electron;
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { promises as fs } from 'fs';
-import { createHash } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import { Menu } from "electron"; // for context menu
 import { installChromeWebStore } from 'electron-chrome-web-store';
 import { ElectronChromeExtensions } from 'electron-chrome-extensions';
 import ManifestValidator from './manifest-validator.js';
-import { ensureDir, readJsonSafe, writeJsonAtomic, KeyedMutex, ERR } from './util.js';
+import { loadPolicy } from './policy.js';
+import { ensureDir, readJsonSafe, writeJsonAtomic, KeyedMutex, ERR, atomicReplaceDir } from './util.js';
+import { extractZipFile, extractZipBuffer } from './zip.js';
+import { isCrx, extractCrx, derToBase64 } from './crx.js';
 import ChromeWebStoreManager from './chrome-web-store.js';
 // URL parsing now handled by ManifestValidator
 import { withExtensionLock, withInstallLock, withUpdateLock } from './mutex.js';
@@ -276,8 +279,13 @@ class ExtensionManager {
         this.electronChromeExtensions = null;
       }
 
-      // Initialize validator
-      this.manifestValidator = new ManifestValidator();
+      // Initialize validator with policy
+      try {
+        this.policy = await loadPolicy(this.app);
+      } catch (_) {
+        this.policy = null;
+      }
+      this.manifestValidator = new ManifestValidator(this.policy || undefined);
 
       // Load registry
       await this._readRegistry();
@@ -405,8 +413,15 @@ class ExtensionManager {
           extensionData.installedPath, 
           extensionData.manifest
         );
-        if (!validationResult.isValid) {
+        if (validationResult.outcome === 'deny') {
           throw new Error(`Extension validation failed: ${validationResult.errors.join(', ')}`);
+        }
+        // Attach warnings and risk info for UI/registry
+        if (Array.isArray(validationResult.warnings) && validationResult.warnings.length) {
+          extensionData.warnings = validationResult.warnings.slice(0, 50);
+        }
+        if (typeof validationResult.manifestValidation?.riskScore === 'number') {
+          extensionData.riskScore = validationResult.manifestValidation.riskScore;
         }
 
         // Save extension metadata
@@ -416,10 +431,52 @@ class ExtensionManager {
         if (this.session && extensionData.enabled) {
           try {
             console.log(`ExtensionManager: Loading installed extension into Electron: ${extensionData.name}`);
-            const electronExtension = await this.session.loadExtension(extensionData.installedPath, {
+            let electronExtension = await this.session.loadExtension(extensionData.installedPath, {
               allowFileAccess: false  // Restrict file system access for security
             });
             extensionData.electronId = electronExtension.id;
+
+            // If Chromium computed an ID (e.g., via manifest.key) different from our provisional ID,
+            // relocate directory to keep path and icon handling consistent.
+            if (electronExtension.id && electronExtension.id !== extensionData.id) {
+              const oldId = extensionData.id;
+              const versionDirName = path.basename(extensionData.installedPath);
+              const newRoot = path.join(this.extensionsBaseDir, electronExtension.id);
+              const newVersionPath = path.join(newRoot, versionDirName);
+              try {
+                await ensureDir(newRoot);
+                await fs.rename(extensionData.installedPath, newVersionPath);
+                extensionData.installedPath = newVersionPath;
+                extensionData.id = electronExtension.id;
+                // Move map entry
+                this.loadedExtensions.delete(oldId);
+
+                // Reload extension from its new path so resource URLs resolve correctly
+                try {
+                  await this.session.removeExtension(electronExtension.id);
+                } catch (_) {}
+                try {
+                  electronExtension = await this.session.loadExtension(newVersionPath, { allowFileAccess: false });
+                  extensionData.electronId = electronExtension.id;
+                } catch (reErr) {
+                  console.warn(`ExtensionManager: Reload after relocate failed for ${extensionData.name}:`, reErr);
+                }
+              } catch (mvErr) {
+                console.warn(`ExtensionManager: Could not relocate extension folder to new ID path:`, mvErr);
+              }
+            }
+
+            // Compute icon path with cache-busting
+            const icons = extensionData.manifest?.icons || {};
+            const sizes = ['64','48','32','16'];
+            for (const s of sizes) {
+              if (icons[s]) {
+                const v = extensionData.version ? `?v=${encodeURIComponent(extensionData.version)}` : '';
+                extensionData.iconPath = `peersky://extension-icon/${extensionData.id}/${s}${v}`;
+                break;
+              }
+            }
+
             console.log(`ExtensionManager: Extension loaded in Electron: ${extensionData.name} (${electronExtension.id})`);
           } catch (error) {
             console.error(`ExtensionManager: Failed to load extension into Electron:`, error);
@@ -427,7 +484,20 @@ class ExtensionManager {
         }
 
         this.loadedExtensions.set(extensionData.id, extensionData);
+
+        // Auto-pin newly installed extensions that expose a browser action, if pin slots available
+        try {
+          const action = extensionData.manifest?.action || extensionData.manifest?.browser_action;
+          if (action) {
+            const pinned = await this.getPinnedExtensions();
+            if (pinned.length < 6 && !pinned.includes(extensionData.id)) {
+              await this.pinExtension(extensionData.id);
+            }
+          }
+        } catch (_) {}
         
+        // Persist final state
+        await this._writeRegistry();
         console.log('ExtensionManager: Extension installed successfully:', extensionData.name);
         return { success: true, extension: extensionData };
         
@@ -523,8 +593,8 @@ class ExtensionManager {
           actions.push({
             id: extension.id,
             extensionId: extension.electronId,
-            name: extension.name,
-            title: (action && action.default_title) || extension.name,
+            name: extension.displayName || extension.name,
+            title: (action && (action.default_title || extension.displayName || extension.name)) || (extension.displayName || extension.name),
             icon: extension.iconPath,
             popup: action ? action.default_popup : undefined,
             badgeText: '', // TODO: Get actual badge text from extension
@@ -571,7 +641,7 @@ class ExtensionManager {
       // Trigger browser action click event via ElectronChromeExtensions
       if (this.electronChromeExtensions && extension.electronId) {
         try {
-          console.log(`ExtensionManager: Triggering browser action click for ${extension.name}`);
+          console.log(`ExtensionManager: Triggering browser action click for ${extension.displayName || extension.name}`);
           
           // Get the active tab for the browser action context
           const activeTab = window.webContents;
@@ -592,18 +662,18 @@ class ExtensionManager {
               // Try to trigger browser action click via the API
               if (browserActionAPI.onClicked) {
                 browserActionAPI.onClicked.trigger(tabInfo);
-                console.log(`ExtensionManager: Browser action API triggered for ${extension.name}`);
+                console.log(`ExtensionManager: Browser action API triggered for ${extension.displayName || extension.name}`);
                 return;
               }
               
               // Alternative: Try to simulate a click event
               if (browserActionAPI.click) {
                 await browserActionAPI.click(extension.electronId, tabInfo);
-                console.log(`ExtensionManager: Browser action click API called for ${extension.name}`);
+                console.log(`ExtensionManager: Browser action click API called for ${extension.displayName || extension.name}`);
                 return;
               }
             } catch (apiError) {
-              console.warn(`ExtensionManager: Browser action API failed for ${extension.name}:`, apiError);
+              console.warn(`ExtensionManager: Browser action API failed for ${extension.displayName || extension.name}:`, apiError);
             }
           }
           
@@ -613,15 +683,15 @@ class ExtensionManager {
             if (browserAction && browserAction.onClicked) {
               const tabInfo = { id: activeTab.id, windowId: window.id, url: activeTab.getURL() };
               browserAction.onClicked.trigger(tabInfo);
-              console.log(`ExtensionManager: Browser action onClicked triggered for ${extension.name}`);
+              console.log(`ExtensionManager: Browser action onClicked triggered for ${extension.displayName || extension.name}`);
               return;
             }
           }
           
-          console.warn(`ExtensionManager: No suitable browser action trigger found for ${extension.name}`);
+          console.warn(`ExtensionManager: No suitable browser action trigger found for ${extension.displayName || extension.name}`);
           
         } catch (error) {
-          console.error(`ExtensionManager: Failed to trigger browser action for ${extension.name}:`, error);
+          console.error(`ExtensionManager: Failed to trigger browser action for ${extension.displayName || extension.name}:`, error);
         }
       }
       
@@ -656,24 +726,36 @@ class ExtensionManager {
 
       // Check if action has a popup
       if (!action.default_popup) {
-        console.log(`ExtensionManager: Extension ${extension.name} has no popup, triggering click instead`);
+        console.log(`ExtensionManager: Extension ${extension.displayName || extension.name} has no popup, triggering click instead`);
         await this.clickBrowserAction(actionId, window);
         return { success: true };
+      }
+
+      // Resolve popup path before triggering (handle missing/relocated files)
+      const popupRelRaw = String(action.default_popup || '').replace(/^\//, '');
+      const popupExists = await this._doesExtensionFileExist(extension.installedPath, popupRelRaw);
+      let resolvedPopupRel = popupRelRaw;
+      if (!popupExists) {
+        const alt = await this._resolvePopupRelativePath(extension.installedPath, popupRelRaw);
+        if (alt) {
+          console.warn(`ExtensionManager: Manifest popup missing (${popupRelRaw}), using detected ${alt}`);
+          resolvedPopupRel = alt;
+        }
       }
 
       // Open popup via ElectronChromeExtensions
       if (this.electronChromeExtensions && extension.electronId) {
         try {
-          console.log(`ExtensionManager: Opening popup for ${extension.name} at`, anchorRect);
+          console.log(`ExtensionManager: Opening popup for ${extension.displayName || extension.name} at`, anchorRect);
           
           // Find and register the active webview with the extension system
           const activeWebview = await this._getAndRegisterActiveWebview(window);
           const activeTab = activeWebview || window.webContents; // Use webview if available, fallback to main window
           
           if (!activeWebview) {
-            console.warn(`[ExtensionManager] No active webview found for ${extension.name} popup, using main window fallback`);
+            console.warn(`[ExtensionManager] No active webview found for ${extension.displayName || extension.name} popup, using main window fallback`);
           } else {
-            console.log(`[ExtensionManager] Using active webview for ${extension.name} popup: ${activeTab.getURL()}`);
+            console.log(`[ExtensionManager] Using active webview for ${extension.displayName || extension.name} popup: ${activeTab.getURL()}`);
             
             // Try to set active tab in ElectronChromeExtensions if methods are available
             try {
@@ -691,18 +773,18 @@ class ExtensionManager {
           
           // Try to trigger the browser action via ElectronChromeExtensions
           // This should open the popup if the extension has one
-          if (this.electronChromeExtensions.getBrowserAction) {
+          if (this.electronChromeExtensions.getBrowserAction && popupExists) {
             const browserAction = this.electronChromeExtensions.getBrowserAction(extension.electronId);
             if (browserAction && browserAction.onClicked) {
               // Trigger the browser action click which should open popup using the active webview
               browserAction.onClicked.trigger(activeTab);
-              console.log(`ExtensionManager: Browser action triggered for ${extension.name}`);
+              console.log(`ExtensionManager: Browser action triggered for ${extension.displayName || extension.name}`);
               return { success: true };
             }
           }
           
           // Fallback: Try direct ElectronChromeExtensions API
-          if (this.electronChromeExtensions.api) {
+          if (this.electronChromeExtensions.api && popupExists) {
             try {
               // Attempt to open popup directly if possible
               const api = this.electronChromeExtensions.api;
@@ -802,24 +884,24 @@ class ExtensionManager {
                   { extension: { id: extension.electronId } }, 
                   { windowId: window.id }
                 );
-                console.log(`ExtensionManager: Popup opened directly for ${extension.name}`);
+                console.log(`ExtensionManager: Popup opened directly for ${extension.displayName || extension.name}`);
                 return { success: true };
               }
             } catch (directError) {
-              console.warn(`ExtensionManager: Direct popup API failed for ${extension.name}:`, directError);
+              console.warn(`ExtensionManager: Direct popup API failed for ${extension.displayName || extension.name}:`, directError);
             }
           }
           
           // Final fallback: trigger a regular click which should open popup
-          console.log(`ExtensionManager: Falling back to regular click for ${extension.name}`);
+          console.log(`ExtensionManager: Falling back to regular click for ${extension.displayName || extension.name}`);
           await this.clickBrowserAction(actionId, window);
           
           // Ultimate fallback: Try to open popup by simulating Chrome extension behavior
-          if (action.default_popup) {
-            console.log(`ExtensionManager: Attempting manual popup creation for ${extension.name}`);
+          if (resolvedPopupRel) {
+            console.log(`ExtensionManager: Attempting manual popup creation for ${extension.displayName || extension.name}`);
             try {
               // Create a popup window manually if all else fails
-              const popupUrl = `chrome-extension://${extension.electronId}/${action.default_popup}`;
+              const popupUrl = `chrome-extension://${extension.electronId}/${resolvedPopupRel}`;
               const popupWindow = new (await import('electron')).BrowserWindow({
                 width: 400,
                 height: 600,
@@ -905,18 +987,18 @@ class ExtensionManager {
                 }
               }, 30000); // 30 second timeout
               
-              console.log(`ExtensionManager: Manual popup created for ${extension.name}`);
+              console.log(`ExtensionManager: Manual popup created for ${extension.displayName || extension.name}`);
               return { success: true };
               
             } catch (manualError) {
-              console.error(`ExtensionManager: Manual popup creation failed for ${extension.name}:`, manualError);
+              console.error(`ExtensionManager: Manual popup creation failed for ${extension.displayName || extension.name}:`, manualError);
             }
           }
           
           return { success: true };
           
         } catch (error) {
-          console.error(`ExtensionManager: Failed to open popup for ${extension.name}:`, error);
+          console.error(`ExtensionManager: Failed to open popup for ${extension.displayName || extension.name}:`, error);
           return { success: false, error: error.message };
         }
       }
@@ -994,7 +1076,7 @@ class ExtensionManager {
         // Unload extension from Electron's system
         if (this.session && extension.electronId) {
           try {
-            console.log(`ExtensionManager: Unloading extension from Electron: ${extension.name}`);
+            console.log(`ExtensionManager: Unloading extension from Electron: ${extension.displayName || extension.name}`);
             await this.session.removeExtension(extension.electronId);
           } catch (error) {
             console.error(`ExtensionManager: Failed to unload extension from Electron:`, error);
@@ -1007,7 +1089,7 @@ class ExtensionManager {
             console.log(`ExtensionManager: Uninstalling from Chrome Web Store: ${extension.name} (${extensionId})`);
             await this.chromeWebStore.uninstallById(extensionId);
           } catch (error) {
-            console.error(`ExtensionManager: Chrome Web Store uninstall failed for ${extension.name}:`, error);
+            console.error(`ExtensionManager: Chrome Web Store uninstall failed for ${extension.displayName || extension.name}:`, error);
             // Continue with local removal regardless
           }
         }
@@ -1074,6 +1156,15 @@ class ExtensionManager {
         // Install via Chrome Web Store
         const electronExtension = await this.chromeWebStore.installById(extensionId);
         
+        // Resolve localized strings (displayName/description)
+        let displayName = electronExtension.name;
+        let displayDescription = electronExtension.manifest?.description || '';
+        try {
+          const resolved = await this._resolveManifestStrings(electronExtension.path, electronExtension.manifest || {});
+          displayName = resolved.name || displayName;
+          displayDescription = resolved.description || displayDescription;
+        } catch (_) {}
+
         // Extract icon path from manifest (prefer larger sizes)
         let iconPath = null;
         const icons = electronExtension.manifest?.icons;
@@ -1093,8 +1184,10 @@ class ExtensionManager {
         const extensionData = {
           id: extensionId,
           name: electronExtension.name,
+          displayName,
           version: electronExtension.version,
           description: electronExtension.manifest?.description || '',
+          displayDescription,
           enabled: true,
           installedPath: electronExtension.path,
           iconPath: iconPath,
@@ -1161,7 +1254,7 @@ class ExtensionManager {
         // For each webstore extension, identify latest installed version and reload if required
         for (const ext of webStoreExtensions) {
           try {
-            const extRoot = path.join(userDataDir, 'Extensions', ext.id);
+            const extRoot = path.join(userDataDir, 'extensions', ext.id);
             const entries = await fs.readdir(extRoot).catch(() => []);
             if (!entries || entries.length === 0) {
               skipped.push({ id: ext.id, reason: 'no-installation-dir' });
@@ -1322,9 +1415,9 @@ class ExtensionManager {
               if (extension.electronId) {
                 try {
                   await this.session.removeExtension(extension.electronId);
-                  console.log(`ExtensionManager: Extension unloaded: ${extension.name}`);
+                  console.log(`ExtensionManager: Extension unloaded: ${extension.displayName || extension.name}`);
                 } catch (error) {
-                  console.error(`ExtensionManager: Failed to unload extension ${extension.name}:`, error);
+                  console.error(`ExtensionManager: Failed to unload extension ${extension.displayName || extension.name}:`, error);
                 }
               }
             }
@@ -1360,6 +1453,15 @@ class ExtensionManager {
             await fs.access(extensionData.installedPath);
           }
           
+          // If display strings are missing, resolve from _locales
+          if ((!extensionData.displayName || !extensionData.displayDescription) && extensionData.installedPath && extensionData.manifest) {
+            try {
+              const resolved = await this._resolveManifestStrings(extensionData.installedPath, extensionData.manifest);
+              extensionData.displayName = extensionData.displayName || resolved.name;
+              extensionData.displayDescription = extensionData.displayDescription || resolved.description;
+            } catch (_) {}
+          }
+
           // Fix legacy icon paths to use peersky:// protocol with cache-busting by version
           if (extensionData.iconPath && (extensionData.iconPath.startsWith('file://') || extensionData.iconPath.startsWith('chrome-extension://'))) {
             const icons = extensionData.manifest?.icons;
@@ -1565,14 +1667,14 @@ class ExtensionManager {
       for (const extension of this.loadedExtensions.values()) {
         if (extension.enabled && extension.installedPath) {
           try {
-            console.log(`ExtensionManager: Loading extension into Electron: ${extension.name}`);
+            console.log(`ExtensionManager: Loading extension into Electron: ${extension.displayName || extension.name}`);
             const electronExtension = await this.session.loadExtension(extension.installedPath, {
               allowFileAccess: false  // Restrict file system access for security
             });
             extension.electronId = electronExtension.id;
-            console.log(`ExtensionManager: Extension loaded successfully: ${extension.name} (${electronExtension.id})`);
+            console.log(`ExtensionManager: Extension loaded successfully: ${extension.displayName || extension.name} (${electronExtension.id})`);
           } catch (error) {
-            console.error(`ExtensionManager: Failed to load extension ${extension.name}:`, error);
+            console.error(`ExtensionManager: Failed to load extension ${extension.displayName || extension.name}:`, error);
           }
         }
       }
@@ -1611,16 +1713,28 @@ class ExtensionManager {
     
     // Generate secure extension ID using cryptographic hashing
     const extensionId = this._generateSecureExtensionId(manifest);
+    const version = String(manifest.version || '').trim() || '0.0.0';
+    const versionDirName = `${version}_0`;
     
-    // Copy extension to extensions directory (validation happens in installExtension)
-    const targetPath = path.join(this.extensionsBaseDir, extensionId);
-    await this._secureFileCopy(dirPath, targetPath, manifest);
+    // Copy to versioned directory for consistency with webstore installs
+    const targetPath = path.join(this.extensionsBaseDir, extensionId, versionDirName);
+    await ensureDir(path.dirname(targetPath));
+    // Copy directory contents to a temp dir then atomically move into place
+    const tempDir = path.join(this.extensionsBaseDir, '_staging', `dir-${Date.now()}-${randomBytes(4).toString('hex')}`);
+    await ensureDir(tempDir);
+    await fs.cp(dirPath, tempDir, { recursive: true });
+    await ensureDir(path.dirname(targetPath));
+    await atomicReplaceDir(tempDir, targetPath);
+
+    const { name: displayName, description: displayDescription } = await this._resolveManifestStrings(targetPath, manifest);
 
     return {
       id: extensionId,
       name: manifest.name,
-      version: manifest.version,
+      displayName,
+      version,
       description: manifest.description,
+      displayDescription,
       manifest,
       installedPath: targetPath,
       enabled: true,
@@ -1632,10 +1746,90 @@ class ExtensionManager {
   /**
    * Prepare extension from ZIP/CRX archive
    */
-  async _prepareFromArchive(_archivePath) {
-    // TODO: Implement ZIP/CRX extraction
-    // For now, throw error indicating this needs implementation
-    throw new Error('ZIP/CRX installation not yet implemented - use directory installation');
+  async _prepareFromArchive(archivePath) {
+    const lower = archivePath.toLowerCase();
+    const isZip = lower.endsWith('.zip');
+    const isCrxFile = lower.endsWith('.crx') || lower.endsWith('.crx3') || await isCrx(archivePath).catch(() => false);
+
+    if (!isZip && !isCrxFile) {
+      throw new Error('Unsupported archive type; expected .zip or .crx');
+    }
+
+    // Staging directory
+    const stagingRoot = path.join(this.extensionsBaseDir, '_staging');
+    await ensureDir(stagingRoot);
+    const stagingDir = path.join(stagingRoot, `arc-${Date.now()}-${randomBytes(4).toString('hex')}`);
+    await ensureDir(stagingDir);
+
+    let sourceType = 'file-zip';
+    let publicKeyDer = null;
+
+    if (isZip) {
+      await extractZipFile(archivePath, stagingDir);
+    } else {
+      const meta = await extractCrx(archivePath, stagingDir, extractZipBuffer);
+      publicKeyDer = meta.publicKeyDer || null;
+      sourceType = 'file-crx';
+    }
+
+    // Validate manifest exists (support archives that contain a single top-level folder)
+    let manifestBaseDir = stagingDir;
+    let manifestPath = path.join(manifestBaseDir, 'manifest.json');
+    let manifestStat = await fs.stat(manifestPath).catch(() => null);
+    if (!manifestStat) {
+      const entries = await fs.readdir(stagingDir).catch(() => []);
+      if (entries.length === 1) {
+        const only = entries[0];
+        const candidate = path.join(stagingDir, only);
+        const st = await fs.stat(candidate).catch(() => null);
+        if (st && st.isDirectory()) {
+          const altManifest = path.join(candidate, 'manifest.json');
+          const altStat = await fs.stat(altManifest).catch(() => null);
+          if (altStat) {
+            manifestBaseDir = candidate;
+            manifestPath = altManifest;
+            manifestStat = altStat;
+          }
+        }
+      }
+    }
+    if (!manifestStat) {
+      throw new Error('No manifest.json found in archive');
+    }
+
+    // Load and update manifest (inject key if available to preserve ID)
+    const manifestRaw = await fs.readFile(manifestPath, 'utf8');
+    const manifest = JSON.parse(manifestRaw);
+    if (publicKeyDer && !manifest.key) {
+      manifest.key = derToBase64(publicKeyDer);
+      await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+    }
+
+    // Provisional ID; may be updated after load if Electron computes different ID
+    const provisionalId = this._generateSecureExtensionId(manifest);
+    const version = String(manifest.version || '').trim() || '0.0.0';
+    const versionDirName = `${version}_0`;
+    const finalDir = path.join(this.extensionsBaseDir, provisionalId, versionDirName);
+    await ensureDir(path.dirname(finalDir));
+    await atomicReplaceDir(manifestBaseDir, finalDir);
+
+    // Resolve localized display strings
+    const { name: displayName, description: displayDescription } = await this._resolveManifestStrings(finalDir, manifest);
+
+    // Build initial extension metadata
+    return {
+      id: provisionalId,
+      name: manifest.name,
+      displayName,
+      version,
+      description: manifest.description || '',
+      displayDescription,
+      manifest,
+      installedPath: finalDir,
+      enabled: true,
+      source: sourceType,
+      installDate: new Date().toISOString()
+    };
   }
 
   /**
@@ -1644,6 +1838,61 @@ class ExtensionManager {
   async _saveExtensionMetadata(extensionData) {
     this.loadedExtensions.set(extensionData.id, extensionData);
     await this._writeRegistry();
+  }
+
+  /**
+   * Resolve i18n placeholders from _locales messages.json
+   * Supports manifest.default_locale and app locale fallbacks.
+   */
+  async _resolveManifestStrings(installedPath, manifest) {
+    try {
+      const defaultLocale = String(manifest.default_locale || '').trim() || 'en';
+      const appLocale = (this.app && typeof this.app.getLocale === 'function') ? this.app.getLocale() : 'en';
+      const candidates = this._buildLocaleCandidates(appLocale, defaultLocale);
+      const pathMod = await import('path');
+      const fs = await import('fs/promises');
+
+      let messages = null;
+      for (const loc of candidates) {
+        try {
+          const p = pathMod.join(installedPath, '_locales', loc, 'messages.json');
+          const raw = await fs.readFile(p, 'utf8');
+          messages = JSON.parse(raw);
+          break;
+        } catch (_) {}
+      }
+
+      const resolveMsg = (val) => {
+        if (!val || typeof val !== 'string') return val || '';
+        const m = /^__MSG_([A-Za-z0-9_]+)__$/i.exec(val);
+        if (!m || !messages) return val;
+        const key = m[1];
+        const entry = messages[key];
+        const text = entry && (entry.message || entry.value);
+        return typeof text === 'string' && text.length ? text : val;
+      };
+
+      return {
+        name: resolveMsg(manifest.name),
+        description: resolveMsg(manifest.description)
+      };
+    } catch (_) {
+      return { name: manifest.name, description: manifest.description || '' };
+    }
+  }
+
+  _buildLocaleCandidates(appLocale, defaultLocale) {
+    const norm = (s) => String(s || '').replace('-', '_');
+    const lc = norm(appLocale);
+    const base = lc.split(/[-_]/)[0];
+    const def = norm(defaultLocale);
+    const out = [];
+    const push = (x) => { if (x && !out.includes(x)) out.push(x); };
+    push(lc);
+    push(base);
+    push(def);
+    push('en');
+    return out;
   }
 
   /**
@@ -1710,6 +1959,53 @@ class ExtensionManager {
       console.error('[ExtensionManager] Failed to get and register active webview:', error);
       return null;
     }
+  }
+
+  async _doesExtensionFileExist(root, rel) {
+    try {
+      const fs = await import('fs/promises');
+      const pathMod = await import('path');
+      const p = pathMod.join(root, rel);
+      await fs.access(p);
+      return true;
+    } catch (_) { return false; }
+  }
+
+  async _resolvePopupRelativePath(root, desiredRel) {
+    const fs = await import('fs/promises');
+    const pathMod = await import('path');
+    const desiredBase = desiredRel ? pathMod.basename(desiredRel) : 'popup.html';
+    const candidates = [desiredRel, 'popup.html', 'popup/index.html', 'ui/popup.html', 'dist/popup.html', 'build/popup.html'];
+    for (const rel of candidates) {
+      if (!rel) continue;
+      try { await fs.access(pathMod.join(root, rel)); return rel; } catch (_) {}
+    }
+    // Shallow search for basename within two levels
+    try {
+      const found = await this._findFileByName(root, desiredBase, 2);
+      if (found) return pathMod.relative(root, found);
+    } catch (_) {}
+    return null;
+  }
+
+  async _findFileByName(dir, name, depth) {
+    const fs = await import('fs/promises');
+    const pathMod = await import('path');
+    if (depth < 0) return null;
+    try {
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      for (const e of entries) {
+        const full = pathMod.join(dir, e.name);
+        if (e.isDirectory()) {
+          if (e.name.startsWith('.')) continue;
+          const r = await this._findFileByName(full, name, depth - 1);
+          if (r) return r;
+        } else if (e.name === name) {
+          return full;
+        }
+      }
+    } catch (_) {}
+    return null;
   }
 
   /**

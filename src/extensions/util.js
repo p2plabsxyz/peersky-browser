@@ -316,6 +316,88 @@ export async function validateSourcePath(sourcePath) {
 }
 
 /**
+ * Validate a local install source path that may be a directory or a file.
+ * - Applies traversal checks and allowlist similar to validateSourcePath
+ * - Allows files when allowFiles is true and extension is in allowedFileExtensions
+ *
+ * @param {string} sourcePath
+ * @param {{ allowDirectories?: boolean, allowFiles?: boolean, allowedFileExtensions?: string[] }} [opts]
+ * @returns {Promise<string>} real path
+ */
+export async function validateInstallSource(sourcePath, opts = {}) {
+  const { allowDirectories = true, allowFiles = false, allowedFileExtensions = [] } = opts;
+  const osMod = await import('os');
+
+  if (!sourcePath || typeof sourcePath !== 'string') {
+    throw Object.assign(new Error('Invalid source path'), { code: ERR.E_INVALID_PATH });
+  }
+  if (sourcePath.length > 4096) {
+    throw Object.assign(new Error('Source path too long'), { code: ERR.E_INVALID_PATH });
+  }
+  if (sourcePath.includes('..') || sourcePath.includes('~')) {
+    throw Object.assign(new Error('Path traversal detected'), { code: ERR.E_PATH_TRAVERSAL });
+  }
+
+  const normalizedPath = path.normalize(sourcePath);
+  const resolvedPath = path.resolve(normalizedPath);
+  if (normalizedPath.includes('..') || normalizedPath.includes('~')) {
+    throw Object.assign(new Error('Path traversal detected'), { code: ERR.E_PATH_TRAVERSAL });
+  }
+
+  let stats;
+  try {
+    stats = await fs.lstat(resolvedPath);
+  } catch (_) {
+    throw Object.assign(new Error('Source path does not exist'), { code: ERR.E_INVALID_PATH });
+  }
+
+  const isDir = stats.isDirectory();
+  const isFile = stats.isFile();
+  if (isDir && !allowDirectories) {
+    throw Object.assign(new Error('Directories not allowed'), { code: ERR.E_INVALID_PATH });
+  }
+  if (isFile && !allowFiles) {
+    throw Object.assign(new Error('Files not allowed for install'), { code: ERR.E_INVALID_PATH });
+  }
+
+  if (isFile && allowedFileExtensions.length > 0) {
+    const ext = path.extname(resolvedPath).toLowerCase();
+    if (!allowedFileExtensions.includes(ext)) {
+      throw Object.assign(new Error('Unsupported file type'), { code: ERR.E_INVALID_PATH });
+    }
+  }
+
+  let realPath;
+  try {
+    realPath = await fs.realpath(resolvedPath);
+  } catch (_) {
+    throw Object.assign(new Error('Failed to resolve source path'), { code: ERR.E_INVALID_PATH });
+  }
+
+  // If a specific file was chosen (e.g., via native open dialog), allow it regardless of directory allowlist
+  if (isFile) {
+    return realPath;
+  }
+
+  const home = osMod.homedir();
+  const allowedDirectories = [
+    path.join(home, 'Downloads'),
+    path.join(home, 'Desktop'),
+    path.join(home, 'Documents')
+  ];
+
+  const isAllowed = allowedDirectories.some((allowedDir) => {
+    const allowed = path.resolve(allowedDir);
+    return realPath === allowed || realPath.startsWith(allowed + path.sep);
+  });
+  if (!isAllowed) {
+    throw Object.assign(new Error('Source path not in allowed directories'), { code: ERR.E_PATH_TRAVERSAL });
+  }
+
+  return realPath;
+}
+
+/**
  * Compute SHA-256 hex digest of input string.
  * @param {string} input
  * @returns {string}

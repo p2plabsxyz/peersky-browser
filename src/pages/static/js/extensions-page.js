@@ -66,6 +66,8 @@ function initializeStates() {
 // Create extension card HTML with new vertical layout
 function createExtensionCard(extension) {
   const isEnabled = extensionStates[extension.id];
+  const displayName = extension.displayName || extension.name || '';
+  const displayDesc = extension.displayDescription || extension.description || '';
   
   const card = document.createElement('div');
   card.className = 'extension-card settings-section';
@@ -74,7 +76,7 @@ function createExtensionCard(extension) {
   
   // Create icon HTML - use iconPath if available, otherwise default SVG
   const iconHTML = extension.iconPath 
-    ? `<img src="${extension.iconPath}" alt="${extension.name} icon" class="extension-icon-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">`
+    ? `<img src="${extension.iconPath}" alt="${displayName} icon" class="extension-icon-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">`
     : '';
   
   card.innerHTML = `
@@ -83,8 +85,8 @@ function createExtensionCard(extension) {
         ${iconHTML}
         <div class="extension-icon-fallback" style="${extension.iconPath ? 'display:none' : 'display:block'}"></div>
       </div>
-      <h3 id="ext-${extension.id}-name" class="extension-name">${extension.name}</h3>
-      <p class="extension-description">${extension.description}</p>
+      <h3 id="ext-${extension.id}-name" class="extension-name">${displayName}</h3>
+      <p class="extension-description">${displayDesc}</p>
     </div>
     <div class="extension-actions">
       <div class="extension-buttons">
@@ -93,7 +95,7 @@ function createExtensionCard(extension) {
         </button>
       </div>
       <div class="extension-toggle">
-        <label class="toggle-label" aria-label="Enable ${extension.name}">
+        <label class="toggle-label" aria-label="Enable ${displayName}">
           <input type="checkbox" class="toggle-input" ${isEnabled ? 'checked' : ''} data-extension-id="${extension.id}">
           <span class="toggle-slider"></span>
         </label>
@@ -128,7 +130,8 @@ async function handleInstallFromURL() {
     const result = await window.electronAPI.extensions.installFromWebStore(url);
     
     if (result.success) {
-      showStatusMessage(`Extension "${result.extension.name}" installed successfully!`, 'success');
+      const disp = result.extension.displayName || result.extension.name || 'Extension';
+      showStatusMessage(`Extension "${disp}" installed successfully!`, 'success');
       await loadExtensions(); // Refresh list
       urlInput.value = ''; // Clear input
     } else {
@@ -141,19 +144,41 @@ async function handleInstallFromURL() {
   }
 }
 
+// Handle install from local file (drop zone or file picker)
+async function handleInstallFromFilePath(filePath) {
+  if (!filePath) return;
+  showStatusMessage('Installing from file…', 'info');
+  try {
+    const result = await window.electronAPI.extensions.installExtension(filePath);
+    if (result && result.success !== false) {
+      const warnCount = result.extension?.warnings?.length || 0;
+      const msg = warnCount > 0 ? `Extension installed with ${warnCount} warning${warnCount>1?'s':''}` : 'Extension installed successfully';
+      showStatusMessage(msg, warnCount > 0 ? 'warning' : 'success');
+      await loadExtensions();
+    } else {
+      const msg = result && result.error ? result.error : 'Unknown error';
+      showStatusMessage(`Install failed: ${msg}`, 'error');
+    }
+  } catch (e) {
+    console.error('[Extensions] File install error:', e);
+    showStatusMessage('Install failed', 'error');
+  }
+}
+
 // Handle extension removal
 async function handleRemoveExtension(extensionId) {
   const extension = EXTENSIONS.find(ext => ext.id === extensionId);
   if (!extension) return;
   
-  const confirmed = confirm(`Remove "${extension.name}" extension?\n\nThis action cannot be undone.`);
+  const disp = extension.displayName || extension.name || 'Extension';
+  const confirmed = confirm(`Remove "${disp}" extension?\n\nThis action cannot be undone.`);
   if (confirmed) {
     try {
-      console.log(`[Extensions] Removing extension: ${extension.name}`);
+      console.log(`[Extensions] Removing extension: ${disp}`);
       const result = await window.electronAPI.extensions.uninstallExtension(extensionId);
       
       if (result.success) {
-        showStatusMessage(`Extension "${extension.name}" removed successfully`, 'success');
+        showStatusMessage(`Extension "${disp}" removed successfully`, 'success');
         try {
           await window.electronAPI.extensions.unpinExtension(extensionId);
         } catch (unpinError) {
@@ -216,7 +241,8 @@ async function handleToggleChange(event) {
       const extension = EXTENSIONS.find(ext => ext.id === extensionId);
       if (extension) {
         extension.enabled = isEnabled;
-        console.log(`[Extensions] Extension "${extension.name}" ${isEnabled ? 'enabled' : 'disabled'}`);
+        const disp = extension.displayName || extension.name || 'Extension';
+        console.log(`[Extensions] Extension "${disp}" ${isEnabled ? 'enabled' : 'disabled'}`);
       }
     } else {
       // Revert toggle on failure
@@ -371,6 +397,96 @@ async function init() {
   if (firstToggle) {
     // Make first extension toggle focusable for keyboard navigation
     firstToggle.setAttribute('tabindex', '0');
+  }
+
+  // Drag-and-drop and file picker for local installs
+  const dropZone = document.getElementById('extensions-drop-zone');
+  if (dropZone) {
+    const prevent = (e) => { e.preventDefault(); e.stopPropagation(); };
+    ['dragenter','dragover','dragleave','drop'].forEach(evt => dropZone.addEventListener(evt, prevent));
+    dropZone.addEventListener('dragover', () => {
+      dropZone.style.borderColor = 'var(--settings-border-hover)';
+      dropZone.style.color = 'var(--settings-text-primary)';
+    });
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.style.borderColor = 'var(--settings-border)';
+      dropZone.style.color = 'var(--settings-text-secondary)';
+    });
+    dropZone.addEventListener('drop', async (e) => {
+      const file = e.dataTransfer?.files?.[0];
+      dropZone.style.borderColor = 'var(--settings-border)';
+      dropZone.style.color = 'var(--settings-text-secondary)';
+      if (!file) return;
+      const lower = String(file.name || '').toLowerCase();
+      if (!(lower.endsWith('.zip') || lower.endsWith('.crx') || lower.endsWith('.crx3'))) {
+        showStatusMessage('Unsupported file type. Select a .zip or .crx', 'warning');
+        return;
+      }
+      try {
+        // Prefer blob upload path for reliability regardless of file.path availability
+        const buf = await file.arrayBuffer();
+        const resp = await window.electronAPI.extensions.installFromBlob(file.name, buf);
+        if (resp && resp.success !== false) {
+          const warnCount = resp.extension?.warnings?.length || 0;
+          const msg = warnCount > 0 ? `Extension installed with ${warnCount} warning${warnCount>1?'s':''}` : 'Extension installed successfully';
+          showStatusMessage(msg, warnCount > 0 ? 'warning' : 'success');
+          await loadExtensions();
+        } else {
+          const msg = resp && resp.error ? resp.error : 'Unknown error';
+          showStatusMessage(`Install failed: ${msg}`, 'error');
+        }
+      } catch (err) {
+        console.error('[Extensions] DnD upload install error:', err);
+        showStatusMessage('Install failed', 'error');
+      }
+    });
+  }
+  const fileBtn = document.getElementById('extensions-file-btn');
+  const fileInput = document.getElementById('extensions-file-input');
+  if (fileBtn && fileInput) {
+    // Prefer native open dialog to get a reliable file path in sandboxed renderers
+    fileBtn.addEventListener('click', async () => {
+      try {
+        const resp = await window.electronAPI.extensions.openInstallFileDialog();
+        if (resp && resp.success && resp.path) {
+          await handleInstallFromFilePath(resp.path);
+        }
+      } catch (e) {
+        console.error('[Extensions] Open dialog error:', e);
+      }
+    });
+    // Keep file input as a fallback and use blob upload if path is not available
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files && fileInput.files[0];
+      if (file) {
+        if (file.path) {
+          await handleInstallFromFilePath(file.path);
+        } else {
+          const lower = String(file.name || '').toLowerCase();
+          if (!(lower.endsWith('.zip') || lower.endsWith('.crx') || lower.endsWith('.crx3'))) {
+            showStatusMessage('Unsupported file type. Select a .zip or .crx', 'warning');
+            return;
+          }
+          try {
+            const buf = await file.arrayBuffer();
+            const resp = await window.electronAPI.extensions.installFromBlob(file.name, buf);
+            if (resp && resp.success !== false) {
+              const warnCount = resp.extension?.warnings?.length || 0;
+              const msg = warnCount > 0 ? `Extension installed with ${warnCount} warning${warnCount>1?'s':''}` : 'Extension installed successfully';
+              showStatusMessage(msg, warnCount > 0 ? 'warning' : 'success');
+              await loadExtensions();
+            } else {
+              const msg = resp && resp.error ? resp.error : 'Unknown error';
+              showStatusMessage(`Install failed: ${msg}`, 'error');
+            }
+          } catch (e) {
+            console.error('[Extensions] File input upload error:', e);
+            showStatusMessage('Install failed', 'error');
+          }
+        }
+        fileInput.value = '';
+      }
+    });
   }
 }
 

@@ -31,6 +31,22 @@
           <button type="button" id="install-btn" class="btn btn-secondary">Install</button>
         </div>
       </section>
+
+      <!-- Install from File (ZIP/CRX) -->
+      <section class="settings-section" id="install-file-section" aria-label="Install extension from file">
+        <div class="install-section-header">
+          <div class="setting-label">Install from file (.zip or .crx)</div>
+        </div>
+        <div class="install-section-controls" style="gap: 0.75rem; align-items: stretch;">
+          <div id="extensions-drop-zone" style="flex:1; min-height: 64px; border: 1px dashed var(--settings-border); border-radius: 6px; display:flex; align-items:center; justify-content:center; color: var(--settings-text-secondary);">
+            Drag & drop a .zip or .crx file here
+          </div>
+          <div>
+            <input type="file" id="extensions-file-input" accept=".zip,.crx,.crx3" style="display:none" />
+            <button type="button" id="extensions-file-btn" class="btn btn-secondary">Choose File…</button>
+          </div>
+        </div>
+      </section>
       
       <!-- Installed Extensions Section -->
       <div class="installed-extensions-header">

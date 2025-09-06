@@ -21,8 +21,8 @@
  */
 
 import electron from "electron";
-const { ipcMain, BrowserWindow } = electron;
-import { ERR, validateSourcePath, sha256Hex } from "./util.js";
+const { ipcMain, BrowserWindow, dialog, app } = electron;
+import { ERR, validateInstallSource, sha256Hex } from "./util.js";
 import path from "path";
 
 // Simple in-memory rate limiter for install attempts per sender WebContents
@@ -68,6 +68,62 @@ export function setupExtensionIpcHandlers(extensionManager) {
       }
     });
 
+    // Show native open file dialog for installing extensions from files
+    ipcMain.handle("extensions-show-open-dialog", async () => {
+      try {
+        const result = await dialog.showOpenDialog({
+          title: "Select extension file",
+          properties: ["openFile"],
+          filters: [
+            { name: "Extensions", extensions: ["zip", "crx", "crx3"] }
+          ]
+        });
+        if (result.canceled || !result.filePaths?.length) {
+          return { success: false, canceled: true };
+        }
+        return { success: true, path: result.filePaths[0] };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    });
+
+    // Install extension from uploaded blob (ArrayBuffer) from renderer
+    ipcMain.handle("extensions-install-upload", async (event, payload) => {
+      try {
+        // Basic payload validation
+        if (!payload || typeof payload.name !== "string" || !payload.data) {
+          throw Object.assign(new Error("Invalid upload payload"), { code: ERR.E_INVALID_PATH });
+        }
+        const name = String(payload.name);
+        const lower = name.toLowerCase();
+        const allowed = lower.endsWith('.zip') || lower.endsWith('.crx') || lower.endsWith('.crx3');
+        if (!allowed) {
+          throw Object.assign(new Error("Unsupported file type"), { code: ERR.E_INVALID_PATH });
+        }
+
+        // Create uploads dir inside userData/extensions/_uploads
+        const uploadsDir = path.join(app.getPath('userData'), 'extensions', '_uploads');
+        await (await import('fs/promises')).mkdir(uploadsDir, { recursive: true });
+        const ext = lower.endsWith('.zip') ? '.zip' : (lower.endsWith('.crx3') ? '.crx3' : '.crx');
+        const tmpName = `${Date.now()}-${Math.random().toString(16).slice(2)}${ext}`;
+        const destPath = path.join(uploadsDir, tmpName);
+
+        // Write file
+        const buf = Buffer.isBuffer(payload.data) ? payload.data : Buffer.from(new Uint8Array(payload.data));
+        await (await import('fs/promises')).writeFile(destPath, buf);
+
+        // Install using manager
+        const result = await extensionManager.installExtension(destPath);
+
+        // Cleanup temp file best-effort
+        try { await (await import('fs/promises')).unlink(destPath); } catch (_) {}
+
+        return { success: true, ...result };
+      } catch (error) {
+        return { success: false, code: error.code || "E_UNKNOWN", error: error.message };
+      }
+    });
+
     // Install extension from local path
     ipcMain.handle("extensions-install", async (event, sourcePath) => {
       try {
@@ -77,8 +133,12 @@ export function setupExtensionIpcHandlers(extensionManager) {
           throw rlErr;
         }
 
-        // Validate and sanitize path before passing to manager
-        const sanitizedPath = await validateSourcePath(sourcePath);
+        // Validate and sanitize path before passing to manager (allow directories or CRX/ZIP files)
+        const sanitizedPath = await validateInstallSource(sourcePath, {
+          allowDirectories: true,
+          allowFiles: true,
+          allowedFileExtensions: [".zip", ".crx", ".crx3"]
+        });
 
         // Logging hygiene: only basename + hash by default
         const baseName = path.basename(sanitizedPath);

@@ -62,8 +62,8 @@ async function handleWallpaper(filename, sendResponse) {
 // Handle extension icon requests
 async function handleExtensionIcon(extensionId, size, sendResponse) {
   try {
-    // Path to extension: userData/Extensions/{extensionId}/{version}/
-    const extensionsPath = path.join(app.getPath("userData"), "Extensions", extensionId);
+    // Path to extension: userData/extensions/{extensionId}/{version}/
+    const extensionsPath = path.join(app.getPath("userData"), "extensions", extensionId);
     
     // Find the latest extension version directory (format: "<version>_0")
     const versionDirs = await fsPromises.readdir(extensionsPath);

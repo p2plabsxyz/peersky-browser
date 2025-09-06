@@ -136,6 +136,8 @@ const extensionAPI = {
   listExtensions: () => ipcRenderer.invoke('extensions-list'),
   toggleExtension: (id, enabled) => ipcRenderer.invoke('extensions-toggle', id, enabled),
   installExtension: (source) => ipcRenderer.invoke('extensions-install', source),
+  openInstallFileDialog: () => ipcRenderer.invoke('extensions-show-open-dialog'),
+  installFromBlob: (name, arrayBuffer) => ipcRenderer.invoke('extensions-install-upload', { name, data: arrayBuffer }),
   uninstallExtension: (id) => ipcRenderer.invoke('extensions-uninstall', id),
   unpinExtension: (id) => {
     ipcRenderer.invoke("extensions-unpin", id);

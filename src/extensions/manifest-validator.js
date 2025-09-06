@@ -1,3 +1,11 @@
+function escapeRegExpLike(s) {
+  try {
+    return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  } catch (_) {
+    return String(s || '');
+  }
+}
+
 /**
  * Manifest Validator - Extension Manifest Validation
  * 
@@ -33,7 +41,7 @@
  * - Permission risk assessment
  */
 class ManifestValidator {
-  constructor() {
+  constructor(policy) {
     // Required fields for validation
     this.requiredFields = [
       'manifest_version',
@@ -80,23 +88,20 @@ class ManifestValidator {
       ]
     };
 
-    // File validation settings
+    // Policy and derived file validation settings
+    this.policy = policy || {};
     this.fileValidation = {
-      // Allowed file extensions
-      allowedExtensions: [
-        '.js', '.json', '.html', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg',
-        '.woff', '.woff2', '.ttf', '.eot', '.ico', '.md', '.txt'
-      ],
-      
-      // Blocked executable patterns
-      blockedPatterns: [
-        /\.exe$/i, /\.dll$/i, /\.bat$/i, /\.cmd$/i, /\.sh$/i,
-        /\.scr$/i, /\.vbs$/i, /\.ps1$/i, /\.bin$/i, /\.dmg$/i
-      ],
-      
-      // Size limits
-      maxFileSize: 10 * 1024 * 1024, // 10MB
-      maxTotalFiles: 1000
+      allowedExtensions: this.policy.files?.allowedExtensions || [],
+      allowedBasenames: this.policy.files?.allowBasenames || [],
+      blockedExtensions: this.policy.files?.blockedExtensions || [],
+      blockedPatterns: (this.policy.files?.blockedPatterns || []).map((p) => new RegExp(escapeRegExpLike(p))),
+      maxFileSizeWarn: this.policy.files?.maxFileSizeWarn ?? (20 * 1024 * 1024),
+      maxFileSizeBlock: this.policy.files?.maxFileSizeBlock ?? (60 * 1024 * 1024),
+      maxTotalFilesWarn: this.policy.files?.maxTotalFilesWarn ?? 10000,
+      maxTotalFilesBlock: this.policy.files?.maxTotalFilesBlock ?? 50000,
+      maxTotalBytesWarn: this.policy.files?.maxTotalBytesWarn ?? (200 * 1024 * 1024),
+      maxTotalBytesBlock: this.policy.files?.maxTotalBytesBlock ?? (750 * 1024 * 1024),
+      warnUnknownExtensions: this.policy.files?.warnUnknownExtensions !== false
     };
 
     // Permission security configuration
@@ -182,7 +187,8 @@ class ManifestValidator {
       }
 
       // Manifest version validation
-      if (manifest.manifest_version !== 3) {
+      const requireMV3 = this.policy?.manifest?.requireMV3 !== false;
+      if (requireMV3 && manifest.manifest_version !== 3) {
         result.errors.push('Only Manifest V3 is supported (manifest_version: 3)');
         result.isValid = false;
       }
@@ -266,6 +272,10 @@ class ManifestValidator {
       return result;
     }
 
+    const blocked = new Set((this.policy?.permissions?.blocked) || []);
+    const dangerous = new Set((this.policy?.permissions?.dangerous) || []);
+    const behavior = this.policy?.behavior || {};
+
     for (const permission of permissions) {
       if (typeof permission !== 'string') {
         result.errors.push('All permissions must be strings');
@@ -273,26 +283,25 @@ class ManifestValidator {
         continue;
       }
 
-      const permissionInfo = this.assessPermission(permission);
-      result.permissionDetails.push(permissionInfo);
-      
-      // Handle different risk levels
-      if (permissionInfo.category === 'blocked') {
-        result.errors.push(`Blocked permission: ${permission} - ${permissionInfo.description}`);
+      if (blocked.has(permission)) {
+        result.errors.push(`Blocked permission: ${permission}`);
         result.allowed = false;
-        result.riskScore += 50;
-      } else if (permissionInfo.category === 'dangerous') {
-        result.warnings.push(`High-risk permission: ${permission} - ${permissionInfo.description}`);
-        result.riskScore += 20;
-      } else if (permissionInfo.category === 'medium') {
-        result.warnings.push(`Medium-risk permission: ${permission} - ${permissionInfo.description}`);
-        result.riskScore += 10;
-      } else if (permissionInfo.category === 'safe') {
-        result.riskScore += 2;
-      } else {
-        result.warnings.push(`Unknown permission: ${permission} - Please verify this is a valid Chrome extension permission`);
-        result.riskScore += 15;
+        result.riskScore += 60;
+        continue;
       }
+      if (dangerous.has(permission)) {
+        const mode = behavior.onDangerousPermission || 'warn';
+        if (mode === 'confirm') {
+          result.warnings.push(`Dangerous permission (confirmation may be required): ${permission}`);
+        } else {
+          result.warnings.push(`Dangerous permission: ${permission}`);
+        }
+        result.riskScore += 25;
+        continue;
+      }
+      // Default: unknown permissions as medium warning
+      result.warnings.push(`Unknown or unclassified permission: ${permission}`);
+      result.riskScore += 10;
     }
 
     // Determine overall risk level
@@ -535,15 +544,18 @@ class ManifestValidator {
       isValid: true,
       errors: [],
       warnings: [],
-      fileCount: 0
+      fileCount: 0,
+      totalBytes: 0
     };
 
     try {
       const fs = await import('fs/promises');
       const path = await import('path');
+      // Capture validation config to avoid "this" context issues in nested functions
+      const f = this.fileValidation;
       
       // Recursively check files
-      async function checkDirectory(dirPath) {
+      const checkDirectory = async (dirPath) => {
         const entries = await fs.readdir(dirPath, { withFileTypes: true });
         
         for (const entry of entries) {
@@ -559,37 +571,60 @@ class ManifestValidator {
           } else {
             result.fileCount++;
             
-            // Check file count limit
-            if (result.fileCount > this.fileValidation.maxTotalFiles) {
-              result.errors.push(`Too many files in extension (max: ${this.fileValidation.maxTotalFiles})`);
+            // Count-based thresholds
+            if (result.fileCount > f.maxTotalFilesBlock) {
+              if (!result.errors.some(e => e.startsWith('Too many files in extension'))) {
+                result.errors.push(`Too many files in extension (max: ${f.maxTotalFilesBlock})`);
+              }
               result.isValid = false;
               return;
+            }
+            if (result.fileCount > f.maxTotalFilesWarn) {
+              if (!result.warnings.some(e => e.startsWith('High file count'))) {
+                result.warnings.push(`High file count: ${result.fileCount} (warn at ${f.maxTotalFilesWarn})`);
+              }
             }
             
             // Check file extension
             const ext = path.extname(entry.name).toLowerCase();
-            if (!this.fileValidation.allowedExtensions.includes(ext)) {
-              result.errors.push(`Disallowed file extension: ${ext} in file ${relativePath}`);
+            const base = (ext ? entry.name.slice(0, -ext.length) : entry.name).toLowerCase();
+            if (f.blockedExtensions.includes(ext)) {
+              result.errors.push(`Blocked file type: ${relativePath}`);
               result.isValid = false;
+            } else if (f.blockedPatterns.some((re) => re.test(relativePath))) {
+              result.errors.push(`Blocked file pattern: ${relativePath}`);
+              result.isValid = false;
+            } else {
+              const isKnown = f.allowedExtensions.includes(ext) || f.allowedBasenames?.includes(base);
+              if (!isKnown && f.warnUnknownExtensions) {
+                result.warnings.push(`Unknown file type: ${relativePath}`);
+              }
             }
             
-            // Check for dangerous patterns
-            if (this.fileValidation.blockedPatterns.some(pattern => pattern.test(entry.name))) {
-              result.errors.push(`Dangerous file pattern detected: ${relativePath}`);
-              result.isValid = false;
-            }
+            // Check for dangerous patterns already handled above via f.blockedPatterns
             
             // Check file size
             const stats = await fs.stat(fullPath);
-            if (stats.size > this.fileValidation.maxFileSize) {
-              result.errors.push(`File too large: ${relativePath} (${stats.size} bytes, max: ${this.fileValidation.maxFileSize})`);
+            result.totalBytes += stats.size;
+            if (stats.size > f.maxFileSizeBlock) {
+              result.errors.push(`File too large: ${relativePath} (${stats.size} bytes, max: ${f.maxFileSizeBlock})`);
               result.isValid = false;
+            } else if (stats.size > f.maxFileSizeWarn) {
+              result.warnings.push(`Large file: ${relativePath} (${stats.size} bytes)`);
             }
           }
         }
-      }
+      };
       
       await checkDirectory(extensionPath);
+      
+      // Total size thresholds
+      if (result.totalBytes > f.maxTotalBytesBlock) {
+        result.errors.push(`Extension too large: ${result.totalBytes} bytes (max: ${f.maxTotalBytesBlock})`);
+        result.isValid = false;
+      } else if (result.totalBytes > f.maxTotalBytesWarn) {
+        result.warnings.push(`Large extension size: ${result.totalBytes} bytes (warn at ${f.maxTotalBytesWarn})`);
+      }
       
       if (result.isValid) {
         console.log(`ManifestValidator: Validated ${result.fileCount} files - all passed security checks`);
@@ -619,7 +654,8 @@ class ManifestValidator {
       warnings: [],
       manifestValidation: null,
       fileValidation: null,
-      urlValidation: null
+      urlValidation: null,
+      outcome: 'allow'
     };
 
     try {
@@ -654,7 +690,18 @@ class ManifestValidator {
         }
       }
 
-      console.log(`ManifestValidator: Complete validation ${result.isValid ? 'passed' : 'failed'} for ${manifest.name || 'unknown'}`);
+      // Determine final outcome
+      if (!result.isValid) {
+        result.outcome = 'deny';
+      } else {
+        // If any dangerous permissions and policy requires confirm
+        const hasDangerous = (result.manifestValidation?.securityInfo?.warnings || [])
+          .some(w => /Dangerous permission/i.test(w));
+        const needConfirm = this.policy?.behavior?.onDangerousPermission === 'confirm' && hasDangerous;
+        result.outcome = needConfirm ? 'confirm' : 'allow';
+      }
+
+      console.log(`ManifestValidator: Complete validation ${result.isValid ? 'passed' : 'failed'} for ${manifest.name || 'unknown'} (outcome=${result.outcome})`);
       return result;
 
     } catch (error) {
