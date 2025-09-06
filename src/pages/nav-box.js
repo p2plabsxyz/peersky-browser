@@ -309,13 +309,16 @@ class NavBox extends HTMLElement {
       } else {
         // Set up cleanup for temp icon when popup closes (if applicable)
         if (options.isPinned === false && anchor && anchor.classList.contains('temp-icon')) {
-          this.setupTempIconCleanup(anchor);
+        //  this.setupTempIconCleanup(anchor);
         }
       }
     } catch (error) {
       console.error('[NavBox] Extension action error:', error);
       this.showToast('Extension action failed', 'error');
     }
+  }
+  removeAllTempIcon() {
+    document.querySelectorAll('.temp-icon').forEach(el => el.remove());
   }
 
   removeTempIcon(tempIcon) {

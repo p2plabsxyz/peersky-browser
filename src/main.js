@@ -198,6 +198,26 @@ app.on("activate", () => {
   }
 });
 
+ipcMain.on('remove-all-tempIcon', () => {
+  const mainWindow = BrowserWindow.getAllWindows()[0];
+  if (mainWindow) {
+    mainWindow.webContents.send('remove-all-tempIcon');
+  }
+});
+
+ipcMain.on('refresh-browser-actions', () => {
+  const mainWindow = BrowserWindow.getAllWindows()[0];
+  if (mainWindow) {
+    mainWindow.webContents.send('refresh-browser-actions');
+  }
+});
+
+ipcMain.on("open-tab-in-main-window", (_event, url) => {
+  const mainWindow = BrowserWindow.getAllWindows()[0]; 
+  if (!mainWindow) return;
+  mainWindow.webContents.send('create-new-tab', url);
+});
+
 ipcMain.on("window-control", (_event, command) => {
   const window = BrowserWindow.fromWebContents(_event.sender);
   if (!window) return;

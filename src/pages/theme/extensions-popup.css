@@ -75,7 +75,7 @@
     overflow-y: auto;
     padding: 8px 0;
     max-height: 300px;
-}
+    overflow-x: hidden;}
 
 /* Individual extension item */
 .extension-item {
@@ -360,3 +360,28 @@
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
 }
+
+.extension-kebab-menu {
+    border-radius: 8px;
+    font-size: 14px;
+    min-width: 120px;
+    color: var(--browser-theme-text-color);
+    border: 1px solid var(--peersky-nav-button-inactive);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    background: var(--browser-theme-background);
+  }
+  
+  .extension-kebab-menu ul {
+    list-style: none;
+    margin: 0;
+    padding: 4px 0;
+  }
+  
+  .extension-kebab-menu .menu-item {
+    padding: 8px 12px;
+    cursor: pointer;
+  }
+  
+  .extension-kebab-menu .menu-item:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+  }

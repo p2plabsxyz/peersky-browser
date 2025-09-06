@@ -301,7 +301,7 @@ export class ExtensionsPopup {
      */
     hide() {
         if (!this.isVisible) return;
-
+        document.querySelector(".extension-kebab-menu")?.remove();
         this.popup?.classList.remove('open');
         this.isVisible = false;
 
@@ -345,14 +345,122 @@ export class ExtensionsPopup {
         }, true); // Use capture phase to ensure we get the event first
 
         // Kebab menu interactions
-        this.popup.addEventListener('click', (event) => {
-            if (event.target.classList.contains('kebab-button')) {
-                event.preventDefault();
-                event.stopPropagation();
-                // Placeholder for future kebab menu functionality
-                console.log('Kebab menu clicked for extension');
+        this.popup.addEventListener("click", (event) => {
+            if (
+              event.target.classList.contains("kebab-button") ||
+              event.target.closest(".kebab-button")
+            ) {
+              event.preventDefault();
+              event.stopPropagation();
+              event.stopImmediatePropagation();
+      
+              const kebabButton = event.target.closest(".kebab-button");
+              document.querySelector(".extension-kebab-menu")?.remove();
+      
+              const menu = document.createElement("div");
+              menu.className = "extension-kebab-menu";
+      
+              const extensionEl = kebabButton.closest(".extension-item");
+              const extensionId = extensionEl?.dataset.extensionId;
+              const pinButton = extensionEl?.querySelector(".pin-button");
+              const isPinned = pinButton.classList.contains("pinned");
+              const extensionItem = event.target.closest(".extension-item");
+              const extensionName =
+                extensionItem?.querySelector(".extension-name")?.textContent;
+      
+              console.log(pinButton);
+      
+              menu.innerHTML = `
+          <ul>
+            <li class="menu-item" data-action="toChromewebstore">${extensionName}</li>
+            <li class="menu-item" data-action="togglePin">${
+              isPinned ? "UnPin" : "Pin"
+            }</li>
+            <li class="menu-item" data-action="uninsatll">Uninsatll Extension</li>
+          </ul>
+        `;
+        menu.style.position = "absolute";
+        menu.style.visibility = "hidden";
+        menu.style.zIndex = "9999";
+        document.body.appendChild(menu);
+
+        const btnRect = kebabButton.getBoundingClientRect();
+        const menuRect = menu.getBoundingClientRect();
+        const padding = 8;
+
+        let left = btnRect.left;
+        let top = btnRect.bottom + 4;
+
+        if (left + menuRect.width > window.innerWidth - padding) {
+          left = window.innerWidth - menuRect.width - padding;
+        }
+
+        if (top + menuRect.height > window.innerHeight - padding) {
+          top = btnRect.top - menuRect.height - 4;
+        }
+
+        menu.style.left = `${left+8}px`;
+        menu.style.top = `${top}px`;
+        menu.style.visibility = "visible";
+        menu.querySelectorAll(".menu-item").forEach((item) => {
+            item.addEventListener("click", async (e) => {
+              e.stopPropagation();
+              if (item.dataset.action === "toChromewebstore") {
+                const url = `https://chromewebstore.google.com/detail/${encodeURIComponent(
+                  extensionName
+                )}/${extensionId}?hl=en`;
+                const { ipcRenderer } = require("electron");
+                ipcRenderer.send("open-tab-in-main-window", url);
+                this.hide();
+              }
+  
+              if (item.dataset.action === "togglePin") {
+                this.togglePin(pinButton);
+              }
+              if (item.dataset.action === "uninsatll") {
+                try {
+                  const result = await this.ipc.invoke(
+                    "extensions-uninstall",
+                    extensionId
+                  );
+                  if (result?.success) {
+                    console.log(
+                      `[ExtensionsPopup] Uninstalled ${extensionId} successfully`
+                    );
+                    await this.ipc.invoke("extensions-unpin", extensionId);
+                    const navBox = document.querySelector("nav-box");
+                    navBox.renderBrowserActions();
+                    this.refreshExtensionList();
+                  } else {
+                    console.error(
+                      `[ExtensionsPopup] Failed to uninstall ${extensionId}:`,
+                      result?.error
+                    );
+                  }
+                } catch (err) {
+                  console.error(
+                    `[ExtensionsPopup] IPC uninstall error for ${extensionId}:`,
+                    err
+                  );
+                }
+              }
+              console.log(`click: ${item.dataset.action}`);
+              menu.remove();
+            });
+          });
+  
+          const handleClickOutside = (e) => {
+            if (!menu.contains(e.target) && !kebabButton.contains(e.target)) {
+              menu.remove();
+              document.removeEventListener("click", handleClickOutside);
             }
-        });
+          };
+          document.addEventListener("click", handleClickOutside);
+  
+          // Placeholder for future kebab menu functionality
+          console.log("Kebab menu clicked for extension");
+        }
+      });
 
 
         // Extension item clicks (for popup opening from dropdown)

@@ -137,6 +137,10 @@ const extensionAPI = {
   toggleExtension: (id, enabled) => ipcRenderer.invoke('extensions-toggle', id, enabled),
   installExtension: (source) => ipcRenderer.invoke('extensions-install', source),
   uninstallExtension: (id) => ipcRenderer.invoke('extensions-uninstall', id),
+  unpinExtension: (id) => {
+    ipcRenderer.invoke("extensions-unpin", id);
+    ipcRenderer.send("refresh-browser-actions");
+  },
   // Chrome Web Store APIs
   installFromWebStore: (urlOrId) => ipcRenderer.invoke('extensions-install-webstore', urlOrId),
   updateAll: () => ipcRenderer.invoke('extensions-update-all'),

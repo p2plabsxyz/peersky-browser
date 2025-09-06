@@ -30,6 +30,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { promises as fs } from 'fs';
 import { createHash } from 'crypto';
+import { Menu } from "electron"; // for context menu
 import { installChromeWebStore } from 'electron-chrome-web-store';
 import { ElectronChromeExtensions } from 'electron-chrome-extensions';
 import ManifestValidator from './manifest-validator.js';
@@ -708,6 +709,92 @@ class ExtensionManager {
               const api = this.electronChromeExtensions.api;
               if (api.browserAction && api.browserAction.openPopup) {
                 // ElectronChromeExtensions openPopup expects an event object with extension context
+                // Use a one-time listener to avoid accumulating global handlers per popup open
+                app.once("browser-window-created", (event, newWindow) => {
+                  newWindow.webContents.once("did-finish-load", () => {
+                    const url = newWindow.webContents.getURL();
+                    if (
+                      url.includes(
+                        `chrome-extension://${extension.electronId}/`
+                      )
+                    ) {
+                      // Add a context menu consistent with main window behavior
+                      newWindow.webContents.on(
+                        "context-menu",
+                        (evt, params) => {
+                          const menu = Menu.buildFromTemplate([
+                            {
+                              label: "Inspect",
+                              click: () => {
+                                try {
+                                  if (!newWindow.webContents.isDevToolsOpened()) {
+                                    newWindow.webContents.openDevTools({ mode: "detach" });
+                                  }
+                                } catch (_) {}
+                                try {
+                                  newWindow.webContents.inspectElement(params.x, params.y);
+                                } catch (_) {}
+                              },
+                            },
+                          ]);
+                          // Position the menu at the click location within the popup window
+                          try {
+                            menu.popup({ window: newWindow, x: params.x, y: params.y });
+                          } catch (_) {
+                            // Fallback to default popup if coordinates are unavailable
+                            menu.popup({ window: newWindow });
+                          }
+                        }
+                      );
+                      newWindow.setOpacity(0);
+                      newWindow.once("show", () => {
+                        const setPositionSafely = (attempt = 1) => {
+                          if (newWindow.isDestroyed()) return;
+
+                          const mainBounds = window.getBounds();
+                          const popupBounds = newWindow.getBounds();
+
+                          const targetX =
+                            mainBounds.x +
+                            anchorRect.x -
+                            popupBounds.width +
+                            anchorRect.width;
+                          const targetY = mainBounds.y + anchorRect.y + 35;
+
+                          newWindow.setBounds({
+                            x: targetX,
+                            y: targetY,
+                          });
+
+                          const actualBounds = newWindow.getBounds();
+                          const positionCorrect =
+                            Math.abs(actualBounds.x - targetX) < 2 &&
+                            Math.abs(actualBounds.y - targetY) < 2;
+
+                          if (!positionCorrect && attempt < 5) {
+                            setTimeout(
+                              () => setPositionSafely(attempt + 1),
+                              50
+                            );
+                          } else {
+                            newWindow.setOpacity(1);
+                          }
+                        };
+                        setTimeout(() => setPositionSafely(), 50);
+                      });
+
+                      newWindow.on("closed", () => {
+                        const mainWindow = BrowserWindow.getAllWindows().find(
+                          (w) => !w.isDestroyed()
+                        );
+                        if (mainWindow) {
+                          mainWindow.webContents.send("remove-all-tempIcon");
+                        }
+                      });
+                    }
+                  });
+                });
+                    
                 await api.browserAction.openPopup(
                   { extension: { id: extension.electronId } }, 
                   { windowId: window.id }
