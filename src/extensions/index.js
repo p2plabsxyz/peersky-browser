@@ -597,7 +597,8 @@ class ExtensionManager {
             title: (action && (action.default_title || extension.displayName || extension.name)) || (extension.displayName || extension.name),
             icon: extension.iconPath,
             popup: action ? action.default_popup : undefined,
-            badgeText: '', // TODO: Get actual badge text from extension
+            // Badge text can be populated from extension state when available
+            badgeText: '',
             badgeBackgroundColor: '#666', // Default badge color
             enabled: true,
             hasAction: Boolean(action)

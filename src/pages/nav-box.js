@@ -336,15 +336,6 @@ class NavBox extends HTMLElement {
     }, 120);
   }
 
-  setupTempIconCleanup(tempIcon) {
-    // For now, remove temp icon after a delay
-    // TODO: In a full implementation, we'd listen for popup close events
-    // from the extension system and clean up accordingly
-    setTimeout(() => {
-      this.removeTempIcon(tempIcon);
-    }, 5000); // Remove after 5 seconds as fallback
-  }
-
   showToast(message, type = 'info') {
     // Simple toast notification for user feedback, with type styling
     const toast = document.createElement('div');

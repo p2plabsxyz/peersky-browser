@@ -173,9 +173,6 @@ const extensionAPI = {
   getIconUrl: (id, size) => ipcRenderer.invoke('extensions-get-icon-url', id, size),
   // Registry cleanup API
   cleanupRegistry: () => ipcRenderer.invoke('extensions-cleanup-registry'),
-  // TODO: Add missing IPC handlers for these APIs (Session 2+)
-  // checkForUpdates: () => ipcRenderer.invoke('extensions-check-updates'),
-  // toggleP2P: (enabled) => ipcRenderer.invoke('extensions-toggle-p2p', enabled),
   
   // Browser action APIs for extension toolbar integration
   getBrowserActions: () => ipcRenderer.invoke('extensions-list-browser-actions'),
@@ -185,20 +182,7 @@ const extensionAPI = {
   // Webview registration APIs for tab context
   registerWebview: (webContentsId) => ipcRenderer.invoke('extensions-register-webview', webContentsId),
   unregisterWebview: (webContentsId) => ipcRenderer.invoke('extensions-unregister-webview', webContentsId),
-  
-  // TODO: Add extension development APIs
-  // reloadExtension: (id) => ipcRenderer.invoke('extensions-reload', id),
-  // openExtensionFolder: (id) => ipcRenderer.invoke('extensions-open-folder', id),
-  // getExtensionLogs: (id) => ipcRenderer.invoke('extensions-get-logs', id),
-  
-  // TODO: Add extension security APIs
-  // getExtensionPermissions: (id) => ipcRenderer.invoke('extensions-get-permissions', id),
-  // validateExtension: (source) => ipcRenderer.invoke('extensions-validate', source),
-  // getExtensionSecurityReport: (id) => ipcRenderer.invoke('extensions-security-report', id),
-  
-  // TODO: Listen for change notifications via ipcRenderer.on()
-  // TODO: Hide APIs unless settings.extensionSupport is true
-  // TODO: Expose only secure functionality to renderer
+
   onExtensionChanged: (callback) => createEventListener('extension-changed', callback),
   onExtensionInstalled: (callback) => createEventListener('extension-installed', callback),
   onExtensionUninstalled: (callback) => createEventListener('extension-uninstalled', callback),
@@ -315,10 +299,6 @@ try {
     console.log('Unified-preload: Home APIs exposed (showClock, wallpaper, browser actions)');
     
   } else if (isBookmarks) {
-    // TODO: Consider extension integration for bookmark pages
-    // - Extension bookmark sync capabilities
-    // - Extension bookmark management APIs
-    
     // Bookmark pages get bookmark API + minimal environment
     contextBridge.exposeInMainWorld('peersky', {
       environment: environmentAPI,
@@ -346,11 +326,6 @@ try {
       }
     })
   } else if (isInternal) {
-    // TODO: Consider minimal extension APIs for internal pages
-    // - Extension theme integration
-    // - Extension content script injection
-    // - Extension popup support
-    
     // Other internal pages get minimal environment + very limited settings
     contextBridge.exposeInMainWorld('peersky', {
       environment: {
@@ -369,11 +344,6 @@ try {
     console.log('Unified-preload: Internal minimal API exposed (theme only)');
     
   } else {
-    // TODO: Consider extension content script injection for external pages
-    // - Extension content script APIs
-    // - Extension message passing
-    // - Extension popup and options page support
-    
     // External pages get almost nothing - no settings API at all
     contextBridge.exposeInMainWorld('peersky', {
       environment: {
