@@ -866,8 +866,8 @@ find-menu {
 .extension-icons-container {
   display: flex;
   align-items: center;
-  gap: 4px;
-  margin-left: 4px;
+  gap: 10px;
+  margin-left: 6px;
 }
 
 /* Visual separator between puzzle button and pinned extensions */
@@ -876,7 +876,7 @@ find-menu {
   height: 16px;
   background-color: var(--peersky-nav-button-inactive);
   opacity: 0.3;
-  margin: 0 4px;
+  margin: 0 8px;
   flex-shrink: 0;
   animation: separatorFadeIn 0.12s ease;
   transform-origin: center;
