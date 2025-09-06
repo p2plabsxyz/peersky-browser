@@ -75,7 +75,8 @@
     overflow-y: auto;
     padding: 8px 0;
     max-height: 300px;
-    overflow-x: hidden;}
+    overflow-x: hidden;
+}
 
 /* Individual extension item */
 .extension-item {

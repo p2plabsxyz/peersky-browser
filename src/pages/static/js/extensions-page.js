@@ -154,7 +154,11 @@ async function handleRemoveExtension(extensionId) {
       
       if (result.success) {
         showStatusMessage(`Extension "${extension.name}" removed successfully`, 'success');
-        await window.electronAPI.extensions.unpinExtension(extensionId);
+        try {
+          await window.electronAPI.extensions.unpinExtension(extensionId);
+        } catch (unpinError) {
+          console.warn('Failed to unpin extension during removal:', unpinError);
+        }
         await loadExtensions(); // Refresh list
       } else {
         console.error('[Extensions] Removal failed:', result.error);

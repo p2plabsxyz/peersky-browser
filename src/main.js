@@ -199,16 +199,26 @@ app.on("activate", () => {
 });
 
 ipcMain.on('remove-all-tempIcon', () => {
-  const mainWindow = BrowserWindow.getAllWindows()[0];
-  if (mainWindow) {
-    mainWindow.webContents.send('remove-all-tempIcon');
+  try {
+    const windows = BrowserWindow.getAllWindows();
+    const mainWindow = windows.find(w => w && !w.isDestroyed());
+    if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+      mainWindow.webContents.send('remove-all-tempIcon');
+    }
+  } catch (error) {
+    console.error('Error sending remove-all-tempIcon:', error);
   }
 });
 
 ipcMain.on('refresh-browser-actions', () => {
-  const mainWindow = BrowserWindow.getAllWindows()[0];
-  if (mainWindow) {
-    mainWindow.webContents.send('refresh-browser-actions');
+  try {
+    const windows = BrowserWindow.getAllWindows();
+    const mainWindow = windows.find(w => w && !w.isDestroyed());
+    if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+      mainWindow.webContents.send('refresh-browser-actions');
+    }
+  } catch (error) {
+    console.error('Error sending refresh-browser-actions:', error);
   }
 });
 

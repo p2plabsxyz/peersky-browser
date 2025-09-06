@@ -9,6 +9,7 @@ export class ExtensionsPopup {
         this.targetButton = null;
         this.extensions = []; // Store real extension data
         this.isLoading = false;
+        this._openKebabAnchor = null; // Track currently open kebab anchor for toggle
         
         // Bind methods to preserve context
         this.hide = this.hide.bind(this);
@@ -304,6 +305,7 @@ export class ExtensionsPopup {
         document.querySelector(".extension-kebab-menu")?.remove();
         this.popup?.classList.remove('open');
         this.isVisible = false;
+        this._openKebabAnchor = null;
 
         // Remove global event listeners
         document.removeEventListener('click', this.handleClickOutside);
@@ -355,7 +357,15 @@ export class ExtensionsPopup {
               event.stopImmediatePropagation();
       
               const kebabButton = event.target.closest(".kebab-button");
-              document.querySelector(".extension-kebab-menu")?.remove();
+              const existingMenu = document.querySelector(".extension-kebab-menu");
+              // Toggle behavior: if clicking the same kebab when menu is open, just close it
+              if (existingMenu && this._openKebabAnchor === kebabButton) {
+                existingMenu.remove();
+                this._openKebabAnchor = null;
+                return;
+              }
+              // Otherwise, close any existing and open a new one
+              existingMenu?.remove();
       
               const menu = document.createElement("div");
               menu.className = "extension-kebab-menu";
@@ -367,16 +377,15 @@ export class ExtensionsPopup {
               const extensionItem = event.target.closest(".extension-item");
               const extensionName =
                 extensionItem?.querySelector(".extension-name")?.textContent;
-      
-              console.log(pinButton);
+              const safeExtensionName = this.escapeHtml(extensionName || '');
       
               menu.innerHTML = `
           <ul>
-            <li class="menu-item" data-action="toChromewebstore">${extensionName}</li>
+            <li class="menu-item" data-action="toChromewebstore">${safeExtensionName}</li>
             <li class="menu-item" data-action="togglePin">${
-              isPinned ? "UnPin" : "Pin"
+              isPinned ? "Unpin" : "Pin"
             }</li>
-            <li class="menu-item" data-action="uninsatll">Uninsatll Extension</li>
+            <li class="menu-item" data-action="uninstall">Uninstall Extension</li>
           </ul>
         `;
         menu.style.position = "absolute";
@@ -399,9 +408,12 @@ export class ExtensionsPopup {
           top = btnRect.top - menuRect.height - 4;
         }
 
-        menu.style.left = `${left+8}px`;
+        // Align menu's left edge with kebab button's left border
+        menu.style.left = `${left}px`;
         menu.style.top = `${top}px`;
         menu.style.visibility = "visible";
+        // Track anchor for toggle behavior
+        this._openKebabAnchor = kebabButton;
         menu.querySelectorAll(".menu-item").forEach((item) => {
             item.addEventListener("click", async (e) => {
               e.stopPropagation();
@@ -417,7 +429,7 @@ export class ExtensionsPopup {
               if (item.dataset.action === "togglePin") {
                 this.togglePin(pinButton);
               }
-              if (item.dataset.action === "uninsatll") {
+              if (item.dataset.action === "uninstall") {
                 try {
                   const result = await this.ipc.invoke(
                     "extensions-uninstall",
@@ -446,12 +458,14 @@ export class ExtensionsPopup {
               }
               console.log(`click: ${item.dataset.action}`);
               menu.remove();
+              this._openKebabAnchor = null;
             });
           });
   
           const handleClickOutside = (e) => {
             if (!menu.contains(e.target) && !kebabButton.contains(e.target)) {
               menu.remove();
+              this._openKebabAnchor = null;
               document.removeEventListener("click", handleClickOutside);
             }
           };
