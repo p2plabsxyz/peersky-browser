@@ -6,7 +6,7 @@ import { app, ipcMain, BrowserWindow } from 'electron';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
-import { getBrowserSession } from './utils/session.js';
+import { getBrowserSession } from './session.js';
 
 const SETTINGS_FILE = path.join(app.getPath("userData"), "settings.json");
 const DEBUG_LOG = path.join(os.homedir(), '.peersky', 'debug.log');

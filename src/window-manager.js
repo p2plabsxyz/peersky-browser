@@ -6,7 +6,7 @@ import ScopedFS from 'scoped-fs';
 import { fileURLToPath } from "url";
 import { attachContextMenus } from "./context-menu.js";
 import { randomUUID } from "crypto";
-import { getPartition } from "./utils/session.js";
+import { getPartition } from "./session.js";
 import extensionManager from "./extensions/index.js";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
@@ -757,6 +757,22 @@ class PeerskyWindow {
       extensionManager.addWindow(this.window, this.window.webContents);
     } catch (error) {
       console.warn('Failed to register window with extension system:', error);
+    }
+
+    // Register webviews with the extension system as soon as they attach
+    // This ensures extensions (especially MV3) can target tabs at document_start
+    try {
+      this.window.webContents.on("did-attach-webview", (_event, webviewWebContents) => {
+        try {
+          if (webviewWebContents && !webviewWebContents.isDestroyed()) {
+            extensionManager.addWindow(this.window, webviewWebContents);
+          }
+        } catch (e) {
+          console.warn("Failed to register attached webview with extension system:", e);
+        }
+      });
+    } catch (e) {
+      console.warn("Unable to observe did-attach-webview for extension registration:", e);
     }
 
     // Reference to windowManager for saving state

@@ -180,22 +180,24 @@ export class ExtensionsPopup {
             const escapedName = this.escapeHtml(ext.name || 'Unknown Extension');
             const escapedNameAttr = this.escapeHtmlAttribute(ext.name || 'Unknown Extension');
             const pinLabel = ext.pinned ? 'Unpin' : 'Pin';
+            const hasAction = !!ext.hasAction; // extensions without actions should appear but not be pinnable/clickable
             
             return `
-                <div class="extension-item" role="listitem" data-extension-id="${escapedId}">
+                <div class="extension-item ${hasAction ? '' : 'no-action'}" role="listitem" data-extension-id="${escapedId}">
                     <div class="extension-icon" role="img" aria-label="${escapedNameAttr} icon">
                         ${ext.icon ? `<img src="${this.escapeHtmlAttribute(ext.icon)}" alt="${escapedNameAttr} icon" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">` : ''}
                         <div class="svg-container" style="${ext.icon ? 'display:none' : 'display:block'}"></div>
                     </div>
                     <div class="extension-name" title="${escapedNameAttr}">
-                        ${escapedName}
+                        ${escapedName}${hasAction ? '' : ' <span style="opacity:0.7; font-size:12px;">(no button)</span>'}
                     </div>
                     <div class="extension-controls">
                         <button 
                             class="pin-button ${ext.pinned ? 'pinned' : ''}" 
                             type="button"
+                            ${hasAction ? '' : 'disabled'}
                             aria-label="${this.escapeHtmlAttribute(pinLabel + ' ' + ext.name)}"
-                            title="${this.escapeHtmlAttribute(pinLabel + ' extension')}"
+                            title="${this.escapeHtmlAttribute(hasAction ? (pinLabel + ' extension') : 'This extension has no toolbar button')}"
                         >
                             <div class="svg-container"></div>
                         </button>
@@ -483,7 +485,16 @@ export class ExtensionsPopup {
             if (extensionItem && !event.target.closest('.extension-controls')) {
                 event.preventDefault();
                 event.stopPropagation();
-                this.handleExtensionClick(extensionItem);
+                const id = extensionItem?.dataset?.extensionId;
+                const ext = this.extensions.find(e => e.id === id);
+                if (ext && ext.hasAction) {
+                  this.handleExtensionClick(extensionItem);
+                } else {
+                  const navBox = document.querySelector('nav-box');
+                  if (navBox && typeof navBox.showToast === 'function') {
+                    navBox.showToast('This extension has no toolbar button', 'error');
+                  }
+                }
             }
         });
 

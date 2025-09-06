@@ -515,24 +515,23 @@ class ExtensionManager {
     try {
       const actions = [];
       
-      // Get all enabled extensions with browser actions
+      // Get all enabled extensions; mark whether they expose a browser action
       for (const extension of this.loadedExtensions.values()) {
         if (extension.enabled && extension.manifest) {
           // Check for action (MV3) or browser_action (MV2)
           const action = extension.manifest.action || extension.manifest.browser_action;
-          if (action) {
-            actions.push({
-              id: extension.id,
-              extensionId: extension.electronId,
-              name: extension.name,
-              title: action.default_title || extension.name,
-              icon: extension.iconPath,
-              popup: action.default_popup,
-              badgeText: '', // TODO: Get actual badge text from extension
-              badgeBackgroundColor: '#666', // Default badge color
-              enabled: true
-            });
-          }
+          actions.push({
+            id: extension.id,
+            extensionId: extension.electronId,
+            name: extension.name,
+            title: (action && action.default_title) || extension.name,
+            icon: extension.iconPath,
+            popup: action ? action.default_popup : undefined,
+            badgeText: '', // TODO: Get actual badge text from extension
+            badgeBackgroundColor: '#666', // Default badge color
+            enabled: true,
+            hasAction: Boolean(action)
+          });
         }
       }
       
@@ -718,6 +717,10 @@ class ExtensionManager {
                         `chrome-extension://${extension.electronId}/`
                       )
                     ) {
+                      // Register popup window with extension system so chrome.* APIs work reliably
+                      try {
+                        this.addWindow(newWindow, newWindow.webContents);
+                      } catch (_) {}
                       // Add a context menu consistent with main window behavior
                       newWindow.webContents.on(
                         "context-menu",
@@ -832,6 +835,11 @@ class ExtensionManager {
                   partition: window.webContents.session.partition
                 }
               });
+
+              // Register popup with extension system prior to load
+              try {
+                this.addWindow(popupWindow, popupWindow.webContents);
+              } catch (_) {}
 
               // Ensure external URLs from popup open in regular tabs
               const isExternalUrl = (u) => /^(https?:|ipfs:|ipns:|hyper:|web3:)/i.test(u);
