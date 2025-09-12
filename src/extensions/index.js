@@ -832,42 +832,40 @@ class ExtensionManager {
                           }
                         }
                       );
-                      newWindow.setOpacity(0);
-                      newWindow.once("show", () => {
-                        const setPositionSafely = (attempt = 1) => {
-                          if (newWindow.isDestroyed()) return;
+                      function lockWindowPosition(win, getPosition) {
+                        if (!win || win.isDestroyed()) return;
 
-                          const mainBounds = window.getBounds();
-                          const popupBounds = newWindow.getBounds();
+                        const _setBounds = win.setBounds.bind(win);
 
-                          const targetX =
+                        const _setBoundsSafe = (newBounds) => {
+                          if (win.isDestroyed()) return;
+
+                          const pos = getPosition(newBounds);
+
+                          _setBounds({
+                            x: pos.x,
+                            y: pos.y,
+                            width: newBounds.width,
+                            height: newBounds.height,
+                          });
+                        };
+
+                        win.setBounds = _setBoundsSafe;
+                      }
+
+                      const calcPosition = (popupBounds) => {
+                        const mainBounds = window.getBounds();
+                        return {
+                          x:
                             mainBounds.x +
                             anchorRect.x -
                             popupBounds.width +
-                            anchorRect.width;
-                          const targetY = mainBounds.y + anchorRect.y + 35;
-
-                          newWindow.setBounds({
-                            x: targetX,
-                            y: targetY,
-                          });
-
-                          const actualBounds = newWindow.getBounds();
-                          const positionCorrect =
-                            Math.abs(actualBounds.x - targetX) < 2 &&
-                            Math.abs(actualBounds.y - targetY) < 2;
-
-                          if (!positionCorrect && attempt < 5) {
-                            setTimeout(
-                              () => setPositionSafely(attempt + 1),
-                              50
-                            );
-                          } else {
-                            newWindow.setOpacity(1);
-                          }
+                            anchorRect.width,
+                          y: mainBounds.y + anchorRect.y + 38,
                         };
-                        setTimeout(() => setPositionSafely(), 50);
-                      });
+                      };
+
+                      lockWindowPosition(newWindow, calcPosition);
 
                       newWindow.on("closed", () => {
                         const mainWindow = BrowserWindow.getAllWindows().find(
