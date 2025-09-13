@@ -718,7 +718,7 @@ class PeerskyWindow {
     });
 
     this.id = this.window.webContents.id;
-    this.windowId = windowId || randomUUID();
+    this.windowId = windowId || this.id.toString()
     this.savedTabs = savedTabs; // Store saved tabs for restoration
     
     const loadURL = path.join(__dirname, "pages", "index.html");
