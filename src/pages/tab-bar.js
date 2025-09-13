@@ -141,29 +141,20 @@ class TabBar extends HTMLElement {
       // Don't call saveTabsState() here to avoid overwriting the main window's tabs
       return;
     }
-
-    // Check if it is a newly opened browser window
-    const isNewWindow = searchParams.get('newWindow') === 'true';
-
-    if (isNewWindow) {
-      const urlToLoad = initialUrl || "peersky://home";
-      const title = initialUrl ? "New Tab" : "Home";
-      this.addTab(urlToLoad, title);
-      this.saveTabsState();
-      return;
-    }
-    
-    // Normal restoration logic (only for non-isolated windows)
+     // we should ALWAYS try to load from persisted data first
     const persistedTabs = this.loadPersistedTabs();
-    
     if (persistedTabs && persistedTabs.tabs.length > 0) {
-      // Restore persisted tabs
-      this.restoreTabs(persistedTabs);
-    } else {
-      // First time opening browser - create home tab and persist it
-      const homeTabId = this.addTab("peersky://home", "Home");
-      this.saveTabsState();
+       this.restoreTabs(persistedTabs);
+       return;
     }
+    
+    // if no persisted tab was there , then create new default tab
+    const urlToLoad = initialUrl || "peersky://home";
+    const title = initialUrl ? "New Tab" : "Home";
+    this.addTab(urlToLoad, title);
+    this.saveTabsState();
+    return;
+
   }
 
   // Load persisted tabs from localStorage

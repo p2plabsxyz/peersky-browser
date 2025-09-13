@@ -213,6 +213,7 @@ class WindowManager {
           console.warn('Could not find sender window for group action, falling back to main window');
           this.sendToMainWindow('group-action', data);
         }
+        this.saveOpened(true);
       } else{
         // For edit, toggle, ungroup, close-group actions, broadcast to ALL windows        
         this.windows.forEach(peerskyWindow => {
@@ -554,7 +555,7 @@ class WindowManager {
       this.isSaving = true;
       
       try {
-        await this.saveWindowStates();
+        await this.saveCompleteState();
         return true;
       } catch (error) {
         console.error("Error in saveOpened:", error);
