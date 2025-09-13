@@ -170,6 +170,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         document.body.appendChild(tabBar);
       }
     }
+    
+    // Connect webview container and wait for tab restoration
+    await tabBar.connectWebviewContainer(webviewContainer);
+    
     // RE-ATTACH event listeners for the new tab bar
     if (webviewContainer && nav && tabBar) {
       // Remove old event listeners first
