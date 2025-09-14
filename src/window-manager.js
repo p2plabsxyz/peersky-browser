@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, webContents } from "electron";
+import { app, BrowserWindow, ipcMain, webContents,session } from "electron";
 import path from "path";
 import fs from "fs-extra";
 import ScopedFS from 'scoped-fs';
@@ -42,6 +42,7 @@ class WindowManager {
     this.saverInterval = DEFAULT_SAVE_INTERVAL;
     this.isSaving = false;
     this.isQuitting = false;
+    this.isClosingLastWindow = false
     this.shutdownInProgress = false;
     this.saveQueue = Promise.resolve();
     this.registerListeners();
@@ -401,21 +402,15 @@ class WindowManager {
         this.saveOpened();
       }
       
-      // If this was the last window and we're not already quitting, trigger shutdown
-      if (this.windows.size === 0 && !this.isQuitting && !this.shutdownInProgress) {
-        if (process.platform !== 'darwin') {
-          this.handleGracefulShutdown();
-        }
-      }
     });
 
     // Enhanced window event handlers with better quit detection
     window.window.on("close", (event) => {
-      // If we're not in shutdown mode and this is the last window, prevent close and trigger shutdown
       if (!this.isQuitting && !this.shutdownInProgress && this.windows.size === 1) {
-        event.preventDefault();
+        console.log("Last window is closing. Treating as a session-ending close.");
+        this.isClosingLastWindow = true;
         this.handleGracefulShutdown();
-        return;
+        event.preventDefault();
       }
     });
 
@@ -436,7 +431,27 @@ class WindowManager {
   get all() {
     return [...this.windows.values()];
   }
+  async clearSavedState() {
+    try {
+      console.log("Clearing saved session state (files and browser data)...");
+      const TABS_FILE = path.join(USER_DATA_PATH, "tabs.json");
+      
+      // Promise to clear session storage (localStorage, etc.)
+      const clearSessionPromise = session.defaultSession.clearStorageData();
 
+      // Promise to clear our custom state files
+      const clearFilesPromise = (async () => {
+        await fs.outputJson(PERSIST_FILE, [], { spaces: 2 });
+        await fs.outputJson(TABS_FILE, {}, { spaces: 2 });
+      })();
+
+      await Promise.all([clearSessionPromise, clearFilesPromise]);
+      
+      console.log("Session state has been cleared successfully.");
+    } catch (error) {
+      console.error("Error clearing saved session state:", error);
+    }
+  }
   async handleGracefulShutdown() {
     if (this.shutdownInProgress) {
       console.log('Shutdown already in progress, ignoring additional signals');
@@ -458,9 +473,13 @@ class WindowManager {
     }, 5000);
     
     try {
-      // Save both window states and tabs
-      await this.saveCompleteState();
-      console.log('Application state saved successfully, exiting now.');
+      if (this.isClosingLastWindow) { //CLOSE
+        console.log("Skipping state save because last window was closed.");
+        await this.clearSavedState();
+      } else {                      //QUIT
+        await this.saveCompleteState();
+        console.log('Application state saved successfully, exiting now.');
+      }
       
       // Close all windows
       for (const window of this.windows) {

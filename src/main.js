@@ -67,31 +67,6 @@ app.whenReady().then(async () => {
 // Introduce a flag to prevent multiple 'before-quit' handling
 let isQuitting = false;
 
-app.on("before-quit", (event) => {
-  if (isQuitting) {
-    return;
-  }
-  event.preventDefault(); // Prevent the default quit behavior
-
-  console.log("Before quit: Saving window states...");
-
-  isQuitting = true; // Set the quitting flag
-
-  windowManager.setQuitting(true); // Inform WindowManager that quitting is happening
-
-  windowManager
-    .saveOpened()
-    .then(() => {
-      console.log("Window states saved successfully.");
-      windowManager.stopSaver();
-      app.quit(); // Proceed to quit the app
-    })
-    .catch((error) => {
-      console.error("Error saving window states on quit:", error);
-      windowManager.stopSaver();
-      app.quit(); // Proceed to quit the app even if saving fails
-    });
-});
 
 async function setupProtocols(session) {
   const { protocol: sessionProtocol } = session;
