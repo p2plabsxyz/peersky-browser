@@ -63,50 +63,103 @@ function initializeStates() {
 }
 
 
-// Create extension card HTML with new vertical layout
+// Create extension card HTML with new vertical layout (safe, no innerHTML with untrusted data)
 function createExtensionCard(extension) {
   const isEnabled = extensionStates[extension.id];
   const displayName = extension.displayName || extension.name || '';
   const displayDesc = extension.displayDescription || extension.description || '';
-  
+
   const card = document.createElement('div');
   card.className = 'extension-card settings-section';
   card.setAttribute('role', 'region');
   card.setAttribute('aria-labelledby', `ext-${extension.id}-name`);
-  
-  // Create icon HTML - use iconPath if available, otherwise default SVG
-  const iconHTML = extension.iconPath 
-    ? `<img src="${extension.iconPath}" alt="${displayName} icon" class="extension-icon-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">`
-    : '';
-  
-  card.innerHTML = `
-    <div class="extension-header">
-      <div class="extension-icon">
-        ${iconHTML}
-        <div class="extension-icon-fallback" style="${extension.iconPath ? 'display:none' : 'display:block'}"></div>
-      </div>
-      <h3 id="ext-${extension.id}-name" class="extension-name">${displayName}</h3>
-      <p class="extension-description">${displayDesc}</p>
-    </div>
-    <div class="extension-actions">
-      <div class="extension-buttons">
-        <button type="button" class="btn btn-danger" data-action="remove" data-extension-id="${extension.id}" title="Remove extension">
-          Remove
-        </button>
-      </div>
-      <div class="extension-toggle">
-        <label class="toggle-label" aria-label="Enable ${displayName}">
-          <input type="checkbox" class="toggle-input" ${isEnabled ? 'checked' : ''} data-extension-id="${extension.id}">
-          <span class="toggle-slider"></span>
-        </label>
-      </div>
-    </div>
-  `;
-  
+
+  // Header
+  const header = document.createElement('div');
+  header.className = 'extension-header';
+
+  const iconWrap = document.createElement('div');
+  iconWrap.className = 'extension-icon';
+
+  const iconFallback = document.createElement('div');
+  iconFallback.className = 'extension-icon-fallback';
+
+  if (extension.iconPath) {
+    const img = document.createElement('img');
+    img.className = 'extension-icon-img';
+    img.src = extension.iconPath;
+    img.alt = `${displayName} icon`;
+    // On error, hide image and show fallback
+    img.onerror = () => {
+      img.style.display = 'none';
+      iconFallback.style.display = 'block';
+    };
+    iconWrap.appendChild(img);
+    iconFallback.style.display = 'none';
+  } else {
+    iconFallback.style.display = 'block';
+  }
+  iconWrap.appendChild(iconFallback);
+
+  const nameEl = document.createElement('h3');
+  nameEl.id = `ext-${extension.id}-name`;
+  nameEl.className = 'extension-name';
+  nameEl.textContent = displayName;
+
+  const descEl = document.createElement('p');
+  descEl.className = 'extension-description';
+  descEl.textContent = displayDesc;
+
+  header.appendChild(iconWrap);
+  header.appendChild(nameEl);
+  header.appendChild(descEl);
+
+  // Actions
+  const actions = document.createElement('div');
+  actions.className = 'extension-actions';
+
+  const btns = document.createElement('div');
+  btns.className = 'extension-buttons';
+
+  const removeBtn = document.createElement('button');
+  removeBtn.type = 'button';
+  removeBtn.className = 'btn btn-danger';
+  removeBtn.dataset.action = 'remove';
+  removeBtn.dataset.extensionId = extension.id;
+  removeBtn.title = 'Remove extension';
+  removeBtn.textContent = 'Remove';
+  btns.appendChild(removeBtn);
+
+  const toggleWrap = document.createElement('div');
+  toggleWrap.className = 'extension-toggle';
+
+  const label = document.createElement('label');
+  label.className = 'toggle-label';
+  label.setAttribute('aria-label', `Enable ${displayName}`);
+
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.className = 'toggle-input';
+  if (isEnabled) input.checked = true;
+  input.dataset.extensionId = extension.id;
+
+  const slider = document.createElement('span');
+  slider.className = 'toggle-slider';
+
+  label.appendChild(input);
+  label.appendChild(slider);
+  toggleWrap.appendChild(label);
+
+  actions.appendChild(btns);
+  actions.appendChild(toggleWrap);
+
+  // Assemble card
+  card.appendChild(header);
+  card.appendChild(actions);
+
   // Load fallback SVG into the placeholder container
-  const fallback = card.querySelector('.extension-icon-fallback');
-  if (fallback && !extension.iconPath) {
-    loadSVG(fallback, DEFAULT_ICON_SVG_PATH);
+  if (iconFallback && !extension.iconPath) {
+    loadSVG(iconFallback, DEFAULT_ICON_SVG_PATH);
   }
 
   return card;
