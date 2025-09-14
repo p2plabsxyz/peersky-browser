@@ -70,6 +70,11 @@ class ManifestValidator {
       ],
       
       // Blocked malicious domains
+      // Note: allowlist is primary; this blocklist is a small extra guard.
+      // Maintained source: Hagezi DNS Blocklists (domains)
+      // https://github.com/hagezi/dns-blocklists
+      // Raw (Multi PRO Domains):
+      // https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/pro.txt
       blockedDomains: [
         'chrome-store.com',
         'chrome-webstore.com', 
@@ -87,6 +92,22 @@ class ManifestValidator {
         /\.tk$|\.ml$|\.ga$|\.cf$/i,  // Suspicious TLDs
       ]
     };
+
+    // Optional embedded snapshot: paste Hagezi PRO (Domains) here (one per line).
+    // Manual refresh: copy from the raw URL above and rebuild.
+    const EMBEDDED_HAGEZI_SNAPSHOT = `
+    `;
+    if (EMBEDDED_HAGEZI_SNAPSHOT.trim().length) {
+      const extra = this._parseDomainList(EMBEDDED_HAGEZI_SNAPSHOT);
+      if (extra.length) {
+        this.webStore.blockedDomains = Array.from(new Set([...(this.webStore.blockedDomains || []), ...extra]));
+      }
+    }
+
+    // Build a Set for fast suffix checks
+    this.blockedDomainsSet = new Set((this.webStore.blockedDomains || [])
+      .map(d => String(d).trim().toLowerCase())
+      .filter(Boolean));
 
     // Policy and derived file validation settings
     this.policy = policy || {};
@@ -155,6 +176,42 @@ class ManifestValidator {
         'fileSystemProvider': { risk: 'critical', description: 'File system provider' }
       }
     };
+  }
+
+  // Parse a simple domain list text (one domain per line, '#' comments allowed)
+  _parseDomainList(text) {
+    try {
+      if (!text) return [];
+      const out = [];
+      for (const line of String(text).split(/\r?\n/)) {
+        const s = String(line).trim();
+        if (!s || s.startsWith('#') || s.startsWith('!')) continue;
+        // Accept plain "domain.tld" or hosts-style "0.0.0.0 domain.tld"
+        const token = s.includes(' ') ? s.split(/\s+/).pop() : s.replace(/^0\.0\.0\.0\s+/, '');
+        const d = String(token || '').toLowerCase();
+        if (d && /^[a-z0-9.-]+$/.test(d)) out.push(d);
+      }
+      return out;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  // Suffix-match helper: returns true if host or any parent domain is in the blocked set
+  _isBlockedHost(host) {
+    try {
+      const h = String(host || '').toLowerCase();
+      if (!h || !this.blockedDomainsSet) return false;
+      const parts = h.split('.');
+      for (let i = 0; i < parts.length - 1; i++) {
+        const cand = parts.slice(i).join('.');
+        if (this.blockedDomainsSet.has(cand)) return true;
+      }
+      // also check TLD+label exact host if single dot (redundant but harmless)
+      return this.blockedDomainsSet.has(h);
+    } catch (_) {
+      return false;
+    }
   }
 
   /**
@@ -470,31 +527,60 @@ class ManifestValidator {
       return null;
     }
     
-    // Try to extract ID from URL first
-    const urlMatch = trimmed.match(this.webStore.urlPattern);
-    if (urlMatch) {
+    // If input looks like a URL, parse and extract ID with robust fallbacks
+    const looksLikeUrl = /^\w+:\/\//.test(trimmed);
+    if (looksLikeUrl) {
       try {
         const url = new URL(trimmed);
-        
+
         // Validate domain is in allowlist
-        if (!this.webStore.allowedDomains.includes(url.hostname.toLowerCase())) {
-          console.warn('ManifestValidator: Domain not in allowlist:', url.hostname);
+        const host = url.hostname.toLowerCase();
+        if (!this.webStore.allowedDomains.includes(host)) {
+          console.warn('ManifestValidator: Domain not in allowlist:', host);
           return null;
         }
-        
-        // Check domain is not in blocklist
-        if (this.webStore.blockedDomains.includes(url.hostname.toLowerCase())) {
-          console.warn('ManifestValidator: Blocked malicious domain:', url.hostname);
+
+        // Defense-in-depth: check suffix against local blocklist set
+        if (this._isBlockedHost(host)) {
+          console.warn('ManifestValidator: Blocked malicious domain:', host);
           return null;
         }
-        
+
         // Validate HTTPS
         if (url.protocol !== 'https:') {
           console.warn('ManifestValidator: Non-HTTPS URL rejected:', trimmed);
           return null;
         }
-        
-        return urlMatch[1].toLowerCase();
+
+        // Primary extraction using legacy pattern (current known structure)
+        const legacyMatch = trimmed.match(this.webStore.urlPattern);
+        if (legacyMatch) {
+          return legacyMatch[1].toLowerCase();
+        }
+
+        // Fallback 1: scan path segments for a valid extension ID
+        const segments = url.pathname.split('/').filter(Boolean);
+        for (let i = segments.length - 1; i >= 0; i--) {
+          const seg = segments[i];
+          if (this.webStore.idPattern.test(seg)) {
+            return seg.toLowerCase();
+          }
+        }
+
+        // Fallback 2: scan query parameter values for a valid extension ID
+        for (const [, value] of url.searchParams) {
+          if (this.webStore.idPattern.test(value)) {
+            return value.toLowerCase();
+          }
+        }
+
+        // Fallback 3: last-resort search within the full URL (still same host)
+        const anyMatch = trimmed.match(/[a-p]{32}/i);
+        if (anyMatch) {
+          return anyMatch[0].toLowerCase();
+        }
+
+        return null;
       } catch (error) {
         console.warn('ManifestValidator: Invalid URL format:', trimmed);
         return null;
