@@ -3,6 +3,8 @@
 
 let EXTENSIONS = [];
 let extensionStates = {};
+// Track expanded description state per extension card
+const extensionExpanded = {}; // { [extensionId]: boolean }
 
 // Default extension icon (loaded from asset, not inlined)
 const DEFAULT_ICON_SVG_PATH = 'peersky://static/assets/svg/default-extension-icon.svg';
@@ -73,6 +75,12 @@ function createExtensionCard(extension) {
   card.className = 'extension-card settings-section';
   card.setAttribute('role', 'region');
   card.setAttribute('aria-labelledby', `ext-${extension.id}-name`);
+  // Default collapsed unless remembered expanded
+  if (extensionExpanded[extension.id]) {
+    card.classList.add('expanded');
+  } else {
+    card.classList.add('collapsed');
+  }
 
   // Header
   const header = document.createElement('div');
@@ -106,13 +114,29 @@ function createExtensionCard(extension) {
   nameEl.className = 'extension-name';
   nameEl.textContent = displayName;
 
+  // Description + Show more/less UI
+  const descWrap = document.createElement('div');
+  descWrap.className = 'extension-description-wrap';
   const descEl = document.createElement('p');
   descEl.className = 'extension-description';
+  const descId = `ext-${extension.id}-desc`;
+  descEl.id = descId;
   descEl.textContent = displayDesc;
+  descWrap.appendChild(descEl);
+
+  const showMoreBtn = document.createElement('button');
+  showMoreBtn.type = 'button';
+  showMoreBtn.className = 'show-more-btn';
+  showMoreBtn.dataset.action = 'toggle-description';
+  showMoreBtn.dataset.extensionId = extension.id;
+  showMoreBtn.setAttribute('aria-controls', descId);
+  // Defer text/visibility until measurement
+  showMoreBtn.style.display = 'none';
 
   header.appendChild(iconWrap);
   header.appendChild(nameEl);
-  header.appendChild(descEl);
+  header.appendChild(descWrap);
+  header.appendChild(showMoreBtn);
 
   // Actions
   const actions = document.createElement('div');
@@ -163,6 +187,46 @@ function createExtensionCard(extension) {
   }
 
   return card;
+}
+
+// Measure overflow and set up description UI for a card
+function setupCardDescription(card, extension) {
+  const id = extension.id;
+  const wrap = card.querySelector('.extension-description-wrap');
+  const desc = card.querySelector('.extension-description');
+  const btn = card.querySelector('.show-more-btn');
+  if (!wrap || !desc || !btn) return;
+
+  const expanded = !!extensionExpanded[id];
+  if (expanded) {
+    wrap.classList.add('expanded');
+    wrap.classList.remove('clamped');
+    card.classList.add('expanded');
+    card.classList.remove('collapsed');
+    btn.textContent = 'Show less';
+    btn.setAttribute('aria-expanded', 'true');
+    btn.style.display = 'inline';
+    return; // no need to measure when expanded
+  }
+
+  // Ensure clamped state before measuring
+  wrap.classList.remove('expanded');
+  wrap.classList.add('clamped');
+  card.classList.add('collapsed');
+  card.classList.remove('expanded');
+  desc.style.display = ''; // allow CSS clamp
+
+  // If content overflows when clamped, show button and fade
+  const isOverflowing = desc.scrollHeight > desc.clientHeight + 1; // +1 to ignore rounding
+  if (isOverflowing) {
+    btn.textContent = 'Show more';
+    btn.setAttribute('aria-expanded', 'false');
+    btn.style.display = 'inline';
+  } else {
+    // No overflow: hide button and fade
+    btn.style.display = 'none';
+    wrap.classList.remove('clamped');
+  }
 }
 
 // Handle install from URL
@@ -341,6 +405,10 @@ function renderExtensions() {
   EXTENSIONS.forEach(extension => {
     const card = createExtensionCard(extension);
     container.appendChild(card);
+    // After in DOM, measure and configure description UI on next frame
+    requestAnimationFrame(() => {
+      try { setupCardDescription(card, extension); } catch (e) { console.warn('setupCardDescription failed:', e); }
+    });
   });
 }
 
@@ -441,6 +509,14 @@ async function init() {
     container.addEventListener('click', (event) => {
       if (event.target.dataset.action === 'remove') {
         handleRemoveExtension(event.target.dataset.extensionId);
+      } else if (event.target.dataset && event.target.dataset.action === 'toggle-description') {
+        const id = event.target.dataset.extensionId;
+        const card = event.target.closest('.extension-card');
+        if (!id || !card) return;
+        // Flip state
+        extensionExpanded[id] = !extensionExpanded[id];
+        // Try to keep focus on the button after reconfiguring
+        try { setupCardDescription(card, { id }); } catch (e) { /* ignore */ }
       }
     });
   }
@@ -542,6 +618,29 @@ async function init() {
     });
   }
 }
+
+// Re-measure clamped overflows on resize for non-expanded cards
+let _resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(_resizeTimer);
+  _resizeTimer = setTimeout(() => {
+    try {
+      const container = document.getElementById('extensions-grid');
+      if (!container) return;
+      const cards = Array.from(container.querySelectorAll('.extension-card'));
+      cards.forEach((card) => {
+        const id = card.querySelector('.show-more-btn')?.dataset?.extensionId;
+        if (!id) return;
+        // Only re-measure when not expanded
+        if (!extensionExpanded[id]) {
+          setupCardDescription(card, { id });
+        }
+      });
+    } catch (e) {
+      // noop
+    }
+  }, 150);
+});
 
 // Initialize when DOM is loaded
 if (document.readyState === 'loading') {
