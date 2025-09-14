@@ -44,6 +44,17 @@ import { withExtensionLock, withInstallLock, withUpdateLock } from './mutex.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Recognized alternate manifest filenames in preference order.
+// Firefox variant is last-resort and may be incompatible with Chromium/Electron.
+const PREFERRED_MANIFEST_ALTS = [
+  'manifest.chromium.json',
+  'manifest.chrome.json',
+  'manifest.chrome-mv3.json',
+  'manifest.mv3.json',
+  'manifest.v3.json',
+  'manifest.firefox.json'
+];
+
 /**
  * ExtensionManager - Main extension management class
  * 
@@ -1701,13 +1712,29 @@ class ExtensionManager {
    * Prepare extension from directory (secured)
    */
   async _prepareFromDirectory(dirPath) {
-    const manifestPath = path.join(dirPath, 'manifest.json');
-    const stats = await fs.stat(manifestPath).catch(() => null);
+    let manifestPath = path.join(dirPath, 'manifest.json');
+    let stats = await fs.stat(manifestPath).catch(() => null);
+    let manifestContent;
+    let altManifestContent = null;
     if (!stats) {
-      throw new Error('No manifest.json found in extension directory');
+      let foundAlt = null;
+      for (const name of PREFERRED_MANIFEST_ALTS) {
+        const p = path.join(dirPath, name);
+        const st = await fs.stat(p).catch(() => null);
+        if (st) { foundAlt = p; break; }
+      }
+      if (foundAlt) {
+        if (foundAlt.endsWith('manifest.firefox.json')) {
+          console.warn('[ExtensionManager] Falling back to manifest.firefox.json. Extension may be incompatible with Chromium/Electron.');
+        }
+        altManifestContent = await fs.readFile(foundAlt, 'utf8');
+        manifestContent = altManifestContent;
+      } else {
+        throw new Error('No manifest.json found in extension directory');
+      }
+    } else {
+      manifestContent = await fs.readFile(manifestPath, 'utf8');
     }
-
-    const manifestContent = await fs.readFile(manifestPath, 'utf8');
     const manifest = JSON.parse(manifestContent);
     
     // Generate secure extension ID using cryptographic hashing
@@ -1722,6 +1749,13 @@ class ExtensionManager {
     const tempDir = path.join(this.extensionsBaseDir, '_staging', `dir-${Date.now()}-${randomBytes(4).toString('hex')}`);
     await ensureDir(tempDir);
     await fs.cp(dirPath, tempDir, { recursive: true });
+    // Ensure manifest.json exists in the installed copy even if an alternate was used
+    if (altManifestContent) {
+      const destManifestPath = path.join(tempDir, 'manifest.json');
+      try { await fs.access(destManifestPath); } catch (_) {
+        await fs.writeFile(destManifestPath, altManifestContent, 'utf8');
+      }
+    }
     await ensureDir(path.dirname(targetPath));
     await atomicReplaceDir(tempDir, targetPath);
 
@@ -1775,6 +1809,23 @@ class ExtensionManager {
     let manifestBaseDir = stagingDir;
     let manifestPath = path.join(manifestBaseDir, 'manifest.json');
     let manifestStat = await fs.stat(manifestPath).catch(() => null);
+
+    async function tryResolveAlternateManifest(baseDir) {
+      for (const name of PREFERRED_MANIFEST_ALTS) {
+        const p = path.join(baseDir, name);
+        const st = await fs.stat(p).catch(() => null);
+        if (st) {
+          if (name === 'manifest.firefox.json') {
+            console.warn('[ExtensionManager] Falling back to manifest.firefox.json. Extension may be incompatible with Chromium/Electron.');
+          }
+          const content = await fs.readFile(p, 'utf8');
+          await fs.writeFile(path.join(baseDir, 'manifest.json'), content, 'utf8');
+          return await fs.stat(path.join(baseDir, 'manifest.json')).catch(() => null);
+        }
+      }
+      return null;
+    }
+
     if (!manifestStat) {
       const entries = await fs.readdir(stagingDir).catch(() => []);
       if (entries.length === 1) {
@@ -1788,7 +1839,23 @@ class ExtensionManager {
             manifestBaseDir = candidate;
             manifestPath = altManifest;
             manifestStat = altStat;
+          } else {
+            const resolved = await tryResolveAlternateManifest(candidate);
+            if (resolved) {
+              manifestBaseDir = candidate;
+              manifestPath = path.join(candidate, 'manifest.json');
+              manifestStat = resolved;
+            }
           }
+        }
+      }
+      if (!manifestStat) {
+        // Try alternate manifests at the root as well
+        const resolved = await tryResolveAlternateManifest(stagingDir);
+        if (resolved) {
+          manifestBaseDir = stagingDir;
+          manifestPath = path.join(stagingDir, 'manifest.json');
+          manifestStat = resolved;
         }
       }
     }
