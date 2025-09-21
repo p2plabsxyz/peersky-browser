@@ -48,14 +48,20 @@
         </div>
       </section>
       
-      <!-- Installed Extensions Section -->
+      <!-- Installed Extensions (User) -->
       <div class="installed-extensions-header">
         <h1 class="section-title">Installed Extensions</h1>
         <button type="button" id="update-all-btn" class="btn btn-secondary">Update All</button>
       </div>
-      
-      <!-- Extensions Grid -->
-      <div id="extensions-grid" class="extensions-grid"></div>
+
+      <div id="user-extensions-grid" class="extensions-grid" aria-label="User installed extensions"></div>
+
+      <!-- Preinstalled Extensions (System) -->
+      <div class="installed-extensions-header system-header">
+        <h1 class="section-title">Preinstalled Extensions</h1>
+      </div>
+
+      <div id="system-extensions-grid" class="extensions-grid" aria-label="Preinstalled system extensions"></div>
     </main>
   </div>
 </div>

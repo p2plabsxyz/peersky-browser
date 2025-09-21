@@ -16,18 +16,21 @@ function loadSVG(container, svgPath) {
       // Strip any XML headers/comments; keep only the SVG element
       const start = svgContent.indexOf('<svg');
       const content = start >= 0 ? svgContent.slice(start) : svgContent;
-      container.innerHTML = content;
-      const svgElement = container.querySelector('svg');
+      // Parse and append without using innerHTML
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(content, 'image/svg+xml');
+      const svgElement = doc && doc.querySelector('svg');
+      while (container.firstChild) container.removeChild(container.firstChild);
       if (svgElement) {
+        const node = svgElement.cloneNode(true);
         const isEmptyIcon = container.classList.contains('extensions-empty-icon');
-        svgElement.setAttribute('width', isEmptyIcon ? '48' : '36');
-        svgElement.setAttribute('height', isEmptyIcon ? '48' : '36');
-        svgElement.classList.add('extension-icon-placeholder');
-        // Ensure color follows theme
-        svgElement.setAttribute('fill', 'currentColor');
-        // Force stroke-based icons to adopt theme color
-        const stroked = svgElement.querySelectorAll('[stroke]');
+        node.setAttribute('width', isEmptyIcon ? '48' : '36');
+        node.setAttribute('height', isEmptyIcon ? '48' : '36');
+        node.classList.add('extension-icon-placeholder');
+        node.setAttribute('fill', 'currentColor');
+        const stroked = node.querySelectorAll('[stroke]');
         stroked.forEach(el => el.setAttribute('stroke', 'currentColor'));
+        container.appendChild(node);
       }
     })
     .catch(error => {
@@ -70,6 +73,7 @@ function createExtensionCard(extension) {
   const isEnabled = extensionStates[extension.id];
   const displayName = extension.displayName || extension.name || '';
   const displayDesc = extension.displayDescription || extension.description || '';
+  const isSystem = !!(extension && (extension.isSystem || extension.source === 'preinstalled' || extension.removable === false));
 
   const card = document.createElement('div');
   card.className = 'extension-card settings-section';
@@ -150,8 +154,12 @@ function createExtensionCard(extension) {
   removeBtn.className = 'btn btn-danger';
   removeBtn.dataset.action = 'remove';
   removeBtn.dataset.extensionId = extension.id;
-  removeBtn.title = 'Remove extension';
+  removeBtn.title = isSystem ? 'Required by browser' : 'Remove extension';
   removeBtn.textContent = 'Remove';
+  if (isSystem) {
+    removeBtn.setAttribute('aria-disabled', 'true');
+    removeBtn.classList.add('btn-disabled');
+  }
   btns.appendChild(removeBtn);
 
   const toggleWrap = document.createElement('div');
@@ -377,39 +385,65 @@ async function handleToggleChange(event) {
 
 // Render extensions grid
 function renderExtensions() {
-  const container = document.getElementById('extensions-grid');
-  if (!container) {
-    console.error('Extensions grid container not found');
+  const userContainer = document.getElementById('user-extensions-grid');
+  const systemContainer = document.getElementById('system-extensions-grid');
+  if (!userContainer || !systemContainer) {
+    console.error('Extension grids not found');
     return;
   }
-  
-  // Clear existing content
-  container.innerHTML = '';
-  
+
+  // Clear both containers
+  while (userContainer.firstChild) userContainer.removeChild(userContainer.firstChild);
+  while (systemContainer.firstChild) systemContainer.removeChild(systemContainer.firstChild);
+
   if (EXTENSIONS.length === 0) {
-    container.innerHTML = `
-      <div class="extensions-empty">
-        <div class="extensions-empty-icon"></div>
-        <p>No extensions installed</p>
-      </div>
-    `;
-    // Inject SVG into the empty state icon
-    const emptyIcon = container.querySelector('.extensions-empty-icon');
-    if (emptyIcon) {
-      loadSVG(emptyIcon, DEFAULT_ICON_SVG_PATH);
-    }
+    // Empty state only in user section
+    const empty = document.createElement('div');
+    empty.className = 'extensions-empty';
+    const icon = document.createElement('div');
+    icon.className = 'extensions-empty-icon';
+    const msg = document.createElement('p');
+    msg.textContent = 'No extensions installed';
+    empty.appendChild(icon);
+    empty.appendChild(msg);
+    userContainer.appendChild(empty);
+    loadSVG(icon, DEFAULT_ICON_SVG_PATH);
     return;
   }
-  
-  // Create and append extension cards
-  EXTENSIONS.forEach(extension => {
-    const card = createExtensionCard(extension);
-    container.appendChild(card);
-    // After in DOM, measure and configure description UI on next frame
-    requestAnimationFrame(() => {
-      try { setupCardDescription(card, extension); } catch (e) { console.warn('setupCardDescription failed:', e); }
+
+  const userExts = [];
+  const systemExts = [];
+  for (const ext of EXTENSIONS) {
+    const sys = !!(ext && (ext.isSystem || ext.source === 'preinstalled' || ext.removable === false));
+    (sys ? systemExts : userExts).push(ext);
+  }
+
+  const appendTo = (list, container) => {
+    if (!Array.isArray(list) || !container) return;
+    if (list.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'extensions-empty';
+      const icon = document.createElement('div');
+      icon.className = 'extensions-empty-icon';
+      const msg = document.createElement('p');
+      msg.textContent = 'None';
+      empty.appendChild(icon);
+      empty.appendChild(msg);
+      container.appendChild(empty);
+      loadSVG(icon, DEFAULT_ICON_SVG_PATH);
+      return;
+    }
+    list.forEach((extension) => {
+      const card = createExtensionCard(extension);
+      container.appendChild(card);
+      requestAnimationFrame(() => {
+        try { setupCardDescription(card, extension); } catch (_) {}
+      });
     });
-  });
+  };
+
+  appendTo(userExts, userContainer);
+  appendTo(systemExts, systemContainer);
 }
 
 // Status messaging system - Same as settings.js showSettingsSavedMessage
@@ -497,15 +531,17 @@ async function init() {
     });
   }
   
-  // Add event delegation for extension cards
-  const container = document.getElementById('extensions-grid');
-  if (container) {
+  // Add event delegation for both extension grids
+  const containers = [
+    document.getElementById('user-extensions-grid'),
+    document.getElementById('system-extensions-grid')
+  ].filter(Boolean);
+  containers.forEach((container) => {
     container.addEventListener('change', (event) => {
       if (event.target.classList.contains('toggle-input')) {
         handleToggleChange(event);
       }
     });
-    
     container.addEventListener('click', (event) => {
       if (event.target.dataset.action === 'remove') {
         handleRemoveExtension(event.target.dataset.extensionId);
@@ -519,7 +555,7 @@ async function init() {
         try { setupCardDescription(card, { id }); } catch (e) { /* ignore */ }
       }
     });
-  }
+  });
   
   // Focus management
   const firstToggle = document.querySelector('.toggle-input');
@@ -625,9 +661,8 @@ window.addEventListener('resize', () => {
   clearTimeout(_resizeTimer);
   _resizeTimer = setTimeout(() => {
     try {
-      const container = document.getElementById('extensions-grid');
-      if (!container) return;
-      const cards = Array.from(container.querySelectorAll('.extension-card'));
+      const root = document;
+      const cards = Array.from(root.querySelectorAll('#user-extensions-grid .extension-card, #system-extensions-grid .extension-card'));
       cards.forEach((card) => {
         const id = card.querySelector('.show-more-btn')?.dataset?.extensionId;
         if (!id) return;
