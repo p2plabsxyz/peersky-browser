@@ -18,6 +18,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "electron .",
+    "postinstall": "node scripts/postinstall.js",
     "build": "electron-builder build --publish never",
     "build-all": "electron-builder build -mwl"
   },

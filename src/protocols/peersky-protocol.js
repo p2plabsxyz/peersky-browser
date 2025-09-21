@@ -114,18 +114,12 @@ async function handleExtensionIcon(extensionId, size, sendResponse) {
     // Get icon path from manifest for the requested size
     const icons = manifest.icons || {};
     let iconRelativePath = icons[size];
-    
-    // If exact size not found, try alternatives in order of preference
+
+    // If exact size not found, try alternatives (prefer larger then downscale)
     if (!iconRelativePath) {
-      const alternativeSizes = size === '64' ? ['48', '32', '16'] : 
-                               size === '48' ? ['64', '32', '16'] :
-                               size === '32' ? ['48', '64', '16'] : ['32', '48', '64'];
-      
-      for (const altSize of alternativeSizes) {
-        if (icons[altSize]) {
-          iconRelativePath = icons[altSize];
-          break;
-        }
+      const preference = ['128', '64', '48', '32', '16'].filter(s => s !== size);
+      for (const altSize of preference) {
+        if (icons[altSize]) { iconRelativePath = icons[altSize]; break; }
       }
     }
     
