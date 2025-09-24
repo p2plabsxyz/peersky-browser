@@ -1,0 +1,623 @@
+{
+	"common_action_addToDictionary": {
+		"message": "Tambah terjemahan ke dalam kamus"
+	},
+	"common_action_removeFromDictionary": {
+		"message": "Buang terjemahan dari kamus"
+	},
+	"common_bgUnavailable": {
+		"message": "Skrip latar belakang tidak tersedia"
+	},
+	"common_cancel": {
+		"message": "Batal"
+	},
+	"common_close": {
+		"message": "Tutup"
+	},
+	"common_copy": {
+		"message": "Salin"
+	},
+	"common_error": {
+		"message": "Ralat"
+	},
+	"common_offlineTranslator": {
+		"message": "$1 - Penterjemah luar talian"
+	},
+	"common_retry": {
+		"message": "Cuba semula"
+	},
+	"common_translate": {
+		"message": "Terjemah"
+	},
+	"component_hotkey_placeholder": {
+		"message": "Klik untuk merekod pintasan"
+	},
+	"component_hotkey_recordPlaceholder": {
+		"message": "Tekan kekunci"
+	},
+	"component_hotkey_resetButton": {
+		"message": "Tetapkan semula"
+	},
+	"contextMenu_disablePageTranslation": {
+		"message": "Hentikan terjemahan halaman"
+	},
+	"contextMenu_translatePage": {
+		"message": "Terjemah halaman"
+	},
+	"contextMenu_translateSelectedText": {
+		"message": "Terjemah teks yang dipilih"
+	},
+	"dictionaryButton_add": {
+		"message": "Tambah ke dalam kamus"
+	},
+	"dictionaryButton_delete": {
+		"message": "Buang dari kamus"
+	},
+	"dictionary_button_export": {
+		"message": "Eksport"
+	},
+	"dictionary_button_removeAll": {
+		"message": "Buang semua"
+	},
+	"dictionary_deleteAll": {
+		"message": "Adakah anda pasti mahu membuang SEMUA terjemahan dari kamus?"
+	},
+	"dictionary_deleteConfirmation": {
+		"message": "Adakah anda pasti mahu membuang terjemahan ini?"
+	},
+	"dictionary_description": {
+		"message": "Simpan terjemahan dalam kamus untuk mencarinya dengan cepat kemudian"
+	},
+	"dictionary_emptyDictionary": {
+		"message": "Kamus kosong, mula mengisinya dengan menterjemah beberapa teks"
+	},
+	"dictionary_filter_from": {
+		"message": "Bahasa teks sumber"
+	},
+	"dictionary_filter_to": {
+		"message": "Bahasa sasaran"
+	},
+	"dictionary_message_deleteAll_success": {
+		"message": "Semua terjemahan telah dibuang"
+	},
+	"dictionary_notFoundEntries": {
+		"message": "Tiada terjemahan yang sepadan dengan penapis ini ditemui"
+	},
+	"dictionary_pageTitle": {
+		"message": "Kamus"
+	},
+	"dictionary_resetFilters": {
+		"message": "Tetapkan semula penapis"
+	},
+	"dictionary_searchPlaceholder": {
+		"message": "Cari mengikut teks"
+	},
+	"editorWindow_close": {
+		"message": "Tutup"
+	},
+	"editorWindow_data_code": {
+		"message": "Kod"
+	},
+	"editorWindow_data_title": {
+		"message": "Nama modul"
+	},
+	"editorWindow_message_invalidTitle": {
+		"message": "Nama modul mesti mempunyai sekurang-kurangnya satu aksara"
+	},
+	"editorWindow_save": {
+		"message": "Simpan"
+	},
+	"ext_description": {
+		"message": "Terjemahan halaman web, terjemahan teks, kamus, sejarah, penterjemah tersuai, semua yang anda perlukan untuk mengatasi halangan bahasa"
+	},
+	"ext_name": {
+		"message": "Linguist - penterjemah halaman web"
+	},
+	"history_control_selectEntry": {
+		"message": "Pilih terjemahan untuk tindakan pukal",
+		"description": "Description in finite form \"to pick\" with explaining what this checkbox will do"
+	},
+	"history_controls_clearHistory": {
+		"message": "Kosongkan sejarah"
+	},
+	"history_controls_deleteSelected": {
+		"message": "Padam terjemahan terpilih"
+	},
+	"history_controls_selectAll": {
+		"message": "Pilih semua terjemahan"
+	},
+	"history_message_clearHistoryConfirmation": {
+		"message": "Adakah anda pasti mahu mengosongkan sejarah? Semua entri akan dipadam"
+	},
+	"history_message_deleteEntryConfirmation": {
+		"message": "Adakah anda pasti mahu memadam entri ini?"
+	},
+	"history_message_deleteSelectedEntriesConfirmation": {
+		"message": "Adakah anda pasti mahu memadam entri terpilih ($1)?"
+	},
+	"history_message_entriesNotFound": {
+		"message": "Tiada terjemahan ditemui yang sepadan dengan penapis"
+	},
+	"history_message_noEntries": {
+		"message": "Sejarah kosong"
+	},
+	"history_notification_disabled": {
+		"message": "Rakaman sejarah dilumpuhkan, jadi entri baru tidak akan muncul. Anda boleh menukar ini dalam <slot id=preferences>Keutamaan</slot>"
+	},
+	"history_pageTitle": {
+		"message": "Sejarah"
+	},
+	"history_searchPlaceholder": {
+		"message": "Cari mengikut teks"
+	},
+	"inlineTranslator_showOriginalText": {
+		"message": "Tunjukkan teks asal"
+	},
+	"lang_change": {
+		"message": "Tukar bahasa"
+	},
+	"lang_detect": {
+		"message": "Auto-kesan"
+	},
+	"lang_select": {
+		"message": "Pilih bahasa"
+	},
+	"lang_swap": {
+		"message": "Tukar bahasa"
+	},
+	"message_unknownError": {
+		"message": "Ralat tidak diketahui"
+	},
+	"pageTranslator_alwaysTranslateLang": {
+		"message": "Sentiasa terjemah bahasa ini"
+	},
+	"pageTranslator_commonPreferences_autoTranslate_disable": {
+		"message": "Lumpuhkan"
+	},
+	"pageTranslator_commonPreferences_autoTranslate_disableForAll": {
+		"message": "Lumpuhkan untuk semua laman"
+	},
+	"pageTranslator_commonPreferences_autoTranslate_enable": {
+		"message": "Aktifkan"
+	},
+	"pageTranslator_commonPreferences_title": {
+		"message": "Keutamaan biasa untuk bahasa ini"
+	},
+	"pageTranslator_option_autoTranslate": {
+		"message": "Terjemah automatik"
+	},
+	"pageTranslator_showOriginal": {
+		"message": "Tunjukkan asal"
+	},
+	"pageTranslator_showTranslationPreferences": {
+		"message": "Keutamaan terjemahan"
+	},
+	"pageTranslator_sitePreferences_autoTranslate_always": {
+		"message": "Sentiasa terjemah"
+	},
+	"pageTranslator_sitePreferences_autoTranslate_alwaysForThisLang": {
+		"message": "Sentiasa terjemah untuk bahasa ini"
+	},
+	"pageTranslator_sitePreferences_autoTranslate_default": {
+		"message": "Gunakan peraturan biasa"
+	},
+	"pageTranslator_sitePreferences_autoTranslate_defaultForThisLang": {
+		"message": "Gunakan peraturan biasa untuk bahasa ini"
+	},
+	"pageTranslator_sitePreferences_autoTranslate_never": {
+		"message": "Jangan terjemah"
+	},
+	"pageTranslator_sitePreferences_autoTranslate_neverForThisLang": {
+		"message": "Jangan terjemah untuk bahasa ini"
+	},
+	"pageTranslator_sitePreferences_title": {
+		"message": "Keutamaan untuk"
+	},
+	"pageTranslator_translatePage": {
+		"message": "Terjemah halaman"
+	},
+	"pageTranslator_translationReport": {
+		"message": "Laporan terjemahan"
+	},
+	"pageTranslator_translationReport_queue": {
+		"message": "Menunggu"
+	},
+	"pageTranslator_translationReport_reject": {
+		"message": "Ralat"
+	},
+	"pageTranslator_translationReport_resolve": {
+		"message": "Diterjemah"
+	},
+	"popup_tabIdNotFound": {
+		"message": "Tab \"$1\" tidak ditemui"
+	},
+	"popup_tab_translatePage": {
+		"message": "Terjemahan halaman"
+	},
+	"popup_tab_translateText": {
+		"message": "Terjemahan teks"
+	},
+	"settings_button_cancel": {
+		"message": "Batal"
+	},
+	"settings_button_export": {
+		"message": "Eksport konfigurasi"
+	},
+	"settings_button_import": {
+		"message": "Import konfigurasi"
+	},
+	"settings_button_reset": {
+		"message": "Tetapkan semula konfigurasi"
+	},
+	"settings_button_saveChanges": {
+		"message": "Simpan perubahan"
+	},
+	"settings_message_clearCache_success": {
+		"message": "Cache dibersihkan"
+	},
+	"settings_message_common_invalidValueType": {
+		"message": "Nilai tidak sah"
+	},
+	"settings_message_importConfig_invalidFile": {
+		"message": "Fail konfigurasi yang disediakan tidak betul atau rosak, dan tidak dapat diproses"
+	},
+	"settings_message_importConfig_success": {
+		"message": "Import selesai"
+	},
+	"settings_message_resetConfig_confirm": {
+		"message": "Sahkan untuk menetapkan semula tetapan kepada nilai lalai"
+	},
+	"settings_message_resetConfig_success": {
+		"message": "Tetapan ditetapkan semula"
+	},
+	"settings_message_saveChanges_success": {
+		"message": "Perubahan disimpan"
+	},
+	"settings_option_cache": {
+		"message": "Cache"
+	},
+	"settings_option_cache_clear": {
+		"message": "Kosongkan cache"
+	},
+	"settings_option_cache_clear_desc": {
+		"message": "Jika anda perasan kesilapan terjemahan atau secara tidak sengaja menterjemah teks peribadi semasa cache diaktifkan, anda boleh memadam semua data dari cache",
+		"description": "Explanation for user about cases when it's useful to clear cache"
+	},
+	"settings_option_cache_enable": {
+		"message": "Aktifkan cache"
+	},
+	"settings_option_cache_enable_desc": {
+		"message": "Apabila cache diaktifkan, teks yang telah diterjemahkan sebelum ini akan diterjemahkan serta-merta tanpa permintaan tambahan kepada perkhidmatan terjemahan"
+	},
+	"settings_option_cache_ignoreCase": {
+		"message": "Gunakan cache tidak sensitif huruf besar/kecil"
+	},
+	"settings_option_cache_ignoreCase_desc": {
+		"message": "Apabila diaktifkan, terjemahan yang di-cache akan digunakan untuk teks dengan huruf besar/kecil yang berbeza, yang mungkin menyebabkan distorsi terjemahan dalam situasi tertentu"
+	},
+	"settings_option_commonSettings": {
+		"message": "Tetapan umum"
+	},
+	"settings_option_customTranslatorModule": {
+		"message": "Modul terjemahan tersuai",
+		"description": "An user defined code that implements a translation module"
+	},
+	"settings_option_customTranslatorModule_desc": {
+		"message": "Anda boleh menambah modul terjemahan tersuai yang menggunakan perkhidmatan terjemahan kegemaran anda. Ketahui lebih lanjut dalam <slot id=docs>dokumen penterjemah tersuai</slot>"
+	},
+	"settings_option_customTranslatorModule_manageButton": {
+		"message": "Mengurus penterjemah",
+		"description": "A button to show list of translation modules"
+	},
+	"settings_option_history_enable": {
+		"message": "Aktifkan sejarah"
+	},
+	"settings_option_history_enable_desc": {
+		"message": "Apabila diaktifkan, terjemahan akan direkodkan dan muncul di <slot id=historyPage>halaman sejarah</slot>"
+	},
+	"settings_option_pageTranslation": {
+		"message": "Terjemahan halaman penuh"
+	},
+	"settings_option_pageTranslation_detectLanguageByContent": {
+		"message": "Kesan bahasa melalui kandungan"
+	},
+	"settings_option_pageTranslation_detectLanguageByContent_desc": {
+		"message": "Analisis teks pada halaman web untuk mengesan bahasanya. Apabila dinyahaktifkan, bahasa yang dinyatakan dalam <slot id=docs>metadata halaman</slot> akan digunakan"
+	},
+	"settings_option_pageTranslation_enableContextMenu": {
+		"message": "Aktifkan butang menu konteks"
+	},
+	"settings_option_pageTranslation_enableContextMenu_desc": {
+		"message": "Tambah butang untuk menukar terjemahan halaman dalam menu konteks halaman"
+	},
+	"settings_option_pageTranslation_excludeSelectors": {
+		"message": "Pemilih untuk dikecualikan daripada terjemahan"
+	},
+	"settings_option_pageTranslation_excludeSelectors_desc": {
+		"message": "Senarai pemilih CSS untuk elemen yang akan dikecualikan daripada terjemahan. Satu pemilih setiap baris. Jika elemen sepadan dengan mana-mana pemilih ini, teks, atribut, dan elemen bersarangnya tidak akan diterjemahkan"
+	},
+	"settings_option_pageTranslation_lazyTranslate": {
+		"message": "Terjemah hanya elemen yang kelihatan"
+	},
+	"settings_option_pageTranslation_lazyTranslate_desc": {
+		"message": "Apabila pilihan ini diaktifkan, hanya elemen yang kelihatan akan diterjemahkan. Pilihan ini mengurangkan trafik rangkaian"
+	},
+	"settings_option_pageTranslation_originalTextPopup": {
+		"message": "Aktifkan popup dengan teks asal"
+	},
+	"settings_option_pageTranslation_originalTextPopup_desc": {
+		"message": "Tunjukkan popup dengan teks asal apabila melayang di atas blok teks yang diterjemahkan"
+	},
+	"settings_option_pageTranslation_shortcut_toggleTranslation": {
+		"message": "Pintasan"
+	},
+	"settings_option_pageTranslation_shortcut_toggleTranslation_desc": {
+		"message": "Pintasan untuk menukar terjemahan halaman\nTekan ESC untuk menetapkan semula kekunci"
+	},
+	"settings_option_pageTranslation_translatableAttributes": {
+		"message": "Atribut yang boleh diterjemah"
+	},
+	"settings_option_pageTranslation_translatableAttributes_desc": {
+		"message": "Masukkan nama <slot id=htmlAttributes>atribut HTML</slot> untuk diterjemahkan, satu atribut setiap baris\nHanya atribut dalam senarai ini akan diterjemahkan"
+	},
+	"settings_option_popupTab_pageTranslator_showCounters": {
+		"message": "Tunjukkan kemajuan terjemahan"
+	},
+	"settings_option_popupTab_pageTranslator_showCounters_desc": {
+		"message": "Tunjukkan panel dengan kemajuan terjemahan halaman dalam popup sambungan"
+	},
+	"settings_option_selectTranslation": {
+		"message": "Terjemahan untuk teks yang dipilih"
+	},
+	"settings_option_selectTranslation_detectTextLanguage": {
+		"message": "Kesan bahasa teks"
+	},
+	"settings_option_selectTranslation_detectTextLanguage_desc": {
+		"message": "Apabila diaktifkan, teks yang dipilih akan dianalisis untuk mengesan bahasa untuk terjemahan. Jika tidak, bahasa halaman akan digunakan"
+	},
+	"settings_option_selectTranslation_disableWhileTranslatePage": {
+		"message": "Lumpuhkan semasa menterjemah halaman"
+	},
+	"settings_option_selectTranslation_enable": {
+		"message": "Aktifkan terjemahan teks yang dipilih"
+	},
+	"settings_option_selectTranslation_enable_desc": {
+		"message": "Apabila ciri ini diaktifkan, anda boleh memilih mana-mana teks pada halaman dan menterjemahkannya dalam popup"
+	},
+	"settings_option_selectTranslation_focusOnTranslateButton": {
+		"message": "Fokus automatik pada butang terjemahan"
+	},
+	"settings_option_selectTranslation_focusOnTranslateButton_desc": {
+		"message": "Apabila butang terjemahan muncul di halaman, ia akan difokuskan secara automatik"
+	},
+	"settings_option_selectTranslation_header_languageChoice": {
+		"message": "Tetapan bahasa"
+	},
+	"settings_option_selectTranslation_isUseAutoForDetectLang": {
+		"message": "Benarkan modul terjemahan mengesan bahasa teks"
+	},
+	"settings_option_selectTranslation_isUseAutoForDetectLang_desc": {
+		"message": "Apabila bahasa teks tidak dapat dikesan secara tempatan dan pilihan ini diaktifkan, teks akan diterjemahkan dengan bahasa \"auto\" jika disokong.\nApabila pilihan ini dinyahaktifkan, kaedah sandaran lain akan digunakan untuk menetapkan bahasa sumber teks"
+	},
+	"settings_option_selectTranslation_mode": {
+		"message": "Tindakan pada pemilihan teks"
+	},
+	"settings_option_selectTranslation_mode_item_contextMenu": {
+		"message": "Terjemah teks melalui menu konteks"
+	},
+	"settings_option_selectTranslation_mode_item_popupButton": {
+		"message": "Tunjukkan butang terjemahan"
+	},
+	"settings_option_selectTranslation_mode_item_quickTranslate": {
+		"message": "Terjemah teks serta-merta"
+	},
+	"settings_option_selectTranslation_modifiers": {
+		"message": "Pengubah"
+	},
+	"settings_option_selectTranslation_modifiers_desc": {
+		"message": "Pilih kekunci yang mesti ditekan pada papan kekunci untuk memaparkan terjemahan"
+	},
+	"settings_option_selectTranslation_modifiers_key_alt": {
+		"message": "alt"
+	},
+	"settings_option_selectTranslation_modifiers_key_ctrl": {
+		"message": "ctrl"
+	},
+	"settings_option_selectTranslation_modifiers_key_meta": {
+		"message": "meta"
+	},
+	"settings_option_selectTranslation_modifiers_key_shift": {
+		"message": "shift"
+	},
+	"settings_option_selectTranslation_rememberDirection": {
+		"message": "Ingat bahasa teks yang dipilih baru-baru ini"
+	},
+	"settings_option_selectTranslation_showOnceForSelection": {
+		"message": "Tunjukkan butang terjemahan sekali untuk setiap pemilihan teks"
+	},
+	"settings_option_selectTranslation_showOnceForSelection_desc": {
+		"message": "Butang akan muncul hanya sekali untuk setiap pemilihan teks. Untuk menunjukkannya semula, pilih semula teks"
+	},
+	"settings_option_selectTranslation_showOriginalText": {
+		"message": "Tunjukkan teks asal"
+	},
+	"settings_option_selectTranslation_showOriginalText_desc": {
+		"message": "Tambah blok dengan teks asal ke dalam popup terjemahan"
+	},
+	"settings_option_selectTranslation_strictSelection": {
+		"message": "Mod ketat pemilihan rentang teks",
+		"description": "Pilihan ini adalah tentang memilih teks melalui tetikus"
+	},
+	"settings_option_selectTranslation_strictSelection_desc": {
+		"message": "Abaikan pemilihan rentang teks jika butang kiri tetikus dilepaskan di luar blok yang mengandungi teks yang dipilih"
+	},
+	"settings_option_selectTranslation_timeoutForHideButton": {
+		"message": "Tunda sebelum menyembunyikan butang popup"
+	},
+	"settings_option_selectTranslation_timeoutForHideButton_desc": {
+		"message": "Kelewatan dalam milisaat sebelum menyembunyikan butang apabila kursor tidak melayang di atasnya. Melayang di atas butang akan menetapkan semula pemasa. Untuk mematikan auto-sembunyi, tetapkan nilai kepada kurang daripada 1"
+	},
+	"settings_option_selectTranslation_zIndex": {
+		"message": "z-index"
+	},
+	"settings_option_selectTranslation_zIndex_desc": {
+		"message": "Tingkatkan nilai ini jika elemen pada beberapa halaman bertindih dengan popup teks terjemahan"
+	},
+	"settings_option_textTranslator": {
+		"message": "Terjemahan teks"
+	},
+	"settings_option_textTranslator_rememberText": {
+		"message": "Mengingati teks yang diterjemah"
+	},
+	"settings_option_textTranslator_rememberText_desc": {
+		"message": "Mengingati teks yang diterjemah untuk kali seterusnya tetingkap dibuka"
+	},
+	"settings_option_textTranslator_spellCheck": {
+		"message": "Aktifkan semakan ejaan"
+	},
+	"settings_option_textTranslator_suggestLanguage": {
+		"message": "Menunjukkan bahasa teks yang dikesan"
+	},
+	"settings_option_textTranslator_suggestLanguageAlways": {
+		"message": "Sentiasa mengesan dan mencadangkan bahasa"
+	},
+	"settings_option_textTranslator_suggestLanguageAlways_desc": {
+		"message": "Apabila dinyahdayakan, cadangan bahasa hanya muncul jika bahasa sumber ditetapkan kepada \"auto\""
+	},
+	"settings_option_translatePreferences": {
+		"message": "Keutamaan terjemahan"
+	},
+	"settings_option_translateScheduler": {
+		"message": "Penjadual terjemahan"
+	},
+	"settings_option_translateScheduler_delay": {
+		"message": "Kelewatan pengumpulan teks"
+	},
+	"settings_option_translateScheduler_delay_desc": {
+		"message": "Penjadual terjemahan mengurangkan bilangan permintaan kepada API perkhidmatan terjemahan dengan mengumpulkan sebanyak mungkin teks untuk dihantar dalam satu permintaan. Penjadual akan menunggu masa yang ditetapkan dalam milisaat untuk mengumpul lebih banyak teks sebelum memulakan terjemahan"
+	},
+	"settings_option_translateScheduler_retryLimit": {
+		"message": "Had untuk percubaan semula terjemahan"
+	},
+	"settings_option_translateScheduler_retryLimit_desc": {
+		"message": "Penjadual akan mencuba semula menterjemah teks apabila berlaku ralat terjemahan. Pilihan ini menetapkan had pada percubaan semula. Tetapkan nombor negatif untuk membenarkan percubaan semula tanpa had"
+	},
+	"settings_option_translatorModule": {
+		"message": "Modul terjemahan"
+	},
+	"settings_option_translatorModule_desc": {
+		"message": "Kualiti terjemahan dan bahasa yang tersedia bergantung pada modul terjemahan"
+	},
+	"settings_option_tts": {
+		"message": "Penukaran Teks ke Ucapan (TTS)"
+	},
+	"settings_option_ttsCustomModules": {
+		"message": "Modul sintesis ucapan tersuai"
+	},
+	"settings_option_ttsCustomModules_button": {
+		"message": "Menguruskan modul sintesis ucapan"
+	},
+	"settings_option_ttsCustomModules_desc": {
+		"message": "Anda boleh menambah modul sintesis ucapan yang menggunakan perkhidmatan dan enjin suara kegemaran anda. Baca lebih lanjut dalam <slot id=docs>dokumen TTS tersuai</slot>"
+	},
+	"settings_option_ttsModule": {
+		"message": "Modul TTS yang dipilih"
+	},
+	"settings_option_ttsModule_desc": {
+		"message": "Enjin suara yang digunakan untuk menyuarakan teks"
+	},
+	"settings_option_userLanguage": {
+		"message": "Bahasa anda"
+	},
+	"settings_option_userLanguage_desc": {
+		"message": "Bahasa yang teks akan diterjemahkan ke dalam"
+	},
+	"settings_pageTitle": {
+		"message": "Tetapan"
+	},
+	"settings_section_history": {
+		"message": "Sejarah"
+	},
+	"settings_section_popup": {
+		"message": "Popup"
+	},
+	"textTranslator_suggestLanguage": {
+		"message": "Nampaknya bahasa teks adalah <slot id=languageSuggest>$language_name$</slot>",
+		"placeholders": {
+			"language_name": {
+				"content": "$1",
+				"example": "Japanese"
+			}
+		}
+	},
+	"textTranslator_translateInputPlaceholder": {
+		"message": "Masukkan teks untuk terjemahan",
+		"description": "Request to user input some text for translation"
+	},
+	"textTranslator_translatePlaceholder": {
+		"message": "Teks terjemahan akan berada di sini"
+	},
+	"translatorsManagerWindow_add": {
+		"message": "Tambah modul terjemahan"
+	},
+	"translatorsManagerWindow_close": {
+		"message": "Tutup"
+	},
+	"translatorsManagerWindow_emptyTranslatorsListText": {
+		"message": "Tiada modul terjemahan tersuai ditambah lagi"
+	},
+	"translatorsManagerWindow_message_translatorRemovingConfirmation": {
+		"message": "Adakah anda pasti mahu mengeluarkan modul terjemahan \"$translator_name$\"?",
+		"placeholders": {
+			"translator_name": {
+				"content": "$1",
+				"example": "Google translator"
+			}
+		}
+	},
+	"translatorsManagerWindow_title": {
+		"message": "Modul terjemahan tersuai"
+	},
+	"translatorsManagerWindow_translator_delete": {
+		"message": "Padam"
+	},
+	"translatorsManagerWindow_translator_edit": {
+		"message": "Edit"
+	},
+	"ttsManagerWindow_add": {
+		"message": "Tambah modul TTS"
+	},
+	"ttsManagerWindow_close": {
+		"message": "Tutup"
+	},
+	"ttsManagerWindow_emptyTranslatorsListText": {
+		"message": "Tiada modul TTS ditambah lagi"
+	},
+	"ttsManagerWindow_message_ttsRemoveConfirmation": {
+		"message": "Adakah anda pasti mahu mengeluarkan modul TTS \"$tts_name$\"?",
+		"placeholders": {
+			"tts_name": {
+				"content": "$1",
+				"example": "Google TTS"
+			}
+		}
+	},
+	"ttsManagerWindow_title": {
+		"message": "Modul Teks-ke-Ucapan"
+	},
+	"ttsManagerWindow_translator_delete": {
+		"message": "Padam"
+	},
+	"ttsManagerWindow_translator_edit": {
+		"message": "Edit"
+	},
+	"validation_number": {
+		"message": "Nilai mesti nombor"
+	},
+	"validation_numberBetweenRange": {
+		"message": "Nilai mesti nombor antara $1 dan $2"
+	},
+	"validation_positiveNumber": {
+		"message": "Nilai mesti nombor positif"
+	}
+}

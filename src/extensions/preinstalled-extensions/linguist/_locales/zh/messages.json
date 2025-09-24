@@ -1,0 +1,623 @@
+{
+	"common_action_addToDictionary": {
+		"message": "添加翻译到字典"
+	},
+	"common_action_removeFromDictionary": {
+		"message": "从字典中移除翻译"
+	},
+	"common_bgUnavailable": {
+		"message": "后台脚本不可用"
+	},
+	"common_cancel": {
+		"message": "取消"
+	},
+	"common_close": {
+		"message": "关闭"
+	},
+	"common_copy": {
+		"message": "复制"
+	},
+	"common_error": {
+		"message": "错误"
+	},
+	"common_offlineTranslator": {
+		"message": "$1 - 离线翻译器"
+	},
+	"common_retry": {
+		"message": "重试"
+	},
+	"common_translate": {
+		"message": "翻译"
+	},
+	"component_hotkey_placeholder": {
+		"message": "点击记录快捷键"
+	},
+	"component_hotkey_recordPlaceholder": {
+		"message": "按下键"
+	},
+	"component_hotkey_resetButton": {
+		"message": "重置"
+	},
+	"contextMenu_disablePageTranslation": {
+		"message": "停止页面翻译"
+	},
+	"contextMenu_translatePage": {
+		"message": "翻译页面"
+	},
+	"contextMenu_translateSelectedText": {
+		"message": "翻译选中文本"
+	},
+	"dictionaryButton_add": {
+		"message": "添加到字典"
+	},
+	"dictionaryButton_delete": {
+		"message": "从字典中删除"
+	},
+	"dictionary_button_export": {
+		"message": "导出"
+	},
+	"dictionary_button_removeAll": {
+		"message": "移除所有"
+	},
+	"dictionary_deleteAll": {
+		"message": "您确定要删除字典中的所有翻译吗？"
+	},
+	"dictionary_deleteConfirmation": {
+		"message": "您确定要删除此翻译吗？"
+	},
+	"dictionary_description": {
+		"message": "将翻译保存在字典中，以便稍后快速查找"
+	},
+	"dictionary_emptyDictionary": {
+		"message": "字典为空，通过翻译一些文本开始填充"
+	},
+	"dictionary_filter_from": {
+		"message": "源文本语言"
+	},
+	"dictionary_filter_to": {
+		"message": "目标语言"
+	},
+	"dictionary_message_deleteAll_success": {
+		"message": "所有翻译已被移除"
+	},
+	"dictionary_notFoundEntries": {
+		"message": "未找到符合这些过滤条件的翻译"
+	},
+	"dictionary_pageTitle": {
+		"message": "字典"
+	},
+	"dictionary_resetFilters": {
+		"message": "重置过滤器"
+	},
+	"dictionary_searchPlaceholder": {
+		"message": "按文本搜索"
+	},
+	"editorWindow_close": {
+		"message": "关闭"
+	},
+	"editorWindow_data_code": {
+		"message": "代码"
+	},
+	"editorWindow_data_title": {
+		"message": "模块名称"
+	},
+	"editorWindow_message_invalidTitle": {
+		"message": "模块名称必须至少有一个字符"
+	},
+	"editorWindow_save": {
+		"message": "保存"
+	},
+	"ext_description": {
+		"message": "网页翻译、文本翻译、词典、历史记录、自定义翻译器，打破语言障碍所需的一切"
+	},
+	"ext_name": {
+		"message": "Linguist - 网页翻译器"
+	},
+	"history_control_selectEntry": {
+		"message": "选择翻译进行批量操作",
+		"description": "Description in finite form \"to pick\" with explaining what this checkbox will do"
+	},
+	"history_controls_clearHistory": {
+		"message": "清除历史记录"
+	},
+	"history_controls_deleteSelected": {
+		"message": "删除选定的翻译"
+	},
+	"history_controls_selectAll": {
+		"message": "选择所有翻译"
+	},
+	"history_message_clearHistoryConfirmation": {
+		"message": "您确定要清除历史记录吗？所有条目将被删除"
+	},
+	"history_message_deleteEntryConfirmation": {
+		"message": "您确定要删除此条目吗？"
+	},
+	"history_message_deleteSelectedEntriesConfirmation": {
+		"message": "您确定要删除选定的条目（$1）吗？"
+	},
+	"history_message_entriesNotFound": {
+		"message": "未找到符合筛选条件的翻译"
+	},
+	"history_message_noEntries": {
+		"message": "历史记录为空"
+	},
+	"history_notification_disabled": {
+		"message": "历史记录已禁用，因此新条目将不会出现。您可以在<slot id=preferences>首选项</slot>中更改此设置"
+	},
+	"history_pageTitle": {
+		"message": "历史记录"
+	},
+	"history_searchPlaceholder": {
+		"message": "按文本搜索"
+	},
+	"inlineTranslator_showOriginalText": {
+		"message": "显示原文"
+	},
+	"lang_change": {
+		"message": "更改语言"
+	},
+	"lang_detect": {
+		"message": "自动检测"
+	},
+	"lang_select": {
+		"message": "选择语言"
+	},
+	"lang_swap": {
+		"message": "交换语言"
+	},
+	"message_unknownError": {
+		"message": "未知错误"
+	},
+	"pageTranslator_alwaysTranslateLang": {
+		"message": "始终翻译此语言"
+	},
+	"pageTranslator_commonPreferences_autoTranslate_disable": {
+		"message": "禁用"
+	},
+	"pageTranslator_commonPreferences_autoTranslate_disableForAll": {
+		"message": "禁用所有网站"
+	},
+	"pageTranslator_commonPreferences_autoTranslate_enable": {
+		"message": "启用"
+	},
+	"pageTranslator_commonPreferences_title": {
+		"message": "此语言的通用偏好"
+	},
+	"pageTranslator_option_autoTranslate": {
+		"message": "自动翻译"
+	},
+	"pageTranslator_showOriginal": {
+		"message": "显示原文"
+	},
+	"pageTranslator_showTranslationPreferences": {
+		"message": "翻译偏好"
+	},
+	"pageTranslator_sitePreferences_autoTranslate_always": {
+		"message": "总是翻译"
+	},
+	"pageTranslator_sitePreferences_autoTranslate_alwaysForThisLang": {
+		"message": "总是翻译此语言"
+	},
+	"pageTranslator_sitePreferences_autoTranslate_default": {
+		"message": "使用通用规则"
+	},
+	"pageTranslator_sitePreferences_autoTranslate_defaultForThisLang": {
+		"message": "对此语言使用通用规则"
+	},
+	"pageTranslator_sitePreferences_autoTranslate_never": {
+		"message": "从不翻译"
+	},
+	"pageTranslator_sitePreferences_autoTranslate_neverForThisLang": {
+		"message": "从不翻译此语言"
+	},
+	"pageTranslator_sitePreferences_title": {
+		"message": "偏好设置"
+	},
+	"pageTranslator_translatePage": {
+		"message": "翻译页面"
+	},
+	"pageTranslator_translationReport": {
+		"message": "翻译报告"
+	},
+	"pageTranslator_translationReport_queue": {
+		"message": "待处理"
+	},
+	"pageTranslator_translationReport_reject": {
+		"message": "错误"
+	},
+	"pageTranslator_translationReport_resolve": {
+		"message": "已翻译"
+	},
+	"popup_tabIdNotFound": {
+		"message": "未找到标签 \"$1\""
+	},
+	"popup_tab_translatePage": {
+		"message": "页面翻译"
+	},
+	"popup_tab_translateText": {
+		"message": "文本翻译"
+	},
+	"settings_button_cancel": {
+		"message": "取消"
+	},
+	"settings_button_export": {
+		"message": "导出配置"
+	},
+	"settings_button_import": {
+		"message": "导入配置"
+	},
+	"settings_button_reset": {
+		"message": "重置配置"
+	},
+	"settings_button_saveChanges": {
+		"message": "保存更改"
+	},
+	"settings_message_clearCache_success": {
+		"message": "缓存已清除"
+	},
+	"settings_message_common_invalidValueType": {
+		"message": "无效值"
+	},
+	"settings_message_importConfig_invalidFile": {
+		"message": "提供的配置文件不正确或已损坏，无法处理"
+	},
+	"settings_message_importConfig_success": {
+		"message": "导入完成"
+	},
+	"settings_message_resetConfig_confirm": {
+		"message": "确认将设置重置为默认值"
+	},
+	"settings_message_resetConfig_success": {
+		"message": "设置已重置"
+	},
+	"settings_message_saveChanges_success": {
+		"message": "更改已保存"
+	},
+	"settings_option_cache": {
+		"message": "缓存"
+	},
+	"settings_option_cache_clear": {
+		"message": "清除缓存"
+	},
+	"settings_option_cache_clear_desc": {
+		"message": "如果您注意到翻译错误或在启用缓存时意外翻译了私人文本，您可以删除缓存中的所有数据",
+		"description": "Explanation for user about cases when it's useful to clear cache"
+	},
+	"settings_option_cache_enable": {
+		"message": "启用缓存"
+	},
+	"settings_option_cache_enable_desc": {
+		"message": "启用缓存后，之前翻译过的文本将立即翻译，无需额外请求翻译服务"
+	},
+	"settings_option_cache_ignoreCase": {
+		"message": "使用不区分大小写的缓存"
+	},
+	"settings_option_cache_ignoreCase_desc": {
+		"message": "启用后，缓存的翻译将用于不同大小写的文本，这可能在某些情况下导致翻译失真"
+	},
+	"settings_option_commonSettings": {
+		"message": "通用设置"
+	},
+	"settings_option_customTranslatorModule": {
+		"message": "自定义翻译模块",
+		"description": "An user defined code that implements a translation module"
+	},
+	"settings_option_customTranslatorModule_desc": {
+		"message": "您可以添加使用您喜欢的翻译服务的自定义翻译模块。了解更多信息，请参阅<slot id=docs>自定义翻译器文档</slot>"
+	},
+	"settings_option_customTranslatorModule_manageButton": {
+		"message": "管理翻译器",
+		"description": "A button to show list of translation modules"
+	},
+	"settings_option_history_enable": {
+		"message": "启用历史记录"
+	},
+	"settings_option_history_enable_desc": {
+		"message": "启用后，翻译将被记录并显示在<slot id=historyPage>历史页面</slot>上"
+	},
+	"settings_option_pageTranslation": {
+		"message": "整页翻译"
+	},
+	"settings_option_pageTranslation_detectLanguageByContent": {
+		"message": "通过内容检测语言"
+	},
+	"settings_option_pageTranslation_detectLanguageByContent_desc": {
+		"message": "分析网页上的文本以检测其语言。禁用时，将使用<slot id=docs>页面元数据</slot>中指定的语言"
+	},
+	"settings_option_pageTranslation_enableContextMenu": {
+		"message": "启用上下文菜单按钮"
+	},
+	"settings_option_pageTranslation_enableContextMenu_desc": {
+		"message": "在页面上下文菜单中添加一个按钮以切换页面翻译"
+	},
+	"settings_option_pageTranslation_excludeSelectors": {
+		"message": "排除翻译的选择器"
+	},
+	"settings_option_pageTranslation_excludeSelectors_desc": {
+		"message": "要排除翻译的元素的CSS选择器列表。每行一个选择器。如果元素匹配这些选择器中的任何一个，其文本、属性和嵌套元素将不被翻译"
+	},
+	"settings_option_pageTranslation_lazyTranslate": {
+		"message": "仅翻译可见元素"
+	},
+	"settings_option_pageTranslation_lazyTranslate_desc": {
+		"message": "启用此选项时，仅翻译可见元素。此选项可减少网络流量"
+	},
+	"settings_option_pageTranslation_originalTextPopup": {
+		"message": "启用原文弹出窗口"
+	},
+	"settings_option_pageTranslation_originalTextPopup_desc": {
+		"message": "在悬停于翻译文本块时显示原文弹出窗口"
+	},
+	"settings_option_pageTranslation_shortcut_toggleTranslation": {
+		"message": "快捷键"
+	},
+	"settings_option_pageTranslation_shortcut_toggleTranslation_desc": {
+		"message": "切换页面翻译的快捷键\n按ESC重置键"
+	},
+	"settings_option_pageTranslation_translatableAttributes": {
+		"message": "可翻译属性"
+	},
+	"settings_option_pageTranslation_translatableAttributes_desc": {
+		"message": "输入要翻译的<slot id=htmlAttributes>HTML属性</slot>名称，每行一个属性\n仅翻译此列表中的属性"
+	},
+	"settings_option_popupTab_pageTranslator_showCounters": {
+		"message": "显示翻译进度"
+	},
+	"settings_option_popupTab_pageTranslator_showCounters_desc": {
+		"message": "在扩展弹出窗口中显示页面翻译进度面板"
+	},
+	"settings_option_selectTranslation": {
+		"message": "选中文本翻译"
+	},
+	"settings_option_selectTranslation_detectTextLanguage": {
+		"message": "检测文本语言"
+	},
+	"settings_option_selectTranslation_detectTextLanguage_desc": {
+		"message": "启用时，选中文本将被分析以检测翻译语言。否则，将使用页面语言"
+	},
+	"settings_option_selectTranslation_disableWhileTranslatePage": {
+		"message": "翻译页面时禁用"
+	},
+	"settings_option_selectTranslation_enable": {
+		"message": "启用选中文本翻译"
+	},
+	"settings_option_selectTranslation_enable_desc": {
+		"message": "启用此功能后，您可以在页面上选择任何文本并在弹出窗口中翻译"
+	},
+	"settings_option_selectTranslation_focusOnTranslateButton": {
+		"message": "自动聚焦翻译按钮"
+	},
+	"settings_option_selectTranslation_focusOnTranslateButton_desc": {
+		"message": "当翻译按钮出现在页面上时，将自动聚焦"
+	},
+	"settings_option_selectTranslation_header_languageChoice": {
+		"message": "语言设置"
+	},
+	"settings_option_selectTranslation_isUseAutoForDetectLang": {
+		"message": "允许翻译模块检测文本语言"
+	},
+	"settings_option_selectTranslation_isUseAutoForDetectLang_desc": {
+		"message": "当无法本地检测文本语言且启用此选项时，如果支持，将使用“自动”语言进行翻译。\n禁用此选项时，将使用其他回退方法设置文本的源语言"
+	},
+	"settings_option_selectTranslation_mode": {
+		"message": "文本选择操作"
+	},
+	"settings_option_selectTranslation_mode_item_contextMenu": {
+		"message": "通过上下文菜单翻译文本"
+	},
+	"settings_option_selectTranslation_mode_item_popupButton": {
+		"message": "显示翻译按钮"
+	},
+	"settings_option_selectTranslation_mode_item_quickTranslate": {
+		"message": "即时翻译文本"
+	},
+	"settings_option_selectTranslation_modifiers": {
+		"message": "修饰键"
+	},
+	"settings_option_selectTranslation_modifiers_desc": {
+		"message": "选择必须在键盘上按下的键以显示翻译"
+	},
+	"settings_option_selectTranslation_modifiers_key_alt": {
+		"message": "alt"
+	},
+	"settings_option_selectTranslation_modifiers_key_ctrl": {
+		"message": "ctrl"
+	},
+	"settings_option_selectTranslation_modifiers_key_meta": {
+		"message": "meta"
+	},
+	"settings_option_selectTranslation_modifiers_key_shift": {
+		"message": "shift"
+	},
+	"settings_option_selectTranslation_rememberDirection": {
+		"message": "记住最近选择的文本语言"
+	},
+	"settings_option_selectTranslation_showOnceForSelection": {
+		"message": "每次文本选择仅显示一次翻译按钮"
+	},
+	"settings_option_selectTranslation_showOnceForSelection_desc": {
+		"message": "按钮将仅在每次文本选择时出现一次。要再次显示，请重新选择文本"
+	},
+	"settings_option_selectTranslation_showOriginalText": {
+		"message": "显示原始文本"
+	},
+	"settings_option_selectTranslation_showOriginalText_desc": {
+		"message": "在翻译弹出窗口中添加一个包含原始文本的块"
+	},
+	"settings_option_selectTranslation_strictSelection": {
+		"message": "严格的文本范围选择模式",
+		"description": "This option is about selecting text via mouse"
+	},
+	"settings_option_selectTranslation_strictSelection_desc": {
+		"message": "如果左键释放在包含选中文本的块之外，则忽略文本范围选择"
+	},
+	"settings_option_selectTranslation_timeoutForHideButton": {
+		"message": "隐藏弹出按钮前的延迟"
+	},
+	"settings_option_selectTranslation_timeoutForHideButton_desc": {
+		"message": "在光标未悬停在按钮上时，按钮隐藏前的延迟时间（以毫秒为单位）。悬停在按钮上会重置计时器。要禁用自动隐藏，请将值设置为小于1"
+	},
+	"settings_option_selectTranslation_zIndex": {
+		"message": "z-index"
+	},
+	"settings_option_selectTranslation_zIndex_desc": {
+		"message": "如果某些页面上的元素与翻译文本的弹出窗口重叠，请增加此值"
+	},
+	"settings_option_textTranslator": {
+		"message": "文本翻译"
+	},
+	"settings_option_textTranslator_rememberText": {
+		"message": "记住翻译的文本"
+	},
+	"settings_option_textTranslator_rememberText_desc": {
+		"message": "在下次打开窗口时记住翻译的文本"
+	},
+	"settings_option_textTranslator_spellCheck": {
+		"message": "启用拼写检查"
+	},
+	"settings_option_textTranslator_suggestLanguage": {
+		"message": "显示检测到的文本语言"
+	},
+	"settings_option_textTranslator_suggestLanguageAlways": {
+		"message": "始终检测并建议语言"
+	},
+	"settings_option_textTranslator_suggestLanguageAlways_desc": {
+		"message": "禁用时，只有在源语言设置为“自动”时才会出现语言建议"
+	},
+	"settings_option_translatePreferences": {
+		"message": "翻译偏好"
+	},
+	"settings_option_translateScheduler": {
+		"message": "翻译调度器"
+	},
+	"settings_option_translateScheduler_delay": {
+		"message": "文本积累延迟"
+	},
+	"settings_option_translateScheduler_delay_desc": {
+		"message": "翻译调度器通过积累尽可能多的文本以单个请求发送来减少对翻译服务API的请求次数。调度器将等待指定的毫秒时间以收集更多文本，然后开始翻译"
+	},
+	"settings_option_translateScheduler_retryLimit": {
+		"message": "翻译重试次数限制"
+	},
+	"settings_option_translateScheduler_retryLimit_desc": {
+		"message": "当翻译错误发生时，调度器将重试翻译文本。此选项设置重试次数的限制。设置为负数以允许无限重试"
+	},
+	"settings_option_translatorModule": {
+		"message": "翻译模块"
+	},
+	"settings_option_translatorModule_desc": {
+		"message": "翻译的质量和可用语言取决于翻译模块"
+	},
+	"settings_option_tts": {
+		"message": "文本转语音转换（TTS）"
+	},
+	"settings_option_ttsCustomModules": {
+		"message": "自定义语音合成模块"
+	},
+	"settings_option_ttsCustomModules_button": {
+		"message": "管理语音合成模块"
+	},
+	"settings_option_ttsCustomModules_desc": {
+		"message": "您可以添加使用您喜欢的服务和语音引擎的语音合成模块。请在<slot id=docs>自定义TTS文档</slot>中阅读更多信息"
+	},
+	"settings_option_ttsModule": {
+		"message": "选定的TTS模块"
+	},
+	"settings_option_ttsModule_desc": {
+		"message": "用于语音化文本的语音引擎"
+	},
+	"settings_option_userLanguage": {
+		"message": "您的语言"
+	},
+	"settings_option_userLanguage_desc": {
+		"message": "文本将被翻译成的语言"
+	},
+	"settings_pageTitle": {
+		"message": "设置"
+	},
+	"settings_section_history": {
+		"message": "历史记录"
+	},
+	"settings_section_popup": {
+		"message": "弹出窗口"
+	},
+	"textTranslator_suggestLanguage": {
+		"message": "似乎文本语言是<slot id=languageSuggest>$language_name$</slot>",
+		"placeholders": {
+			"language_name": {
+				"content": "$1",
+				"example": "Japanese"
+			}
+		}
+	},
+	"textTranslator_translateInputPlaceholder": {
+		"message": "输入要翻译的文本",
+		"description": "Request to user input some text for translation"
+	},
+	"textTranslator_translatePlaceholder": {
+		"message": "翻译后的文本将在此显示"
+	},
+	"translatorsManagerWindow_add": {
+		"message": "添加翻译模块"
+	},
+	"translatorsManagerWindow_close": {
+		"message": "关闭"
+	},
+	"translatorsManagerWindow_emptyTranslatorsListText": {
+		"message": "尚未添加自定义翻译模块"
+	},
+	"translatorsManagerWindow_message_translatorRemovingConfirmation": {
+		"message": "您确定要移除“$translator_name$”翻译模块吗?",
+		"placeholders": {
+			"translator_name": {
+				"content": "$1",
+				"example": "Google translator"
+			}
+		}
+	},
+	"translatorsManagerWindow_title": {
+		"message": "自定义翻译模块"
+	},
+	"translatorsManagerWindow_translator_delete": {
+		"message": "删除"
+	},
+	"translatorsManagerWindow_translator_edit": {
+		"message": "编辑"
+	},
+	"ttsManagerWindow_add": {
+		"message": "添加TTS模块"
+	},
+	"ttsManagerWindow_close": {
+		"message": "关闭"
+	},
+	"ttsManagerWindow_emptyTranslatorsListText": {
+		"message": "尚未添加TTS模块"
+	},
+	"ttsManagerWindow_message_ttsRemoveConfirmation": {
+		"message": "您确定要移除TTS模块“$tts_name$”吗?",
+		"placeholders": {
+			"tts_name": {
+				"content": "$1",
+				"example": "Google TTS"
+			}
+		}
+	},
+	"ttsManagerWindow_title": {
+		"message": "文本转语音模块"
+	},
+	"ttsManagerWindow_translator_delete": {
+		"message": "删除"
+	},
+	"ttsManagerWindow_translator_edit": {
+		"message": "编辑"
+	},
+	"validation_number": {
+		"message": "值必须是数字"
+	},
+	"validation_numberBetweenRange": {
+		"message": "值必须在$1和$2之间"
+	},
+	"validation_positiveNumber": {
+		"message": "值必须是正数"
+	}
+}

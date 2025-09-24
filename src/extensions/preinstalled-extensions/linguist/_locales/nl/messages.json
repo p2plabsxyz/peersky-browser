@@ -1,0 +1,623 @@
+{
+	"common_action_addToDictionary": {
+		"message": "Vertaling aan woordenboek toevoegen"
+	},
+	"common_action_removeFromDictionary": {
+		"message": "Vertaling uit woordenboek verwijderen"
+	},
+	"common_bgUnavailable": {
+		"message": "Achtergrondscripts niet beschikbaar"
+	},
+	"common_cancel": {
+		"message": "Annuleren"
+	},
+	"common_close": {
+		"message": "Sluiten"
+	},
+	"common_copy": {
+		"message": "Kopiëren"
+	},
+	"common_error": {
+		"message": "Fout"
+	},
+	"common_offlineTranslator": {
+		"message": "$1 - Offline vertaler"
+	},
+	"common_retry": {
+		"message": "Opnieuw proberen"
+	},
+	"common_translate": {
+		"message": "Vertalen"
+	},
+	"component_hotkey_placeholder": {
+		"message": "Klik om een sneltoets op te nemen"
+	},
+	"component_hotkey_recordPlaceholder": {
+		"message": "Toetsen indrukken"
+	},
+	"component_hotkey_resetButton": {
+		"message": "Resetten"
+	},
+	"contextMenu_disablePageTranslation": {
+		"message": "Paginavertaling stoppen"
+	},
+	"contextMenu_translatePage": {
+		"message": "Pagina vertalen"
+	},
+	"contextMenu_translateSelectedText": {
+		"message": "Geselecteerde tekst vertalen"
+	},
+	"dictionaryButton_add": {
+		"message": "Toevoegen aan woordenboek"
+	},
+	"dictionaryButton_delete": {
+		"message": "Verwijderen uit woordenboek"
+	},
+	"dictionary_button_export": {
+		"message": "Exporteren"
+	},
+	"dictionary_button_removeAll": {
+		"message": "Alles verwijderen"
+	},
+	"dictionary_deleteAll": {
+		"message": "Weet u zeker dat u ALLE vertalingen uit het woordenboek wilt verwijderen?"
+	},
+	"dictionary_deleteConfirmation": {
+		"message": "Weet u zeker dat u deze vertaling wilt verwijderen?"
+	},
+	"dictionary_description": {
+		"message": "Bewaar vertalingen in het woordenboek om ze later snel terug te vinden"
+	},
+	"dictionary_emptyDictionary": {
+		"message": "Woordenboek is leeg, begin het te vullen door wat tekst te vertalen"
+	},
+	"dictionary_filter_from": {
+		"message": "Bronteksttaal"
+	},
+	"dictionary_filter_to": {
+		"message": "Doeltaal"
+	},
+	"dictionary_message_deleteAll_success": {
+		"message": "Alle vertalingen zijn verwijderd"
+	},
+	"dictionary_notFoundEntries": {
+		"message": "Geen vertalingen gevonden die aan deze filters voldoen"
+	},
+	"dictionary_pageTitle": {
+		"message": "Woordenboek"
+	},
+	"dictionary_resetFilters": {
+		"message": "Filters resetten"
+	},
+	"dictionary_searchPlaceholder": {
+		"message": "Zoeken op tekst"
+	},
+	"editorWindow_close": {
+		"message": "Sluiten"
+	},
+	"editorWindow_data_code": {
+		"message": "Code"
+	},
+	"editorWindow_data_title": {
+		"message": "Modulenaam"
+	},
+	"editorWindow_message_invalidTitle": {
+		"message": "Modulenaam moet minstens één teken bevatten"
+	},
+	"editorWindow_save": {
+		"message": "Opslaan"
+	},
+	"ext_description": {
+		"message": "Webpagina vertaling, tekstvertaling, woordenboek, geschiedenis, aangepaste vertalers, alles wat je nodig hebt om taalbarrières te doorbreken"
+	},
+	"ext_name": {
+		"message": "Linguist - webpagina vertaler"
+	},
+	"history_control_selectEntry": {
+		"message": "Vertaling kiezen voor bulkactie",
+		"description": "Description in finite form \"to pick\" with explaining what this checkbox will do"
+	},
+	"history_controls_clearHistory": {
+		"message": "Geschiedenis wissen"
+	},
+	"history_controls_deleteSelected": {
+		"message": "Geselecteerde vertalingen verwijderen"
+	},
+	"history_controls_selectAll": {
+		"message": "Alle vertalingen selecteren"
+	},
+	"history_message_clearHistoryConfirmation": {
+		"message": "Weet je zeker dat je de geschiedenis wilt wissen? Alle items worden verwijderd"
+	},
+	"history_message_deleteEntryConfirmation": {
+		"message": "Weet je zeker dat je dit item wilt verwijderen?"
+	},
+	"history_message_deleteSelectedEntriesConfirmation": {
+		"message": "Weet je zeker dat je de geselecteerde items ($1) wilt verwijderen?"
+	},
+	"history_message_entriesNotFound": {
+		"message": "Geen vertalingen gevonden die overeenkomen met de filter"
+	},
+	"history_message_noEntries": {
+		"message": "Geschiedenis is leeg"
+	},
+	"history_notification_disabled": {
+		"message": "Geschiedenisregistratie is uitgeschakeld, dus nieuwe items zullen niet verschijnen. Je kunt dit wijzigen in <slot id=preferences>Voorkeuren</slot>"
+	},
+	"history_pageTitle": {
+		"message": "Geschiedenis"
+	},
+	"history_searchPlaceholder": {
+		"message": "Zoeken op tekst"
+	},
+	"inlineTranslator_showOriginalText": {
+		"message": "Originele tekst tonen"
+	},
+	"lang_change": {
+		"message": "Taal wijzigen"
+	},
+	"lang_detect": {
+		"message": "Automatisch detecteren"
+	},
+	"lang_select": {
+		"message": "Taal selecteren"
+	},
+	"lang_swap": {
+		"message": "Talen wisselen"
+	},
+	"message_unknownError": {
+		"message": "Onbekende fout"
+	},
+	"pageTranslator_alwaysTranslateLang": {
+		"message": "Deze taal altijd vertalen"
+	},
+	"pageTranslator_commonPreferences_autoTranslate_disable": {
+		"message": "Uitschakelen"
+	},
+	"pageTranslator_commonPreferences_autoTranslate_disableForAll": {
+		"message": "Uitschakelen voor alle sites"
+	},
+	"pageTranslator_commonPreferences_autoTranslate_enable": {
+		"message": "Inschakelen"
+	},
+	"pageTranslator_commonPreferences_title": {
+		"message": "Algemene voorkeuren voor deze taal"
+	},
+	"pageTranslator_option_autoTranslate": {
+		"message": "Automatisch vertalen"
+	},
+	"pageTranslator_showOriginal": {
+		"message": "Origineel weergeven"
+	},
+	"pageTranslator_showTranslationPreferences": {
+		"message": "Vertaalvoorkeuren"
+	},
+	"pageTranslator_sitePreferences_autoTranslate_always": {
+		"message": "Altijd vertalen"
+	},
+	"pageTranslator_sitePreferences_autoTranslate_alwaysForThisLang": {
+		"message": "Altijd vertalen voor deze taal"
+	},
+	"pageTranslator_sitePreferences_autoTranslate_default": {
+		"message": "Algemene regels gebruiken"
+	},
+	"pageTranslator_sitePreferences_autoTranslate_defaultForThisLang": {
+		"message": "Algemene regels gebruiken voor deze taal"
+	},
+	"pageTranslator_sitePreferences_autoTranslate_never": {
+		"message": "Nooit vertalen"
+	},
+	"pageTranslator_sitePreferences_autoTranslate_neverForThisLang": {
+		"message": "Nooit vertalen voor deze taal"
+	},
+	"pageTranslator_sitePreferences_title": {
+		"message": "Voorkeuren voor"
+	},
+	"pageTranslator_translatePage": {
+		"message": "Pagina vertalen"
+	},
+	"pageTranslator_translationReport": {
+		"message": "Vertaalrapport"
+	},
+	"pageTranslator_translationReport_queue": {
+		"message": "In afwachting"
+	},
+	"pageTranslator_translationReport_reject": {
+		"message": "Fouten"
+	},
+	"pageTranslator_translationReport_resolve": {
+		"message": "Vertaald"
+	},
+	"popup_tabIdNotFound": {
+		"message": "Tabblad \"$1\" niet gevonden"
+	},
+	"popup_tab_translatePage": {
+		"message": "Paginavertaling"
+	},
+	"popup_tab_translateText": {
+		"message": "Tekstvertaling"
+	},
+	"settings_button_cancel": {
+		"message": "Annuleren"
+	},
+	"settings_button_export": {
+		"message": "Configuratie exporteren"
+	},
+	"settings_button_import": {
+		"message": "Configuratie importeren"
+	},
+	"settings_button_reset": {
+		"message": "Configuratie resetten"
+	},
+	"settings_button_saveChanges": {
+		"message": "Wijzigingen opslaan"
+	},
+	"settings_message_clearCache_success": {
+		"message": "Cache geleegd"
+	},
+	"settings_message_common_invalidValueType": {
+		"message": "Ongeldige waarde"
+	},
+	"settings_message_importConfig_invalidFile": {
+		"message": "Het opgegeven configuratiebestand is onjuist of beschadigd en kan niet worden verwerkt"
+	},
+	"settings_message_importConfig_success": {
+		"message": "Import voltooid"
+	},
+	"settings_message_resetConfig_confirm": {
+		"message": "Bevestig om de instellingen naar de standaardwaarden te resetten"
+	},
+	"settings_message_resetConfig_success": {
+		"message": "Instellingen gereset"
+	},
+	"settings_message_saveChanges_success": {
+		"message": "Wijzigingen opgeslagen"
+	},
+	"settings_option_cache": {
+		"message": "Cache"
+	},
+	"settings_option_cache_clear": {
+		"message": "Cache wissen"
+	},
+	"settings_option_cache_clear_desc": {
+		"message": "Als u vertaalfouten opmerkt of per ongeluk privéteksten vertaalt terwijl de cache is ingeschakeld, kunt u alle gegevens uit de cache verwijderen",
+		"description": "Uitleg voor de gebruiker over wanneer het nuttig is om de cache te wissen"
+	},
+	"settings_option_cache_enable": {
+		"message": "Cache inschakelen"
+	},
+	"settings_option_cache_enable_desc": {
+		"message": "Wanneer de cache is ingeschakeld, worden eerder vertaalde teksten direct vertaald zonder extra verzoeken aan de vertaaldienst"
+	},
+	"settings_option_cache_ignoreCase": {
+		"message": "Cache zonder hoofdlettergevoeligheid gebruiken"
+	},
+	"settings_option_cache_ignoreCase_desc": {
+		"message": "Wanneer ingeschakeld, worden gecachte vertalingen gebruikt voor teksten met verschillende hoofdlettergebruik, wat in bepaalde situaties vertaalverstoringen kan veroorzaken"
+	},
+	"settings_option_commonSettings": {
+		"message": "Algemene instellingen"
+	},
+	"settings_option_customTranslatorModule": {
+		"message": "Aangepaste vertaalmodules",
+		"description": "Een door de gebruiker gedefinieerde code die een vertaalmodule implementeert"
+	},
+	"settings_option_customTranslatorModule_desc": {
+		"message": "U kunt aangepaste vertaalmodules toevoegen die uw favoriete vertaaldiensten gebruiken. Lees meer in de <slot id=docs>documentatie voor aangepaste vertalers</slot>"
+	},
+	"settings_option_customTranslatorModule_manageButton": {
+		"message": "Vertalers beheren",
+		"description": "Een knop om de lijst met vertaalmodules weer te geven"
+	},
+	"settings_option_history_enable": {
+		"message": "Geschiedenis inschakelen"
+	},
+	"settings_option_history_enable_desc": {
+		"message": "Wanneer ingeschakeld, worden vertalingen vastgelegd en weergegeven op de <slot id=historyPage>geschiedenispagina</slot>"
+	},
+	"settings_option_pageTranslation": {
+		"message": "De volledige paginavertaling"
+	},
+	"settings_option_pageTranslation_detectLanguageByContent": {
+		"message": "Taal detecteren op basis van inhoud"
+	},
+	"settings_option_pageTranslation_detectLanguageByContent_desc": {
+		"message": "Analyseer de tekst op de webpagina om de taal te detecteren. Wanneer uitgeschakeld, wordt de taal gebruikt die is opgegeven in de <slot id=docs>paginametadata</slot>"
+	},
+	"settings_option_pageTranslation_enableContextMenu": {
+		"message": "Contextmenuknop inschakelen"
+	},
+	"settings_option_pageTranslation_enableContextMenu_desc": {
+		"message": "Voeg een knop toe om paginavertaling in het contextmenu van de pagina in te schakelen"
+	},
+	"settings_option_pageTranslation_excludeSelectors": {
+		"message": "Selectors uitsluiten van vertaling"
+	},
+	"settings_option_pageTranslation_excludeSelectors_desc": {
+		"message": "Lijst van CSS-selectors voor elementen die van vertaling moeten worden uitgesloten. Eén selector per regel. Als een element overeenkomt met een van deze selectors, worden de tekst, attributen en geneste elementen niet vertaald"
+	},
+	"settings_option_pageTranslation_lazyTranslate": {
+		"message": "Alleen zichtbare elementen vertalen"
+	},
+	"settings_option_pageTranslation_lazyTranslate_desc": {
+		"message": "Wanneer deze optie is ingeschakeld, worden alleen zichtbare elementen vertaald. Deze optie vermindert het netwerkverkeer"
+	},
+	"settings_option_pageTranslation_originalTextPopup": {
+		"message": "Popup met de originele tekst inschakelen"
+	},
+	"settings_option_pageTranslation_originalTextPopup_desc": {
+		"message": "Toon een popup met de originele tekst wanneer u over vertaalde tekstblokken zweeft"
+	},
+	"settings_option_pageTranslation_shortcut_toggleTranslation": {
+		"message": "Sneltoets"
+	},
+	"settings_option_pageTranslation_shortcut_toggleTranslation_desc": {
+		"message": "Sneltoets om paginavertaling in of uit te schakelen\nDruk op ESC om toetsen te resetten"
+	},
+	"settings_option_pageTranslation_translatableAttributes": {
+		"message": "Vertaalbare attributen"
+	},
+	"settings_option_pageTranslation_translatableAttributes_desc": {
+		"message": "Voer <slot id=htmlAttributes>HTML-attribuut</slot>namen in om te vertalen, één attribuut per regel\nAlleen de attributen in deze lijst worden vertaald"
+	},
+	"settings_option_popupTab_pageTranslator_showCounters": {
+		"message": "Vertaalvoortgang tonen"
+	},
+	"settings_option_popupTab_pageTranslator_showCounters_desc": {
+		"message": "Toon een paneel met de voortgang van de paginavertaling in de extensie-popup"
+	},
+	"settings_option_selectTranslation": {
+		"message": "Vertaling voor geselecteerde tekst"
+	},
+	"settings_option_selectTranslation_detectTextLanguage": {
+		"message": "Detecteer teksttaal"
+	},
+	"settings_option_selectTranslation_detectTextLanguage_desc": {
+		"message": "Wanneer ingeschakeld, wordt de geselecteerde tekst geanalyseerd om de taal voor vertaling te detecteren. Anders wordt de paginataal gebruikt"
+	},
+	"settings_option_selectTranslation_disableWhileTranslatePage": {
+		"message": "Uitschakelen tijdens het vertalen van de pagina"
+	},
+	"settings_option_selectTranslation_enable": {
+		"message": "Inschakelen vertaling van geselecteerde tekst"
+	},
+	"settings_option_selectTranslation_enable_desc": {
+		"message": "Wanneer deze functie is ingeschakeld, kunt u elke tekst op de pagina selecteren en deze in een popup vertalen"
+	},
+	"settings_option_selectTranslation_focusOnTranslateButton": {
+		"message": "Automatisch focussen op de vertaalbutton"
+	},
+	"settings_option_selectTranslation_focusOnTranslateButton_desc": {
+		"message": "Wanneer de vertaalbutton op de pagina verschijnt, wordt deze automatisch gefocust"
+	},
+	"settings_option_selectTranslation_header_languageChoice": {
+		"message": "Taalinstellingen"
+	},
+	"settings_option_selectTranslation_isUseAutoForDetectLang": {
+		"message": "Sta het vertaalmodule toe om de teksttaal te detecteren"
+	},
+	"settings_option_selectTranslation_isUseAutoForDetectLang_desc": {
+		"message": "Wanneer de teksttaal niet lokaal kan worden gedetecteerd en deze optie is ingeschakeld, wordt de tekst vertaald met de taal \"auto\" indien ondersteund.\nWanneer de optie is uitgeschakeld, wordt een andere fallback-methode gebruikt om de brontaal van de tekst in te stellen"
+	},
+	"settings_option_selectTranslation_mode": {
+		"message": "Actie bij tekstselectie"
+	},
+	"settings_option_selectTranslation_mode_item_contextMenu": {
+		"message": "Vertaal tekst via contextmenu"
+	},
+	"settings_option_selectTranslation_mode_item_popupButton": {
+		"message": "Toon vertaalbutton"
+	},
+	"settings_option_selectTranslation_mode_item_quickTranslate": {
+		"message": "Vertaal tekst direct"
+	},
+	"settings_option_selectTranslation_modifiers": {
+		"message": "Modificatoren"
+	},
+	"settings_option_selectTranslation_modifiers_desc": {
+		"message": "Selecteer de toetsen die op het toetsenbord moeten worden ingedrukt om de vertaling weer te geven"
+	},
+	"settings_option_selectTranslation_modifiers_key_alt": {
+		"message": "alt"
+	},
+	"settings_option_selectTranslation_modifiers_key_ctrl": {
+		"message": "ctrl"
+	},
+	"settings_option_selectTranslation_modifiers_key_meta": {
+		"message": "meta"
+	},
+	"settings_option_selectTranslation_modifiers_key_shift": {
+		"message": "shift"
+	},
+	"settings_option_selectTranslation_rememberDirection": {
+		"message": "Onthoud de meest recent geselecteerde teksttaal"
+	},
+	"settings_option_selectTranslation_showOnceForSelection": {
+		"message": "Toon de vertaalbutton één keer per tekstselectie"
+	},
+	"settings_option_selectTranslation_showOnceForSelection_desc": {
+		"message": "De button verschijnt slechts één keer voor elke tekstselectie. Om deze opnieuw te tonen, selecteer de tekst opnieuw"
+	},
+	"settings_option_selectTranslation_showOriginalText": {
+		"message": "Toon originele tekst"
+	},
+	"settings_option_selectTranslation_showOriginalText_desc": {
+		"message": "Voeg een blok met de originele tekst toe aan de vertaalpopup"
+	},
+	"settings_option_selectTranslation_strictSelection": {
+		"message": "Strikte modus voor tekstselectie",
+		"description": "Deze optie gaat over het selecteren van tekst via de muis"
+	},
+	"settings_option_selectTranslation_strictSelection_desc": {
+		"message": "Negeer tekstselectie als de linkermuisknop buiten het blok met de geselecteerde tekst wordt losgelaten"
+	},
+	"settings_option_selectTranslation_timeoutForHideButton": {
+		"message": "Vertraging voordat de popupbutton wordt verborgen"
+	},
+	"settings_option_selectTranslation_timeoutForHideButton_desc": {
+		"message": "Vertraging in milliseconden voordat de knop wordt verborgen wanneer de cursor er niet overheen zweeft. Zweven over de knop reset de timer. Om automatisch verbergen uit te schakelen, stel de waarde in op minder dan 1"
+	},
+	"settings_option_selectTranslation_zIndex": {
+		"message": "z-index"
+	},
+	"settings_option_selectTranslation_zIndex_desc": {
+		"message": "Verhoog deze waarde als elementen op sommige pagina's de pop-up met vertaalde tekst overlappen"
+	},
+	"settings_option_textTranslator": {
+		"message": "Tekstvertaling"
+	},
+	"settings_option_textTranslator_rememberText": {
+		"message": "Vertaalde tekst onthouden"
+	},
+	"settings_option_textTranslator_rememberText_desc": {
+		"message": "Vertaalde tekst onthouden voor de volgende keer dat het venster wordt geopend"
+	},
+	"settings_option_textTranslator_spellCheck": {
+		"message": "Spellingscontrole inschakelen"
+	},
+	"settings_option_textTranslator_suggestLanguage": {
+		"message": "Gedetecteerde teksttaal weergeven"
+	},
+	"settings_option_textTranslator_suggestLanguageAlways": {
+		"message": "Altijd taal detecteren en voorstellen"
+	},
+	"settings_option_textTranslator_suggestLanguageAlways_desc": {
+		"message": "Wanneer uitgeschakeld, verschijnen taalsuggesties alleen als de brontaal is ingesteld op \"auto\""
+	},
+	"settings_option_translatePreferences": {
+		"message": "Vertaalvoorkeuren"
+	},
+	"settings_option_translateScheduler": {
+		"message": "Vertaalplanner"
+	},
+	"settings_option_translateScheduler_delay": {
+		"message": "Vertraging bij tekstaccumulatie"
+	},
+	"settings_option_translateScheduler_delay_desc": {
+		"message": "De vertaalplanner vermindert het aantal verzoeken aan de vertaaldienst-API door zoveel mogelijk teksten te verzamelen om in één verzoek te verzenden. De planner wacht de opgegeven tijd in milliseconden om meer teksten te verzamelen voordat de vertaling start"
+	},
+	"settings_option_translateScheduler_retryLimit": {
+		"message": "Limiet voor vertaalpogingen"
+	},
+	"settings_option_translateScheduler_retryLimit_desc": {
+		"message": "De planner zal proberen teksten opnieuw te vertalen wanneer vertaalfouten optreden. Deze optie stelt een limiet in voor het aantal pogingen. Stel een negatief getal in om onbeperkte pogingen toe te staan"
+	},
+	"settings_option_translatorModule": {
+		"message": "Vertaalmodule"
+	},
+	"settings_option_translatorModule_desc": {
+		"message": "De kwaliteit van vertalingen en de beschikbare talen zijn afhankelijk van de vertaalmodule"
+	},
+	"settings_option_tts": {
+		"message": "Tekst-naar-spraak conversie (TTS)"
+	},
+	"settings_option_ttsCustomModules": {
+		"message": "Aangepaste spraaksynthesemodules"
+	},
+	"settings_option_ttsCustomModules_button": {
+		"message": "Beheren van spraaksynthesemodules"
+	},
+	"settings_option_ttsCustomModules_desc": {
+		"message": "U kunt spraaksynthesemodules toevoegen die uw favoriete diensten en stemengines gebruiken. Lees meer in de <slot id=docs>documentatie voor aangepaste TTS</slot>"
+	},
+	"settings_option_ttsModule": {
+		"message": "Geselecteerde TTS-module"
+	},
+	"settings_option_ttsModule_desc": {
+		"message": "Stemengine gebruikt voor het uitspreken van de tekst"
+	},
+	"settings_option_userLanguage": {
+		"message": "Uw taal"
+	},
+	"settings_option_userLanguage_desc": {
+		"message": "De taal waarin teksten worden vertaald"
+	},
+	"settings_pageTitle": {
+		"message": "Instellingen"
+	},
+	"settings_section_history": {
+		"message": "Geschiedenis"
+	},
+	"settings_section_popup": {
+		"message": "Pop-up"
+	},
+	"textTranslator_suggestLanguage": {
+		"message": "Het lijkt erop dat de teksttaal <slot id=languageSuggest>$language_name$</slot> is",
+		"placeholders": {
+			"language_name": {
+				"content": "$1",
+				"example": "Japanese"
+			}
+		}
+	},
+	"textTranslator_translateInputPlaceholder": {
+		"message": "Voer tekst in voor vertaling",
+		"description": "Request to user input some text for translation"
+	},
+	"textTranslator_translatePlaceholder": {
+		"message": "Vertaalde tekst komt hier"
+	},
+	"translatorsManagerWindow_add": {
+		"message": "Vertaalmodule toevoegen"
+	},
+	"translatorsManagerWindow_close": {
+		"message": "Sluiten"
+	},
+	"translatorsManagerWindow_emptyTranslatorsListText": {
+		"message": "Er zijn nog geen aangepaste vertaalmodules toegevoegd"
+	},
+	"translatorsManagerWindow_message_translatorRemovingConfirmation": {
+		"message": "Weet u zeker dat u de vertaalmodule \"$translator_name$\" wilt verwijderen?",
+		"placeholders": {
+			"translator_name": {
+				"content": "$1",
+				"example": "Google translator"
+			}
+		}
+	},
+	"translatorsManagerWindow_title": {
+		"message": "Aangepaste vertaalmodules"
+	},
+	"translatorsManagerWindow_translator_delete": {
+		"message": "Verwijderen"
+	},
+	"translatorsManagerWindow_translator_edit": {
+		"message": "Bewerken"
+	},
+	"ttsManagerWindow_add": {
+		"message": "TTS-module toevoegen"
+	},
+	"ttsManagerWindow_close": {
+		"message": "Sluiten"
+	},
+	"ttsManagerWindow_emptyTranslatorsListText": {
+		"message": "Er zijn nog geen TTS-modules toegevoegd"
+	},
+	"ttsManagerWindow_message_ttsRemoveConfirmation": {
+		"message": "Weet u zeker dat u de TTS-module \"$tts_name$\" wilt verwijderen?",
+		"placeholders": {
+			"tts_name": {
+				"content": "$1",
+				"example": "Google TTS"
+			}
+		}
+	},
+	"ttsManagerWindow_title": {
+		"message": "Text-to-Speech-modules"
+	},
+	"ttsManagerWindow_translator_delete": {
+		"message": "Verwijderen"
+	},
+	"ttsManagerWindow_translator_edit": {
+		"message": "Bewerken"
+	},
+	"validation_number": {
+		"message": "Waarde moet een getal zijn"
+	},
+	"validation_numberBetweenRange": {
+		"message": "Waarde moet een getal zijn tussen $1 en $2"
+	},
+	"validation_positiveNumber": {
+		"message": "Waarde moet een positief getal zijn"
+	}
+}

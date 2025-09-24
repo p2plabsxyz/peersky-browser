@@ -141,11 +141,22 @@ async function handleExtensionIcon(extensionId, size, sendResponse) {
     });
   } catch (error) {
     console.log(`Extension icon not found: ${extensionId}/${size} - ${error.message}`);
-    sendResponse({
-      statusCode: 404,
-      headers: { 'Content-Type': 'text/plain' },
-      data: Readable.from(['Extension icon not found'])
-    });
+    try {
+      const defaultIconPath = path.join(pagesPath, 'static/assets/svg/default-extension-icon.svg');
+      const data = createReadStream(defaultIconPath);
+      const contentType = mime.lookup(defaultIconPath) || 'image/svg+xml';
+      sendResponse({
+        statusCode: 200,
+        headers: { 'Content-Type': contentType, 'Cache-Control': 'public, max-age=3600' },
+        data
+      });
+    } catch (_) {
+      sendResponse({
+        statusCode: 404,
+        headers: { 'Content-Type': 'text/plain' },
+        data: Readable.from(['Extension icon not found'])
+      });
+    }
   }
 }
 

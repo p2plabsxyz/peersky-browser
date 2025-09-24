@@ -24,8 +24,9 @@ function loadSVG(container, svgPath) {
       if (svgElement) {
         const node = svgElement.cloneNode(true);
         const isEmptyIcon = container.classList.contains('extensions-empty-icon');
-        node.setAttribute('width', isEmptyIcon ? '48' : '36');
-        node.setAttribute('height', isEmptyIcon ? '48' : '36');
+        const dimension = isEmptyIcon ? '48' : '48';
+        node.setAttribute('width', dimension);
+        node.setAttribute('height', dimension);
         node.classList.add('extension-icon-placeholder');
         node.setAttribute('fill', 'currentColor');
         const stroked = node.querySelectorAll('[stroke]');

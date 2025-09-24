@@ -1,0 +1,623 @@
+{
+	"common_action_addToDictionary": {
+		"message": "மொழிபெயர்ப்பை அகராதியில் சேர்க்கவும்"
+	},
+	"common_action_removeFromDictionary": {
+		"message": "மொழிபெயர்ப்பை அகராதியில் இருந்து நீக்கவும்"
+	},
+	"common_bgUnavailable": {
+		"message": "பின்புல ஸ்கிரிப்ட் கிடைக்கவில்லை"
+	},
+	"common_cancel": {
+		"message": "ரத்து செய்"
+	},
+	"common_close": {
+		"message": "மூடு"
+	},
+	"common_copy": {
+		"message": "நகலெடு"
+	},
+	"common_error": {
+		"message": "பிழை"
+	},
+	"common_offlineTranslator": {
+		"message": "$1 - ஆஃப்லைன் மொழிபெயர்ப்பாளர்"
+	},
+	"common_retry": {
+		"message": "மீண்டும் முயற்சி செய்"
+	},
+	"common_translate": {
+		"message": "மொழிபெயர்க்க"
+	},
+	"component_hotkey_placeholder": {
+		"message": "ஒரு குறுக்குவழியை பதிவு செய்ய கிளிக் செய்க"
+	},
+	"component_hotkey_recordPlaceholder": {
+		"message": "விசைகளை அழுத்தவும்"
+	},
+	"component_hotkey_resetButton": {
+		"message": "மீட்டமை"
+	},
+	"contextMenu_disablePageTranslation": {
+		"message": "பக்க மொழிபெயர்ப்பை நிறுத்தவும்"
+	},
+	"contextMenu_translatePage": {
+		"message": "பக்கத்தை மொழிபெயர்க்க"
+	},
+	"contextMenu_translateSelectedText": {
+		"message": "தேர்ந்தெடுக்கப்பட்ட உரையை மொழிபெயர்க்க"
+	},
+	"dictionaryButton_add": {
+		"message": "அகராதியில் சேர்க்கவும்"
+	},
+	"dictionaryButton_delete": {
+		"message": "அகராதியில் இருந்து நீக்கவும்"
+	},
+	"dictionary_button_export": {
+		"message": "ஏற்றுமதி"
+	},
+	"dictionary_button_removeAll": {
+		"message": "அனைத்தையும் நீக்கு"
+	},
+	"dictionary_deleteAll": {
+		"message": "அகராதியில் இருந்து அனைத்து மொழிபெயர்ப்புகளையும் நீக்க விரும்புகிறீர்களா?"
+	},
+	"dictionary_deleteConfirmation": {
+		"message": "இந்த மொழிபெயர்ப்பை நீக்க விரும்புகிறீர்களா?"
+	},
+	"dictionary_description": {
+		"message": "மொழிபெயர்ப்புகளை அகராதியில் சேமித்து பின்னர் அவற்றை விரைவாக கண்டுபிடிக்கவும்"
+	},
+	"dictionary_emptyDictionary": {
+		"message": "அகராதி காலியாக உள்ளது, சில உரைகளை மொழிபெயர்த்து அதை நிரப்பத் தொடங்குங்கள்"
+	},
+	"dictionary_filter_from": {
+		"message": "மூல உரை மொழி"
+	},
+	"dictionary_filter_to": {
+		"message": "இலக்கு மொழி"
+	},
+	"dictionary_message_deleteAll_success": {
+		"message": "அனைத்து மொழிபெயர்ப்புகளும் நீக்கப்பட்டுவிட்டன"
+	},
+	"dictionary_notFoundEntries": {
+		"message": "இந்த வடிகட்டல்களுக்கு பொருந்தும் மொழிபெயர்ப்புகள் எதுவும் கிடைக்கவில்லை"
+	},
+	"dictionary_pageTitle": {
+		"message": "அகராதி"
+	},
+	"dictionary_resetFilters": {
+		"message": "வடிகட்டல்களை மீட்டமை"
+	},
+	"dictionary_searchPlaceholder": {
+		"message": "உரை மூலம் தேடுக"
+	},
+	"editorWindow_close": {
+		"message": "மூடு"
+	},
+	"editorWindow_data_code": {
+		"message": "குறியீடு"
+	},
+	"editorWindow_data_title": {
+		"message": "தொகுதி பெயர்"
+	},
+	"editorWindow_message_invalidTitle": {
+		"message": "தொகுதி பெயரில் குறைந்தது ஒரு எழுத்து இருக்க வேண்டும்"
+	},
+	"editorWindow_save": {
+		"message": "சேமிக்க"
+	},
+	"ext_description": {
+		"message": "இணையப் பக்கம் மொழிபெயர்ப்பு, உரை மொழிபெயர்ப்பு, அகராதி, வரலாறு, தனிப்பயன் மொழிபெயர்ப்பாளர்கள், மொழி தடைகளை உடைக்க உங்களுக்கு தேவையான அனைத்தும்"
+	},
+	"ext_name": {
+		"message": "Linguist - இணையப் பக்கம் மொழிபெயர்ப்பாளர்"
+	},
+	"history_control_selectEntry": {
+		"message": "மொத்த செயலுக்கு மொழிபெயர்ப்பை தேர்ந்தெடுக்க",
+		"description": "இந்த செக்பாக்ஸ் என்ன செய்யும் என்பதை விளக்கி \"தேர்ந்தெடுக்க\" என்ற முடிவுறு வடிவத்தில் விளக்கம்"
+	},
+	"history_controls_clearHistory": {
+		"message": "வரலாற்றை அழிக்க"
+	},
+	"history_controls_deleteSelected": {
+		"message": "தேர்ந்தெடுக்கப்பட்ட மொழிபெயர்ப்புகளை நீக்க"
+	},
+	"history_controls_selectAll": {
+		"message": "அனைத்து மொழிபெயர்ப்புகளையும் தேர்ந்தெடுக்க"
+	},
+	"history_message_clearHistoryConfirmation": {
+		"message": "வரலாற்றை அழிக்க விரும்புகிறீர்களா? அனைத்து பதிவுகளும் நீக்கப்படும்"
+	},
+	"history_message_deleteEntryConfirmation": {
+		"message": "இந்த பதிவை நீக்க விரும்புகிறீர்களா?"
+	},
+	"history_message_deleteSelectedEntriesConfirmation": {
+		"message": "தேர்ந்தெடுக்கப்பட்ட பதிவுகளை ($1) நீக்க விரும்புகிறீர்களா?"
+	},
+	"history_message_entriesNotFound": {
+		"message": "வடிகட்டலுக்கு பொருந்தும் மொழிபெயர்ப்புகள் எதுவும் கிடைக்கவில்லை"
+	},
+	"history_message_noEntries": {
+		"message": "வரலாறு காலியாக உள்ளது"
+	},
+	"history_notification_disabled": {
+		"message": "வரலாறு பதிவு முடக்கப்பட்டுள்ளது, எனவே புதிய பதிவுகள் தோன்றாது. நீங்கள் இதை <slot id=preferences>விருப்பத்தேர்வுகள்</slot> இல் மாற்றலாம்"
+	},
+	"history_pageTitle": {
+		"message": "வரலாறு"
+	},
+	"history_searchPlaceholder": {
+		"message": "உரை மூலம் தேடுக"
+	},
+	"inlineTranslator_showOriginalText": {
+		"message": "மூல உரையை காண்பி"
+	},
+	"lang_change": {
+		"message": "மொழியை மாற்று"
+	},
+	"lang_detect": {
+		"message": "தானாக கண்டறி"
+	},
+	"lang_select": {
+		"message": "மொழியை தேர்ந்தெடுக்க"
+	},
+	"lang_swap": {
+		"message": "மொழிகளை மாற்று"
+	},
+	"message_unknownError": {
+		"message": "அறியப்படாத பிழை"
+	},
+	"pageTranslator_alwaysTranslateLang": {
+		"message": "இந்த மொழியை எப்போதும் மொழிபெயர்க்கவும்"
+	},
+	"pageTranslator_commonPreferences_autoTranslate_disable": {
+		"message": "முடக்கு"
+	},
+	"pageTranslator_commonPreferences_autoTranslate_disableForAll": {
+		"message": "அனைத்து தளங்களுக்கும் முடக்கு"
+	},
+	"pageTranslator_commonPreferences_autoTranslate_enable": {
+		"message": "இயக்கு"
+	},
+	"pageTranslator_commonPreferences_title": {
+		"message": "இந்த மொழிக்கான பொதுவான விருப்பங்கள்"
+	},
+	"pageTranslator_option_autoTranslate": {
+		"message": "தானாக மொழிபெயர்க்கவும்"
+	},
+	"pageTranslator_showOriginal": {
+		"message": "மூலத்தை காண்பிக்கவும்"
+	},
+	"pageTranslator_showTranslationPreferences": {
+		"message": "மொழிபெயர்ப்பு விருப்பங்கள்"
+	},
+	"pageTranslator_sitePreferences_autoTranslate_always": {
+		"message": "எப்போதும் மொழிபெயர்க்கவும்"
+	},
+	"pageTranslator_sitePreferences_autoTranslate_alwaysForThisLang": {
+		"message": "இந்த மொழிக்காக எப்போதும் மொழிபெயர்க்கவும்"
+	},
+	"pageTranslator_sitePreferences_autoTranslate_default": {
+		"message": "பொதுவான விதிகளைப் பயன்படுத்தவும்"
+	},
+	"pageTranslator_sitePreferences_autoTranslate_defaultForThisLang": {
+		"message": "இந்த மொழிக்கான பொதுவான விதிகளைப் பயன்படுத்தவும்"
+	},
+	"pageTranslator_sitePreferences_autoTranslate_never": {
+		"message": "மொழிபெயர்க்க வேண்டாம்"
+	},
+	"pageTranslator_sitePreferences_autoTranslate_neverForThisLang": {
+		"message": "இந்த மொழிக்காக மொழிபெயர்க்க வேண்டாம்"
+	},
+	"pageTranslator_sitePreferences_title": {
+		"message": "விருப்பங்கள்"
+	},
+	"pageTranslator_translatePage": {
+		"message": "பக்கத்தை மொழிபெயர்க்கவும்"
+	},
+	"pageTranslator_translationReport": {
+		"message": "மொழிபெயர்ப்பு அறிக்கை"
+	},
+	"pageTranslator_translationReport_queue": {
+		"message": "நிலுவையில்"
+	},
+	"pageTranslator_translationReport_reject": {
+		"message": "பிழைகள்"
+	},
+	"pageTranslator_translationReport_resolve": {
+		"message": "மொழிபெயர்க்கப்பட்டது"
+	},
+	"popup_tabIdNotFound": {
+		"message": "தாவல் \"$1\" கிடைக்கவில்லை"
+	},
+	"popup_tab_translatePage": {
+		"message": "பக்க மொழிபெயர்ப்பு"
+	},
+	"popup_tab_translateText": {
+		"message": "உரை மொழிபெயர்ப்பு"
+	},
+	"settings_button_cancel": {
+		"message": "ரத்து செய்யவும்"
+	},
+	"settings_button_export": {
+		"message": "கட்டமைப்பை ஏற்றுமதி செய்யவும்"
+	},
+	"settings_button_import": {
+		"message": "கட்டமைப்பை இறக்குமதி செய்யவும்"
+	},
+	"settings_button_reset": {
+		"message": "கட்டமைப்பை மீட்டமைக்கவும்"
+	},
+	"settings_button_saveChanges": {
+		"message": "மாற்றங்களைச் சேமிக்கவும்"
+	},
+	"settings_message_clearCache_success": {
+		"message": "கேஷ் அழிக்கப்பட்டது"
+	},
+	"settings_message_common_invalidValueType": {
+		"message": "தவறான மதிப்பு"
+	},
+	"settings_message_importConfig_invalidFile": {
+		"message": "வழங்கப்பட்ட கட்டமைப்பு கோப்பு தவறானது அல்லது சேதமடைந்துள்ளது, செயலாக்க முடியாது"
+	},
+	"settings_message_importConfig_success": {
+		"message": "இறக்குமதி முடிந்தது"
+	},
+	"settings_message_resetConfig_confirm": {
+		"message": "அமைப்புகளை இயல்புநிலைக்கு மீட்டமைக்க உறுதிப்படுத்தவும்"
+	},
+	"settings_message_resetConfig_success": {
+		"message": "அமைப்புகள் மீட்டமைக்கப்பட்டன"
+	},
+	"settings_message_saveChanges_success": {
+		"message": "மாற்றங்கள் சேமிக்கப்பட்டன"
+	},
+	"settings_option_cache": {
+		"message": "கேஷ்"
+	},
+	"settings_option_cache_clear": {
+		"message": "கேஷ் அழிக்க"
+	},
+	"settings_option_cache_clear_desc": {
+		"message": "நீங்கள் மொழிபெயர்ப்பு பிழைகளை கவனித்தால் அல்லது கேஷ் இயக்கப்பட்டுள்ளபோது தனிப்பட்ட உரைகளை தவறுதலாக மொழிபெயர்த்தால், கேஷிலிருந்து அனைத்து தரவையும் நீக்கலாம்",
+		"description": "கேஷை அழிப்பது எப்போது பயனுள்ளதாக இருக்கும் என்பதைப் பற்றிய பயனருக்கான விளக்கம்"
+	},
+	"settings_option_cache_enable": {
+		"message": "கேஷ் இயக்கவும்"
+	},
+	"settings_option_cache_enable_desc": {
+		"message": "கேஷ் இயக்கப்பட்டால், முன்பு மொழிபெயர்க்கப்பட்ட உரைகள் கூடுதல் கோரிக்கைகள் இல்லாமல் உடனடியாக மொழிபெயர்க்கப்படும்"
+	},
+	"settings_option_cache_ignoreCase": {
+		"message": "கேஸை பொருட்படுத்தாத கேஷ் பயன்படுத்தவும்"
+	},
+	"settings_option_cache_ignoreCase_desc": {
+		"message": "இது இயக்கப்பட்டால், கேஷில் உள்ள மொழிபெயர்ப்புகள் வேறுபட்ட கேஸ்களுடன் உள்ள உரைகளுக்கு பயன்படுத்தப்படும், இது சில சூழ்நிலைகளில் மொழிபெயர்ப்பு விகிதாசாரங்களை ஏற்படுத்தக்கூடும்"
+	},
+	"settings_option_commonSettings": {
+		"message": "பொது அமைப்புகள்"
+	},
+	"settings_option_customTranslatorModule": {
+		"message": "தனிப்பயன் மொழிபெயர்ப்பு தொகுதிகள்",
+		"description": "மொழிபெயர்ப்பு தொகுதியை செயல்படுத்தும் பயனர் வரையறுக்கப்பட்ட குறியீடு"
+	},
+	"settings_option_customTranslatorModule_desc": {
+		"message": "உங்கள் விருப்பமான மொழிபெயர்ப்பு சேவைகளைப் பயன்படுத்தும் தனிப்பயன் மொழிபெயர்ப்பு தொகுதிகளை நீங்கள் சேர்க்கலாம். <slot id=docs>தனிப்பயன் மொழிபெயர்ப்பாளர்கள் ஆவணத்தில்</slot> மேலும் அறிக"
+	},
+	"settings_option_customTranslatorModule_manageButton": {
+		"message": "மொழிபெயர்ப்பாளர்களை நிர்வகித்தல்",
+		"description": "மொழிபெயர்ப்பு தொகுதிகளின் பட்டியலைக் காட்ட ஒரு பொத்தான்"
+	},
+	"settings_option_history_enable": {
+		"message": "வரலாற்றை இயக்கவும்"
+	},
+	"settings_option_history_enable_desc": {
+		"message": "இது இயக்கப்பட்டால், மொழிபெயர்ப்புகள் பதிவு செய்யப்படும் மற்றும் <slot id=historyPage>வரலாறு பக்கம்</slot> தோன்றும்"
+	},
+	"settings_option_pageTranslation": {
+		"message": "முழு பக்கம் மொழிபெயர்ப்பு"
+	},
+	"settings_option_pageTranslation_detectLanguageByContent": {
+		"message": "உள்ளடக்கத்தால் மொழியை கண்டறியவும்"
+	},
+	"settings_option_pageTranslation_detectLanguageByContent_desc": {
+		"message": "அதன் மொழியை கண்டறிய வலைப்பக்கத்தில் உள்ள உரையை பகுப்பாய்வு செய்யவும். முடக்கப்பட்டால், <slot id=docs>பக்கம் மெட்டாடேட்டாவில்</slot> குறிப்பிடப்பட்ட மொழி பயன்படுத்தப்படும்"
+	},
+	"settings_option_pageTranslation_enableContextMenu": {
+		"message": "சூழல் மெனு பொத்தானை இயக்கவும்"
+	},
+	"settings_option_pageTranslation_enableContextMenu_desc": {
+		"message": "பக்க சூழல் மெனுவில் பக்கம் மொழிபெயர்ப்பை மாற்ற பொத்தானைச் சேர்க்கவும்"
+	},
+	"settings_option_pageTranslation_excludeSelectors": {
+		"message": "மொழிபெயர்ப்பிலிருந்து விலக்க வேண்டிய தேர்விகள்"
+	},
+	"settings_option_pageTranslation_excludeSelectors_desc": {
+		"message": "மொழிபெயர்ப்பிலிருந்து விலக்க வேண்டிய கூறுகளுக்கான CSS தேர்விகளின் பட்டியல். ஒரு வரிக்கு ஒரு தேர்வி. இந்த தேர்விகளில் ஏதேனும் ஒன்றுடன் பொருந்தினால், அதன் உரை, பண்புகள் மற்றும் உட்பொதிக்கப்பட்ட கூறுகள் மொழிபெயர்க்கப்படாது"
+	},
+	"settings_option_pageTranslation_lazyTranslate": {
+		"message": "காணக்கூடிய கூறுகளை மட்டுமே மொழிபெயர்க்கவும்"
+	},
+	"settings_option_pageTranslation_lazyTranslate_desc": {
+		"message": "இந்த விருப்பம் இயக்கப்பட்டால், காணக்கூடிய கூறுகள் மட்டுமே மொழிபெயர்க்கப்படும். இந்த விருப்பம் நெட்வொர்க் போக்குவரத்தை குறைக்கிறது"
+	},
+	"settings_option_pageTranslation_originalTextPopup": {
+		"message": "மூல உரையுடன் பாப்அப் இயக்கவும்"
+	},
+	"settings_option_pageTranslation_originalTextPopup_desc": {
+		"message": "மொழிபெயர்க்கப்பட்ட உரை தொகுதிகளுக்கு மேல் மிதக்கும் போது மூல உரையுடன் பாப்அப் காட்டவும்"
+	},
+	"settings_option_pageTranslation_shortcut_toggleTranslation": {
+		"message": "குறுக்குவழி"
+	},
+	"settings_option_pageTranslation_shortcut_toggleTranslation_desc": {
+		"message": "பக்கம் மொழிபெயர்ப்பை மாற்ற குறுக்குவழி\nதிறவுகோல்களை மீட்டமைக்க ESC அழுத்தவும்"
+	},
+	"settings_option_pageTranslation_translatableAttributes": {
+		"message": "மொழிபெயர்க்கக்கூடிய பண்புகள்"
+	},
+	"settings_option_pageTranslation_translatableAttributes_desc": {
+		"message": "மொழிபெயர்க்க <slot id=htmlAttributes>HTML பண்புகள்</slot> பெயர்களை உள்ளிடவும், ஒரு வரிக்கு ஒரு பண்பு\nஇந்த பட்டியலில் உள்ள பண்புகள் மட்டுமே மொழிபெயர்க்கப்படும்"
+	},
+	"settings_option_popupTab_pageTranslator_showCounters": {
+		"message": "மொழிபெயர்ப்பு முன்னேற்றத்தை காட்டு"
+	},
+	"settings_option_popupTab_pageTranslator_showCounters_desc": {
+		"message": "நீட்டிப்பு பாப்அப்பில் பக்கம் மொழிபெயர்ப்பு முன்னேற்றத்துடன் ஒரு குழுவை காட்டு"
+	},
+	"settings_option_selectTranslation": {
+		"message": "தேர்ந்தெடுக்கப்பட்ட உரைக்கு மொழிபெயர்ப்பு"
+	},
+	"settings_option_selectTranslation_detectTextLanguage": {
+		"message": "உரையின் மொழியை கண்டறி"
+	},
+	"settings_option_selectTranslation_detectTextLanguage_desc": {
+		"message": "இது இயலுமைப்படுத்தப்பட்டால், தேர்ந்தெடுக்கப்பட்ட உரை மொழிபெயர்ப்புக்காக மொழியை கண்டறிய பகுப்பாய்வு செய்யப்படும். இல்லையெனில், பக்க மொழி பயன்படுத்தப்படும்"
+	},
+	"settings_option_selectTranslation_disableWhileTranslatePage": {
+		"message": "பக்கத்தை மொழிபெயர்க்கும் போது முடக்கு"
+	},
+	"settings_option_selectTranslation_enable": {
+		"message": "தேர்ந்தெடுக்கப்பட்ட உரை மொழிபெயர்ப்பை இயக்கு"
+	},
+	"settings_option_selectTranslation_enable_desc": {
+		"message": "இந்த அம்சம் இயலுமைப்படுத்தப்பட்டால், நீங்கள் பக்கத்தில் எந்த உரையையும் தேர்ந்தெடுத்து பாப்அப்பில் மொழிபெயர்க்கலாம்"
+	},
+	"settings_option_selectTranslation_focusOnTranslateButton": {
+		"message": "மொழிபெயர்ப்பு பொத்தானில் தானாக கவனம் செலுத்து"
+	},
+	"settings_option_selectTranslation_focusOnTranslateButton_desc": {
+		"message": "மொழிபெயர்ப்பு பொத்தான் பக்கத்தில் தோன்றும் போது, அது தானாகவே கவனம் செலுத்தப்படும்"
+	},
+	"settings_option_selectTranslation_header_languageChoice": {
+		"message": "மொழி அமைப்புகள்"
+	},
+	"settings_option_selectTranslation_isUseAutoForDetectLang": {
+		"message": "மொழிபெயர்ப்பு தொகுதியை உரை மொழியை கண்டறிய அனுமதி"
+	},
+	"settings_option_selectTranslation_isUseAutoForDetectLang_desc": {
+		"message": "உரையின் மொழியை உள்ளகமாக கண்டறிய முடியாதபோது, இந்த விருப்பம் இயலுமைப்படுத்தப்பட்டால், உரை \"auto\" மொழியுடன் மொழிபெயர்க்கப்படும், அது ஆதரிக்கப்படுமானால்.\nவிருப்பம் முடக்கப்பட்டால், உரையின் மூல மொழியை அமைக்க மற்றொரு மாற்று முறை பயன்படுத்தப்படும்"
+	},
+	"settings_option_selectTranslation_mode": {
+		"message": "உரைத் தேர்வில் செயல்"
+	},
+	"settings_option_selectTranslation_mode_item_contextMenu": {
+		"message": "சூழல் மெனுவின் மூலம் உரையை மொழிபெயர்க்கவும்"
+	},
+	"settings_option_selectTranslation_mode_item_popupButton": {
+		"message": "மொழிபெயர்ப்பு பொத்தானை காட்டு"
+	},
+	"settings_option_selectTranslation_mode_item_quickTranslate": {
+		"message": "உரையை உடனடியாக மொழிபெயர்க்கவும்"
+	},
+	"settings_option_selectTranslation_modifiers": {
+		"message": "மாற்றிகள்"
+	},
+	"settings_option_selectTranslation_modifiers_desc": {
+		"message": "மொழிபெயர்ப்பை காட்சிப்படுத்த விசைப்பலகையில் அழுத்தப்பட வேண்டிய விசைகளைத் தேர்ந்தெடுக்கவும்"
+	},
+	"settings_option_selectTranslation_modifiers_key_alt": {
+		"message": "alt"
+	},
+	"settings_option_selectTranslation_modifiers_key_ctrl": {
+		"message": "ctrl"
+	},
+	"settings_option_selectTranslation_modifiers_key_meta": {
+		"message": "meta"
+	},
+	"settings_option_selectTranslation_modifiers_key_shift": {
+		"message": "shift"
+	},
+	"settings_option_selectTranslation_rememberDirection": {
+		"message": "சமீபத்தில் தேர்ந்தெடுக்கப்பட்ட உரை மொழியை நினைவில் கொள்"
+	},
+	"settings_option_selectTranslation_showOnceForSelection": {
+		"message": "ஒவ்வொரு உரைத் தேர்விற்கும் ஒருமுறை மொழிபெயர்ப்பு பொத்தானை காட்டு"
+	},
+	"settings_option_selectTranslation_showOnceForSelection_desc": {
+		"message": "ஒவ்வொரு உரைத் தேர்விற்கும் பொத்தான் ஒருமுறை மட்டுமே தோன்றும். அதை மீண்டும் காட்ட உரையை மீண்டும் தேர்ந்தெடுக்கவும்"
+	},
+	"settings_option_selectTranslation_showOriginalText": {
+		"message": "மூல உரையை காட்டு"
+	},
+	"settings_option_selectTranslation_showOriginalText_desc": {
+		"message": "மொழிபெயர்ப்பு பாப்அப்பில் மூல உரையுடன் ஒரு தொகுதியைச் சேர்க்கவும்"
+	},
+	"settings_option_selectTranslation_strictSelection": {
+		"message": "உரைத் தேர்வு கடுமையான முறை",
+		"description": "இந்த விருப்பம் மவுஸ் மூலம் உரையைத் தேர்வுசெய்வதைப் பற்றியது"
+	},
+	"settings_option_selectTranslation_strictSelection_desc": {
+		"message": "தேர்ந்தெடுக்கப்பட்ட உரையை உள்ளடக்கிய தொகுதியை வெளியே இடது மவுஸ் பொத்தானை விடுவித்தால் உரைத் தேர்வை புறக்கணிக்கவும்"
+	},
+	"settings_option_selectTranslation_timeoutForHideButton": {
+		"message": "பாப்அப் பொத்தானை மறைக்கும்முன் தாமதம்"
+	},
+	"settings_option_selectTranslation_timeoutForHideButton_desc": {
+		"message": "கர்சர் அதன் மீது மிதக்காதபோது பொத்தானை மறைக்க மில்லிசெகண்டுகளில் தாமதம். பொத்தானின் மீது மிதக்கும்போது டைமர் மீண்டும் அமைக்கப்படும். தானாக மறைவதை முடக்க, மதிப்பை 1 க்கும் குறைவாக அமைக்கவும்"
+	},
+	"settings_option_selectTranslation_zIndex": {
+		"message": "z-index"
+	},
+	"settings_option_selectTranslation_zIndex_desc": {
+		"message": "சில பக்கங்களில் உள்ள கூறுகள் மொழிபெயர்க்கப்பட்ட உரையுடன் உள்ள பாப்அப்பை மேல் மிதக்கும்போது இந்த மதிப்பை அதிகரிக்கவும்"
+	},
+	"settings_option_textTranslator": {
+		"message": "உரை மொழிபெயர்ப்பு"
+	},
+	"settings_option_textTranslator_rememberText": {
+		"message": "மொழிபெயர்க்கப்பட்ட உரையை நினைவில் கொள்ளுதல்"
+	},
+	"settings_option_textTranslator_rememberText_desc": {
+		"message": "விண்டோ மீண்டும் திறக்கும்போது மொழிபெயர்க்கப்பட்ட உரையை நினைவில் கொள்ளுதல்"
+	},
+	"settings_option_textTranslator_spellCheck": {
+		"message": "எழுத்துப்பிழை சரிபார்ப்பை இயக்கு"
+	},
+	"settings_option_textTranslator_suggestLanguage": {
+		"message": "கண்டறியப்பட்ட உரை மொழியை காட்டுதல்"
+	},
+	"settings_option_textTranslator_suggestLanguageAlways": {
+		"message": "எப்போதும் மொழியை கண்டறிந்து பரிந்துரை செய்க"
+	},
+	"settings_option_textTranslator_suggestLanguageAlways_desc": {
+		"message": "முடக்கப்பட்டால், மூல மொழி \"auto\" ஆக அமைக்கப்பட்டால் மட்டுமே மொழி பரிந்துரைகள் தோன்றும்"
+	},
+	"settings_option_translatePreferences": {
+		"message": "மொழிபெயர்ப்பு விருப்பங்கள்"
+	},
+	"settings_option_translateScheduler": {
+		"message": "மொழிபெயர்ப்பு அட்டவணையாளர்"
+	},
+	"settings_option_translateScheduler_delay": {
+		"message": "உரை சேர்க்கும் தாமதம்"
+	},
+	"settings_option_translateScheduler_delay_desc": {
+		"message": "மொழிபெயர்ப்பு அட்டவணையாளர், ஒரு கோரிக்கையில் அனுப்ப όσο text களை சேர்க்கும் மூலம் மொழிபெயர்ப்பு சேவை API க்கு கோரிக்கைகளின் எண்ணிக்கையை குறைக்கிறது. மொழிபெயர்ப்பு தொடங்குவதற்கு முன் மேலும் text களை சேகரிக்க அட்டவணையாளர் குறிப்பிடப்பட்ட நேரம் வரை காத்திருக்கும்"
+	},
+	"settings_option_translateScheduler_retryLimit": {
+		"message": "மொழிபெயர்ப்பு மீண்டும் முயற்சி செய்யும் வரம்பு"
+	},
+	"settings_option_translateScheduler_retryLimit_desc": {
+		"message": "மொழிபெயர்ப்பு பிழைகள் ஏற்படும் போது அட்டவணையாளர் உரைகளை மீண்டும் மொழிபெயர்க்க முயற்சிக்கும். மீண்டும் முயற்சி செய்யும் வரம்பை இந்த விருப்பம் அமைக்கிறது. வரம்பற்ற மீண்டும் முயற்சிகளை அனுமதிக்க எதிர்மறை எண்ணை அமைக்கவும்"
+	},
+	"settings_option_translatorModule": {
+		"message": "மொழிபெயர்ப்பு தொகுதி"
+	},
+	"settings_option_translatorModule_desc": {
+		"message": "மொழிபெயர்ப்புகளின் தரம் மற்றும் கிடைக்கும் மொழிகள் மொழிபெயர்ப்பு தொகுதியின் மீது निर्भर"
+	},
+	"settings_option_tts": {
+		"message": "உரை முதல் பேச்சு மாற்றம் (TTS)"
+	},
+	"settings_option_ttsCustomModules": {
+		"message": "தனிப்பயன் பேச்சு உருவாக்கம் தொகுதிகள்"
+	},
+	"settings_option_ttsCustomModules_button": {
+		"message": "பேச்சு உருவாக்கம் தொகுதிகளை நிர்வகித்தல்"
+	},
+	"settings_option_ttsCustomModules_desc": {
+		"message": "உங்கள் விருப்பமான சேவைகள் மற்றும் குரல் இயந்திரங்களை பயன்படுத்தும் பேச்சு உருவாக்கம் தொகுதிகளை நீங்கள் சேர்க்கலாம். <slot id=docs>தனிப்பயன் TTS ஆவணத்தில்</slot> மேலும் படிக்கவும்"
+	},
+	"settings_option_ttsModule": {
+		"message": "தேர்ந்தெடுக்கப்பட்ட TTS தொகுதி"
+	},
+	"settings_option_ttsModule_desc": {
+		"message": "உரை குரலாக்கம் செய்ய பயன்படுத்தப்படும் குரல் இயந்திரம்"
+	},
+	"settings_option_userLanguage": {
+		"message": "உங்கள் மொழி"
+	},
+	"settings_option_userLanguage_desc": {
+		"message": "உரைகள் மொழிபெயர்க்கப்படும் மொழி"
+	},
+	"settings_pageTitle": {
+		"message": "அமைப்புகள்"
+	},
+	"settings_section_history": {
+		"message": "வரலாறு"
+	},
+	"settings_section_popup": {
+		"message": "பாப்அப்"
+	},
+	"textTranslator_suggestLanguage": {
+		"message": "உரை மொழி <slot id=languageSuggest>$language_name$</slot> என்று தோன்றுகிறது",
+		"placeholders": {
+			"language_name": {
+				"content": "$1",
+				"example": "ஜப்பானீஸ்"
+			}
+		}
+	},
+	"textTranslator_translateInputPlaceholder": {
+		"message": "மொழிபெயர்ப்புக்கான உரையை உள்ளிடவும்",
+		"description": "Request to user input some text for translation"
+	},
+	"textTranslator_translatePlaceholder": {
+		"message": "மொழிபெயர்க்கப்பட்ட உரை இங்கே இருக்கும்"
+	},
+	"translatorsManagerWindow_add": {
+		"message": "மொழிபெயர்ப்பு தொகுதியைச் சேர்க்கவும்"
+	},
+	"translatorsManagerWindow_close": {
+		"message": "மூடு"
+	},
+	"translatorsManagerWindow_emptyTranslatorsListText": {
+		"message": "இன்னும் எந்த தனிப்பயன் மொழிபெயர்ப்பு தொகுதிகளும் சேர்க்கப்படவில்லை"
+	},
+	"translatorsManagerWindow_message_translatorRemovingConfirmation": {
+		"message": "\"$translator_name$\" மொழிபெயர்ப்பு தொகுதியை நீக்க விரும்புகிறீர்களா?",
+		"placeholders": {
+			"translator_name": {
+				"content": "$1",
+				"example": "Google translator"
+			}
+		}
+	},
+	"translatorsManagerWindow_title": {
+		"message": "தனிப்பயன் மொழிபெயர்ப்பு தொகுதிகள்"
+	},
+	"translatorsManagerWindow_translator_delete": {
+		"message": "அழி"
+	},
+	"translatorsManagerWindow_translator_edit": {
+		"message": "தொகு"
+	},
+	"ttsManagerWindow_add": {
+		"message": "TTS தொகுதியைச் சேர்க்கவும்"
+	},
+	"ttsManagerWindow_close": {
+		"message": "மூடு"
+	},
+	"ttsManagerWindow_emptyTranslatorsListText": {
+		"message": "இன்னும் எந்த TTS தொகுதிகளும் சேர்க்கப்படவில்லை"
+	},
+	"ttsManagerWindow_message_ttsRemoveConfirmation": {
+		"message": "\"$tts_name$\" TTS தொகுதியை நீக்க விரும்புகிறீர்களா?",
+		"placeholders": {
+			"tts_name": {
+				"content": "$1",
+				"example": "Google TTS"
+			}
+		}
+	},
+	"ttsManagerWindow_title": {
+		"message": "உரை-வழங்கல் தொகுதிகள்"
+	},
+	"ttsManagerWindow_translator_delete": {
+		"message": "அழி"
+	},
+	"ttsManagerWindow_translator_edit": {
+		"message": "தொகு"
+	},
+	"validation_number": {
+		"message": "மதிப்பு ஒரு எண்ணாக இருக்க வேண்டும்"
+	},
+	"validation_numberBetweenRange": {
+		"message": "மதிப்பு $1 மற்றும் $2 இடையில் ஒரு எண்ணாக இருக்க வேண்டும்"
+	},
+	"validation_positiveNumber": {
+		"message": "மதிப்பு ஒரு நேர்மறை எண்ணாக இருக்க வேண்டும்"
+	}
+}

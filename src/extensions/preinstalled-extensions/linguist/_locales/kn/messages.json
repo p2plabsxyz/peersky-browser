@@ -1,0 +1,623 @@
+{
+	"common_action_addToDictionary": {
+		"message": "ಅನುವಾದವನ್ನು ನಿಘಂಟಿಗೆ ಸೇರಿಸಿ"
+	},
+	"common_action_removeFromDictionary": {
+		"message": "ಅನುವಾದವನ್ನು ನಿಘಂಟಿಯಿಂದ ತೆಗೆದುಹಾಕಿ"
+	},
+	"common_bgUnavailable": {
+		"message": "ಹಿನ್ನೆಲೆ ಸ್ಕ್ರಿಪ್ಟ್ ಲಭ್ಯವಿಲ್ಲ"
+	},
+	"common_cancel": {
+		"message": "ರದ್ದುಮಾಡಿ"
+	},
+	"common_close": {
+		"message": "ಮುಚ್ಚಿ"
+	},
+	"common_copy": {
+		"message": "ನಕಲಿಸಿ"
+	},
+	"common_error": {
+		"message": "ದೋಷ"
+	},
+	"common_offlineTranslator": {
+		"message": "$1 - ಆಫ್‌ಲೈನ್ ಅನುವಾದಕ"
+	},
+	"common_retry": {
+		"message": "ಮರುಪ್ರಯತ್ನಿಸಿ"
+	},
+	"common_translate": {
+		"message": "ಅನುವಾದಿಸಿ"
+	},
+	"component_hotkey_placeholder": {
+		"message": "ಶಾರ್ಟ್‌ಕಟ್ ದಾಖಲಿಸಲು ಕ್ಲಿಕ್ ಮಾಡಿ"
+	},
+	"component_hotkey_recordPlaceholder": {
+		"message": "ಕೀಲಿಗಳನ್ನು ಒತ್ತಿ"
+	},
+	"component_hotkey_resetButton": {
+		"message": "ಮರುಹೊಂದಿಸಿ"
+	},
+	"contextMenu_disablePageTranslation": {
+		"message": "ಪುಟ ಅನುವಾದವನ್ನು ನಿಲ್ಲಿಸಿ"
+	},
+	"contextMenu_translatePage": {
+		"message": "ಪುಟವನ್ನು ಅನುವಾದಿಸಿ"
+	},
+	"contextMenu_translateSelectedText": {
+		"message": "ಆಯ್ದ ಪಠ್ಯವನ್ನು ಅನುವಾದಿಸಿ"
+	},
+	"dictionaryButton_add": {
+		"message": "ನಿಘಂಟಿಗೆ ಸೇರಿಸಿ"
+	},
+	"dictionaryButton_delete": {
+		"message": "ನಿಘಂಟಿಯಿಂದ ಅಳಿಸಿ"
+	},
+	"dictionary_button_export": {
+		"message": "ರಫ್ತು ಮಾಡಿ"
+	},
+	"dictionary_button_removeAll": {
+		"message": "ಎಲ್ಲವನ್ನೂ ತೆಗೆದುಹಾಕಿ"
+	},
+	"dictionary_deleteAll": {
+		"message": "ನೀವು ನಿಜವಾಗಿಯೂ ನಿಘಂಟಿನಿಂದ ಎಲ್ಲಾ ಅನುವಾದಗಳನ್ನು ಅಳಿಸಲು ಬಯಸುವಿರಾ?"
+	},
+	"dictionary_deleteConfirmation": {
+		"message": "ನೀವು ನಿಜವಾಗಿಯೂ ಈ ಅನುವಾದವನ್ನು ಅಳಿಸಲು ಬಯಸುವಿರಾ?"
+	},
+	"dictionary_description": {
+		"message": "ನಂತರವೇ ಬೇಗನೆ ಹುಡುಕಲು ನಿಘಂಟಿನಲ್ಲಿ ಅನುವಾದಗಳನ್ನು ಉಳಿಸಿ"
+	},
+	"dictionary_emptyDictionary": {
+		"message": "ನಿಘಂಟು ಖಾಲಿಯಾಗಿದೆ, ಕೆಲವು ಪಠ್ಯವನ್ನು ಅನುವಾದಿಸುವ ಮೂಲಕ ಅದನ್ನು ತುಂಬಲು ಪ್ರಾರಂಭಿಸಿ"
+	},
+	"dictionary_filter_from": {
+		"message": "ಮೂಲ ಪಠ್ಯದ ಭಾಷೆ"
+	},
+	"dictionary_filter_to": {
+		"message": "ಗುರಿ ಭಾಷೆ"
+	},
+	"dictionary_message_deleteAll_success": {
+		"message": "ಎಲ್ಲಾ ಅನುವಾದಗಳನ್ನು ತೆಗೆದುಹಾಕಲಾಗಿದೆ"
+	},
+	"dictionary_notFoundEntries": {
+		"message": "ಈ ಶೋಧನೆಗಳಿಗೆ ಹೊಂದುವ ಅನುವಾದಗಳು ಕಂಡುಬಂದಿಲ್ಲ"
+	},
+	"dictionary_pageTitle": {
+		"message": "ನಿಘಂಟು"
+	},
+	"dictionary_resetFilters": {
+		"message": "ಶೋಧನೆಗಳನ್ನು ಮರುಹೊಂದಿಸಿ"
+	},
+	"dictionary_searchPlaceholder": {
+		"message": "ಪಠ್ಯದಿಂದ ಹುಡುಕಿ"
+	},
+	"editorWindow_close": {
+		"message": "ಮುಚ್ಚಿ"
+	},
+	"editorWindow_data_code": {
+		"message": "ಕೋಡ್"
+	},
+	"editorWindow_data_title": {
+		"message": "ಮಾಡ್ಯೂಲ್ ಹೆಸರು"
+	},
+	"editorWindow_message_invalidTitle": {
+		"message": "ಮಾಡ್ಯೂಲ್ ಹೆಸರಿನಲ್ಲಿ ಕನಿಷ್ಠ ಒಂದು ಅಕ್ಷರ ಇರಬೇಕು"
+	},
+	"editorWindow_save": {
+		"message": "ಉಳಿಸಿ"
+	},
+	"ext_description": {
+		"message": "ವೆಬ್ ಪುಟ ಅನುವಾದ, ಪಠ್ಯ ಅನುವಾದ, ನಿಘಂಟು, ಇತಿಹಾಸ, ಕಸ್ಟಮ್ ಅನುವಾದಕರು, ಭಾಷಾ ಅಡೆತಡೆಗಳನ್ನು ಮುರಿಯಲು ನಿಮಗೆ ಬೇಕಾದ ಎಲ್ಲವೂ"
+	},
+	"ext_name": {
+		"message": "Linguist - ವೆಬ್ ಪುಟ ಅನುವಾದಕ"
+	},
+	"history_control_selectEntry": {
+		"message": "ಸಮೂಹ ಕ್ರಿಯೆಗೆ ಅನುವಾದವನ್ನು ಆಯ್ಕೆಮಾಡಿ",
+		"description": "Description in finite form \"to pick\" with explaining what this checkbox will do"
+	},
+	"history_controls_clearHistory": {
+		"message": "ಇತಿಹಾಸವನ್ನು ತೆರವುಗೊಳಿಸಿ"
+	},
+	"history_controls_deleteSelected": {
+		"message": "ಆಯ್ದ ಅನುವಾದಗಳನ್ನು ಅಳಿಸಿ"
+	},
+	"history_controls_selectAll": {
+		"message": "ಎಲ್ಲಾ ಅನುವಾದಗಳನ್ನು ಆಯ್ಕೆಮಾಡಿ"
+	},
+	"history_message_clearHistoryConfirmation": {
+		"message": "ನೀವು ಖಚಿತವಾಗಿ ಇತಿಹಾಸವನ್ನು ತೆರವುಗೊಳಿಸಲು ಬಯಸುತ್ತೀರಾ? ಎಲ್ಲಾ ನಮೂದುಗಳನ್ನು ತೆಗೆದುಹಾಕಲಾಗುತ್ತದೆ"
+	},
+	"history_message_deleteEntryConfirmation": {
+		"message": "ನೀವು ಖಚಿತವಾಗಿ ಈ ನಮೂದನ್ನು ಅಳಿಸಲು ಬಯಸುತ್ತೀರಾ?"
+	},
+	"history_message_deleteSelectedEntriesConfirmation": {
+		"message": "ನೀವು ಖಚಿತವಾಗಿ ಆಯ್ದ ನಮೂದುಗಳನ್ನು ($1) ಅಳಿಸಲು ಬಯಸುತ್ತೀರಾ?"
+	},
+	"history_message_entriesNotFound": {
+		"message": "ಫಿಲ್ಟರ್‌ಗೆ ಹೊಂದುವ ಅನುವಾದಗಳು ಕಂಡುಬಂದಿಲ್ಲ"
+	},
+	"history_message_noEntries": {
+		"message": "ಇತಿಹಾಸ ಖಾಲಿಯಾಗಿದೆ"
+	},
+	"history_notification_disabled": {
+		"message": "ಇತಿಹಾಸ ದಾಖಲಿಸುವಿಕೆ ನಿಷ್ಕ್ರಿಯಗೊಳಿಸಲಾಗಿದೆ, ಆದ್ದರಿಂದ ಹೊಸ ನಮೂದುಗಳು ಕಾಣಿಸಿಕೊಳ್ಳುವುದಿಲ್ಲ. ನೀವು ಇದನ್ನು <slot id=preferences>ಆದ್ಯತೆಗಳು</slot> ನಲ್ಲಿ ಬದಲಾಯಿಸಬಹುದು"
+	},
+	"history_pageTitle": {
+		"message": "ಇತಿಹಾಸ"
+	},
+	"history_searchPlaceholder": {
+		"message": "ಪಠ್ಯದಿಂದ ಹುಡುಕಿ"
+	},
+	"inlineTranslator_showOriginalText": {
+		"message": "ಮೂಲ ಪಠ್ಯವನ್ನು ತೋರಿಸಿ"
+	},
+	"lang_change": {
+		"message": "ಭಾಷೆಯನ್ನು ಬದಲಾಯಿಸಿ"
+	},
+	"lang_detect": {
+		"message": "ಸ್ವಯಂ-ಹುಡುಕಿ"
+	},
+	"lang_select": {
+		"message": "ಭಾಷೆಯನ್ನು ಆಯ್ಕೆಮಾಡಿ"
+	},
+	"lang_swap": {
+		"message": "ಭಾಷೆಗಳನ್ನು ಬದಲಾಯಿಸಿ"
+	},
+	"message_unknownError": {
+		"message": "ಅಜ್ಞಾತ ದೋಷ"
+	},
+	"pageTranslator_alwaysTranslateLang": {
+		"message": "ಈ ಭಾಷೆಯನ್ನು ಯಾವಾಗಲೂ ಅನುವಾದಿಸಿ"
+	},
+	"pageTranslator_commonPreferences_autoTranslate_disable": {
+		"message": "ನಿಷ್ಕ್ರಿಯಗೊಳಿಸಿ"
+	},
+	"pageTranslator_commonPreferences_autoTranslate_disableForAll": {
+		"message": "ಎಲ್ಲಾ ತಾಣಗಳಿಗೆ ನಿಷ್ಕ್ರಿಯಗೊಳಿಸಿ"
+	},
+	"pageTranslator_commonPreferences_autoTranslate_enable": {
+		"message": "ಸಕ್ರಿಯಗೊಳಿಸಿ"
+	},
+	"pageTranslator_commonPreferences_title": {
+		"message": "ಈ ಭಾಷೆಗೆ ಸಾಮಾನ್ಯ ಆದ್ಯತೆಗಳು"
+	},
+	"pageTranslator_option_autoTranslate": {
+		"message": "ಸ್ವಯಂ-ಅನುವಾದ"
+	},
+	"pageTranslator_showOriginal": {
+		"message": "ಮೂಲವನ್ನು ತೋರಿಸಿ"
+	},
+	"pageTranslator_showTranslationPreferences": {
+		"message": "ಅನುವಾದ ಆದ್ಯತೆಗಳು"
+	},
+	"pageTranslator_sitePreferences_autoTranslate_always": {
+		"message": "ಯಾವಾಗಲೂ ಅನುವಾದಿಸಿ"
+	},
+	"pageTranslator_sitePreferences_autoTranslate_alwaysForThisLang": {
+		"message": "ಈ ಭಾಷೆಗೆ ಯಾವಾಗಲೂ ಅನುವಾದಿಸಿ"
+	},
+	"pageTranslator_sitePreferences_autoTranslate_default": {
+		"message": "ಸಾಮಾನ್ಯ ನಿಯಮಗಳನ್ನು ಬಳಸಿ"
+	},
+	"pageTranslator_sitePreferences_autoTranslate_defaultForThisLang": {
+		"message": "ಈ ಭಾಷೆಗೆ ಸಾಮಾನ್ಯ ನಿಯಮಗಳನ್ನು ಬಳಸಿ"
+	},
+	"pageTranslator_sitePreferences_autoTranslate_never": {
+		"message": "ಯಾವತ್ತಿಗೂ ಅನುವಾದಿಸಬೇಡಿ"
+	},
+	"pageTranslator_sitePreferences_autoTranslate_neverForThisLang": {
+		"message": "ಈ ಭಾಷೆಗೆ ಯಾವತ್ತಿಗೂ ಅನುವಾದಿಸಬೇಡಿ"
+	},
+	"pageTranslator_sitePreferences_title": {
+		"message": "ಆದ್ಯತೆಗಳು"
+	},
+	"pageTranslator_translatePage": {
+		"message": "ಪುಟವನ್ನು ಅನುವಾದಿಸಿ"
+	},
+	"pageTranslator_translationReport": {
+		"message": "ಅನುವಾದ ವರದಿ"
+	},
+	"pageTranslator_translationReport_queue": {
+		"message": "ಬಾಕಿ"
+	},
+	"pageTranslator_translationReport_reject": {
+		"message": "ದೋಷಗಳು"
+	},
+	"pageTranslator_translationReport_resolve": {
+		"message": "ಅನುವಾದಿಸಲಾಗಿದೆ"
+	},
+	"popup_tabIdNotFound": {
+		"message": "ಟ್ಯಾಬ್ \"$1\" ಕಂಡುಬಂದಿಲ್ಲ"
+	},
+	"popup_tab_translatePage": {
+		"message": "ಪುಟ ಅನುವಾದ"
+	},
+	"popup_tab_translateText": {
+		"message": "ಪಠ್ಯ ಅನುವಾದ"
+	},
+	"settings_button_cancel": {
+		"message": "ರದ್ದುಮಾಡಿ"
+	},
+	"settings_button_export": {
+		"message": "ಕಾನ್ಫಿಗ್ ರಫ್ತು"
+	},
+	"settings_button_import": {
+		"message": "ಕಾನ್ಫಿಗ್ ಆಮದು"
+	},
+	"settings_button_reset": {
+		"message": "ಕಾನ್ಫಿಗ್ ಮರುಹೊಂದಿಸಿ"
+	},
+	"settings_button_saveChanges": {
+		"message": "ಬದಲಾವಣೆಗಳನ್ನು ಉಳಿಸಿ"
+	},
+	"settings_message_clearCache_success": {
+		"message": "ಕ್ಯಾಶೆ ತೆರವುಗೊಳಿಸಲಾಗಿದೆ"
+	},
+	"settings_message_common_invalidValueType": {
+		"message": "ಅಮಾನ್ಯ ಮೌಲ್ಯ"
+	},
+	"settings_message_importConfig_invalidFile": {
+		"message": "ನೀಡಿದ ಕಾನ್ಫಿಗ್ ಫೈಲ್ ತಪ್ಪಾಗಿದೆ ಅಥವಾ ಹಾಳಾಗಿದೆ, ಮತ್ತು ಪ್ರಕ್ರಿಯೆಗೊಳಿಸಲಾಗುವುದಿಲ್ಲ"
+	},
+	"settings_message_importConfig_success": {
+		"message": "ಆಮದು ಪೂರ್ಣಗೊಂಡಿದೆ"
+	},
+	"settings_message_resetConfig_confirm": {
+		"message": "ಸೆಟ್ಟಿಂಗ್‌ಗಳನ್ನು ಡೀಫಾಲ್ಟ್ ಮೌಲ್ಯಗಳಿಗೆ ಮರುಹೊಂದಿಸಲು ದೃಢೀಕರಿಸಿ"
+	},
+	"settings_message_resetConfig_success": {
+		"message": "ಸೆಟ್ಟಿಂಗ್‌ಗಳು ಮರುಹೊಂದಿಸಲಾಗಿದೆ"
+	},
+	"settings_message_saveChanges_success": {
+		"message": "ಬದಲಾವಣೆಗಳನ್ನು ಉಳಿಸಲಾಗಿದೆ"
+	},
+	"settings_option_cache": {
+		"message": "ಕ್ಯಾಶೆ"
+	},
+	"settings_option_cache_clear": {
+		"message": "ಕ್ಯಾಶೆ ತೆರವುಗೊಳಿಸಿ"
+	},
+	"settings_option_cache_clear_desc": {
+		"message": "ನೀವು ಭಾಷಾಂತರದ ದೋಷಗಳನ್ನು ಗಮನಿಸಿದರೆ ಅಥವಾ ಕ್ಯಾಶೆ ಸಕ್ರಿಯವಾಗಿರುವಾಗ ಖಾಸಗಿ ಪಠ್ಯಗಳನ್ನು ತಪ್ಪಾಗಿ ಭಾಷಾಂತರಿಸಿದರೆ, ನೀವು ಕ್ಯಾಶೆನಿಂದ ಎಲ್ಲಾ ಡೇಟಾವನ್ನು ಅಳಿಸಬಹುದು",
+		"description": "ಕ್ಯಾಶೆ ತೆರವುಗೊಳಿಸುವುದು ಉಪಯುಕ್ತವಾಗುವ ಸಂದರ್ಭಗಳ ಬಗ್ಗೆ ಬಳಕೆದಾರರಿಗೆ ವಿವರಣೆ"
+	},
+	"settings_option_cache_enable": {
+		"message": "ಕ್ಯಾಶೆ ಸಕ್ರಿಯಗೊಳಿಸಿ"
+	},
+	"settings_option_cache_enable_desc": {
+		"message": "ಕ್ಯಾಶೆ ಸಕ್ರಿಯಗೊಳಿಸಿದಾಗ, ಹಿಂದಿನ ಭಾಷಾಂತರಿತ ಪಠ್ಯಗಳನ್ನು ಅನುವಾದ ಸೇವೆಗೆ ಹೆಚ್ಚುವರಿ ವಿನಂತಿಗಳನ್ನು ಇಲ್ಲದೆ ತಕ್ಷಣವೇ ಅನುವಾದಿಸಲಾಗುತ್ತದೆ"
+	},
+	"settings_option_cache_ignoreCase": {
+		"message": "ಕೇಸ್-ಅನ್ವಯ ಕ್ಯಾಶೆ ಬಳಸಿ"
+	},
+	"settings_option_cache_ignoreCase_desc": {
+		"message": "ಸಕ್ರಿಯಗೊಳಿಸಿದಾಗ, ಕ್ಯಾಶೆ ಮಾಡಿದ ಭಾಷಾಂತರಗಳನ್ನು ವಿಭಿನ್ನ ಕೇಸ್‌ಗಳ ಪಠ್ಯಗಳಿಗೆ ಬಳಸಲಾಗುತ್ತದೆ, ಇದು ಕೆಲವು ಸಂದರ್ಭಗಳಲ್ಲಿ ಭಾಷಾಂತರ ವಕ್ರತೆಯನ್ನು ಉಂಟುಮಾಡಬಹುದು"
+	},
+	"settings_option_commonSettings": {
+		"message": "ಸಾಮಾನ್ಯ ಸೆಟ್ಟಿಂಗ್‌ಗಳು"
+	},
+	"settings_option_customTranslatorModule": {
+		"message": "ಕಸ್ಟಮ್ ಭಾಷಾಂತರ ಮಾಯಾಂತ್ರಿಕಗಳು",
+		"description": "ಭಾಷಾಂತರ ಮಾಯಾಂತ್ರಿಕವನ್ನು ಅನುಷ್ಠಾನಗೊಳಿಸುವ ಬಳಕೆದಾರನ ನಿರ್ಧರಿತ ಕೋಡ್"
+	},
+	"settings_option_customTranslatorModule_desc": {
+		"message": "ನೀವು ನಿಮ್ಮ ಮೆಚ್ಚಿನ ಅನುವಾದ ಸೇವೆಗಳನ್ನು ಬಳಸುವ ಕಸ್ಟಮ್ ಅನುವಾದ ಮಾಯೂಲುಗಳನ್ನು ಸೇರಿಸಬಹುದು. <slot id=docs>ಕಸ್ಟಮ್ ಅನುವಾದಕರ ಡಾಕ್ಯುಮೆಂಟೇಶನ್</slot> ನಲ್ಲಿ ಇನ್ನಷ್ಟು ತಿಳಿಯಿರಿ"
+	},
+	"settings_option_customTranslatorModule_manageButton": {
+		"message": "ಅನುವಾದಕರನ್ನು ನಿರ್ವಹಣೆ",
+		"description": "ಅನುವಾದ ಮಾಯೂಲುಗಳ ಪಟ್ಟಿಯನ್ನು ತೋರಿಸಲು ಬಟನ್"
+	},
+	"settings_option_history_enable": {
+		"message": "ಇತಿಹಾಸವನ್ನು ಸಕ್ರಿಯಗೊಳಿಸಿ"
+	},
+	"settings_option_history_enable_desc": {
+		"message": "ಸಕ್ರಿಯಗೊಳಿಸಿದಾಗ, ಅನುವಾದಗಳನ್ನು ದಾಖಲಿಸಲಾಗುತ್ತದೆ ಮತ್ತು <slot id=historyPage>ಇತಿಹಾಸ ಪುಟ</slot>ದಲ್ಲಿ ಕಾಣಿಸಿಕೊಳ್ಳುತ್ತವೆ"
+	},
+	"settings_option_pageTranslation": {
+		"message": "ಪೂರ್ಣ ಪುಟ ಅನುವಾದ"
+	},
+	"settings_option_pageTranslation_detectLanguageByContent": {
+		"message": "ವಿಷಯದ ಮೂಲಕ ಭಾಷೆಯನ್ನು ಪತ್ತೆಹಚ್ಚಿ"
+	},
+	"settings_option_pageTranslation_detectLanguageByContent_desc": {
+		"message": "ಅದರ ಭಾಷೆಯನ್ನು ಪತ್ತೆಹಚ್ಚಲು ವೆಬ್ ಪುಟದ ಪಠ್ಯವನ್ನು ವಿಶ್ಲೇಷಿಸಿ. ನಿಷ್ಕ್ರಿಯಗೊಳಿಸಿದಾಗ, <slot id=docs>ಪುಟ ಮೆಟಾಡೇಟಾ</slot>ದಲ್ಲಿ ನಿರ್ದಿಷ್ಟಪಡಿಸಿದ ಭಾಷೆಯನ್ನು ಬಳಸಲಾಗುತ್ತದೆ"
+	},
+	"settings_option_pageTranslation_enableContextMenu": {
+		"message": "ಸಂದರ್ಭ ಮೆನು ಬಟನ್ ಅನ್ನು ಸಕ್ರಿಯಗೊಳಿಸಿ"
+	},
+	"settings_option_pageTranslation_enableContextMenu_desc": {
+		"message": "ಪುಟದ ಸಂದರ್ಭ ಮೆನುದಲ್ಲಿ ಪುಟ ಅನುವಾದವನ್ನು ಟಾಗಲ್ ಮಾಡಲು ಬಟನ್ ಅನ್ನು ಸೇರಿಸಿ"
+	},
+	"settings_option_pageTranslation_excludeSelectors": {
+		"message": "ಅನುವಾದದಿಂದ ಹೊರತುಪಡಿಸಲು ಆಯ್ಕೆಗಳು"
+	},
+	"settings_option_pageTranslation_excludeSelectors_desc": {
+		"message": "ಅನುವಾದದಿಂದ ಹೊರತುಪಡಿಸಬೇಕಾದ ಅಂಶಗಳಿಗಾಗಿ CSS ಆಯ್ಕೆಯ ಪಟ್ಟಿ. ಪ್ರತಿ ಸಾಲಿಗೆ ಒಂದು ಆಯ್ಕೆದಾರ. ಈ ಆಯ್ಕೆದಾರರಲ್ಲಿ ಯಾವುದಾದರೂ ಹೊಂದಿದರೆ, ಅದರ ಪಠ್ಯ, ಗುಣಲಕ್ಷಣಗಳು ಮತ್ತು ನೆಸ್ಟೆಡ್ ಅಂಶಗಳನ್ನು ಅನುವಾದಿಸಲಾಗುವುದಿಲ್ಲ"
+	},
+	"settings_option_pageTranslation_lazyTranslate": {
+		"message": "ಕಾಣಿಸಬಹುದಾದ ಅಂಶಗಳನ್ನು ಮಾತ್ರ ಅನುವಾದಿಸಿ"
+	},
+	"settings_option_pageTranslation_lazyTranslate_desc": {
+		"message": "ಈ ಆಯ್ಕೆಯನ್ನು ಸಕ್ರಿಯಗೊಳಿಸಿದಾಗ, ಕಾಣಿಸಬಹುದಾದ ಅಂಶಗಳನ್ನು ಮಾತ್ರ ಅನುವಾದಿಸಲಾಗುತ್ತದೆ. ಈ ಆಯ್ಕೆಯು ಜಾಲ ಸಂಚಾರವನ್ನು ಕಡಿಮೆ ಮಾಡುತ್ತದೆ"
+	},
+	"settings_option_pageTranslation_originalTextPopup": {
+		"message": "ಮೂಲ ಪಠ್ಯದೊಂದಿಗೆ ಪಾಪ್‌ಅಪ್ ಅನ್ನು ಸಕ್ರಿಯಗೊಳಿಸಿ"
+	},
+	"settings_option_pageTranslation_originalTextPopup_desc": {
+		"message": "ಅನುವಾದಿತ ಪಠ್ಯ ಬ್ಲಾಕ್‌ಗಳ ಮೇಲೆ ಹೋವರ್ ಮಾಡಿದಾಗ ಮೂಲ ಪಠ್ಯದೊಂದಿಗೆ ಪಾಪ್‌ಅಪ್ ಅನ್ನು ತೋರಿಸಿ"
+	},
+	"settings_option_pageTranslation_shortcut_toggleTranslation": {
+		"message": "ಶಾರ್ಟ್‌ಕಟ್"
+	},
+	"settings_option_pageTranslation_shortcut_toggleTranslation_desc": {
+		"message": "ಪುಟ ಅನುವಾದವನ್ನು ಟಾಗಲ್ ಮಾಡಲು ಶಾರ್ಟ್‌ಕಟ್\nಕೀಗಳನ್ನು ಮರುಹೊಂದಿಸಲು ESC ಒತ್ತಿರಿ"
+	},
+	"settings_option_pageTranslation_translatableAttributes": {
+		"message": "ಅನುವಾದಿಸಬಹುದಾದ ಗುಣಲಕ್ಷಣಗಳು"
+	},
+	"settings_option_pageTranslation_translatableAttributes_desc": {
+		"message": "<slot id=htmlAttributes>HTML ಗುಣಲಕ್ಷಣ</slot> ಹೆಸರನ್ನು ನಮೂದಿಸಿ, ಪ್ರತಿ ಸಾಲಿಗೆ ಒಂದು ಗುಣಲಕ್ಷಣ\nಈ ಪಟ್ಟಿಯಲ್ಲಿರುವ ಗುಣಲಕ್ಷಣಗಳನ್ನು ಮಾತ್ರ ಅನುವಾದಿಸಲಾಗುತ್ತದೆ"
+	},
+	"settings_option_popupTab_pageTranslator_showCounters": {
+		"message": "ಅನುವಾದ ಪ್ರಗತಿಯನ್ನು ತೋರಿಸಿ"
+	},
+	"settings_option_popupTab_pageTranslator_showCounters_desc": {
+		"message": "ವಿಸ್ತರಣೆ ಪಾಪ್‌ಅಪ್‌ನಲ್ಲಿ ಪುಟ ಅನುವಾದ ಪ್ರಗತಿ ಪ್ಯಾನೆಲ್ ತೋರಿಸಿ"
+	},
+	"settings_option_selectTranslation": {
+		"message": "ಆಯ್ದ ಪಠ್ಯದ ಅನುವಾದ"
+	},
+	"settings_option_selectTranslation_detectTextLanguage": {
+		"message": "ಪಠ್ಯದ ಭಾಷೆಯನ್ನು ಪತ್ತೆಹಚ್ಚಿ"
+	},
+	"settings_option_selectTranslation_detectTextLanguage_desc": {
+		"message": "ಸಕ್ರಿಯಗೊಳಿಸಿದಾಗ, ಆಯ್ದ ಪಠ್ಯವನ್ನು ಅನುವಾದಕ್ಕಾಗಿ ಭಾಷೆಯನ್ನು ಪತ್ತೆಹಚ್ಚಲು ವಿಶ್ಲೇಷಿಸಲಾಗುತ್ತದೆ. ಇಲ್ಲದಿದ್ದರೆ, ಪುಟದ ಭಾಷೆಯನ್ನು ಬಳಸಲಾಗುತ್ತದೆ"
+	},
+	"settings_option_selectTranslation_disableWhileTranslatePage": {
+		"message": "ಪುಟವನ್ನು ಅನುವಾದಿಸುವಾಗ ನಿಷ್ಕ್ರಿಯಗೊಳಿಸಿ"
+	},
+	"settings_option_selectTranslation_enable": {
+		"message": "ಆಯ್ದ ಪಠ್ಯದ ಅನುವಾದವನ್ನು ಸಕ್ರಿಯಗೊಳಿಸಿ"
+	},
+	"settings_option_selectTranslation_enable_desc": {
+		"message": "ಈ ವೈಶಿಷ್ಟ್ಯವನ್ನು ಸಕ್ರಿಯಗೊಳಿಸಿದಾಗ, ನೀವು ಪುಟದ ಯಾವುದೇ ಪಠ್ಯವನ್ನು ಆಯ್ಕೆಮಾಡಿ ಪಾಪ್‌ಅಪ್‌ನಲ್ಲಿ ಅದನ್ನು ಅನುವಾದಿಸಬಹುದು"
+	},
+	"settings_option_selectTranslation_focusOnTranslateButton": {
+		"message": "ಅನುವಾದ ಬಟನ್‌ನಲ್ಲಿ ಸ್ವಯಂ-ಕೇಂದ್ರಿತಗೊಳಿಸಿ"
+	},
+	"settings_option_selectTranslation_focusOnTranslateButton_desc": {
+		"message": "ಅನುವಾದ ಬಟನ್ ಪುಟದಲ್ಲಿ ಕಾಣಿಸಿಕೊಂಡಾಗ, ಅದು ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಕೇಂದ್ರಿತಗೊಳ್ಳುತ್ತದೆ"
+	},
+	"settings_option_selectTranslation_header_languageChoice": {
+		"message": "ಭಾಷಾ ಸೆಟ್ಟಿಂಗ್‌ಗಳು"
+	},
+	"settings_option_selectTranslation_isUseAutoForDetectLang": {
+		"message": "ಅನುವಾದ ಮಾಯೂಡಲ್‌ಗೆ ಪಠ್ಯದ ಭಾಷೆಯನ್ನು ಪತ್ತೆಹಚ್ಚಲು ಅನುಮತಿಸಿ"
+	},
+	"settings_option_selectTranslation_isUseAutoForDetectLang_desc": {
+		"message": "ಪಠ್ಯದ ಭಾಷೆಯನ್ನು ಸ್ಥಳೀಯವಾಗಿ ಪತ್ತೆಹಚ್ಚಲು ಸಾಧ್ಯವಾಗದಾಗ ಮತ್ತು ಈ ಆಯ್ಕೆಯನ್ನು ಸಕ್ರಿಯಗೊಳಿಸಿದಾಗ, ಪಠ್ಯವನ್ನು \"auto\" ಭಾಷೆಯೊಂದಿಗೆ ಅನುವಾದಿಸಲಾಗುತ್ತದೆ, ಇದು ಬೆಂಬಲಿತವಾಗಿದ್ದರೆ.\nಆಯ್ಕೆಯನ್ನು ನಿಷ್ಕ್ರಿಯಗೊಳಿಸಿದಾಗ, ಪಠ್ಯದ ಮೂಲ ಭಾಷೆಯನ್ನು ಹೊಂದಿಸಲು ಮತ್ತೊಂದು ಬ್ಯಾಕಪ್ ವಿಧಾನವನ್ನು ಬಳಸಲಾಗುತ್ತದೆ"
+	},
+	"settings_option_selectTranslation_mode": {
+		"message": "ಪಠ್ಯ ಆಯ್ಕೆಯ ಮೇಲೆ ಕ್ರಿಯೆ"
+	},
+	"settings_option_selectTranslation_mode_item_contextMenu": {
+		"message": "ಸಂದರ್ಭ ಮೆನು ಮೂಲಕ ಪಠ್ಯವನ್ನು ಅನುವಾದಿಸಿ"
+	},
+	"settings_option_selectTranslation_mode_item_popupButton": {
+		"message": "ಅನುವಾದ ಬಟನ್ ತೋರಿಸಿ"
+	},
+	"settings_option_selectTranslation_mode_item_quickTranslate": {
+		"message": "ಪಠ್ಯವನ್ನು ತಕ್ಷಣವೇ ಅನುವಾದಿಸಿ"
+	},
+	"settings_option_selectTranslation_modifiers": {
+		"message": "ಮೋಡಿಫೈಯರ್‌ಗಳು"
+	},
+	"settings_option_selectTranslation_modifiers_desc": {
+		"message": "ಅನುವಾದವನ್ನು ಪ್ರದರ್ಶಿಸಲು ಕೀಬೋರ್ಡ್‌ನಲ್ಲಿ ಒತ್ತಬೇಕಾದ ಕೀಲಿಗಳನ್ನು ಆಯ್ಕೆಮಾಡಿ"
+	},
+	"settings_option_selectTranslation_modifiers_key_alt": {
+		"message": "alt"
+	},
+	"settings_option_selectTranslation_modifiers_key_ctrl": {
+		"message": "ctrl"
+	},
+	"settings_option_selectTranslation_modifiers_key_meta": {
+		"message": "meta"
+	},
+	"settings_option_selectTranslation_modifiers_key_shift": {
+		"message": "shift"
+	},
+	"settings_option_selectTranslation_rememberDirection": {
+		"message": "ಇತ್ತೀಚೆಗೆ ಆಯ್ಕೆಮಾಡಿದ ಪಠ್ಯದ ಭಾಷೆಯನ್ನು ನೆನಪಿಡಿ"
+	},
+	"settings_option_selectTranslation_showOnceForSelection": {
+		"message": "ಪ್ರತಿ ಪಠ್ಯ ಆಯ್ಕೆಗೆ ಅನುವಾದ ಬಟನ್ ಅನ್ನು ಒಮ್ಮೆ ತೋರಿಸಿ"
+	},
+	"settings_option_selectTranslation_showOnceForSelection_desc": {
+		"message": "ಬಟನ್ ಪ್ರತಿ ಪಠ್ಯ ಆಯ್ಕೆಗೆ ಒಮ್ಮೆ ಮಾತ್ರ ಕಾಣಿಸುತ್ತದೆ. ಅದನ್ನು ಮತ್ತೆ ತೋರಿಸಲು, ಪಠ್ಯವನ್ನು ಮರುಆಯ್ಕೆಮಾಡಿ"
+	},
+	"settings_option_selectTranslation_showOriginalText": {
+		"message": "ಮೂಲ ಪಠ್ಯವನ್ನು ತೋರಿಸಿ"
+	},
+	"settings_option_selectTranslation_showOriginalText_desc": {
+		"message": "ಅನುವಾದ ಪಾಪ್‌ಅಪ್‌ಗೆ ಮೂಲ ಪಠ್ಯದೊಂದಿಗೆ ಬ್ಲಾಕ್ ಸೇರಿಸಿ"
+	},
+	"settings_option_selectTranslation_strictSelection": {
+		"message": "ಪಠ್ಯ ಸ್ಪ್ಯಾನ್ ಆಯ್ಕೆಯ ಕಠಿಣ ಮೋಡ್",
+		"description": "ಈ ಆಯ್ಕೆಯು ಮೌಸ್ ಮೂಲಕ ಪಠ್ಯವನ್ನು ಆಯ್ಕೆಮಾಡುವ ಬಗ್ಗೆ"
+	},
+	"settings_option_selectTranslation_strictSelection_desc": {
+		"message": "ಆಯ್ಕೆಮಾಡಿದ ಪಠ್ಯವನ್ನು ಹೊಂದಿರುವ ಬ್ಲಾಕ್ ಹೊರಗೆ ಎಡ ಮೌಸ್ ಬಟನ್ ಬಿಡುಗಡೆ ಮಾಡಿದರೆ ಪಠ್ಯ ಸ್ಪ್ಯಾನ್ ಆಯ್ಕೆಯನ್ನು ನಿರ್ಲಕ್ಷಿಸಿ"
+	},
+	"settings_option_selectTranslation_timeoutForHideButton": {
+		"message": "ಪಾಪ್‌ಅಪ್ ಬಟನ್ ಅನ್ನು ಮರೆಮಾಡುವ ಮೊದಲು ವಿಳಂಬ"
+	},
+	"settings_option_selectTranslation_timeoutForHideButton_desc": {
+		"message": "ಕರ್ಸರ್ ಬಟನ್ ಮೇಲೆ ತೇಲದಿದ್ದಾಗ ಬಟನ್ ಅನ್ನು ಮರೆಮಾಡುವ ಮೊದಲು ಮಿಲಿಸೆಕೆಂಡುಗಳಲ್ಲಿ ವಿಳಂಬ. ಬಟನ್ ಮೇಲೆ ತೇಲುವಿಕೆ ಟೈಮರ್ ಅನ್ನು ಮರುಹೊಂದಿಸುತ್ತದೆ. ಸ್ವಯಂ-ಮರೆಮಾಡುವಿಕೆಯನ್ನು ನಿಷ್ಕ್ರಿಯಗೊಳಿಸಲು, ಮೌಲ್ಯವನ್ನು 1 ಕ್ಕಿಂತ ಕಡಿಮೆ ಹೊಂದಿಸಿ"
+	},
+	"settings_option_selectTranslation_zIndex": {
+		"message": "z-index"
+	},
+	"settings_option_selectTranslation_zIndex_desc": {
+		"message": "ಕೆಲವು ಪುಟಗಳ ಮೇಲೆ ಅಂಶಗಳು ಅನುವಾದಿತ ಪಠ್ಯದ ಪಾಪ್ಅಪ್ ಅನ್ನು ಮರೆಮಾಡಿದರೆ ಈ ಮೌಲ್ಯವನ್ನು ಹೆಚ್ಚಿಸಿ"
+	},
+	"settings_option_textTranslator": {
+		"message": "ಪಠ್ಯ ಅನುವಾದ"
+	},
+	"settings_option_textTranslator_rememberText": {
+		"message": "ಅನುವಾದಿತ ಪಠ್ಯವನ್ನು ನೆನಪಿಡುವುದು"
+	},
+	"settings_option_textTranslator_rememberText_desc": {
+		"message": "ವಿಂಡೋ ಮುಂದಿನ ಬಾರಿ ತೆರೆಯುವಾಗ ಅನುವಾದಿತ ಪಠ್ಯವನ್ನು ನೆನಪಿಡುವುದು"
+	},
+	"settings_option_textTranslator_spellCheck": {
+		"message": "ಅಕ್ಷರದೋಷ ಪರಿಶೀಲನೆ ಸಕ್ರಿಯಗೊಳಿಸಿ"
+	},
+	"settings_option_textTranslator_suggestLanguage": {
+		"message": "ಹುಡುಕಿದ ಪಠ್ಯದ ಭಾಷೆಯನ್ನು ತೋರಿಸುತ್ತಿದೆ"
+	},
+	"settings_option_textTranslator_suggestLanguageAlways": {
+		"message": "ಯಾವಾಗಲೂ ಭಾಷೆಯನ್ನು ಪತ್ತೆಹಚ್ಚಿ ಮತ್ತು ಸೂಚಿಸಿ"
+	},
+	"settings_option_textTranslator_suggestLanguageAlways_desc": {
+		"message": "ನಿಷ್ಕ್ರಿಯಗೊಳಿಸಿದಾಗ, ಮೂಲ ಭಾಷೆಯನ್ನು \"ಸ್ವಯಂ\" ಗೆ ಹೊಂದಿಸಿದಾಗ ಮಾತ್ರ ಭಾಷಾ ಸೂಚನೆಗಳು ಕಾಣಿಸುತ್ತವೆ"
+	},
+	"settings_option_translatePreferences": {
+		"message": "ಭಾಷಾಂತರಣ ಆಯ್ಕೆಗಳು"
+	},
+	"settings_option_translateScheduler": {
+		"message": "ಭಾಷಾಂತರಣ ವೇಳಾಪಟ್ಟಿ"
+	},
+	"settings_option_translateScheduler_delay": {
+		"message": "ಪಠ್ಯ ಸಂಗ್ರಹ ವಿಳಂಬ"
+	},
+	"settings_option_translateScheduler_delay_desc": {
+		"message": "ಭಾಷಾಂತರಣ ವೇಳಾಪಟ್ಟಿ, ಸಾಧ್ಯವಾದಷ್ಟು ಪಠ್ಯಗಳನ್ನು ಒಟ್ಟಿಗೆ ಸಂಗ್ರಹಿಸಿ ಒಂದು ವಿನಂತಿಯಲ್ಲಿ ಕಳುಹಿಸುವ ಮೂಲಕ ಭಾಷಾಂತರ ಸೇವಾ API ಗೆ ವಿನಂತಿಗಳ ಸಂಖ್ಯೆಯನ್ನು ಕಡಿಮೆ ಮಾಡುತ್ತದೆ. ಭಾಷಾಂತರ ಪ್ರಾರಂಭಿಸುವ ಮೊದಲು ಹೆಚ್ಚಿನ ಪಠ್ಯಗಳನ್ನು ಸಂಗ್ರಹಿಸಲು ವೇಳಾಪಟ್ಟಿ ನಿರ್ದಿಷ್ಟ ಸಮಯವನ್ನು ಮಿಲಿಸೆಕೆಂಡುಗಳಲ್ಲಿ ಕಾಯುತ್ತದೆ"
+	},
+	"settings_option_translateScheduler_retryLimit": {
+		"message": "ಭಾಷಾಂತರಣ ಪುನಃ ಪ್ರಯತ್ನಗಳ ಮಿತಿ"
+	},
+	"settings_option_translateScheduler_retryLimit_desc": {
+		"message": "ಭಾಷಾಂತರಣ ದೋಷಗಳು ಸಂಭವಿಸಿದಾಗ, ವೇಳಾಪಟ್ಟಿ ಪಠ್ಯಗಳನ್ನು ಪುನಃ ಭಾಷಾಂತರಿಸಲು ಪ್ರಯತ್ನಿಸುತ್ತದೆ. ಈ ಆಯ್ಕೆಯು ಪುನಃ ಪ್ರಯತ್ನಗಳ ಮಿತಿಯನ್ನು ಹೊಂದಿಸುತ್ತದೆ. ಅನಿಯಮಿತ ಪುನಃ ಪ್ರಯತ್ನಗಳನ್ನು ಅನುಮತಿಸಲು ಋಣಾತ್ಮಕ ಸಂಖ್ಯೆಯನ್ನು ಹೊಂದಿಸಿ"
+	},
+	"settings_option_translatorModule": {
+		"message": "ಭಾಷಾಂತರಣ ಘಟಕ"
+	},
+	"settings_option_translatorModule_desc": {
+		"message": "ಭಾಷಾಂತರಣಗಳ ಗುಣಮಟ್ಟ ಮತ್ತು ಲಭ್ಯವಿರುವ ಭಾಷೆಗಳು ಭಾಷಾಂತರಣ ಘಟಕದ ಮೇಲೆ ಅವಲಂಬಿತವಾಗಿವೆ"
+	},
+	"settings_option_tts": {
+		"message": "ಪಠ್ಯವನ್ನು ಮಾತುಗಳಿಗೆ ಪರಿವರ್ತನೆ (TTS)"
+	},
+	"settings_option_ttsCustomModules": {
+		"message": "ಕಸ್ಟಮ್ ಮಾತು ಸಂಶ್ಲೇಷಣ ಘಟಕಗಳು"
+	},
+	"settings_option_ttsCustomModules_button": {
+		"message": "ಮಾತು ಸಂಶ್ಲೇಷಣಾ ಘಟಕಗಳನ್ನು ನಿರ್ವಹಣೆ"
+	},
+	"settings_option_ttsCustomModules_desc": {
+		"message": "ನೀವು ನಿಮ್ಮ ಮೆಚ್ಚಿನ ಸೇವೆಗಳು ಮತ್ತು ಧ್ವನಿ ಎಂಜಿನ್‌ಗಳನ್ನು ಬಳಸುವ ಮಾತು ಸಂಶ್ಲೇಷಣಾ ಘಟಕಗಳನ್ನು ಸೇರಿಸಬಹುದು. <slot id=docs>ಕಸ್ಟಮ್ TTS ಡಾಕ್ಯುಮೆಂಟೇಶನ್</slot> ನಲ್ಲಿ ಇನ್ನಷ್ಟು ಓದಿ"
+	},
+	"settings_option_ttsModule": {
+		"message": "ಆಯ್ದ TTS ಘಟಕ"
+	},
+	"settings_option_ttsModule_desc": {
+		"message": "ಪಠ್ಯವನ್ನು ಧ್ವನಿಮಾಡಲು ಬಳಸುವ ಧ್ವನಿ ಎಂಜಿನ್"
+	},
+	"settings_option_userLanguage": {
+		"message": "ನಿಮ್ಮ ಭಾಷೆ"
+	},
+	"settings_option_userLanguage_desc": {
+		"message": "ಪಠ್ಯಗಳನ್ನು ಅನುವಾದಿಸಲಾಗುವ ಭಾಷೆ"
+	},
+	"settings_pageTitle": {
+		"message": "ಸೆಟ್ಟಿಂಗ್‌ಗಳು"
+	},
+	"settings_section_history": {
+		"message": "ಇತಿಹಾಸ"
+	},
+	"settings_section_popup": {
+		"message": "ಪಾಪ್‌ಅಪ್"
+	},
+	"textTranslator_suggestLanguage": {
+		"message": "ಪಠ್ಯದ ಭಾಷೆ <slot id=languageSuggest>$language_name$</slot> ಎಂದು ತೋರುತ್ತದೆ",
+		"placeholders": {
+			"language_name": {
+				"content": "$1",
+				"example": "Japanese"
+			}
+		}
+	},
+	"textTranslator_translateInputPlaceholder": {
+		"message": "ಅನುವಾದಕ್ಕಾಗಿ ಪಠ್ಯವನ್ನು ನಮೂದಿಸಿ",
+		"description": "Request to user input some text for translation"
+	},
+	"textTranslator_translatePlaceholder": {
+		"message": "ಅನುವಾದಿತ ಪಠ್ಯ ಇಲ್ಲಿ ಇರಲಿದೆ"
+	},
+	"translatorsManagerWindow_add": {
+		"message": "ಅನುವಾದ ಮಾಸ್ಟರ್ ಸೇರಿಸಿ"
+	},
+	"translatorsManagerWindow_close": {
+		"message": "ಮುಚ್ಚಿ"
+	},
+	"translatorsManagerWindow_emptyTranslatorsListText": {
+		"message": "ಇನ್ನೂ ಯಾವುದೇ ಕಸ್ಟಮ್ ಅನುವಾದ ಮಾಸ್ಟರ್‌ಗಳನ್ನು ಸೇರಿಸಲಾಗಿಲ್ಲ"
+	},
+	"translatorsManagerWindow_message_translatorRemovingConfirmation": {
+		"message": "\"$translator_name$\" ಅನುವಾದ ಮಾಸ್ಟರ್ ಅನ್ನು ತೆಗೆದುಹಾಕಲು ನೀವು ಖಚಿತವಾಗಿ ಬಯಸುತ್ತೀರಾ?",
+		"placeholders": {
+			"translator_name": {
+				"content": "$1",
+				"example": "Google translator"
+			}
+		}
+	},
+	"translatorsManagerWindow_title": {
+		"message": "ಕಸ್ಟಮ್ ಅನುವಾದ ಮಾಸ್ಟರ್‌ಗಳು"
+	},
+	"translatorsManagerWindow_translator_delete": {
+		"message": "ಅಳಿಸಿ"
+	},
+	"translatorsManagerWindow_translator_edit": {
+		"message": "ತಿದ್ದು"
+	},
+	"ttsManagerWindow_add": {
+		"message": "TTS ಮಾಸ್ಟರ್ ಸೇರಿಸಿ"
+	},
+	"ttsManagerWindow_close": {
+		"message": "ಮುಚ್ಚಿ"
+	},
+	"ttsManagerWindow_emptyTranslatorsListText": {
+		"message": "ಇನ್ನೂ ಯಾವುದೇ TTS ಮಾಯೂಲ್‌ಗಳನ್ನು ಸೇರಿಸಲಾಗಿಲ್ಲ"
+	},
+	"ttsManagerWindow_message_ttsRemoveConfirmation": {
+		"message": "ನೀವು ಖಚಿತವಾಗಿ TTS ಮಾಯೂಲ್ \"$tts_name$\" ಅನ್ನು ತೆಗೆದುಹಾಕಲು ಬಯಸುವಿರಾ?",
+		"placeholders": {
+			"tts_name": {
+				"content": "$1",
+				"example": "Google TTS"
+			}
+		}
+	},
+	"ttsManagerWindow_title": {
+		"message": "ಪಠ್ಯ-ನಿಂದ-ಮಾತು ಮಾಯೂಲ್‌ಗಳು"
+	},
+	"ttsManagerWindow_translator_delete": {
+		"message": "ಅಳಿಸಿ"
+	},
+	"ttsManagerWindow_translator_edit": {
+		"message": "ತಿದ್ದು"
+	},
+	"validation_number": {
+		"message": "ಮೌಲ್ಯವು ಸಂಖ್ಯೆಯಾಗಿರಬೇಕು"
+	},
+	"validation_numberBetweenRange": {
+		"message": "ಮೌಲ್ಯವು $1 ಮತ್ತು $2 ನಡುವೆ ಸಂಖ್ಯೆಯಾಗಿರಬೇಕು"
+	},
+	"validation_positiveNumber": {
+		"message": "ಮೌಲ್ಯವು ಧನಾತ್ಮಕ ಸಂಖ್ಯೆಯಾಗಿರಬೇಕು"
+	}
+}
