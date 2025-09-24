@@ -360,10 +360,32 @@ class ExtensionManager {
     for (const entry of entries) {
       try {
         if (this.loadedExtensions.has(entry.id)) continue;
-        const dir = path.join(preDir, entry.dir);
-        const extData = await this._prepareFromDirectory(dir);
+        const sourceRef = typeof entry.archive === 'string' && entry.archive.length ? entry.archive : entry.dir;
+        if (!sourceRef) {
+          console.warn('ExtensionManager: Preinstalled entry missing source reference');
+          continue;
+        }
+
+        const sourcePath = path.join(preDir, sourceRef);
+        let stat;
+        try {
+          stat = await fs.stat(sourcePath);
+        } catch (statErr) {
+          console.warn('ExtensionManager: Preinstalled source missing:', sourceRef, statErr.message || statErr);
+          continue;
+        }
+
+        let extData;
+        if (stat.isDirectory()) {
+          extData = await this._prepareFromDirectory(sourcePath);
+        } else {
+          extData = await this._prepareFromArchive(sourcePath);
+        }
+
         // Respect ID from postinstall manifest
-        extData.id = entry.id;
+        if (entry.id) {
+          extData.id = entry.id;
+        }
         extData.isSystem = true;
         extData.removable = false;
         extData.source = 'preinstalled';
@@ -380,7 +402,8 @@ class ExtensionManager {
         await this._writeRegistry();
         console.log('ExtensionManager: Preinstalled extension imported:', extData.displayName || extData.name);
       } catch (err) {
-        console.warn('ExtensionManager: Skipped preinstalled entry:', entry && entry.dir, err.message || err);
+        const ref = entry && (entry.archive || entry.dir || entry.id || 'unknown');
+        console.warn('ExtensionManager: Skipped preinstalled entry:', ref, err.message || err);
       }
     }
   }
