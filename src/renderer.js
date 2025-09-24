@@ -80,6 +80,28 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Connect the tabBar with the webviewContainer
   tabBar.connectWebviewContainer(webviewContainer);
   
+  ipcRenderer.on("remove-all-tempIcon", () => {
+    const navBox = document.querySelector("nav-box");
+    if (navBox && typeof navBox.renderBrowserActions === "function") {
+      navBox.removeAllTempIcon();
+    }
+  });
+
+  ipcRenderer.on("refresh-browser-actions", () => {
+    const navBox = document.querySelector("nav-box");
+    if (navBox && typeof navBox.renderBrowserActions === "function") {
+      navBox.renderBrowserActions();
+    }
+  });
+
+  ipcRenderer.on("create-new-tab", async (_event, url) => {
+    if (tabBar && typeof tabBar.addTab === "function") {
+      tabBar.addTab(url);
+    } else {
+      navigateTo(url);
+    }
+  });
+
   ipcRenderer.on('close-tab', (_, id) => {
     try {
       if (tabBar && typeof tabBar.closeTab === 'function') {

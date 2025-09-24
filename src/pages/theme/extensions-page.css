@@ -1,0 +1,481 @@
+@import url('browser://theme/vars.css');
+
+:root {
+  /* Collapsed card height for uniform grid (page-scoped) */
+  --extension-card-collapsed-height: 220px;
+}
+
+/* Extensions Page Scrolling Override - Move scrolling to wrapper level */
+.settings-wrapper {
+  overflow-y: auto !important;
+  height: 100vh;
+}
+
+.settings-layout {
+  overflow: visible !important;
+}
+
+.settings-content {
+  overflow: visible !important;
+  height: auto;
+}
+
+/* Show scrollbar on extensions page at wrapper level */
+.settings-wrapper::-webkit-scrollbar {
+  display: block !important;
+  width: 8px;
+}
+
+.settings-wrapper::-webkit-scrollbar-track {
+  background: var(--settings-bg-primary);
+}
+
+.settings-wrapper::-webkit-scrollbar-thumb {
+  background: var(--settings-border);
+  border-radius: 4px;
+}
+
+.settings-wrapper::-webkit-scrollbar-thumb:hover {
+  background: var(--settings-text-secondary);
+}
+
+/* For Firefox */
+.settings-wrapper {
+  scrollbar-width: thin !important;
+  scrollbar-color: var(--settings-border) var(--settings-bg-primary) !important;
+}
+
+/* Page Title */
+.page-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--settings-text-primary);
+  margin: 0 0 2rem 0;
+}
+
+/* Installed Extensions Header */
+.installed-extensions-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  margin-top: 2rem;
+}
+
+.installed-extensions-header.system-header {
+  margin-top: 1.25rem;
+}
+
+.installed-extensions-header .section-title {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+#update-all-btn {
+  flex-shrink: 0;
+}
+
+/* Install Section Layout */
+.install-section-header {
+  margin-bottom: 1rem;
+}
+
+.install-section-header .setting-label {
+  font-weight: 400;
+  color: var(--settings-text-primary);
+  font-size: 0.9rem;
+}
+
+.install-section-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Install Input Styling */
+.install-input {
+  flex: 1;
+  max-width: 620px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--settings-border);
+  border-radius: 4px;
+  background: var(--settings-bg-secondary);
+  color: var(--settings-text-primary);
+  font-size: 0.85rem;
+  transition: border-color 0.2s ease;
+}
+
+.install-input:focus {
+  outline: none;
+  border-color: var(--settings-border-hover);
+}
+
+.install-input::placeholder {
+  color: var(--settings-text-secondary);
+  opacity: 0.4;
+}
+
+/* Extensions Grid Container */
+.extensions-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  padding-bottom: 2rem; /* Add bottom padding for better scrolling */
+}
+
+/* Responsive Grid Layout */
+@media (max-width: 749px) {
+  .extensions-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .install-section-controls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+  
+  .install-input {
+    max-width: none;
+  }
+}
+
+/* New Vertical Extension Card */
+.extension-card {
+  background: var(--settings-card-bg);
+  border: 1px solid var(--settings-border);
+  border-radius: 8px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  min-height: var(--extension-card-collapsed-height);
+  height: fit-content;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+  margin-bottom: 0 !important; /* Override settings-section margin */
+}
+
+.extension-card:hover {
+  border-color: var(--settings-border-hover);
+  background: var(--settings-card-bg);
+}
+
+.extension-card:focus-within {
+  outline: 2px solid var(--browser-theme-secondary-highlight);
+  outline-offset: 2px;
+}
+
+/* Extension Header Section */
+.extension-header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  margin-bottom: 1rem;
+  flex: 1;
+  min-height: 0; /* Allows proper flex shrinking */
+}
+
+/* Extension Actions Section */
+.extension-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: auto;
+}
+
+/* Uniform collapsed height; expanded cards grow */
+.extension-card.collapsed {
+  height: var(--extension-card-collapsed-height);
+  overflow: hidden;
+}
+
+.extension-card.expanded {
+  height: auto;
+  overflow: visible;
+}
+
+.extension-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* Hide individual update buttons */
+.extension-buttons .btn[data-action="update"] {
+  display: none;
+}
+
+
+/* Extension Icon */
+.extension-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  margin-bottom: 0.75rem;
+}
+
+.extension-icon img,
+.extension-icon-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.extension-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.extension-icon-placeholder {
+  width: 36px;
+  height: 36px;
+  opacity: 0.6;
+  fill: var(--settings-text-secondary);
+}
+
+.extension-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--settings-text-primary);
+  margin: 0 0 0.5rem 0;
+  text-align: left;
+  line-height: 1.3;
+}
+
+/* Remove ### prefix from extension names */
+.extension-name::before {
+  content: none !important;
+}
+
+.extension-description {
+  font-size: 0.8rem;
+  color: var(--settings-text-secondary);
+  margin: 0;
+  text-align: left;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Description expand/collapse wrapper and controls */
+.extension-description-wrap {
+  position: relative;
+}
+
+/* Faded tail hint when clamped */
+.extension-description-wrap.clamped::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1.2em; /* roughly one line */
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0),
+    var(--settings-card-bg)
+  );
+  pointer-events: none;
+}
+
+/* Remove clamp when expanded */
+.extension-description-wrap.expanded .extension-description {
+  display: block;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+  -webkit-box-orient: initial;
+  overflow: visible;
+}
+
+/* Show more / Show less button */
+.show-more-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--settings-text-secondary);
+  font-size: 0.75rem;
+  padding: 0;
+  margin-top: 0.5rem;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.show-more-btn:hover {
+  color: var(--settings-text-primary);
+  text-decoration: underline;
+}
+
+.show-more-btn:focus {
+  outline: 2px solid var(--browser-theme-secondary-highlight);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+
+/* Extension Toggle - reuse exact settings toggle styles */
+.extension-toggle {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* Toggle Switch Styling - Match settings.css exactly */
+.extension-toggle .toggle-label {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.extension-toggle .toggle-input {
+  display: none;
+}
+
+.extension-toggle .toggle-slider {
+  width: 36px;
+  height: 20px;
+  background: #6b7280;
+  border-radius: 10px;
+  position: relative;
+  transition: background-color 0.2s ease;
+  opacity: 1 !important; /* Override settings.css opacity: 0.4 */
+}
+
+.extension-toggle .toggle-slider::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 0.2s ease;
+}
+
+.extension-toggle .toggle-input:checked + .toggle-slider {
+  background: #3b82f6;
+}
+
+.extension-toggle .toggle-input:checked + .toggle-slider::before {
+  transform: translateX(16px);
+  background: white;
+}
+
+.extension-toggle .toggle-input:disabled + .toggle-slider {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Override toggle focus to work within card focus */
+.extension-toggle .toggle-label:focus-within {
+  outline: 2px solid var(--browser-theme-secondary-highlight);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Extension Card Focus Management */
+.extension-card:focus-within .toggle-label {
+  /* Remove individual toggle focus when card is focused */
+  outline: none;
+}
+
+/* Empty State */
+.extensions-empty {
+  grid-column: 1 / -1; /* Span all columns */
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--settings-text-secondary);
+  font-size: 0.9rem;
+  opacity: 0.8;
+}
+
+.extensions-empty-icon {
+  width: 48px;
+  height: 48px;
+  opacity: 0.5;
+  margin: 0 auto 1rem auto;
+  fill: var(--settings-text-secondary);
+}
+
+/* Responsive Design - Mobile Optimizations */
+@media (max-width: 749px) {
+  :root { --extension-card-collapsed-height: 200px; }
+  .extension-card {
+    padding: 0.75rem;
+  }
+  
+  .extension-icon {
+    width: 40px;
+    height: 40px;
+  }
+  
+  .extension-name {
+    font-size: 0.85rem;
+  }
+  
+  .extension-description {
+    font-size: 0.75rem;
+  }
+}
+
+@media (max-width: 600px) {
+  .extension-buttons {
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  
+  .extension-buttons .btn {
+    font-size: 0.75rem;
+    padding: 0.4rem 0.6rem;
+  }
+  
+  /* Stack header on mobile */
+  .installed-extensions-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1rem;
+  }
+  
+  #update-all-btn {
+    align-self: stretch;
+  }
+}
+
+/* Message Notification System - Same as settings.css */
+.settings-saved-message {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background-color: var(--success-color, #0fba84);
+  color: var(--success-text-color, white);
+  padding: 12px 20px;
+  border-radius: 6px;
+  font-weight: 500;
+  z-index: 10000;
+  opacity: 0;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--success-border-color, transparent);
+  transform: translateY(-10px);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.settings-saved-message.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Disabled button styling */
+.btn[aria-disabled="true"],
+.btn.btn-disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  pointer-events: none;
+}
