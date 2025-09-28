@@ -305,7 +305,7 @@ class SettingsManager {
 
   validateSetting(key, value) {
     const validators = {
-      searchEngine: (v) => ['duckduckgo', 'ecosia', 'startpage'].includes(v),
+      searchEngine: (v) => ['duckduckgo', 'ecosia', 'kagi', 'startpage'].includes(v),
       theme: (v) => ['transparent', 'light', 'dark', 'green', 'cyan', 'yellow', 'violet'].includes(v),
       showClock: (v) => typeof v === 'boolean',
       wallpaper: (v) => ['redwoods', 'mountains', 'custom'].includes(v),
@@ -395,6 +395,7 @@ class SettingsManager {
     const engineNames = {
       'duckduckgo': 'DuckDuckGo',
       'ecosia': 'Ecosia',
+      'kagi': 'Kagi',
       'startpage': 'Startpage'
     };
     return engineNames[this.settings.searchEngine] || 'DuckDuckGo';

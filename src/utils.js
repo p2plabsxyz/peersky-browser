@@ -38,6 +38,10 @@ function makeEcosia(query) {
   return `https://www.ecosia.org/search?q=${encodeURIComponent(query)}`;
 }
 
+function makeKagi(query) {
+  return `https://kagi.com/search?q=${encodeURIComponent(query)}`;
+}
+
 function makeStartpage(query) {
   return `https://www.startpage.com/do/search?query=${encodeURIComponent(query)}`;
 }
@@ -47,6 +51,8 @@ function makeSearch(query, engine = 'duckduckgo') {
   switch (engine) {
     case 'ecosia':
       return makeEcosia(query);
+    case 'kagi':
+      return makeKagi(query);
     case 'startpage':
       return makeStartpage(query);
     case 'duckduckgo':
@@ -172,6 +178,7 @@ export {
   makeHttps,
   makeDuckDuckGo,
   makeEcosia,
+  makeKagi,
   makeStartpage,
   makeSearch,
   handleURL,
