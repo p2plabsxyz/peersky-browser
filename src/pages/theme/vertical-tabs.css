@@ -362,3 +362,33 @@ body:has(.tabbar.vertical-tabs) .header-container * {
 body:has(.tabbar.vertical-tabs) .app-icon {
   -webkit-app-region: drag;
 }
+
+.titlebar.titlebar-collapsed-darwin {
+  height: 0 !important;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: height 0.3s ease, opacity 0.3s ease;
+}
+
+body:has(.titlebar.titlebar-collapsed-darwin) .header-container {
+  top: 0 !important;
+  transition: top 0.3s ease;
+}
+
+body:has(.titlebar.titlebar-collapsed-darwin) .tabbar.vertical-tabs {
+  top: 50px !important;
+  height: calc(100vh - 50px) !important;
+  transition: top 0.3s ease, height 0.3s ease;
+}
+
+body:has(.titlebar.titlebar-collapsed-darwin) .webview-container {
+  top: 50px !important;
+  height: calc(100vh - 50px) !important;
+  transition: top 0.3s ease, height 0.3s ease;
+}
+
+.titlebar.titlebar-collapsed-darwin + .header-container {
+  -webkit-app-region: drag;
+  padding-left: 70px; /* Space for macOS traffic lights */
+}

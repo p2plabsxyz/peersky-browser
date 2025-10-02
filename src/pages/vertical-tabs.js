@@ -73,6 +73,18 @@ export default class VerticalTabs extends BaseTabBar {
 
     // Initial sticky state
     this.updateAddButtonSticky();
+
+    // On macOS, collapse the titlebar when vertical tabs are enabled
+    if (process.platform === 'darwin') {
+      this.collapseTitlebarOnDarwin();
+    }
+  }
+
+  collapseTitlebarOnDarwin() {
+    const titlebar = document.querySelector('title-bar');
+    if (titlebar && typeof titlebar.toggleDarwinCollapse === 'function') {
+      titlebar.toggleDarwinCollapse(true);
+    }
   }
   
   loadVerticalTabsCSS() {
