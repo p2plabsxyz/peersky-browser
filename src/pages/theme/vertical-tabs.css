@@ -390,5 +390,13 @@ body:has(.titlebar.titlebar-collapsed-darwin) .webview-container {
 
 .titlebar.titlebar-collapsed-darwin + .header-container {
   -webkit-app-region: drag;
-  padding-left: 70px; /* Space for macOS traffic lights */
+}
+
+body:has(.titlebar.titlebar-collapsed-darwin) #navbox {
+  padding-left: 78px !important; /* Space for macOS traffic lights */
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+}
+body:has(.titlebar.titlebar-collapsed-darwin) .tabbar.vertical-tabs {
+  border-left: none !important;
+  box-shadow: none !important;
 }
