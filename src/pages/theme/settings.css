@@ -133,6 +133,7 @@ body {
   flex: 1;
   padding: 2rem;
   overflow: hidden;
+  overflow-y: auto;
   background: var(--settings-bg-primary);
   height: 100vh;
   max-width: 800px;        
