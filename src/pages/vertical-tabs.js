@@ -49,7 +49,7 @@ export default class VerticalTabs extends BaseTabBar {
       this.hoverTimeout = setTimeout(() => {
         this.isExpanded = true;
         this.classList.add('expanded');
-      }, 100);
+      }, 300);
     });
     
     this.addEventListener('mouseleave', () => {

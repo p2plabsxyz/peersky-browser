@@ -2196,8 +2196,8 @@ restoreTabs(persistedData) {
         indicator = document.createElement('img');
         indicator.className = 'p2p-indicator';
         indicator.src = 'peersky://static/assets/svg/diamond-fill.svg';
-        indicator.style.width = '12px';
-        indicator.style.height = '12px';
+        indicator.style.width = '8px';
+        indicator.style.height = '8px';
         indicator.style.marginLeft = '4px';
       
         const favicon = tabElement.querySelector('.tab-favicon');

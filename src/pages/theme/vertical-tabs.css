@@ -103,7 +103,7 @@
   margin-left: 4px;
   margin-right: 4px;
   border-radius: 8px;
-  border: 1px solid var(--browser-theme-secondary-highlight);
+  border: var(--peersky-nav-button-inactive) 0.5px solid;
   padding: 4px;
   justify-content: center;
   transition: width var(--vertical-tabs-transition-duration) ease; /* Only animate width */
@@ -190,7 +190,7 @@
 
 /* Active tab styling */
 .tabbar.vertical-tabs .tab.active {
-  background-color: var(--browser-theme-primary-highlight);
+  background-color: var(--settings-bg-primary);
   border-radius: 8px;
   border: none;
   height: 40px;
@@ -200,11 +200,11 @@
 }
 
 .tabbar.vertical-tabs .tab.active .tab-title {
-  color: var(--browser-theme-background);
+  color: var(--browser-theme-text-color);
 }
 
 .tabbar.vertical-tabs .tab.active .close-tab {
-  color: var(--browser-theme-background);
+  color: var(--browser-theme-text-color);
 }
 
 /* Tab group headers in vertical mode */
