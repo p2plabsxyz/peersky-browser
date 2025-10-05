@@ -80,10 +80,11 @@ export async function createNode() {
       autoTLS: autoTLS(),
       dcutr: dcutr(),
       delegatedRouting: () => createDelegatedRoutingV1HttpApiClient('https://delegated-ipfs.dev', delegatedHTTPRoutingDefaults()),
-      dht: kadDHT({
+      aminoDHT: kadDHT({
+        protocol: '/ipfs/kad/1.0.0',
+        peerInfoMapper: removePrivateAddressesMapper,
         validators: { ipns: ipnsValidator },
         selectors: { ipns: ipnsSelector },
-        peerInfoMapper: removePrivateAddressesMapper,
         reprovide: { 
           concurrency: 10,
           interval: 60 * 60 * 1000,
