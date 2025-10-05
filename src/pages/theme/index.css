@@ -405,6 +405,15 @@ find-menu {
   min-height: 0;
 }
 
+/* Apply solid white background only to external web content (not internal peersky:// pages) */
+.tab-webview[src^="https://"],
+.tab-webview[src^="http://"],
+.tab-webview[src^="ipfs://"],
+.tab-webview[src^="ipns://"],
+.tab-webview[src^="hyper://"] {
+  background-color: #ffffff;
+}
+
 .tab-webview[style*="display: block"] {
   display: flex !important;
   flex: 1;
