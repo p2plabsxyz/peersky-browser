@@ -49,6 +49,7 @@ input, button, textarea, select, select *, option  {
   cursor: pointer;
   color: var(--peersky-nav-button-color);
   transition: color 0.2s ease-in-out;
+  -webkit-app-region: no-drag;
 }
 
 .nav-button.active {
@@ -94,6 +95,7 @@ input, button, textarea, select, select *, option  {
   font-size: medium;
   font-family: inherit;
   outline: none;
+  -webkit-app-region: no-drag;
 }
 
 .inside-urlbar {
@@ -196,6 +198,7 @@ find-menu {
   background-color: var(--peersky-background-url-input);
   color: var(--browser-theme-text-color);
   border-radius: 10px;
+  border: var(--peersky-nav-button-inactive) 0.5px solid;
   font-size: 14px;
   cursor: pointer;
   overflow: hidden;
@@ -219,7 +222,7 @@ find-menu {
 .tab.active {
   background-color: var(--peersky-nav-background);
   border-radius: 15px 15px 0 0;
-  border: gray 0.5px solid;
+  border: var(--peersky-nav-button-inactive) 0.5px solid;
   border-bottom: none;
   height: 32px;
   margin-bottom: 0;
@@ -308,6 +311,7 @@ find-menu {
   right: 0;
   z-index: 999;
   background-color: var(--peersky-nav-background);
+  -webkit-app-region: drag;
 }
 
 .titlebar {
@@ -399,6 +403,15 @@ find-menu {
   border: none;
   flex: 1;
   min-height: 0;
+}
+
+/* Apply solid white background only to external web content (not internal peersky:// pages) */
+.tab-webview[src^="https://"],
+.tab-webview[src^="http://"],
+.tab-webview[src^="ipfs://"],
+.tab-webview[src^="ipns://"],
+.tab-webview[src^="hyper://"] {
+  background-color: #ffffff;
 }
 
 .tab-webview[style*="display: block"] {

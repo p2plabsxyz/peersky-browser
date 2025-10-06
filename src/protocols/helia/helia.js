@@ -8,7 +8,6 @@ import { mdns } from "@libp2p/mdns";
 import { tcp } from "@libp2p/tcp";
 import { webRTC, webRTCDirect } from "@libp2p/webrtc";
 import { webSockets } from "@libp2p/websockets";
-import { webTransport } from '@libp2p/webtransport'
 import { circuitRelayTransport } from "@libp2p/circuit-relay-v2";
 import { autoNAT } from "@libp2p/autonat";
 import { autoTLS } from '@ipshipyard/libp2p-auto-tls'
@@ -27,12 +26,12 @@ import { ipfsOptions, getLibp2pPrivateKey } from "../config.js";
 import pkg from '../../../package.json' assert { type: 'json' };
 const { version } = pkg;
 
-// https://github.com/libp2p/js-libp2p-amino-dht-bootstrapper/blob/main/src/utils/default-config.ts
+// https://github.com/ipfs/helia/blob/main/packages/helia/src/utils/bootstrappers.ts
 const bootstrapConfig = {
   list: [
-    '/dns4/am6.bootstrap.libp2p.io/tcp/443/wss/p2p/QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb',
-    '/dns4/sg1.bootstrap.libp2p.io/p2p/QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt',
-    '/dns4/sv15.bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN',
+    '/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN',
+    '/dnsaddr/bootstrap.libp2p.io/p2p/QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb',
+    '/dnsaddr/bootstrap.libp2p.io/p2p/QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt',
     // va1 is not in the TXT records for _dnsaddr.bootstrap.libp2p.io yet
     // so use the host name directly
     '/dnsaddr/va1.bootstrap.libp2p.io/p2p/12D3KooWKnDdG3iXw9eTFijk3EWSunZcFi54Zka4wmtqtt6rPxc8',
@@ -67,7 +66,6 @@ export async function createNode() {
       webSockets(),
       webRTC(),
       webRTCDirect(),
-      webTransport(),
       circuitRelayTransport(),
     ],
     connectionEncrypters: [noise()],
@@ -82,10 +80,11 @@ export async function createNode() {
       autoTLS: autoTLS(),
       dcutr: dcutr(),
       delegatedRouting: () => createDelegatedRoutingV1HttpApiClient('https://delegated-ipfs.dev', delegatedHTTPRoutingDefaults()),
-      dht: kadDHT({
+      aminoDHT: kadDHT({
+        protocol: '/ipfs/kad/1.0.0',
+        peerInfoMapper: removePrivateAddressesMapper,
         validators: { ipns: ipnsValidator },
         selectors: { ipns: ipnsSelector },
-        peerInfoMapper: removePrivateAddressesMapper,
         reprovide: { 
           concurrency: 10,
           interval: 60 * 60 * 1000,

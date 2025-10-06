@@ -814,6 +814,8 @@ class PeerskyWindow {
       height: 600,
       frame: false,
       titleBarStyle: 'hidden',
+      vibrancy: 'dark',
+      backgroundMaterial: 'mica',
       webPreferences: {
         nodeIntegration: true,
         contextIsolation: false,
@@ -842,6 +844,11 @@ class PeerskyWindow {
       }
     };
     this.window.loadFile(loadURL, query);
+
+    // Configure window transparency and vibrancy effects
+    this.window.setVibrancy('fullscreen-ui');
+    this.window.setBackgroundColor('#00000000');
+    this.window.setBackgroundMaterial('mica');
 
     // Attach context menus
     attachContextMenus(this.window, windowManager);
@@ -984,6 +991,8 @@ export function createIsolatedWindow(options = {}) {
     height: 600,
     frame: false,
     titleBarStyle: 'hidden',
+    vibrancy: 'dark',
+    backgroundMaterial: 'mica',
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -1008,6 +1017,11 @@ export function createIsolatedWindow(options = {}) {
     // Default window
     win.loadFile(path.join(__dirname, 'pages', 'index.html'));
   }
+
+  // Configure window transparency and vibrancy effects
+  win.setVibrancy('fullscreen-ui');
+  win.setBackgroundColor('#00000000');
+  win.setBackgroundMaterial('mica');
 
   return win;
 }

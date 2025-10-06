@@ -307,8 +307,8 @@ class SettingsManager {
 
   validateSetting(key, value) {
     const validators = {
-      searchEngine: (v) => ['duckduckgo', 'ecosia', 'startpage'].includes(v),
-      theme: (v) => ['light', 'dark', 'green', 'cyan', 'yellow', 'violet'].includes(v),
+      searchEngine: (v) => ['duckduckgo', 'ecosia', 'kagi', 'startpage'].includes(v),
+      theme: (v) => ['transparent', 'light', 'dark', 'green', 'cyan', 'yellow', 'violet'].includes(v),
       showClock: (v) => typeof v === 'boolean',
       verticalTabs: (v) => typeof v === 'boolean',
       keepTabsExpanded: (v) => typeof v === 'boolean',
@@ -413,6 +413,7 @@ class SettingsManager {
     const engineNames = {
       'duckduckgo': 'DuckDuckGo',
       'ecosia': 'Ecosia',
+      'kagi': 'Kagi',
       'startpage': 'Startpage'
     };
     return engineNames[this.settings.searchEngine] || 'DuckDuckGo';
