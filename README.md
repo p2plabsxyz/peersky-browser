@@ -30,7 +30,7 @@
     - Ecosia
     - Kagi
     - Startpage
-  - [ ] 🚧 [Tabs](https://github.com/p2plabsxyz/peersky-browser/issues/11)
+  - [x] Tabs
     - Vertical tabs toggle
 
 - [x] IPFS protocol handler:
