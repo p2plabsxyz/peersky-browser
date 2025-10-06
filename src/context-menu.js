@@ -1,4 +1,4 @@
-import { Menu, MenuItem, clipboard } from "electron";
+import { Menu, MenuItem, clipboard,nativeImage } from "electron";
 import WindowManager from "./window-manager.js";
 
 const isMac = process.platform === "darwin";
@@ -20,14 +20,10 @@ export function attachContextMenus(browserWindow, windowManager) {
     webContents.on("context-menu", (event, params) => {
       const menu = new Menu();
 
-      // Add Undo, Redo for editable text fields with platform-specific accelerators
+      // Undo / Redo for editable fields
       if (params.isEditable) {
         menu.append(
-          new MenuItem({
-            label: "Undo",
-            role: "undo",
-            accelerator: "CommandOrControl+Z",
-          })
+          new MenuItem({ label: "Undo", role: "undo", accelerator: "CommandOrControl+Z" })
         );
         menu.append(
           new MenuItem({
@@ -39,7 +35,7 @@ export function attachContextMenus(browserWindow, windowManager) {
         menu.append(new MenuItem({ type: "separator" }));
       }
 
-      // Cut, Copy, Paste, Delete, and Select All with accelerators
+      // Cut, Copy, Paste, Delete, Select All
       if (params.isEditable || params.selectionText.trim().length > 0) {
         menu.append(
           new MenuItem({
@@ -65,12 +61,7 @@ export function attachContextMenus(browserWindow, windowManager) {
             enabled: params.editFlags.canPaste,
           })
         );
-        menu.append(
-          new MenuItem({
-            label: "Delete",
-            role: "delete",
-          })
-        );
+        menu.append(new MenuItem({ label: "Delete", role: "delete" }));
         menu.append(
           new MenuItem({
             label: "Select All",
@@ -81,70 +72,67 @@ export function attachContextMenus(browserWindow, windowManager) {
         menu.append(new MenuItem({ type: "separator" }));
       }
 
-      // Navigation controls with no accelerators
+      // Navigation controls
       menu.append(
         new MenuItem({
           label: "Back",
           enabled: webContents.canGoBack(),
           click: () => {
-            // Try tab-based navigation first, fallback to direct webContents
-            browserWindow.webContents.executeJavaScript(`
-              const tabBar = document.querySelector('#tabbar');
-              if (tabBar && typeof tabBar.goBackActiveTab === 'function') {
-                tabBar.goBackActiveTab();
-              } else {
-                // Direct webContents navigation for single webview
-                return 'fallback';
-              }
-            `).then(result => {
-              if (result === 'fallback') {
-                webContents.goBack();
-              }
-            }).catch(() => webContents.goBack());
+            browserWindow.webContents
+              .executeJavaScript(`
+                const tabBar = document.querySelector('#tabbar');
+                if (tabBar && typeof tabBar.goBackActiveTab === 'function') {
+                  tabBar.goBackActiveTab();
+                } else { 'fallback'; }
+              `)
+              .then((result) => {
+                if (result === "fallback") webContents.goBack();
+              })
+              .catch(() => webContents.goBack());
           },
         })
       );
+
       menu.append(
         new MenuItem({
           label: "Forward",
           enabled: webContents.canGoForward(),
           click: () => {
-            browserWindow.webContents.executeJavaScript(`
-              const tabBar = document.querySelector('#tabbar');
-              if (tabBar && typeof tabBar.goForwardActiveTab === 'function') {
-                tabBar.goForwardActiveTab();
-              } else {
-                return 'fallback';
-              }
-            `).then(result => {
-              if (result === 'fallback') {
-                webContents.goForward();
-              }
-            }).catch(() => webContents.goForward());
-          },
-        })
-      );
-      menu.append(
-        new MenuItem({
-          label: "Reload",
-          click: () => {
-            browserWindow.webContents.executeJavaScript(`
-              const tabBar = document.querySelector('#tabbar');
-              if (tabBar && typeof tabBar.reloadActiveTab === 'function') {
-                tabBar.reloadActiveTab();
-              } else {
-                return 'fallback';
-              }
-            `).then(result => {
-              if (result === 'fallback') {
-                webContents.reload();
-              }
-            }).catch(() => webContents.reload());
+            browserWindow.webContents
+              .executeJavaScript(`
+                const tabBar = document.querySelector('#tabbar');
+                if (tabBar && typeof tabBar.goForwardActiveTab === 'function') {
+                  tabBar.goForwardActiveTab();
+                } else { 'fallback'; }
+              `)
+              .then((result) => {
+                if (result === "fallback") webContents.goForward();
+              })
+              .catch(() => webContents.goForward());
           },
         })
       );
 
-      // Element inspection
+      menu.append(
+        new MenuItem({
+          label: "Reload",
+          click: () => {
+            browserWindow.webContents
+              .executeJavaScript(`
+                const tabBar = document.querySelector('#tabbar');
+                if (tabBar && typeof tabBar.reloadActiveTab === 'function') {
+                  tabBar.reloadActiveTab();
+                } else { 'fallback'; }
+              `)
+              .then((result) => {
+                if (result === "fallback") webContents.reload();
+              })
+              .catch(() => webContents.reload());
+          },
+        })
+      );
+
+      // Inspect element
       menu.append(
         new MenuItem({
           label: "Inspect",
@@ -157,13 +145,10 @@ export function attachContextMenus(browserWindow, windowManager) {
         })
       );
 
-      // Link handling
+      // Links
       if (params.linkURL) {
         menu.append(
-          new MenuItem({
-            label: "Copy Link Address",
-            click: () => clipboard.writeText(params.linkURL),
-          })
+          new MenuItem({ label: "Copy Link Address", click: () => clipboard.writeText(params.linkURL) })
         );
         menu.append(
           new MenuItem({
@@ -171,60 +156,80 @@ export function attachContextMenus(browserWindow, windowManager) {
             click: () => {
               if (windowManagerInstance) {
                 windowManagerInstance.open({ url: params.linkURL, newWindow: true });
-              } else {
-                console.error("WindowManager instance not set.");
               }
             },
           })
         );
       }
 
+      // ✅ Image-specific options
+      if (params.mediaType === "image") {
+        menu.append(
+          new MenuItem({
+            label: "Copy Image",
+            click: () => {
+              const img = nativeImage.createFromDataURL(params.srcURL);
+              clipboard.writeImage(img);
+            },
+          })
+        );
+
+        menu.append(
+          new MenuItem({
+            label: "Download Image",
+            click: async () => {
+              const { dialog } = require("electron");
+              const fs = require("fs");
+              const path = require("path");
+              const axios = require("axios");
+
+              try {
+                const savePath = dialog.showSaveDialogSync({
+                  defaultPath: path.basename(params.srcURL.split("?")[0]),
+                });
+
+                if (!savePath) return;
+
+                const response = await axios.get(params.srcURL, { responseType: "arraybuffer" });
+                fs.writeFileSync(savePath, Buffer.from(response.data));
+              } catch (err) {
+                console.error("Error downloading image:", err);
+              }
+            },
+          })
+        );
+
+        menu.append(new MenuItem({ type: "separator" }));
+      }
+
       menu.popup();
     });
   };
 
-  // Attach to main window's webContents
+  // Attach to main window
   attachMenuToWebContents(browserWindow.webContents);
 
-  // Attach to all existing webviews
-  browserWindow.webContents.on(
-    "did-attach-webview",
-    (event, webviewWebContents) => {
-      attachMenuToWebContents(webviewWebContents);
+  // Attach to webviews
+  browserWindow.webContents.on("did-attach-webview", (event, webviewWebContents) => {
+    attachMenuToWebContents(webviewWebContents);
 
-      // Intercept window.open / target="_blank" requests and try to add them as tabs
-      webviewWebContents.setWindowOpenHandler(({ url }) => {
-        // First, attempt to add the URL as a new tab in the current window (renderer side)
-        const escapedUrl = url.replace(/'/g, "\\'");
-
-        browserWindow.webContents
-          .executeJavaScript(`
-            const tabBar = document.querySelector('#tabbar');
-            if (tabBar && typeof tabBar.addTab === 'function') {
-              tabBar.addTab('${escapedUrl}');
-              // Indicate success so main process knows no fallback is required
-              true;
-            } else {
-              // Tab bar not available – signal fallback
-              false;
-            }
-          `)
-          .then((added) => {
-            if (!added && windowManagerInstance) {
-              // Fallback: open in new window if tab creation failed
-              windowManagerInstance.open({ url });
-            }
-          })
-          .catch((err) => {
-            console.error('Failed to add tab from windowOpenHandler:', err);
-            if (windowManagerInstance) {
-              windowManagerInstance.open({ url });
-            }
-          });
-
-        // Always deny the automatic window creation – we will handle it ourselves
-        return { action: 'deny' };
-      });
-    }
-  );
+    webviewWebContents.setWindowOpenHandler(({ url }) => {
+      const escapedUrl = url.replace(/'/g, "\\'");
+      browserWindow.webContents
+        .executeJavaScript(`
+          const tabBar = document.querySelector('#tabbar');
+          if (tabBar && typeof tabBar.addTab === 'function') {
+            tabBar.addTab('${escapedUrl}');
+            true;
+          } else { false; }
+        `)
+        .then((added) => {
+          if (!added && windowManagerInstance) windowManagerInstance.open({ url });
+        })
+        .catch(() => {
+          if (windowManagerInstance) windowManagerInstance.open({ url });
+        });
+      return { action: "deny" };
+    });
+  });
 }
