@@ -141,29 +141,20 @@ class TabBar extends HTMLElement {
       // Don't call saveTabsState() here to avoid overwriting the main window's tabs
       return;
     }
-
-    // Check if it is a newly opened browser window
-    const isNewWindow = searchParams.get('newWindow') === 'true';
-
-    if (isNewWindow) {
-      const urlToLoad = initialUrl || "peersky://home";
-      const title = initialUrl ? "New Tab" : "Home";
-      this.addTab(urlToLoad, title);
-      this.saveTabsState();
-      return;
-    }
-    
-    // Normal restoration logic (only for non-isolated windows)
+     // we should ALWAYS try to load from persisted data first
     const persistedTabs = this.loadPersistedTabs();
-    
     if (persistedTabs && persistedTabs.tabs.length > 0) {
-      // Restore persisted tabs
-      this.restoreTabs(persistedTabs);
-    } else {
-      // First time opening browser - create home tab and persist it
-      const homeTabId = this.addTab("peersky://home", "Home");
-      this.saveTabsState();
+       this.restoreTabs(persistedTabs);
+       return;
     }
+    
+    // if no persisted tab was there , then create new default tab
+    const urlToLoad = initialUrl || "peersky://home";
+    const title = initialUrl ? "New Tab" : "Home";
+    this.addTab(urlToLoad, title);
+    this.saveTabsState();
+    return;
+
   }
 
   // Load persisted tabs from localStorage
@@ -210,8 +201,8 @@ getAllTabGroups() {
   return allGroups;
 }
 
-  // Save current tabs state to localStorage
-  saveTabsState() {
+  //Serialize in-memory state for reliable saving during shutdown
+  getTabsStateForSaving() {
     try {
       const tabsData = {
         tabs: this.tabs.map(tab => ({
@@ -231,6 +222,21 @@ getAllTabGroups() {
           expanded: group.expanded
         }))
       };
+      return tabsData;
+    } catch (error) {
+      console.error("Failed to serialize tabs state for saving:", error);
+      return null;
+    }
+  }
+
+  // Save current tabs state to localStorage
+  saveTabsState() {
+    try {
+      const tabsData = this.getTabsStateForSaving();
+      if (!tabsData) {
+        return; // Don't save if serialization failed
+      }
+
       const stored = localStorage.getItem("peersky-browser-tabs");
       let allTabs = {};
       if (stored) {
@@ -396,6 +402,7 @@ restoreTabs(persistedData) {
         // Create hover card
         hoverCard = document.createElement('div');
         hoverCard.className = 'tab-hover-card';
+        hoverCard.dataset.tabId = tabId; // allow identification
         
         // Get webview to check memory usage (if available)
         const webview = this.webviews.get(tabId);
@@ -468,6 +475,12 @@ restoreTabs(persistedData) {
     
     tabElement.addEventListener('mouseenter', showHoverCard);
     tabElement.addEventListener('mouseleave', hideHoverCard);
+  }
+
+  // Helper to remove any visible hover card (used when tab removed)
+  destroyHoverCard() {
+    const card = document.querySelector('.tab-hover-card');
+    if (card) card.remove();
   }
 
   addTab(url = "peersky://home", title = "Home") {
@@ -646,6 +659,7 @@ restoreTabs(persistedData) {
   }
 
   closeTab(tabId) {
+    this.destroyHoverCard(); // remove lingering hover card
     const tabElement = document.getElementById(tabId);
     if (!tabElement) return;
     
@@ -1090,6 +1104,7 @@ restoreTabs(persistedData) {
   }
 
   moveTabToNewWindow(tabId) {
+    this.destroyHoverCard(); // ensure card removed if this tab had it
     const tab = this.tabs.find(t => t.id === tabId);
     if (!tab) return;
     
@@ -2196,8 +2211,8 @@ restoreTabs(persistedData) {
         indicator = document.createElement('img');
         indicator.className = 'p2p-indicator';
         indicator.src = 'peersky://static/assets/svg/diamond-fill.svg';
-        indicator.style.width = '12px';
-        indicator.style.height = '12px';
+        indicator.style.width = '8px';
+        indicator.style.height = '8px';
         indicator.style.marginLeft = '4px';
       
         const favicon = tabElement.querySelector('.tab-favicon');

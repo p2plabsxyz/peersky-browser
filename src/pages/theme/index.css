@@ -524,7 +524,7 @@ find-menu {
 
 .tab.pinned {
   background: var(--browser-theme-primary-highlight);
-  border-left: 3px solid var(--peersky-nav-button-active);
+  border: 3px solid var(--browser-theme-secondary-highlight); /* Add bottom border */
   min-width: 120px;
   position: relative;
   color: var(--browser-theme-background);
@@ -539,13 +539,7 @@ find-menu {
 }
 
 .tab.pinned::before {
-  content: "📌";
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  font-size: 12px;
-  opacity: 0.7;
-  color: var(--browser-theme-background);
+  display: none;
 }
 
 .tab.muted {
@@ -869,4 +863,23 @@ find-menu {
 
 #settings {
   margin-left: auto;
+}
+
+.vertical-tabs-layout {
+  display: flex !important;
+}
+
+.vertical-tabs-layout .webview-container {
+  margin-left: 48px !important; /* Updated to match collapsed width */
+  width: calc(100% - 48px) !important;
+  transition: margin-left 0.3s ease, width 0.3s ease !important;
+}
+
+/* Add smooth transitions for the layout changes */
+body {
+  transition: all 0.3s ease !important;
+}
+
+.webview-container {
+  transition: left 0.3s ease, width 0.3s ease !important;
 }
