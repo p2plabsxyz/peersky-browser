@@ -201,8 +201,8 @@ getAllTabGroups() {
   return allGroups;
 }
 
-  // Save current tabs state to localStorage
-  saveTabsState() {
+  //Serialize in-memory state for reliable saving during shutdown
+  getTabsStateForSaving() {
     try {
       const tabsData = {
         tabs: this.tabs.map(tab => ({
@@ -222,6 +222,21 @@ getAllTabGroups() {
           expanded: group.expanded
         }))
       };
+      return tabsData;
+    } catch (error) {
+      console.error("Failed to serialize tabs state for saving:", error);
+      return null;
+    }
+  }
+
+  // Save current tabs state to localStorage
+  saveTabsState() {
+    try {
+      const tabsData = this.getTabsStateForSaving();
+      if (!tabsData) {
+        return; // Don't save if serialization failed
+      }
+
       const stored = localStorage.getItem("peersky-browser-tabs");
       let allTabs = {};
       if (stored) {

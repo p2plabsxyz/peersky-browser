@@ -163,6 +163,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
       document.body.appendChild(tabBar);
     } else {
+      if (process.platform === 'darwin' && titleBar && typeof titleBar.toggleDarwinCollapse === 'function') {
+        titleBar.toggleDarwinCollapse(false);
+      }
       tabBar = new TabBar();
       if (titleBar) {
         titleBar.connectTabBar(tabBar);

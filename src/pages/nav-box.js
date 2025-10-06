@@ -176,8 +176,15 @@ class NavBox extends HTMLElement {
     const buttonRect = this._qrButton.getBoundingClientRect();
     const navBoxRect = this.getBoundingClientRect();
 
+    let top = buttonRect.bottom - navBoxRect.top + 50;
+
+    const titlebar = document.querySelector("#titlebar");
+    if (process.platform === 'darwin' && titlebar?.classList.contains('titlebar-collapsed-darwin')) {
+      top -= 38;
+    }
+
     this._qrPopup.style.position = "absolute";
-    this._qrPopup.style.top = `${buttonRect.bottom - navBoxRect.top + 50}px`; 
+    this._qrPopup.style.top = `${top}px`; 
     this._qrPopup.style.left = `${buttonRect.left - navBoxRect.left - 310}px`; 
   }
 

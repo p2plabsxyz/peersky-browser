@@ -370,18 +370,24 @@ class WindowManager {
         const tabsData = await win.webContents.executeJavaScript(`
         (() => {
           try {
+            const tabBar = document.querySelector('tab-bar, vertical-tabs');
+            if (tabBar && typeof tabBar.getTabsStateForSaving === 'function') {
+              return tabBar.getTabsStateForSaving();
+            }
+            // Fallback to localStorage if the new method isn't available for some reason.
+            console.warn('Falling back to localStorage to get tab state for window ${windowId}');
             const stored = localStorage.getItem("peersky-browser-tabs");
             if (!stored) return null;
             const allTabs = JSON.parse(stored);
             return allTabs["${windowId}"] || null;
           } catch (e) {
-            console.error("Failed to parse tabs data:", e);
+            console.error("Failed to get tabs data from renderer:", e);
             return null;
           }
         })()
       `);
 
-        if (tabsData && tabsData.tabs && tabsData.tabs.length > 0) {
+        if (tabsData && tabsData.tabs) {
           results[windowId] = tabsData;
           console.log(`Got ${tabsData.tabs.length} tabs from window ${windowId}`);
         }
@@ -416,13 +422,16 @@ class WindowManager {
         event.preventDefault();
         return;
       }
-
-      // If this is the last window and we're not already shutting down
-      if (!this.isQuitting && !this.shutdownInProgress && this.windows.size === 1) {
-        console.log("Last window closing, initiating shutdown");
-        this.isClosingLastWindow = true;
-        event.preventDefault();
-        this.handleGracefulShutdown();
+      
+      //treat closing the last window as a shutdown on non-macOS platforms.
+      if (process.platform !== 'darwin') {
+        // If this is the last window and we're not already shutting down
+        if (!this.isQuitting && !this.shutdownInProgress && this.windows.size === 1) {
+          console.log("Last window closing, initiating shutdown");
+          this.isClosingLastWindow = true;
+          event.preventDefault();
+          this.handleGracefulShutdown();
+        }
       }
     });
 
@@ -492,17 +501,10 @@ class WindowManager {
     }, 8000);
 
     try {
-      if (this.isClosingLastWindow) {
-        console.log("Last window closed - clearing state.");
-        await this.clearSavedState();
-        this.finalSaveCompleted = true;
-      } else {
-        console.log('Saving state NOW (before any windows close)...');
-        await this.saveCompleteState();
-
-        this.finalSaveCompleted = true;
-        console.log('State saved successfully. Now safe to close windows.');
-      }
+      console.log('Saving final state before exit...');
+      await this.saveCompleteState();
+      this.finalSaveCompleted = true;
+      console.log('State saved successfully. Now safe to close windows.');
 
       // ONLY AFTER successful save, close all windows
       console.log('Destroying windows...');
