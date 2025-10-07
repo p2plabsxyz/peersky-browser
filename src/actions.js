@@ -1,4 +1,4 @@
-import { app, BrowserWindow, globalShortcut } from "electron";
+import { app, BrowserWindow } from "electron";
 import WindowManager from './window-manager.js';
 
 export function createActions(windowManager) {
@@ -6,7 +6,8 @@ export function createActions(windowManager) {
     OpenDevTools: {
       label: "Open Dev Tools",
       accelerator: "CommandOrControl+Shift+I",
-      click: (focusedWindow) => {
+      click: () => {
+        const focusedWindow = BrowserWindow.getFocusedWindow();
         if (focusedWindow) {
           focusedWindow.webContents.openDevTools({ mode: "detach" });
         }
@@ -35,7 +36,8 @@ export function createActions(windowManager) {
     NewTab: {
       label: "New Tab",
       accelerator: "CommandOrControl+T",
-      click: (focusedWindow) => {
+      click: () => {
+        const focusedWindow = BrowserWindow.getFocusedWindow();
         if (focusedWindow) {
           focusedWindow.webContents.executeJavaScript(`{
             const tabBar = document.querySelector('#tabbar');
@@ -57,7 +59,8 @@ export function createActions(windowManager) {
     Forward: {
       label: "Forward",
       accelerator: "CommandOrControl+]",
-      click: (focusedWindow) => {
+      click: () => {
+        const focusedWindow = BrowserWindow.getFocusedWindow();
         if (focusedWindow) {
           focusedWindow.webContents.executeJavaScript(`{
             const tabBar = document.querySelector('#tabbar');
@@ -77,7 +80,8 @@ export function createActions(windowManager) {
     Back: {
       label: "Back",
       accelerator: "CommandOrControl+[",
-      click: (focusedWindow) => {
+      click: () => {
+        const focusedWindow = BrowserWindow.getFocusedWindow();
         if (focusedWindow) {
           focusedWindow.webContents.executeJavaScript(`{
             const tabBar = document.querySelector('#tabbar');
@@ -97,7 +101,8 @@ export function createActions(windowManager) {
     FocusURLBar: {
       label: "Focus URL Bar",
       accelerator: "CommandOrControl+L",
-      click: (focusedWindow) => {
+      click: () => {
+        const focusedWindow = BrowserWindow.getFocusedWindow();
         if (focusedWindow) {
           focusedWindow.webContents.executeJavaScript(`
             function focusUrlBar() {
@@ -129,7 +134,8 @@ export function createActions(windowManager) {
     Reload: {
       label: "Reload",
       accelerator: "CommandOrControl+R",
-      click: (focusedWindow) => {
+      click: () => {
+        const focusedWindow = BrowserWindow.getFocusedWindow();
         if (focusedWindow) {
           focusedWindow.webContents.executeJavaScript(`{
             const tabBar = document.querySelector('#tabbar');
@@ -169,7 +175,8 @@ export function createActions(windowManager) {
     Minimize: {
       label: "Minimize",
       accelerator: "CommandOrControl+M",
-      click: (focusedWindow) => {
+      click: () => {
+        const focusedWindow = BrowserWindow.getFocusedWindow();
         if (focusedWindow) {
           focusedWindow.minimize();
         }
@@ -178,7 +185,8 @@ export function createActions(windowManager) {
     Close: {
       label: "Close",
       accelerator: "CommandOrControl+W",
-      click: (focusedWindow) => {
+      click: () => {
+        const focusedWindow = BrowserWindow.getFocusedWindow();
         if (focusedWindow) {
           focusedWindow.webContents.executeJavaScript(`
             try {
@@ -204,7 +212,8 @@ export function createActions(windowManager) {
     FullScreen: {
       label: "Toggle Full Screen",
       accelerator: "F11",
-      click: (focusedWindow) => {
+      click: () => {
+        const focusedWindow = BrowserWindow.getFocusedWindow();
         if (focusedWindow) {
           focusedWindow.setFullScreen(!focusedWindow.isFullScreen());
         }
@@ -213,7 +222,8 @@ export function createActions(windowManager) {
     FindInPage: {
       label: "Find in Page",
       accelerator: "CommandOrControl+F",
-      click: (focusedWindow) => {
+      click: () => {
+        const focusedWindow = BrowserWindow.getFocusedWindow();
         if (focusedWindow) {
           focusedWindow.webContents.executeJavaScript(`
             var findMenu = document.querySelector('find-menu');
@@ -233,7 +243,8 @@ export function createActions(windowManager) {
     CloseTab: {
       label: "Close Tab",
       accelerator: "CommandOrControl+Shift+W",
-      click: (focusedWindow) => {
+      click: () => {
+        const focusedWindow = BrowserWindow.getFocusedWindow();
         if (focusedWindow) {
           focusedWindow.webContents.executeJavaScript(`
             try {
@@ -258,7 +269,8 @@ export function createActions(windowManager) {
       accelerator: process.platform === "darwin"
     ? "CommandOrControl+Option+Right"
     : "CommandOrControl+Tab",
-      click: (focusedWindow) => {
+      click: () => {
+        const focusedWindow = BrowserWindow.getFocusedWindow();
         if (focusedWindow) {
           focusedWindow.webContents.executeJavaScript(`
             try {
@@ -284,7 +296,8 @@ export function createActions(windowManager) {
       accelerator: process.platform === "darwin"
     ? "CommandOrControl+Option+Left"
     : "CommandOrControl+Shift+Tab",
-      click: (focusedWindow) => {
+      click: () => {
+        const focusedWindow = BrowserWindow.getFocusedWindow();
         if (focusedWindow) {
           focusedWindow.webContents.executeJavaScript(`
             try {
@@ -310,39 +323,121 @@ export function createActions(windowManager) {
   return actions;
 }
 
-export function registerShortcuts(windowManager) {
-  const actions = createActions(windowManager);
+export function createMenuTemplate(windowManager) {
+    const actions = createActions(windowManager);
+    
+    const isMac = process.platform === 'darwin';
 
-  const registerFindShortcut = (focusedWindow) => {
-    if (focusedWindow) {
-      globalShortcut.register("CommandOrControl+F", () => {
-        actions.FindInPage.click(focusedWindow);
-      });
-    }
-  };
+    const template = [
+        // { role: 'appMenu' }
+        ...(isMac ? [{
+            label: app.name,
+            submenu: [
+                { role: 'about' },
+                { type: 'separator' },
+                { role: 'services' },
+                { type: 'separator' },
+                { role: 'hide' },
+                { role: 'hideOthers' },
+                { role: 'unhide' },
+                { type: 'separator' },
+                { role: 'quit' }
+            ]
+        }] : []),
+        // { role: 'fileMenu' }
+        {
+            label: 'File',
+            submenu: [
+                {...actions.NewWindow},
+                {...actions.NewTab},
+                { type: 'separator' },
+                {...actions.CloseTab},
+                {...actions.Close},
+                { type: 'separator' },
+                isMac ? { role: 'close' } : { role: 'quit' }
+            ]
+        },
+        // { role: 'editMenu' }
+        {
+            label: 'Edit',
+            submenu: [
+                { role: 'undo' },
+                { role: 'redo' },
+                { type: 'separator' },
+                { role: 'cut' },
+                { role: 'copy' },
+                { role: 'paste' },
+                ...(isMac ? [
+                    { role: 'pasteAndMatchStyle' },
+                    { role: 'delete' },
+                    { role: 'selectAll' },
+                    { type: 'separator' },
+                    {
+                        label: 'Speech',
+                        submenu: [
+                            { role: 'startSpeaking' },
+                            { role: 'stopSpeaking' }
+                        ]
+                    }
+                ] : [
+                    { role: 'delete' },
+                    { type: 'separator' },
+                    { role: 'selectAll' }
+                ]),
+                { type: 'separator' },
+                {...actions.FindInPage}
+            ]
+        },
+        // { role: 'viewMenu' }
+        {
+            label: 'View',
+            submenu: [
+                {...actions.Reload},
+                { type: 'separator' },
+                {...actions.FullScreen},
+                {...actions.OpenDevTools}
+            ]
+        },
+        // { role: 'windowMenu' }
+        {
+            label: 'Window',
+            submenu: [
+                {...actions.Minimize},
+                {...actions.NextTab},
+                {...actions.PreviousTab},
+                ...(isMac ? [
+                    { type: 'separator' },
+                    { role: 'front' },
+                    { type: 'separator' },
+                    { role: 'window' }
+                ] : [
+                    {...actions.Close}
+                ])
+            ]
+        },
+        // { role: 'goMenu }
+        {
+            label: 'Go',
+            submenu: [
+                {...actions.Back},
+                {...actions.Forward},
+                { type: 'separator' },
+                {...actions.FocusURLBar}
+            ]
+        },
+        {
+            role: 'help',
+            submenu: [
+                {
+                    label: 'Learn More',
+                    click: async () => {
+                        const { shell } = require('electron');
+                        await shell.openExternal('https://peersky.xyz');
+                    }
+                }
+            ]
+        }
+    ];
 
-  const unregisterFindShortcut = () => {
-    globalShortcut.unregister("CommandOrControl+F");
-  };
-
-  // Register and unregister `Ctrl+F` based on focus
-  app.on("browser-window-focus", (event, win) => {
-    registerFindShortcut(win);
-  });
-
-  app.on("browser-window-blur", () => {
-    unregisterFindShortcut();
-  });
-
-  // Register remaining shortcuts
-  Object.keys(actions).forEach((key) => {
-    const action = actions[key];
-    if (key !== "FindInPage") {
-      // Register other shortcuts except `Ctrl+F`
-      globalShortcut.register(action.accelerator, () => {
-        const focusedWindow = BrowserWindow.getFocusedWindow();
-        if (focusedWindow) action.click(focusedWindow);
-      });
-    }
-  });
+    return template;
 }
