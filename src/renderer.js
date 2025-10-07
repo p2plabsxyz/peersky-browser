@@ -9,6 +9,7 @@ const { ipcRenderer } = require("electron");
 
 const DEFAULT_PAGE = "peersky://home";
 let webviewContainer = null; // Will be set dynamically for tabs
+let tabBar; // Holds current tab bar component
 const nav = document.querySelector("#navbox");
 const findMenu = document.querySelector("#find");
 const pageTitle = document.querySelector("title");
@@ -69,15 +70,34 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   const titleBar = document.querySelector("#titlebar");
-  const tabBar = document.querySelector("#tabbar") || new TabBar();
-  
-  // This is our webview container where all tab webviews will live
+  const verticalTabsEnabled = await ipcRenderer.invoke('settings-get', 'verticalTabs');
+  if (verticalTabsEnabled) {
+    const { default: VerticalTabs } = await import('./pages/vertical-tabs.js');
+    tabBar = document.querySelector('#tabbar') || new VerticalTabs();
+    const keepExpanded = await ipcRenderer.invoke('settings-get', 'keepTabsExpanded');
+    if (keepExpanded) {
+      tabBar.updateKeepExpandedState(keepExpanded);
+    }
+    // IMPORTANT: append to body before creating / restoring tabs
+    if (!tabBar.isConnected) {
+      document.body.appendChild(tabBar);
+    }
+  } else {
+    tabBar = document.querySelector('#tabbar') || new TabBar();
+    if (titleBar && !tabBar.isConnected) {
+      titleBar.connectTabBar(tabBar);
+    } else if (!tabBar.isConnected) {
+      document.body.appendChild(tabBar);
+    }
+  }
+
+  // Create webview container AFTER tabBar is in DOM
   webviewContainer = document.createElement("div");
   webviewContainer.id = "webview-container";
   webviewContainer.className = "webview-container";
   document.body.appendChild(webviewContainer);
-  
-  // Connect the tabBar with the webviewContainer
+
+  // Now safe to wire them
   tabBar.connectWebviewContainer(webviewContainer);
   
   ipcRenderer.on("remove-all-tempIcon", () => {
@@ -131,15 +151,118 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.error('Error handling group action via IPC:', e);
     }
   });
-  if (titleBar && tabBar) {
-    titleBar.connectTabBar(tabBar);
-  }
-
-  if (webviewContainer && nav && tabBar) {
-    // Setup tab event handlers
-    tabBar.addEventListener("tab-selected", (e) => {
-      const { tabId, url } = e.detail;
+  ipcRenderer.on('vertical-tabs-changed', async (_, enabled) => {
+    const oldBar = tabBar;
+    
+    // Clean up old webviews before creating new tab bar
+    if (oldBar && oldBar.webviews) {
+      oldBar.webviews.forEach((webview) => {
+        if (webview && webview.parentNode) {
+          webview.remove();
+        }
+      });
+      oldBar.webviews.clear();
+    }
+    
+    // Clear existing webviews from container
+    if (webviewContainer) {
+      while (webviewContainer.firstChild) {
+        webviewContainer.removeChild(webviewContainer.firstChild);
+      }
+    }
+    
+    // Remove old tab bar from DOM
+    if (oldBar && oldBar.parentElement) {
+      oldBar.remove();
+    }
+    
+    if (enabled) {
+      const { default: VerticalTabs } = await import('./pages/vertical-tabs.js');
+      tabBar = new VerticalTabs();
+      const keepExpanded = await ipcRenderer.invoke('settings-get', 'keepTabsExpanded');
+      if (keepExpanded) {
+        tabBar.updateKeepExpandedState(true);
+      }
+      document.body.appendChild(tabBar);
+    } else {
+      if (process.platform === 'darwin' && titleBar && typeof titleBar.toggleDarwinCollapse === 'function') {
+        titleBar.toggleDarwinCollapse(false);
+      }
+      tabBar = new TabBar();
+      if (titleBar) {
+        titleBar.connectTabBar(tabBar);
+      } else {
+        document.body.appendChild(tabBar);
+      }
+    }
+    
+    // Connect webview container and wait for tab restoration
+    await tabBar.connectWebviewContainer(webviewContainer);
+    
+    // RE-ATTACH event listeners for the new tab bar
+    if (webviewContainer && nav && tabBar) {
+      // Remove old event listeners first
+      tabBar.removeEventListener("tab-selected", handleTabSelected);
+      tabBar.removeEventListener("tab-navigated", handleTabNavigated);
       
+      // Add fresh event listeners ( to prevent same url states in all tabs)
+      tabBar.addEventListener("tab-selected", handleTabSelected);
+      tabBar.addEventListener("tab-navigated", handleTabNavigated);
+    }
+    
+    // Force update URL input field after restoration is complete
+    setTimeout(() => {
+      const activeTab = tabBar.getActiveTab();
+      const urlInput = nav.querySelector("#url");
+      if (activeTab && urlInput) {
+        if (activeTab.url === "peersky://home") {
+          urlInput.value = "";
+        } else {
+          urlInput.value = activeTab.url;
+        }
+        
+        // Also update the nav display
+        nav.setStyledUrl(activeTab.url === "peersky://home" ? "" : activeTab.url);
+      }
+    }, 300);
+    
+    // Force a layout update
+    setTimeout(() => {
+      if (tabBar.style) {
+        tabBar.style.display = 'none';
+        tabBar.offsetHeight; // Trigger reflow
+        tabBar.style.display = '';
+      }
+    }, 100);
+  });
+  
+  function handleTabSelected(e) {
+    const { tabId, url } = e.detail;
+    
+    // Hide peersky://home URL, show all others
+    if (url === "peersky://home") {
+      nav.setStyledUrl("");
+    } else {
+      nav.setStyledUrl(url);
+    }
+    
+    const tab = tabBar.tabs.find(t => t.id === tabId);
+    if (tab) {
+      pageTitle.innerText = `${tab.title} - Peersky Browser`;
+    }
+    
+    updateNavigationButtons(tabBar);
+    
+    // Update bookmark icon for the selected tab
+    if (url) {
+      updateBookmarkIcon(url);
+    }
+  }
+  
+  function handleTabNavigated(e) {
+    const { tabId, url } = e.detail;
+    
+    if (tabId === tabBar.activeTabId) {
       // Hide peersky://home URL, show all others
       if (url === "peersky://home") {
         nav.setStyledUrl("");
@@ -147,42 +270,51 @@ document.addEventListener("DOMContentLoaded", async () => {
         nav.setStyledUrl(url);
       }
       
-      const tab = tabBar.tabs.find(t => t.id === tabId);
-      if (tab) {
-        pageTitle.innerText = `${tab.title} - Peersky Browser`;
-      }
+      setTimeout(() => updateNavigationButtons(tabBar), 100);
       
-      updateNavigationButtons(tabBar);
-      
-      // Update bookmark icon for the selected tab
+      // Update bookmark icon when active tab navigates
       if (url) {
         updateBookmarkIcon(url);
       }
-    });
+    }
     
-    tabBar.addEventListener("tab-navigated", (e) => {
-      const { tabId, url } = e.detail;
-      
-      if (tabId === tabBar.activeTabId) {
-        // Hide peersky://home URL, show all others
-        if (url === "peersky://home") {
-          nav.setStyledUrl("");
-        } else {
-          nav.setStyledUrl(url);
-        }
-        
-        setTimeout(() => updateNavigationButtons(tabBar), 100);
-        
-        // Update bookmark icon when active tab navigates
-        if (url) {
-          updateBookmarkIcon(url);
-        }
+    ipcRenderer.send("webview-did-navigate", url);
+  }
+  ipcRenderer.on('keep-tabs-expanded-changed', async (_, keepExpanded) => {
+    const verticalTabsElement = document.querySelector('.tabbar.vertical-tabs');
+    if (verticalTabsElement && typeof verticalTabsElement.updateKeepExpandedState === 'function') {
+      verticalTabsElement.updateKeepExpandedState(keepExpanded);
+    } else if (verticalTabsElement) {
+      // Fallback for basic class toggle
+      if (keepExpanded) {
+        verticalTabsElement.classList.add('keep-expanded');
+      } else {
+        verticalTabsElement.classList.remove('keep-expanded');
       }
-      
-      ipcRenderer.send("webview-did-navigate", url);
-    });
+    }
+  });
+
+  ipcRenderer.on('hide-tab-components', () => {
+    if (tabBar) {
+      tabBar.style.display = 'none';
+    }
+  });
+
+  ipcRenderer.on('load-tab-components', () => {
+    if (tabBar) {
+      tabBar.style.display = '';
+    }
+  });
+  
+  if (!verticalTabsEnabled && titleBar && tabBar.parentElement !== titleBar) {
+    titleBar.connectTabBar(tabBar);
+  }
+
+  if (webviewContainer && nav && tabBar) {
+    // Setup tab event handlers
+    tabBar.addEventListener("tab-selected", handleTabSelected);
+    tabBar.addEventListener("tab-navigated", handleTabNavigated);
     
-    // Handle tab loading state changes
     tabBar.addEventListener("tab-loading", (e) => {
       const { tabId, isLoading } = e.detail;
       

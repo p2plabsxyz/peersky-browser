@@ -10,6 +10,7 @@
     @import url("browser://theme/index.css");
     @import url("browser://theme/vars.css");
     @import url("browser://theme/settings.css");
+    @import url("browser://theme/tabs.css");
   </style>
   <title>Settings</title>
 </head>
@@ -35,8 +36,7 @@
           <img src="peersky://static/assets/svg/bookmark-settings.svg" class="nav-icon" alt="Bookmarks Icon">
           <span>Bookmarks</span>
         </a>
-        <!-- TODO: Add #tabs in href for a separate tabs page in settings -->
-        <a href="peersky://tabs" class="nav-item">
+        <a href="#tabs" class="nav-item" data-section="tabs">
           <img src="peersky://static/assets/svg/folder.svg" class="nav-icon" alt="Tab Group Icon">
           <span>Tabs</span>
         </a>
@@ -121,6 +121,7 @@
                 <div class="select-dropdown">
                   <div class="select-option" data-value="duckduckgo">DuckDuckGo</div>
                   <div class="select-option" data-value="ecosia">Ecosia</div>
+                  <div class="select-option" data-value="kagi">Kagi</div>
                   <div class="select-option" data-value="startpage">Startpage</div>
                 </div>
               </div>
@@ -137,10 +138,75 @@
         </section>
       </div>
 
+      <!-- Extensions Section -->
+      <div id="extensions-section" class="settings-page">
+        <h1 class="section-title">Extensions</h1>
+        
+        <section class="settings-section">
+          <div class="coming-soon-notice">
+            Extension support coming soon
+          </div>
+          
+          <div class="extension-row">
+            <div class="extension-info">
+              <div class="extension-name">Ad Blocker</div>
+              <div class="extension-status">Coming soon</div>
+            </div>
+            <div class="extension-toggle">
+              <label class="toggle-label">
+                <input type="checkbox" class="toggle-input" disabled>
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+          
+          <div class="extension-row">
+            <div class="extension-info">
+              <div class="extension-name">DScan</div>
+              <div class="extension-status">Coming soon</div>
+            </div>
+            <div class="extension-toggle">
+              <label class="toggle-label">
+                <input type="checkbox" class="toggle-input" disabled>
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Tabs Section -->
+      <div id="tabs-section" class="settings-page">
+        <h1 class="section-title">Tabs</h1>
+
+        <section class="settings-section">
+          <div class="setting-row">
+            <div class="setting-label">Enable vertical tabs</div>
+            <div class="setting-control">
+              <label class="toggle-label">
+                <input type="checkbox" id="vertical-tabs" class="toggle-input">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-label">Keep tabs expanded</div>
+            <div class="setting-control">
+              <label class="toggle-label">
+                <input type="checkbox" id="keep-tabs-expanded" class="toggle-input">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+        </section>
+        <tabs-box style="width:100%;"></tabs-box>
+      </div>
     </main>
   </div>
 </div>
 
+<script src="peersky://static/js/tabs.js" type="module"></script>
 <script src="peersky://static/js/settings.js" defer></script>
 </body>
 </html> 

@@ -26,7 +26,7 @@ export function createActions(windowManager) {
                   urlInput.focus();
                   urlInput.select();
                 }
-              }, 400);
+              }, 900);
             `);
           });
         }
@@ -255,7 +255,9 @@ export function createActions(windowManager) {
     },
     NextTab: {
       label: "Next Tab",
-      accelerator: "CommandOrControl+Tab",
+      accelerator: process.platform === "darwin"
+    ? "CommandOrControl+Option+Right"
+    : "CommandOrControl+Tab",
       click: (focusedWindow) => {
         if (focusedWindow) {
           focusedWindow.webContents.executeJavaScript(`
@@ -279,7 +281,9 @@ export function createActions(windowManager) {
     },
     PreviousTab: {
       label: "Previous Tab",
-      accelerator: "CommandOrControl+Shift+Tab",
+      accelerator: process.platform === "darwin"
+    ? "CommandOrControl+Option+Left"
+    : "CommandOrControl+Shift+Tab",
       click: (focusedWindow) => {
         if (focusedWindow) {
           focusedWindow.webContents.executeJavaScript(`
