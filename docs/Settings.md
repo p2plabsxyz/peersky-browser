@@ -68,7 +68,7 @@ All settings-related functionality in Peersky flows through a unified preload an
 
 ## 4. UI Layout & Structure
 
-The settings page is a single HTML document routed via `peersky://settings`, organized into tabs: Appearance, Search, Bookmarks, and Extensions (placeholder).
+The settings page is a single HTML document routed via `peersky://settings`, organized into tabs: Appearance, Search, Bookmarks, and Extensions (✅ Complete).
 
 Each section is built using simple HTML blocks styled with internal and theme-provided CSS variables. Navigation is handled client-side.
 
@@ -103,6 +103,20 @@ Each section is built using simple HTML blocks styled with internal and theme-pr
 - Wipes:
   - Electron session (cookies, storage)
   - P2P caches (`ipfs/`, `hyper/`, `ensCache.json`)
+
+### Extensions Management
+
+- **Extension Installation**: Install from Chrome Web Store URLs or local directories
+- **Extension Lifecycle**: Enable, disable, update, and uninstall extensions
+- **Security Validation**: Comprehensive manifest validation and permission assessment
+- **Settings Integration**: Complete extension management interface in settings tab
+
+**Extension APIs**:
+- `extensionAPI.listExtensions()` - Get all installed extensions
+- `extensionAPI.installFromWebStore(urlOrId)` - Install from Chrome Web Store
+- `extensionAPI.toggleExtension(id, enabled)` - Enable/disable extension
+- `extensionAPI.uninstallExtension(id)` - Remove extension
+- `extensionAPI.updateAll()` - Update all extensions
 
 ## 6. Adding a New Setting (Example: `autoSave`)
 
