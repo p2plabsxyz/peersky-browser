@@ -98,7 +98,10 @@ class TabBar extends HTMLElement {
     addButton.className = "add-tab-button";
     addButton.innerHTML = "+";
     addButton.title = "New Tab";
-    addButton.addEventListener("click", () => this.addTab());
+    addButton.addEventListener("click", (e) => {
+      e.currentTarget.blur();
+      this.addTab();
+    });
     
     this.tabContainer = document.createElement("div");
     this.tabContainer.className = "tab-container";
@@ -248,6 +251,14 @@ getAllTabGroups() {
       }
       allTabs[this.windowId] = tabsData;
       localStorage.setItem("peersky-browser-tabs", JSON.stringify(allTabs));
+      
+      // Trigger main process to save complete state
+      try {
+        const { ipcRenderer } = require('electron');
+        ipcRenderer.send('save-state');
+      } catch (e) {
+        console.error("Failed to send save-state event:", e);
+      }
     } catch (error) {
       console.error("Failed to save tabs state:", error);
     }
@@ -496,7 +507,7 @@ restoreTabs(persistedData) {
         urlInput.focus();
         urlInput.select();
       }
-    }, 100);
+    }, 400);
     
     return tabId;
   }
