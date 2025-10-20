@@ -621,6 +621,22 @@ restoreTabs(persistedData) {
         }));
       }, 100);
     });
+    
+    // Handle in-page navigation 
+    webview.addEventListener("did-navigate-in-page", (e) => {
+      const newUrl = e.url;
+      this.updateTab(tabId, { url: newUrl });
+      
+      this.dispatchEvent(new CustomEvent("tab-navigated", { 
+        detail: { tabId, url: newUrl } 
+      }));
+      
+      setTimeout(() => {
+        this.dispatchEvent(new CustomEvent("navigation-state-changed", {
+          detail: { tabId }
+        }));
+      }, 100);
+    });
   
     // Handle audio state changes
     webview.addEventListener("media-started-playing", () => {
@@ -632,6 +648,7 @@ restoreTabs(persistedData) {
     });
   
     webview.addEventListener("new-window", (e) => {
+      e.preventDefault();
       this.addTab(e.url, "New Tab");
     });
 
