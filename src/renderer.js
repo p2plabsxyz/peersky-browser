@@ -18,6 +18,30 @@ const pageTitle = document.querySelector("title");
 const searchParams = new URL(window.location.href).searchParams;
 const toNavigate = searchParams.has("url") ? searchParams.get("url") : DEFAULT_PAGE;
 
+// NEW: Error handling function
+function setupWebviewErrorHandling(webview) {
+  if (!webview) return;
+
+  webview.addEventListener('did-fail-load', (event) => {
+    if (!event.isMainFrame) return;
+
+    const IGNORED_ERRORS = [-3, -999];
+    if (IGNORED_ERRORS.includes(event.errorCode)) return;
+
+    const validatedURL = event.validatedURL || '';
+    if (validatedURL.includes('/error.html')) return;
+
+    const errorPageUrl = `peersky://p2p/pages/error.html?code=${event.errorCode}&msg=${encodeURIComponent(event.errorDescription || 'Network error')}&url=${encodeURIComponent(validatedURL)}`;
+    webview.loadURL(errorPageUrl);
+  });
+
+  webview.addEventListener('certificate-error', (event) => {
+    event.preventDefault();
+    const errorPageUrl = `peersky://p2p/pages/error.html?code=-200&msg=${encodeURIComponent('Certificate Error')}&url=${encodeURIComponent(event.url)}`;
+    webview.loadURL(errorPageUrl);
+  });
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
   // Initialize theme on page load
   try {
@@ -311,6 +335,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
     
     // Check if we need to navigate to a specific URL initially
+
+    // NEW: Setup error handling
+    tabBar.addEventListener("webview-created", (e) => {
+      if (e.detail.webview) setupWebviewErrorHandling(e.detail.webview);
+    });
+
+    setTimeout(() => {
+      tabBar.webviews?.forEach((webview) => setupWebviewErrorHandling(webview));
+    }, 500);
+
     if (toNavigate !== DEFAULT_PAGE) {
       const firstTab = tabBar.tabs[0];
       if (firstTab) {
