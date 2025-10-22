@@ -1,22 +1,29 @@
 {
   "extensions": [
     {
-      "id": "1124125c7038147ecd77153d9c71a23f",
+      "id": "eimadpbcbfnmbkopoojfekhnkhdbieeh",
       "name": "Dark Reader",
-      "archive": "darkreader-chrome-mv3.zip",
-      "version": "4.9.108"
+      "url": "https://chrome.google.com/webstore/detail/dark-reader/eimadpbcbfnmbkopoojfekhnkhdbieeh",
+      "archive": "dark-reader.zip"
     },
     {
-      "id": "4f4dcbaac922ec0c20cd59a36943f18d",
+      "id": "gbefmodhlophhakmoecijeppjblibmie",
       "name": "Linguist - web page translator",
-      "archive": "linguist.zip",
-      "version": "7.0.4"
+      "url": "https://chromewebstore.google.com/detail/linguist-web-page-transla/gbefmodhlophhakmoecijeppjblibmie",
+      "archive": "linguist-web-page-transla.zip"
     },
     {
-      "id": "fe7dec3f678b9d9acc4d644a420950c5",
+      "id": "ddkjiahejlhfcafbddmgiahcphecmpfh",
       "name": "uBlock Origin Lite",
+      "url": "https://chromewebstore.google.com/detail/ublock-origin-lite/ddkjiahejlhfcafbddmgiahcphecmpfh",
       "archive": "uBOLite_2025.921.2008.chromium.zip",
-      "version": "2025.921.2008"
+      "skipDownload": true 
+    },
+    {
+      "id": "fpeoodllldobpkbkabpblcfaogecpndd",
+      "name": "Webrecorder ArchiveWeb.page",
+      "url": "https://chromewebstore.google.com/detail/webrecorder-archivewebpag/fpeoodllldobpkbkabpblcfaogecpndd",
+      "archive": "webrecorder-archivewebpag.zip"
     }
   ]
 }
