@@ -28,6 +28,73 @@ const DEFAULT_SETTINGS = {
 };
 
 class SettingsManager {
+  // Backup relevant data files into a zip
+  async createBackup({ generateCid = false } = {}) {
+    const archiver = require('archiver');
+    const { createWriteStream, readFile } = require('fs');
+    const { pipeline } = require('stream');
+    const util = require('util');
+    const pipe = util.promisify(pipeline);
+    const USER_DATA = app.getPath('userData');
+    const files = [
+      'settings.json',
+      'ensCache.json',
+      'ipfsCache.json',
+      'lastOpened.json',
+      // Add more as needed (e.g., Hyperdrive index)
+    ];
+    const backupPath = path.join(USER_DATA, `peersky-backup-${Date.now()}.zip`);
+    const output = createWriteStream(backupPath);
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    archive.on('warning', err => logDebug(`Backup warning: ${err.message}`));
+    archive.on('error', err => { throw err; });
+    archive.pipe(output);
+    for (const file of files) {
+      const filePath = path.join(USER_DATA, file);
+      try {
+        await fs.access(filePath);
+        archive.file(filePath, { name: file });
+      } catch (e) {
+        logDebug(`Backup: File not found, skipping: ${file}`);
+      }
+    }
+    await archive.finalize();
+    await new Promise(resolve => output.on('close', resolve));
+    let cid = null;
+    if (generateCid) {
+      // Stub: Integrate with IPFS to add file and get CID
+      // cid = await addToIpfs(backupPath);
+      logDebug('IPFS CID generation requested (not implemented)');
+    }
+    return { backupPath, cid };
+  }
+
+  // Restore from backup zip file
+  async restoreBackup({ zipPath, zipBuffer, fromCid, pastedContent }) {
+    const unzipper = require('unzipper');
+    const USER_DATA = app.getPath('userData');
+    let zipStream;
+    if (zipPath) {
+      zipStream = require('fs').createReadStream(zipPath);
+    } else if (zipBuffer) {
+      const { Readable } = require('stream');
+      zipStream = Readable.from(zipBuffer);
+    } else if (pastedContent) {
+      const { Readable } = require('stream');
+      zipStream = Readable.from(Buffer.from(pastedContent, 'base64'));
+    } else if (fromCid) {
+      // Stub: Download from IPFS using CID
+      // zipStream = await getFromIpfs(fromCid);
+      throw new Error('IPFS restore not implemented');
+    } else {
+      throw new Error('No backup source provided');
+    }
+    await zipStream.pipe(unzipper.Extract({ path: USER_DATA })).promise();
+    logDebug('Backup restored successfully');
+    await this.loadSettings();
+    this.applySettings();
+    return { success: true };
+  }
   constructor() {
     this.settings = { ...DEFAULT_SETTINGS };
     this.isLoading = false;
@@ -51,6 +118,29 @@ class SettingsManager {
   }
 
   registerIpcHandlers() {
+    // Backup handler
+    ipcMain.handle('settings-backup', async (event, { generateCid } = {}) => {
+      try {
+        logDebug('Request: create backup');
+        const result = await this.createBackup({ generateCid });
+        return result;
+      } catch (error) {
+        logDebug(`Backup error: ${error.message}`);
+        throw error;
+      }
+    });
+
+    // Restore handler
+    ipcMain.handle('settings-restore', async (event, { zipPath, zipBuffer, fromCid, pastedContent }) => {
+      try {
+        logDebug('Request: restore backup');
+        const result = await this.restoreBackup({ zipPath, zipBuffer, fromCid, pastedContent });
+        return result;
+      } catch (error) {
+        logDebug(`Restore error: ${error.message}`);
+        throw error;
+      }
+    });
     // Get all settings
     ipcMain.handle('settings-get-all', async () => {
       try {
