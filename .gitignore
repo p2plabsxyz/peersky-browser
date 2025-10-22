@@ -134,3 +134,6 @@ build/
 
 # macOS system files
 .DS_Store
+
+# Unpacked preinstalled extensions (archives live in the same directory)
+src/extensions/preinstalled-extensions/*/
