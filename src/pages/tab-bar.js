@@ -98,7 +98,10 @@ class TabBar extends HTMLElement {
     addButton.className = "add-tab-button";
     addButton.innerHTML = "+";
     addButton.title = "New Tab";
-    addButton.addEventListener("click", () => this.addTab());
+    addButton.addEventListener("click", (e) => {
+      e.currentTarget.blur();
+      this.addTab();
+    });
     
     this.tabContainer = document.createElement("div");
     this.tabContainer.className = "tab-container";
@@ -248,6 +251,14 @@ getAllTabGroups() {
       }
       allTabs[this.windowId] = tabsData;
       localStorage.setItem("peersky-browser-tabs", JSON.stringify(allTabs));
+      
+      // Trigger main process to save complete state
+      try {
+        const { ipcRenderer } = require('electron');
+        ipcRenderer.send('save-state');
+      } catch (e) {
+        console.error("Failed to send save-state event:", e);
+      }
     } catch (error) {
       console.error("Failed to save tabs state:", error);
     }
@@ -496,7 +507,7 @@ restoreTabs(persistedData) {
         urlInput.focus();
         urlInput.select();
       }
-    }, 100);
+    }, 400);
     
     return tabId;
   }
@@ -610,6 +621,22 @@ restoreTabs(persistedData) {
         }));
       }, 100);
     });
+    
+    // Handle in-page navigation 
+    webview.addEventListener("did-navigate-in-page", (e) => {
+      const newUrl = e.url;
+      this.updateTab(tabId, { url: newUrl });
+      
+      this.dispatchEvent(new CustomEvent("tab-navigated", { 
+        detail: { tabId, url: newUrl } 
+      }));
+      
+      setTimeout(() => {
+        this.dispatchEvent(new CustomEvent("navigation-state-changed", {
+          detail: { tabId }
+        }));
+      }, 100);
+    });
   
     // Handle audio state changes
     webview.addEventListener("media-started-playing", () => {
@@ -621,6 +648,7 @@ restoreTabs(persistedData) {
     });
   
     webview.addEventListener("new-window", (e) => {
+      e.preventDefault();
       this.addTab(e.url, "New Tab");
     });
 
