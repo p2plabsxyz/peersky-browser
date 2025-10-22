@@ -1,0 +1,22 @@
+{
+  "extensions": [
+    {
+      "id": "1124125c7038147ecd77153d9c71a23f",
+      "name": "Dark Reader",
+      "archive": "darkreader-chrome-mv3.zip",
+      "version": "4.9.108"
+    },
+    {
+      "id": "4f4dcbaac922ec0c20cd59a36943f18d",
+      "name": "Linguist - web page translator",
+      "archive": "linguist.zip",
+      "version": "7.0.4"
+    },
+    {
+      "id": "fe7dec3f678b9d9acc4d644a420950c5",
+      "name": "uBlock Origin Lite",
+      "archive": "uBOLite_2025.921.2008.chromium.zip",
+      "version": "2025.921.2008"
+    }
+  ]
+}

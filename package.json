@@ -18,13 +18,12 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "electron .",
+    "postinstall": "node scripts/postinstall.js",
     "build": "electron-builder build --publish never",
-    "build-all": "electron-builder build -mwl",
-    "postinstall": "electron-builder install-app-deps"
+    "build-all": "electron-builder build -mwl"
   },
   "build": {
-    "buildDependenciesFromSource": true,
-    "npmRebuild": true,
+    "npmRebuild": false,
     "asar": true,
     "appId": "peersky.p2plabs.xyz",
     "productName": "Peersky Browser",
@@ -41,6 +40,7 @@
     "mac": {
       "artifactName": "${name}-${version}-${os}-${arch}.${ext}",
       "gatekeeperAssess": false,
+      "identity": null,
       "extendInfo": {
         "NSMicrophoneUsageDescription": "The current page is asking to use your microphone",
         "NSCameraUsageDescription": "The current page is asking to use your camera",
@@ -133,9 +133,12 @@
     "@libp2p/kad-dht": "^15.1.11",
     "b4a": "^1.6.7",
     "blockstore-level": "^2.0.3",
+    "chrome-extension-fetch": "1.0.0",
     "content-hash": "^2.5.2",
     "content-type": "^1.0.5",
     "datastore-level": "^11.0.3",
+    "electron-chrome-extensions": "^4.9.0",
+    "electron-chrome-web-store": "^0.13.0",
     "electron-find": "^1.0.7",
     "electron-log": "^5.3.0",
     "electron-updater": "^6.2.1",
@@ -152,10 +155,11 @@
     "mime-types": "^2.1.35",
     "multiformats": "^13.3.2",
     "scoped-fs": "^1.4.1",
+    "unzipper": "^0.10.14",
     "web3protocol": "^0.6.0"
   },
   "devDependencies": {
-    "electron": "^29.0.1",
-    "electron-builder": "^24.12.0"
+    "electron": "^37.2.2",
+    "electron-builder": "^26.0.12"
   }
 }

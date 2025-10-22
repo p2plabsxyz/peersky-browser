@@ -535,6 +535,24 @@ restoreTabs(persistedData) {
         webview.style.display = "flex";
         webview.focus();
       }
+      
+      // Register webview with extension system for proper tab context
+      // Use a small delay to ensure webview is fully attached
+      setTimeout(() => {
+        try {
+          const webContentsId = webview.getWebContentsId();
+          const { ipcRenderer } = require('electron');
+          ipcRenderer.invoke('extensions-register-webview', webContentsId).then(result => {
+            if (!result.success) {
+              console.warn(`[TabBar] Failed to register webview ${webContentsId}:`, result.error);
+            }
+          }).catch(error => {
+            console.error(`[TabBar] Error registering webview:`, error);
+          });
+        } catch (error) {
+          console.warn(`[TabBar] Could not register webview with extension system:`, error);
+        }
+      }, 100); // Small delay to ensure webview is fully ready
     });
     
     // Set up event listeners for this webview
@@ -683,6 +701,17 @@ restoreTabs(persistedData) {
     // Remove associated webview
     const webview = this.webviews.get(tabId);
     if (webview) {
+      // Unregister webview from extension system before removing
+      try {
+        const webContentsId = webview.getWebContentsId();
+        const { ipcRenderer } = require('electron');
+        ipcRenderer.invoke('extensions-unregister-webview', webContentsId).catch(error => {
+          console.warn(`[TabBar] Error unregistering webview:`, error);
+        });
+      } catch (error) {
+        // Webview might already be destroyed, which is fine
+      }
+      
       webview.remove();
       this.webviews.delete(tabId);
     }
@@ -727,6 +756,16 @@ restoreTabs(persistedData) {
     if (newActive) {
       newActive.classList.add("active");
       this.activeTabId = tabId;
+      
+      // Close all extension popups when switching tabs
+      try {
+        const { ipcRenderer } = require('electron');
+        ipcRenderer.invoke('extensions-close-all-popups').catch(error => {
+          console.warn('[TabBar] Failed to close extension popups on tab switch:', error);
+        });
+      } catch (error) {
+        console.warn('[TabBar] Error closing extension popups:', error);
+      }
       
       // Show ONLY the newly active webview
       const newWebview = this.webviews.get(tabId);
