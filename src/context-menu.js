@@ -167,6 +167,40 @@ export function attachContextMenus(browserWindow, windowManager) {
         );
         menu.append(
           new MenuItem({
+            label: "Open Link in New Tab",
+            click: () => {
+              // First, attempt to add the URL as a new tab in the current window
+              const escapedUrl = params.linkURL.replace(/'/g, "\\'");
+              
+              browserWindow.webContents
+                .executeJavaScript(`
+                  const tabBar = document.querySelector('#tabbar');
+                  if (tabBar && typeof tabBar.addTab === 'function') {
+                    tabBar.addTab('${escapedUrl}');
+                    // Indicate success so main process knows no fallback is required
+                    true;
+                  } else {
+                    // Tab bar not available – signal fallback
+                    false;
+                  }
+                `)
+                .then((added) => {
+                  if (!added && windowManagerInstance) {
+                    // Fallback: open in new window if tab creation failed
+                    windowManagerInstance.open({ url: params.linkURL });
+                  }
+                })
+                .catch((err) => {
+                  console.error('Failed to add tab from context menu:', err);
+                  if (windowManagerInstance) {
+                    windowManagerInstance.open({ url: params.linkURL });
+                  }
+                });
+            },
+          })
+        );
+        menu.append(
+          new MenuItem({
             label: "Open Link in New Window",
             click: () => {
               if (windowManagerInstance) {
