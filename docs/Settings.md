@@ -95,7 +95,7 @@ Each section is built using simple HTML blocks styled with internal and theme-pr
 ### Search Engine
 
 - `settings.set('searchEngine', 'DuckDuckGo')`
-- Allows user to switch search engines between DuckDuckGo, Ecosia, Kagi, Startpage
+- Allows user to switch search engines between DuckDuckGo, Brave Search, Ecosia, Kagi, Startpage
 
 ### Cache Clearing
 
