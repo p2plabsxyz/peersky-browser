@@ -27,6 +27,7 @@
   - [x] Cross browser themeing ([browser://theme/](https://github.com/p2plabsxyz/peersky-browser/blob/main/docs/Theme.md))
   - [x] Search engine
     - DuckDuckGo (default)
+    - Brave Search
     - Ecosia
     - Kagi
     - Startpage
