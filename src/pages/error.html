@@ -1,145 +1,25 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Peersky - Page Load Error</title>
-  <style>
-    :root {
-      --text-color: #202124;
-      --subtext-color: #5f6368;
-      --accent-color: #1a73e8;
-      --bg-color: #f8f9fa;
-    }
-
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    body {
-      font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      background: var(--bg-color);
-      color: var(--text-color);
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      text-align: left;
-      line-height: 1.5;
-    }
-
-    .container {
-      max-width: 500px;
-      width: 90%;
-    }
-
-    .icon {
-      font-size: 70px;
-      margin-bottom: 16px;
-      color: #9aa0a6;
-      user-select: none;
-    }
-
-    h1 {
-      font-size: 22px;
-      font-weight: 500;
-      margin-bottom: 10px;
-    }
-
-    p {
-      color: var(--subtext-color);
-      font-size: 15px;
-      margin-bottom: 20px;
-    }
-
-    .url-box {
-      font-size: 13px;
-      background: #fff;
-      border: 1px solid #dadce0;
-      padding: 10px;
-      border-radius: 6px;
-      word-break: break-all;
-      color: #3c4043;
-      margin-bottom: 25px;
-      display: none;
-    }
-
-    button {
-      background: var(--accent-color);
-      color: #fff;
-      border: none;
-      border-radius: 4px;
-      padding: 10px 22px;
-      font-size: 14px;
-      cursor: pointer;
-      transition: background 0.2s ease;
-    }
-
-    button:hover {
-      background: #1558c0;
-    }
-
-    .secondary {
-      background: transparent;
-      color: var(--accent-color);
-      border: 1px solid var(--accent-color);
-      margin-left: 8px;
-    }
-
-    .secondary:hover {
-      background: rgba(26, 115, 232, 0.05);
-    }
-
-    footer {
-      margin-top: 40px;
-      font-size: 12px;
-      color: #9aa0a6;
-      text-align: center;
-    }
-
-    @media (max-width: 600px) {
-      body {
-        padding: 0 15px;
-      }
-    }
-  </style>
+  <link rel="icon" type="image/png" href="peersky://static/assets/favicon.ico" />
+  <link rel="stylesheet" href="peersky://static/css/error.css" />
+  <title>Error - Peersky</title>
 </head>
-
 <body>
   <div class="container">
     <div class="icon">🌐</div>
-    <h1>Hmm... this page isn’t responding.</h1>
-    <p id="errorMessage">
-      The site might be temporarily down or moved to a new address.
-    </p>
+    <h1 id="errorTitle">Connection Error</h1>
+    <div class="error-code" id="errorCode"></div>
+    <p id="errorMessage">Unable to connect to the server.</p>
     <div class="url-box" id="errorUrl"></div>
-
-    <div>
-      <button onclick="window.location.reload()">Reload</button>
-      <button class="secondary" onclick="window.history.back()">Go Back</button>
+    <div class="button-group">
+      <button onclick="location.reload()">Retry</button>
+      <button class="secondary" onclick="history.back()">Go Back</button>
     </div>
-
-    <footer>Peersky Browser • Network Error Page</footer>
   </div>
 
-  <script>
-    const params = new URLSearchParams(window.location.search);
-    const error = params.get("error");
-    const url = params.get("url");
-
-    if (url) {
-      const urlBox = document.getElementById("errorUrl");
-      urlBox.textContent = url;
-      urlBox.style.display = "block";
-    }
-
-    if (error) {
-      document.getElementById("errorMessage").textContent = error;
-    }
-  </script>
+  <script src="peersky://static/js/error.js"></script>
 </body>
-
 </html>

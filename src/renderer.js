@@ -5,6 +5,9 @@ import {
   WEB3_PREFIX,
   handleURL,
 } from "./utils.js";
+
+const chromiumNetErrors = require('chromium-net-errors');
+
 const { ipcRenderer } = require("electron");
 
 const DEFAULT_PAGE = "peersky://home";
@@ -18,28 +21,109 @@ const pageTitle = document.querySelector("title");
 const searchParams = new URL(window.location.href).searchParams;
 const toNavigate = searchParams.has("url") ? searchParams.get("url") : DEFAULT_PAGE;
 
-// NEW: Error handling function
 function setupWebviewErrorHandling(webview) {
-  if (!webview) return;
+  if (!webview || webview._errorHandlerInitialized) return;
+  webview._errorHandlerInitialized = true;
 
-  webview.addEventListener('did-fail-load', (event) => {
-    if (!event.isMainFrame) return;
+  const state = {
+    isErrorPageVisible: false,
+    abortDelayTimer: null,
+    lastFailedURL: null,
+  };
 
-    const IGNORED_ERRORS = [-3, -999];
-    if (IGNORED_ERRORS.includes(event.errorCode)) return;
+  const resetErrorState = () => {
+    state.isErrorPageVisible = false;
+    state.lastFailedURL = null;
+    if (state.abortDelayTimer) {
+      clearTimeout(state.abortDelayTimer);
+      state.abortDelayTimer = null;
+    }
+  };
 
-    const validatedURL = event.validatedURL || '';
-    if (validatedURL.includes('/error.html')) return;
+  const displayErrorPage = ({ code, name, description, url }) => {
+    try {
 
-    const errorPageUrl = `peersky://p2p/pages/error.html?code=${event.errorCode}&msg=${encodeURIComponent(event.errorDescription || 'Network error')}&url=${encodeURIComponent(validatedURL)}`;
-    webview.loadURL(errorPageUrl);
-  });
+      if (state.isErrorPageVisible) return;
+      
+      state.isErrorPageVisible = true;
+      state.lastFailedURL = url;
 
-  webview.addEventListener('certificate-error', (event) => {
-    event.preventDefault();
-    const errorPageUrl = `peersky://p2p/pages/error.html?code=-200&msg=${encodeURIComponent('Certificate Error')}&url=${encodeURIComponent(event.url)}`;
-    webview.loadURL(errorPageUrl);
-  });
+      const params = new URLSearchParams({ code, name, msg: description, url });
+      const errorPageURL = `peersky://error.html?${params}`;
+      webview.src = errorPageURL;
+    } catch (err) {
+      console.error("Failed to show error page:", err);
+      state.isErrorPageVisible = false;
+    }
+  };
+
+  const onLoadFailure = (event) => {
+    const { errorCode, errorDescription, validatedURL, isMainFrame } = event;
+    if (!isMainFrame) return;
+
+    // to avoid recursion
+    if (/error\.html|404\.html/i.test(validatedURL)) {
+      state.isErrorPageVisible = false;
+      return;
+    }
+
+    // same URL failure skip
+    if (state.isErrorPageVisible && state.lastFailedURL === validatedURL) return;
+
+    if (state.abortDelayTimer) clearTimeout(state.abortDelayTimer);
+
+    // ERR_ABORTED (-3)
+    if (errorCode === -3) {
+      state.lastFailedURL = validatedURL;
+      state.abortDelayTimer = setTimeout(() => {
+        if (!state.isErrorPageVisible) {
+          displayErrorPage({
+            code: "-3",
+            name: "ERR_ABORTED",
+            description: "The request was aborted.",
+            url: validatedURL || "",
+          });
+        }
+      }, 300);
+      return;
+    }
+
+    // get chromium error info
+    let chromiumError = {};
+    try {
+      chromiumError = chromiumNetErrors.getErrorByCode(errorCode) || {};
+    } catch (err) {
+      chromiumError = {};
+    }
+
+    displayErrorPage({
+      code: String(errorCode),
+      name: chromiumError.name || `ERR_UNKNOWN_${errorCode}`,
+      description:
+        chromiumError.description || errorDescription || "Unknown network error.",
+      url: validatedURL || "",
+    });
+  };
+
+  const onNavigation = (event) => {
+    const url = event.url || "";
+    if (!/error\.html|404\.html/i.test(url)) resetErrorState();
+  };
+
+  const onStartLoading = () => {
+    const currentURL = webview.src;
+    if (
+      currentURL &&
+      !/error\.html|404\.html/i.test(currentURL) &&
+      currentURL !== state.lastFailedURL
+    ) {
+      resetErrorState();
+    }
+  };
+
+  webview.addEventListener("did-fail-load", onLoadFailure);
+  webview.addEventListener("did-navigate", onNavigation);
+  webview.addEventListener("did-start-loading", onStartLoading);
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -120,9 +204,35 @@ document.addEventListener("DOMContentLoaded", async () => {
   webviewContainer.id = "webview-container";
   webviewContainer.className = "webview-container";
   document.body.appendChild(webviewContainer);
-
-  // Now safe to wire them
-  tabBar.connectWebviewContainer(webviewContainer);
+  
+  // Mutation observer to catch webviews
+  const webviewObserver = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      mutation.addedNodes.forEach((node) => {
+        if (node.tagName === 'WEBVIEW') {
+          setTimeout(() => setupWebviewErrorHandling(node), 0);
+        }
+      });
+    });
+  });
+  
+  webviewObserver.observe(webviewContainer, { 
+    childList: true, 
+    subtree: true 
+  });
+  
+  await tabBar.connectWebviewContainer(webviewContainer);
+  
+  // Setup error handling for all webviews
+  tabBar.addEventListener("tab-created", (e) => {
+    if (e.detail?.webview) {
+      setupWebviewErrorHandling(e.detail.webview);
+    }
+  });
+  
+  if (tabBar.webviews?.size) {
+    tabBar.webviews.forEach(wv => setupWebviewErrorHandling(wv));
+  }
   
   ipcRenderer.on('close-tab', (_, id) => {
     try {
