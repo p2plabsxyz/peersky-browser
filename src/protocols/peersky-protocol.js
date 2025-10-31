@@ -36,7 +36,6 @@ async function exists(filePath) {
   });
 }
 
-// Handle wallpaper requests cleanly
 async function handleWallpaper(filename, sendResponse) {
   try {
     const wallpaperPath = path.join(app.getPath("userData"), "wallpapers", filename);
@@ -72,21 +71,17 @@ export async function createHandler() {
       filePath = 'settings';
     }
 
+    // Strip p2p/pages/ prefix for error pages
+    if (filePath.startsWith('p2p/pages/')) {
+      filePath = filePath.replace('p2p/pages/', '');
+    }
+
     try {
       const resolvedPath = await resolveFile(filePath);
       const format = path.extname(resolvedPath);
+      
       if (!['', '.html', '.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico'].includes(format)) {
-        sendResponse({
-          statusCode: 403,
-          headers: {
-            'Content-Type': 'text/plain',
-            'Access-Control-Allow-Origin': '*',
-            'Allow-CSP-From': '*',
-            'Cache-Control': 'no-cache'
-          },
-          data: Readable.from(['Unsupported file type'])
-        });
-        return;
+        throw new Error('Unsupported file type');
       }
 
       const statusCode = 200;
@@ -105,6 +100,7 @@ export async function createHandler() {
         data
       });
     } catch (e) {
+      // Return 404 - renderer.js will handle this
       sendResponse({
         statusCode: 404,
         headers: {
