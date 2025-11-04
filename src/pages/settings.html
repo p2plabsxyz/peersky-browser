@@ -1,213 +1,321 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' peersky:; object-src 'none'; style-src 'self' 'unsafe-inline' browser:;">
-  <link rel="icon" type="image/png" href="peersky://static/assets/logo.png" />
-  <style>
-    @import url("browser://theme/index.css");
-    @import url("browser://theme/vars.css");
-    @import url("browser://theme/settings.css");
-    @import url("browser://theme/tabs.css");
-  </style>
-  <title>Settings</title>
-</head>
-<body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="script-src 'self' 'unsafe-inline' peersky:; object-src 'none'; style-src 'self' 'unsafe-inline' browser:;"
+    />
+    <link rel="icon" type="image/png" href="peersky://static/assets/logo.png" />
+    <style>
+      @import url("browser://theme/index.css");
+      @import url("browser://theme/vars.css");
+      @import url("browser://theme/settings.css");
+      @import url("browser://theme/tabs.css");
+    </style>
+    <title>Settings</title>
+  </head>
+  <body>
+    <div class="settings-wrapper">
+      <div class="settings-layout">
+        <!-- Sidebar Navigation -->
+        <nav class="settings-sidebar">
+          <div class="sidebar-header">
+            <h1 class="sidebar-title">Settings</h1>
+          </div>
+          <div class="sidebar-nav">
+            <a
+              href="#appearance"
+              class="nav-item active"
+              data-section="appearance"
+            >
+              <img
+                src="peersky://static/assets/svg/palette.svg"
+                class="nav-icon"
+                alt="Appearance Icon"
+              />
+              <span>Appearance</span>
+            </a>
+            <a href="#search" class="nav-item" data-section="search">
+              <img
+                src="peersky://static/assets/svg/search.svg"
+                class="nav-icon"
+                alt="Search Icon"
+              />
+              <span>Search</span>
+            </a>
+            <a href="peersky://bookmarks" class="nav-item">
+              <img
+                src="peersky://static/assets/svg/bookmark-settings.svg"
+                class="nav-icon"
+                alt="Bookmarks Icon"
+              />
+              <span>Bookmarks</span>
+            </a>
+            <a href="#tabs" class="nav-item" data-section="tabs">
+              <img
+                src="peersky://static/assets/svg/folder.svg"
+                class="nav-icon"
+                alt="Tab Group Icon"
+              />
+              <span>Tabs</span>
+            </a>
+            <a href="#extensions" class="nav-item" data-section="extensions">
+              <img
+                src="peersky://static/assets/svg/puzzle.svg"
+                class="nav-icon"
+                alt="Extensions Icon"
+              />
+              <span>Extensions</span>
+            </a>
+          </div>
+        </nav>
 
-<div class="settings-wrapper">
-  <div class="settings-layout">
-    <!-- Sidebar Navigation -->
-    <nav class="settings-sidebar">
-      <div class="sidebar-header">
-        <h1 class="sidebar-title">Settings</h1>
-      </div>
-      <div class="sidebar-nav">
-        <a href="#appearance" class="nav-item active" data-section="appearance">
-          <img src="peersky://static/assets/svg/palette.svg" class="nav-icon" alt="Appearance Icon">
-          <span>Appearance</span>
-        </a>
-        <a href="#search" class="nav-item" data-section="search">
-          <img src="peersky://static/assets/svg/search.svg" class="nav-icon" alt="Search Icon">
-          <span>Search</span>
-        </a>
-        <a href="peersky://bookmarks" class="nav-item">
-          <img src="peersky://static/assets/svg/bookmark-settings.svg" class="nav-icon" alt="Bookmarks Icon">
-          <span>Bookmarks</span>
-        </a>
-        <a href="#tabs" class="nav-item" data-section="tabs">
-          <img src="peersky://static/assets/svg/folder.svg" class="nav-icon" alt="Tab Group Icon">
-          <span>Tabs</span>
-        </a>
-        <a href="#extensions" class="nav-item" data-section="extensions">
-          <img src="peersky://static/assets/svg/puzzle.svg" class="nav-icon" alt="Extensions Icon">
-          <span>Extensions</span>
-        </a>
-      </div>
-    </nav>
+        <!-- Content Area -->
+        <main class="settings-content">
+          <!-- Appearance Section -->
+          <div id="appearance-section" class="settings-page active">
+            <h1 class="section-title">Appearance</h1>
 
-    <!-- Content Area -->
-    <main class="settings-content">
-      <!-- Appearance Section -->
-      <div id="appearance-section" class="settings-page active">
-        <h1 class="section-title">Appearance</h1>
-        
-        <section class="settings-section">
-          <div class="setting-row">
-            <div class="setting-label">Color theme</div>
-            <div class="setting-control">
-              <div class="custom-select" id="theme-select">
-                <div class="select-display" data-value="dark">Dark</div>
-                <div class="select-dropdown">
-                  <div class="select-option" data-value="transparent">Transparent</div>
-                  <div class="select-option" data-value="light">Light</div>
-                  <div class="select-option" data-value="dark">Dark</div>
-                  <div class="select-option" data-value="green">Green</div>
-                  <div class="select-option" data-value="cyan">Cyan</div>
-                  <div class="select-option" data-value="yellow">Yellow</div>
-                  <div class="select-option" data-value="violet">Violet</div>
+            <section class="settings-section">
+              <div class="setting-row">
+                <div class="setting-label">Color theme</div>
+                <div class="setting-control">
+                  <div class="custom-select" id="theme-select">
+                    <div class="select-display" data-value="dark">Dark</div>
+                    <div class="select-dropdown">
+                      <div class="select-option" data-value="transparent">
+                        Transparent
+                      </div>
+                      <div class="select-option" data-value="light">Light</div>
+                      <div class="select-option" data-value="dark">Dark</div>
+                      <div class="select-option" data-value="green">Green</div>
+                      <div class="select-option" data-value="cyan">Cyan</div>
+                      <div class="select-option" data-value="yellow">
+                        Yellow
+                      </div>
+                      <div class="select-option" data-value="violet">
+                        Violet
+                      </div>
+                    </div>
+                  </div>
+                  <input type="hidden" id="theme-toggle" value="dark" />
                 </div>
               </div>
-              <input type="hidden" id="theme-toggle" value="dark">
-            </div>
-          </div>
-          
-          <div class="setting-row">
-            <div class="setting-label">Built-in wallpapers</div>
-            <div class="setting-control">
-              <div class="custom-select" id="wallpaper-select">
-                <div class="select-display" data-value="redwoods">Redwoods</div>
-                <div class="select-dropdown">
-                  <div class="select-option" data-value="redwoods">Redwoods</div>
-                  <div class="select-option" data-value="mountains">Mountains</div>
+
+              <div class="setting-row">
+                <div class="setting-label">Built-in wallpapers</div>
+                <div class="setting-control">
+                  <div class="custom-select" id="wallpaper-select">
+                    <div class="select-display" data-value="redwoods">
+                      Redwoods
+                    </div>
+                    <div class="select-dropdown">
+                      <div class="select-option" data-value="redwoods">
+                        Redwoods
+                      </div>
+                      <div class="select-option" data-value="mountains">
+                        Mountains
+                      </div>
+                    </div>
+                  </div>
+                  <input
+                    type="hidden"
+                    id="wallpaper-selector"
+                    value="redwoods"
+                  />
                 </div>
               </div>
-              <input type="hidden" id="wallpaper-selector" value="redwoods">
-            </div>
-          </div>
 
-          <div class="setting-row">
-            <div class="setting-label">Custom wallpaper</div>
-            <div class="setting-control">
-              <input type="file" id="wallpaper-file" class="file-input" accept="image/*" style="display: none;">
-              <button type="button" id="wallpaper-browse" class="btn btn-secondary">Choose Image</button>
-              <button type="button" id="wallpaper-remove" class="btn btn-danger" style="display: none;">Remove Custom</button>
-            </div>
-          </div>
-
-          <div class="setting-row">
-            <div class="setting-label">Show clock on home page</div>
-            <div class="setting-control">
-              <label class="toggle-label">
-                <input type="checkbox" id="show-clock" class="toggle-input">
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-          </div>
-        </section>
-      </div>
-
-      <!-- Search Section -->
-      <div id="search-section" class="settings-page">
-        <h1 class="section-title">Search Engine</h1>
-        
-        <section class="settings-section">
-          <div class="setting-row">
-            <div class="setting-label">Default search engine</div>
-            <div class="setting-control">
-              <div class="custom-select" id="search-engine-select">
-                <div class="select-display" data-value="duckduckgo">DuckDuckGo</div>
-                <div class="select-dropdown">
-                  <div class="select-option" data-value="duckduckgo">DuckDuckGo</div>
-                  <div class="select-option" data-value="brave">Brave Search</div>
-                  <div class="select-option" data-value="ecosia">Ecosia</div>
-                  <div class="select-option" data-value="kagi">Kagi</div>
-                  <div class="select-option" data-value="startpage">Startpage</div>
+              <div class="setting-row">
+                <div class="setting-label">Custom wallpaper</div>
+                <div class="setting-control">
+                  <input
+                    type="file"
+                    id="wallpaper-file"
+                    class="file-input"
+                    accept="image/*"
+                    style="display: none"
+                  />
+                  <button
+                    type="button"
+                    id="wallpaper-browse"
+                    class="btn btn-secondary"
+                  >
+                    Choose Image
+                  </button>
+                  <button
+                    type="button"
+                    id="wallpaper-remove"
+                    class="btn btn-danger"
+                    style="display: none"
+                  >
+                    Remove Custom
+                  </button>
                 </div>
               </div>
-              <input type="hidden" id="search-engine" value="duckduckgo">
-            </div>
+
+              <div class="setting-row">
+                <div class="setting-label">Show clock on home page</div>
+                <div class="setting-control">
+                  <label class="toggle-label">
+                    <input
+                      type="checkbox"
+                      id="show-clock"
+                      class="toggle-input"
+                    />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+              </div>
+            </section>
           </div>
-          
-          <div class="setting-row">
-            <div class="setting-label">Clear cache</div>
-            <div class="setting-control">
-              <button type="button" id="clear-cache" class="btn btn-danger">Clear Cache</button>
-            </div>
+
+          <!-- Search Section -->
+          <div id="search-section" class="settings-page">
+            <h1 class="section-title">Search Engine</h1>
+
+            <section class="settings-section">
+              <div class="setting-row">
+                <div class="setting-label">Default search engine</div>
+                <div class="setting-control">
+                  <div class="custom-select" id="search-engine-select">
+                    <div class="select-display" data-value="duckduckgo">
+                      DuckDuckGo
+                    </div>
+                    <div class="select-dropdown">
+                      <div class="select-option" data-value="duckduckgo">
+                        DuckDuckGo
+                      </div>
+                      <div class="select-option" data-value="brave">
+                        Brave Search
+                      </div>
+                      <div class="select-option" data-value="ecosia">
+                        Ecosia
+                      </div>
+                      <div class="select-option" data-value="kagi">Kagi</div>
+                      <div class="select-option" data-value="custom">
+                        Custom
+                      </div>
+                      <div class="select-option" data-value="startpage">
+                        Startpage
+                      </div>
+                    </div>
+                  </div>
+                  <input type="hidden" id="search-engine" value="duckduckgo" />
+                </div>
+              </div>
+
+              <div
+                class="setting-row tall-row"
+                id="custom-search-row"
+                style="display: none"
+              >
+                <div class="setting-label">Custom search URL</div>
+                <div class="setting-control">
+                  <input
+                    type="text"
+                    id="custom-search-template"
+                    class="text-input input-fill"
+                    placeholder="https://example.com/search?q=%s"
+                    autocomplete="off"
+                  />
+                  <div id="custom-search-message" class="help-or-error">
+                    Use <code>%s</code> where the query should go.
+                  </div>
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <div class="setting-label">Clear cache</div>
+                <div class="setting-control">
+                  <button type="button" id="clear-cache" class="btn btn-danger">
+                    Clear Cache
+                  </button>
+                </div>
+              </div>
+            </section>
           </div>
-        </section>
+
+          <!-- Extensions Section -->
+          <div id="extensions-section" class="settings-page">
+            <h1 class="section-title">Extensions</h1>
+
+            <section class="settings-section">
+              <div class="coming-soon-notice">
+                Extension support coming soon
+              </div>
+
+              <div class="extension-row">
+                <div class="extension-info">
+                  <div class="extension-name">Ad Blocker</div>
+                  <div class="extension-status">Coming soon</div>
+                </div>
+                <div class="extension-toggle">
+                  <label class="toggle-label">
+                    <input type="checkbox" class="toggle-input" disabled />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="extension-row">
+                <div class="extension-info">
+                  <div class="extension-name">DScan</div>
+                  <div class="extension-status">Coming soon</div>
+                </div>
+                <div class="extension-toggle">
+                  <label class="toggle-label">
+                    <input type="checkbox" class="toggle-input" disabled />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <!-- Tabs Section -->
+          <div id="tabs-section" class="settings-page">
+            <h1 class="section-title">Tabs</h1>
+
+            <section class="settings-section">
+              <div class="setting-row">
+                <div class="setting-label">Enable vertical tabs</div>
+                <div class="setting-control">
+                  <label class="toggle-label">
+                    <input
+                      type="checkbox"
+                      id="vertical-tabs"
+                      class="toggle-input"
+                    />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <div class="setting-label">Keep tabs expanded</div>
+                <div class="setting-control">
+                  <label class="toggle-label">
+                    <input
+                      type="checkbox"
+                      id="keep-tabs-expanded"
+                      class="toggle-input"
+                    />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+              </div>
+            </section>
+            <tabs-box style="width: 100%"></tabs-box>
+          </div>
+        </main>
       </div>
+    </div>
 
-      <!-- Extensions Section -->
-      <div id="extensions-section" class="settings-page">
-        <h1 class="section-title">Extensions</h1>
-        
-        <section class="settings-section">
-          <div class="coming-soon-notice">
-            Extension support coming soon
-          </div>
-          
-          <div class="extension-row">
-            <div class="extension-info">
-              <div class="extension-name">Ad Blocker</div>
-              <div class="extension-status">Coming soon</div>
-            </div>
-            <div class="extension-toggle">
-              <label class="toggle-label">
-                <input type="checkbox" class="toggle-input" disabled>
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-          </div>
-          
-          <div class="extension-row">
-            <div class="extension-info">
-              <div class="extension-name">DScan</div>
-              <div class="extension-status">Coming soon</div>
-            </div>
-            <div class="extension-toggle">
-              <label class="toggle-label">
-                <input type="checkbox" class="toggle-input" disabled>
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-          </div>
-        </section>
-      </div>
-
-      <!-- Tabs Section -->
-      <div id="tabs-section" class="settings-page">
-        <h1 class="section-title">Tabs</h1>
-
-        <section class="settings-section">
-          <div class="setting-row">
-            <div class="setting-label">Enable vertical tabs</div>
-            <div class="setting-control">
-              <label class="toggle-label">
-                <input type="checkbox" id="vertical-tabs" class="toggle-input">
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-          </div>
-
-          <div class="setting-row">
-            <div class="setting-label">Keep tabs expanded</div>
-            <div class="setting-control">
-              <label class="toggle-label">
-                <input type="checkbox" id="keep-tabs-expanded" class="toggle-input">
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-          </div>
-        </section>
-        <tabs-box style="width:100%;"></tabs-box>
-      </div>
-    </main>
-  </div>
-</div>
-
-<script src="peersky://static/js/tabs.js" type="module"></script>
-<script src="peersky://static/js/settings.js" defer></script>
-</body>
-</html> 
+    <script src="peersky://static/js/tabs.js" type="module"></script>
+    <script src="peersky://static/js/settings.js" defer></script>
+  </body>
+</html>
