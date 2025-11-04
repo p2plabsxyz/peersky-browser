@@ -5,6 +5,9 @@ import {
   WEB3_PREFIX,
   handleURL,
 } from "./utils.js";
+
+const chromiumNetErrors = require('chromium-net-errors');
+
 const { ipcRenderer } = require("electron");
 
 const DEFAULT_PAGE = "peersky://home";
@@ -17,6 +20,115 @@ const pageTitle = document.querySelector("title");
 // Get initial URL from search params
 const searchParams = new URL(window.location.href).searchParams;
 const toNavigate = searchParams.has("url") ? searchParams.get("url") : DEFAULT_PAGE;
+
+function setupWebviewErrorHandling(webview) {
+  if (!webview || webview._errorHandlerInitialized) return;
+  webview._errorHandlerInitialized = true;
+
+  const state = {
+    isShowingError: false,
+    abortTimeout: null,
+    lastFailedUrl: null
+  };
+
+  const handleFailLoad = (event) => {
+
+    const { errorCode, errorDescription, validatedURL, isMainFrame } = event;
+    
+    if (!isMainFrame) return;
+    
+    // Prevent error page loop
+    if (validatedURL?.includes('error.html')) {
+      state.isShowingError = false;
+      return;
+    }
+    
+    if (state.isShowingError && state.lastFailedUrl === validatedURL) return;
+
+    if (state.abortTimeout) {
+      clearTimeout(state.abortTimeout);
+      state.abortTimeout = null;
+    }
+
+    // Handle ERR_ABORTED - wait for real error
+    if (errorCode === -3) {
+      state.lastFailedUrl = validatedURL;
+      state.abortTimeout = setTimeout(() => {
+        if (!state.isShowingError) {
+          showErrorPage({
+            code: '-3',
+            name: 'Request Aborted',
+            msg: 'The connection was aborted',
+            url: validatedURL || ''
+          });
+        }
+      }, 300);
+      return;
+    }
+
+    // Get Chromium error details
+    let chromiumError = chromiumNetErrors.getErrorByCode(errorCode);
+    showErrorPage({
+      code: String(errorCode),
+      name: chromiumError.name,
+      msg: errorDescription,
+      url: validatedURL,
+    });
+  };
+
+  function showErrorPage(errorInfo) {
+    if (state.isShowingError) return;
+
+    state.isShowingError = true;
+    state.lastFailedUrl = errorInfo.url;
+
+    const params = new URLSearchParams({
+      code: errorInfo.code,
+      name: errorInfo.name,
+      msg: errorInfo.msg,
+      url: errorInfo.url,
+      t: Date.now().toString()
+    });
+
+    const errorURL = `peersky://error.html?${params}`;
+
+    try {
+      webview.src = errorURL;
+      setTimeout(() => { state.isShowingError = false; }, 1000);
+    } catch (e) {
+      state.isShowingError = false;
+    }
+  }
+
+  const handleNavigate = (event) => {
+    const url = event.url || '';
+    if (!url.includes('error.html')) {
+      state.isShowingError = false;
+      state.lastFailedUrl = null;
+      if (state.abortTimeout) {
+        clearTimeout(state.abortTimeout);
+        state.abortTimeout = null;
+      }
+    }
+  };
+
+  const handleStartLoading = () => {
+    const currentSrc = webview.src;
+    if (currentSrc && !currentSrc.includes('error.html') &&
+        currentSrc !== state.lastFailedUrl) {
+      state.isShowingError = false;
+      if (state.abortTimeout) {
+        clearTimeout(state.abortTimeout);
+        state.abortTimeout = null;
+      }
+    }
+  };
+
+  webview.addEventListener('did-fail-load', handleFailLoad);
+  webview.addEventListener('did-navigate', handleNavigate);
+  webview.addEventListener('did-start-loading', handleStartLoading);
+}
+
 
 document.addEventListener("DOMContentLoaded", async () => {
   // Initialize theme on page load
@@ -96,9 +208,35 @@ document.addEventListener("DOMContentLoaded", async () => {
   webviewContainer.id = "webview-container";
   webviewContainer.className = "webview-container";
   document.body.appendChild(webviewContainer);
-
-  // Now safe to wire them
-  tabBar.connectWebviewContainer(webviewContainer);
+  
+  // Mutation observer to catch webviews
+  const webviewObserver = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      mutation.addedNodes.forEach((node) => {
+        if (node.tagName === 'WEBVIEW') {
+          setTimeout(() => setupWebviewErrorHandling(node), 0);
+        }
+      });
+    });
+  });
+  
+  webviewObserver.observe(webviewContainer, { 
+    childList: true, 
+    subtree: true 
+  });
+  
+  await tabBar.connectWebviewContainer(webviewContainer);
+  
+  // Setup error handling for all webviews
+  tabBar.addEventListener("tab-created", (e) => {
+    if (e.detail?.webview) {
+      setupWebviewErrorHandling(e.detail.webview);
+    }
+  });
+  
+  if (tabBar.webviews?.size) {
+    tabBar.webviews.forEach(wv => setupWebviewErrorHandling(wv));
+  }
   
   ipcRenderer.on('close-tab', (_, id) => {
     try {
@@ -311,6 +449,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
     
     // Check if we need to navigate to a specific URL initially
+
+    // Setup error handling
+    tabBar.addEventListener("webview-created", (e) => {
+      if (e.detail.webview) setupWebviewErrorHandling(e.detail.webview);
+    });
+
+    setTimeout(() => {
+      tabBar.webviews?.forEach((webview) => setupWebviewErrorHandling(webview));
+    }, 500);
+
     if (toNavigate !== DEFAULT_PAGE) {
       const firstTab = tabBar.tabs[0];
       if (firstTab) {
