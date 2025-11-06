@@ -309,13 +309,31 @@ class SettingsManager {
   validateSetting(key, value) {
     const validators = {
       searchEngine: (v) => ['duckduckgo', 'brave', 'ecosia', 'kagi', 'startpage', "custom"].includes(v),
-      customSearchTemplate: (v) => typeof v === "string" && v.includes("%s") && v.length < 2048,
-      theme: (v) => ['transparent', 'light', 'dark', 'green', 'cyan', 'yellow', 'violet'].includes(v),
-      showClock: (v) => typeof v === 'boolean',
-      verticalTabs: (v) => typeof v === 'boolean',
-      keepTabsExpanded: (v) => typeof v === 'boolean',
-      wallpaper: (v) => ['redwoods', 'mountains', 'custom'].includes(v),
-      wallpaperCustomPath: (v) => v === null || typeof v === 'string'
+      customSearchTemplate: (v) => {
+        if (typeof v !== "string" || v.length >= 2048) return false;
+        try {
+          // Just check if it’s parseable as a URL with any protocol
+          new URL(v);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      theme: (v) =>
+        [
+          "transparent",
+          "light",
+          "dark",
+          "green",
+          "cyan",
+          "yellow",
+          "violet",
+        ].includes(v),
+      showClock: (v) => typeof v === "boolean",
+      verticalTabs: (v) => typeof v === "boolean",
+      keepTabsExpanded: (v) => typeof v === "boolean",
+      wallpaper: (v) => ["redwoods", "mountains", "custom"].includes(v),
+      wallpaperCustomPath: (v) => v === null || typeof v === "string",
     };
     
     const validator = validators[key];

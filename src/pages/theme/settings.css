@@ -136,9 +136,9 @@ body {
   overflow-y: auto;
   background: var(--settings-bg-primary);
   height: 100vh;
-  max-width: 800px;        
-  margin: 0 auto;           
-  box-sizing: border-box;   
+  max-width: 800px;
+  margin: 0 auto;
+  box-sizing: border-box;
 }
 
 /* Settings Page Structure */
@@ -298,16 +298,16 @@ body {
   transition: transform 0.2s ease;
 }
 
-.toggle-input:checked + .toggle-slider {
+.toggle-input:checked+.toggle-slider {
   background: #3b82f6;
 }
 
-.toggle-input:checked + .toggle-slider::before {
+.toggle-input:checked+.toggle-slider::before {
   transform: translateX(16px);
   background: white;
 }
 
-.toggle-input:disabled + .toggle-slider {
+.toggle-input:disabled+.toggle-slider {
   opacity: 0.4;
   cursor: not-allowed;
 }
@@ -429,12 +429,54 @@ body {
   display: none;
 }
 
+.setting-row.tall-row {
+  padding-block: 50px !important;
+}
+
+#custom-search-row .setting-control {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 760px;
+}
+
+#custom-search-message.success {
+  color: var(--success-color, #0fba84);
+  opacity: 1;
+  font-weight: 500;
+}
+
+#custom-search-control .text-input,
+#custom-search-row .text-input {
+  width: 100%;
+  height: 40px;
+  padding: 10px 12px;
+  font-size: 14px;
+  border-radius: 10px;
+}
+
+#custom-search-message {
+  font-size: 12px;
+  line-height: 1.45;
+  opacity: 0.85;
+  margin-top: -2px;
+  white-space: normal;
+}
+
+#custom-search-message.error {
+  color: var(--danger, #ef4444);
+  opacity: 1;
+}
+
+
+
 /* Responsive Design - Simplified */
 @media (max-width: 749px) {
   .settings-sidebar {
     display: none;
   }
-  
+
   .settings-content {
     padding: 1.5rem;
     margin-left: 0;
@@ -448,7 +490,7 @@ body {
     min-width: 600px;
     overflow-x: auto;
   }
-  
+
   .settings-wrapper {
     overflow-x: auto;
   }

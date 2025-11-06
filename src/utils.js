@@ -67,6 +67,47 @@ function makeSearch(query, engine = 'duckduckgo') {
   }
 }
 
+const PLACEHOLDER_RE = /%s|\{searchTerms\}|\$1/;
+const KNOWN_QUERY_KEYS = ["q","query","p","search","s","term","keywords","k","wd","text"];
+
+function buildSearchUrl(template, term) {
+  const encoded = encodeURIComponent(term);
+
+  // (1) Replace placeholder if present
+  if (PLACEHOLDER_RE.test(template)) {
+    return template.replace(PLACEHOLDER_RE, encoded);
+  }
+
+  // (2) Structural fallback via URL parsing
+  let url;
+  try {
+    url = new URL(template);
+  } catch {
+    // Fallback if invalid URL
+    return makeDuckDuckGo(term);
+  }
+
+  // (a) Fill first empty param, e.g. ?q=
+  for (const [key, value] of url.searchParams.entries()) {
+    if (value === "") {
+      url.searchParams.set(key, term);
+      return url.toString();
+    }
+  }
+
+  // (b) Overwrite known search-like key if present
+  for (const key of KNOWN_QUERY_KEYS) {
+    if (url.searchParams.has(key)) {
+      url.searchParams.set(key, term);
+      return url.toString();
+    }
+  }
+
+  // (c) Append ?q=<term> if nothing matched
+  url.searchParams.set("q", term);
+  return url.toString();
+}
+
 async function handleURL(rawURL) {
   if (rawURL.endsWith('.eth')) {
     if (rawURL.startsWith(IPFS_PREFIX) || rawURL.startsWith(IPNS_PREFIX)) {
@@ -92,6 +133,17 @@ async function handleURL(rawURL) {
     try {
       const { ipcRenderer } = require('electron');
       const searchEngine = await ipcRenderer.invoke('settings-get', 'searchEngine');
+
+
+      if (searchEngine === 'custom') {
+        const customTemplate = await ipcRenderer.invoke('settings-get', 'customSearchTemplate');
+        if (typeof customTemplate === 'string' && customTemplate.length) {
+          return buildSearchUrl(customTemplate, rawURL);
+        }
+        console.warn('Custom search template missing or invalid, falling back to DuckDuckGo');
+        return makeDuckDuckGo(rawURL);
+      }
+
       return makeSearch(rawURL, searchEngine);
     } catch (error) {
       console.warn('Could not get search engine setting, using DuckDuckGo:', error);
@@ -188,6 +240,7 @@ export {
   makeKagi,
   makeStartpage,
   makeSearch,
+  buildSearchUrl,  
   handleURL,
   escapeHtml,
   escapeHtmlAttribute,

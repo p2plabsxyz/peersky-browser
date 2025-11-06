@@ -8,90 +8,19 @@
 let settingsAPI;
 let eventCleanupFunctions = [];
 
-// Hosts for built-in engines (lowercase)
-const BUILTIN_SEARCH_HOSTS = new Set([
-  "duckduckgo.com",
-  "search.brave.com",
-  "www.ecosia.org",
-  "kagi.com",
-  "www.startpage.com",
-]);
-
-function isBuiltInSearchTemplate(tpl) {
-  try {
-    // Replace %s with a sample to parse a real URL
-    const url = new URL(tpl.replace("%s", encodeURIComponent("test")));
-    const host = url.hostname.toLowerCase();
-
-    if (!BUILTIN_SEARCH_HOSTS.has(host)) return false;
-
-    // Extra safety: common built-in paths that indicate "regular web search"
-    const p = url.pathname.toLowerCase();
-
-    // duckduckgo: /  (query in ?q=)
-    // brave: /search
-    // ecosia: /search
-    // kagi: /search
-    // startpage: /do/search
-    if (
-      host === "duckduckgo.com" || // homepage with ?q=
-      (host === "search.brave.com" && p.includes("/search")) ||
-      (host === "www.ecosia.org" && p.includes("/search")) ||
-      (host === "kagi.com" && p.includes("/search")) ||
-      (host === "www.startpage.com" && p.includes("/do/search"))
-    ) {
-      return true;
-    }
-    return false;
-  } catch {
-    return false;
-  }
-}
-
-// Validates a custom search template:
-// - must start with http:// or https://
-// - must include %s
-// - must be a parsable URL once %s is replaced
 function validateSearchTemplate(tpl) {
   if (typeof tpl !== "string")
     return { valid: false, reason: "Template must be a string." };
 
   const s = tpl.trim();
   if (!s) return { valid: false, reason: "Template cannot be empty." };
-  if (!s.startsWith("http://") && !s.startsWith("https://")) {
-    return {
-      valid: false,
-      reason: "Template must start with http:// or https://.",
-    };
-  }
-  if (!s.includes("%s")) {
-    return {
-      valid: false,
-      reason: "Template must include %s where the query should go.",
-    };
-  }
 
-  // Parse and sanity check
-  let parsed;
   try {
-    parsed = new URL(s.replace("%s", encodeURIComponent("test search")));
+    new URL(s); // just test if it's a valid URL structure
+    return { valid: true };
   } catch {
-    return {
-      valid: false,
-      reason: "Template is not a valid URL after inserting a query.",
-    };
+    return { valid: false, reason: "Template must be a valid URL." };
   }
-
-  // Block built-in engines — user should pick them from the dropdown
-  if (isBuiltInSearchTemplate(s)) {
-    return {
-      valid: false,
-      reason:
-        "This is a built-in search engine. Please select it from the dropdown.",
-    };
-  }
-
-  return { valid: true };
 }
 
 function setTemplateFieldState(inputEl, messageEl, state) {
@@ -565,8 +494,7 @@ function populateFormFields(settings) {
       // Otherwise show the neutral hint (not the success text)
       customSearchMessage.style.display = "";
       customSearchMessage.classList.remove("error", "success");
-      customSearchMessage.innerHTML =
-        "Use <code>%s</code> where the query should go.";
+      customSearchMessage.innerHTML = 'Optional: include <code>%s</code>, <code>{searchTerms}</code>, or <code>$1</code> where the query should go. If omitted, we\'ll add <code>?q=…</code> automatically.';
     }
   }
 
