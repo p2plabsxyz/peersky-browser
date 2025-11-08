@@ -8,8 +8,8 @@
 
 body {
   font-family: var(--browser-theme-font-family, Arial, sans-serif);
-  background: var(--browser-theme-background, #18181b);
-  color: var(--browser-theme-text-color, #fff);
+  background: #18181C;
+  color: #fff;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -53,7 +53,7 @@ p {
   font-size: 13px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 12px;
+  padding: 8px;
   border-radius: 8px;
   word-break: break-all;
   margin-bottom: 24px;
@@ -67,11 +67,11 @@ p {
 }
 
 button {
-  background: #00ffff;
+  background: #06b6d4;
   color: #000;
   border: none;
-  border-radius: 6px;
-  padding: 10px 24px;
+  border-radius: 4px;
+  padding: 6px 18px;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
@@ -79,9 +79,7 @@ button {
 }
 
 button:hover {
-  background: #06b6d4;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 255, 255, 0.3);
+  background: #3b82f6;
 }
 
 button:active {
@@ -90,13 +88,12 @@ button:active {
 
 button.secondary {
   background: transparent;
-  border: 1px solid #00ffff;
-  color: #00ffff;
+  border: 1px solid #06b6d4;
+  color: #06b6d4;
 }
 
 button.secondary:hover {
   background: rgba(0, 255, 255, 0.1);
-  box-shadow: 0 4px 12px rgba(0, 255, 255, 0.2);
 }
 
 @media (max-width: 600px) {
