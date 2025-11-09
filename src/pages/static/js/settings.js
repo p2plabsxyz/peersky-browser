@@ -39,6 +39,43 @@ function setTemplateFieldState(inputEl, messageEl, state) {
   }
 }
 
+/**
+ * Checks if the provided search template matches any built-in search engine.
+ * @param {string} tpl - The custom search template URL.
+ * @returns {boolean} - True if it's a built-in search engine, otherwise false.
+ */
+function isBuiltInSearchEngine(tpl) {
+  if (typeof tpl !== "string") return false;
+
+  // Built-in search engine hostnames (add/update as needed)
+  const builtInEngines = [
+    "duckduckgo.com",
+    "search.brave.com",
+    "www.ecosia.org",
+    "kagi.com",
+    "www.startpage.com"
+  ];
+
+  // Try parsing the URL safely, adding https:// if missing
+  let parsed;
+  try {
+    parsed = new URL(tpl);
+  } catch {
+    try {
+      parsed = new URL("https://" + tpl);
+    } catch {
+      return false; // Not a valid URL at all
+    }
+  }
+
+  const host = parsed.hostname.replace(/^www\./i, "").toLowerCase();
+
+  // Normalize for comparison (so "www.duckduckgo.com" → "duckduckgo.com")
+  return builtInEngines.some(engine =>
+    host === engine.replace(/^www\./i, "").toLowerCase()
+  );
+}
+
 // Initialize API access with fallback handling
 function initializeAPI() {
   console.log('Settings: Attempting to initialize API...');
@@ -335,19 +372,37 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   customSearchTemplate?.addEventListener("input", () => {
-    customSearchMessage.style.display = ""; // show again while editing
-    const state = validateSearchTemplate(customSearchTemplate.value);
-    setTemplateFieldState(customSearchTemplate, customSearchMessage, state);
+      const tpl = customSearchTemplate.value.trim();
+      const state = validateSearchTemplate(tpl);
+
+      if (isBuiltInSearchEngine(tpl)) {
+        state.valid = false;
+        state.reason = "This search engine already exists in the browser.";
+      }
+
+      setTemplateFieldState(customSearchTemplate, customSearchMessage, state);
   });
 
   // Save custom search template on Enter
   customSearchTemplate?.addEventListener("keydown", async (e) => {
     if (e.key !== "Enter") return;
     const tpl = customSearchTemplate.value.trim();
-
     const state = validateSearchTemplate(tpl);
+
+    if (isBuiltInSearchEngine(tpl)) {
+      state.valid = false;
+      state.reason = "This search engine already exists in the browser.";
+    }
     setTemplateFieldState(customSearchTemplate, customSearchMessage, state);
     if (!state.valid) return;
+
+
+  // 🚫 Check for built-in search engines
+  if (isBuiltInSearchEngine(tpl)) {
+    customSearchMessage.style.display = "block";
+    customSearchMessage.textContent = "This search engine already exists in the browser.";
+    return;
+  }
 
     try {
       // Save template first
@@ -494,7 +549,7 @@ function populateFormFields(settings) {
       // Otherwise show the neutral hint (not the success text)
       customSearchMessage.style.display = "";
       customSearchMessage.classList.remove("error", "success");
-      customSearchMessage.innerHTML = 'Optional: include <code>%s</code>, <code>{searchTerms}</code>, or <code>$1</code> where the query should go. If omitted, we\'ll add <code>?q=…</code> automatically.';
+      customSearchMessage.innerHTML = 'Please include a placeholder for the search term. If none, the browser will automatically add a search query parameter <code>?q=</code>.';
     }
   }
 
