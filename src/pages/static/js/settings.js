@@ -44,36 +44,19 @@ function setTemplateFieldState(inputEl, messageEl, state) {
  * @param {string} tpl - The custom search template URL.
  * @returns {boolean} - True if it's a built-in search engine, otherwise false.
  */
-function isBuiltInSearchEngine(tpl) {
-  if (typeof tpl !== "string") return false;
-
-  // Built-in search engine hostnames (add/update as needed)
-  const builtInEngines = [
-    "duckduckgo.com",
-    "search.brave.com",
-    "www.ecosia.org",
-    "kagi.com",
-    "www.startpage.com"
-  ];
-
-  // Try parsing the URL safely, adding https:// if missing
-  let parsed;
+async function isBuiltInSearchEngine(tpl) {
   try {
-    parsed = new URL(tpl);
-  } catch {
-    try {
-      parsed = new URL("https://" + tpl);
-    } catch {
-      return false; // Not a valid URL at all
+    if (!window.electronAPI?.onCheckBuiltInEngine) {
+      console.warn("onCheckBuiltInEngine API not available in this context");
+      return false;
     }
+
+    const result = await window.electronAPI.onCheckBuiltInEngine(tpl);
+    return result;
+  } catch (err) {
+    console.error('IPC check failed:', err);
+    return false;
   }
-
-  const host = parsed.hostname.replace(/^www\./i, "").toLowerCase();
-
-  // Normalize for comparison (so "www.duckduckgo.com" → "duckduckgo.com")
-  return builtInEngines.some(engine =>
-    host === engine.replace(/^www\./i, "").toLowerCase()
-  );
 }
 
 // Initialize API access with fallback handling
@@ -371,11 +354,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (customSearchRow) customSearchRow.style.display = "none";
   });
 
-  customSearchTemplate?.addEventListener("input", () => {
+  customSearchTemplate?.addEventListener("input", async () => {
       const tpl = customSearchTemplate.value.trim();
       const state = validateSearchTemplate(tpl);
 
-      if (isBuiltInSearchEngine(tpl)) {
+       const isBuiltIn = await isBuiltInSearchEngine(tpl);
+
+
+      if (isBuiltIn) {
         state.valid = false;
         state.reason = "This search engine already exists in the browser.";
       }
@@ -389,7 +375,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const tpl = customSearchTemplate.value.trim();
     const state = validateSearchTemplate(tpl);
 
-    if (isBuiltInSearchEngine(tpl)) {
+    const isBuiltIn = await isBuiltInSearchEngine(tpl);
+
+    if (isBuiltIn) {
       state.valid = false;
       state.reason = "This search engine already exists in the browser.";
     }
@@ -398,7 +386,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 
   // 🚫 Check for built-in search engines
-  if (isBuiltInSearchEngine(tpl)) {
+  if (isBuiltIn) {
     customSearchMessage.style.display = "block";
     customSearchMessage.textContent = "This search engine already exists in the browser.";
     return;

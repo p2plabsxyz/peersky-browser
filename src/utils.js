@@ -1,3 +1,4 @@
+import { BUILTIN_SEARCH_ENGINES } from './search-engine.js';
 // P2P prefixes
 const IPFS_PREFIX = 'ipfs://';
 const IPNS_PREFIX = 'ipns://';
@@ -30,41 +31,9 @@ function makeHttps(query) {
   return `https://${query}`;
 }
 
-function makeDuckDuckGo(query) {
-  return `https://duckduckgo.com/?q=${encodeURIComponent(query)}`;
-}
-
-function makeBraveSearch(query) {
-  return `https://search.brave.com/search?q=${encodeURIComponent(query)}`;
-}
-
-function makeEcosia(query) {
-  return `https://www.ecosia.org/search?q=${encodeURIComponent(query)}`;
-}
-
-function makeKagi(query) {
-  return `https://kagi.com/search?q=${encodeURIComponent(query)}`;
-}
-
-function makeStartpage(query) {
-  return `https://www.startpage.com/do/search?query=${encodeURIComponent(query)}`;
-}
-
-
 function makeSearch(query, engine = 'duckduckgo') {
-  switch (engine) {
-    case 'brave':
-      return makeBraveSearch(query);
-    case 'ecosia':
-      return makeEcosia(query);
-    case 'kagi':
-      return makeKagi(query);
-    case 'startpage':
-      return makeStartpage(query);
-    case 'duckduckgo':
-    default:
-      return makeDuckDuckGo(query);
-  }
+  const template = BUILTIN_SEARCH_ENGINES[engine] || BUILTIN_SEARCH_ENGINES.duckduckgo;
+  return template.replace("%s", encodeURIComponent(query));
 }
 
 const PLACEHOLDER_RE = /%s|\{searchTerms\}|\$1/;
@@ -84,7 +53,7 @@ function buildSearchUrl(template, term) {
     url = new URL(template);
   } catch {
     // Fallback if invalid URL
-    return makeDuckDuckGo(term);
+    return makeSearch(term, 'duckduckgo');
   }
 
   // (a) Fill first empty param, e.g. ?q=
@@ -141,13 +110,13 @@ async function handleURL(rawURL) {
           return buildSearchUrl(customTemplate, rawURL);
         }
         console.warn('Custom search template missing or invalid, falling back to DuckDuckGo');
-        return makeDuckDuckGo(rawURL);
+        return makeSearch(rawURL, 'duckduckgo');
       }
 
       return makeSearch(rawURL, searchEngine);
     } catch (error) {
       console.warn('Could not get search engine setting, using DuckDuckGo:', error);
-      return makeDuckDuckGo(rawURL);
+      return makeSearch(rawURL, 'duckduckgo');
     }
   }
 }
@@ -234,11 +203,6 @@ export {
   isBareLocalhost,
   makeHttp,
   makeHttps,
-  makeDuckDuckGo,
-  makeBraveSearch,
-  makeEcosia,
-  makeKagi,
-  makeStartpage,
   makeSearch,
   buildSearchUrl,  
   handleURL,
