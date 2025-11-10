@@ -304,7 +304,7 @@ class NavBox extends HTMLElement {
       } else if (engineKey) {
         name = this._titleCase(engineKey);
       } else {
-        name = 'cuss'
+        name = 'DuckDuckGo'
       }
 
       input.placeholder = `Search with ${name} or type a P2P URL`;
