@@ -8,7 +8,13 @@ class NavBox extends HTMLElement {
     this._resizeListener = null;
     this.buildNavBox();
     this.attachEvents();
+    this.updateSearchPlaceholder();
     this.attachThemeListener();
+  }
+
+  connectedCallback() {
+    // Ensure placeholder updates when element is attached to DOM
+    this.updateSearchPlaceholder();
   }
 
   setStyledUrl(url) {
@@ -50,7 +56,7 @@ class NavBox extends HTMLElement {
     const urlInput = document.createElement("input");
     urlInput.type = "text";
     urlInput.id = "url";
-    urlInput.placeholder = "Search with DuckDuckGo or type a P2P URL";
+    this.updateSearchPlaceholder();
 
     const qrButton = this.createButton(
       "qr-code",
@@ -257,6 +263,54 @@ class NavBox extends HTMLElement {
         forwardButton.classList.remove("active");
         forwardButton.setAttribute("disabled", "true");
       }
+    }
+  }
+
+  _titleCase(key) {
+    if (!key) return 'Search';
+    return key.replace(/(^|[\s-])(\w)/g, (_, p1, p2) => p1 + p2.toUpperCase());
+  }
+
+  _safeParseUrl(s) {
+    try { return new URL(s); } catch {}
+    try { return new URL('https://' + s); } catch {}
+    return null;
+  }
+
+  async updateSearchPlaceholder() {
+    const input = this.querySelector('#url');
+    if (!input) return;
+
+    try {
+      const { ipcRenderer } = require("electron");
+      const engineKey = await ipcRenderer.invoke('settings-get', 'searchEngine');
+
+      let name;
+      if (engineKey === 'custom') {
+        const tpl = await ipcRenderer.invoke('settings-get', 'customSearchTemplate');
+        const u = this._safeParseUrl(tpl);
+
+        if (u?.hostname) {
+          // remove 'www.' and the top-level domain (.com, .org, .net, etc.)
+          const cleanHost = u.hostname
+            .replace(/^www\./i, '') // remove www.
+            .replace(/\.[^.]+$/, ''); // remove last dot + tld
+
+          // capitalize first letter
+          name = this._titleCase(cleanHost);
+        } else {
+          name = 'Custom';
+        }
+      } else if (engineKey) {
+        name = this._titleCase(engineKey);
+      } else {
+        name = 'cuss'
+      }
+
+      input.placeholder = `Search with ${name} or type a P2P URL`;
+    } catch (err) {
+      console.warn('updateSearchPlaceholder failed:', err);
+      input.placeholder = 'Search or type a P2P URL';
     }
   }
 
