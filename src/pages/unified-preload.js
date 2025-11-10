@@ -145,7 +145,8 @@ try {
       onSearchEngineChanged: (callback) => createEventListener('search-engine-changed', callback),
       onShowClockChanged: (callback) => createEventListener('show-clock-changed', callback),
       onWallpaperChanged: (callback) => createEventListener('wallpaper-changed', callback),
-      readCSS: cssAPI.readCSS
+      readCSS: cssAPI.readCSS,
+      onCheckBuiltInEngine: (template) => ipcRenderer.invoke('check-built-in-engine', template),
     });
     
     console.log('Unified-preload: Full Settings electronAPI exposed');

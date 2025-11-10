@@ -9,6 +9,7 @@ import { createMenuTemplate } from "./actions.js";
 import WindowManager, { createIsolatedWindow } from "./window-manager.js";
 import settingsManager from "./settings-manager.js";
 import { attachContextMenus, setWindowManager } from "./context-menu.js";
+import { isBuiltInSearchEngine } from "./search-engine.js";
 // import { setupAutoUpdater } from "./auto-updater.js";
 
 const P2P_PROTOCOL = {
@@ -205,4 +206,14 @@ ipcMain.on('update-group-properties', (event, groupId, properties) => {
     }
   });
 });
+
+ipcMain.handle('check-built-in-engine', (event, template) => {
+  try {
+    return isBuiltInSearchEngine(template);
+  } catch (error) {
+    console.error('Error in check-built-in-engine:', error);
+    return false; // fallback if anything goes wrong
+  }
+});
+
 export { windowManager };

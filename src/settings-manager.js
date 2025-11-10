@@ -19,6 +19,7 @@ function logDebug(message) {
 // Default settings configuration
 const DEFAULT_SETTINGS = {
   searchEngine: 'duckduckgo',
+  customSearchTemplate: "https://duckduckgo.com/?q=%s",
   theme: 'dark',
   showClock: true,
   verticalTabs: false,
@@ -307,13 +308,32 @@ class SettingsManager {
 
   validateSetting(key, value) {
     const validators = {
-      searchEngine: (v) => ['duckduckgo', 'brave', 'ecosia', 'kagi', 'startpage'].includes(v),
-      theme: (v) => ['transparent', 'light', 'dark', 'green', 'cyan', 'yellow', 'violet'].includes(v),
-      showClock: (v) => typeof v === 'boolean',
-      verticalTabs: (v) => typeof v === 'boolean',
-      keepTabsExpanded: (v) => typeof v === 'boolean',
-      wallpaper: (v) => ['redwoods', 'mountains', 'custom'].includes(v),
-      wallpaperCustomPath: (v) => v === null || typeof v === 'string'
+      searchEngine: (v) => ['duckduckgo', 'brave', 'ecosia', 'kagi', 'startpage', "custom"].includes(v),
+      customSearchTemplate: (v) => {
+        if (typeof v !== "string" || v.length >= 2048) return false;
+        try {
+          // Just check if it’s parseable as a URL with any protocol
+          new URL(v);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      theme: (v) =>
+        [
+          "transparent",
+          "light",
+          "dark",
+          "green",
+          "cyan",
+          "yellow",
+          "violet",
+        ].includes(v),
+      showClock: (v) => typeof v === "boolean",
+      verticalTabs: (v) => typeof v === "boolean",
+      keepTabsExpanded: (v) => typeof v === "boolean",
+      wallpaper: (v) => ["redwoods", "mountains", "custom"].includes(v),
+      wallpaperCustomPath: (v) => v === null || typeof v === "string",
     };
     
     const validator = validators[key];
@@ -395,6 +415,15 @@ class SettingsManager {
             window.webContents.send('wallpaper-changed', this.settings.wallpaper);
           }
         });
+      } else if (key === "customSearchTemplate") {
+        windows.forEach((window) => {
+          if (window && !window.isDestroyed()) {
+            window.webContents.send(
+              "search-engine-changed",
+              this.settings.searchEngine
+            );
+          }
+        });
       }
       
       logDebug(`Applied setting change: ${key} to ${windows.length} windows`);
@@ -415,7 +444,8 @@ class SettingsManager {
       'brave': 'Brave Search',
       'ecosia': 'Ecosia',
       'kagi': 'Kagi',
-      'startpage': 'Startpage'
+      'startpage': 'Startpage',
+      'custom' : 'Custom'
     };
     return engineNames[this.settings.searchEngine] || 'DuckDuckGo';
   }

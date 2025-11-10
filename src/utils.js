@@ -1,3 +1,4 @@
+import { BUILTIN_SEARCH_ENGINES } from './search-engine.js';
 // P2P prefixes
 const IPFS_PREFIX = 'ipfs://';
 const IPNS_PREFIX = 'ipns://';
@@ -30,41 +31,50 @@ function makeHttps(query) {
   return `https://${query}`;
 }
 
-function makeDuckDuckGo(query) {
-  return `https://duckduckgo.com/?q=${encodeURIComponent(query)}`;
-}
-
-function makeBraveSearch(query) {
-  return `https://search.brave.com/search?q=${encodeURIComponent(query)}`;
-}
-
-function makeEcosia(query) {
-  return `https://www.ecosia.org/search?q=${encodeURIComponent(query)}`;
-}
-
-function makeKagi(query) {
-  return `https://kagi.com/search?q=${encodeURIComponent(query)}`;
-}
-
-function makeStartpage(query) {
-  return `https://www.startpage.com/do/search?query=${encodeURIComponent(query)}`;
-}
-
-
 function makeSearch(query, engine = 'duckduckgo') {
-  switch (engine) {
-    case 'brave':
-      return makeBraveSearch(query);
-    case 'ecosia':
-      return makeEcosia(query);
-    case 'kagi':
-      return makeKagi(query);
-    case 'startpage':
-      return makeStartpage(query);
-    case 'duckduckgo':
-    default:
-      return makeDuckDuckGo(query);
+  const template = BUILTIN_SEARCH_ENGINES[engine] || BUILTIN_SEARCH_ENGINES.duckduckgo;
+  return template.replace("%s", encodeURIComponent(query));
+}
+
+const PLACEHOLDER_RE = /%s|\{searchTerms\}|\$1/;
+const KNOWN_QUERY_KEYS = ["q","query","p","search","s","term","keywords","k","wd","text"];
+
+function buildSearchUrl(template, term) {
+  const encoded = encodeURIComponent(term);
+
+  // (1) Replace placeholder if present
+  if (PLACEHOLDER_RE.test(template)) {
+    return template.replace(PLACEHOLDER_RE, encoded);
   }
+
+  // (2) Structural fallback via URL parsing
+  let url;
+  try {
+    url = new URL(template);
+  } catch {
+    // Fallback if invalid URL
+    return makeSearch(term, 'duckduckgo');
+  }
+
+  // (a) Fill first empty param, e.g. ?q=
+  for (const [key, value] of url.searchParams.entries()) {
+    if (value === "") {
+      url.searchParams.set(key, term);
+      return url.toString();
+    }
+  }
+
+  // (b) Overwrite known search-like key if present
+  for (const key of KNOWN_QUERY_KEYS) {
+    if (url.searchParams.has(key)) {
+      url.searchParams.set(key, term);
+      return url.toString();
+    }
+  }
+
+  // (c) Append ?q=<term> if nothing matched
+  url.searchParams.set("q", term);
+  return url.toString();
 }
 
 async function handleURL(rawURL) {
@@ -92,10 +102,21 @@ async function handleURL(rawURL) {
     try {
       const { ipcRenderer } = require('electron');
       const searchEngine = await ipcRenderer.invoke('settings-get', 'searchEngine');
+
+
+      if (searchEngine === 'custom') {
+        const customTemplate = await ipcRenderer.invoke('settings-get', 'customSearchTemplate');
+        if (typeof customTemplate === 'string' && customTemplate.length) {
+          return buildSearchUrl(customTemplate, rawURL);
+        }
+        console.warn('Custom search template missing or invalid, falling back to DuckDuckGo');
+        return makeSearch(rawURL, 'duckduckgo');
+      }
+
       return makeSearch(rawURL, searchEngine);
     } catch (error) {
       console.warn('Could not get search engine setting, using DuckDuckGo:', error);
-      return makeDuckDuckGo(rawURL);
+      return makeSearch(rawURL, 'duckduckgo');
     }
   }
 }
@@ -182,12 +203,8 @@ export {
   isBareLocalhost,
   makeHttp,
   makeHttps,
-  makeDuckDuckGo,
-  makeBraveSearch,
-  makeEcosia,
-  makeKagi,
-  makeStartpage,
   makeSearch,
+  buildSearchUrl,  
   handleURL,
   escapeHtml,
   escapeHtmlAttribute,
