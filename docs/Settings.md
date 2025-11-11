@@ -52,7 +52,8 @@ All settings-related functionality in Peersky flows through a unified preload an
 | `settings.getAll()`                | `settings-get-all`              | Retrieve all settings                    |
 | `settings.set(key, value)`         | `settings-set`                  | Update setting → persist → broadcast     |
 | `settings.reset()`                 | `settings-reset`                | Reset all settings to defaults           |
-| `settings.clearCache()`            | `settings-clear-cache`          | Clears browser + P2P cache               |
+| `settings.clearBrowserCache()`     | `settings-clear-cache`          | Clears browser cache                     |
+| `settings.resetP2PData()`          | `settings-reset-p2p`            | Clears P2P caches                        |
 | `settings.uploadWallpaper(data)`   | `settings-upload-wallpaper`     | Save + set custom wallpaper              |
 | `getWallpaperUrl()`                | `settings-get-wallpaper-url`    | Get wallpaper path (async)               |
 | `getWallpaperUrlSync()`            | `settings-get-wallpaper-url-sync` | Preload sync load for zero-flicker    |
@@ -97,12 +98,29 @@ Each section is built using simple HTML blocks styled with internal and theme-pr
 - `settings.set('searchEngine', 'DuckDuckGo')`
 - Allows user to switch search engines between DuckDuckGo, Brave Search, Ecosia, Kagi, Startpage
 
-### Cache Clearing
+### Cache & P2P Data
 
-- `settings.clearCache()`
-- Wipes:
-  - Electron session (cookies, storage)
-  - P2P caches (`ipfs/`, `hyper/`, `ensCache.json`)
+#### Clear Browser Cache
+- **API/IPC:** `settings.clearBrowserCache()` → invokes `ipcMain.handle('settings-clear-cache')`
+- **Wipes (Chromium session only):**
+  - Cookies
+  - LocalStorage / SessionStorage
+  - IndexedDB
+  - Service Workers
+  - Cache Storage
+  - HTTP cache (`session.clearCache()`)
+- **Does NOT touch:** `ipfs/`, `hyper/`, `ensCache.json`, identity files
+
+#### Reset P2P Data
+- **API/IPC:** `settings.resetP2P({ resetIdentities?: boolean })` → `ipcMain.handle('settings-reset-p2p')`
+- **Default behavior (`resetIdentities: false`):**
+  - Clears P2P caches: `ipfs/` (except `libp2p-key`), `hyper/` (except `swarm-keypair.json`)
+  - Removes `ensCache.json`
+  - ✅ **Preserves identities:** `ipfs/libp2p-key`, `hyper/swarm-keypair.json`
+- **Full wipe (`resetIdentities: true`):**
+  - Deletes **all** P2P data including identity files
+  - New identities will be generated on next launch
+
 
 ## 6. Adding a New Setting (Example: `autoSave`)
 
