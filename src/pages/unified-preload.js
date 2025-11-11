@@ -2,7 +2,7 @@
  * Unified Preload Script - Context-Aware API Exposure with Enhanced Security
  * 
  * Detects page context and exposes appropriate APIs based on security levels:
- * - Settings pages: Full electronAPI access (getAll, set, reset, clearCache, uploadWallpaper)
+ * - Settings pages: Full electronAPI access (getAll, set, reset, clearBrowserCache, resetP2PData, uploadWallpaper)
  * - Home pages: Limited access (showClock, wallpaper only)
  * - Internal pages: Minimal access (theme only)  
  * - External pages: No settings access
@@ -49,7 +49,10 @@ function createSettingsAPI(pageContext) {
         return ipcRenderer.invoke('settings-set', key, value);
       },
       reset: () => ipcRenderer.invoke('settings-reset'),
-      clearCache: () => ipcRenderer.invoke('settings-clear-cache'),
+      // NEW: browser-only cache
+      clearBrowserCache: () => ipcRenderer.invoke('settings-clear-cache'),
+      // NEW: P2P reset (identities preserved by default)
+      resetP2P: (opts = {}) => ipcRenderer.invoke('settings-reset-p2p', opts),
       uploadWallpaper: (fileData) => {
         if (!fileData || !fileData.name || !fileData.content) {
           throw new Error('File data must include name and content');

@@ -28,6 +28,61 @@ const DEFAULT_SETTINGS = {
   wallpaperCustomPath: null
 };
 
+
+async function clearBrowserCache() {
+  logDebug('Starting browser cache clearing');
+  await session.defaultSession.clearStorageData({
+    // Electron expects lowercase keys
+    storages: [
+      'cookies',
+      'localstorage',
+      'sessionstorage',
+      'indexdb',
+      'serviceworkers',
+      'cachestorage'
+    ]
+  });
+  await session.defaultSession.clearCache();
+  logDebug('Browser cache cleared');
+}
+
+async function pathExists(p) {
+  try { await fs.access(p); return true; } catch { return false; }
+}
+
+async function removeChildrenExcept(dir, keepNames = []) {
+  if (!(await pathExists(dir))) return;
+  const keep = new Set(keepNames);
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  await Promise.all(entries.map(async (ent) => {
+    if (keep.has(ent.name)) return;
+    const target = path.join(dir, ent.name);
+    await fs.rm(target, { recursive: true, force: true });
+  }));
+}
+
+async function resetP2PData({ resetIdentities = false } = {}) {
+  const USER_DATA = app.getPath('userData');
+  const ipfsDir  = path.join(USER_DATA, 'ipfs');
+  const hyperDir = path.join(USER_DATA, 'hyper');
+  const ensCache = path.join(USER_DATA, 'ensCache.json');
+
+  // ENS cache can always be removed
+  await fs.rm(ensCache, { recursive: true, force: true }).catch(() => {});
+
+  if (resetIdentities) {
+    // full wipe
+    await fs.rm(ipfsDir,  { recursive: true, force: true }).catch(() => {});
+    await fs.rm(hyperDir, { recursive: true, force: true }).catch(() => {});
+    logDebug('P2P reset: full wipe including identities');
+  } else {
+    // preserve identity files by default
+    await removeChildrenExcept(ipfsDir,  ['libp2p-key']);          // IPFS Peer ID
+    await removeChildrenExcept(hyperDir, ['swarm-keypair.json']);  // Hyper identity
+    logDebug('P2P reset: data cleared, identities preserved');
+  }
+}
+
 class SettingsManager {
   constructor() {
     this.settings = { ...DEFAULT_SETTINGS };
@@ -151,54 +206,27 @@ class SettingsManager {
     // Handle clear cache
     ipcMain.handle('settings-clear-cache', async () => {
       try {
-        logDebug('Starting cache clearing operation');
-        
-        // 1. Clear Electron session data (browser cache, cookies, storage)
-        await session.defaultSession.clearStorageData({
-          storages: [
-            'cookies',
-            'localStorage', 
-            'sessionStorage',
-            'indexedDB',
-            'serviceworkers',
-            'cachestorage'
-          ]
-        });
-        
-        // Clear HTTP cache separately
-        await session.defaultSession.clearCache();
-        
-        logDebug('Electron session data cleared successfully');
-        
-        // 2. Clear P2P protocol cache files
-        const USER_DATA = app.getPath("userData");
-        const filesToClear = [
-          { path: path.join(USER_DATA, "ensCache.json"), type: "ENS cache" },
-          { path: path.join(USER_DATA, "ipfs"), type: "IPFS data" },
-          { path: path.join(USER_DATA, "hyper"), type: "Hyper data" }
-        ];
-        
-        // Clear P2P cache files/directories
-        for (const { path: filePath, type } of filesToClear) {
-          try {
-            await fs.rm(filePath, { recursive: true, force: true });
-            logDebug(`Cleared ${type}: ${filePath}`);
-          } catch (error) {
-            if (error.code === 'ENOENT') {
-              logDebug(`${type} not found (skipping): ${filePath}`);
-            } else {
-              logDebug(`Failed to clear ${type}: ${error.message}`);
-            }
-          }
-        }
-        
-        logDebug('Cache clearing operation completed successfully');
-        return { success: true, message: 'Cache cleared successfully' };
-        
+        await clearBrowserCache();
+        return { success: true, message: 'Browser cache cleared' };
       } catch (error) {
-        const errorMsg = `Failed to clear cache: ${error.message}`;
+        const errorMsg = `Failed to clear browser cache: ${error.message}`;
         logDebug(errorMsg);
-        console.error(errorMsg);
+        throw new Error(errorMsg);
+      }
+    });
+
+    ipcMain.handle('settings-reset-p2p', async (_event, opts = {}) => {
+      try {
+        await resetP2PData({ resetIdentities: !!opts.resetIdentities });
+        return {
+          success: true,
+          message: opts.resetIdentities
+            ? 'P2P data cleared (identities removed)'
+            : 'P2P data cleared (identities preserved)'
+        };
+      } catch (error) {
+        const errorMsg = `Failed to reset P2P data: ${error.message}`;
+        logDebug(errorMsg);
         throw new Error(errorMsg);
       }
     });

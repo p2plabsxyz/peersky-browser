@@ -174,10 +174,9 @@ body {
   justify-content: space-between;
   padding: 1rem;
   border-bottom: 1px solid var(--settings-border);
-  min-height: 55px;
-  height: 55px;
   margin: 0 -1rem;
   box-sizing: border-box;
+  min-height: 55px;
 }
 
 .setting-row:last-child {
@@ -199,7 +198,7 @@ body {
 .setting-control {
   flex-shrink: 0;
   margin-left: 1rem;
-  display: flex;
+  /* display: flex; */
   align-items: center;
   gap: 0.5rem;
 }
@@ -430,7 +429,34 @@ body {
 }
 
 .setting-row.tall-row {
-  padding-block: 40px !important;
+  align-items: flex-start;
+  padding-top: 1rem;
+  padding-bottom: 1rem;
+}
+
+.setting-row.tall-row .setting-control {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.help-or-error {
+  flex-basis: 100%;
+  margin-top: 0.25rem;
+  opacity: 0.7;
+  font-size: 0.8rem;
+}
+
+
+/* Checkbox label consistency */
+.setting-control label {
+  font-size: 0.85rem;
+  color: var(--settings-text-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
 }
 
 #custom-search-row .setting-control {
@@ -469,6 +495,219 @@ body {
   opacity: 1;
 }
 
+#also-reset-identities {
+  margin-right: 6px;
+  transform: translateY(1px);
+}
+
+.btn-warning {
+  background: #e7a23b;
+  color: #000;
+  border: 1px solid #e7a23b;
+  border-radius: 4px;
+  padding: 0.5rem 0.875rem;
+  font-size: 0.85rem;
+  height: 25px;
+  cursor: pointer;
+  transition: filter .2s ease;
+}
+
+.btn-warning:hover {
+  filter: brightness(1.05);
+}
+
+/* ===== MODAL BASE STYLES ===== */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  animation: fadeIn 0.2s ease-out;
+}
+
+.modal {
+  position: fixed;
+  z-index: 9999;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 440px;
+  max-width: calc(100vw - 40px);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--settings-card-bg) 90%, transparent);
+  box-shadow: 0 14px 50px rgba(0, 0, 0, 0.55);
+  border: 1px solid var(--settings-border);
+  overflow: hidden;
+  animation: modalIn 0.18s ease-out;
+}
+
+@keyframes modalIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -48%) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* ===== HEADER ===== */
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px 18px 6px 18px;
+}
+
+.modal-title {
+  font-size: 1.05rem;
+  font-weight: 650;
+  text-align: center;
+  color: var(--settings-text-primary);
+  letter-spacing: 0.2px;
+  margin: 0;
+}
+
+.modal-title::before {
+  content: '';
+}
+
+/* ===== BODY ===== */
+.modal-body {
+  padding: 10px 18px 6px 18px;
+  line-height: 1.5;
+  text-align: center;
+  color: var(--settings-text-primary);
+  font-size: 0.9rem;
+}
+
+.modal-body .copy {
+  margin-bottom: 10px;
+  color: var(--settings-text-primary);
+}
+
+.emphasis {
+  font-weight: 600;
+  color: var(--settings-text-primary);
+}
+
+/* Checkbox row (grid aligned) */
+.checkbox-row {
+  margin-top: 8px;
+  padding: 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--settings-bg-secondary) 92%, transparent);
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  column-gap: 10px;
+  align-items: start;
+}
+
+.checkbox-row input[type="checkbox"] {
+  margin: 0;
+  transform: translateY(2px);
+  cursor: pointer;
+}
+
+.checkbox-row span {
+  font-size: 0.88rem;
+  color: var(--settings-text-secondary);
+  user-select: none;
+}
+
+.checkbox-row code {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  color: var(--settings-text-primary);
+}
+
+/* ===== ACTIONS ===== */
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 18px 16px 18px;
+  background: color-mix(in srgb, var(--settings-card-bg) 92%, transparent);
+  border-top: 1px solid var(--settings-border);
+}
+
+/* Base button */
+.modal-actions button {
+  border: none;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  font-weight: 500;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+/* Ghost cancel button */
+.btn-ghost {
+  background: transparent;
+  color: var(--settings-text-secondary);
+  border: 1px solid var(--settings-border);
+}
+
+.btn-ghost:hover {
+  color: var(--settings-text-primary);
+  background: color-mix(in srgb, var(--settings-bg-secondary) 60%, transparent);
+}
+
+/* Warning (default) Reset button */
+.btn-warning-solid {
+  background: #e7a23b;
+  color: #101012;
+  border: 0;
+  border-radius: 10px;
+}
+
+.btn-warning-solid:hover {
+  filter: brightness(1.07);
+}
+
+/* Danger Reset button (if identities checkbox is checked) */
+.btn-danger-solid {
+  background: var(--settings-danger-color, #d33);
+  color: #fff;
+  border: 0;
+  border-radius: 10px;
+}
+
+.btn-danger-solid:hover {
+  filter: brightness(1.08);
+}
+
+/* Keyboard hint */
+.kbd {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 6px;
+  border: 1px solid var(--settings-border);
+  background: rgba(255, 255, 255, 0.06);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  opacity: 0.8;
+  margin-left: 4px;
+}
 
 
 /* Responsive Design - Simplified */

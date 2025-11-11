@@ -111,6 +111,91 @@ function initializeAPI() {
   return false;
 }
 
+function openResetP2PModal() {
+  return new Promise((resolve) => {
+    const $ = (h) => {
+      const t = document.createElement('template');
+      t.innerHTML = h.trim();
+      return t.content.firstChild;
+    };
+
+    const backdrop = $('<div class="modal-backdrop"></div>');
+    const modal = $(`
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="reset-title">
+        <div class="modal-header">
+          <h3 id="reset-title" class="modal-title">Reset P2P Data</h3>
+        </div>
+
+        <div class="modal-body">
+          <div class="copy">
+            This will clear all IPFS/Hyper data while <span class="emphasis">preserving</span> your peer identities by default.
+          </div>
+
+          <label class="checkbox-row">
+            <input type="checkbox" id="modal-reset-identities">
+            <span>
+              Also reset identities (<code>libp2p-key</code> & <code>swarm-keypair.json</code>) — not recommended
+            </span>
+          </label>
+        </div>
+
+        <div class="modal-actions">
+          <button class="btn-ghost" id="modal-cancel">Cancel <span class="kbd">Esc</span></button>
+          <button class="btn-warning-solid" id="modal-confirm">Reset</button>
+        </div>
+      </div>
+    `);
+
+    document.body.append(backdrop, modal);
+
+    const confirmBtn = modal.querySelector('#modal-confirm');
+    const cancelBtn  = modal.querySelector('#modal-cancel');
+    const idsCb      = modal.querySelector('#modal-reset-identities');
+
+    // Toggle confirm button style (warning ↔ danger) based on checkbox
+    const updateConfirmStyle = () => {
+      confirmBtn.classList.toggle('btn-danger-solid', idsCb.checked);
+      confirmBtn.classList.toggle('btn-warning-solid', !idsCb.checked);
+    };
+    idsCb.addEventListener('change', updateConfirmStyle);
+    updateConfirmStyle();
+
+    const cleanup = () => {
+      modal.remove();
+      backdrop.remove();
+      document.removeEventListener('keydown', onKey);
+    };
+
+    const onKey = (e) => {
+      if (e.key === 'Escape') { cleanup(); resolve({ confirmed: false }); }
+      if (e.key === 'Enter')  { doConfirm(); }
+      if (e.key === 'Tab') {
+        // simple focus trap
+        const order = [idsCb, cancelBtn, confirmBtn];
+        const idx = order.indexOf(document.activeElement);
+        const next = (idx + (e.shiftKey ? -1 : 1) + order.length) % order.length;
+        order[next].focus();
+        e.preventDefault();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+
+    const doConfirm = () => {
+      confirmBtn.disabled = true;
+      const resetIdentities = !!idsCb.checked;
+      cleanup();
+      resolve({ confirmed: true, resetIdentities });
+    };
+
+    cancelBtn.addEventListener('click', () => { cleanup(); resolve({ confirmed: false }); });
+    confirmBtn.addEventListener('click', doConfirm);
+
+    // initial focus
+    setTimeout(() => idsCb.focus(), 10);
+  });
+}
+
+
 // Create fallback API wrapper
 function createFallbackAPI(ipc) {
   const wrapCallback = (eventName, callback) => {
@@ -125,7 +210,8 @@ function createFallbackAPI(ipc) {
       get: (key) => ipc.invoke('settings-get', key),
       set: (key, value) => ipc.invoke('settings-set', key, value),
       reset: () => ipc.invoke('settings-reset'),
-      clearCache: () => ipc.invoke('settings-clear-cache'),
+      clearBrowserCache: () => ipc.invoke('settings-clear-cache'),
+      resetP2P: (opts = {}) => ipc.invoke('settings-reset-p2p', opts),
       uploadWallpaper: (filePath) => ipc.invoke('settings-upload-wallpaper', filePath)
     },
     onThemeChanged: (callback) => wrapCallback('theme-changed', callback),
@@ -233,8 +319,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const wallpaperBrowse = document.getElementById('wallpaper-browse');
   const wallpaperRemove = document.getElementById('wallpaper-remove');
   const wallpaperPreview = document.getElementById('wallpaper-preview');
-  const clearCache = document.getElementById('clear-cache');
-
+  const clearBrowserCacheBtn = document.getElementById('clear-browser-cache');
+  const resetP2PBtn = document.getElementById('reset-p2p');
   // Handle built-in wallpaper selector change
   wallpaperSelector?.addEventListener('change', async (e) => {
     const selectedValue = e.target.value;
@@ -315,23 +401,35 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   // Handle clear cache button
-  clearCache?.addEventListener('click', async () => {
-    if (confirm('Are you sure you want to clear the browser cache? This action cannot be undone.')) {
-      try {
-        console.log('Clear cache requested');
-        const result = await settingsAPI.settings.clearCache();
-        
-        if (result.success) {
-          alert('Cache cleared successfully!');
-          console.log('Cache clearing completed:', result.message);
-        } else {
-          alert('Cache clearing failed. Please try again.');
-          console.error('Cache clearing failed:', result);
-        }
-      } catch (error) {
-        console.error('Failed to clear cache:', error);
-        alert(`Failed to clear cache: ${error.message}`);
-      }
+  clearBrowserCacheBtn?.addEventListener('click', async () => {
+    if (!settingsAPI?.settings?.clearBrowserCache) return;
+    if (!confirm('Clear browser cache? This removes website cache, cookies, and temporary storage.')) return;
+
+    try {
+      clearBrowserCacheBtn.disabled = true;
+      const res = await settingsAPI.settings.clearBrowserCache();
+      showSettingsSavedMessage(res?.message || 'Browser cache cleared', 'success');
+    } catch (err) {
+      console.error(err);
+      showSettingsSavedMessage(`Failed to clear browser cache: ${err.message}`, 'error');
+    } finally {
+      clearBrowserCacheBtn.disabled = false;
+    }
+  });
+
+  resetP2PBtn?.addEventListener('click', async () => {
+    const choice = await openResetP2PModal(); // { confirmed, resetIdentities }
+    if (!choice?.confirmed) return;
+
+    try {
+      resetP2PBtn.disabled = true;
+      const res = await settingsAPI.settings.resetP2P({ resetIdentities: !!choice.resetIdentities });
+      showSettingsSavedMessage(res?.message || 'P2P data reset', 'success');
+    } catch (err) {
+      console.error(err);
+      showSettingsSavedMessage(`Failed to reset P2P data: ${err.message}`, 'error');
+    } finally {
+      resetP2PBtn.disabled = false;
     }
   });
 
