@@ -150,6 +150,14 @@ try {
       onWallpaperChanged: (callback) => createEventListener('wallpaper-changed', callback),
       readCSS: cssAPI.readCSS,
       onCheckBuiltInEngine: (template) => ipcRenderer.invoke('check-built-in-engine', template),
+      on: (channel, listener) => {
+        const validChannels = ['reload-ui-after-cache']; // whitelist
+        if (validChannels.includes(channel)) {
+          const wrapped = (_, ...args) => listener(...args);
+          ipcRenderer.on(channel, wrapped);
+          return () => ipcRenderer.removeListener(channel, wrapped);
+        }
+      },
     });
     
     console.log('Unified-preload: Full Settings electronAPI exposed');

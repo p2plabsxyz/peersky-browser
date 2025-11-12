@@ -28,22 +28,53 @@ const DEFAULT_SETTINGS = {
   wallpaperCustomPath: null
 };
 
+let isClearingBrowserCache = false;
 
 async function clearBrowserCache() {
-  logDebug('Starting browser cache clearing');
-  await session.defaultSession.clearStorageData({
-    // Electron expects lowercase keys
-    storages: [
-      'cookies',
-      'localstorage',
-      'sessionstorage',
-      'indexdb',
-      'serviceworkers',
-      'cachestorage'
-    ]
-  });
-  await session.defaultSession.clearCache();
-  logDebug('Browser cache cleared');
+  if (isClearingBrowserCache)
+    throw new Error('Cache clearing already in progress');
+
+  isClearingBrowserCache = true;
+
+  try {
+    logDebug('Starting safe browser cache clearing...');
+
+    // Step 1 → Ask all renderer windows to detach webviews
+    const windows = BrowserWindow.getAllWindows();
+    logDebug('Requesting all renderers to detach webviews...');
+    await Promise.allSettled(
+      windows.map(win =>
+        win.webContents.executeJavaScript('window.detachWebviews?.()', true)
+      )
+    );
+
+    await new Promise(r => setTimeout(r, 100)); // small delay
+
+    // Step 2 → Clear cache and storage (in smaller groups)
+    const clear = storages =>
+      session.defaultSession.clearStorageData({ storages });
+
+    await session.defaultSession.clearCache();
+    await clear(['cookies', 'localstorage', 'sessionstorage']);
+    await clear(['indexdb']); // (Electron's internal key for IndexedDB)
+    await clear(['cachestorage', 'serviceworkers']);
+
+    logDebug('Cache and storage cleared safely');
+
+    // Step 3 → Notify all renderer processes to reinitialize
+    windows.forEach(win => {
+      if (!win.isDestroyed()) {
+        win.webContents.send('reload-ui-after-cache');
+      }
+    });
+
+    logDebug('UI reload triggered in all renderers');
+  } catch (error) {
+    logDebug(`Error during cache clearing: ${error.message}`);
+    throw error;
+  } finally {
+    isClearingBrowserCache = false;
+  }
 }
 
 async function pathExists(p) {
@@ -500,6 +531,13 @@ class SettingsManager {
     return `peersky://static/assets/${wallpaperFile}`;
   }
 }
+
+app.on('before-quit', e => {
+  if (isClearingBrowserCache) {
+    e.preventDefault();
+    setTimeout(() => app.quit(), 200);
+  }
+});
 
 // Create singleton instance
 const settingsManager = new SettingsManager();

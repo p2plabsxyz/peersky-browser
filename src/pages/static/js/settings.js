@@ -1031,5 +1031,24 @@ function cleanup() {
   eventCleanupFunctions = [];
 }
 
+// Gracefully detach webviews before clearing
+window.detachWebviews = () => {
+  const webviews = document.querySelectorAll('webview');
+  webviews.forEach(wv => {
+    try {
+      wv.remove();
+    } catch (err) {
+      console.warn('Failed to detach webview:', err);
+    }
+  });
+  console.log('All WebViews detached for safe cache clearing');
+};
+
+// Reinitialize after clear
+window.electronAPI.on('reload-ui-after-cache', () => {
+  console.log('Reloading UI after cache clear...');
+  window.location.reload();
+});
+
 // Cleanup on page unload
 window.addEventListener('beforeunload', cleanup);
