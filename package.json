@@ -1,6 +1,6 @@
 {
   "name": "peersky-browser",
-  "version": "1.0.0-beta.12",
+  "version": "1.0.0-beta.13",
   "description": "A minimal local-first p2p web browser: access, communicate, and publish offline.",
   "keywords": [
     "peersky",
