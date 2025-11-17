@@ -50,11 +50,8 @@ app.whenReady().then(async () => {
   setWindowManager(windowManager);
   await setupProtocols(session.defaultSession);
 
-  // Load saved windows or open a new one
-  await windowManager.openSavedWindows();
-  if (windowManager.all.length === 0) {
-    windowManager.open({ isMainWindow: true });
-  }
+  // Start with a fresh window; no automatic session restore
+  windowManager.open({ isMainWindow: true });
 
   // Register shortcuts from menu template (NOTE: all these shortcuts works on a window only if a window is in focus)
   const menuTemplate = createMenuTemplate(windowManager);
@@ -100,11 +97,7 @@ async function setupProtocols(session) {
   sessionProtocol.registerStreamProtocol("web3", web3ProtocolHandler, P2P_PROTOCOL);
 }
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
-});
+// Rely on WindowManager for window-all-closed handling
 
 app.on("activate", () => {
   if (windowManager.all.length === 0) {

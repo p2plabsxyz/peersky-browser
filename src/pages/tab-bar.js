@@ -135,6 +135,7 @@ class TabBar extends HTMLElement {
     const initialUrl = searchParams.get('url');
     const singleTabUrl = searchParams.get('singleTabUrl');
     const singleTabTitle = searchParams.get('singleTabTitle');
+    const shouldRestore = searchParams.get('restoreTabs') === 'true';
     
     if (isIsolated && (singleTabUrl || initialUrl)) {
       // For isolated windows, ONLY create the specified tab and don't load any persisted tabs
@@ -144,11 +145,13 @@ class TabBar extends HTMLElement {
       // Don't call saveTabsState() here to avoid overwriting the main window's tabs
       return;
     }
-     // we should ALWAYS try to load from persisted data first
-    const persistedTabs = this.loadPersistedTabs();
-    if (persistedTabs && persistedTabs.tabs.length > 0) {
-       this.restoreTabs(persistedTabs);
-       return;
+    // Only restore from persisted data when explicitly requested
+    if (shouldRestore) {
+      const persistedTabs = this.loadPersistedTabs();
+      if (persistedTabs && persistedTabs.tabs.length > 0) {
+        this.restoreTabs(persistedTabs);
+        return;
+      }
     }
     
     // if no persisted tab was there , then create new default tab
@@ -695,12 +698,18 @@ restoreTabs(persistedData) {
     const tabIndex = this.tabs.findIndex(tab => tab.id === tabId);
     if (tabIndex === -1) return;
     
-    // Prevent closing the last tab - always keep at least the home tab
+    // If this is the last tab, close the window instead
     if (this.tabs.length === 1) {
-      // Instead of closing, navigate to home
-      this.updateTab(tabId, { url: "peersky://home", title: "Home" });
-      this.navigateActiveTab("peersky://home");
-      this.saveTabsState();
+      try {
+        const { ipcRenderer } = require('electron');
+        ipcRenderer.send('close-window');
+      } catch (e) {
+        console.error('Failed to request window close:', e);
+        // Fallback: navigate to home if IPC is unavailable
+        this.updateTab(tabId, { url: "peersky://home", title: "Home" });
+        this.navigateActiveTab("peersky://home");
+        this.saveTabsState();
+      }
       return;
     }
     

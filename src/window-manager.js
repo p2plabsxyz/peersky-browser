@@ -55,11 +55,7 @@ class WindowManager {
 
     // Enhanced app event handlers for proper UI quit handling
     app.on('before-quit', (event) => {
-      // If we're clearing state (windows closed), don't save
-      if (this.isClearingState) {
-        return;
-      }
-      
+      // Allow graceful shutdown to finish saving state first
       if (!this.finalSaveCompleted) {
         event.preventDefault();
 
@@ -72,18 +68,8 @@ class WindowManager {
     // Handle when all windows are closed (UI quit)
     app.on('window-all-closed', async () => {
       if (!this.isQuitting && !this.shutdownInProgress) {
-        // On macOS, keep app running, on other platforms quit
-        // Clear saved state since user closed all windows (didn't quit)
-        this.isClearingState = true;
-        this.isQuitting = true;
-        this.shutdownInProgress = true;
-        this.finalSaveCompleted = true; // Prevent before-quit from trying to save
-        this.stopSaver();
-        await this.clearSavedState();
-
-        if (process.platform !== 'darwin') {
-          app.quit();
-        }
+        // Always perform graceful shutdown when last window closes
+        this.handleGracefulShutdown();
       }
     });
 
@@ -249,6 +235,12 @@ class WindowManager {
       if (!this.isQuitting && !this.shutdownInProgress) {
         this.saveOpened();
       }
+    });
+
+    // Allow explicit session restore via IPC
+    ipcMain.handle("restore-session", async () => {
+      await this.openSavedWindows();
+      return { success: true };
     });
   }
 
@@ -445,9 +437,8 @@ class WindowManager {
         return;
       }
       
-      // If this is the last window, mark that we're clearing state
+      // If this is the last window, stop saver to avoid racing saves
       if (this.windows.size === 1) {
-        this.isClearingState = true;
         this.stopSaver();
       }
     });
