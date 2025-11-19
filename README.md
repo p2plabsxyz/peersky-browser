@@ -111,18 +111,18 @@
   - [x] Clear browser cache
 
 - [x] [Local LLM](https://github.com/p2plabsxyz/peersky-browser/blob/main/docs/LLM.md) integration for P2P apps
-  - `window.llm` APIs (chat + streaming, complete)
-  - Trusted-domain exposure (PeerSky-native + allowlist)
-- [x] AI Chat app (peersky://p2p/ai-chat/)
-  - Ported from [Agregore examples](https://github.com/AgregoreWeb/website/blob/main/docs/examples/llm-chat.html) with PeerSky updates
-- [x] P2P Editor integration (peersky://p2p/editor/)
-  - New AI generator (`ai-generator.js`) to generate code with AI
+  - [x] `window.llm` APIs (chat + streaming, complete)
+  - [x] Trusted-domain exposure (PeerSky-native + allowlist)
+  - [x] AI Chat app (peersky://p2p/ai-chat/)
+    - [x] Ported from [Agregore examples](https://github.com/AgregoreWeb/website/blob/main/docs/examples/llm-chat.html) with PeerSky updates
+  - [x] P2P Editor integration (peersky://p2p/editor/)
+    - [x] New AI generator (`ai-generator.js`) to generate code with AI
 
-- [ ] [LLM Memory](https://github.com/p2plabsxyz/peersky-browser/issues/97)
-  - `llm.json` to store prompts/responses across P2P apps
-  - Reusable History component (P2P editor, AI chat, etc.)
-  - Settings toggle to enable/disable memory
-  - “Reset P2P Data” also clears `llm.json`
+  - [ ] [LLM Memory](https://github.com/p2plabsxyz/peersky-browser/issues/97)
+    - [ ]`llm.json` to store prompts/responses across P2P apps
+    - [ ]Reusable History component (P2P editor, AI chat, etc.)
+    - [ ]Settings toggle to enable/disable memory
+    - [ ]“Reset P2P Data” also clears `llm.json`
 
 - [ ] 🚧 [Web extensions](https://github.com/p2plabsxyz/peersky-browser/issues/19):
   - [ ] Ability to add and manage extensions
