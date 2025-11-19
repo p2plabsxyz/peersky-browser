@@ -74,8 +74,9 @@ export async function assembleCode() {
     // Combine your code into a single HTML file
     let combinedCode = `
     <!DOCTYPE html>
-    <html>
+    <html lang="en">
     <head>
+        <meta charset="utf-8">
         <style>${basicCSS}</style>
         <style>${$('#cssCode').value}</style>
     </head>
@@ -164,6 +165,8 @@ function addURL(url) {
     const link = document.createElement('a');
     link.href = url;
     link.textContent = url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
 
     const copyContainer = document.createElement('span');
     const copyIcon = '⊕';
