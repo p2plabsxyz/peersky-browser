@@ -392,7 +392,7 @@ try {
       },
       onLLMModelsUpdated: (callback) => {
         ipcRenderer.on('llm-models-updated', (_, data) => callback(data));
-      }
+      },
       onCheckBuiltInEngine: (template) => ipcRenderer.invoke('check-built-in-engine', template),
       on: (channel, listener) => {
         const validChannels = ['reload-ui-after-cache']; // whitelist
