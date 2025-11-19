@@ -110,7 +110,7 @@
   - [x] Change themes
   - [x] Clear browser cache
 
-- [x] [Local LLM](https://github.com/p2plabsxyz/peersky-browser/blob/main/docs/LLM.md) integration for P2P apps
+- [x] [Local LLM](https://github.com/p2plabsxyz/peersky-browser/blob/main/docs/LLM.md) integration for P2P apps:
   - [x] `window.llm` APIs (chat + streaming, complete)
   - [x] Trusted-domain exposure (PeerSky-native + allowlist)
   - [x] AI Chat app (peersky://p2p/ai-chat/)
@@ -118,7 +118,7 @@
   - [x] P2P Editor integration (peersky://p2p/editor/)
     - [x] New AI generator (`ai-generator.js`) to generate code with AI
 
-  - [ ] [LLM Memory](https://github.com/p2plabsxyz/peersky-browser/issues/97)
+  - [ ] 🚧 [LLM Memory](https://github.com/p2plabsxyz/peersky-browser/issues/97)
     - [ ] `llm.json` to store prompts/responses across P2P apps
     - [ ] Reusable History component (P2P editor, AI chat, etc.)
     - [ ] Settings toggle to enable/disable memory
@@ -184,10 +184,10 @@ Now, the `dist` folder will appear in the root directory.
 
 ## Contribute
 
-- Thanks for your interest in contributing to Peersky Browser. There are many ways you can contribute to the project.
+- Thanks for your interest in contributing to PeerSky Browser. There are many ways you can contribute to the project.
 - To start, take a few minutes to read the "[contribution guide](https://github.com/p2plabsxyz/peersky-browser/blob/main/.github/CONTRIBUTING.md)".
 - We look forward to your [pull requests](https://github.com/p2plabsxyz/peersky-browser/pulls) and / or involvement in our [issues page](https://github.com/p2plabsxyz/peersky-browser/issues).
 
 ## License
 
-Peersky Browser is licensed under the [MIT License](https://github.com/p2plabsxyz/peersky-browser/blob/main/LICENSE).
+PeerSky Browser is licensed under the [MIT License](https://github.com/p2plabsxyz/peersky-browser/blob/main/LICENSE).
