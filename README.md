@@ -2,7 +2,7 @@
     <img align="center" src="/public/icon.png" width="200" height="200"></img>
 </p>
 
-<h1 align="center">Peersky Browser</h1>
+<h1 align="center">PeerSky Browser</h1>
 
 <div align="center">
     <img src="https://img.shields.io/github/actions/workflow/status/p2plabsxyz/peersky-browser/build.yml" alt="GitHub Actions Workflow Status">
@@ -109,8 +109,6 @@
   - [x] Hide/show the home page clock
   - [x] Change themes
   - [x] Clear browser cache
-
-## Roadmap
 
 - [x] [Local LLM](https://github.com/p2plabsxyz/peersky-browser/blob/main/docs/LLM.md) integration for P2P apps
   - `window.llm` APIs (chat + streaming, complete)
