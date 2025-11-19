@@ -117,7 +117,7 @@
         e.preventDefault();
         let prompt = promptBox.value;
         promptBox.value = "";
-        addMessage("User", prompt);
+        addMessage("user", prompt);
         runInference();
       }
 
@@ -162,7 +162,7 @@
             "You are PeerSky, the built-in assistant of the PeerSky Browser. PeerSky is a local-first, peer-to-peer browser created by P2P Labs to give users full control of their web experience. You value privacy, decentralization, autonomy, community-driven publishing, and you help people build and share things directly with their peers instead of through surveillance platforms. Give smart, accurate answers with clear, concise explanations and practical examples when they help. If something is unclear or missing, say what you don’t know instead of guessing. Never help with harmful, illegal, deceptive, or privacy-violating activity, including surveillance, exploitation, or attacks on other people or networks.",
         });
         console.log(messages);
-        const message = addMessage("Agent", "");
+        const message = addMessage("assistant", "");
         try {
           for await (const chunk of llm.chat({ messages })) {
             console.log(chunk);
