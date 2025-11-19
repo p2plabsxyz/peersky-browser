@@ -11,7 +11,7 @@
     <!-- <img src="https://img.shields.io/github/v/release/p2plabsxyz/peersky-browser?color=green" alt="GitHub Release"> -->
     <a href="https://mastodon.social/@peersky"><img src="https://img.shields.io/mastodon/follow/113323887574214930" alt="Mastodon Follow"></a>
     <a href="https://deepwiki.com/p2plabsxyz/peersky-browser"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
-    <img src="./docs/images/peersky-llm-editor.png" width="639" alt="Screenshot of the PeerSky P2P Editor showing HTML, CSS, and JavaScript panels, a live preview of a blue page with red ‘Spider-Man’ text, and AI code-generation controls">
+    <img src="/banner.gif" width="639" alt="A demo gif of the PeerSky P2P Editor showing HTML, CSS, and JavaScript panels, a live preview of a blue page with red ‘Spider-Man’ text, and AI code-generation controls">
 </div>
 
 💻 [Download](https://peersky.p2plabs.xyz/)
@@ -119,10 +119,10 @@
     - [x] New AI generator (`ai-generator.js`) to generate code with AI
 
   - [ ] [LLM Memory](https://github.com/p2plabsxyz/peersky-browser/issues/97)
-    - [ ]`llm.json` to store prompts/responses across P2P apps
-    - [ ]Reusable History component (P2P editor, AI chat, etc.)
-    - [ ]Settings toggle to enable/disable memory
-    - [ ]“Reset P2P Data” also clears `llm.json`
+    - [ ] `llm.json` to store prompts/responses across P2P apps
+    - [ ] Reusable History component (P2P editor, AI chat, etc.)
+    - [ ] Settings toggle to enable/disable memory
+    - [ ] “Reset P2P Data” also clears `llm.json`
 
 - [ ] 🚧 [Web extensions](https://github.com/p2plabsxyz/peersky-browser/issues/19):
   - [ ] Ability to add and manage extensions
