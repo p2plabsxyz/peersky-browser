@@ -47,10 +47,18 @@ export function update() {
     console.log('JavaScript Code:', javascriptCode);
     // Assemble all elements for the iframe preview, using dynamic theme CSS
     let iframeContent = `
-    <style>${getPreviewCSS()}</style>
-    <style>${cssCode}</style>
-    <script>${javascriptCode}</script>
-    ${htmlCode}
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <style>${getPreviewCSS()}</style>
+        <style>${cssCode}</style>
+    </head>
+    <body>
+        ${htmlCode}
+        <script>${javascriptCode}</script>
+    </body>
+    </html>
     `;
     
     let iframeDoc = iframe.contentWindow.document;

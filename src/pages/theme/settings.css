@@ -734,3 +734,141 @@ body {
     overflow-x: auto;
   }
 }
+
+/* LLM Settings Specific Styles */
+#llm-config .setting-row {
+  padding-block: 14px;
+  height: auto;
+  align-items: flex-start;
+}
+
+#llm-config .setting-control {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 760px;
+}
+
+#llm-config .setting-input {
+  width: 100%;
+  height: 36px;
+  padding: 10px 12px;
+  font-size: 14px;
+  border-radius: 4px;
+  border: 1px solid var(--settings-border);
+  background: var(--settings-bg-secondary);
+  color: var(--settings-text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  transition: border-color 0.2s ease;
+}
+
+#llm-config .setting-input:focus {
+  outline: none;
+  border-color: var(--browser-theme-primary-highlight, #3b82f6);
+}
+
+#llm-config .setting-input::placeholder {
+  color: var(--settings-text-secondary);
+  opacity: 0.6;
+}
+
+#llm-config .setting-hint {
+  font-size: 11px;
+  line-height: 1.45;
+  opacity: 0.75;
+  margin-top: -2px;
+  color: var(--settings-text-secondary);
+  white-space: normal;
+}
+
+#llm-config .setting-hint code {
+  background: rgba(0, 0, 0, 0.1);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-family: 'Courier New', monospace;
+}
+
+/* API Key Input Group */
+.api-key-input-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.api-key-input-group .setting-input {
+  flex: 1;
+}
+
+.api-key-toggle-icon {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0.6;
+  transition: opacity 0.2s ease, transform 0.1s ease;
+}
+
+.api-key-toggle-icon:hover {
+  opacity: 0.9;
+}
+
+.api-key-toggle-icon:active {
+  transform: scale(0.95);
+}
+
+#llm-setup-title {
+  margin-top: 2rem;
+  margin-bottom: 1rem;
+  font-size: 1.1rem;
+}
+
+#llm-setup-section {
+  font-size: 14px;
+}
+
+#llm-setup-section a {
+  color: var(--browser-theme-primary-highlight);
+  background: var(--settings-bg-secondary);
+}
+
+/* LLM Download Progress */
+#llm-download-progress {
+  margin: 1rem 0;
+  padding: 1rem;
+  background: var(--settings-bg-secondary);
+  border: 1px solid var(--settings-border);
+  border-radius: 4px;
+}
+
+#llm-download-progress .progress-bar-container {
+  width: 100%;
+  height: 8px;
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+#llm-download-progress .progress-bar-fill {
+  height: 100%;
+  background: var(--browser-theme-primary-highlight, #3b82f6);
+  transition: width 0.3s ease;
+  border-radius: 4px;
+}
+
+#llm-download-progress .progress-text {
+  font-size: 12px;
+  color: var(--settings-text-secondary);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+#llm-download-progress .progress-status {
+  font-size: 11px;
+  color: var(--settings-text-secondary);
+  opacity: 0.75;
+  margin-top: 4px;
+}

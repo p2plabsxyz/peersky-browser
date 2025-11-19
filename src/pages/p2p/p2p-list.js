@@ -1,6 +1,7 @@
 export default [
+  "ai-chat",
   "chat",
-  "wiki",
+  "editor",
   "upload",
-  "editor"
+  "wiki"
 ];
