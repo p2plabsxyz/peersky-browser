@@ -2,7 +2,7 @@
 // Handles settings storage, defaults, validation, and IPC communication
 // Pattern: Similar to window-manager.js
 
-import { app, ipcMain, BrowserWindow, session } from 'electron';
+import { app, ipcMain, BrowserWindow, session, safeStorage } from 'electron';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
@@ -24,7 +24,13 @@ const DEFAULT_SETTINGS = {
   verticalTabs: false,
   keepTabsExpanded: false,
   wallpaper: 'redwoods',
-  wallpaperCustomPath: null
+  wallpaperCustomPath: null,
+  llm: {
+    enabled: false,
+    baseURL: 'http://127.0.0.1:11434/',
+    apiKey: 'ollama',
+    model: 'qwen2.5-coder:3b'
+  }
 };
 
 class SettingsManager {
@@ -35,6 +41,49 @@ class SettingsManager {
     
     this.init();
     this.registerIpcHandlers();
+  }
+  
+  // Encrypt sensitive data (API keys)
+  encryptApiKey(apiKey) {
+    // Don't encrypt 'ollama' - it's not sensitive
+    if (!apiKey || apiKey === 'ollama') {
+      return apiKey;
+    }
+    
+    // Only encrypt if safeStorage is available
+    if (safeStorage.isEncryptionAvailable()) {
+      try {
+        const buffer = safeStorage.encryptString(apiKey);
+        return `encrypted:${buffer.toString('base64')}`;
+      } catch (error) {
+        logDebug(`Failed to encrypt API key: ${error.message}`);
+        return apiKey; // Fallback to plain text
+      }
+    }
+    
+    return apiKey;
+  }
+  
+  // Decrypt sensitive data (API keys)
+  decryptApiKey(encryptedKey) {
+    // Not encrypted
+    if (!encryptedKey || !encryptedKey.startsWith('encrypted:')) {
+      return encryptedKey;
+    }
+    
+    // Only decrypt if safeStorage is available
+    if (safeStorage.isEncryptionAvailable()) {
+      try {
+        const base64 = encryptedKey.replace('encrypted:', '');
+        const buffer = Buffer.from(base64, 'base64');
+        return safeStorage.decryptString(buffer);
+      } catch (error) {
+        logDebug(`Failed to decrypt API key: ${error.message}`);
+        return encryptedKey; // Return as-is if decryption fails
+      }
+    }
+    
+    return encryptedKey;
   }
 
   async init() {
@@ -261,8 +310,37 @@ class SettingsManager {
       const data = await fs.readFile(SETTINGS_FILE, 'utf8');
       const loaded = JSON.parse(data);
       
-      // Merge with defaults for missing keys
-      this.settings = { ...DEFAULT_SETTINGS, ...loaded };
+      // Start with defaults
+      this.settings = { ...DEFAULT_SETTINGS };
+      
+      // Merge loaded settings, handling nested objects properly
+      for (const key in loaded) {
+        if (key === 'llm' && typeof loaded[key] === 'object' && loaded[key] !== null) {
+          // Simple LLM settings structure
+          const llmSettings = loaded.llm;
+          
+          // Ensure apiKey is 'ollama' for local setup
+          if (!llmSettings.apiKey || llmSettings.apiKey === '') {
+            llmSettings.apiKey = 'ollama';
+          }
+          
+          // Keep the user's selected model (don't reset it)
+          // Only use default if no model is set
+          if (!llmSettings.model) {
+            llmSettings.model = DEFAULT_SETTINGS.llm.model;
+          }
+          
+          // Only keep the fields we need
+          this.settings.llm = {
+            enabled: llmSettings.enabled || false,
+            baseURL: llmSettings.baseURL || DEFAULT_SETTINGS.llm.baseURL,
+            apiKey: this.decryptApiKey(llmSettings.apiKey || DEFAULT_SETTINGS.llm.apiKey),
+            model: llmSettings.model || DEFAULT_SETTINGS.llm.model
+          };
+        } else {
+          this.settings[key] = loaded[key];
+        }
+      }
       
       logDebug(`Settings loaded successfully: ${Object.keys(loaded).length} keys`);
       return this.settings;
@@ -291,9 +369,18 @@ class SettingsManager {
       // Ensure directory exists
       await fs.mkdir(path.dirname(SETTINGS_FILE), { recursive: true });
       
+      // Create a copy of settings with encrypted API key
+      const settingsToSave = { ...this.settings };
+      if (settingsToSave.llm && settingsToSave.llm.apiKey) {
+        settingsToSave.llm = {
+          ...settingsToSave.llm,
+          apiKey: this.encryptApiKey(settingsToSave.llm.apiKey)
+        };
+      }
+      
       // Atomic write: write to temp file then rename
       const tempFile = SETTINGS_FILE + '.tmp';
-      await fs.writeFile(tempFile, JSON.stringify(this.settings, null, 2), 'utf8');
+      await fs.writeFile(tempFile, JSON.stringify(settingsToSave, null, 2), 'utf8');
       await fs.rename(tempFile, SETTINGS_FILE);
       
       logDebug('Settings saved successfully');
@@ -313,7 +400,19 @@ class SettingsManager {
       verticalTabs: (v) => typeof v === 'boolean',
       keepTabsExpanded: (v) => typeof v === 'boolean',
       wallpaper: (v) => ['redwoods', 'mountains', 'custom'].includes(v),
-      wallpaperCustomPath: (v) => v === null || typeof v === 'string'
+      wallpaperCustomPath: (v) => v === null || typeof v === 'string',
+      llm: (v) => {
+        // Validate LLM settings object (simplified for Ollama-only)
+        if (typeof v !== 'object' || v === null) return false;
+        
+        // Check required fields
+        if (typeof v.enabled !== 'boolean') return false;
+        if (typeof v.baseURL !== 'string') return false;
+        if (typeof v.apiKey !== 'string') return false;
+        if (typeof v.model !== 'string') return false;
+        
+        return true;
+      }
     };
     
     const validator = validators[key];

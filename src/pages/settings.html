@@ -40,6 +40,10 @@
           <img src="peersky://static/assets/svg/folder.svg" class="nav-icon" alt="Tab Group Icon">
           <span>Tabs</span>
         </a>
+        <a href="#llm" class="nav-item" data-section="llm">
+          <img src="peersky://static/assets/svg/robot.svg" class="nav-icon" alt="LLM Icon">
+          <span>AI / LLMs</span>
+        </a>
         <a href="#extensions" class="nav-item" data-section="extensions">
           <img src="peersky://static/assets/svg/puzzle.svg" class="nav-icon" alt="Extensions Icon">
           <span>Extensions</span>
@@ -136,6 +140,69 @@
             </div>
           </div>
         </section>
+      </div>
+
+      <!-- LLM Section -->
+      <div id="llm-section" class="settings-page">
+        <h1 class="section-title">AI / LLMs</h1>
+        
+        <section class="settings-section">
+          <div class="setting-row">
+            <div class="setting-label">Enable LLM API</div>
+            <div class="setting-control">
+              <label class="toggle-label">
+                <input type="checkbox" id="llm-enabled" class="toggle-input">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+        </section>
+        
+        <div id="llm-config" style="display: none;">
+          <section class="settings-section">
+            <div class="setting-row">
+              <div class="setting-label">Server URL</div>
+              <div class="setting-control">
+                <input type="text" id="ollama-url" class="setting-input" placeholder="http://127.0.0.1:11434/" value="http://127.0.0.1:11434/">
+                <div class="setting-hint">
+                  Ollama: <code>http://127.0.0.1:11434/</code> or OpenAI: <code>https://api.openai.com/v1/</code>
+                </div>
+              </div>
+            </div>
+            
+            <div class="setting-row">
+              <div class="setting-label">API Key</div>
+              <div class="setting-control">
+                <div class="api-key-input-group">
+                  <input type="text" id="api-key" class="setting-input" placeholder="ollama for local, or your OpenAI API key" value="ollama">
+                  <img id="toggle-api-key-visibility" src="peersky://static/assets/svg/eye.svg" class="api-key-toggle-icon" alt="Toggle visibility" title="Show/Hide API key">
+                </div>
+                <div class="setting-hint">
+                  Use <code>ollama</code> for local models or paste your OpenAI API key for cloud models
+                </div>
+              </div>
+            </div>
+            
+            <div class="setting-row">
+              <div class="setting-label">Model Name</div>
+              <div class="setting-control">
+                <input type="text" id="ollama-model" class="setting-input" placeholder="e.g., qwen2.5-coder:3b, gpt-4o-mini" value="qwen2.5-coder:3b">
+                <div class="setting-hint">
+                </div>
+              </div>
+            </div>
+          </section>
+          
+          <h1 class="section-title" id="llm-setup-title">Setup</h1>
+          <section class="settings-section" id="llm-setup-section">
+            <div class="setting-info">
+              <p>Install Ollama: <a href="https://ollama.com/download" target="_blank">ollama.com/download</a></p>
+              <p>Pull a model: <code>ollama pull qwen2.5-coder:3b</code></p>
+              <p>Remove a model: <code>ollama rm qwen2.5-coder:3b</code></p>
+              <p>Browse Ollama models at: <a href="https://ollama.com/library" target="_blank">ollama.com/library</a></p>
+            </div>
+          </section>
+        </div>
       </div>
 
       <!-- Extensions Section -->

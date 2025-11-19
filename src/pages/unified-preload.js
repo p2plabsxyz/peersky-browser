@@ -18,8 +18,238 @@ const isSettings = url.startsWith('peersky://settings');
 const isHome = url.startsWith('peersky://home');
 const isBookmarks = url.includes('peersky://bookmarks');
 const isTabsPage = url.includes('peersky://tabs');
-const isInternal = url.startsWith('peersky://');
+const isInternal = url.startsWith('peersky://') || url.startsWith('file://') || url.includes('agregore.mauve.moe');
 const isExternal = !isInternal;
+
+console.log('Unified-preload: URL detection', { url, isInternal, isExternal });
+
+// Expose LLM API for internal pages and Agregore examples
+if (isInternal || url.includes('agregore.mauve.moe')) {
+  console.log('Unified-preload: Exposing LLM API for page:', url);
+  // Iterator management for streaming
+  const iteratorMaps = new Map();
+  let iteratorId = 1;
+  
+  async function chatStream(args) {
+    const { id } = await ipcRenderer.invoke('llm-chat-stream', args);
+    const localId = iteratorId++;
+    iteratorMaps.set(localId, id);
+    return localId;
+  }
+  
+  async function completeStream(prompt, args = {}) {
+    const { id } = await ipcRenderer.invoke('llm-complete-stream', { prompt, ...args });
+    const localId = iteratorId++;
+    iteratorMaps.set(localId, id);
+    return localId;
+  }
+  
+  async function iteratorNext(localId) {
+    const id = iteratorMaps.get(localId);
+    if (!id) throw new Error('Unknown iterator ID');
+    return ipcRenderer.invoke('llm-iterate-next', { id });
+  }
+  
+  async function iteratorReturn(localId) {
+    const id = iteratorMaps.get(localId);
+    if (!id) throw new Error('Unknown iterator ID');
+    iteratorMaps.delete(localId);
+    return ipcRenderer.invoke('llm-iterate-return', { id });
+  }
+  
+  // Expose LLM API using contextBridge with simpler structure
+  // We need to inject a script to create the complex object structure
+  contextBridge.exposeInMainWorld('_llmBridge', {
+    isSupported: () => ipcRenderer.invoke('llm-supported'),
+    chat: (args) => ipcRenderer.invoke('llm-chat', args),
+    complete: (args) => ipcRenderer.invoke('llm-complete', args),
+    chatStream: chatStream,
+    completeStream: completeStream,
+    iteratorNext: iteratorNext,
+    iteratorReturn: iteratorReturn
+  });
+  
+  const script = document.createElement('script');
+  script.textContent = `
+    (function() {
+      window.llm = {
+        isSupported: () => window._llmBridge.isSupported(),
+        
+        chat: function(args) {
+          // Return an object that acts as both a Promise and an async iterator
+          const obj = {
+            then(onResolve, onReject) {
+              window._llmBridge.chat(args).then(onResolve, onReject);
+            },
+            async *[Symbol.asyncIterator]() {
+              const id = await window._llmBridge.chatStream(args);
+              try {
+                while (true) {
+                  const { done, value } = await window._llmBridge.iteratorNext(id);
+                  if (done) break;
+                  yield value;
+                }
+              } finally {
+                await window._llmBridge.iteratorReturn(id);
+              }
+            }
+          };
+          return obj;
+        },
+        
+        complete: function(prompt, args = {}) {
+          const obj = {
+            then(onResolve, onReject) {
+              window._llmBridge.complete({ prompt, ...args }).then(onResolve, onReject);
+            },
+            async *[Symbol.asyncIterator]() {
+              const id = await window._llmBridge.completeStream(prompt, args);
+              try {
+                while (true) {
+                  const { done, value } = await window._llmBridge.iteratorNext(id);
+                  if (done) break;
+                  yield value;
+                }
+              } finally {
+                await window._llmBridge.iteratorReturn(id);
+              }
+            }
+          };
+          return obj;
+        }
+      };
+      console.log('LLM API created via script injection');
+    })();
+  `;
+  
+  // Wait for DOM to be ready before injecting script
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      document.head.appendChild(script);
+    });
+  } else {
+    document.head.appendChild(script);
+  }
+  
+  console.log('Unified-preload: LLM API exposed via contextBridge for P2P apps');
+} else {
+  // Even for external pages, check if they might need LLM API (for testing)
+  console.log('Unified-preload: External page, checking if LLM should be exposed:', url);
+  
+  // We can add more trusted domains here if needed
+  const trustedDomains = ['agregore.mauve.moe', 'localhost'];
+  const shouldExposeLLM = trustedDomains.some(domain => url.includes(domain));
+  
+  if (shouldExposeLLM) {
+    console.log('Unified-preload: Exposing LLM API for trusted external page:', url);
+    
+    // Iterator management for streaming
+    const iteratorMaps = new Map();
+    let iteratorId = 1;
+    
+    async function chatStream(args) {
+      const { id } = await ipcRenderer.invoke('llm-chat-stream', args);
+      const localId = iteratorId++;
+      iteratorMaps.set(localId, id);
+      return localId;
+    }
+    
+    async function completeStream(prompt, args = {}) {
+      const { id } = await ipcRenderer.invoke('llm-complete-stream', { prompt, ...args });
+      const localId = iteratorId++;
+      iteratorMaps.set(localId, id);
+      return localId;
+    }
+    
+    async function iteratorNext(localId) {
+      const id = iteratorMaps.get(localId);
+      if (!id) throw new Error('Unknown iterator ID');
+      return ipcRenderer.invoke('llm-iterate-next', { id });
+    }
+    
+    async function iteratorReturn(localId) {
+      const id = iteratorMaps.get(localId);
+      if (!id) throw new Error('Unknown iterator ID');
+      iteratorMaps.delete(localId);
+      return ipcRenderer.invoke('llm-iterate-return', { id });
+    }
+    
+    // Expose LLM API using contextBridge with simpler structure
+    contextBridge.exposeInMainWorld('_llmBridge', {
+      isSupported: () => ipcRenderer.invoke('llm-supported'),
+      chat: (args) => ipcRenderer.invoke('llm-chat', args),
+      complete: (args) => ipcRenderer.invoke('llm-complete', args),
+      chatStream: chatStream,
+      completeStream: completeStream,
+      iteratorNext: iteratorNext,
+      iteratorReturn: iteratorReturn
+    });
+    
+    const script = document.createElement('script');
+    script.textContent = `
+      (function() {
+        window.llm = {
+          isSupported: () => window._llmBridge.isSupported(),
+          
+          chat: function(args) {
+            // Return an object that acts as both a Promise and an async iterator
+            const obj = {
+              then(onResolve, onReject) {
+                window._llmBridge.chat(args).then(onResolve, onReject);
+              },
+              async *[Symbol.asyncIterator]() {
+                const id = await window._llmBridge.chatStream(args);
+                try {
+                  while (true) {
+                    const { done, value } = await window._llmBridge.iteratorNext(id);
+                    if (done) break;
+                    yield value;
+                  }
+                } finally {
+                  await window._llmBridge.iteratorReturn(id);
+                }
+              }
+            };
+            return obj;
+          },
+          
+          complete: function(prompt, args = {}) {
+            const obj = {
+              then(onResolve, onReject) {
+                window._llmBridge.complete({ prompt, ...args }).then(onResolve, onReject);
+              },
+              async *[Symbol.asyncIterator]() {
+                const id = await window._llmBridge.completeStream(prompt, args);
+                try {
+                  while (true) {
+                    const { done, value } = await window._llmBridge.iteratorNext(id);
+                    if (done) break;
+                    yield value;
+                  }
+                } finally {
+                  await window._llmBridge.iteratorReturn(id);
+                }
+              }
+            };
+            return obj;
+          }
+        };
+        console.log('LLM API created via script injection for trusted external page');
+      })();
+    `;
+    
+    // Wait for DOM to be ready before injecting script
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => {
+        document.head.appendChild(script);
+      });
+    } else {
+      document.head.appendChild(script);
+    }
+    
+    console.log('Unified-preload: LLM API exposed for trusted external page');
+  }
+}
 
 const context = { url, isSettings, isHome, isBookmarks, isInternal, isExternal };
 
@@ -145,10 +375,24 @@ try {
       onSearchEngineChanged: (callback) => createEventListener('search-engine-changed', callback),
       onShowClockChanged: (callback) => createEventListener('show-clock-changed', callback),
       onWallpaperChanged: (callback) => createEventListener('wallpaper-changed', callback),
-      readCSS: cssAPI.readCSS
+      readCSS: cssAPI.readCSS,
+      // LLM API for settings page
+      llm: {
+        isSupported: () => ipcRenderer.invoke('llm-is-supported'),
+        chat: (messages, options) => ipcRenderer.invoke('llm-chat', messages, options),
+        complete: (prompt, options) => ipcRenderer.invoke('llm-complete', prompt, options),
+        updateSettings: (settings) => ipcRenderer.invoke('llm-update-settings', settings),
+        testConnection: () => ipcRenderer.invoke('llm-test-connection')
+      },
+      onLLMDownloadProgress: (callback) => {
+        ipcRenderer.on('llm-download-progress', (_, progress) => callback(progress));
+      },
+      onLLMModelsUpdated: (callback) => {
+        ipcRenderer.on('llm-models-updated', (_, data) => callback(data));
+      }
     });
     
-    console.log('Unified-preload: Full Settings electronAPI exposed');
+    console.log('Unified-preload: Full Settings electronAPI exposed with LLM API');
     
   } else if (isHome) {
     // Zero-flicker wallpaper injection for home pages
@@ -248,6 +492,12 @@ try {
       environment: {
         platform: process.platform,
         version: process.versions.electron
+      },
+      // LLM API for P2P apps
+      llm: {
+        isSupported: () => ipcRenderer.invoke('llm-is-supported'),
+        chat: (messages, options) => ipcRenderer.invoke('llm-chat', messages, options),
+        complete: (prompt, options) => ipcRenderer.invoke('llm-complete', prompt, options)
       }
     });
     
