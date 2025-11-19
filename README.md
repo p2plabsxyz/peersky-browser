@@ -11,7 +11,7 @@
     <!-- <img src="https://img.shields.io/github/v/release/p2plabsxyz/peersky-browser?color=green" alt="GitHub Release"> -->
     <a href="https://mastodon.social/@peersky"><img src="https://img.shields.io/mastodon/follow/113323887574214930" alt="Mastodon Follow"></a>
     <a href="https://deepwiki.com/p2plabsxyz/peersky-browser"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
-    <img src="./banner.gif" width="639" alt="Peersky, displaying multiple overlapping windows. The foreground window shows a search bar with DuckDuckGo, while the background contains a Wikipedia page on ipns:// about Earth and a private hyper:// chat. The central window features a scenic forest image with sunlight filtering through tall trees, and a clock">
+    <img src="./docs/images/peersky-llm-editor.png" width="639" alt="Screenshot of the PeerSky P2P Editor showing HTML, CSS, and JavaScript panels, a live preview of a blue page with red ‘Spider-Man’ text, and AI code-generation controls">
 </div>
 
 💻 [Download](https://peersky.p2plabs.xyz/)
