@@ -19,7 +19,7 @@ P2P apps can use this bridge to generate text, code, or metadata, then publish t
 3. Choose the **Base URL**, **API Key**, and **Model Name** you want to expose to apps.
 4. Save—PeerSky will auto-download the model if it is missing and notify you.
 
-![AI & LLM Settings](/images/peersky-llm-settings.png)
+![AI & LLM Settings](./images/peersky-llm-settings.png)
 
 ### Field reference
 
@@ -52,8 +52,8 @@ Local models are the default in PeerSky, but some developers/users still need ac
 Cloud providers skip the download step but the rest of the API is identical.
 
 ## Examples of LLM usage in P2P apps
-![AI Editor](/images/peersky-llm-editor.png)
-![AI Chat](/images/peersky-llm-chat.png)
+![AI Editor](./images/peersky-llm-editor.png)
+![AI Chat](./images/peersky-llm-chat.png)
 
 ## Developer API
 
