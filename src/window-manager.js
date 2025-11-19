@@ -46,6 +46,7 @@ class WindowManager {
     this.shutdownInProgress = false;
     this.saveQueue = Promise.resolve();
     this.finalSaveCompleted = false;
+    this.isClearingState = false;
     this.registerListeners();
 
     // Add signal handlers for graceful shutdown
@@ -54,6 +55,11 @@ class WindowManager {
 
     // Enhanced app event handlers for proper UI quit handling
     app.on('before-quit', (event) => {
+      // If we're clearing state (windows closed), don't save
+      if (this.isClearingState) {
+        return;
+      }
+      
       if (!this.finalSaveCompleted) {
         event.preventDefault();
 
@@ -64,11 +70,19 @@ class WindowManager {
     });
 
     // Handle when all windows are closed (UI quit)
-    app.on('window-all-closed', () => {
+    app.on('window-all-closed', async () => {
       if (!this.isQuitting && !this.shutdownInProgress) {
         // On macOS, keep app running, on other platforms quit
+        // Clear saved state since user closed all windows (didn't quit)
+        this.isClearingState = true;
+        this.isQuitting = true;
+        this.shutdownInProgress = true;
+        this.finalSaveCompleted = true; // Prevent before-quit from trying to save
+        this.stopSaver();
+        await this.clearSavedState();
+
         if (process.platform !== 'darwin') {
-          this.handleGracefulShutdown();
+          app.quit();
         }
       }
     });
@@ -228,6 +242,13 @@ class WindowManager {
         });
       }
       return { success: true };
+    });
+
+    // Handle save-state events from renderer (tabs/windows changed)
+    ipcMain.on("save-state", () => {
+      if (!this.isQuitting && !this.shutdownInProgress) {
+        this.saveOpened();
+      }
     });
   }
 
@@ -404,14 +425,15 @@ class WindowManager {
     this.windows.add(window);
 
     window.window.on("closed", () => {
+      const wasLastWindow = this.windows.size === 1;
       this.windows.delete(window);
       ipcMain.removeListener(
         `webview-did-navigate-${window.id}`,
         window.navigateListener
       );
 
-      // Only save if not shutting down
-      if (!this.isQuitting && !this.shutdownInProgress) {
+      // Only save if not shutting down and not closing the last window
+      if (!this.isQuitting && !this.shutdownInProgress && !wasLastWindow) {
         this.saveOpened();
       }
     });
@@ -423,15 +445,10 @@ class WindowManager {
         return;
       }
       
-      //treat closing the last window as a shutdown on non-macOS platforms.
-      if (process.platform !== 'darwin') {
-        // If this is the last window and we're not already shutting down
-        if (!this.isQuitting && !this.shutdownInProgress && this.windows.size === 1) {
-          console.log("Last window closing, initiating shutdown");
-          this.isClosingLastWindow = true;
-          event.preventDefault();
-          this.handleGracefulShutdown();
-        }
+      // If this is the last window, mark that we're clearing state
+      if (this.windows.size === 1) {
+        this.isClearingState = true;
+        this.stopSaver();
       }
     });
 
@@ -826,7 +843,7 @@ class PeerskyWindow {
     });
 
     this.id = this.window.webContents.id;
-    this.windowId = windowId || this.id.toString()
+    this.windowId = windowId || randomUUID()
     this.savedTabs = savedTabs; // Store saved tabs for restoration
 
     const loadURL = path.join(__dirname, "pages", "index.html");

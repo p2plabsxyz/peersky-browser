@@ -124,19 +124,53 @@
                 <div class="select-display" data-value="duckduckgo">DuckDuckGo</div>
                 <div class="select-dropdown">
                   <div class="select-option" data-value="duckduckgo">DuckDuckGo</div>
+                  <div class="select-option" data-value="brave">Brave Search</div>
                   <div class="select-option" data-value="ecosia">Ecosia</div>
                   <div class="select-option" data-value="kagi">Kagi</div>
                   <div class="select-option" data-value="startpage">Startpage</div>
+                  <div class="select-option" data-value="custom">Custom</div>
                 </div>
               </div>
               <input type="hidden" id="search-engine" value="duckduckgo">
             </div>
           </div>
-          
-          <div class="setting-row">
-            <div class="setting-label">Clear cache</div>
+
+          <div
+            class="setting-row tall-row"
+            id="custom-search-row"
+            style="display: none"
+          >
+            <div class="setting-label">Custom search URL</div>
             <div class="setting-control">
-              <button type="button" id="clear-cache" class="btn btn-danger">Clear Cache</button>
+              <input
+                type="text"
+                id="custom-search-template"
+                class="text-input input-fill"
+                placeholder="https://example.com/search?q=%s"
+                autocomplete="off"
+              />
+              <div id="custom-search-message" class="help-or-error">
+                Use <code>%s</code> where the query should go.
+              </div>
+            </div>
+          </div>
+
+          <!-- Browser cache only -->
+          <div class="setting-row">
+            <div class="setting-label">Clear browser cache</div>
+            <div class="setting-control">
+              <button type="button" id="clear-browser-cache" class="btn btn-danger">
+                Clear Cache
+              </button>
+              
+            </div>
+          </div>
+
+          <!-- P2P reset (identities preserved by default) -->
+          <div class="setting-row tall-row">
+            <div class="setting-label">Reset P2P data</div>
+            <div class="setting-control">
+              <button type="button" id="reset-p2p" class="btn btn-warning">Reset P2P Data</button>         
             </div>
           </div>
         </section>

@@ -5,10 +5,11 @@ import { createHandler as createIPFSHandler } from "./protocols/ipfs-handler.js"
 import { createHandler as createHyperHandler } from "./protocols/hyper-handler.js";
 import { createHandler as createWeb3Handler } from "./protocols/web3-handler.js";
 import { ipfsOptions, hyperOptions } from "./protocols/config.js";
-import { registerShortcuts } from "./actions.js";
+import { createMenuTemplate } from "./actions.js";
 import WindowManager, { createIsolatedWindow } from "./window-manager.js";
 import settingsManager from "./settings-manager.js";
 import { attachContextMenus, setWindowManager } from "./context-menu.js";
+import { isBuiltInSearchEngine } from "./search-engine.js";
 import "./llm.js";
 // import { setupAutoUpdater } from "./auto-updater.js";
 
@@ -56,7 +57,10 @@ app.whenReady().then(async () => {
     windowManager.open({ isMainWindow: true });
   }
 
-  registerShortcuts(windowManager); // Pass windowManager to registerShortcuts
+  // Register shortcuts from menu template (NOTE: all these shortcuts works on a window only if a window is in focus)
+  const menuTemplate = createMenuTemplate(windowManager);
+  const menu = Menu.buildFromTemplate(menuTemplate);
+  Menu.setApplicationMenu(menu);
 
   windowManager.startSaver();
 
@@ -203,4 +207,14 @@ ipcMain.on('update-group-properties', (event, groupId, properties) => {
     }
   });
 });
+
+ipcMain.handle('check-built-in-engine', (event, template) => {
+  try {
+    return isBuiltInSearchEngine(template);
+  } catch (error) {
+    console.error('Error in check-built-in-engine:', error);
+    return false; // fallback if anything goes wrong
+  }
+});
+
 export { windowManager };

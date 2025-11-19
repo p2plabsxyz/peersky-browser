@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" href="peersky://static/assets/favicon.ico" />
+  <style>
+    @import url("browser://theme/error.css");
+  </style>
+  <title>Error - Peersky</title>
+</head>
+
+<body>
+  <main class="container" role="alert">
+    <div class="icon" aria-hidden="true"><img src="peersky://static/assets/error-file.png" alt="Error Icon" /></div>
+    <h1 id="errorTitle">Loading Error Details...</h1>
+
+    <p id="errorMessage" class="message">
+      Attempting to display error message from parameters.
+    </p>
+
+    <p id="errorCode" class="error-code"></p>
+    <p id="errorUrl" class="url-box"></p>
+
+    <nav class="button-group" aria-label="Error actions">
+      <button id="retryButton">Retry</button>
+      <button id="homeButton" class="secondary">Go Home</button>
+    </nav>
+  </main>
+
+  <script src="peersky://static/js/error.js" defer></script>
+</body>
+
+</html>
