@@ -348,6 +348,55 @@ class NavBox extends HTMLElement {
           this.dispatchEvent(new CustomEvent("navigate", { detail: { url } }));
         }
       });
+
+      const normalizeFilePathToUrl = (filePath) => {
+        if (!filePath) return null;
+        if (process.platform === "win32") {
+          const normalized = filePath.replace(/\\/g, "/");
+          return `file://${normalized.startsWith("/") ? "" : "/"}${normalized}`;
+        }
+        return `file://${filePath}`;
+      };
+
+      const handleDropNavigate = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const { dataTransfer } = event;
+        if (!dataTransfer) return;
+
+        if (dataTransfer.files && dataTransfer.files.length > 0) {
+          const file = dataTransfer.files[0];
+          const targetUrl = normalizeFilePathToUrl(file.path);
+          if (targetUrl) {
+            urlInput.value = targetUrl;
+            this.dispatchEvent(new CustomEvent("navigate", { detail: { url: targetUrl } }));
+            return;
+          }
+        }
+
+        const textUrl = dataTransfer.getData("text/uri-list") || dataTransfer.getData("text/plain");
+        if (textUrl) {
+          const url = textUrl.trim();
+          if (url) {
+            urlInput.value = url;
+            this.dispatchEvent(new CustomEvent("navigate", { detail: { url } }));
+          }
+        }
+      };
+
+      const preventDefaultDrag = (event) => {
+        if (!event.dataTransfer) return;
+        if (event.dataTransfer.types?.includes("Files") || event.dataTransfer.types?.includes("text/uri-list") || event.dataTransfer.types?.includes("text/plain")) {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "copy";
+        }
+      };
+
+      ["dragenter", "dragover"].forEach((evt) => {
+        urlInput.addEventListener(evt, preventDefaultDrag);
+      });
+      urlInput.addEventListener("drop", handleDropNavigate);
     } else {
       console.error("URL input not found within nav-box.");
     }
