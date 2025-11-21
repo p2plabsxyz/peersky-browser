@@ -3,7 +3,7 @@ import path from "path";
 import mime from "mime-types";
 import { pathToFileURL } from "url";
 
-function generateDirectoryListing(dirPath, entries, allFilesForPublishing) {
+function generateDirectoryListing(dirPath, entries) {
   const parentPath = path.dirname(dirPath);
   const parentDirName = path.basename(parentPath) || 'Parent Directory';
 
@@ -92,8 +92,26 @@ function generateDirectoryListing(dirPath, entries, allFilesForPublishing) {
   <div id="result"></div>
   
   <script>
-    // This list is now pre-compiled by the main process with all recursive files and correct paths!
-    const allFiles = ${JSON.stringify(allFilesForPublishing)};
+    let manifestCache = null;
+
+    async function loadManifest() {
+      if (manifestCache) return manifestCache;
+
+      const manifestUrl = new URL(window.location.href);
+      manifestUrl.searchParams.set('__publishManifest', '1');
+
+      const response = await fetch(manifestUrl.toString(), {
+        headers: { 'Accept': 'application/json' }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to load directory manifest');
+      }
+
+      const data = await response.json();
+      manifestCache = data.files || [];
+      return manifestCache;
+    }
     
     async function publishDirectory() {
       const protocol = document.getElementById('protocolSelect').value;
@@ -106,20 +124,21 @@ function generateDirectoryListing(dirPath, entries, allFilesForPublishing) {
       publishBtn.disabled = true;
       
       try {
-        if (allFiles.length === 0) {
+        const files = await loadManifest();
+
+        if (files.length === 0) {
           throw new Error('No files found in this directory or its subdirectories.');
         }
-        
+
         if (protocol === 'hyper') {
-          // Hypercore upload
           const hyperdriveUrl = await generateHyperdriveKey('directory-' + Date.now());
           console.log('Hyper base URL:', hyperdriveUrl);
-          
-          for (const fileEntry of allFiles) {
+
+          for (const fileEntry of files) {
             const url = hyperdriveUrl + encodeURIComponent(fileEntry.relativePath);
             console.log('Uploading', fileEntry.relativePath, 'to', url);
-            
-            const fileResponse = await fetch('file://' + fileEntry.path);
+
+            const fileResponse = await fetch(fileEntry.fileUrl);
             const blob = await fileResponse.blob();
             
             const uploadResponse = await fetch(url, {
@@ -143,26 +162,20 @@ function generateDirectoryListing(dirPath, entries, allFilesForPublishing) {
           result.appendChild(hyperAnchor);
           
         } else {
-          // IPFS upload - exactly like upload.html
           const formData = new FormData();
-          
-          for (const fileEntry of allFiles) {
-            console.log('Processing file:', fileEntry.relativePath, 'size:', fileEntry.size);
-            
-            // Convert base64 back to blob
-            const binaryString = atob(fileEntry.base64);
-            const bytes = new Uint8Array(binaryString.length);
-            for (let i = 0; i < binaryString.length; i++) {
-              bytes[i] = binaryString.charCodeAt(i);
+
+          for (const fileEntry of files) {
+            console.log('Processing file:', fileEntry.relativePath);
+
+            const response = await fetch(fileEntry.fileUrl);
+            if (!response.ok) {
+              throw new Error('Failed to read ' + fileEntry.relativePath);
             }
-            const blob = new Blob([bytes], { type: 'application/octet-stream' });
-            
-            // Use the relative path as the file name to preserve directory structure
+            const blob = await response.blob();
+
             const fileName = fileEntry.relativePath || fileEntry.name;
-            console.log('Creating File with name:', fileName);
-            const file = new File([blob], fileName, { type: 'application/octet-stream' });
-            
-            // The third argument to append() is what IPFS uses as the filename.
+            const file = new File([blob], fileName, { type: blob.type || 'application/octet-stream' });
+
             formData.append('file', file, fileName);
           }
           
@@ -253,19 +266,17 @@ export async function createHandler() {
         const subFiles = await getFilesRecursive(fullPath, relativePath);
         allFiles.push(...subFiles);
       } else {
-        // Read the file content and convert to base64 for embedding
         try {
-          const fileContent = await fs.readFile(fullPath);
-          const base64Content = fileContent.toString('base64');
+          const stat = await fs.stat(fullPath);
           allFiles.push({
             name: entry.name,
             path: fullPath,
-            relativePath: relativePath,
-            base64: base64Content,
-            size: fileContent.length
+            relativePath,
+            size: stat.size,
+            fileUrl: pathToFileURL(fullPath).href
           });
         } catch (err) {
-          console.error('Could not read file:', fullPath, err);
+          console.error('Could not stat file:', fullPath, err);
         }
       }
     }
@@ -288,6 +299,18 @@ export async function createHandler() {
       console.log('Path stats:', filePath, 'isDirectory:', stats.isDirectory(), 'isFile:', stats.isFile());
 
       if (stats.isDirectory()) {
+        // Handle manifest requests first (used for publishing)
+        if (url.searchParams.get('__publishManifest') === '1') {
+          const manifest = await getFilesRecursive(filePath, '');
+          return new Response(JSON.stringify({ files: manifest }), {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/json; charset=utf-8',
+              'Cache-Control': 'no-cache'
+            }
+          });
+        }
+
         // For directories, read entries for the current level to display
         const dirEntries = await fs.readdir(filePath);
         const entryStats = await Promise.all(
@@ -309,13 +332,7 @@ export async function createHandler() {
 
         const validEntries = entryStats.filter(e => e !== null);
 
-        // **BEFORE** generating the HTML, read the *entire* directory recursively.
-        // This gives the script embedded in the HTML the full list of files to publish.
-        // Don't use the directory name as base path - just use empty string
-        // so paths are relative to the current directory
-        const allFilesForPublishing = await getFilesRecursive(filePath, '');
-
-        const html = generateDirectoryListing(filePath, validEntries, allFilesForPublishing);
+        const html = generateDirectoryListing(filePath, validEntries);
 
         return new Response(html, {
           status: 200,
