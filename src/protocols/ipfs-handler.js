@@ -73,7 +73,11 @@ export async function createHandler(ipfsOptions, session) {
     try {
       const startTime = Date.now();
       const entries = [];
+      let currentFileName = null;
+      
       for (const data of request.uploadData || []) {
+        console.log("Upload data entry:", JSON.stringify(Object.keys(data)), "type:", data.type);
+        
         if (data.type === "file" && data.file) {
           const filePath = data.file;
           const stats = await fs.stat(filePath);
@@ -94,11 +98,25 @@ export async function createHandler(ipfsOptions, session) {
               content: fs.createReadStream(filePath, { highWaterMark: 1024 * 1024 }),
             });
           }
+        } else if (data.type === "rawData" && data.bytes) {
+          // This contains the FormData field name/filename metadata
+          // Parse the rawData to extract the filename
+          const rawDataString = Buffer.from(data.bytes).toString('utf-8');
+          console.log("Raw data string:", rawDataString);
+          
+          // Extract filename from Content-Disposition header in the rawData
+          const filenameMatch = rawDataString.match(/filename="([^"]+)"/);
+          if (filenameMatch) {
+            currentFileName = filenameMatch[1];
+            console.log("Extracted filename from rawData:", currentFileName);
+          }
         } else if (data.type === "blob" && data.blobUUID) {
-          // Handle blob data
+          // Handle blob data from FormData - use the filename from previous rawData entry
           const blobData = await session.getBlobData(data.blobUUID);
-          const fileName = "index.html";
+          const fileName = currentFileName || "index.html";
+          console.log("Processing blob with filename:", fileName, "blobUUID:", data.blobUUID);
           entries.push({ path: fileName, content: blobData });
+          currentFileName = null; // Reset for next file
         }
       }
   

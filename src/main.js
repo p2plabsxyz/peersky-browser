@@ -4,6 +4,7 @@ import { createHandler as createBrowserThemeHandler } from "./protocols/theme-ha
 import { createHandler as createIPFSHandler } from "./protocols/ipfs-handler.js";
 import { createHandler as createHyperHandler } from "./protocols/hyper-handler.js";
 import { createHandler as createWeb3Handler } from "./protocols/web3-handler.js";
+import { createHandler as createFileHandler } from "./protocols/file-handler.js";
 import { ipfsOptions, hyperOptions } from "./protocols/config.js";
 import { createMenuTemplate } from "./actions.js";
 import WindowManager, { createIsolatedWindow } from "./window-manager.js";
@@ -31,6 +32,16 @@ const BROWSER_PROTOCOL = {
   corsEnabled: true,
 };
 
+const FILE_PROTOCOL = {
+  standard: true,
+  secure: false,
+  allowServiceWorkers: false,
+  supportFetchAPI: true,
+  bypassCSP: true,
+  corsEnabled: true,
+  stream: true,
+};
+
 let windowManager;
 
 globalProtocol.registerSchemesAsPrivileged([
@@ -41,6 +52,7 @@ globalProtocol.registerSchemesAsPrivileged([
   { scheme: "pubsub", privileges: P2P_PROTOCOL },
   { scheme: "hyper", privileges: P2P_PROTOCOL },
   { scheme: "web3", privileges: P2P_PROTOCOL },
+  { scheme: "file", privileges: FILE_PROTOCOL },
 ]);
 
 app.whenReady().then(async () => {
@@ -76,6 +88,7 @@ async function setupProtocols(session) {
   const { protocol: sessionProtocol } = session;
 
   app.setAsDefaultProtocolClient("peersky");
+  app.setAsDefaultProtocolClient("file");
   app.setAsDefaultProtocolClient("browser");
   app.setAsDefaultProtocolClient("ipfs");
   app.setAsDefaultProtocolClient("ipns");
@@ -98,6 +111,9 @@ async function setupProtocols(session) {
 
   const web3ProtocolHandler = await createWeb3Handler();
   sessionProtocol.registerStreamProtocol("web3", web3ProtocolHandler, P2P_PROTOCOL);
+
+  const fileProtocolHandler = await createFileHandler();
+  sessionProtocol.handle("file", fileProtocolHandler);
 }
 
 app.on("window-all-closed", () => {
