@@ -43,6 +43,9 @@ globalProtocol.registerSchemesAsPrivileged([
   { scheme: "web3", privileges: P2P_PROTOCOL },
 ]);
 
+// Introduce a flag to prevent multiple 'before-quit' handling
+let isQuitting = false;
+
 app.whenReady().then(async () => {
   windowManager = new WindowManager();
 
@@ -50,10 +53,11 @@ app.whenReady().then(async () => {
   setWindowManager(windowManager);
   await setupProtocols(session.defaultSession);
 
-  // Load saved windows or open a new one
-  await windowManager.openSavedWindows();
-  if (windowManager.all.length === 0) {
-    windowManager.open({ isMainWindow: true });
+  if(!isQuitting){
+    windowManager.clearSavedState();  // Clear saved state on fresh start
+    windowManager.open({ isMainWindow: true }); // Open main window
+  }else{
+    await windowManager.openSavedWindows();  
   }
 
   // Register shortcuts from menu template (NOTE: all these shortcuts works on a window only if a window is in focus)
@@ -67,9 +71,6 @@ app.whenReady().then(async () => {
   // console.log("App is prepared, setting up AutoUpdater...");
   // setupAutoUpdater();
 });
-
-// Introduce a flag to prevent multiple 'before-quit' handling
-let isQuitting = false;
 
 
 async function setupProtocols(session) {
@@ -100,11 +101,7 @@ async function setupProtocols(session) {
   sessionProtocol.registerStreamProtocol("web3", web3ProtocolHandler, P2P_PROTOCOL);
 }
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
-});
+// Rely on WindowManager for window-all-closed handling
 
 app.on("activate", () => {
   if (windowManager.all.length === 0) {
