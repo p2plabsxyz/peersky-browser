@@ -50,8 +50,12 @@ app.whenReady().then(async () => {
   setWindowManager(windowManager);
   await setupProtocols(session.defaultSession);
 
-  // Start with a fresh window; no automatic session restore
-  windowManager.open({ isMainWindow: true });
+  if(!isQuitting){
+    windowManager.clearSavedState();  // Clear saved state on fresh start
+    windowManager.open({ isMainWindow: true }); // Open main window
+  }else{
+    await windowManager.openSavedWindows();  
+  }
 
   // Register shortcuts from menu template (NOTE: all these shortcuts works on a window only if a window is in focus)
   const menuTemplate = createMenuTemplate(windowManager);

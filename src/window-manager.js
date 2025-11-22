@@ -431,6 +431,11 @@ class WindowManager {
     });
 
     window.window.on("close", (event) => {
+      if(!this.isQuitting){
+        console.log(`Window ${window.id} close event detected.`);
+        event.preventDefault(); 
+        window.window.hide();   
+      }
       if (this.shutdownInProgress && !this.finalSaveCompleted) {
         console.log(`Preventing window ${window.id} from closing until save completes`);
         event.preventDefault();
