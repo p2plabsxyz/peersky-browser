@@ -43,6 +43,9 @@ globalProtocol.registerSchemesAsPrivileged([
   { scheme: "web3", privileges: P2P_PROTOCOL },
 ]);
 
+// Introduce a flag to prevent multiple 'before-quit' handling
+let isQuitting = false;
+
 app.whenReady().then(async () => {
   windowManager = new WindowManager();
 
@@ -68,9 +71,6 @@ app.whenReady().then(async () => {
   // console.log("App is prepared, setting up AutoUpdater...");
   // setupAutoUpdater();
 });
-
-// Introduce a flag to prevent multiple 'before-quit' handling
-let isQuitting = false;
 
 
 async function setupProtocols(session) {
