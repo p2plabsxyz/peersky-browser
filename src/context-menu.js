@@ -196,17 +196,38 @@ export function attachContextMenus(browserWindow, windowManager) {
                   title: "Save Image",
                   defaultPath: defaultName,
                   filters: [
-                    { name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"] },
-                    { name: "All Files", extensions: ["*"] },
+                    {
+                      name: "Image Files",
+                      extensions: [
+                        "png", "jpg", "jpeg", "gif", "webp", "bmp", "svg",
+                        "apng", "avif", "heic", "heif", "jxl",
+                        "ico", "cur", "tif", "tiff",
+                        "xbm", "pnm", "ppm", "pgm", "pbm"
+                      ]
+                    },
+                    { name: "All Files", extensions: ["*"] }
                   ],
                 });
 
                 if (!result.canceled && result.filePath) {
-                  // Download the image using webContents session
-                  webContents.session.downloadURL(params.srcURL);
+                  // Validate URL scheme
+                  try {
+                    const u = new URL(params.srcURL);
+                    const allowedSchemes = new Set(["http:", "https:", "ipfs:", "hyper:"]);
+
+                    if (!allowedSchemes.has(u.protocol)) {
+                      console.warn("Blocked download for unsupported scheme:", u.protocol);
+                      return;
+                    }
+                  } catch (err) {
+                    console.error("Invalid URL:", params.srcURL);
+                    return;
+                  }
                   
                   // Listen for the download and move it to the chosen location
                   webContents.session.once("will-download", (event, item) => {
+                    // Guard clause to ensure this download matches our intended file
+                    if (item.getURL() !== params.srcURL) return;
                     item.setSavePath(result.filePath);
                     
                     item.on("updated", (event, state) => {
@@ -223,6 +244,9 @@ export function attachContextMenus(browserWindow, windowManager) {
                       }
                     });
                   });
+
+                  // Download the image using webContents session
+                  webContents.session.downloadURL(params.srcURL);
                 }
               } catch (e) {
                 console.error("Save Image failed:", e);
