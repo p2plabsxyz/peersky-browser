@@ -26,7 +26,7 @@ function generateDirectoryListing(dirPath, entries) {
     
     return `
       <tr>
-        <td><a href="${href}">${icon} ${escapeHtml(name)}</a></td>
+        <td><a href="${escapeHtml(href)}">${icon} ${escapeHtml(name)}</a></td>
         <td class="size">${size}</td>
         <td class="modified">${modified}</td>
       </tr>
@@ -69,7 +69,7 @@ function generateDirectoryListing(dirPath, entries) {
     </tr>
     ${parentPath !== dirPath ? `
     <tr>
-      <td><a href="${pathToFileURL(parentPath).href}">📁 [${escapeHtml(parentDirName)}]</a></td>
+      <td><a href="${escapeHtml(pathToFileURL(parentPath).href)}">📁 [${escapeHtml(parentDirName)}]</a></td>
       <td class="size">-</td>
       <td class="modified">-</td>
     </tr>
