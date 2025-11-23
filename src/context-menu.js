@@ -1,4 +1,4 @@
-import { Menu, MenuItem, clipboard, nativeImage, dialog } from "electron";
+import { Menu, MenuItem, clipboard, dialog } from "electron";
 import WindowManager from "./window-manager.js";
 import path from "path";
 
