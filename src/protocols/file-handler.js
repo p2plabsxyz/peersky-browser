@@ -364,8 +364,12 @@ export async function createHandler() {
       <h1>Error Loading File</h1><p>${escapeHtml(error.message)}</p><p><code>${escapeHtml(filePath)}</code></p>
       </body></html>`;
 
+      let status = 500;
+      if (error.code === 'ENOENT') status = 404;
+      else if (error.code === 'EACCES' || error.code === 'EPERM') status = 403;
+      
       return new Response(errorHtml, {
-        status: 404,
+        status,
         headers: { 'Content-Type': 'text/html; charset=utf-8' }
       });
     }
