@@ -254,7 +254,7 @@ export async function createHandler() {
     try {
       entries = await fs.readdir(dirPath, { withFileTypes: true });
     } catch (error) {
-      console.error(`Could not read directory: ${dirPath}`, error);
+    //   console.error(`Could not read directory: ${dirPath}`, error);
       return []; // Return empty if directory is unreadable
     }
 
@@ -276,7 +276,7 @@ export async function createHandler() {
             fileUrl: pathToFileURL(fullPath).href
           });
         } catch (err) {
-          console.error('Could not stat file:', fullPath, err);
+        //   console.error('Could not stat file:', fullPath, err);
         }
       }
     }
@@ -292,11 +292,11 @@ export async function createHandler() {
       filePath = filePath.substring(1);
     }
 
-    console.log('File protocol request:', request.url, '-> decoded path:', filePath);
+    // console.log('File protocol request:', request.url, '-> decoded path:', filePath);
 
     try {
       const stats = await fs.stat(filePath);
-      console.log('Path stats:', filePath, 'isDirectory:', stats.isDirectory(), 'isFile:', stats.isFile());
+    //   console.log('Path stats:', filePath, 'isDirectory:', stats.isDirectory(), 'isFile:', stats.isFile());
 
       if (stats.isDirectory()) {
         // Handle manifest requests first (used for publishing)
@@ -345,7 +345,7 @@ export async function createHandler() {
         // For files, serve them directly
         const contentType = mime.lookup(filePath) || 'application/octet-stream';
         const stream = fs.createReadStream(filePath);
-        console.log('Serving file (streamed):', filePath, 'size:', stats.size, 'contentType:', contentType);
+        // console.log('Serving file (streamed):', filePath, 'size:', stats.size, 'contentType:', contentType);
             
         return new Response(stream, {
           status: 200,
@@ -357,7 +357,7 @@ export async function createHandler() {
         });
       }
     } catch (error) {
-      console.error('File protocol error:', error);
+    //   console.error('File protocol error:', error);
       const errorHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Error</title>
       <style>body{background-color:#18181C; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:40px;color:#333;}
       h1{font-size:24px;margin-bottom:10px;}p{color:#666;}</style></head><body>
