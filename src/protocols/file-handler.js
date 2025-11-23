@@ -344,9 +344,10 @@ export async function createHandler() {
       } else {
         // For files, serve them directly
         const contentType = mime.lookup(filePath) || 'application/octet-stream';
-        const fileBuffer = await fs.readFile(filePath);
-        console.log('Serving file:', filePath, 'size:', fileBuffer.length, 'contentType:', contentType);
-        return new Response(fileBuffer, {
+        const stream = fs.createReadStream(filePath);
+        console.log('Serving file (streamed):', filePath, 'size:', stats.size, 'contentType:', contentType);
+            
+        return new Response(stream, {
           status: 200,
           headers: {
             'Content-Type': contentType,
