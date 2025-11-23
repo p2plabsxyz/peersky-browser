@@ -159,77 +159,77 @@ export function attachContextMenus(browserWindow, windowManager) {
       );
 
     // Image handling features (copy, copy address, save as)
-    if (params.mediaType === "image" && params.srcURL) {
-    menu.append(
-      new MenuItem({
-        label: "Copy Image",
-        click: () => {
-          try {
-            // Use copyImageAt for best quality
-            const img = webContents.copyImageAt(params.x, params.y);
-            if (img && !img.isEmpty()) {
-              clipboard.writeImage(img);
-            }
-          } catch (e) {
-            console.error("Copy Image failed:", e);
-          }
-        },
-      })
-    );
-    menu.append(
-      new MenuItem({
-        label: "Copy Image Address",
-        click: () => clipboard.writeText(params.srcURL),
-      })
-    );
-    menu.append(
-      new MenuItem({
-        label: "Save Image As...",
-        click: async () => {
-          try {
-            // Extract filename from URL
-            const urlPath = new URL(params.srcURL).pathname;
-            const defaultName = path.basename(urlPath) || "image.png";
-            
-            // Show save dialog
-            const result = await dialog.showSaveDialog(browserWindow, {
-              title: "Save Image",
-              defaultPath: defaultName,
-              filters: [
-                { name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"] },
-                { name: "All Files", extensions: ["*"] },
-              ],
-            });
+        if (params.mediaType === "image" && params.srcURL) {
+        menu.append(
+          new MenuItem({
+            label: "Copy Image",
+            click: async () => {
+              try {
+                // Use copyImageAt for best quality
+                const img = webContents.copyImageAt(params.x, params.y);
+                if (img && !img.isEmpty()) {
+                  clipboard.writeImage(img);
+                }
+              } catch (e) {
+                console.error("Copy Image failed:", e);
+              }
+            },
+          })
+        );
+        menu.append(
+          new MenuItem({
+            label: "Copy Image Address",
+            click: () => clipboard.writeText(params.srcURL),
+          })
+        );
+        menu.append(
+          new MenuItem({
+            label: "Save Image As...",
+            click: async () => {
+              try {
+                // Extract filename from URL
+                const urlPath = new URL(params.srcURL).pathname;
+                const defaultName = path.basename(urlPath) || "image.png";
+                
+                // Show save dialog
+                const result = await dialog.showSaveDialog(browserWindow, {
+                  title: "Save Image",
+                  defaultPath: defaultName,
+                  filters: [
+                    { name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"] },
+                    { name: "All Files", extensions: ["*"] },
+                  ],
+                });
 
-            if (!result.canceled && result.filePath) {
-              // Download the image using webContents session
-              webContents.session.downloadURL(params.srcURL);
-              
-              // Listen for the download and move it to the chosen location
-              webContents.session.once("will-download", (event, item) => {
-                item.setSavePath(result.filePath);
-                
-                item.on("updated", (event, state) => {
-                  if (state === "interrupted") {
-                    console.error("Download interrupted");
-                  }
-                });
-                
-                item.once("done", (event, state) => {
-                  if (state === "completed") {
-                    console.log("Image saved successfully to:", result.filePath);
-                  } else {
-                    console.error("Download failed:", state);
-                  }
-                });
-              });
-            }
-          } catch (e) {
-            console.error("Save Image failed:", e);
-          }
-        },
-      })
-    );
+                if (!result.canceled && result.filePath) {
+                  // Download the image using webContents session
+                  webContents.session.downloadURL(params.srcURL);
+                  
+                  // Listen for the download and move it to the chosen location
+                  webContents.session.once("will-download", (event, item) => {
+                    item.setSavePath(result.filePath);
+                    
+                    item.on("updated", (event, state) => {
+                      if (state === "interrupted") {
+                        console.error("Download interrupted");
+                      }
+                    });
+                    
+                    item.once("done", (event, state) => {
+                      if (state === "completed") {
+                        console.log("Image saved successfully to:", result.filePath);
+                      } else {
+                        console.error("Download failed:", state);
+                      }
+                    });
+                  });
+                }
+              } catch (e) {
+                console.error("Save Image failed:", e);
+              }
+            },
+          })
+        );
     menu.append(new MenuItem({ type: "separator" }));
   }
 
