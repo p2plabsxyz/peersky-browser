@@ -387,7 +387,9 @@ class NavBox extends HTMLElement {
 
       const preventDefaultDrag = (event) => {
         if (!event.dataTransfer) return;
-        if (event.dataTransfer.types?.includes("Files") || event.dataTransfer.types?.includes("text/uri-list") || event.dataTransfer.types?.includes("text/plain")) {
+        if ((event.dataTransfer.files && event.dataTransfer.files.length > 0) ||
+            event.dataTransfer.types?.includes("text/uri-list") ||
+            event.dataTransfer.types?.includes("text/plain")) {
           event.preventDefault();
           event.dataTransfer.dropEffect = "copy";
         }
