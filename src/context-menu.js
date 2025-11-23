@@ -163,7 +163,7 @@ export function attachContextMenus(browserWindow, windowManager) {
     menu.append(
       new MenuItem({
         label: "Copy Image",
-        click: async () => {
+        click: () => {
           try {
             // Use copyImageAt for best quality
             const img = webContents.copyImageAt(params.x, params.y);
