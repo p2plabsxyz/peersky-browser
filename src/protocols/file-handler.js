@@ -55,6 +55,13 @@ function generateDirectoryListing(dirPath, entries) {
     th.size, th.modified, td.size, td.modified {
       padding-left: 16px;
     }
+    td.size, td.modified {
+      text-align: right;
+    }
+    table, tr, td, th {
+      margin: 0;
+      padding: 0;
+    }
   </style>
 </head>
 <body>
