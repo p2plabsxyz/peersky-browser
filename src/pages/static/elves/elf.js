@@ -1,9 +1,48 @@
+/*
+ * Additional Context:
+ *
+ * The "Self" function returns all the synonyms for the cognitive mappings from other mental systems
+ *
+ * Use the "addAgent" function to get updates whenever any component in the system is updated, ready for backup
+ *
+ * There is commented out code in this file that primarily relates to backing up data to personal storage
+ *
+ */
+
+
+// optional deps for the future
+//import { StorageClient } from "@wallet.storage/fetch-client";
+//import { Ed25519Signer } from "@did.coop/did-key-ed25519"
+//import { innerHTML } from 'diffhtml'
+// halfhearted polyfill for now
+function innerHTML(target, html) {
+  if(target.lastHTML === html) return
+  target.innerHTML = html
+}
+
 if(!self.crypto.randomUUID) {
   self.crypto.randomUUID = () => {
     return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, c =>
       (+c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> +c / 4).toString(16)
     );
   }
+}
+
+const renderers = {}
+const eventMaze = {}
+const reactiveFunctions = {}
+
+function addRenderer(link, compositor, lifeCycle) {
+  if(!reactiveFunctions[link]) {
+    reactiveFunctions[link] = {}
+  }
+
+  renderers[link] = {
+    compositor,
+    lifeCycle
+  }
+
+  teach(link, { '_initialized': true })
 }
 
 const logs = {}
@@ -19,11 +58,6 @@ function insight(name, link) {
   logs[`${name}:${link}`] += 1
 }
 
-const CREATE_EVENT = 'create'
-
-const observableEvents = [CREATE_EVENT]
-const reactiveFunctions = {}
-
 
 function react(link) {
   if(!reactiveFunctions[link]) return
@@ -32,8 +66,34 @@ function react(link) {
     .map(id => reactiveFunctions[link][id]())
 }
 
+const backupAgents = {}
+
+function ensureAgentDispatcher(link) {
+  if(!backupAgents[link]) {
+    backupAgents[link] = []
+  }
+}
+
+function addAgent(link, agent) {
+  ensureAgentDispatcher(link)
+  backupAgents[link].push(agent)
+}
+
+function backup(link) {
+  ensureAgentDispatcher(link)
+
+  const allAgents = backupAgents[link]
+
+  allAgents.map(callback => callback())
+}
+
+function plan68path(target) {
+  return PLAN68_ROOT_DIR + target.id
+}
+
 const notifications = {
-  [react.toString()]: react
+  [react.toString()]: react,
+  [backup.toString()]: backup,
 }
 
 function notify(link) {
@@ -43,33 +103,49 @@ function notify(link) {
 
 const store = createStore({}, notify)
 
+function update(link, target) {
+  if(!renderers[link]) return
 
-function update(link, target, compositor, lifeCycle={}) {
   insight('elf:update', link)
+
+  const { lifeCycle, compositor } = renderers[link]
   if(lifeCycle.beforeUpdate) {
     lifeCycle.beforeUpdate.call(this, target)
   }
 
   const html = compositor.call(this, target)
-  if(html) target.innerHTML = html
+  if(html) innerHTML(target, html)
 
   if(lifeCycle.afterUpdate) {
     lifeCycle.afterUpdate.call(this, target)
   }
 }
 
+const middleware = [
+  c2sSync
+]
+
+async function c2sSync(link, target) {
+  if(target.getAttribute('offline') === 'true') return
+  if(target['c2sSync']) return
+  target['c2sSync'] = true
+
+  /*
+   *
+   * for the future
+   *
+  downTheData(link, target)
+  await guaranteeTheData(link, target)
+  upTheData(link, target)
+
+  */
+}
+
 function draw(link, compositor, lifeCycle={}) {
   insight('elf:draw', link)
-  if(!reactiveFunctions[link]) {
-    reactiveFunctions[link] = {}
-  }
-
-  listen(CREATE_EVENT, link, (event) => {
-    const draw = update.bind(this, link, event.target, compositor, lifeCycle)
-    reactiveFunctions[link][event.target.id] = draw
-    draw()
-  })
+  addRenderer(link, compositor, lifeCycle)
 }
+
 
 function style(link, stylesheet) {
   insight('elf:style', link)
@@ -78,6 +154,7 @@ function style(link, stylesheet) {
       ${stylesheet.replaceAll('&', link)}
     </style>
   `;
+
 
   document.body.insertAdjacentHTML("beforeend", styles)
 }
@@ -92,23 +169,99 @@ export function teach(link, knowledge, nuance = (s, p) => ({...s,...p})) {
   store.set(link, knowledge, nuance)
 }
 
-export function when(link1, type, link2, callback) {
-  const link = `${link1} ${link2}`
-  insight('elf:when:'+type, link)
-  listen.call(this, type, link, callback)
+export function when(link, type, arg2, callback) {
+  if(typeof arg2 === 'function') {
+    insight('elf:when:'+type, link)
+    return listen.call(this, link, type, '', arg2)
+  } else {
+    const nested = `${link} ${arg2}`
+    insight('elf:when:'+type, nested)
+    return listen.call(this, link, type, arg2, callback)
+  }
 }
 
-export default function elf(link, initialState = {}) {
+function declare(elf) {
+  if (!customElements.get(elf.link)) {
+    class WebComponent extends HTMLElement {
+      constructor() {
+        super();
+      }
+
+      connectedCallback() {
+        console.log(elf.link, 'declared')
+        if (!this._initialized) {
+          console.log(elf.link, 'initialized')
+          dispatchCreate(elf.link, this)
+          console.log(elf.link, 'created')
+          this._initialized = true;
+        }
+      }
+    }
+
+    customElements.define(elf.link, WebComponent);
+  }
+}
+
+export default function Self(link, initialState = {}) {
+  if(typeof link !== 'string') {
+    declare(link)
+    return
+  }
+
   insight('elf', link)
   teach(link, initialState)
 
   return {
-    link,
+    // for the classical progammers
+    model: learn.bind(this, link),
+    view: draw.bind(this, link),
+    controller: teach.bind(this, link),
+
+    // link is a human that is permitted to be an elf per order of the deku tree
+    link: link,
+    elf: link,
+    table: link,
+    root: link,
+    tag: link,
+    selector: link,
+    body: link,
+
+    // link has an ear to listen to the peoples of zora, goron, korok, kokiri, rito, gerudo, hyrule, et al
+    ear: learn.bind(this, link),
     learn: learn.bind(this, link),
+    get: learn.bind(this, link),
+    read: learn.bind(this, link),
+    object: learn.bind(this, link),
+    subject: learn.bind(this, link),
+    predicate: learn.bind(this, link),
+
+    // link has a head to keep all his facts straight in the current moment in time
+    head: draw.bind(this, link),
     draw: draw.bind(this, link),
+    render: draw.bind(this, link),
+
+    // link has an eye through which to spy reality
+    eye: style.bind(this, link),
     style: style.bind(this, link),
+    flair: style.bind(this, link),
+    skin: style.bind(this, link),
+    fashion: style.bind(this, link),
+
+    // link has a hand to move the pieces into place at his command
+    hand: when.bind(this, link),
     when: when.bind(this, link),
+    on: when.bind(this, link),
+    listen: when.bind(this, link),
+
+    // link has a mouth that he lets others stuff with their hopes and dreams
+    mouth: teach.bind(this, link),
     teach: teach.bind(this, link),
+    set: teach.bind(this, link),
+    write: teach.bind(this, link),
+    put: teach.bind(this, link),
+    post: teach.bind(this, link),
+    patch: teach.bind(this, link),
+    delete: teach.bind(this, link),
   }
 }
 
@@ -122,12 +275,12 @@ export function unsubscribe(fun) {
   }
 }
 
-export function listen(type, link, handler = () => null) {
+export function listen(link, type, scope, handler = () => null) {
   const callback = (event) => {
     if(
       event.target &&
       event.target.matches &&
-      event.target.matches(link)
+      event.target.matches(scope)
     ) {
 
       insight('elf:listen:'+type, link)
@@ -135,104 +288,44 @@ export function listen(type, link, handler = () => null) {
     }
   };
 
-  document.addEventListener(type, callback, true);
+  const options = { capture: true, passive: false }
 
-  if(observableEvents.includes(type)) {
-    observe(link);
-  }
+  addToEventMaze(link, { type, callback, options })
 
-  return function unlisten() {
-    if(type === CREATE_EVENT) {
-      disregard(link);
+  function addToEventMaze(link, eventMetadata) {
+    if(!eventMaze[link]) {
+      eventMaze[link] = []
     }
 
-    document.removeEventListener(type, callback, true);
+    eventMaze[link].push(eventMetadata)
+  }
+
+  return function unlisten(target) {
+    target.removeEventListener(type, callback, options);
   }
 }
 
-let links = []
-
-function observe(link) {
-  links = [...new Set([...links, link])];
-  maybeCreateReactive([...document.querySelectorAll(link)])
-}
-
-function disregard(link) {
-  const index = links.indexOf(link);
-  if(index >= 0) {
-    links = [
-      ...links.slice(0, index),
-      ...links.slice(index + 1)
-    ];
-  }
-}
-
-function maybeCreateReactive(targets) {
-  targets
-    .filter(x => !x.reactive)
-    .forEach(dispatchCreate)
-}
-
-function getSubscribers({ target }) {
-  if(links.length > 0)
-    return [...target.querySelectorAll(links.join(', '))];
-  else
-    return []
-}
-
-function dispatchCreate(target) {
+function dispatchCreate(link, target) {
   insight('elf:create', target.localName)
-  if(!target.id) target.id = self.crypto.randomUUID()
-  target.dispatchEvent(new Event(CREATE_EVENT))
-  target.reactive = true
-}
+  try {
+    if(!target.id) target.id = self.crypto.randomUUID()
+  } catch(e) {
+    if(!target.id) target.id = uuidv4()
+  }
+  middleware.forEach(x => x(link, target))
+  const draw = update.bind(this, link, target)
+  reactiveFunctions[link][target.id] = draw
 
-function elves() {
-  new MutationObserver((mutationsList) => {
-    const targets = [...mutationsList]
-      .map(getSubscribers)
-      .flatMap(x => x)
-    maybeCreateReactive(targets)
-    lazy()
-  }).observe(document.body, { childList: true, subtree: true });
+  console.log(link, 'reactive')
+  draw()
+  console.log(link, 'drawn')
 
-  lazy()
-}
-
-function lazy() {
-  const tags = new Set(
-    [...document.querySelectorAll(':not(:defined)')]
-    .map(({ tagName }) => tagName.toLowerCase())
-  )
-
-  tags.forEach(async (tag) => {
-    const url = `peersky://static/elves/${tag}.js`
-    const exists = (await fetch(url, { method: 'HEAD' })).ok
-    if(!exists) return
-    let definable = true
-    await import(url).catch((e) => {
-      definable = false
-      console.error(e)
+  if(eventMaze[link]) {
+    console.log(link, 'event horizoned')
+    eventMaze[link].forEach(({ type, callback, options }) => {
+      target.addEventListener(type, callback, options);
     })
-    try {
-      definable = definable && document.querySelector(tag) && document.querySelector(tag).matches(':not(:defined)')
-      if(definable) {
-        customElements.define(tag, class WebComponent extends HTMLElement {
-          constructor() {
-            super();
-          }
-        });
-      }
-    } catch(e) {
-      console.log('Error defining module:', tag, e)
-    }
-  })
-}
-
-try {
-  elves()
-} catch(e) {
-  setTimeout(elves,1000)
+  }
 }
 
 function createStore(initialState = {}, subscribe = () => null) {
@@ -258,3 +351,159 @@ function createStore(initialState = {}, subscribe = () => null) {
   }
 }
 
+function uuidv4() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
+/*
+ *
+ *
+ * Commenting this out for now, but this is stage setting for personal storage
+ *
+ *
+ *
+ *
+
+export function getSpace(uuid) {
+  return storage.space({
+    signer,
+    id: `urn:uuid:${uuid}`
+  })
+}
+
+export async function get(src) {
+  const resource = this.space.resource(src)
+
+  return await resource.get({ signer })
+    .then(async res => {
+      if(!res.ok) {
+        throw new Error('Not OKAY!')
+      }
+      return (await res.blob())
+    })
+}
+
+export async function touch(src, config={ type: 'application/json' }) {
+  const resource = this.space.resource(src)
+
+  const typedBlob = new Blob([JSON.stringify({})], config)
+  return await resource.put(typedBlob, { signer })
+    .then(res => {
+      console.debug({ res })
+      return res
+    })
+}
+
+async function guaranteeTheData(link, target) {
+  const space = getSpace(target.id)
+
+  const linkset = space.resource(`linkset`)
+  const spaceObject = {
+    controller: signer.controller,
+    link: linkset.path,
+  }
+  const spaceObjectBlob = new Blob(
+    [JSON.stringify(spaceObject)],
+    { type: 'application/json' },
+  )
+
+  // send PUT request to update the space
+  const responseToPutSpace = await space.put(spaceObjectBlob)
+    .then(res => {
+      console.debug({ res })
+      return res
+    })
+    .catch(e => {
+      console.debug(e)
+    })
+
+  if (!responseToPutSpace.ok) throw new Error(
+    `Failed to put space: ${responseToPutSpace.status} ${responseToPutSpace.statusText}`, {
+    cause: {
+      responseToPutSpace
+    }
+  })
+}
+
+function upTheData(link, target) {
+  addAgent(link, function callbackLikeAnOperator() {
+    const space = getSpace(target.id)
+
+    const state = learn(link)
+
+    put.call({ space }, plan68path(target), JSON.stringify(state), { type: 'application/json' })
+      .catch(error => { console.warn(error) });
+  })
+}
+
+function downTheData(link, target) {
+  const space = getSpace(target.id)
+  get.call({ space }, plan68path(target))
+    .then(blob => {
+      if(blob) {
+        blob.text().then(str => JSON.parse(str)).then(data => {
+          teach(link, data)
+        })
+      }
+    })
+}
+
+export async function put(src, file, config={ type: 'text/plain' }) {
+  const resource = this.space.resource(src)
+
+  const typedBlob = new Blob([file], config)
+  return await resource.put(typedBlob, { signer })
+    .then(res => {
+      return res
+    })
+}
+
+export async function del(src) {
+  const resource = this.space.resource(src)
+
+  return await resource.delete()
+    .then(res => {
+      console.debug({ res })
+      return res
+    })
+}
+
+
+const PLAN68_ROOT_DIR = '/root/'
+
+export const walletDefaultHost = self.PLAN98_WAS_HOST || 'http://localhost:8080'
+
+async function newAgent() {
+  const id = self.crypto.randomUUID()
+  const signer = await Ed25519Signer.generate()
+
+  return {
+    id,
+    asJSON: signer.toJSON(),
+  }
+}
+
+let rootAgent = localStorage.getItem('__plan68/access')
+if(!rootAgent){
+  rootAgent = await newAgent()
+  localStorage.setItem('__plan68/access', JSON.stringify(rootAgent))
+} else {
+  rootAgent = JSON.parse(rootAgent)
+}
+
+let signer = await Ed25519Signer.fromJSON(JSON.stringify(rootAgent.asJSON))
+const storage = new StorageClient(new URL(walletDefaultHost))
+
+export function getSigner() {
+  return signer
+}
+
+export function setSigner(s) {
+  signer = s
+}
+
+*/

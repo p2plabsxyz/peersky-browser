@@ -1,6 +1,6 @@
-import elf from 'peersky://static/elves/elf.js'
+import $elf from 'peersky://static/elves/elf.js'
 
-const $ = elf('goodbye-world', {
+const $ = $elf('goodbye-world', {
   planet: 'World',
   defunctPlanets: []
 })
@@ -29,3 +29,5 @@ $.when('click', 'button', (event) =>  {
       }
   })
 })
+
+$elf($)
