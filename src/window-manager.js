@@ -11,6 +11,61 @@ const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const USER_DATA_PATH = app.getPath("userData");
 const BOOKMARKS_FILE = path.join(USER_DATA_PATH, "bookmarks.json");
 const PERSIST_FILE = path.join(USER_DATA_PATH, "lastOpened.json");
+const tabHistories = new Map();
+const tabToWebContents = new Map();
+
+function ensureTabHistory(tabId) {
+  if (!tabHistories.has(tabId)) {
+    tabHistories.set(tabId, { history: [], index: -1, ignoreNextNav: false });
+  }
+  return tabHistories.get(tabId);
+}
+
+function normalizeUrlForHistory(raw) {
+  try {
+    if (typeof raw !== 'string' || !raw.trim()) return raw;
+    const u = new URL(raw, 'http://localhost'); // base for relative URLs
+    // Remove the DuckDuckGo `ia=web` noise and common tracking params
+    u.searchParams.delete('ia');
+    for (const p of Array.from(u.searchParams.keys())) {
+      if (p.startsWith('utm_')) u.searchParams.delete(p);
+    }
+    if (u.protocol === 'http:' || u.protocol === 'https:') {
+      let out = u.toString();
+      if (out.endsWith('/') && u.pathname === '/') {
+        out = out.slice(0, -1);
+      }
+      return out;
+    }
+    return raw;
+  } catch (err) {
+    return raw;
+  }
+}
+
+function pushTabUrl(tabId, url, isInPage = false) {
+  if (!tabId) return;
+  if (typeof url !== 'string' || !url) return;
+  const normalized = normalizeUrlForHistory(url);
+  const entry = ensureTabHistory(tabId);
+
+  if (entry.index >= 0 && normalizeUrlForHistory(entry.history[entry.index]) === normalized && !isInPage) return;
+
+  if (entry.index + 1 < entry.history.length) {
+    entry.history = entry.history.slice(0, entry.index + 1);
+  }
+
+  // push normalized URL (but keep original if you prefer; normalized reduces duplicates)
+  entry.history.push(normalized);
+  entry.index = entry.history.length - 1;
+
+  const MAX = 200;
+  if (entry.history.length > MAX) {
+    entry.history = entry.history.slice(entry.history.length - MAX);
+    entry.index = entry.history.length - 1;
+  }
+}
+
 
 const DEFAULT_SAVE_INTERVAL = 30 * 1000;
 const cssPath = path.join(__dirname, "pages", "theme");
@@ -250,6 +305,46 @@ class WindowManager {
         this.saveOpened();
       }
     });
+
+    ipcMain.handle('nav-can-go-back', (event, tabId) => {
+      return this.canGoBack(tabId);
+    });
+
+    ipcMain.handle('nav-can-go-forward', (event, tabId) => {
+      return this.canGoForward(tabId);
+    });
+
+    ipcMain.handle('nav-go-back', async (event, { tabId, webContentsId }) => {
+      const wcId = webContentsId || tabToWebContents.get(tabId);
+      const wc = wcId ? webContents.fromId(wcId) : event.sender;    
+      return await this.goBack(tabId, wc);
+    });
+
+    ipcMain.handle('nav-go-forward', async (event, { tabId, webContentsId }) => {
+      const wcId = webContentsId || tabToWebContents.get(tabId);
+      const wc = wcId ? webContents.fromId(wcId) : event.sender;
+      return await this.goForward(tabId, wc);
+    });
+
+    ipcMain.on('register-tab-webcontents', (event, { tabId, webContentsId }) => {
+      try {
+        if (!tabId || !webContentsId) return;
+        tabToWebContents.set(tabId, webContentsId);
+      } catch (err) {
+        console.error('register-tab-webcontents error', err);
+      }
+    });
+
+    // remove mapping when renderer notifies tab closed
+    ipcMain.on('unregister-tab-webcontents', (event, { tabId }) => {
+      try {
+        if (!tabId) return;
+        tabToWebContents.delete(tabId);
+      } catch (err) {
+        console.error('unregister-tab-webcontents error', err);
+      }
+    });
+
   }
 
   findWindowBySenderId(senderId) {
@@ -372,6 +467,18 @@ class WindowManager {
     const win = peerskyWindow.window;
     if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
       win.webContents.send(channel, data);
+    }
+  }
+
+   sendNavStateToWindow(winWebContents, tabId) {
+    try {
+      if (!winWebContents || winWebContents.isDestroyed()) return;
+      const e = tabHistories.get(tabId) || { history: [], index: -1 };
+      const canBack = e.index > 0;
+      const canForward = (e.index + 1) < e.history.length;
+      winWebContents.send('nav-state-changed', { tabId, canBack, canForward });
+    } catch (err) {
+      console.error('sendNavStateToWindow error', err);
     }
   }
 
@@ -638,6 +745,28 @@ class WindowManager {
 
       console.log(`Saving tabs for ${windowCount} windows...`);
 
+      try {
+        for (const windowId of Object.keys(allTabsData)) {
+          const winObj = allTabsData[windowId];
+          if (!winObj || !Array.isArray(winObj.tabs)) continue;
+          for (const tabObj of winObj.tabs) {
+            if (!tabObj || !tabObj.id) continue;
+            const hist = tabHistories.get(tabObj.id);
+            if (hist && Array.isArray(hist.history) && hist.history.length > 0) {
+              // attach history and index (non-destructive)
+              tabObj.__history = hist.history.slice(); // copy
+              tabObj.__historyIndex = hist.index;
+            } else {
+              // ensure fields exist for consistent format
+              tabObj.__history = tabObj.__history || [];
+              tabObj.__historyIndex = (typeof tabObj.__historyIndex === 'number') ? tabObj.__historyIndex : -1;
+            }
+          }
+        }
+      } catch (mergeErr) {
+        console.error('Error merging tab histories into allTabsData:', mergeErr);
+      }
+
       const tempPath = TABS_FILE + ".tmp";
       await fs.outputJson(tempPath, allTabsData, { spaces: 2 });
       await fs.move(tempPath, TABS_FILE, { overwrite: true });
@@ -646,6 +775,82 @@ class WindowManager {
     } catch (error) {
       console.error("Error writing tabs data to file:", error);
       throw error;
+    }
+  }
+
+  canGoBack(tabId) {
+    const e = tabHistories.get(tabId);
+    return !!(e && e.index > 0);
+  }
+
+  canGoForward(tabId) {
+    const e = tabHistories.get(tabId);
+    return !!(e && e.index + 1 < e.history.length);
+  }
+
+  async goBack(tabId, targetWebContents) {
+    const e = tabHistories.get(tabId);
+    if (!e || e.index <= 0) return false;
+    e.index -= 1;
+    const url = e.history[e.index];
+    e.ignoreNextNav = true;
+    try {
+      await targetWebContents.loadURL(url);
+      this.saveOpened();
+      try {
+        const bw = BrowserWindow.fromWebContents(targetWebContents);
+        if (bw && !bw.isDestroyed()) {
+          bw.webContents.send('nav-state-changed', { tabId, canBack: this.canGoBack(tabId), canForward: this.canGoForward(tabId) });
+        } else {
+          // fallback: use any mapped webcontents registered for this tab
+          const mappedId = tabToWebContents.get(tabId);
+          if (mappedId) {
+            const wc = webContents.fromId(mappedId);
+            if (wc && !wc.isDestroyed()) {
+              wc.send('nav-state-changed', { tabId, canBack: this.canGoBack(tabId), canForward: this.canGoForward(tabId) });
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error sending nav-state after programmatic navigation', err);
+      }
+      return true;
+    } catch (err) {
+      console.error('goBack loadURL failed', err);
+      return false;
+    }
+  }
+
+  async goForward(tabId, targetWebContents) {
+    const e = tabHistories.get(tabId);
+    if (!e || e.index + 1 >= e.history.length) return false;
+    e.index += 1;
+    const url = e.history[e.index];
+    e.ignoreNextNav = true;
+    try {
+      await targetWebContents.loadURL(url);
+      this.saveOpened();
+      try {
+        const bw = BrowserWindow.fromWebContents(targetWebContents);
+        if (bw && !bw.isDestroyed()) {
+          bw.webContents.send('nav-state-changed', { tabId, canBack: this.canGoBack(tabId), canForward: this.canGoForward(tabId) });
+        } else {
+          // fallback: use any mapped webcontents registered for this tab
+          const mappedId = tabToWebContents.get(tabId);
+          if (mappedId) {
+            const wc = webContents.fromId(mappedId);
+            if (wc && !wc.isDestroyed()) {
+              wc.send('nav-state-changed', { tabId, canBack: this.canGoBack(tabId), canForward: this.canGoForward(tabId) });
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error sending nav-state after programmatic navigation', err);
+      }
+      return true;
+    } catch (err) {
+      console.error('goForward loadURL failed', err);
+      return false;
     }
   }
 
@@ -799,9 +1004,41 @@ class WindowManager {
         options.url = "peersky://home";
       }
 
-      this.open(options);
-    }
+      try {
+        const savedForWindow = savedTabs[state.windowId];
+        if (savedForWindow && Array.isArray(savedForWindow.tabs)) {
+          for (const tabObj of savedForWindow.tabs) {
+            if (!tabObj || !tabObj.id) continue;
+            if (Array.isArray(tabObj.__history) && tabObj.__history.length > 0) {
+              tabHistories.set(tabObj.id, {
+                history: tabObj.__history.slice(),
+                index: typeof tabObj.__historyIndex === 'number'
+                  ? tabObj.__historyIndex
+                  : (tabObj.__history.length - 1),
+                ignoreNextNav: true 
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error preloading tab histories for window', state.windowId, err);
+      }
 
+      const peerskyWindow = this.open(options);
+
+      try {
+        const savedForWindow = savedTabs[state.windowId];
+        if (peerskyWindow && savedForWindow && Array.isArray(savedForWindow.tabs)) {
+          for (const tabObj of savedForWindow.tabs) {
+            if (!tabObj || !tabObj.id) continue;
+              // ensure tabHistories already preloaded earlier in the loop
+              this.sendNavStateToWindow(peerskyWindow.window.webContents, tabObj.id);
+            }
+          }
+      } catch (err) {
+        console.error('Error sending initial nav state for window', state.windowId, err);
+        }
+      }
     console.log(`${windowStates.length} window(s) restored.`);
   }
 
@@ -874,12 +1111,34 @@ class PeerskyWindow {
     this.windowManager = windowManager;
 
     // Define the listener function
-    this.navigateListener = (event, url) => {
+    this.navigateListener = (event, tabId, url, isInPage = false) => {
       this.currentURL = url;
-      console.log(`Navigation detected in window ${this.id}: ${url}`);
+
+      try {
+        if (!tabId) {
+          // no tab id — still trigger save so state isn't lost
+          console.warn(`[NAV-LISTENER] No tabId for url=${url}`);
+        } else {
+          const entry = ensureTabHistory(tabId);
+          if (entry.ignoreNextNav) {
+            // we triggered the navigation programmatically — ignore this single event
+            entry.ignoreNextNav = false;
+          } else {
+            try {
+              windowManager.sendNavStateToWindow(this.window.webContents, tabId);
+            } catch (err) {
+              // ignore
+            }
+            pushTabUrl(tabId, url, !!isInPage);
+          }
+        }
+      } catch (err) {
+        console.error('[NAV-LISTENER] Error updating tab history:', err);
+      }
+
+      // persist tabs/windows state
       windowManager.saveOpened();
     };
-
     // Listen for navigation events from renderer
     ipcMain.on(`webview-did-navigate-${this.id}`, this.navigateListener);
 
@@ -926,12 +1185,22 @@ class PeerskyWindow {
         this.window.webContents.executeJavaScript(`
       (function () {
         const { ipcRenderer } = require('electron');
-        const sendNav = (url) => ipcRenderer.send('webview-did-navigate-${this.id}', url);
+        const sendNav = (tabId, url, isInPage = false) => ipcRenderer.send('webview-did-navigate-${this.id}', tabId, url, isInPage);
         const tabBar = document.querySelector('#tabbar');
 
         if (tabBar) {
           tabBar.addEventListener('tab-navigated', (e) => {
-            if (e && e.detail && e.detail.url) sendNav(e.detail.url);
+            try {
+              const detail = e && e.detail ? e.detail : {};
+              const tabId = detail.id || detail.tabId || tabBar.activeTabId || null;
+              const url = detail.url || null;
+              const isInPage = !!detail.isInPage;
+              if (tabId && url) {
+                sendNav(tabId, url, isInPage);
+              }
+            } catch (error) {
+              console.error('Error sending nav event:', error);
+            }
           });
         }
         ipcRenderer.send('set-window-id', ${this.id});

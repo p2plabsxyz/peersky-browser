@@ -181,6 +181,20 @@ document.addEventListener("DOMContentLoaded", async () => {
     }));
   });
 
+  ipcRenderer.on('nav-state-changed', (_, { tabId, canBack, canForward }) => {
+    try {
+      // Only update navigation controls for the active tab
+      if (!tabBar) return;
+      if (tabBar.activeTabId !== tabId) return;
+      const backBtn = document.querySelector('#backBtn');
+      const forwardBtn = document.querySelector('#forwardBtn');
+      if (backBtn) backBtn.disabled = !canBack;
+      if (forwardBtn) forwardBtn.disabled = !canForward;
+    } catch (e) {
+      console.error('nav-state-changed handler error', e);
+    }
+  });
+
   const titleBar = document.querySelector("#titlebar");
   const verticalTabsEnabled = await ipcRenderer.invoke('settings-get', 'verticalTabs');
   if (verticalTabsEnabled) {
@@ -368,6 +382,22 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     
     updateNavigationButtons(tabBar);
+
+    try {
+      const tabId = e.detail && e.detail.tabId;
+      if (tabId) {
+        (async () => {
+          const canBack = await ipcRenderer.invoke('nav-can-go-back', tabId);
+          const canForward = await ipcRenderer.invoke('nav-can-go-forward', tabId);
+          const backBtn = document.querySelector('#backBtn');
+          const forwardBtn = document.querySelector('#forwardBtn');
+          if (backBtn) backBtn.disabled = !canBack;
+          if (forwardBtn) forwardBtn.disabled = !canForward;
+        })();
+      }
+    } catch (err) {
+      console.error('Error fetching nav state on tab select', err);
+    }
     
     // Update bookmark icon for the selected tab
     if (url) {
@@ -728,14 +758,29 @@ async function navigateTo(url) {
   }
 }
 
-function updateNavigationButtons(tabBar) {
+async function updateNavigationButtons(tabBar) {
   if (!nav) return;
-  
+
   try {
-    const webview = tabBar.getActiveWebview();
+    // Try to get a tabId from the tabBar (adjust to your API if different)
+    const tabId = (tabBar && (tabBar.activeTabId || (tabBar.getActiveTab && tabBar.getActiveTab().id))) || null;
+
+    // If we have a tabId, ask main for authoritative state
+    if (tabId) {
+      try {
+        const canBack = await ipcRenderer.invoke('nav-can-go-back', tabId);
+        const canForward = await ipcRenderer.invoke('nav-can-go-forward', tabId);
+        nav.setNavigationButtons(!!canBack, !!canForward);
+        return;
+      } catch (ipcErr) {
+        console.warn('Failed to query nav state from main, falling back to webview:', ipcErr);
+      }
+    }
+
+    const webview = tabBar && tabBar.getActiveWebview ? tabBar.getActiveWebview() : null;
     if (webview) {
-      const canGoBack = webview.canGoBack();
-      const canGoForward = webview.canGoForward();
+      const canGoBack = !!(webview.canGoBack && webview.canGoBack());
+      const canGoForward = !!(webview.canGoForward && webview.canGoForward());
       nav.setNavigationButtons(canGoBack, canGoForward);
     } else {
       nav.setNavigationButtons(false, false);

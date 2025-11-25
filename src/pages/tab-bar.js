@@ -541,6 +541,16 @@ restoreTabs(persistedData) {
     
     // Add a load event to ensure webview is properly initialized
     webview.addEventListener('dom-ready', () => {
+       try {
+        const wcId = webview.getWebContentsId && webview.getWebContentsId();
+        if (wcId) {
+          ipcRenderer.send('register-tab-webcontents', { tabId, webContentsId: wcId });
+        }
+      } catch (e) {
+        console.error('Failed to register tab webcontents id', e);
+      }
+
+
       // Ensure this webview is visible if it's the active tab
       if (this.activeTabId === tabId) {
         webview.style.display = "flex";
@@ -711,10 +721,14 @@ restoreTabs(persistedData) {
     // Remove associated webview
     const webview = this.webviews.get(tabId);
     if (webview) {
+      try {
+        ipcRenderer.send('unregister-tab-webcontents', { tabId });
+      } catch (e) {
+        console.error('Failed to unregister tab webcontents', e);
+      }
       webview.remove();
       this.webviews.delete(tabId);
     }
-    
     // Remove tab from group
     this.removeTabFromGroup(tabId);
     
@@ -841,17 +855,30 @@ restoreTabs(persistedData) {
     }
   }
   
-  goBackActiveTab() {
-    const webview = this.getActiveWebview();
-    if (webview && webview.canGoBack()) {
-      webview.goBack();
+  async goBackActiveTab() {
+    const activeTab = this.getActiveTab();
+    if (!activeTab) return;
+    const tabId = activeTab.id;
+    try {
+      const webview = this.getActiveWebview();
+      const webContentsId = webview && webview.getWebContentsId ? webview.getWebContentsId() : undefined;
+      await ipcRenderer.invoke('nav-go-back', { tabId, webContentsId });
+      // after invoke, main will emit 'nav-state-changed' which we handle in renderer
+    } catch (err) {
+      console.error('nav-go-back ipc failed', err);
     }
   }
   
-  goForwardActiveTab() {
-    const webview = this.getActiveWebview();
-    if (webview && webview.canGoForward()) {
-      webview.goForward();
+  async goForwardActiveTab() {
+    const activeTab = this.getActiveTab();
+    if (!activeTab) return;
+    const tabId = activeTab.id;
+    try {
+      const webview = this.getActiveWebview();
+      const webContentsId = webview && webview.getWebContentsId ? webview.getWebContentsId() : undefined;
+      await ipcRenderer.invoke('nav-go-forward', { tabId, webContentsId });
+    } catch (err) {
+      console.error('nav-go-forward ipc failed', err);
     }
   }
   
