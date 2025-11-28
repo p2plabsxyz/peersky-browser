@@ -36,6 +36,26 @@ function isLikelyOllamaMissing(error) {
   return message.includes('ECONNREFUSED') || message.includes('ENOTFOUND') || message.includes('fetch failed');
 }
 
+function constructChatURL(baseURLRaw) {
+  let url = baseURLRaw || '';
+
+  // Default to local Ollama if nothing configured
+  if (!url) {
+    url = 'http://127.0.0.1:11434';
+  }
+
+  if (url.includes('openai.com')) {
+    // OpenAI endpoints already have /v1 in them
+    return url.endsWith('/')
+      ? url + 'chat/completions'
+      : url + '/chat/completions';
+  }
+
+  // Ollama-style endpoints expect /v1/ prefix
+  const baseURL = url.endsWith('/') ? url : url + '/';
+  return baseURL + 'v1/chat/completions';
+}
+
 async function maybeShowOllamaNotInstalledDialog(error) {
   if (ollamaMissingNotified) return;
   const settings = settingsManager.settings || {};
@@ -494,15 +514,7 @@ export async function chat({
   // Construct the full URL for chat completions
   // OpenAI: https://api.openai.com/v1/chat/completions
   // Ollama: http://127.0.0.1:11434/v1/chat/completions
-  let chatURL;
-  if (baseURLRaw.includes('openai.com')) {
-    // OpenAI URL already has /v1/ in it
-    chatURL = baseURLRaw.endsWith('/') ? baseURLRaw + 'chat/completions' : baseURLRaw + '/chat/completions';
-  } else {
-    // Ollama needs /v1/ added
-    const baseURL = baseURLRaw.endsWith('/') ? baseURLRaw : baseURLRaw + '/';
-    chatURL = baseURL + 'v1/chat/completions';
-  }
+  const chatURL = constructChatURL(baseURLRaw);
   
   // Simple request body - let Ollama use its defaults
   console.log('Making chat request to URL:', chatURL);
@@ -558,15 +570,7 @@ export async function* chatStream({
   }
   
   // Construct the full URL for chat completions
-  let chatURL;
-  if (baseURLRaw.includes('openai.com')) {
-    // OpenAI URL already has /v1/ in it
-    chatURL = baseURLRaw.endsWith('/') ? baseURLRaw + 'chat/completions' : baseURLRaw + '/chat/completions';
-  } else {
-    // Ollama needs /v1/ added
-    const baseURL = baseURLRaw.endsWith('/') ? baseURLRaw : baseURLRaw + '/';
-    chatURL = baseURL + 'v1/chat/completions';
-  }
+  const chatURL = constructChatURL(baseURLRaw);
   
   // Simple streaming request - let Ollama use its defaults
   for await (const { choices } of stream(chatURL, {
