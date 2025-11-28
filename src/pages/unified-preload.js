@@ -144,7 +144,15 @@ if (isInternal || url.includes('agregore.mauve.moe')) {
   
   // We can add more trusted domains here if needed
   const trustedDomains = ['agregore.mauve.moe', 'localhost'];
-  const shouldExposeLLM = trustedDomains.some(domain => url.includes(domain));
+
+  let shouldExposeLLM = false;
+  try {
+    const parsed = new URL(url);
+    shouldExposeLLM = trustedDomains.includes(parsed.hostname);
+  } catch (e) {
+    console.warn('Unified-preload: failed to parse URL for trusted LLM exposure check:', e);
+    shouldExposeLLM = false;
+  }
   
   if (shouldExposeLLM) {
     console.log('Unified-preload: Exposing LLM API for trusted external page:', url);
