@@ -132,13 +132,19 @@ function log(label, ...messages) {
 
 // Extract section helper
 function extractSection(content, startText, endText) {
-    let start = content.indexOf(startText) + startText.length;
-    let end = content.indexOf(endText, start + 1);
-    
-    if (start === -1 || end === -1) {
-        return content; // Return full content if markers not found
+    const startIdx = content.indexOf(startText);
+    if (startIdx === -1) {
+        // Start marker not found, fall back to full content
+        return content;
     }
     
+    const start = startIdx + startText.length;
+    const end = content.indexOf(endText, start);
+    if (end === -1) {
+        // End marker not found, fall back to full content
+        return content;
+    }
+
     return content.slice(start, end);
 }
 
