@@ -1373,8 +1373,18 @@ function initializeLLMSettings() {
         return;
       }
       
-      // Check if the model exists
-      const response = await fetch('http://127.0.0.1:11434/v1/api/tags');
+      // Check if the model exists using the configured Ollama URL
+      const baseURLInput = document.getElementById('ollama-url');
+      let baseURL = baseURLInput?.value?.trim() || 'http://127.0.0.1:11434';
+
+      // Normalize trailing slash
+      if (baseURL.endsWith('/')) {
+        baseURL = baseURL.slice(0, -1);
+      }
+
+      const tagsURL = `${baseURL}/v1/api/tags`;
+
+      const response = await fetch(tagsURL);
       if (response.ok) {
         const data = await response.json();
         const models = data.models || [];
