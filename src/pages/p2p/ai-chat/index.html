@@ -2,6 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <link rel="icon" type="image/png" href="peersky://static/assets/favicon.ico" />
     <title>LLM Chat</title>
     <style>
       @import url("browser://theme/style.css");
@@ -169,6 +170,9 @@
             message.querySelector(".message-content").innerText +=
               chunk.content;
           }
+        } catch (err) {
+          message.querySelector(".message-content").innerHTML =
+            `🤖 ${err.message}`;
         } finally {
           setBusy(false);
         }
