@@ -23,6 +23,9 @@ let currentDownloadPercent = 0;
 // Ollama availability tracking
 let ollamaMissingNotified = false;
 
+const DEFAULT_TEMPERATURE = 0.7;
+const DEFAULT_MAX_TOKENS = 2048;
+
 function isUsingLocalOllama(settings) {
   const baseURL = settings.llm?.baseURL || '';
   return settings.llm?.apiKey === 'ollama' && (baseURL.includes('127.0.0.1') || baseURL.includes('localhost'));
@@ -506,8 +509,8 @@ export async function chat({
   const { choices } = await post(chatURL, {
     messages,
     model,
-    temperature: temperature ?? 0.7,
-    max_tokens: maxTokens ?? 2048,
+    temperature: temperature ?? DEFAULT_TEMPERATURE,
+    max_tokens: maxTokens ?? DEFAULT_MAX_TOKENS,
     stop,
     stream: false
   }, 'Unable to generate chat completion', true, apiKey);
@@ -569,8 +572,8 @@ export async function* chatStream({
   for await (const { choices } of stream(chatURL, {
     messages,
     model,
-    temperature: temperature ?? 0.7,
-    max_tokens: maxTokens ?? 2048,
+    temperature: temperature ?? DEFAULT_TEMPERATURE,
+    max_tokens: maxTokens ?? DEFAULT_MAX_TOKENS,
     stop
   }, 'Unable to generate chat stream', apiKey)) {
     if (choices && choices[0]?.delta) {
