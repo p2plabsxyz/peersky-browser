@@ -121,14 +121,15 @@ ipcMain.handle('llm-update-settings', async (event, newSettings) => {
           // Don't show progress until we know the model exists
           let downloadStarted = false;
           let lastPercent = 0;
-          
+          let lastSentPercent = -1;
+
           // Pull the model with progress tracking
           const success = await pullModel((percent, status) => {
             // Track last known percent
             if (percent >= 0) {
               lastPercent = percent;
             }
-            
+
             // Only send progress events after we're sure download is happening
             if (!downloadStarted && percent >= 0) {
               downloadStarted = true;
@@ -142,12 +143,22 @@ ipcMain.handle('llm-update-settings', async (event, newSettings) => {
             }
             
             if (downloadStarted && !event.sender.isDestroyed()) {
-              event.sender.send('llm-download-progress', {
-                status: 'downloading',
-                model: newSettings.model,
-                percent: percent,
-                message: status
-              });
+              // Use last known non-negative percent if this update is a sentinel
+              const currentPercent = percent >= 0 ? percent : lastPercent;
+
+              // Throttle to changes of at least 1% (integer step)
+              if (
+                currentPercent >= 0 &&
+                Math.floor(currentPercent) !== Math.floor(lastSentPercent)
+              ) {
+                lastSentPercent = currentPercent;
+                event.sender.send('llm-download-progress', {
+                  status: 'downloading',
+                  model: newSettings.model,
+                  percent: currentPercent,
+                  message: status
+                });
+              }
             }
           });
           
