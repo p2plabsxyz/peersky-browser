@@ -1148,18 +1148,19 @@ function initializeLLMSettings() {
   };
   
   // Toggle API key visibility based on value
-  if (apiKey) {
-    apiKey.addEventListener('input', (e) => {
-      const value = e.target.value.trim();
-      // Show as password if it's not 'ollama'
-      if (value && value !== 'ollama') {
-        apiKey.type = 'password';
-      } else {
-        apiKey.type = 'text';
-      }
-      updateIcon(); // Update icon when input type changes
-    });
-  }
+  const updateApiKeyMasking = () => {
+    const value = apiKey.value.trim();
+    // Show as password if it's not 'ollama'
+    if (value && value !== 'ollama') {
+      apiKey.type = 'password';
+    } else {
+      apiKey.type = 'text';
+    }
+    updateIcon(); // Update icon when input type changes
+  };
+  // Only toggle masking when the value is “settled”
+  apiKey.addEventListener('change', updateApiKeyMasking);
+  apiKey.addEventListener('blur', updateApiKeyMasking);
   
   if (toggleApiKeyIcon && apiKey) {
     // Set initial state
