@@ -23,8 +23,13 @@ const isExternal = !isInternal;
 
 console.log('Unified-preload: URL detection', { url, isInternal, isExternal });
 
+const isP2P =
+  url.startsWith('hyper://') ||
+  url.startsWith('ipfs://')  ||
+  url.startsWith('ipns://');
+
 // Expose LLM API for internal pages and Agregore examples
-if (isInternal || url.includes('agregore.mauve.moe')) {
+if (isInternal || isP2P || url.includes('agregore.mauve.moe')) {
   console.log('Unified-preload: Exposing LLM API for page:', url);
   // Iterator management for streaming
   const iteratorMaps = new Map();
