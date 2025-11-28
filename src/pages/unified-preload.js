@@ -123,12 +123,18 @@ if (isInternal || url.includes('agregore.mauve.moe')) {
   `;
   
   // Wait for DOM to be ready before injecting script
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
+  const attachScript = () => {
+    if (document.head) {
       document.head.appendChild(script);
-    });
+    } else {
+      console.warn('Unified-preload: cannot inject LLM script, document.head not available');
+    }
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', attachScript);
   } else {
-    document.head.appendChild(script);
+    attachScript();
   }
   
   console.log('Unified-preload: LLM API exposed via contextBridge for P2P apps');
@@ -239,12 +245,18 @@ if (isInternal || url.includes('agregore.mauve.moe')) {
     `;
     
     // Wait for DOM to be ready before injecting script
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', () => {
+    const attachScript = () => {
+      if (document.head) {
         document.head.appendChild(script);
-      });
+      } else {
+        console.warn('Unified-preload: cannot inject LLM script, document.head not available');
+      }
+    };
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', attachScript);
     } else {
-      document.head.appendChild(script);
+      attachScript();
     }
     
     console.log('Unified-preload: LLM API exposed for trusted external page');
