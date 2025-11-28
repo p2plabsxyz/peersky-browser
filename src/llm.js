@@ -289,11 +289,10 @@ export async function isSupported() {
   const settings = settingsManager.settings || {};
   if (!settings.llm?.enabled) return false;
   
-  // Check if using Ollama
-  if (settings.llm.provider === 'ollama') {
-    const has = await hasModel();
-    if (has) return true;
-    return true; // Ollama can pull models on demand
+  // If API key is 'ollama', we treat it as local Ollama service
+  if (settings.llm.apiKey === 'ollama') {
+    // Local Ollama can always pull models on demand
+    return true;
   }
   
   // For other providers, check if API key is set
