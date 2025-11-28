@@ -537,7 +537,6 @@ export async function complete({
   stop
 }) {
   await init();
-  const settings = settingsManager.settings || {};
   
   // Most modern APIs don't have separate completion endpoints
   // Convert to chat format
@@ -656,28 +655,6 @@ async function* stream(url, data = {}, errorMessage = 'Request failed', apiKey =
   } catch (error) {
     await maybeShowOllamaNotInstalledDialog(error);
     throw error;
-  }
-}
-
-async function get(url, errorMessage, parseBody = true) {
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      Authorization: 'Bearer ollama'
-    },
-    dispatcher: llmAgent // Use custom agent with no timeouts
-  });
-  
-  if (!response.ok) {
-    const error = new Error(`${errorMessage} ${await response.text()}`);
-    await maybeShowOllamaNotInstalledDialog(error);
-    throw error;
-  }
-  
-  if (parseBody) {
-    return await response.json();
-  } else {
-    return await response.text();
   }
 }
 
