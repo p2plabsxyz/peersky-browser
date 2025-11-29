@@ -171,8 +171,9 @@
               chunk.content;
           }
         } catch (err) {
-          message.querySelector(".message-content").innerHTML =
-            `🤖 ${err.message}`;
+          console.error(err);
+          const el = message.querySelector(".message-content");
+          el.textContent = `🤖 ${err.message}`;
         } finally {
           setBusy(false);
         }
