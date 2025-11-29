@@ -346,8 +346,9 @@ async function listModels() {
       return [];
     }
     
-    const baseURL = settings.llm.baseURL || 'http://127.0.0.1:11434/v1/';
-    const response = await fetch(baseURL + 'api/tags');
+    const rawBase = settings.llm.baseURL || 'http://127.0.0.1:11434/';
+    const baseURL = rawBase.replace(/\/+$/, '');
+    const response = await fetch(`${baseURL}/api/tags`);
     
     if (!response.ok) {
       throw new Error(`Failed to list models: ${response.statusText}`);
@@ -364,18 +365,19 @@ async function listModels() {
 
 async function pullModel(progressCallback) {
   const settings = settingsManager.settings || {};
-  // Use base Ollama URL without /v1/ for native API endpoints
-  const baseURL = settings.llm.baseURL || 'http://127.0.0.1:11434/v1/';
+  const rawBase = settings.llm.baseURL || 'http://127.0.0.1:11434/';
+  const baseURL = rawBase.replace(/\/+$/, '');
+
   const modelName = settings.llm.model || 'qwen2.5-coder:3b';
   
-  console.log(`Pulling model ${modelName} from ${baseURL}api/pull`);
+  console.log(`Pulling model ${modelName} from ${baseURL}/api/pull`);
   
   currentDownloadModel = modelName;
   currentDownloadPercent = 0;
   
   try {
     // Use streaming to get progress updates
-    const response = await fetch(baseURL + 'api/pull', {
+    const response = await fetch(`${baseURL}/api/pull`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: modelName, stream: true })

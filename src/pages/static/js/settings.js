@@ -1388,7 +1388,7 @@ function initializeLLMSettings() {
         baseURL = baseURL.slice(0, -1);
       }
 
-      const tagsURL = `${baseURL}/v1/api/tags`;
+      const tagsURL = `${baseURL}/api/tags`;
 
       const response = await fetch(tagsURL);
       if (response.ok) {
