@@ -1161,7 +1161,7 @@ function initializeLLMSettings() {
   // Only toggle masking when the value is “settled”
   apiKey.addEventListener('change', updateApiKeyMasking);
   apiKey.addEventListener('blur', updateApiKeyMasking);
-  
+
   if (toggleApiKeyIcon && apiKey) {
     // Set initial state
     updateIcon();
@@ -1355,11 +1355,16 @@ function initializeLLMSettings() {
     }
   }
   
-  
   // Check for incomplete downloads from previous session
   setTimeout(async () => {
-    const settings = await settingsAPI.settings.getSettings();
-    checkForIncompleteDownloads(settings?.llm?.model);
+    try {
+      const settings = await settingsAPI?.settings?.getAll?.();
+      if (settings?.llm?.model) {
+        checkForIncompleteDownloads(settings.llm.model);
+      }
+    } catch (err) {
+      console.error('Error checking for incomplete LLM downloads:', err);
+    }
   }, 100);
   
   // Function to check for incomplete downloads and auto-resume
