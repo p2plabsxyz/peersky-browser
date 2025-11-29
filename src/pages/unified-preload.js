@@ -406,7 +406,7 @@ try {
       readCSS: cssAPI.readCSS,
       // LLM API for settings page
       llm: {
-        isSupported: () => ipcRenderer.invoke('llm-is-supported'),
+        isSupported: () => ipcRenderer.invoke('llm-supported'),
         chat: (messages, options) => ipcRenderer.invoke('llm-chat', messages, options),
         complete: (prompt, options) => ipcRenderer.invoke('llm-complete', prompt, options),
         updateSettings: (settings) => ipcRenderer.invoke('llm-update-settings', settings),
@@ -532,7 +532,7 @@ try {
       },
       // LLM API for P2P apps
       llm: {
-        isSupported: () => ipcRenderer.invoke('llm-is-supported'),
+        isSupported: () => ipcRenderer.invoke('llm-supported'),
         chat: (messages, options) => ipcRenderer.invoke('llm-chat', messages, options),
         complete: (prompt, options) => ipcRenderer.invoke('llm-complete', prompt, options)
       }
