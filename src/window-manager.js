@@ -589,6 +589,8 @@ class WindowManager {
     }
 
     // If, for some reason, we ended up with nothing, also clear the file
+    // TODO: If this happens during app quit/shutdown, we probably should NOT clear
+    // the existing file. Match the earlier logic where (isQuitting || shutdownInProgress). keeps the last good snapshot instead of wiping it.
     if (windowStates.length === 0) {
       console.warn('No window states collected during save – clearing window state file.');
       try {
