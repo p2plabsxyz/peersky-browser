@@ -44,7 +44,6 @@ class WindowManager {
     this.isQuitting = false;
     this.shutdownInProgress = false;
     this.finalSaveCompleted = false;
-    this.isClearingState = false; 
     this.saveQueue = Promise.resolve();
     this.registerListeners();
 
