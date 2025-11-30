@@ -112,7 +112,7 @@ class WindowManager {
     });
 
     // Explicit quit from UI (custom Quit button, etc.).
-    // We just call app.quit(); app.on('before-quit') will clear session files.
+    // We just call app.quit(); app.on('before-quit') will save session files.
     ipcMain.on("quit-app", () => {
       console.log("Quit app requested from UI");
       this.isQuitting = true;
