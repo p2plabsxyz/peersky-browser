@@ -690,34 +690,37 @@ restoreTabs(persistedData) {
     this.destroyHoverCard(); // remove lingering hover card
     const tabElement = document.getElementById(tabId);
     if (!tabElement) return;
-    
+
     // Get index of tab to close
     const tabIndex = this.tabs.findIndex(tab => tab.id === tabId);
     if (tabIndex === -1) return;
-    
-    // Prevent closing the last tab - always keep at least the home tab
+
+    // If this is the last tab, close the entire window instead of
+    // forcing a "home" tab. This matches normal browser behaviour.
     if (this.tabs.length === 1) {
-      // Instead of closing, navigate to home
-      this.updateTab(tabId, { url: "peersky://home", title: "Home" });
-      this.navigateActiveTab("peersky://home");
-      this.saveTabsState();
+      try {
+        const { ipcRenderer } = require('electron');
+        ipcRenderer.send('close-window');
+      } catch (error) {
+        console.error('Failed to close window on last-tab close:', error);
+      }
       return;
     }
-    
+
     // Remove tab from DOM and array
     tabElement.remove();
     this.tabs.splice(tabIndex, 1);
-    
+
     // Remove associated webview
     const webview = this.webviews.get(tabId);
     if (webview) {
       webview.remove();
       this.webviews.delete(tabId);
     }
-    
+
     // Remove tab from group
     this.removeTabFromGroup(tabId);
-    
+
     // If we closed the active tab, select another one
     if (this.activeTabId === tabId) {
       // Select the previous tab, or the next one if there is no previous
@@ -726,10 +729,10 @@ restoreTabs(persistedData) {
         this.selectTab(this.tabs[newTabIndex].id);
       }
     }
-    
+
     // Save state after closing tab
     this.saveTabsState();
-    
+
     // Dispatch event that tab was closed
     this.dispatchEvent(new CustomEvent("tab-closed", { detail: { tabId } }));
   }
@@ -1469,6 +1472,7 @@ restoreTabs(persistedData) {
     this.saveTabsState();
   }
 
+  // TODO: There are two handleGroupContextMenuAction() implementations. This one is overwritten by the later definition — decide which one to keep.
   // Enhanced handleGroupContextMenuAction to work with groups from any window
   handleGroupContextMenuAction(action, groupId) {
     console.log(`Handling group action: ${action} for group: ${groupId}`);
@@ -2000,6 +2004,7 @@ restoreTabs(persistedData) {
     document.body.appendChild(menu);
   }
 
+  // TODO: This overrides the earlier enhanced version — remove or merge the logic.
   // Handle group context menu actions
   handleGroupContextMenuAction(action, groupId) {
     switch (action) {
