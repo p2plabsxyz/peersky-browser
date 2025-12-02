@@ -49,6 +49,13 @@
   - [x] Run a local [hyper](https://holepunch.to/) node
   - [x] `hyper://` native URLs support
 
+- [x] Local `file://` browsing with P2P publishing:
+  - [x] Custom `file://` support with privileged access
+  - [x] Directory listings (Chrome-style)
+  - [x] One-click P2P publishing to:
+      - [x] IPFS (`ipfs://`)
+      - [x] Hypercore (`hyper://`)
+
 - [x] Web3 protocol handler:
 
   - [x] Run a local [web3 protocol](https://docs.web3url.io/) node
