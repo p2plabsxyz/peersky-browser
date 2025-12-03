@@ -2,7 +2,7 @@
     <img align="center" src="/public/icon.png" width="200" height="200"></img>
 </p>
 
-<h1 align="center">Peersky Browser</h1>
+<h1 align="center">PeerSky Browser</h1>
 
 <div align="center">
     <img src="https://img.shields.io/github/actions/workflow/status/p2plabsxyz/peersky-browser/build.yml" alt="GitHub Actions Workflow Status">
@@ -11,7 +11,7 @@
     <!-- <img src="https://img.shields.io/github/v/release/p2plabsxyz/peersky-browser?color=green" alt="GitHub Release"> -->
     <a href="https://mastodon.social/@peersky"><img src="https://img.shields.io/mastodon/follow/113323887574214930" alt="Mastodon Follow"></a>
     <a href="https://deepwiki.com/p2plabsxyz/peersky-browser"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
-    <img src="./banner.gif" width="639" alt="Peersky, displaying multiple overlapping windows. The foreground window shows a search bar with DuckDuckGo, while the background contains a Wikipedia page on ipns:// about Earth and a private hyper:// chat. The central window features a scenic forest image with sunlight filtering through tall trees, and a clock">
+    <img src="/banner.gif" width="639" alt="A demo gif of the PeerSky P2P Editor showing HTML, CSS, and JavaScript panels, a live preview of a blue page with red ‘Spider-Man’ text, and AI code-generation controls">
 </div>
 
 💻 [Download](https://peersky.p2plabs.xyz/)
@@ -117,6 +117,20 @@
   - [x] Change themes
   - [x] Clear browser cache
 
+- [x] [Local LLM](https://github.com/p2plabsxyz/peersky-browser/blob/main/docs/LLM.md) integration for P2P apps:
+  - [x] `window.llm` APIs (chat + streaming, complete)
+  - [x] Trusted-domain exposure (PeerSky-native + allowlist)
+  - [x] AI Chat app (peersky://p2p/ai-chat/)
+    - [x] Ported from [Agregore examples](https://github.com/AgregoreWeb/website/blob/main/docs/examples/llm-chat.html) with PeerSky updates
+  - [x] P2P Editor integration (peersky://p2p/editor/)
+    - [x] New AI generator (`ai-generator.js`) to generate code with AI
+
+  - [ ] 🚧 [LLM Memory](https://github.com/p2plabsxyz/peersky-browser/issues/97)
+    - [ ] `llm.json` to store prompts/responses across P2P apps
+    - [ ] Reusable History component (P2P editor, AI chat, etc.)
+    - [ ] Settings toggle to enable/disable memory
+    - [ ] “Reset P2P Data” also clears `llm.json`
+
 - [ ] 🚧 [Web extensions](https://github.com/p2plabsxyz/peersky-browser/issues/19):
   - [ ] Ability to add and manage extensions
   - [ ] [Default extensions](https://github.com/p2plabsxyz/essential-chromium-extensions)
@@ -177,10 +191,10 @@ Now, the `dist` folder will appear in the root directory.
 
 ## Contribute
 
-- Thanks for your interest in contributing to Peersky Browser. There are many ways you can contribute to the project.
+- Thanks for your interest in contributing to PeerSky Browser. There are many ways you can contribute to the project.
 - To start, take a few minutes to read the "[contribution guide](https://github.com/p2plabsxyz/peersky-browser/blob/main/.github/CONTRIBUTING.md)".
 - We look forward to your [pull requests](https://github.com/p2plabsxyz/peersky-browser/pulls) and / or involvement in our [issues page](https://github.com/p2plabsxyz/peersky-browser/issues).
 
 ## License
 
-Peersky Browser is licensed under the [MIT License](https://github.com/p2plabsxyz/peersky-browser/blob/main/LICENSE).
+PeerSky Browser is licensed under the [MIT License](https://github.com/p2plabsxyz/peersky-browser/blob/main/LICENSE).

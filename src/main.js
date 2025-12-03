@@ -11,6 +11,7 @@ import WindowManager, { createIsolatedWindow } from "./window-manager.js";
 import settingsManager from "./settings-manager.js";
 import { attachContextMenus, setWindowManager } from "./context-menu.js";
 import { isBuiltInSearchEngine } from "./search-engine.js";
+import "./llm.js";
 // import { setupAutoUpdater } from "./auto-updater.js";
 
 const P2P_PROTOCOL = {

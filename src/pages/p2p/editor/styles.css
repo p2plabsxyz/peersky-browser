@@ -125,11 +125,28 @@ li {
 
 #uploadButton {
     white-space: nowrap;
+    cursor: pointer;
+}
+
+#uploadButton:hover {
+    opacity: 0.8;   
 }
 
 #fetchContainer {
     justify-content: flex-end;
-    align-items: flex-end;
+    align-items: center;
+}
+
+#fetchCidInput {
+    margin-right: 2px;
+}
+
+#fetchButton{
+    cursor: pointer;
+}
+
+#fetchButton:hover {
+    opacity: 0.8;   
 }
 
 span {
@@ -139,6 +156,110 @@ span {
 
 span:hover {
     color: var(--browser-theme-primary-highlight);
+}
+
+/* AI Generation Section */
+#ai-toggle-container {
+    display: flex;
+    justify-content: center;
+    padding: var(--half-gap);
+}
+
+#toggleAiButton {
+    white-space: nowrap;
+    padding: var(--half-gap);
+    cursor: pointer;
+}
+
+#toggleAiButton:hover {
+    opacity: 0.8;
+}
+
+#ai-container {
+    display: flex;
+    flex-direction: column;
+    gap: var(--half-gap);
+    padding: var(--gap);
+    border: 1px solid var(--browser-theme-primary-highlight);
+    border-radius: 8px;
+    margin: var(--half-gap);
+    background: var(--browser-theme-background);
+}
+
+#ai-container.hidden {
+    display: none;
+}
+
+#aiPromptBox {
+    width: 100%;
+    padding: var(--gap);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--browser-theme-text-color);
+    border: 1px solid var(--browser-theme-primary-highlight);
+    border-radius: 8px;
+    font-size: 1rem;
+    resize: vertical;
+    font-family: var(--browser-theme-font-family);
+}
+
+#aiPromptBox:focus {
+    outline: 2px solid var(--browser-theme-primary-highlight);
+}
+
+#ai-buttons {
+    display: flex;
+    justify-content: flex-start;
+}
+
+#ai-buttons button {
+    white-space: nowrap;
+    padding: var(--half-gap);
+    cursor: pointer;
+}
+
+#ai-buttons button:hover {
+    opacity: 0.8;
+}
+
+/* AI Logs Dialog */
+#aiLogDialog {
+    white-space: nowrap;
+}
+
+#aiLogDialog::backdrop {
+    background: rgba(0, 0, 0, 0.7);
+}
+
+#aiLogs {
+    margin-bottom: var(--gap);
+}
+
+#aiLogs dt {
+    font-weight: bold;
+    color: var(--browser-theme-primary-highlight);
+    margin-top: var(--gap);
+}
+
+#aiLogs dd {
+    white-space: pre-wrap;
+    margin-left: var(--gap);
+    margin-bottom: var(--half-gap);
+    padding: var(--half-gap);
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+}
+
+#closeAiLog {
+    position: sticky;
+    bottom: 0;
+    width: 100%;
+    white-space: nowrap;
+    cursor: pointer;
+    font-size: 1rem;
+}
+
+#closeAiLog:hover {
+    opacity: 0.8;
 }
 
 /* Media query for mobile devices */
@@ -151,5 +272,13 @@ span:hover {
     .grid-container {
         grid-template-columns: 1fr; /* One column */
         grid-template-rows: repeat(4, 1fr); /* Four rows */
+    }
+    
+    #aiLogDialog {
+        min-width: 90vw;
+    }
+    
+    #ai-buttons {
+        flex-direction: column;
     }
 }

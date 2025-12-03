@@ -549,6 +549,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Initialize custom wallpaper UI state
   updateCustomWallpaperUI(false);
   
+  // Initialize LLM settings handlers
+  initializeLLMSettings();
+  
   // Load settings from backend
   loadSettingsFromBackend();
 });
@@ -661,6 +664,41 @@ function populateFormFields(settings) {
     } else if (settings.wallpaper === 'custom') {
       // For custom wallpaper, show custom UI but keep built-in selector unchanged
       updateCustomWallpaperUI(true);
+    }
+  }
+  
+  // Populate LLM settings (supports both Ollama and OpenAI)
+  if (settings.llm) {
+    const llmEnabled = document.getElementById('llm-enabled');
+    const llmConfig = document.getElementById('llm-config');
+    const ollamaUrl = document.getElementById('ollama-url');
+    const apiKey = document.getElementById('api-key');
+    const ollamaModel = document.getElementById('ollama-model');
+    
+    if (llmEnabled) {
+      llmEnabled.checked = settings.llm.enabled || false;
+      if (llmConfig) {
+        llmConfig.style.display = settings.llm.enabled ? 'block' : 'none';
+      }
+    }
+    
+    if (ollamaUrl && settings.llm.baseURL) {
+      ollamaUrl.value = settings.llm.baseURL;
+    }
+    
+    if (apiKey && settings.llm.apiKey) {
+      // Mask API key if it's not 'ollama'
+      if (settings.llm.apiKey !== 'ollama') {
+        apiKey.type = 'password';
+        apiKey.value = settings.llm.apiKey;
+      } else {
+        apiKey.type = 'text';
+        apiKey.value = settings.llm.apiKey;
+      }
+    }
+    
+    if (ollamaModel && settings.llm.model) {
+      ollamaModel.value = settings.llm.model;
     }
   }
   
@@ -1029,6 +1067,355 @@ function cleanup() {
     }
   });
   eventCleanupFunctions = [];
+}
+
+// Initialize LLM settings handlers
+function initializeLLMSettings() {
+  const llmEnabled = document.getElementById('llm-enabled');
+  const llmConfig = document.getElementById('llm-config');
+  
+  if (!llmEnabled) return; // LLM section not present
+  
+  // Clean up any leftover progress containers on page load
+  const existingProgress = document.getElementById('llm-download-progress');
+  if (existingProgress) {
+    // Always remove on page load if LLM is disabled
+    if (!llmEnabled.checked) {
+      existingProgress.remove();
+    }
+  }
+  
+  // Toggle LLM configuration visibility
+  llmEnabled?.addEventListener('change', async (e) => {
+    const enabled = e.target.checked;
+    llmConfig.style.display = enabled ? 'block' : 'none';
+    
+    // Clean up progress container when LLM is disabled
+    if (!enabled) {
+      const progressContainer = document.getElementById('llm-download-progress');
+      if (progressContainer) {
+        progressContainer.remove();
+      }
+    }
+    
+    // Save the complete LLM settings with the new enabled state
+    await saveLLMSettings();
+  });
+  
+  // Listen for download progress updates
+  if (window.electronAPI) {
+    console.log('Setting up LLM event listeners...');
+    
+    if (window.electronAPI.onLLMDownloadProgress) {
+      window.electronAPI.onLLMDownloadProgress((progress) => {
+        console.log('Download progress:', progress);
+        updateDownloadProgress(progress);
+      });
+    } else {
+      console.warn('onLLMDownloadProgress not available');
+    }
+    
+    if (window.electronAPI.onLLMModelsUpdated) {
+      console.log('Setting up onLLMModelsUpdated listener');
+      window.electronAPI.onLLMModelsUpdated((data) => {
+        console.log('Models updated for:', data.model);
+      });
+    } else {
+      console.warn('onLLMModelsUpdated not available');
+    }
+  } else {
+    console.warn('electronAPI not available for LLM events');
+  }
+  
+  // Save settings on input change
+  const ollamaUrl = document.getElementById('ollama-url');
+  const apiKey = document.getElementById('api-key');
+  const ollamaModel = document.getElementById('ollama-model');
+  
+  // Add show/hide toggle for API key with eye icons
+  const toggleApiKeyIcon = document.getElementById('toggle-api-key-visibility');
+  
+  // Function to update icon based on input type
+  const updateIcon = () => {
+    if (!toggleApiKeyIcon || !apiKey) return;
+    if (apiKey.type === 'password') {
+      toggleApiKeyIcon.src = 'peersky://static/assets/svg/eye.svg';
+      toggleApiKeyIcon.title = 'Show API key';
+    } else {
+      toggleApiKeyIcon.src = 'peersky://static/assets/svg/eye-slash.svg';
+      toggleApiKeyIcon.title = 'Hide API key';
+    }
+  };
+  
+  // Toggle API key visibility based on value
+  const updateApiKeyMasking = () => {
+    const value = apiKey.value.trim();
+    // Show as password if it's not 'ollama'
+    if (value && value !== 'ollama') {
+      apiKey.type = 'password';
+    } else {
+      apiKey.type = 'text';
+    }
+    updateIcon(); // Update icon when input type changes
+  };
+  // Only toggle masking when the value is “settled”
+  apiKey.addEventListener('change', updateApiKeyMasking);
+  apiKey.addEventListener('blur', updateApiKeyMasking);
+
+  if (toggleApiKeyIcon && apiKey) {
+    // Set initial state
+    updateIcon();
+    
+    // Toggle on click
+    toggleApiKeyIcon.addEventListener('click', () => {
+      if (apiKey.type === 'password') {
+        apiKey.type = 'text';
+      } else {
+        apiKey.type = 'password';
+      }
+      updateIcon();
+    });
+  }
+  
+  if (ollamaUrl) {
+    ollamaUrl.addEventListener('change', () => saveLLMSettings());
+  }
+  
+  if (apiKey) {
+    apiKey.addEventListener('change', () => saveLLMSettings());
+  }
+  
+  // Handle model input changes - save and check/install on blur
+  if (ollamaModel) {
+    ollamaModel.addEventListener('blur', async function() {
+      const modelName = this.value.trim();
+      if (modelName) {
+        await saveLLMSettings();
+      }
+    });
+    
+    // Also handle Enter key
+    ollamaModel.addEventListener('keypress', async function(e) {
+      if (e.key === 'Enter') {
+        const modelName = this.value.trim();
+        if (modelName) {
+          await saveLLMSettings();
+        }
+      }
+    });
+  }
+  
+  // Helper function to save LLM settings (supports both Ollama and OpenAI)
+  async function saveLLMSettings() {
+    const llmEnabled = document.getElementById('llm-enabled');
+    const ollamaModelInput = document.getElementById('ollama-model');
+    const apiKeyInput = document.getElementById('api-key');
+    const baseURLInput = document.getElementById('ollama-url');
+    
+    // Get values from inputs
+    const ollamaModelValue = ollamaModelInput?.value?.trim() || 'qwen2.5-coder:3b';
+    const apiKeyValue = apiKeyInput?.value?.trim() || 'ollama';
+    const baseURLValue = baseURLInput?.value?.trim() || 'http://127.0.0.1:11434/';
+    
+    // Basic validation - just check it's not empty
+    if (!ollamaModelValue) {
+      showSettingsSavedMessage('Please enter a model name', 'error');
+      return;
+    }
+    
+    // Check if using OpenAI and validate API key
+    const isOpenAI = baseURLValue.includes('openai.com');
+    if (isOpenAI && (!apiKeyValue || apiKeyValue === 'ollama')) {
+      showSettingsSavedMessage('Please enter your OpenAI API key', 'error');
+      return;
+    }
+    
+    // Simple settings structure config
+    const settings = {
+      enabled: llmEnabled?.checked || false,
+      baseURL: baseURLValue,
+      apiKey: apiKeyValue,
+      model: ollamaModelValue
+    };
+    
+    console.log('Saving LLM settings with model:', settings.model);
+    
+    // Save to backend and trigger model download if needed
+    try {
+      // Use the LLM IPC handler to trigger download if model changed
+      if (window.electronAPI?.llm?.updateSettings) {
+        console.log('Using IPC to update settings and check model...');
+        const result = await window.electronAPI.llm.updateSettings(settings);
+        if (result.success) {
+          console.log('LLM settings saved and model check initiated');
+          // Also save to regular settings to persist
+          await saveSettingToBackend('llm', settings);
+        } else {
+          throw new Error(result.error || 'Failed to update LLM settings');
+        }
+      } else {
+        console.log('electronAPI.llm not available, using fallback');
+        // Fallback to regular save
+        await saveSettingToBackend('llm', settings);
+      }
+    } catch (error) {
+      console.error('Failed to save LLM settings:', error);
+      
+      // Don't show progress bar for model not found errors
+      if (error.message && error.message.includes('not found')) {
+        showSettingsSavedMessage(`Model not found. Please check available models at ollama.com/library`, 'error');
+      } else {
+        showSettingsSavedMessage(`Failed to save LLM settings: ${error.message}`, 'error');
+      }
+    }
+  }
+  
+  // Function to update download progress
+  function updateDownloadProgress(progress) {
+    
+    // Create or update progress bar
+    let progressContainer = document.getElementById('llm-download-progress');
+    if (!progressContainer) {
+      // Create progress container after the model selector
+      const modelRow = document.getElementById('ollama-model')?.closest('.setting-row');
+      if (modelRow) {
+        progressContainer = document.createElement('div');
+        progressContainer.id = 'llm-download-progress';
+        progressContainer.className = 'setting-row';
+        progressContainer.style.display = 'none';
+        progressContainer.innerHTML = `
+          <div class="setting-control">
+            <div class="progress-bar-container" style="width: 100%; background: var(--settings-bg-primary); border-radius: 4px; height: 20px; position: relative;">
+              <div class="progress-bar" style="background: var(--accent-color); height: 100%; border-radius: 4px; transition: width 0.3s; width: 0%;"></div>
+              <div class="progress-text" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 12px;">0%</div>
+            </div>
+            <div class="progress-status" style="font-size: 12px; color: var(--settings-text-secondary);"></div>
+          </div>
+        `;
+        modelRow.parentNode.insertBefore(progressContainer, modelRow.nextSibling);
+      }
+    }
+    
+    if (progressContainer) {
+      const progressBar = progressContainer.querySelector('.progress-bar');
+      const progressText = progressContainer.querySelector('.progress-text');
+      const progressStatus = progressContainer.querySelector('.progress-status');
+      
+      if (progress.status === 'starting') {
+        progressContainer.style.display = 'block';
+        progressBar.style.width = '0%';
+        progressBar.style.backgroundColor = '#06b6d4';
+        progressText.textContent = '0%';
+        progressStatus.textContent = `Starting download of ${progress.model}...`;
+      } else if (progress.status === 'downloading') {
+        progressContainer.style.display = 'block';
+        const percent = progress.percent >= 0 ? progress.percent : 0;
+        progressBar.style.width = `${percent}%`;
+        progressBar.style.backgroundColor = '#06b6d4';
+        progressText.textContent = `${percent}%`;
+        progressStatus.textContent = progress.message || 'Downloading...';
+      } else if (progress.status === 'complete') {
+        progressBar.style.width = '100%';
+        progressBar.style.backgroundColor = '#28a745';
+        progressText.textContent = '100%';
+        progressStatus.textContent = 'Download complete!';
+        // Remove focus from model input
+        const modelInput = document.getElementById('ollama-model');
+        if (modelInput) {
+          modelInput.blur();
+        }
+        // Remove progress container after 2 seconds
+        setTimeout(() => {
+          progressContainer.remove();
+        }, 2000);
+      } else if (progress.status === 'error') {
+        // Show error briefly then remove
+        progressContainer.style.display = 'block';
+        progressBar.style.width = '100%';
+        progressBar.style.backgroundColor = '#dc3545';
+        progressText.textContent = 'Error';
+        
+        // Check if model doesn't exist vs other errors
+        if (progress.message && (progress.message.includes('does not exist') || progress.message.includes('file does not exist'))) {
+          // Model doesn't exist - show error briefly then remove
+          progressStatus.textContent = 'Model not found';
+          setTimeout(() => {
+            progressContainer.remove();
+            // Show alert dialog after removing progress
+            alert(`Model '${progress.model}' does not exist in the Ollama library.\n\nPlease check available models at ollama.com/library`);
+          }, 1000);
+        } else {
+          // Other error - show message and remove after 3 seconds
+          progressStatus.textContent = progress.message || 'Download failed';
+          setTimeout(() => {
+            progressContainer.remove();
+          }, 3000);
+        }
+      }
+    }
+  }
+  
+  // Check for incomplete downloads from previous session
+  setTimeout(async () => {
+    try {
+      const settings = await settingsAPI?.settings?.getAll?.();
+      if (settings?.llm?.model) {
+        checkForIncompleteDownloads(settings.llm.model);
+      }
+    } catch (err) {
+      console.error('Error checking for incomplete LLM downloads:', err);
+    }
+  }, 100);
+  
+  // Function to check for incomplete downloads and auto-resume
+  async function checkForIncompleteDownloads(modelName) {
+    if (!modelName) return;
+    
+    try {
+      // Check if LLM is enabled first
+      const llmEnabled = document.getElementById('llm-enabled');
+      if (!llmEnabled?.checked) {
+        console.log('LLM not enabled, skipping download check');
+        return;
+      }
+      
+      // Check if the model exists using the configured Ollama URL
+      const baseURLInput = document.getElementById('ollama-url');
+      let baseURL = baseURLInput?.value?.trim() || 'http://127.0.0.1:11434';
+
+      // Normalize trailing slash
+      if (baseURL.endsWith('/')) {
+        baseURL = baseURL.slice(0, -1);
+      }
+
+      const tagsURL = `${baseURL}/api/tags`;
+
+      const response = await fetch(tagsURL);
+      if (response.ok) {
+        const data = await response.json();
+        const models = data.models || [];
+        const modelExists = models.some(m => m.name === modelName);
+        
+        if (!modelExists) {
+          // Model doesn't exist locally, auto-resume download
+          console.log(`Model ${modelName} not found locally, auto-resuming download...`);
+          
+          // Check if using Ollama (not OpenAI)
+          const baseURLInput = document.getElementById('ollama-url');
+          const isOpenAI = baseURLInput?.value?.includes('openai.com');
+          
+          if (!isOpenAI) {
+            // Trigger download by saving settings (which will check and download)
+            await saveLLMSettings();
+          }
+        } else {
+          console.log(`Model ${modelName} is already installed`);
+        }
+      }
+    } catch (error) {
+      console.error('Error checking for incomplete downloads:', error);
+    }
+  }
 }
 
 // Gracefully detach webviews before clearing
