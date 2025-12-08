@@ -133,7 +133,6 @@
     "@libp2p/kad-dht": "^15.1.11",
     "b4a": "^1.6.7",
     "blockstore-level": "^2.0.3",
-    "chrome-extension-fetch": "1.0.0",
     "content-hash": "^2.5.2",
     "content-type": "^1.0.5",
     "datastore-level": "^11.0.3",
@@ -159,6 +158,7 @@
     "web3protocol": "^0.6.0"
   },
   "devDependencies": {
+    "chrome-extension-fetch": "^1.0.0",
     "electron": "^37.2.2",
     "electron-builder": "^26.0.12"
   }
