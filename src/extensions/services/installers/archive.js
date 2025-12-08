@@ -36,7 +36,30 @@ export async function prepareFromArchive(manager, archivePath) {
   }
 
   // Read manifest from extracted dir (find manifest.json relative to root)
-  const manifestPath = path.join(stagingDir, 'manifest.json');
+  // Handle ZIP files where content is nested inside a single folder
+  let manifestPath = path.join(stagingDir, 'manifest.json');
+  let actualStagingDir = stagingDir;
+
+  try {
+    await fs.access(manifestPath);
+  } catch (_) {
+    // manifest.json not at root - check if there's a single subfolder containing it
+    const entries = await fs.readdir(stagingDir, { withFileTypes: true });
+    const dirs = entries.filter(e => e.isDirectory());
+
+    if (dirs.length === 1) {
+      const nestedDir = path.join(stagingDir, dirs[0].name);
+      const nestedManifest = path.join(nestedDir, 'manifest.json');
+      try {
+        await fs.access(nestedManifest);
+        // Found manifest in subfolder - use this as the actual staging dir
+        manifestPath = nestedManifest;
+        actualStagingDir = nestedDir;
+      } catch (__) {
+        // Still not found, will fail with original error below
+      }
+    }
+  }
   const manifestRaw = await fs.readFile(manifestPath, 'utf8');
   const manifest = JSON.parse(manifestRaw);
 
@@ -55,7 +78,7 @@ export async function prepareFromArchive(manager, archivePath) {
 
   const tempDir = path.join(manager.extensionsBaseDir, '_staging', `pkg-${Date.now()}-${randomBytes(4).toString('hex')}`);
   await ensureDir(tempDir);
-  await fs.cp(stagingDir, tempDir, { recursive: true });
+  await fs.cp(actualStagingDir, tempDir, { recursive: true });
   await ensureDir(path.dirname(finalDir));
   await atomicReplaceDir(tempDir, finalDir);
 
@@ -80,7 +103,7 @@ export async function prepareFromArchive(manager, archivePath) {
     }
     const popup = manifest.action && manifest.action.default_popup;
     await checkFile(popup);
-  } catch (_) {}
+  } catch (_) { }
 
   const ext = {
     id: provisionalId,
@@ -108,7 +131,7 @@ export async function prepareFromArchive(manager, archivePath) {
         break;
       }
     }
-  } catch (_) {}
+  } catch (_) { }
 
   return ext;
 }
