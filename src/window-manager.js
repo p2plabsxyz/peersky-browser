@@ -114,6 +114,37 @@ class WindowManager {
       this.addBookmark({ url, title, favicon });
     });
 
+    ipcMain.on('get-tab-navigation', (event, webContentsId) => {
+      try {
+        const wc = webContents.fromId(webContentsId);
+        if (!wc || wc.isDestroyed() || !wc.navigationHistory) {
+          event.returnValue = null;
+          return;
+        }
+        const history = wc.navigationHistory;
+        const entries = history.getAllEntries() || [];
+        const activeIndex = history.getActiveIndex();
+        event.returnValue = { entries, activeIndex };
+      } catch (err) {
+        console.warn('get-tab-navigation failed:', err);
+        event.returnValue = null;
+      }
+    });
+
+    ipcMain.handle('restore-navigation-history', async (event, { webContentsId, entries, activeIndex }) => {
+      try {
+        const wc = webContents.fromId(webContentsId);
+        if (!wc || wc.isDestroyed() || !wc.navigationHistory) return;
+        await wc.navigationHistory.restore({
+          entries,
+          index: activeIndex
+        });
+      } catch (err) {
+        console.warn('restore-navigation-history failed:', err);
+      }
+    });
+
+
     ipcMain.handle("get-bookmarks", () => {
       return this.loadBookmarks();
     });

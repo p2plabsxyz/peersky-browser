@@ -205,14 +205,30 @@ getAllTabGroups() {
   getTabsStateForSaving() {
     try {
       const tabsData = {
-        tabs: this.tabs.map(tab => ({
-          id: tab.id,
-          url: tab.url,
-          title: tab.title,
-          protocol: tab.protocol,
-          isPinned: this.pinnedTabs.has(tab.id),
-          groupId: this.tabGroupAssignments.get(tab.id) || null
-        })),
+        tabs: this.tabs.map(tab => {
+          const webview = this.webviews.get(tab.id);
+          let navigation = null;
+
+          try {
+            if (webview && webview.getWebContentsId) {
+              const { ipcRenderer } = require("electron");
+              // Ask main process for nav history of this tab
+              navigation = ipcRenderer.sendSync('get-tab-navigation', webview.getWebContentsId());
+            }
+          } catch (e) {
+            console.warn("Failed to fetch nav history for tab", tab.id, e);
+          }
+
+          return {
+            id: tab.id,
+            url: tab.url,
+            title: tab.title,
+            protocol: tab.protocol,
+            isPinned: this.pinnedTabs.has(tab.id),
+            groupId: this.tabGroupAssignments.get(tab.id) || null,
+            navigation 
+          };
+        }),
         activeTabId: this.activeTabId,
         tabCounter: this.tabCounter,
         tabGroups: Array.from(this.tabGroups.entries()).map(([id, group]) => ({
@@ -272,6 +288,23 @@ restoreTabs(persistedData) {
   // Restore each tab
   persistedData.tabs.forEach(tabData => {
     const tabId = this.addTabWithId(tabData.id, tabData.url, tabData.title);
+
+    if (tabData.navigation && tabData.navigation.entries?.length) {
+      const { entries, activeIndex } = tabData.navigation;
+      const { ipcRenderer } = require("electron");
+      const webview = this.webviews.get(tabId);
+
+      setTimeout(() => {
+        try {
+          const webContentsId = webview.getWebContentsId();
+          ipcRenderer.invoke("restore-navigation-history", { webContentsId, entries, activeIndex })
+            .catch(err => console.warn("Failed to restore nav history:", err));
+        } catch (e) {
+          console.warn("Error sending restore-navigation-history:", e);
+        }
+      }, 150);
+    }
+
     
     // Restore pinned state
     if (tabData.isPinned) {
@@ -331,8 +364,7 @@ restoreTabs(persistedData) {
 }
 
   // Add tab with specific ID (for restoration)
-  addTabWithId(tabId, url = "peersky://home", title = "Home") {
-    // Create tab UI
+  addTabWithId(tabId, url = "peersky://home", title = "Home", tabData = {}) {    // Create tab UI
     const tab = document.createElement("div");
     tab.className = "tab";
     tab.id = tabId;
@@ -371,7 +403,19 @@ restoreTabs(persistedData) {
     
     // Create webview for this tab if container exists
     if (this.webviewContainer) {
-      this.createWebviewForTab(tabId, url);
+      const webview = this.createWebviewForTab(tabId, url);
+
+      if (tabData.navigation && tabData.navigation.entries?.length) {
+        const { entries, activeIndex } = tabData.navigation;
+        try {
+          const { ipcRenderer } = require("electron");
+          const webContentsId = webview.getWebContentsId();
+          ipcRenderer.invoke('restore-navigation-history', { webContentsId, entries, activeIndex })
+            .catch(err => console.warn("Failed to restore nav history:", err));
+        } catch (e) {
+          console.warn("Error sending restore-navigation-history:", e);
+        }
+      }
     }
     
     this._updateP2PIndicator(tabId);
@@ -627,6 +671,14 @@ restoreTabs(persistedData) {
           detail: { tabId }
         }));
       }, 100);
+    });
+
+    webview.addEventListener("did-navigate", () => {
+      this.saveTabsState();
+    });
+
+    webview.addEventListener("did-stop-loading", () => {
+      this.saveTabsState();
     });
   
     // Handle audio state changes
