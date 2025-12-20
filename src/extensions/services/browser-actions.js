@@ -1,6 +1,7 @@
 // Browser actions (click/open popup) and helpers
 
 import { app, BrowserWindow, Menu, webContents } from 'electron';
+import { registerPopupForStabilization } from './popup-guards.js';
 
 export async function listBrowserActions(manager, window) {
   const actions = [];
@@ -132,16 +133,25 @@ export async function openBrowserAction(manager, actionId, window, anchorRect) {
             const api = manager.electronChromeExtensions.api;
             if (api.browserAction && api.browserAction.openPopup) {
               app.once("browser-window-created", (event, newWindow) => {
+                // Register for stabilization IMMEDIATELY to prevent race condition
+                registerPopupForStabilization(newWindow);
+                if (manager.activePopups) {
+                  manager.activePopups.add(newWindow);
+                  newWindow.on('closed', () => manager.activePopups.delete(newWindow));
+                }
+
                 newWindow.webContents.once("did-finish-load", () => {
                   const url = newWindow.webContents.getURL();
                   if (url.includes(`chrome-extension://${extension.electronId}/`)) {
-                    try { manager.addWindow(newWindow, newWindow.webContents); } catch (_) {}
+                    try { manager.addWindow(newWindow, newWindow.webContents); } catch (_) { }
                     newWindow.webContents.on("context-menu", (evt, params) => {
                       const menu = Menu.buildFromTemplate([
-                        { label: "Inspect", click: () => {
-                          try { if (!newWindow.webContents.isDevToolsOpened()) { newWindow.webContents.openDevTools({ mode: "detach" }); } } catch (_) {}
-                          try { newWindow.webContents.inspectElement(params.x, params.y); } catch (_) {}
-                        }}
+                        {
+                          label: "Inspect", click: () => {
+                            try { if (!newWindow.webContents.isDevToolsOpened()) { newWindow.webContents.openDevTools({ mode: "detach" }); } } catch (_) { }
+                            try { newWindow.webContents.inspectElement(params.x, params.y); } catch (_) { }
+                          }
+                        }
                       ]);
                       try { menu.popup({ window: newWindow, x: params.x, y: params.y }); } catch (_) { menu.popup({ window: newWindow }); }
                     });
@@ -185,10 +195,17 @@ export async function openBrowserAction(manager, actionId, window, anchorRect) {
               width: 400, height: 600, x: Math.round(anchorRect.x), y: Math.round(anchorRect.bottom + 5), show: false, frame: false, resizable: false,
               webPreferences: { nodeIntegration: false, contextIsolation: true, enableRemoteModule: false, partition: window.webContents.session.partition }
             });
-            try { manager.addWindow(popupWindow, popupWindow.webContents); } catch (_) {}
+            // Register for stabilization to prevent early closure
+            registerPopupForStabilization(popupWindow);
+            if (manager.activePopups) {
+              manager.activePopups.add(popupWindow);
+              popupWindow.on('closed', () => manager.activePopups.delete(popupWindow));
+            }
+            try { manager.addWindow(popupWindow, popupWindow.webContents); } catch (_) { }
+
             const isExternalUrl = (u) => /^(https?:|ipfs:|ipns:|hyper:|web3:)/i.test(u);
             popupWindow.webContents.setWindowOpenHandler(({ url }) => {
-              if (isExternalUrl(url)) { try { manager.electronChromeExtensions?.createTab?.({ url, active: true }); } catch (_) {} return { action: 'deny' }; }
+              if (isExternalUrl(url)) { try { manager.electronChromeExtensions?.createTab?.({ url, active: true }); } catch (_) { } return { action: 'deny' }; }
               return { action: 'allow' };
             });
             await popupWindow.loadURL(popupUrl);
@@ -267,12 +284,12 @@ export async function resolvePopupRelativePath(root, desiredRel) {
   const candidates = [desiredRel, 'popup.html', 'popup/index.html', 'ui/popup.html', 'dist/popup.html', 'build/popup.html'];
   for (const rel of candidates) {
     if (!rel) continue;
-    try { await fs.access(pathMod.join(root, rel)); return rel; } catch (_) {}
+    try { await fs.access(pathMod.join(root, rel)); return rel; } catch (_) { }
   }
   try {
     const found = await findFileByName(root, desiredBase, 2);
     if (found) return pathMod.relative(root, found);
-  } catch (_) {}
+  } catch (_) { }
   return null;
 }
 
@@ -292,7 +309,7 @@ async function findFileByName(dir, name, depth) {
         return full;
       }
     }
-  } catch (_) {}
+  } catch (_) { }
   return null;
 }
 
