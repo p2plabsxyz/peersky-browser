@@ -6,40 +6,18 @@ import { randomBytes } from 'crypto';
 import { ensureDir, atomicReplaceDir } from '../../util.js';
 import { generateSecureExtensionId } from '../../utils/ids.js';
 import { resolveManifestStrings } from '../../utils/strings.js';
-
-const PREFERRED_MANIFEST_ALTS = [
-  'manifest.chromium.json',
-  'manifest.chrome.json',
-  'manifest.chrome-mv3.json',
-  'manifest.mv3.json',
-  'manifest.v3.json',
-  'manifest.firefox.json'
-];
+import { findExtensionManifest } from '../../utils/manifest-file.js';
 
 export async function prepareFromDirectory(manager, dirPath) {
-  let manifestPath = path.join(dirPath, 'manifest.json');
-  let stats = await fs.stat(manifestPath).catch(() => null);
-  let manifestContent;
-  let altManifestContent = null;
-  if (!stats) {
-    let foundAlt = null;
-    for (const name of PREFERRED_MANIFEST_ALTS) {
-      const p = path.join(dirPath, name);
-      const st = await fs.stat(p).catch(() => null);
-      if (st) { foundAlt = p; break; }
-    }
-    if (foundAlt) {
-      if (foundAlt.endsWith('manifest.firefox.json')) {
-        console.warn('[ExtensionManager] Falling back to manifest.firefox.json. Extension may be incompatible with Chromium/Electron.');
-      }
-      altManifestContent = await fs.readFile(foundAlt, 'utf8');
-      manifestContent = altManifestContent;
-    } else {
-      throw new Error('No manifest.json found in extension directory');
-    }
-  } else {
-    manifestContent = await fs.readFile(manifestPath, 'utf8');
+  const { path: foundPath, content: manifestContent } = await findExtensionManifest(dirPath) || {};
+
+  if (!manifestContent) {
+    throw new Error('No valid manifest.json (or supported alternative) found in extension directory');
   }
+
+  // Create a clean manifest.json file if we found an alternative one
+  const isAltManifest = path.basename(foundPath) !== 'manifest.json';
+  const altManifestContent = isAltManifest ? manifestContent : null;
   const manifest = JSON.parse(manifestContent);
 
   const semverLike = (v) => typeof v === 'string' && /^\d+(\.\d+)*$/.test(v);
@@ -56,8 +34,17 @@ export async function prepareFromDirectory(manager, dirPath) {
   const tempDir = path.join(manager.extensionsBaseDir, '_staging', `dir-${Date.now()}-${randomBytes(4).toString('hex')}`);
   await ensureDir(tempDir);
   await fs.cp(dirPath, tempDir, { recursive: true });
-  try { await fs.writeFile(path.join(tempDir, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf8'); } catch (_) {}
-  if (altManifestContent) {
+  try {
+    await fs.writeFile(path.join(tempDir, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf8');
+  } catch (_) { }
+
+  // If we found a different filename, ensure the original content is also preserved at the canonical manifest.json path
+  // (The line above writes a clean JSON, but if the original had comments or weird formatting, we might want the exact content?
+  // Actually, standardizing on valid JSON is probably better for consumption.)
+  if (path.basename(foundPath) !== 'manifest.json') {
+    // Ensure we don't have a conflict if the user *also* had a file literally named "manifest.json" that was invalid?
+    // But logic earlier ensures we picked the preferred one.
+    // So we just ensure a `manifest.json` exists for Electron.
     const destManifestPath = path.join(tempDir, 'manifest.json');
     try { await fs.access(destManifestPath); } catch (_) {
       await fs.writeFile(destManifestPath, altManifestContent, 'utf8');
@@ -86,7 +73,7 @@ export async function prepareFromDirectory(manager, dirPath) {
     }
     const popup = manifest.action && manifest.action.default_popup;
     await checkFile(popup);
-  } catch (_) {}
+  } catch (_) { }
 
   const ext = {
     id: extensionId,
@@ -115,7 +102,7 @@ export async function prepareFromDirectory(manager, dirPath) {
         break;
       }
     }
-  } catch (_) {}
+  } catch (_) { }
 
   return ext;
 }

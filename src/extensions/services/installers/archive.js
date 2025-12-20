@@ -8,6 +8,7 @@ import { extractZipFile, extractZipBuffer } from '../../zip.js';
 import { isCrx, extractCrx, derToBase64 } from '../../crx.js';
 import { generateSecureExtensionId } from '../../utils/ids.js';
 import { resolveManifestStrings } from '../../utils/strings.js';
+import { findExtensionManifest } from '../../utils/manifest-file.js';
 
 export async function prepareFromArchive(manager, archivePath) {
   const lower = archivePath.toLowerCase();
@@ -35,32 +36,37 @@ export async function prepareFromArchive(manager, archivePath) {
     await extractZipBuffer(crx.zipBuffer, stagingDir);
   }
 
-  // Read manifest from extracted dir (find manifest.json relative to root)
+  // Read manifest from extracted dir (find manifest.json or dynamic equivalent relative to root)
   // Handle ZIP files where content is nested inside a single folder
-  let manifestPath = path.join(stagingDir, 'manifest.json');
+  let manifestFound = await findExtensionManifest(stagingDir);
   let actualStagingDir = stagingDir;
 
-  try {
-    await fs.access(manifestPath);
-  } catch (_) {
-    // manifest.json not at root - check if there's a single subfolder containing it
+  if (!manifestFound) {
+    // manifest.json not at root -->  maybe it is nested so check inside 
     const entries = await fs.readdir(stagingDir, { withFileTypes: true });
     const dirs = entries.filter(e => e.isDirectory());
 
     if (dirs.length === 1) {
       const nestedDir = path.join(stagingDir, dirs[0].name);
-      const nestedManifest = path.join(nestedDir, 'manifest.json');
       try {
-        await fs.access(nestedManifest);
-        // Found manifest in subfolder - use this as the actual staging dir
-        manifestPath = nestedManifest;
-        actualStagingDir = nestedDir;
+        const nestedFound = await findExtensionManifest(nestedDir);
+
+        if (nestedFound) {
+          // Found manifest in subfolder - now this is the actual staging directory
+          manifestFound = nestedFound;
+          actualStagingDir = nestedDir;
+        }
       } catch (__) {
-        // Still not found, will fail with original error below
+        // Still not found, will fail below
       }
     }
   }
-  const manifestRaw = await fs.readFile(manifestPath, 'utf8');
+
+  if (!manifestFound) {
+    throw new Error('No valid manifest.json (or supported alternative) found in archive');
+  }
+
+  const { path: manifestPath, content: manifestRaw } = manifestFound;
   const manifest = JSON.parse(manifestRaw);
 
   const semverLike = (v) => typeof v === 'string' && /^\d+(\.\d+)*$/.test(v);
