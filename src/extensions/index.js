@@ -265,6 +265,88 @@ class ExtensionManager {
               console.warn("[ExtensionManager] selectTab impl failed:", err);
             }
           },
+
+          /**
+           * Remove/close a tab given its WebContents
+           * Called when extensions use chrome.tabs.remove()
+           */
+          removeTab: async (tab, win) => {
+            try {
+              console.log("[ExtensionManager] removeTab called for webContents:", tab?.id);
+              
+              if (!tab || (typeof tab.isDestroyed === 'function' && tab.isDestroyed())) {
+                console.warn("[ExtensionManager] removeTab: tab already destroyed");
+                return;
+              }
+
+              const wcId = typeof tab.id === "number" ? tab.id : null;
+              if (!wcId) {
+                console.warn("[ExtensionManager] removeTab: no valid webContents ID");
+                return;
+              }
+
+              // Find the main window with tabbar
+              const allWindows = BrowserWindow.getAllWindows();
+              let windowWithTabbar = win && !win.isDestroyed() ? win : null;
+
+              // If win is not valid, find a suitable window
+              if (!windowWithTabbar) {
+                for (const w of allWindows) {
+                  if (w.isDestroyed()) continue;
+                  const bounds = w.getBounds();
+                  if (bounds.width < 500 || bounds.height < 400) continue;
+                  
+                  try {
+                    const hasTabBar = await w.webContents.executeJavaScript(`
+                      !!(document.getElementById('tabbar') && typeof document.getElementById('tabbar').closeTab === 'function')
+                    `, true);
+                    if (hasTabBar) {
+                      windowWithTabbar = w;
+                      break;
+                    }
+                  } catch (_) { }
+                }
+              }
+
+              if (!windowWithTabbar) {
+                console.warn("[ExtensionManager] removeTab: no window with tabbar found");
+                return;
+              }
+
+              // Find and close the tab by matching webContents ID
+              const closeTabJs = `
+                (function() {
+                  const tabBar = document.getElementById('tabbar');
+                  if (!tabBar) {
+                    console.error('[removeTab] No tabBar found');
+                    return false;
+                  }
+                  
+                  // Find the tab that has this webContents ID
+                  if (tabBar.webviews && typeof tabBar.webviews.entries === 'function') {
+                    for (const [tabId, wv] of tabBar.webviews.entries()) {
+                      if (wv && typeof wv.getWebContentsId === 'function' && wv.getWebContentsId() === ${wcId}) {
+                        console.log('[removeTab] Found tab to close:', tabId);
+                        if (typeof tabBar.closeTab === 'function') {
+                          tabBar.closeTab(tabId);
+                          return true;
+                        }
+                      }
+                    }
+                  }
+                  
+                  console.warn('[removeTab] Tab with webContentsId ${wcId} not found');
+                  return false;
+                })();
+              `;
+
+              const result = await windowWithTabbar.webContents.executeJavaScript(closeTabJs, true);
+              console.log("[ExtensionManager] removeTab result:", result);
+              
+            } catch (err) {
+              console.error("[ExtensionManager] removeTab impl failed:", err);
+            }
+          },
         });
         console.log('ExtensionManager: ElectronChromeExtensions initialized');
       } catch (error) {
@@ -630,77 +712,9 @@ class ExtensionManager {
    */
   async clickBrowserAction(actionId, window) {
     await this.initialize();
-
+    // Delegate to the browser-actions service which has improved triggering methods
     try {
-      const extension = this.loadedExtensions.get(actionId);
-      if (!extension || !extension.enabled) {
-        console.warn(`ExtensionManager: Extension ${actionId} not found or disabled`);
-        return;
-      }
-
-      const action = extension.manifest?.action || extension.manifest?.browser_action;
-      if (!action) {
-        console.warn(`ExtensionManager: Extension ${actionId} has no browser action`);
-        return;
-      }
-
-      // Trigger browser action click event via ElectronChromeExtensions
-      if (this.electronChromeExtensions && extension.electronId) {
-        try {
-          console.log(`ExtensionManager: Triggering browser action click for ${extension.displayName || extension.name}`);
-
-          // Get the active tab for the browser action context
-          const activeTab = window.webContents;
-
-          // Try using the browserAction API directly
-          if (this.electronChromeExtensions.api && this.electronChromeExtensions.api.browserAction) {
-            const browserActionAPI = this.electronChromeExtensions.api.browserAction;
-
-            // Create tab context for the browser action
-            const tabInfo = {
-              id: activeTab.id,
-              windowId: window.id,
-              url: activeTab.getURL(),
-              active: true
-            };
-
-            try {
-              // Try to trigger browser action click via the API
-              if (browserActionAPI.onClicked) {
-                browserActionAPI.onClicked.trigger(tabInfo);
-                console.log(`ExtensionManager: Browser action API triggered for ${extension.displayName || extension.name}`);
-                return;
-              }
-
-              // Alternative: Try to simulate a click event
-              if (browserActionAPI.click) {
-                await browserActionAPI.click(extension.electronId, tabInfo);
-                console.log(`ExtensionManager: Browser action click API called for ${extension.displayName || extension.name}`);
-                return;
-              }
-            } catch (apiError) {
-              console.warn(`ExtensionManager: Browser action API failed for ${extension.displayName || extension.name}:`, apiError);
-            }
-          }
-
-          // Try to get and trigger the browser action
-          if (this.electronChromeExtensions.getBrowserAction) {
-            const browserAction = this.electronChromeExtensions.getBrowserAction(extension.electronId);
-            if (browserAction && browserAction.onClicked) {
-              const tabInfo = { id: activeTab.id, windowId: window.id, url: activeTab.getURL() };
-              browserAction.onClicked.trigger(tabInfo);
-              console.log(`ExtensionManager: Browser action onClicked triggered for ${extension.displayName || extension.name}`);
-              return;
-            }
-          }
-
-          console.warn(`ExtensionManager: No suitable browser action trigger found for ${extension.displayName || extension.name}`);
-
-        } catch (error) {
-          console.error(`ExtensionManager: Failed to trigger browser action for ${extension.displayName || extension.name}:`, error);
-        }
-      }
-
+      await BrowserActions.clickBrowserAction(this, actionId, window);
     } catch (error) {
       console.error('ExtensionManager: Browser action click failed:', error);
     }

@@ -42,35 +42,105 @@ export async function clickBrowserAction(manager, actionId, window) {
   if (manager.electronChromeExtensions && extension.electronId) {
     try {
       console.log(`ExtensionManager: Triggering browser action click for ${extension.displayName || extension.name}`);
-      const activeTab = window.webContents;
+      
+      // Get and register the active webview to ensure proper tab context
+      const activeWebview = await getAndRegisterActiveWebview(manager, window);
+      const activeTab = activeWebview || window.webContents;
+      
+      // IMPORTANT: Set the active tab BEFORE triggering the action
+      // This ensures the extension's background script has proper context
+      try {
+        if (manager.electronChromeExtensions.setActiveTab) {
+          manager.electronChromeExtensions.setActiveTab(activeTab);
+        } else if (manager.electronChromeExtensions.activateTab) {
+          manager.electronChromeExtensions.activateTab(activeTab);
+        }
+      } catch (setTabError) {
+        console.warn(`ExtensionManager: Could not set active tab for action click:`, setTabError);
+      }
+
+      // Method 1: Use activateExtension if available (preferred for extensions without popups)
+      if (manager.electronChromeExtensions.activateExtension) {
+        try {
+          await manager.electronChromeExtensions.activateExtension(activeTab, extension.electronId);
+          console.log(`ExtensionManager: activateExtension called for ${extension.displayName || extension.name}`);
+          return;
+        } catch (activateError) {
+          console.warn(`ExtensionManager: activateExtension failed for ${extension.displayName || extension.name}:`, activateError);
+        }
+      }
+
+      // Method 2: Use browserAction.openPopup (electron-chrome-extensions handles no-popup case)
+      // For extensions WITHOUT a popup, openPopup should dispatch onClicked event
       if (manager.electronChromeExtensions.api && manager.electronChromeExtensions.api.browserAction) {
         const browserActionAPI = manager.electronChromeExtensions.api.browserAction;
-        const tabInfo = { id: activeTab.id, windowId: window.id, url: activeTab.getURL(), active: true };
         try {
-          if (browserActionAPI.onClicked) {
-            browserActionAPI.onClicked.trigger(tabInfo);
-            console.log(`ExtensionManager: Browser action API triggered for ${extension.displayName || extension.name}`);
+          if (browserActionAPI.openPopup) {
+            await browserActionAPI.openPopup({ extension: { id: extension.electronId } }, { windowId: window.id });
+            console.log(`ExtensionManager: browserAction.openPopup called for ${extension.displayName || extension.name} (no popup = triggers onClicked)`);
             return;
           }
+        } catch (openPopupError) {
+          console.warn(`ExtensionManager: browserAction.openPopup failed for ${extension.displayName || extension.name}:`, openPopupError);
+        }
+      }
+
+      // Method 3: Try action API (MV3 style)
+      if (manager.electronChromeExtensions.api && manager.electronChromeExtensions.api.action) {
+        const actionAPI = manager.electronChromeExtensions.api.action;
+        try {
+          if (actionAPI.openPopup) {
+            await actionAPI.openPopup({ extensionId: extension.electronId });
+            console.log(`ExtensionManager: action.openPopup called for ${extension.displayName || extension.name}`);
+            return;
+          }
+        } catch (actionError) {
+          console.warn(`ExtensionManager: action.openPopup failed for ${extension.displayName || extension.name}:`, actionError);
+        }
+      }
+
+      // Method 4: Fallback - try to manually emit onClicked event via emit/dispatch if available
+      const tabInfo = { id: activeTab.id, windowId: window.id, url: activeTab.getURL?.() || '', active: true };
+      
+      if (manager.electronChromeExtensions.api && manager.electronChromeExtensions.api.browserAction) {
+        const browserActionAPI = manager.electronChromeExtensions.api.browserAction;
+        try {
+          // Try emit method (some versions use this)
+          if (browserActionAPI.emit) {
+            browserActionAPI.emit('clicked', extension.electronId, tabInfo);
+            console.log(`ExtensionManager: browserAction.emit('clicked') called for ${extension.displayName || extension.name}`);
+            return;
+          }
+          // Try click method directly
           if (browserActionAPI.click) {
             await browserActionAPI.click(extension.electronId, tabInfo);
-            console.log(`ExtensionManager: Browser action click API called for ${extension.displayName || extension.name}`);
+            console.log(`ExtensionManager: browserAction.click called for ${extension.displayName || extension.name}`);
             return;
           }
-        } catch (apiError) {
-          console.warn(`ExtensionManager: Browser action API failed for ${extension.displayName || extension.name}:`, apiError);
+        } catch (emitError) {
+          console.warn(`ExtensionManager: browserAction emit/click failed for ${extension.displayName || extension.name}:`, emitError);
         }
       }
+      
+      // Method 5: Last resort - try getBrowserAction and trigger
       if (manager.electronChromeExtensions.getBrowserAction) {
         const browserAction = manager.electronChromeExtensions.getBrowserAction(extension.electronId);
-        if (browserAction && browserAction.onClicked) {
-          const tabInfo = { id: activeTab.id, windowId: window.id, url: activeTab.getURL() };
-          browserAction.onClicked.trigger(tabInfo);
-          console.log(`ExtensionManager: Browser action onClicked triggered for ${extension.displayName || extension.name}`);
-          return;
+        if (browserAction) {
+          // Try multiple trigger approaches
+          if (typeof browserAction.activate === 'function') {
+            await browserAction.activate(activeTab);
+            console.log(`ExtensionManager: browserAction.activate called for ${extension.displayName || extension.name}`);
+            return;
+          }
+          if (browserAction.onClicked && typeof browserAction.onClicked.emit === 'function') {
+            browserAction.onClicked.emit(tabInfo);
+            console.log(`ExtensionManager: browserAction.onClicked.emit triggered for ${extension.displayName || extension.name}`);
+            return;
+          }
         }
       }
-      console.warn(`ExtensionManager: No suitable browser action trigger found for ${extension.displayName || extension.name}`);
+      
+      console.warn(`ExtensionManager: No suitable browser action trigger method found for ${extension.displayName || extension.name}`);
     } catch (error) {
       console.error(`ExtensionManager: Failed to trigger browser action for ${extension.displayName || extension.name}:`, error);
     }
