@@ -347,6 +347,113 @@ class ExtensionManager {
               console.error("[ExtensionManager] removeTab impl failed:", err);
             }
           },
+
+          /**
+           * Create a new window (for chrome.windows.create)
+           * details: { url?: string, type?: 'normal'|'popup'|'panel', width?: number, height?: number, left?: number, top?: number, focused?: boolean }
+           * Returns: [tabWebContents, window]
+           */
+          createWindow: async (details = {}) => {
+            try {
+              console.log("[ExtensionManager] createWindow called with:", details);
+
+              const url = typeof details.url === "string" && details.url.length > 0 ? details.url : "about:blank";
+              const type = details.type || "normal";
+              const width = details.width || 400;
+              const height = details.height || 600;
+              const left = details.left;
+              const top = details.top;
+              const focused = details.focused !== false; // default true
+
+              // For 'popup' type, create a frameless or minimal window
+              const isPopup = type === "popup" || type === "panel";
+
+              const windowOptions = {
+                width,
+                height,
+                x: typeof left === "number" ? left : undefined,
+                y: typeof top === "number" ? top : undefined,
+                show: false, // Show after load
+                frame: !isPopup, // Popup windows are frameless
+                titleBarStyle: isPopup ? "hidden" : "default",
+                autoHideMenuBar: true,
+                resizable: !isPopup,
+                minimizable: !isPopup,
+                maximizable: !isPopup,
+                alwaysOnTop: isPopup,
+                skipTaskbar: isPopup,
+                webPreferences: {
+                  nodeIntegration: false,
+                  contextIsolation: true,
+                  sandbox: true,
+                  partition: this.session ? this.session.partition : undefined,
+                }
+              };
+
+              // Center window if no position specified
+              if (typeof left !== "number" || typeof top !== "number") {
+                windowOptions.center = true;
+              }
+
+              const newWindow = new BrowserWindow(windowOptions);
+              
+              console.log("[ExtensionManager] Created new window:", newWindow.id, "type:", type);
+
+              // Track this window for cleanup
+              if (this.activePopups) {
+                this.activePopups.add(newWindow);
+                newWindow.on('closed', () => this.activePopups.delete(newWindow));
+              }
+
+              // Register with extension system
+              try {
+                if (this.electronChromeExtensions) {
+                  this.electronChromeExtensions.addTab(newWindow.webContents, newWindow);
+                }
+              } catch (regErr) {
+                console.warn("[ExtensionManager] Failed to register new window with extension system:", regErr);
+              }
+
+              // Load the URL
+              await newWindow.loadURL(url);
+
+              // Show the window
+              if (focused) {
+                newWindow.show();
+                newWindow.focus();
+              } else {
+                newWindow.showInactive();
+              }
+
+              console.log("[ExtensionManager] Window created and loaded:", url);
+              return [newWindow.webContents, newWindow];
+              
+            } catch (err) {
+              console.error("[ExtensionManager] createWindow impl failed:", err);
+              throw err;
+            }
+          },
+
+          /**
+           * Remove/close a window (for chrome.windows.remove)
+           */
+          removeWindow: async (win) => {
+            try {
+              console.log("[ExtensionManager] removeWindow called for window:", win?.id);
+              
+              if (!win || (typeof win.isDestroyed === 'function' && win.isDestroyed())) {
+                console.warn("[ExtensionManager] removeWindow: window already destroyed");
+                return;
+              }
+
+              // Close the window
+              win.close();
+              console.log("[ExtensionManager] Window closed:", win.id);
+              
+            } catch (err) {
+              console.error("[ExtensionManager] removeWindow impl failed:", err);
+            }
+          },
         });
         console.log('ExtensionManager: ElectronChromeExtensions initialized');
       } catch (error) {
