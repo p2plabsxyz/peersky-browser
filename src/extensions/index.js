@@ -809,6 +809,68 @@ class ExtensionManager {
           }
         }
 
+        // Clear extension storage data (localStorage, IndexedDB, cookies, etc.)
+        if (this.session) {
+          try {
+            const extensionOrigin = `chrome-extension://${extensionId}`;
+            console.log(`ExtensionManager: Clearing storage data for: ${extensionOrigin}`);
+            await this.session.clearStorageData({
+              origin: extensionOrigin,
+              storages: [
+                'cookies',
+                'localstorage',
+                'indexdb',
+                'filesystem',
+                'serviceworkers',
+                'cachestorage',
+                'websql',
+                'shadercache'
+              ],
+              quotas: ['persistent', 'temporary']
+            });
+            // Flush storage to ensure changes are written
+            if (this.session.flushStorageData) {
+              await this.session.flushStorageData();
+            }
+            console.log(`ExtensionManager: Storage data cleared for: ${extensionId}`);
+          } catch (error) {
+            console.error(`ExtensionManager: Failed to clear storage data for ${extensionId}:`, error);
+            // Continue with uninstall regardless
+          }
+        }
+
+        // Clear extension's chrome.storage data from disk (LevelDB files)
+        // These are stored in session storage paths under "Local Extension Settings" and "Sync Extension Settings"
+        try {
+          const userData = this.app.getPath('userData');
+          // Try multiple possible locations where extension storage might be
+          const storagePaths = [
+            // Default session path
+            path.join(userData, 'Local Extension Settings', extensionId),
+            path.join(userData, 'Sync Extension Settings', extensionId),
+            // Partition session paths (for persist:peersky)
+            path.join(userData, 'Partitions', 'persist%3Apeersky', 'Local Extension Settings', extensionId),
+            path.join(userData, 'Partitions', 'persist%3Apeersky', 'Sync Extension Settings', extensionId),
+            // IndexedDB for extension
+            path.join(userData, 'IndexedDB', `chrome-extension_${extensionId}_0.indexeddb.leveldb`),
+            path.join(userData, 'Partitions', 'persist%3Apeersky', 'IndexedDB', `chrome-extension_${extensionId}_0.indexeddb.leveldb`),
+            // Extension state
+            path.join(userData, 'Extension State', extensionId),
+            path.join(userData, 'Partitions', 'persist%3Apeersky', 'Extension State', extensionId),
+          ];
+
+          for (const storagePath of storagePaths) {
+            try {
+              await fs.rm(storagePath, { recursive: true, force: true });
+            } catch (e) {
+              // Silently ignore non-existent paths
+            }
+          }
+          console.log(`ExtensionManager: Removed extension storage data for: ${extensionId}`);
+        } catch (error) {
+          console.warn(`ExtensionManager: Failed to remove extension storage data for ${extensionId}:`, error.message);
+        }
+
         // If installed from Chrome Web Store, uninstall there as well
         if (extension.source === 'webstore' && this.chromeWebStore) {
           try {
