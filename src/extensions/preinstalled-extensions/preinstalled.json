@@ -13,10 +13,10 @@
       "archive": "linguist-web-page-transla.zip"
     },
     {
-      "id": "ddkjiahejlhfcafbddmgiahcphecmpfh",
-      "name": "uBlock Origin Lite",
-      "url": "https://chromewebstore.google.com/detail/ublock-origin-lite/ddkjiahejlhfcafbddmgiahcphecmpfh",
-      "archive": "uBOLite_2025.921.2008.chromium.zip",
+      "id": "cjpalhdlnbpafiamejdnhcphjbkeiagm",
+      "name": "uBlock Origin",
+      "url": "https://chromewebstore.google.com/detail/ublock-origin/cjpalhdlnbpafiamejdnhcphjbkeiagm",
+      "archive": "ublock-origin.zip",
       "skipDownload": true
     },
     {
@@ -24,6 +24,17 @@
       "name": "Webrecorder ArchiveWeb.page",
       "url": "https://chromewebstore.google.com/detail/webrecorder-archivewebpag/fpeoodllldobpkbkabpblcfaogecpndd",
       "archive": "webrecorder-archivewebpag.zip"
+    },
+    {
+      "name": "Consent AutoDeny",
+      "version": "1.0.0",
+      "url": "https://github.com/p2plabsxyz/extension-consent-autodeny/releases/download/v{version}/extension-consent-autodeny-v{version}.zip",
+      "archive": "extension-consent-autodeny-v1.0.0.zip"
+    },
+    {
+      "name": "PeerSky History",
+      "version": "1.0.0",
+      "url": "https://github.com/p2plabsxyz/extension-peersky-history/releases/download/v{version}/peersky-history-v{version}.zip"
     }
   ]
 }

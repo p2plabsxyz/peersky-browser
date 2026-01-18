@@ -1,13 +1,45 @@
-/**
- * Download preinstalled extensions from Chrome Web Store using chrome-extension-fetch
- * Reads extension definitions from preinstalled.json and fetches CRX/ZIP files
- * ESM version to match repo "type": "module".
- */
-
 import { promises as fs } from 'node:fs';
 import fsSync from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import { get as httpsGet } from 'node:https';
+
+function downloadFile(url, destPath, redirectsLeft = 5) {
+  return new Promise((resolve, reject) => {
+    const request = httpsGet(url, response => {
+      const statusCode = response.statusCode || 0;
+      const location = response.headers.location;
+      if (statusCode >= 300 && statusCode < 400 && location) {
+        if (redirectsLeft <= 0) {
+          response.resume();
+          reject(new Error('Too many redirects'));
+          return;
+        }
+        const nextUrl = new URL(location, url).toString();
+        response.resume();
+        downloadFile(nextUrl, destPath, redirectsLeft - 1).then(resolve, reject);
+        return;
+      }
+      if (statusCode >= 400) {
+        response.resume();
+        reject(new Error(`HTTP ${statusCode}`));
+        return;
+      }
+      const file = fsSync.createWriteStream(destPath);
+      response.pipe(file);
+      file.on('finish', () => {
+        file.close(resolve);
+      });
+      file.on('error', err => {
+        fsSync.unlink(destPath, () => {});
+        reject(err);
+      });
+    });
+    request.on('error', err => {
+      reject(err);
+    });
+  });
+}
 
 async function main() {
   try {
@@ -15,13 +47,11 @@ async function main() {
     const preRoot = path.join(root, 'src', 'extensions', 'preinstalled-extensions');
     const preinstalledJsonPath = path.join(preRoot, 'preinstalled.json');
 
-    // Check if preinstalled.json exists
     if (!fsSync.existsSync(preinstalledJsonPath)) {
       console.log('[postinstall] No preinstalled.json found, skipping extension downloads');
       return;
     }
 
-    // Read preinstalled.json
     const preinstalledData = JSON.parse(await fs.readFile(preinstalledJsonPath, 'utf8'));
     const extensions = preinstalledData.extensions || [];
 
@@ -32,22 +62,17 @@ async function main() {
 
     console.log(`[postinstall] Found ${extensions.length} extensions to download`);
 
-    // Dynamically import chrome-extension-fetch
     let fetchExtensionZip;
     try {
       const cefModule = await import('chrome-extension-fetch');
       fetchExtensionZip = cefModule.fetchExtensionZip;
     } catch (error) {
-      console.warn('[postinstall] chrome-extension-fetch not installed, skipping downloads');
+      console.warn('[postinstall] chrome-extension-fetch not installed, skipping Chrome Web Store downloads');
       console.warn('[postinstall] Run: npm install chrome-extension-fetch --save-dev');
-      return;
     }
 
-    // Download each extension
     for (const ext of extensions) {
       try {
-        // Skip if extension has skipDownload flag (e.g., manually provided archives)
-        // for certain extensions --> we may get status code 204 for automatic fetching, for these extension we need to install from local archive
         if (ext.skipDownload) {
           if (ext.archive) {
             const archivePath = path.join(preRoot, ext.archive);
@@ -59,6 +84,30 @@ async function main() {
           } else {
             console.warn(`[postinstall] ⚠ Skipping ${ext.name} (no archive specified)`);
           }
+          continue;
+        }
+
+        if (ext.version && typeof ext.url === 'string' && ext.url.includes('{version}')) {
+          const resolvedUrl = ext.url.split('{version}').join(ext.version);
+          console.log(`[postinstall] Downloading ${ext.name} from ${resolvedUrl}...`);
+          let archiveName;
+          try {
+            const u = new URL(resolvedUrl);
+            const base = path.basename(u.pathname);
+            archiveName = base || `extension-${ext.name || 'archive'}.zip`;
+          } catch {
+            archiveName = `extension-${ext.name || 'archive'}.zip`;
+          }
+          const archivePath = path.join(preRoot, archiveName);
+          await downloadFile(resolvedUrl, archivePath);
+          console.log(`[postinstall] ✓ ${ext.name} saved:`);
+          console.log(`  ZIP: ${archiveName}`);
+          ext.archive = archiveName;
+          continue;
+        }
+
+        if (!fetchExtensionZip) {
+          console.warn(`[postinstall] Skipping Chrome Web Store download for ${ext.name} (chrome-extension-fetch not available)`);
           continue;
         }
 
@@ -97,4 +146,3 @@ async function main() {
 }
 
 try { await main(); } catch (e) { console.error('[postinstall] Failed:', e?.message || e); }
-
