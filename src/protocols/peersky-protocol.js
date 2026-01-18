@@ -115,11 +115,31 @@ async function handleExtensionIcon(extensionId, size, sendResponse) {
     const icons = manifest.icons || {};
     let iconRelativePath = icons[size];
 
-    // If exact size not found, try alternatives (prefer larger then downscale)
     if (!iconRelativePath) {
-      const preference = ['128', '64', '48', '32', '16'].filter(s => s !== size);
-      for (const altSize of preference) {
-        if (icons[altSize]) { iconRelativePath = icons[altSize]; break; }
+      const entries = Object.entries(icons);
+      if (!entries.length) {
+        throw new Error('No icon entries in manifest');
+      }
+      const parsed = entries
+        .map(([k, v]) => {
+          const n = parseInt(k, 10);
+          return Number.isFinite(n) ? { size: n, path: v } : null;
+        })
+        .filter(Boolean);
+
+      if (parsed.length) {
+        const target = parseInt(size, 10);
+        if (Number.isFinite(target)) {
+          const sorted = parsed.sort((a, b) => a.size - b.size);
+          let best = sorted.find(p => p.size >= target) || sorted[sorted.length - 1];
+          iconRelativePath = best.path;
+        } else {
+          const largest = parsed.sort((a, b) => b.size - a.size)[0];
+          iconRelativePath = largest.path;
+        }
+      } else {
+        const any = entries[0];
+        iconRelativePath = any && any[1];
       }
     }
     

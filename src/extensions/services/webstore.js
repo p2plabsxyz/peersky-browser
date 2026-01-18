@@ -27,16 +27,18 @@ export async function installFromWebStore(manager, urlOrId) {
     displayDescription = resolved.description || displayDescription;
   } catch (_) {}
   let iconPath = null;
-  const icons = electronExtension.manifest?.icons;
-  if (icons) {
-    const iconSizes = ['64', '48', '32', '16'];
-    for (const size of iconSizes) {
-      if (icons[size]) {
-        iconPath = `peersky://extension-icon/${extensionId}/${size}?v=${encodeURIComponent(electronExtension.version)}`;
-        break;
-      }
+  const icons = electronExtension.manifest?.icons || {};
+  try {
+    const entries = Object.keys(icons);
+    if (entries.length) {
+      const numeric = entries
+        .map(k => ({ key: k, n: parseInt(k, 10) }))
+        .filter(x => Number.isFinite(x.n))
+        .sort((a, b) => a.n - b.n);
+      const chosen = (numeric[0] || { key: entries[0] }).key;
+      iconPath = `peersky://extension-icon/${extensionId}/${chosen}?v=${encodeURIComponent(electronExtension.version)}`;
     }
-  }
+  } catch (_) {}
   const extensionData = {
     id: extensionId,
     name: electronExtension.name,

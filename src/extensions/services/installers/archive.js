@@ -129,16 +129,17 @@ export async function prepareFromArchive(manager, archivePath) {
   }
   try {
     const icons = manifest.icons || {};
-    const sizes = ['128', '64', '48', '32', '16'];
-    for (const s of sizes) {
-      if (icons[s]) {
-        const v = ext.version ? `?v=${encodeURIComponent(String(ext.version))}` : '';
-        ext.iconPath = `peersky://extension-icon/${ext.id}/${s}${v}`;
-        break;
-      }
+    const entries = Object.keys(icons);
+    if (entries.length) {
+      const numeric = entries
+        .map(k => ({ key: k, n: parseInt(k, 10) }))
+        .filter(x => Number.isFinite(x.n))
+        .sort((a, b) => a.n - b.n);
+      const chosen = (numeric[0] || { key: entries[0] }).key;
+      const v = ext.version ? `?v=${encodeURIComponent(String(ext.version))}` : '';
+      ext.iconPath = `peersky://extension-icon/${ext.id}/${chosen}${v}`;
     }
   } catch (_) { }
 
   return ext;
 }
-
