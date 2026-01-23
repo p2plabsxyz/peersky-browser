@@ -744,8 +744,8 @@ class NavBox extends HTMLElement {
 
     const query = value.trim();
     
-    // Hide if empty or too short
-    if (query.length < 2) {
+    // Hide if empty
+    if (query.length < 1) {
       this._hideAutocomplete();
       this._autocompleteResults = [];
       return;
@@ -836,14 +836,6 @@ class NavBox extends HTMLElement {
       item.className = 'autocomplete-item';
       item.dataset.index = index;
 
-      // Create icon
-      const icon = document.createElement('div');
-      icon.className = 'autocomplete-icon';
-      icon.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="12" cy="12" r="10"></circle>
-        <polyline points="12 6 12 12 16 14"></polyline>
-      </svg>`;
-
       // Create content wrapper
       const content = document.createElement('div');
       content.className = 'autocomplete-content';
@@ -861,7 +853,6 @@ class NavBox extends HTMLElement {
       content.appendChild(title);
       content.appendChild(url);
 
-      item.appendChild(icon);
       item.appendChild(content);
 
       // Click handler

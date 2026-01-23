@@ -125,7 +125,7 @@ input, button, textarea, select, select *, option  {
   top: 100%;
   left: 0;
   right: 0;
-  margin-top: 4px;
+  margin-top: 0;
   background-color: var(--peersky-nav-background);
   border-radius: 10px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25), 0 2px 8px rgba(0, 0, 0, 0.15);
@@ -148,7 +148,7 @@ input, button, textarea, select, select *, option  {
 .autocomplete-item {
   display: flex;
   align-items: center;
-  padding: 10px 14px;
+  padding: 6px 14px;
   cursor: pointer;
   transition: background-color 0.1s ease;
   gap: 12px;
