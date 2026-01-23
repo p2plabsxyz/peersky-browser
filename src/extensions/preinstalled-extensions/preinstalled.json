@@ -1,23 +1,16 @@
 {
   "extensions": [
     {
-      "id": "eimadpbcbfnmbkopoojfekhnkhdbieeh",
-      "name": "Dark Reader",
-      "url": "https://chrome.google.com/webstore/detail/dark-reader/eimadpbcbfnmbkopoojfekhnkhdbieeh",
-      "archive": "dark-reader.zip"
-    },
-    {
       "id": "gbefmodhlophhakmoecijeppjblibmie",
       "name": "Linguist - web page translator",
       "url": "https://chromewebstore.google.com/detail/linguist-web-page-transla/gbefmodhlophhakmoecijeppjblibmie",
       "archive": "linguist-web-page-transla.zip"
     },
     {
-      "id": "cjpalhdlnbpafiamejdnhcphjbkeiagm",
-      "name": "uBlock Origin",
-      "url": "https://chromewebstore.google.com/detail/ublock-origin/cjpalhdlnbpafiamejdnhcphjbkeiagm",
-      "archive": "ublock-origin.zip",
-      "skipDownload": true
+      "id": "mlomiejdfkolichcflejclcbmpeaniij",
+      "name": "Ghostery - Tracker Ad Block",
+      "url": "https://chromewebstore.google.com/detail/ghostery-tracker-ad-block/mlomiejdfkolichcflejclcbmpeaniij",
+      "archive": "ghostery-tracker-ad-block.zip"
     },
     {
       "id": "fpeoodllldobpkbkabpblcfaogecpndd",
@@ -34,7 +27,8 @@
     {
       "name": "PeerSky History",
       "version": "1.0.0",
-      "url": "https://github.com/p2plabsxyz/extension-peersky-history/releases/download/v{version}/peersky-history-v{version}.zip"
+      "url": "https://github.com/p2plabsxyz/extension-peersky-history/releases/download/v{version}/peersky-history-v{version}.zip",
+      "archive": "peersky-history-v1.0.0.zip"
     }
   ]
 }
