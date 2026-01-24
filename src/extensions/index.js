@@ -456,6 +456,19 @@ class ExtensionManager {
           },
         });
         console.log('ExtensionManager: ElectronChromeExtensions initialized');
+
+        try {
+          const api = this.electronChromeExtensions?.api?.browserAction;
+          if (api && typeof api.onUpdate === 'function' && !api.__peerskyOnUpdatePatched) {
+            const originalOnUpdate = api.onUpdate.bind(api);
+            api.onUpdate = (...args) => {
+              const res = originalOnUpdate(...args);
+              this._broadcastBrowserActionUpdated();
+              return res;
+            };
+            api.__peerskyOnUpdatePatched = true;
+          }
+        } catch (_) { }
       } catch (error) {
         console.warn('ExtensionManager: ElectronChromeExtensions initialization failed:', error.message);
         console.warn('ExtensionManager: Continuing without browser action support');
@@ -1287,6 +1300,31 @@ class ExtensionManager {
 
   async _findFileByName(_dir, _name, _depth) { return null; }
 
+  _broadcastBrowserActionChanged() {
+    try {
+      const windows = BrowserWindow.getAllWindows();
+      for (const win of windows) {
+        if (!win || win.isDestroyed()) continue;
+        const wc = win.webContents;
+        if (!wc || wc.isDestroyed()) continue;
+        wc.send('browser-action-changed', { t: Date.now() });
+        wc.send('refresh-browser-actions');
+      }
+    } catch (_) { }
+  }
+
+  _broadcastBrowserActionUpdated() {
+    try {
+      const windows = BrowserWindow.getAllWindows();
+      for (const win of windows) {
+        if (!win || win.isDestroyed()) continue;
+        const wc = win.webContents;
+        if (!wc || wc.isDestroyed()) continue;
+        wc.send('browser-action-updated', { t: Date.now() });
+      }
+    } catch (_) { }
+  }
+
   /**
    * Close all active extension popups
    */
@@ -1375,6 +1413,7 @@ class ExtensionManager {
       await RegistryService.setPinned(this.extensionsBaseDir, pinnedExtensions);
 
       console.log(`[ExtensionManager] Extension ${extensionId} pinned successfully`);
+      this._broadcastBrowserActionChanged();
       return true;
 
     } catch (error) {
@@ -1410,6 +1449,7 @@ class ExtensionManager {
       await RegistryService.setPinned(this.extensionsBaseDir, pinnedExtensions);
 
       console.log(`[ExtensionManager] Extension ${extensionId} unpinned successfully`);
+      this._broadcastBrowserActionChanged();
       return true;
 
     } catch (error) {

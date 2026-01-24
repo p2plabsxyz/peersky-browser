@@ -171,6 +171,16 @@ class NavBox extends HTMLElement {
     return url;
   }
 
+  validateCssColor(color) {
+    if (!color || typeof color !== 'string') return null;
+    const trimmed = color.trim();
+    if (trimmed.length === 0 || trimmed.length > 64) return null;
+    try {
+      if (typeof CSS !== 'undefined' && CSS.supports && CSS.supports('color', trimmed)) return trimmed;
+    } catch (_) { }
+    return null;
+  }
+
   async renderBrowserActions() {
     console.log('[NavBox] renderBrowserActions() called');
     const container = this.querySelector("#extension-icons");
@@ -243,6 +253,8 @@ class NavBox extends HTMLElement {
               const badge = document.createElement('span');
               badge.className = 'extension-badge';
               badge.textContent = action.badgeText; // textContent auto-escapes
+              const bg = this.validateCssColor(action.badgeBackgroundColor);
+              if (bg) badge.style.backgroundColor = bg;
               button.appendChild(badge);
             }
             
@@ -265,6 +277,62 @@ class NavBox extends HTMLElement {
     } catch (error) {
       console.error('[NavBox] Failed to render browser actions:', error);
       container.innerHTML = '';
+    }
+  }
+
+  async updateBrowserActionBadges() {
+    const container = this.querySelector("#extension-icons");
+    if (!container) {
+      return;
+    }
+
+    try {
+      const actionsResult = await navBoxIPC.invoke('extensions-list-browser-actions');
+      if (!actionsResult?.success || !Array.isArray(actionsResult.actions)) {
+        return;
+      }
+
+      actionsResult.actions.forEach((action) => {
+        const sanitizedId = this.escapeHtmlAttribute(action.id || '');
+        if (!sanitizedId) {
+          return;
+        }
+
+        const button = container.querySelector(`.extension-action-btn[data-extension-id="${sanitizedId}"]`);
+        if (!button) {
+          return;
+        }
+
+        const sanitizedTitle = this.escapeHtmlAttribute(action.title || action.name || '');
+        if (sanitizedTitle && button.title !== sanitizedTitle) {
+          button.title = sanitizedTitle;
+        }
+
+        const badgeText = (action.badgeText != null && String(action.badgeText).length > 0) ? String(action.badgeText) : '';
+        let badge = button.querySelector('.extension-badge');
+
+        if (!badgeText) {
+          if (badge) {
+            badge.remove();
+          }
+          return;
+        }
+
+        if (!badge) {
+          badge = document.createElement('span');
+          badge.className = 'extension-badge';
+          button.appendChild(badge);
+        }
+
+        if (badge.textContent !== badgeText) {
+          badge.textContent = badgeText;
+        }
+
+        const bg = this.validateCssColor(action.badgeBackgroundColor);
+        badge.style.backgroundColor = bg || '';
+      });
+    } catch (error) {
+      console.error('[NavBox] Failed to update browser action badges:', error);
     }
   }
 
@@ -639,6 +707,12 @@ class NavBox extends HTMLElement {
         this.renderBrowserActions();
       });
     }
+
+    if (navBoxIPC && typeof navBoxIPC.on === 'function') {
+      navBoxIPC.on('browser-action-updated', () => {
+        this.updateBrowserActionBadges();
+      });
+    }
   }
 
   attachThemeListener() {
@@ -744,8 +818,8 @@ class NavBox extends HTMLElement {
 
     const query = value.trim();
     
-    // Hide if empty
-    if (query.length < 1) {
+    // Hide if empty or too short
+    if (query.length < 2) {
       this._hideAutocomplete();
       this._autocompleteResults = [];
       return;
@@ -836,6 +910,14 @@ class NavBox extends HTMLElement {
       item.className = 'autocomplete-item';
       item.dataset.index = index;
 
+      // Create icon
+      const icon = document.createElement('div');
+      icon.className = 'autocomplete-icon';
+      icon.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"></circle>
+        <polyline points="12 6 12 12 16 14"></polyline>
+      </svg>`;
+
       // Create content wrapper
       const content = document.createElement('div');
       content.className = 'autocomplete-content';
@@ -853,6 +935,7 @@ class NavBox extends HTMLElement {
       content.appendChild(title);
       content.appendChild(url);
 
+      item.appendChild(icon);
       item.appendChild(content);
 
       // Click handler

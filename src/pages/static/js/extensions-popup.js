@@ -40,6 +40,12 @@ export class ExtensionsPopup {
             }
         });
 
+        this.ipc.on('browser-action-updated', () => {
+            if (this.isVisible) {
+                this.updateExtensionBadges();
+            }
+        });
+
         // Listen for general extension state changes
         this.ipc.on('extension-toggled', (event, extensionId, enabled) => {
             console.log(`[ExtensionsPopup] Extension ${extensionId} toggled: ${enabled}`);
@@ -121,6 +127,16 @@ export class ExtensionsPopup {
             .replace(/>/g, '&gt;');
     }
 
+    validateCssColor(color) {
+        if (!color || typeof color !== 'string') return null;
+        const trimmed = color.trim();
+        if (trimmed.length === 0 || trimmed.length > 64) return null;
+        try {
+            if (typeof CSS !== 'undefined' && CSS.supports && CSS.supports('color', trimmed)) return trimmed;
+        } catch (_) { }
+        return null;
+    }
+
     /**
      * Load real extension data from backend
      */
@@ -181,12 +197,16 @@ export class ExtensionsPopup {
             const escapedNameAttr = this.escapeHtmlAttribute(ext.name || 'Unknown Extension');
             const pinLabel = ext.pinned ? 'Unpin' : 'Pin';
             const hasAction = !!ext.hasAction; // extensions without actions should appear but not be pinnable/clickable
+            const badgeText = (ext.badgeText != null && String(ext.badgeText).length > 0) ? String(ext.badgeText) : '';
+            const badgeTextEscaped = this.escapeHtml(badgeText);
+            const badgeColorAttr = this.escapeHtmlAttribute(typeof ext.badgeBackgroundColor === 'string' ? ext.badgeBackgroundColor : '');
             
             return `
                 <div class="extension-item ${hasAction ? '' : 'no-action'}" role="listitem" data-extension-id="${escapedId}">
                     <div class="extension-icon" role="img" aria-label="${escapedNameAttr} icon">
                         ${ext.icon ? `<img src="${this.escapeHtmlAttribute(ext.icon)}" alt="${escapedNameAttr} icon" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">` : ''}
                         <div class="svg-container" style="${ext.icon ? 'display:none' : 'display:block'}"></div>
+                        ${badgeText ? `<span class="extension-badge" data-badge-color="${badgeColorAttr}">${badgeTextEscaped}</span>` : ''}
                     </div>
                     <div class="extension-name" title="${escapedNameAttr}">
                         ${escapedName}${hasAction ? '' : ' <span style="opacity:0.7; font-size:12px;">(no button)</span>'}
@@ -297,6 +317,69 @@ export class ExtensionsPopup {
         // Update with real data
         listContainer.innerHTML = this.generateExtensionItems();
         this.loadPopupSVGs(this.popup); // Load all SVGs for the new content
+        this.applyBadgeStyles(listContainer);
+    }
+
+    async updateExtensionBadges() {
+        if (!this.popup) return;
+
+        const listContainer = this.popup.querySelector('.extensions-popup-list');
+        if (!listContainer) return;
+
+        await this.loadExtensions();
+
+        if (!Array.isArray(this.extensions) || this.extensions.length === 0) {
+            return;
+        }
+
+        this.extensions.forEach(ext => {
+            const escapedId = this.escapeHtmlAttribute(ext.id || '');
+            if (!escapedId) return;
+
+            const item = listContainer.querySelector(`.extension-item[data-extension-id="${escapedId}"]`);
+            if (!item) return;
+
+            const icon = item.querySelector('.extension-icon');
+            if (!icon) return;
+
+            const badgeText = (ext.badgeText != null && String(ext.badgeText).length > 0) ? String(ext.badgeText) : '';
+            let badge = icon.querySelector('.extension-badge');
+
+            if (!badgeText) {
+                if (badge) {
+                    badge.remove();
+                }
+                return;
+            }
+
+            if (!badge) {
+                badge = document.createElement('span');
+                badge.className = 'extension-badge';
+                icon.appendChild(badge);
+            }
+
+            if (badge.textContent !== badgeText) {
+                badge.textContent = badgeText;
+            }
+
+            const bg = this.validateCssColor(ext.badgeBackgroundColor);
+            badge.style.backgroundColor = bg || '';
+            if (bg) {
+                badge.setAttribute('data-badge-color', bg);
+            } else {
+                badge.removeAttribute('data-badge-color');
+            }
+        });
+    }
+
+    applyBadgeStyles(container) {
+        if (!container) return;
+        const badges = container.querySelectorAll('.extension-badge[data-badge-color]');
+        badges.forEach((badge) => {
+            const raw = badge.getAttribute('data-badge-color') || '';
+            const bg = this.validateCssColor(raw);
+            if (bg) badge.style.backgroundColor = bg;
+        });
     }
 
     /**
@@ -642,6 +725,8 @@ export class ExtensionsPopup {
             const badge = document.createElement('span');
             badge.className = 'extension-badge';
             badge.textContent = extension.badgeText;
+            const bg = this.validateCssColor(extension.badgeBackgroundColor);
+            if (bg) badge.style.backgroundColor = bg;
             tempIcon.appendChild(badge);
         }
         

@@ -4,19 +4,51 @@ import { app, BrowserWindow, Menu, webContents } from 'electron';
 import { registerPopupForStabilization } from './popup-guards.js';
 
 export async function listBrowserActions(manager, window) {
+  let state = null;
+  try {
+    const api = manager.electronChromeExtensions?.api?.browserAction;
+    if (api && typeof api.getState === 'function') {
+      state = api.getState();
+    }
+  } catch (_) {
+    state = null;
+  }
+
+  const activeTabId = state && typeof state.activeTabId === 'number' ? state.activeTabId : null;
+  const stateByExtensionId = new Map();
+  if (state && Array.isArray(state.actions)) {
+    for (const entry of state.actions) {
+      if (!entry || typeof entry.id !== 'string') continue;
+      const tabInfo = activeTabId != null && entry.tabs && entry.tabs[activeTabId] ? entry.tabs[activeTabId] : null;
+      stateByExtensionId.set(entry.id, {
+        text: (tabInfo && typeof tabInfo.text !== 'undefined') ? tabInfo.text : entry.text,
+        color: (tabInfo && typeof tabInfo.color !== 'undefined') ? tabInfo.color : entry.color,
+        title: (tabInfo && typeof tabInfo.title !== 'undefined') ? tabInfo.title : entry.title,
+        popup: (tabInfo && typeof tabInfo.popup !== 'undefined') ? tabInfo.popup : entry.popup
+      });
+    }
+  }
+
   const actions = [];
   for (const extension of manager.loadedExtensions.values()) {
     if (extension.enabled && extension.manifest) {
       const action = extension.manifest.action || extension.manifest.browser_action;
+      const extState = extension.electronId ? stateByExtensionId.get(extension.electronId) : null;
+      const badgeTextRaw = extState?.text;
+      const badgeText = typeof badgeTextRaw === 'string' ? badgeTextRaw : (badgeTextRaw != null ? String(badgeTextRaw) : '');
+      const badgeBackgroundColor = typeof extState?.color === 'string' ? extState.color : '#666';
+      const title = typeof extState?.title === 'string'
+        ? extState.title
+        : (action && (action.default_title || extension.displayName || extension.name)) || (extension.displayName || extension.name);
       actions.push({
         id: extension.id,
         extensionId: extension.electronId,
         name: extension.displayName || extension.name,
-        title: (action && (action.default_title || extension.displayName || extension.name)) || (extension.displayName || extension.name),
+        title,
         icon: extension.iconPath,
-        popup: action ? action.default_popup : undefined,
-        badgeText: '',
-        badgeBackgroundColor: '#666',
+        popup: (typeof extState?.popup === 'string' ? extState.popup : (action ? action.default_popup : undefined)),
+        badgeText,
+        badgeBackgroundColor,
         enabled: true,
         hasAction: Boolean(action)
       });
@@ -382,4 +414,3 @@ async function findFileByName(dir, name, depth) {
   } catch (_) { }
   return null;
 }
-
