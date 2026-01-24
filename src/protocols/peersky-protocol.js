@@ -6,6 +6,7 @@ import ScopedFS from 'scoped-fs';
 import { app } from 'electron';
 import { createReadStream } from 'fs';
 import { promises as fsPromises } from 'fs';
+import extensionManager from '../extensions/index.js';
 
 const __dirname = fileURLToPath(new URL('./', import.meta.url));
 const pagesPath = path.join(__dirname, '../pages');
@@ -33,6 +34,46 @@ async function exists(filePath) {
         else reject(err);
       } else resolve(stat.isFile());
     });
+  });
+}
+
+function findHistoryExtension() {
+  const extensions = Array.from(extensionManager.loadedExtensions.values()).filter(ext => ext && ext.enabled);
+  const normalize = (value) => (typeof value === 'string' ? value.toLowerCase() : '');
+  const isExact = (ext) => {
+    const name = normalize(ext.name);
+    const displayName = normalize(ext.displayName);
+    return name === 'peersky-history' || displayName === 'peersky-history' || name === 'peersky history' || displayName === 'peersky history';
+  };
+  const exact = extensions.find(isExact);
+  if (exact) return exact;
+  return extensions.find(ext => {
+    const name = normalize(ext.name);
+    const displayName = normalize(ext.displayName);
+    return name.includes('history') || displayName.includes('history');
+  }) || null;
+}
+
+async function handleHistory(sendResponse) {
+  const historyExtension = findHistoryExtension();
+  if (!historyExtension || !historyExtension.electronId) {
+    sendResponse({
+      statusCode: 404,
+      headers: { 'Content-Type': 'text/plain', 'Cache-Control': 'no-cache' },
+      data: Readable.from(['History extension not found'])
+    });
+    return;
+  }
+  const viewUrl = `chrome-extension://${historyExtension.electronId}/view.html`;
+  sendResponse({
+    statusCode: 302,
+    headers: {
+      'Location': viewUrl,
+      'Cache-Control': 'no-cache',
+      'Access-Control-Allow-Origin': '*',
+      'Allow-CSP-From': '*'
+    },
+    data: Readable.from([])
   });
 }
 
@@ -186,6 +227,7 @@ export async function createHandler() {
     let filePath = parsedUrl.hostname + parsedUrl.pathname;
 
     if (filePath === '/') filePath = 'home';
+    if (filePath === 'history' || filePath.startsWith('history/')) return handleHistory(sendResponse);
     if (filePath.startsWith('wallpaper/')) return handleWallpaper(filePath.slice(10), sendResponse);
     if (filePath.startsWith('extension-icon/')) {
       const iconPath = filePath.slice(15); // Remove 'extension-icon/'
