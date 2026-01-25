@@ -26,9 +26,9 @@
     },
     {
       "name": "PeerSky History",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "url": "https://github.com/p2plabsxyz/extension-peersky-history/releases/download/v{version}/peersky-history-v{version}.zip",
-      "archive": "peersky-history-v1.0.0.zip"
+      "archive": "peersky-history-v1.1.0.zip"
     }
   ]
 }
