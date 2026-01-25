@@ -37,28 +37,28 @@ export async function prepareFromArchive(manager, archivePath) {
   }
 
   // Read manifest from extracted dir (find manifest.json or dynamic equivalent relative to root)
-  // Handle ZIP files where content is nested inside a single folder
+  // Handle ZIP files where content is nested inside a folder
   let manifestFound = await findExtensionManifest(stagingDir);
   let actualStagingDir = stagingDir;
 
   if (!manifestFound) {
-    // manifest.json not at root -->  maybe it is nested so check inside 
     const entries = await fs.readdir(stagingDir, { withFileTypes: true });
-    const dirs = entries.filter(e => e.isDirectory());
+    const dirs = entries
+      .filter(e => e.isDirectory())
+      .map(e => e.name)
+      .filter(name => name !== '__MACOSX' && !name.startsWith('.'))
+      .sort();
 
-    if (dirs.length === 1) {
-      const nestedDir = path.join(stagingDir, dirs[0].name);
+    for (const dirName of dirs) {
+      const nestedDir = path.join(stagingDir, dirName);
       try {
         const nestedFound = await findExtensionManifest(nestedDir);
-
         if (nestedFound) {
-          // Found manifest in subfolder - now this is the actual staging directory
           manifestFound = nestedFound;
           actualStagingDir = nestedDir;
+          break;
         }
-      } catch (__) {
-        // Still not found, will fail below
-      }
+      } catch (__) {}
     }
   }
 
