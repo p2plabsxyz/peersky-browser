@@ -19,10 +19,10 @@
       "archive": "webrecorder-archivewebpag.zip"
     },
     {
+      "id": "mdjildafknihdffpkfmmpnpoiajfjnjd",
       "name": "Consent AutoDeny",
-      "version": "1.0.0",
-      "url": "https://github.com/p2plabsxyz/extension-consent-autodeny/releases/download/v{version}/extension-consent-autodeny-v{version}.zip",
-      "archive": "extension-consent-autodeny-v1.0.0.zip"
+      "url": "https://chromewebstore.google.com/detail/consent-o-matic/mdjildafknihdffpkfmmpnpoiajfjnjd",
+      "archive": "consent-o-matic.zip"
     },
     {
       "name": "PeerSky History",
