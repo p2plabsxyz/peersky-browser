@@ -53,13 +53,10 @@
           <div class="setting-label">Install from file (.zip or .crx)</div>
         </div>
         <div class="install-section-controls" style="gap: 0.75rem; align-items: stretch;">
-          <div id="extensions-drop-zone" style="flex:1; min-height: 64px; border: 1px dashed var(--settings-border); border-radius: 6px; display:flex; align-items:center; justify-content:center; color: var(--settings-text-secondary);">
-            Drag & drop a .zip or .crx file here
+          <div id="extensions-drop-zone" style="flex:1; min-height: 64px; border: 1px dashed var(--settings-border); border-radius: 6px; display:flex; align-items:center; justify-content:center; color: var(--settings-text-secondary); cursor: pointer; transition: border-color 0.2s, color 0.2s;">
+            Drag & drop a .zip or .crx file here, or click to select
           </div>
-          <div>
-            <input type="file" id="extensions-file-input" accept=".zip,.crx,.crx3" style="display:none" />
-            <button type="button" id="extensions-file-btn" class="btn btn-secondary">Choose File…</button>
-          </div>
+          <input type="file" id="extensions-file-input" accept=".zip,.crx,.crx3" style="display:none" />
         </div>
       </section>
 
