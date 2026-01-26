@@ -11,6 +11,21 @@
     @import url("browser://theme/vars.css");
     @import url("browser://theme/settings.css");
     @import url("browser://theme/extensions-page.css");
+
+    .disclaimer-note {
+      color: var(--settings-text-secondary);
+      font-size: 0.9rem;
+    }
+
+    .disclaimer-note.api-limitations {
+      margin-top: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .disclaimer-note.preinstalled-warning {
+      margin-top: 1rem;
+      margin-bottom: 1rem;
+    }
   </style>
   <title>Extensions</title>
 </head>
@@ -38,15 +53,17 @@
           <div class="setting-label">Install from file (.zip or .crx)</div>
         </div>
         <div class="install-section-controls" style="gap: 0.75rem; align-items: stretch;">
-          <div id="extensions-drop-zone" style="flex:1; min-height: 64px; border: 1px dashed var(--settings-border); border-radius: 6px; display:flex; align-items:center; justify-content:center; color: var(--settings-text-secondary);">
-            Drag & drop a .zip or .crx file here
+          <div id="extensions-drop-zone" style="flex:1; min-height: 64px; border: 1px dashed var(--settings-border); border-radius: 6px; display:flex; align-items:center; justify-content:center; color: var(--settings-text-secondary); cursor: pointer; transition: border-color 0.2s, color 0.2s;">
+            Drag & drop a .zip or .crx file here, or click to select
           </div>
-          <div>
-            <input type="file" id="extensions-file-input" accept=".zip,.crx,.crx3" style="display:none" />
-            <button type="button" id="extensions-file-btn" class="btn btn-secondary">Choose File…</button>
-          </div>
+          <input type="file" id="extensions-file-input" accept=".zip,.crx,.crx3" style="display:none" />
         </div>
       </section>
+
+      <!-- Disclaimer -->
+      <p class="disclaimer-note api-limitations">
+        <strong>Note:</strong> Some extensions might not work as expected because some Chrome APIs are not fully implemented in Electron.
+      </p>
       
       <!-- Installed Extensions (User) -->
       <div class="installed-extensions-header">
@@ -60,6 +77,10 @@
       <div class="installed-extensions-header system-header">
         <h1 class="section-title">Preinstalled Extensions</h1>
       </div>
+      
+      <p class="disclaimer-note preinstalled-warning">
+        <strong>Note:</strong> Disabling these extensions may result in reduced browser functionality.
+      </p>
 
       <div id="system-extensions-grid" class="extensions-grid" aria-label="Preinstalled system extensions"></div>
     </main>

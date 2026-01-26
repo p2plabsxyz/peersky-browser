@@ -556,6 +556,242 @@ export function setupExtensionIpcHandlers(extensionManager) {
       }
     });
 
+    // Search history extension for address bar suggestions
+    // The peersky-history extension stores browsing history in IndexedDB (db: "history", store: "navigated")
+    // and exposes globalThis.search as an async generator function
+    
+    // Rate limiter for history search (prevent abuse)
+    const historySearchAttempts = new Map();
+    const HISTORY_SEARCH_RATE_WINDOW_MS = 1000; // 1 second window
+    const HISTORY_SEARCH_RATE_LIMIT = 10; // max 10 searches per second
+    
+    // Cache for history extension hidden window (to avoid creating new ones for each search)
+    let historyExtensionWindow = null;
+    let historyExtensionId = null;
+    
+    ipcMain.handle("history-search", async (event, query) => {
+      try {
+        // Rate limiting per sender
+        const senderId = event.sender.id;
+        const now = Date.now();
+        const times = historySearchAttempts.get(senderId) || [];
+        const recent = times.filter(t => now - t < HISTORY_SEARCH_RATE_WINDOW_MS);
+        if (recent.length >= HISTORY_SEARCH_RATE_LIMIT) {
+          return { success: false, error: "Rate limited", results: [] };
+        }
+        recent.push(now);
+        historySearchAttempts.set(senderId, recent.slice(-HISTORY_SEARCH_RATE_LIMIT));
+        
+        if (typeof query !== "string") {
+          return { success: false, error: "Query must be a string", results: [] };
+        }
+
+        // Limit query length to prevent memory/performance issues
+        const MAX_QUERY_LENGTH = 200;
+        const trimmedQuery = query.trim().slice(0, MAX_QUERY_LENGTH);
+        if (trimmedQuery.length < 1) {
+          return { success: true, results: [] };
+        }
+
+        // Find the peersky-history extension
+        const historyExtension = Array.from(extensionManager.loadedExtensions.values()).find(
+          ext => ext.enabled && (
+            ext.name === 'peersky-history' ||
+            ext.displayName === 'peersky-history' ||
+            ext.name?.toLowerCase() === 'peersky-history' ||
+            ext.displayName?.toLowerCase() === 'peersky-history' ||
+            // Fallback: match any extension with "history" in name
+            ext.name?.toLowerCase().includes('history') ||
+            ext.displayName?.toLowerCase().includes('history')
+          )
+        );
+
+        if (!historyExtension || !historyExtension.electronId) {
+          // No history extension found, return empty results
+          console.log("[ExtensionIPC] history-search: peersky-history extension not found or not enabled");
+          return { success: true, results: [], message: "peersky-history extension not found" };
+        }
+
+        // Find the extension's WebContents (background page, service worker, or any extension page)
+        const { webContents, BrowserWindow: BW } = await import("electron");
+        const extensionUrl = `chrome-extension://${historyExtension.electronId}`;
+        
+        // Helper to find extension WebContents
+        const findExtensionWebContents = () => {
+          const allWebContents = webContents.getAllWebContents();
+          return allWebContents.find(wc => {
+            try {
+              const url = wc.getURL();
+              return url && url.startsWith(extensionUrl);
+            } catch {
+              return false;
+            }
+          });
+        };
+        
+        let serviceWorkerWC = findExtensionWebContents();
+        
+        // If no extension WebContents found, the service worker is likely asleep (MV3)
+        // Use cached hidden window or create a new one to load the extension's context
+        if (!serviceWorkerWC) {
+          try {
+            // Check if we have a valid cached window for this extension
+            if (historyExtensionWindow && !historyExtensionWindow.isDestroyed() && 
+                historyExtensionId === historyExtension.electronId) {
+              // Use cached window's webContents
+              const cachedUrl = historyExtensionWindow.webContents.getURL();
+              if (cachedUrl && cachedUrl.startsWith(extensionUrl)) {
+                serviceWorkerWC = historyExtensionWindow.webContents;
+              }
+            }
+            
+            // If still no WebContents, create a new hidden window
+            if (!serviceWorkerWC) {
+              // Clean up old cached window if it exists
+              if (historyExtensionWindow && !historyExtensionWindow.isDestroyed()) {
+                try { historyExtensionWindow.close(); } catch {}
+              }
+              
+              // Create a tiny hidden window to load extension context
+              historyExtensionWindow = new BW({
+                width: 1,
+                height: 1,
+                show: false,
+                skipTaskbar: true,
+                webPreferences: {
+                  nodeIntegration: false,
+                  contextIsolation: true,
+                  partition: extensionManager.session ? extensionManager.session.partition : undefined,
+                }
+              });
+              historyExtensionId = historyExtension.electronId;
+              
+              // Track window destruction to clear cache
+              historyExtensionWindow.on('closed', () => {
+                historyExtensionWindow = null;
+                historyExtensionId = null;
+              });
+              
+              // Load the extension's view.html (history viewer page) which has db access
+              const viewUrl = `${extensionUrl}/view.html`;
+              
+              try {
+                await historyExtensionWindow.loadURL(viewUrl);
+                // Wait for the extension context to initialize and db to open
+                await new Promise(resolve => setTimeout(resolve, 200));
+              } catch (loadError) {
+                console.warn("[ExtensionIPC] history-search: Failed to load extension page:", loadError.message);
+              }
+              
+              // Try to find the WebContents again
+              serviceWorkerWC = findExtensionWebContents();
+              
+              // If still not found, use the hidden window's webContents directly
+              if (!serviceWorkerWC && historyExtensionWindow && !historyExtensionWindow.isDestroyed()) {
+                const tempUrl = historyExtensionWindow.webContents.getURL();
+                if (tempUrl && tempUrl.startsWith(extensionUrl)) {
+                  serviceWorkerWC = historyExtensionWindow.webContents;
+                }
+              }
+            }
+          } catch (wakeError) {
+            console.warn("[ExtensionIPC] history-search: Failed to wake extension:", wakeError.message);
+          }
+        }
+        
+        if (!serviceWorkerWC) {
+          return { success: true, results: [], message: "History extension background not found" };
+        }
+
+        // Execute search in the extension's context
+        // The peersky-history extension exposes globalThis.db and globalThis.search
+        // search(query, maxResults, signal) is an async generator
+        const searchScript = `
+          (async function() {
+            try {
+              // Check if the search function is available on globalThis
+              if (typeof globalThis.search !== 'function') {
+                // Fallback: try to access the db directly and search manually
+                if (globalThis.db) {
+                  const query = ${JSON.stringify(trimmedQuery)};
+                  const results = [];
+                  const seen = new Set();
+                  
+                  // Build fuzzy matching - use simple includes check to avoid ReDoS
+                  // Split query into terms and check if all terms appear in the search field
+                  const terms = query.toLowerCase().split(/\\s+/).filter(t => t).slice(0, 10); // Limit to 10 terms
+                  const matchesAllTerms = (text) => {
+                    const lowerText = text.toLowerCase();
+                    return terms.every(term => lowerText.includes(term));
+                  };
+                  
+                  // Open cursor on timestamp index (newest first)
+                  const tx = globalThis.db.transaction('navigated', 'readonly');
+                  const store = tx.objectStore('navigated');
+                  const index = store.index('timestamp');
+                  
+                  let cursor = await index.openCursor(null, 'prev');
+                  while (cursor && results.length < 8) {
+                    const entry = cursor.value;
+                    const searchField = entry.search || (entry.url + ' ' + entry.title);
+                    
+                    if (!seen.has(entry.url) && matchesAllTerms(searchField)) {
+                      seen.add(entry.url);
+                      results.push({
+                        url: entry.url || '',
+                        title: entry.title || '',
+                        host: entry.host || '',
+                        timestamp: entry.timestamp || 0
+                      });
+                    }
+                    cursor = await cursor.continue();
+                  }
+                  
+                  return { results };
+                }
+                return { error: 'search function and db not available' };
+              }
+              
+              const query = ${JSON.stringify(trimmedQuery)};
+              const maxResults = 8;
+              const results = [];
+              
+              // Use the extension's search generator
+              for await (const entry of globalThis.search(query, maxResults)) {
+                results.push({
+                  url: entry.url || '',
+                  title: entry.title || '',
+                  host: entry.host || '',
+                  timestamp: entry.timestamp || 0
+                });
+              }
+              
+              return { results };
+            } catch (err) {
+              console.error('[peersky-history] Search error:', err);
+              return { error: err.message || 'Search failed' };
+            }
+          })();
+        `;
+
+        const searchResult = await serviceWorkerWC.executeJavaScript(searchScript, true);
+        
+        if (searchResult.error) {
+          console.warn("[ExtensionIPC] history-search: Search error:", searchResult.error);
+          return { success: false, error: searchResult.error, results: [] };
+        }
+
+        return { success: true, results: searchResult.results || [] };
+      } catch (error) {
+        console.error("[ExtensionIPC] history-search failed:", error);
+        return {
+          success: false,
+          error: error.message,
+          results: []
+        };
+      }
+    });
+
     console.log("ExtensionIPC: Extension IPC handlers registered successfully");
     
   } catch (error) {

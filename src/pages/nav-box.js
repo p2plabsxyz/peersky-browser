@@ -14,10 +14,18 @@ class NavBox extends HTMLElement {
     this._outsideClickListener = null;
     this._resizeListener = null;
     this._extensionsPopup = null;
+    
+    // Autocomplete state
+    this._autocompleteDebounceTimer = null;
+    this._autocompleteSelectedIndex = -1;
+    this._autocompleteResults = [];
+    this._isAutocompleteVisible = false;
+    
     this.buildNavBox();
     this.attachEvents();
     this.attachThemeListener();
     this.attachExtensionListeners();
+    this.attachAutocompleteListeners();
     this.initializeExtensionsPopup();
   }
 
@@ -62,6 +70,7 @@ class NavBox extends HTMLElement {
     urlInput.type = "text";
     urlInput.id = "url";
     urlInput.placeholder = "Search with DuckDuckGo or type a P2P URL";
+    urlInput.setAttribute("autocomplete", "off");
 
     const qrButton = this.createButton(
       "qr-code",
@@ -69,8 +78,14 @@ class NavBox extends HTMLElement {
     );
     qrButton.classList.add("inside-urlbar");
 
+    // Create autocomplete dropdown
+    const autocompleteDropdown = document.createElement("div");
+    autocompleteDropdown.className = "url-autocomplete-dropdown";
+    autocompleteDropdown.id = "url-autocomplete";
+
     urlBarWrapper.appendChild(urlInput);
     urlBarWrapper.appendChild(qrButton);
+    urlBarWrapper.appendChild(autocompleteDropdown);
     this.appendChild(urlBarWrapper);
 
     this.buttonElements["qr-code"] = qrButton;
@@ -156,6 +171,16 @@ class NavBox extends HTMLElement {
     return url;
   }
 
+  validateCssColor(color) {
+    if (!color || typeof color !== 'string') return null;
+    const trimmed = color.trim();
+    if (trimmed.length === 0 || trimmed.length > 64) return null;
+    try {
+      if (typeof CSS !== 'undefined' && CSS.supports && CSS.supports('color', trimmed)) return trimmed;
+    } catch (_) { }
+    return null;
+  }
+
   async renderBrowserActions() {
     console.log('[NavBox] renderBrowserActions() called');
     const container = this.querySelector("#extension-icons");
@@ -228,6 +253,8 @@ class NavBox extends HTMLElement {
               const badge = document.createElement('span');
               badge.className = 'extension-badge';
               badge.textContent = action.badgeText; // textContent auto-escapes
+              const bg = this.validateCssColor(action.badgeBackgroundColor);
+              if (bg) badge.style.backgroundColor = bg;
               button.appendChild(badge);
             }
             
@@ -250,6 +277,62 @@ class NavBox extends HTMLElement {
     } catch (error) {
       console.error('[NavBox] Failed to render browser actions:', error);
       container.innerHTML = '';
+    }
+  }
+
+  async updateBrowserActionBadges() {
+    const container = this.querySelector("#extension-icons");
+    if (!container) {
+      return;
+    }
+
+    try {
+      const actionsResult = await navBoxIPC.invoke('extensions-list-browser-actions');
+      if (!actionsResult?.success || !Array.isArray(actionsResult.actions)) {
+        return;
+      }
+
+      actionsResult.actions.forEach((action) => {
+        const sanitizedId = this.escapeHtmlAttribute(action.id || '');
+        if (!sanitizedId) {
+          return;
+        }
+
+        const button = container.querySelector(`.extension-action-btn[data-extension-id="${sanitizedId}"]`);
+        if (!button) {
+          return;
+        }
+
+        const sanitizedTitle = this.escapeHtmlAttribute(action.title || action.name || '');
+        if (sanitizedTitle && button.title !== sanitizedTitle) {
+          button.title = sanitizedTitle;
+        }
+
+        const badgeText = (action.badgeText != null && String(action.badgeText).length > 0) ? String(action.badgeText) : '';
+        let badge = button.querySelector('.extension-badge');
+
+        if (!badgeText) {
+          if (badge) {
+            badge.remove();
+          }
+          return;
+        }
+
+        if (!badge) {
+          badge = document.createElement('span');
+          badge.className = 'extension-badge';
+          button.appendChild(badge);
+        }
+
+        if (badge.textContent !== badgeText) {
+          badge.textContent = badgeText;
+        }
+
+        const bg = this.validateCssColor(action.badgeBackgroundColor);
+        badge.style.backgroundColor = bg || '';
+      });
+    } catch (error) {
+      console.error('[NavBox] Failed to update browser action badges:', error);
     }
   }
 
@@ -624,6 +707,12 @@ class NavBox extends HTMLElement {
         this.renderBrowserActions();
       });
     }
+
+    if (navBoxIPC && typeof navBoxIPC.on === 'function') {
+      navBoxIPC.on('browser-action-updated', () => {
+        this.updateBrowserActionBadges();
+      });
+    }
   }
 
   attachThemeListener() {
@@ -678,6 +767,237 @@ class NavBox extends HTMLElement {
     const extensionsButton = this.buttonElements["extensions"];
     if (extensionsButton) {
       this._extensionsPopup.toggle(extensionsButton);
+    }
+  }
+
+  // Autocomplete / History Suggestions
+  attachAutocompleteListeners() {
+    const urlInput = this.querySelector("#url");
+    const dropdown = this.querySelector("#url-autocomplete");
+    
+    if (!urlInput || !dropdown) {
+      console.warn('[NavBox] Autocomplete elements not found');
+      return;
+    }
+
+    // Input event - search as user types
+    urlInput.addEventListener("input", (e) => {
+      this._handleAutocompleteInput(e.target.value);
+    });
+
+    // Keyboard navigation
+    urlInput.addEventListener("keydown", (e) => {
+      this._handleAutocompleteKeydown(e);
+    });
+
+    // Focus event - show suggestions if there's input
+    urlInput.addEventListener("focus", () => {
+      if (urlInput.value.trim().length > 0 && this._autocompleteResults.length > 0) {
+        this._showAutocomplete();
+      }
+    });
+
+    // Blur event - hide suggestions (with delay for click handling)
+    urlInput.addEventListener("blur", () => {
+      setTimeout(() => this._hideAutocomplete(), 150);
+    });
+
+    // Click outside to close
+    document.addEventListener("mousedown", (e) => {
+      if (!this.contains(e.target)) {
+        this._hideAutocomplete();
+      }
+    });
+  }
+
+  async _handleAutocompleteInput(value) {
+    // Clear any pending debounce timer
+    if (this._autocompleteDebounceTimer) {
+      clearTimeout(this._autocompleteDebounceTimer);
+    }
+
+    const query = value.trim();
+    
+    // Hide if empty
+    if (query.length < 1) {
+      this._hideAutocomplete();
+      this._autocompleteResults = [];
+      return;
+    }
+
+    // Debounce the search (200ms)
+    this._autocompleteDebounceTimer = setTimeout(async () => {
+      try {
+        const result = await navBoxIPC.invoke('history-search', query);
+        
+        if (result.success && result.results && result.results.length > 0) {
+          this._autocompleteResults = result.results;
+          this._autocompleteSelectedIndex = -1;
+          this._renderAutocompleteResults();
+          this._showAutocomplete();
+        } else {
+          this._autocompleteResults = [];
+          this._hideAutocomplete();
+        }
+      } catch (error) {
+        console.error('[NavBox] History search failed:', error);
+        this._hideAutocomplete();
+      }
+    }, 200);
+  }
+
+  _handleAutocompleteKeydown(e) {
+    if (!this._isAutocompleteVisible) {
+      return;
+    }
+
+    const dropdown = this.querySelector("#url-autocomplete");
+    const items = dropdown?.querySelectorAll('.autocomplete-item');
+    
+    if (!items || items.length === 0) {
+      return;
+    }
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        this._autocompleteSelectedIndex = Math.min(
+          this._autocompleteSelectedIndex + 1,
+          items.length - 1
+        );
+        this._updateAutocompleteSelection();
+        break;
+
+      case 'ArrowUp':
+        e.preventDefault();
+        this._autocompleteSelectedIndex = Math.max(
+          this._autocompleteSelectedIndex - 1,
+          -1
+        );
+        this._updateAutocompleteSelection();
+        break;
+
+      case 'Enter':
+        if (this._autocompleteSelectedIndex >= 0) {
+          e.preventDefault();
+          const selected = this._autocompleteResults[this._autocompleteSelectedIndex];
+          if (selected) {
+            this._selectAutocompleteItem(selected);
+          }
+        } else {
+          this._hideAutocomplete();
+        }
+        break;
+
+      case 'Escape':
+        e.preventDefault();
+        this._hideAutocomplete();
+        break;
+
+      case 'Tab':
+        this._hideAutocomplete();
+        break;
+    }
+  }
+
+  _renderAutocompleteResults() {
+    const dropdown = this.querySelector("#url-autocomplete");
+    if (!dropdown) return;
+
+    // Clear existing results
+    dropdown.innerHTML = '';
+
+    this._autocompleteResults.forEach((result, index) => {
+      const item = document.createElement('div');
+      item.className = 'autocomplete-item';
+      item.dataset.index = index;
+
+      // Create content wrapper
+      const content = document.createElement('div');
+      content.className = 'autocomplete-content';
+
+      // Title
+      const title = document.createElement('div');
+      title.className = 'autocomplete-title';
+      title.textContent = result.title || result.host || 'Untitled';
+
+      // URL
+      const url = document.createElement('div');
+      url.className = 'autocomplete-url';
+      url.textContent = result.url || '';
+
+      content.appendChild(title);
+      content.appendChild(url);
+
+      item.appendChild(content);
+
+      // Click handler
+      item.addEventListener('mousedown', (e) => {
+        e.preventDefault(); // Prevent blur
+        this._selectAutocompleteItem(result);
+      });
+
+      // Hover handler
+      item.addEventListener('mouseenter', () => {
+        this._autocompleteSelectedIndex = index;
+        this._updateAutocompleteSelection();
+      });
+
+      dropdown.appendChild(item);
+    });
+  }
+
+  _updateAutocompleteSelection() {
+    const dropdown = this.querySelector("#url-autocomplete");
+    if (!dropdown) return;
+
+    const items = dropdown.querySelectorAll('.autocomplete-item');
+    items.forEach((item, index) => {
+      if (index === this._autocompleteSelectedIndex) {
+        item.classList.add('selected');
+        item.scrollIntoView({ block: 'nearest' });
+      } else {
+        item.classList.remove('selected');
+      }
+    });
+
+    // Update URL input with selected item's URL for preview
+    const urlInput = this.querySelector("#url");
+    if (urlInput && this._autocompleteSelectedIndex >= 0) {
+      const selected = this._autocompleteResults[this._autocompleteSelectedIndex];
+      if (selected && selected.url) {
+        urlInput.value = selected.url;
+      }
+    }
+  }
+
+  _selectAutocompleteItem(result) {
+    const urlInput = this.querySelector("#url");
+    if (urlInput && result.url) {
+      urlInput.value = result.url;
+      this._hideAutocomplete();
+      
+      // Dispatch navigate event
+      this.dispatchEvent(new CustomEvent("navigate", {
+        detail: { url: result.url }
+      }));
+    }
+  }
+
+  _showAutocomplete() {
+    const dropdown = this.querySelector("#url-autocomplete");
+    if (dropdown && this._autocompleteResults.length > 0) {
+      dropdown.classList.add('visible');
+      this._isAutocompleteVisible = true;
+    }
+  }
+
+  _hideAutocomplete() {
+    const dropdown = this.querySelector("#url-autocomplete");
+    if (dropdown) {
+      dropdown.classList.remove('visible');
+      this._isAutocompleteVisible = false;
+      this._autocompleteSelectedIndex = -1;
     }
   }
 }

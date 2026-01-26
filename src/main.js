@@ -213,9 +213,11 @@ ipcMain.on('remove-all-tempIcon', () => {
 ipcMain.on('refresh-browser-actions', () => {
   try {
     const windows = BrowserWindow.getAllWindows();
-    const mainWindow = windows.find(w => w && !w.isDestroyed());
-    if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
-      mainWindow.webContents.send('refresh-browser-actions');
+    for (const win of windows) {
+      if (!win || win.isDestroyed()) continue;
+      const wc = win.webContents;
+      if (!wc || wc.isDestroyed()) continue;
+      wc.send('refresh-browser-actions');
     }
   } catch (error) {
     console.error('Error sending refresh-browser-actions:', error);

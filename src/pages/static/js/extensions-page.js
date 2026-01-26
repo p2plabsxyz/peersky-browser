@@ -606,12 +606,9 @@ async function init() {
         showStatusMessage('Install failed', 'error');
       }
     });
-  }
-  const fileBtn = document.getElementById('extensions-file-btn');
-  const fileInput = document.getElementById('extensions-file-input');
-  if (fileBtn && fileInput) {
-    // Prefer native open dialog to get a reliable file path in sandboxed renderers
-    fileBtn.addEventListener('click', async () => {
+
+    // Click to open file dialog
+    dropZone.addEventListener('click', async () => {
       try {
         const resp = await window.electronAPI.extensions.openInstallFileDialog();
         if (resp && resp.success && resp.path) {
@@ -621,6 +618,10 @@ async function init() {
         console.error('[Extensions] Open dialog error:', e);
       }
     });
+  }
+
+  const fileInput = document.getElementById('extensions-file-input');
+  if (fileInput) {
     // Keep file input as a fallback and use blob upload if path is not available
     fileInput.addEventListener('change', async () => {
       const file = fileInput.files && fileInput.files[0];

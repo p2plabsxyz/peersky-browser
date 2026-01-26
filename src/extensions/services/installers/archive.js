@@ -8,6 +8,7 @@ import { extractZipFile, extractZipBuffer } from '../../zip.js';
 import { isCrx, extractCrx, derToBase64 } from '../../crx.js';
 import { generateSecureExtensionId } from '../../utils/ids.js';
 import { resolveManifestStrings } from '../../utils/strings.js';
+import { findExtensionManifest } from '../../utils/manifest-file.js';
 
 export async function prepareFromArchive(manager, archivePath) {
   const lower = archivePath.toLowerCase();
@@ -35,9 +36,37 @@ export async function prepareFromArchive(manager, archivePath) {
     await extractZipBuffer(crx.zipBuffer, stagingDir);
   }
 
-  // Read manifest from extracted dir (find manifest.json relative to root)
-  const manifestPath = path.join(stagingDir, 'manifest.json');
-  const manifestRaw = await fs.readFile(manifestPath, 'utf8');
+  // Read manifest from extracted dir (find manifest.json or dynamic equivalent relative to root)
+  // Handle ZIP files where content is nested inside a folder
+  let manifestFound = await findExtensionManifest(stagingDir);
+  let actualStagingDir = stagingDir;
+
+  if (!manifestFound) {
+    const entries = await fs.readdir(stagingDir, { withFileTypes: true });
+    const dirs = entries
+      .filter(e => e.isDirectory())
+      .map(e => e.name)
+      .filter(name => name !== '__MACOSX' && !name.startsWith('.'))
+      .sort();
+
+    for (const dirName of dirs) {
+      const nestedDir = path.join(stagingDir, dirName);
+      try {
+        const nestedFound = await findExtensionManifest(nestedDir);
+        if (nestedFound) {
+          manifestFound = nestedFound;
+          actualStagingDir = nestedDir;
+          break;
+        }
+      } catch (__) {}
+    }
+  }
+
+  if (!manifestFound) {
+    throw new Error('No valid manifest.json (or supported alternative) found in archive');
+  }
+
+  const { path: manifestPath, content: manifestRaw } = manifestFound;
   const manifest = JSON.parse(manifestRaw);
 
   const semverLike = (v) => typeof v === 'string' && /^\d+(\.\d+)*$/.test(v);
@@ -55,7 +84,7 @@ export async function prepareFromArchive(manager, archivePath) {
 
   const tempDir = path.join(manager.extensionsBaseDir, '_staging', `pkg-${Date.now()}-${randomBytes(4).toString('hex')}`);
   await ensureDir(tempDir);
-  await fs.cp(stagingDir, tempDir, { recursive: true });
+  await fs.cp(actualStagingDir, tempDir, { recursive: true });
   await ensureDir(path.dirname(finalDir));
   await atomicReplaceDir(tempDir, finalDir);
 
@@ -80,7 +109,7 @@ export async function prepareFromArchive(manager, archivePath) {
     }
     const popup = manifest.action && manifest.action.default_popup;
     await checkFile(popup);
-  } catch (_) {}
+  } catch (_) { }
 
   const ext = {
     id: provisionalId,
@@ -100,16 +129,17 @@ export async function prepareFromArchive(manager, archivePath) {
   }
   try {
     const icons = manifest.icons || {};
-    const sizes = ['128', '64', '48', '32', '16'];
-    for (const s of sizes) {
-      if (icons[s]) {
-        const v = ext.version ? `?v=${encodeURIComponent(String(ext.version))}` : '';
-        ext.iconPath = `peersky://extension-icon/${ext.id}/${s}${v}`;
-        break;
-      }
+    const entries = Object.keys(icons);
+    if (entries.length) {
+      const numeric = entries
+        .map(k => ({ key: k, n: parseInt(k, 10) }))
+        .filter(x => Number.isFinite(x.n))
+        .sort((a, b) => a.n - b.n);
+      const chosen = (numeric[0] || { key: entries[0] }).key;
+      const v = ext.version ? `?v=${encodeURIComponent(String(ext.version))}` : '';
+      ext.iconPath = `peersky://extension-icon/${ext.id}/${chosen}${v}`;
     }
-  } catch (_) {}
+  } catch (_) { }
 
   return ext;
 }
-

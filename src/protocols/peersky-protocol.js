@@ -6,6 +6,7 @@ import ScopedFS from 'scoped-fs';
 import { app } from 'electron';
 import { createReadStream } from 'fs';
 import { promises as fsPromises } from 'fs';
+import extensionManager from '../extensions/index.js';
 
 const __dirname = fileURLToPath(new URL('./', import.meta.url));
 const pagesPath = path.join(__dirname, '../pages');
@@ -33,6 +34,46 @@ async function exists(filePath) {
         else reject(err);
       } else resolve(stat.isFile());
     });
+  });
+}
+
+function findHistoryExtension() {
+  const extensions = Array.from(extensionManager.loadedExtensions.values()).filter(ext => ext && ext.enabled);
+  const normalize = (value) => (typeof value === 'string' ? value.toLowerCase() : '');
+  const isExact = (ext) => {
+    const name = normalize(ext.name);
+    const displayName = normalize(ext.displayName);
+    return name === 'peersky-history' || displayName === 'peersky-history' || name === 'peersky history' || displayName === 'peersky history';
+  };
+  const exact = extensions.find(isExact);
+  if (exact) return exact;
+  return extensions.find(ext => {
+    const name = normalize(ext.name);
+    const displayName = normalize(ext.displayName);
+    return name.includes('history') || displayName.includes('history');
+  }) || null;
+}
+
+async function handleHistory(sendResponse) {
+  const historyExtension = findHistoryExtension();
+  if (!historyExtension || !historyExtension.electronId) {
+    sendResponse({
+      statusCode: 404,
+      headers: { 'Content-Type': 'text/plain', 'Cache-Control': 'no-cache' },
+      data: Readable.from(['History extension not found'])
+    });
+    return;
+  }
+  const viewUrl = `chrome-extension://${historyExtension.electronId}/view.html`;
+  sendResponse({
+    statusCode: 302,
+    headers: {
+      'Location': viewUrl,
+      'Cache-Control': 'no-cache',
+      'Access-Control-Allow-Origin': '*',
+      'Allow-CSP-From': '*'
+    },
+    data: Readable.from([])
   });
 }
 
@@ -115,11 +156,31 @@ async function handleExtensionIcon(extensionId, size, sendResponse) {
     const icons = manifest.icons || {};
     let iconRelativePath = icons[size];
 
-    // If exact size not found, try alternatives (prefer larger then downscale)
     if (!iconRelativePath) {
-      const preference = ['128', '64', '48', '32', '16'].filter(s => s !== size);
-      for (const altSize of preference) {
-        if (icons[altSize]) { iconRelativePath = icons[altSize]; break; }
+      const entries = Object.entries(icons);
+      if (!entries.length) {
+        throw new Error('No icon entries in manifest');
+      }
+      const parsed = entries
+        .map(([k, v]) => {
+          const n = parseInt(k, 10);
+          return Number.isFinite(n) ? { size: n, path: v } : null;
+        })
+        .filter(Boolean);
+
+      if (parsed.length) {
+        const target = parseInt(size, 10);
+        if (Number.isFinite(target)) {
+          const sorted = parsed.sort((a, b) => a.size - b.size);
+          let best = sorted.find(p => p.size >= target) || sorted[sorted.length - 1];
+          iconRelativePath = best.path;
+        } else {
+          const largest = parsed.sort((a, b) => b.size - a.size)[0];
+          iconRelativePath = largest.path;
+        }
+      } else {
+        const any = entries[0];
+        iconRelativePath = any && any[1];
       }
     }
     
@@ -166,6 +227,7 @@ export async function createHandler() {
     let filePath = parsedUrl.hostname + parsedUrl.pathname;
 
     if (filePath === '/') filePath = 'home';
+    if (filePath === 'history' || filePath.startsWith('history/')) return handleHistory(sendResponse);
     if (filePath.startsWith('wallpaper/')) return handleWallpaper(filePath.slice(10), sendResponse);
     if (filePath.startsWith('extension-icon/')) {
       const iconPath = filePath.slice(15); // Remove 'extension-icon/'
