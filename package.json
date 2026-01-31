@@ -94,6 +94,14 @@
         "role": "Viewer"
       },
       {
+        "name": "peersky",
+        "schemes": [
+          "peersky",
+          "browser"
+        ],
+        "role": "Viewer"
+      },
+      {
         "name": "ipfs",
         "schemes": [
           "ipfs",
