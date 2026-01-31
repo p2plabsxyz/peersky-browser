@@ -1,5 +1,9 @@
 import $elf from 'peersky://static/elves/elf.js'
-import { getQuickJS } from "quickjs-emscripten"
+
+// expects
+// <script src="peersky://static/js/vendor/quickjs-emscripten/quickjs.js"></script>
+
+const { getQuickJS } = self.QJS
 
 async function main() {
   const QuickJS = await getQuickJS()
@@ -157,6 +161,7 @@ render('static-code', JSON.stringify(map(), '', 2))
 
 const $ = $elf('js-repl', data)
 export default $
+debugger
 
 window.Module = {
   print: function (msg) { log(msg) }
@@ -326,3 +331,5 @@ $.style(`
     }
   }
 `)
+
+$elf($)
