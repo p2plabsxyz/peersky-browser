@@ -57,6 +57,17 @@
     <qr-code src="https://github.com/p2plabsxyz/peersky-browser" data-fg="saddlebrown" data-bg="lemonchiffon"></qr-code>
   </div>
 
+  <h3>JS Repl</h3>
+  <p>
+    A JavaScript Read-Evaluate-Print-Loop. A game. A boring game for super nerds.
+  </p>
+
+  <h4>Demo</h4>
+
+  <div class="example">
+    <js-repl></js-repl>
+  </div>
+
   <hr>
 
   <h2>Elvish</h2>
@@ -138,6 +149,18 @@
   </div>
 </div>
 
+<!--
+
+  iife that exposes QJS, context
+  https://gist.github.com/simonw/36506994222a56d1556b3452ca663dbe
+
+  refresh:
+  curl 'https://cdn.jsdelivr.net/npm/quickjs-emscripten@0.25.0/dist/index.global.js' > quickjs.js
+-->
+
+<script src="peersky://static/js/vendor/quickjs-emscripten/quickjs.js"></script>
+
 <script src="peersky://static/elves/hello-world.js" type="module"></script>
 <script src="peersky://static/elves/qr-code.js" type="module"></script>
 <script src="peersky://static/elves/goodbye-world.js" type="module"></script>
+<script src="peersky://static/elves/js-repl.js" type="module"></script>
