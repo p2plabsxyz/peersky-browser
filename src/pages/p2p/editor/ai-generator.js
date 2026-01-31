@@ -1,5 +1,6 @@
 import { $ } from './common.js';
 import { update } from './codeEditor.js';
+import { scheduleDraftSave } from './dweb.js';
 
 const SYSTEM = 'system';
 const USER = 'user';
@@ -101,7 +102,8 @@ generateButton.addEventListener('click', async () => {
         const css = await makeCSS(prompt, metadata, plan, html);
         log("✅ CSS Generated", css);
         cssCodeArea.value = css;
-        update(); // Update preview
+        update();
+        scheduleDraftSave();
         
         log("🎉 Generation Complete!", "Your web page has been generated successfully!");
         
