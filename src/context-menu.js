@@ -270,31 +270,31 @@ export function attachContextMenus(browserWindow, windowManager) {
             label: "Open Link in New Tab",
             click: () => {
               // First, attempt to add the URL as a new tab in the current window
-              const escapedUrl = params.linkURL.replace(/'/g, "\\'");
               
               browserWindow.webContents
                 .executeJavaScript(`
-                  const tabBar = document.querySelector('#tabbar');
-                  if (tabBar && typeof tabBar.addTab === 'function') {
-                    tabBar.addTab('${escapedUrl}');
-                    // Indicate success so main process knows no fallback is required
-                    true;
-                  } else {
-                    // Tab bar not available – signal fallback
-                    false;
-                  }
+                  (function() {
+                    const tabBar = document.querySelector('tab-bar');
+                    const url = ${JSON.stringify(params.linkURL)};
+                    if (tabBar && typeof tabBar.addTab === 'function') {
+                      tabBar.addTab(url);
+                      return true;
+                    }
+                    const oldTabBar = document.querySelector('#tabbar');
+                    if (oldTabBar && typeof oldTabBar.addTab === 'function') {
+                      oldTabBar.addTab(url);
+                      return true;
+                    }
+                    return false;
+                  })()
                 `)
                 .then((added) => {
-                  if (!added && windowManagerInstance) {
-                    // Fallback: open in new window if tab creation failed
-                    windowManagerInstance.open({ url: params.linkURL });
+                  if (!added) {
+                    console.warn('Failed to find tab bar for new tab');
                   }
                 })
                 .catch((err) => {
                   console.error('Failed to add tab from context menu:', err);
-                  if (windowManagerInstance) {
-                    windowManagerInstance.open({ url: params.linkURL });
-                  }
                 });
             },
           })
@@ -329,31 +329,32 @@ export function attachContextMenus(browserWindow, windowManager) {
       // Intercept window.open / target="_blank" requests and try to add them as tabs
       webviewWebContents.setWindowOpenHandler(({ url }) => {
         // First, attempt to add the URL as a new tab in the current window (renderer side)
-        const escapedUrl = url.replace(/'/g, "\\'");
 
         browserWindow.webContents
           .executeJavaScript(`
-            const tabBar = document.querySelector('#tabbar');
-            if (tabBar && typeof tabBar.addTab === 'function') {
-              tabBar.addTab('${escapedUrl}');
-              // Indicate success so main process knows no fallback is required
-              true;
-            } else {
-              // Tab bar not available – signal fallback
-              false;
-            }
+            (function() {
+              const tabBar = document.querySelector('tab-bar');
+              const url = ${JSON.stringify(url)};
+              if (tabBar && typeof tabBar.addTab === 'function') {
+                tabBar.addTab(url);
+                return true;
+              }
+              // Fallback for older selector if web component not found
+              const oldTabBar = document.querySelector('#tabbar');
+              if (oldTabBar && typeof oldTabBar.addTab === 'function') {
+                oldTabBar.addTab(url);
+                return true;
+              }
+              return false;
+            })()
           `)
           .then((added) => {
-            if (!added && windowManagerInstance) {
-              // Fallback: open in new window if tab creation failed
-              windowManagerInstance.open({ url });
+            if (!added) {
+              console.warn('Failed to find tab bar to add tab for url:', url);
             }
           })
           .catch((err) => {
             console.error('Failed to add tab from windowOpenHandler:', err);
-            if (windowManagerInstance) {
-              windowManagerInstance.open({ url });
-            }
           });
 
         // Always deny the automatic window creation – we will handle it ourselves
