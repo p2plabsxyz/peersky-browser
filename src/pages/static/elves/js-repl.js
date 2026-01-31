@@ -29,139 +29,145 @@ main()
 
 const data = {
   input: `
-/*
- * Congratulations, you've found java's crypt!
- *
- * this is a text based adventure game that is won by code.
- *
- */
+const string = 'string'
+const bool = 'boolean'
+const number = 'number'
 
-// a function is a block of code that can be re-used
-function hello() {
-  return 'world'
+const logs = []
+const bugs = []
+
+const Types = {
+  string,
+  bool,
+  number,
+  True,
+  False,
+  Value,
+  Integer,
+  Float,
+  Horizon,
+  Text,
+  Add,
+  Subtract,
+  Multiply,
+  Divide,
+  Modulo,
+  Box,
+  Expect,
+  Describe,
+  Log,
+  Bug,
+  Dashboard
 }
 
-// say hello from wherever in the world
-hello()
-
-// values
-const a = 2;
-const b = 3;
-const c = 4;
-
-const target = {
-  score: 0
+function True() {
+  return true
 }
 
-function score(x, count) {
-  if(count) {
-    x.score += count
-  }
-
-  return x.score
+function False() {
+  return false
 }
 
-function formula(x, y, z) {
-  return x * y + z
+function Value(x) {
+  return x
 }
 
-const views = {
-  north: (target) => {
-    return 'Forest blocks all directions. Except a beach to the SOUTH. And the WAFFLES above.'
-  },
-  south: (target) => {
-    return 'Ocean blocks all directions. Except a meadow to the NORTH. And the WAFFLES above.'
-  },
-  waffles: (target) => {
-    return 'You win. WAFFLES. (total score: ' + score(target) + ')'
-  }
+function Integer(x) {
+  return parseFloat(x)
 }
 
-const commands = {
-  north: (target) => {
-  },
-  south: (target) => {
-  },
-  waffles: (target) => {
-    score(target, 1)
-  }
+function Float(x) {
+  return parseFloat(x)
 }
 
-function turn(command) {
-  if(commands[command]) {
-    history(command)
-    commands[command](target)
-  }
+function Horizon(x) {
+  return new Date(x)
 }
 
-let activeView = 'north'
-function view(newView) {
-  if(newView) {
-    turn(newView)
-    activeView = newView
-  }
-  return activeView
+function Text(x='') {
+  return x.toString()
 }
 
-function print() {
-  return views[view()] ? views[view()](target) : error('Invalid View')
+function Add(a, b) {
+  return a + b
 }
 
-function error(message) {
-  return message
+function Subtract(a, b) {
+  return a - b
 }
 
-let past = []
-function history(now) {
-  if(now) {
-    past.push(now)
-  }
-
-  return past
+function Multiply(a, b) {
+  return a * b
 }
 
-function map() {
-  return {
-    key: hello(),
-    value: formula(a,b,c),
-    history: history(),
-    view: view(),
-    print: print(),
-    score: score(target),
-    actions: ['north', 'south', 'waffles'],
-    import: {
-      meta: {
-        url: "${import.meta.url}"
-      }
-    }
+function Divide(a, b) {
+  return a / b
+}
+
+function Modulo(a, b) {
+  return a % b
+}
+
+function Box(x) {
+  return { ...x }
+}
+
+function Expect(a, b) {
+  if(a === b) {
+    return Success()
+  } else {
+    Bug(a, b)
+    return Failure()
   }
 }
 
-function render(tag, x) {
-  return "<"+tag+">"+x+"</"+tag+">"
+async function Describe(x, a) {
+  try {
+    Log(x, await a(Success))
+  } catch (error) {
+    Bug(x, error.message)
+    Failure()
+  }
 }
 
-map()
-view('south')
-view('north')
-map()
-view('waffles')
-view('waffles')
-view('waffles')
-view('waffles')
-view('waffles')
-view('waffles')
-map()
-view('waffles')
-map()
-render('static-code', JSON.stringify(map(), '', 2))
+function Success() {
+  return True()
+}
+
+function Failure() {
+  throw new Error('Game Over')
+}
+
+function Log(...args) {
+  console.log.apply(null, args)
+  logs.push(args.join(' '))
+}
+
+function Bug(...args) {
+  console.error.apply(null, args)
+  bugs.push(args.join(' '))
+}
+
+function Dashboard() {
+  return { logs, bugs }
+}
+
+JSON.stringify({
+  test1: Expect(True(), Success()),
+  test2: Expect(Add(3,1), 4),
+  test3: Expect(Subtract(3,1), 2),
+  test4: Expect(Subtract(1,3), -2),
+  test5: Expect(Multiply(9,9), 81),
+  test6: Expect(Divide(9,9), 1),
+  test7: Expect(Modulo(9,9), 0),
+
+}, null, 2)
   `,
   output: null
 }
 
 const $ = $elf('js-repl', data)
 export default $
-debugger
 
 window.Module = {
   print: function (msg) { log(msg) }
@@ -213,8 +219,7 @@ function render(target) {
         name="input"
         data-bind="input"
         placeholder="Say it, don't spray it."
-        value="${escapeHyperText(input)}"
-      ></textarea>
+      >${escapeHyperText(input)}</textarea>
     </div>
     <div class="output ${output?'visible':'invisible'}">
       <div class="textarea">${output}</div>
