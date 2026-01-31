@@ -564,7 +564,7 @@ function loadDefaultSettings() {
   const keepTabsExpanded = document.getElementById('keep-tabs-expanded');
   const wallpaperSelector = document.getElementById('wallpaper-selector');
   
-  if (searchEngine) searchEngine.value = 'duckduckgo';
+  if (searchEngine) searchEngine.value = 'duckduckgo_noai';
   if (themeToggle) themeToggle.value = 'dark';
   if (showClock) showClock.checked = true;
   if (verticalTabs) verticalTabs.checked = false;
