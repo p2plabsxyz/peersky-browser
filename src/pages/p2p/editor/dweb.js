@@ -171,15 +171,40 @@ function addURL(url) {
     const copyContainer = document.createElement('span');
     const copyIcon = '⊕';
     copyContainer.innerHTML = copyIcon;
-    copyContainer.onclick = function() {
-        navigator.clipboard.writeText(url).then(() => {
+    copyContainer.onclick = async function() {
+        let success = false;
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(url);
+                success = true;
+            } else {
+                throw new Error('Clipboard API unavailable');
+            }
+        } catch (err) {
+            console.warn('Clipboard API failed, attempting fallback...', err);
+            const textArea = document.createElement("textarea");
+            textArea.value = url;
+            textArea.style.position = "fixed";
+            textArea.style.left = "-9999px";
+            document.body.appendChild(textArea);
+            textArea.select();
+            try {
+                success = document.execCommand('copy');
+            } catch (e) {
+                console.error('Fallback copy failed:', e);
+            }
+            document.body.removeChild(textArea);
+        }
+
+        if (success) {
             copyContainer.textContent = ' Copied!';
             setTimeout(() => {
                 copyContainer.innerHTML = copyIcon;
             }, 3000);
-        }).catch(err => {
-            console.error('[addURL] Error in copying text: ', err);
-        });
+        } else {
+            console.error('[addURL] Failed to copy URL to clipboard');
+            alert('Failed to copy URL to clipboard');
+        }
     };
 
     listItem.appendChild(link);
