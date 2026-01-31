@@ -128,7 +128,16 @@ li {
     cursor: pointer;
 }
 
+#clearDraftButton {
+    white-space: nowrap;
+    cursor: pointer;
+}
+
 #uploadButton:hover {
+    opacity: 0.8;   
+}
+
+#clearDraftButton:hover {
     opacity: 0.8;   
 }
 
