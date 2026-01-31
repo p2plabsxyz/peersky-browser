@@ -22,18 +22,18 @@ function safeLocalStorageSet(key, value) {
 const urlParams = new URLSearchParams(window.location.search);
 const paramProtocol = urlParams.get('protocol');
 const storedProtocol = safeLocalStorageGet('lastProtocol');
-const initialProtocol = paramProtocol || storedProtocol || 'ipfs';
+const initialProtocol = paramProtocol || storedProtocol || 'hyper';
 protocolSelect.value = initialProtocol;
 
 // Toggle title input visibility based on protocol
 function toggleTitleInput() {
     const titleInput = $('#titleInput');
-    if (protocolSelect.value === 'ipfs') {
-        titleInput.classList.add('hidden');
-        titleInput.removeAttribute('required');
-    } else {
+    if (protocolSelect.value === 'hyper') {
         titleInput.classList.remove('hidden');
         titleInput.setAttribute('required', '');
+    } else {
+        titleInput.classList.add('hidden');
+        titleInput.removeAttribute('required');
     }
 }
 
