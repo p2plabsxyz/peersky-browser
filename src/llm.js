@@ -36,6 +36,10 @@ function isLikelyOllamaMissing(error) {
   return message.includes('ECONNREFUSED') || message.includes('ENOTFOUND') || message.includes('fetch failed');
 }
 
+function isOpenRouterURL(url = '') {
+  return url.includes('openrouter.ai');
+}
+
 function constructChatURL(baseURLRaw) {
   let url = baseURLRaw || '';
 
@@ -44,11 +48,10 @@ function constructChatURL(baseURLRaw) {
     url = 'http://127.0.0.1:11434';
   }
 
-  if (url.includes('openai.com')) {
-    // OpenAI endpoints already have /v1 in them
-    return url.endsWith('/')
-      ? url + 'chat/completions'
-      : url + '/chat/completions';
+  if (isOpenRouterURL(url)) {
+    const normalized = url.endsWith('/') ? url.slice(0, -1) : url;
+    const base = normalized.includes('/api/v1') ? normalized : `${normalized}/api/v1`;
+    return `${base}/chat/completions`;
   }
 
   // Ollama-style endpoints expect /v1/ prefix
@@ -131,9 +134,9 @@ ipcMain.handle('llm-update-settings', async (event, newSettings) => {
       const modelExists = await hasModel();
       
       if (!modelExists) {
-        // Check if using OpenAI - no download needed
-        if (newSettings.apiKey !== 'ollama' && newSettings.baseURL.includes('openai.com')) {
-          console.log('Using OpenAI API, no model download needed');
+        // Check if using OpenRouter - no download needed
+        if (newSettings.apiKey !== 'ollama' && isOpenRouterURL(newSettings.baseURL)) {
+          console.log('Using OpenRouter API, no model download needed');
           return { success: true };
         }
         
@@ -341,8 +344,8 @@ async function listModels() {
   try {
     const settings = settingsManager.settings || {};
     
-    // OpenAI doesn't have a list models endpoint we can use
-    if (settings.llm.apiKey !== 'ollama' && settings.llm.baseURL?.includes('openai.com')) {
+    // OpenRouter doesn't have a list models endpoint we can use
+    if (settings.llm.apiKey !== 'ollama' && isOpenRouterURL(settings.llm.baseURL)) {
       return [];
     }
     
@@ -461,8 +464,8 @@ async function hasModel() {
   try {
     const settings = settingsManager.settings || {};
     
-    // If using OpenAI, assume model exists (cloud-based)
-    if (settings.llm.apiKey !== 'ollama' && settings.llm.baseURL?.includes('openai.com')) {
+    // If using OpenRouter, assume model exists (cloud-based)
+    if (settings.llm.apiKey !== 'ollama' && isOpenRouterURL(settings.llm.baseURL)) {
       return true;
     }
     
@@ -505,15 +508,15 @@ export async function chat({
   const baseURLRaw = settings.llm.baseURL || 'http://127.0.0.1:11434/';
   const apiKey = settings.llm.apiKey || 'ollama';
   const model = settings.llm.model || 'qwen2.5-coder:3b';
-  const isOpenAI = baseURLRaw.includes('openai.com');
+  const isOpenRouter = isOpenRouterURL(baseURLRaw);
   
-  // Only check if model is installed for Ollama (not OpenAI)
-  if (!isOpenAI && !(await hasModel())) {
+  // Only check if model is installed for Ollama (not OpenRouter)
+  if (!isOpenRouter && !(await hasModel())) {
     throw new Error(`Model '${model}' is not installed. Please select it in Settings > AI / LLMs to download it.`);
   }
   
   // Construct the full URL for chat completions
-  // OpenAI: https://api.openai.com/v1/chat/completions
+  // OpenRouter: https://openrouter.ai/api/v1/chat/completions
   // Ollama: http://127.0.0.1:11434/v1/chat/completions
   const chatURL = constructChatURL(baseURLRaw);
   
@@ -562,10 +565,10 @@ export async function* chatStream({
   const baseURLRaw = settings.llm.baseURL || 'http://127.0.0.1:11434/';
   const apiKey = settings.llm.apiKey || 'ollama';
   const model = settings.llm.model || 'qwen2.5-coder:3b';
-  const isOpenAI = baseURLRaw.includes('openai.com');
+  const isOpenRouter = isOpenRouterURL(baseURLRaw);
   
-  // Only check if model is installed for Ollama (not OpenAI)
-  if (!isOpenAI && !(await hasModel())) {
+  // Only check if model is installed for Ollama (not OpenRouter)
+  if (!isOpenRouter && !(await hasModel())) {
     throw new Error(`Model '${model}' is not installed. Please select it in Settings > AI / LLMs to download it.`);
   }
   
@@ -612,7 +615,7 @@ async function* stream(url, data = {}, errorMessage = 'Request failed', apiKey =
     'Content-Type': 'application/json; charset=utf8'
   };
   
-  // Add authorization header for OpenAI or other authenticated APIs
+  // Add authorization header for OpenRouter or other authenticated APIs
   if (apiKey && apiKey !== 'ollama') {
     headers['Authorization'] = `Bearer ${apiKey}`;
   }
@@ -664,7 +667,7 @@ async function post(url, data, errorMessage = 'Request failed', parseBody = true
     'Content-Type': 'application/json; charset=utf8'
   };
   
-  // Add authorization header for OpenAI or other authenticated APIs
+  // Add authorization header for OpenRouter or other authenticated APIs
   if (apiKey && apiKey !== 'ollama') {
     headers['Authorization'] = `Bearer ${apiKey}`;
   }

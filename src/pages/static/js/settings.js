@@ -667,7 +667,7 @@ function populateFormFields(settings) {
     }
   }
   
-  // Populate LLM settings (supports both Ollama and OpenAI)
+  // Populate LLM settings (supports both Ollama and OpenRouter)
   if (settings.llm) {
     const llmEnabled = document.getElementById('llm-enabled');
     const llmConfig = document.getElementById('llm-config');
@@ -1205,7 +1205,7 @@ function initializeLLMSettings() {
     });
   }
   
-  // Helper function to save LLM settings (supports both Ollama and OpenAI)
+  // Helper function to save LLM settings (supports both Ollama and OpenRouter)
   async function saveLLMSettings() {
     const llmEnabled = document.getElementById('llm-enabled');
     const ollamaModelInput = document.getElementById('ollama-model');
@@ -1223,10 +1223,10 @@ function initializeLLMSettings() {
       return;
     }
     
-    // Check if using OpenAI and validate API key
-    const isOpenAI = baseURLValue.includes('openai.com');
-    if (isOpenAI && (!apiKeyValue || apiKeyValue === 'ollama')) {
-      showSettingsSavedMessage('Please enter your OpenAI API key', 'error');
+    // Check if using OpenRouter and validate API key
+    const isOpenRouter = baseURLValue.includes('openrouter.ai');
+    if (isOpenRouter && (!apiKeyValue || apiKeyValue === 'ollama')) {
+      showSettingsSavedMessage('Please enter your OpenRouter API key', 'error');
       return;
     }
     
@@ -1400,11 +1400,11 @@ function initializeLLMSettings() {
           // Model doesn't exist locally, auto-resume download
           console.log(`Model ${modelName} not found locally, auto-resuming download...`);
           
-          // Check if using Ollama (not OpenAI)
+          // Check if using Ollama (not OpenRouter)
           const baseURLInput = document.getElementById('ollama-url');
-          const isOpenAI = baseURLInput?.value?.includes('openai.com');
+          const isOpenRouter = baseURLInput?.value?.includes('openrouter.ai');
           
-          if (!isOpenAI) {
+          if (!isOpenRouter) {
             // Trigger download by saving settings (which will check and download)
             await saveLLMSettings();
           }
