@@ -9,6 +9,8 @@ import { createHandler as createFileHandler } from "./protocols/file-handler.js"
 import { createHandler as createBittorrentHandler } from "./protocols/bittorrent-handler.js";
 import { ipfsOptions, hyperOptions } from "./protocols/config.js";
 import { createMenuTemplate } from "./actions.js";
+import { ipfsOptions, hyperOptions,ensCache, ipfsCache, hyperCache  } from "./protocols/config.js";
+import { registerShortcuts } from "./actions.js";
 import WindowManager from "./window-manager.js";
 import settingsManager from "./settings-manager.js";
 import { setWindowManager } from "./context-menu.js";
@@ -395,4 +397,13 @@ ipcMain.handle('check-built-in-engine', (event, template) => {
     return false; // fallback if anything goes wrong
   }
 });
+
+ipcMain.handle('settings-get-archive-data', async () => {
+  return {
+    ipfs: ipfsCache,
+    hyper: hyperCache,
+    ens: Array.from(ensCache.entries())
+  };
+});
+
 export { windowManager };

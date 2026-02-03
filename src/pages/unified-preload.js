@@ -327,7 +327,8 @@ function createSettingsAPI(pageContext) {
           throw new Error('File data must include name and content');
         }
         return ipcRenderer.invoke('settings-upload-wallpaper', fileData);
-      }
+      },
+      getArchiveData: () => ipcRenderer.invoke('settings-get-archive-data')
     };
   } else if (pageContext.isExtensions) {
     // Extensions pages get limited settings API - only theme access

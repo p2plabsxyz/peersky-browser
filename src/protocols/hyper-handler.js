@@ -3,6 +3,11 @@ import makeHyperFetch from "hypercore-fetch";
 import { Readable, PassThrough } from "stream";
 import fs from "fs-extra";
 import { initChat, handleChatRequest as handleChatRequestP2P } from "../pages/p2p/chat/p2p.js";
+import HyperDHT from "hyperdht";
+import Hyperswarm from "hyperswarm";
+import crypto from "hypercore-crypto";
+import b4a from "b4a";
+import { hyperOptions, loadKeyPair, saveKeyPair, hyperCache, saveHyperCache } from "./config.js";
 
 // Single SDK and swarm for the app lifecycle (hyper:// browsing + chat share the same swarm).
 let sdk, fetch;
@@ -32,6 +37,54 @@ export async function createHandler(options, session) {
 
     console.log(`Handling request: ${method} ${url}`);
 
+    // Intercept Hyperdrive key generation/retrieval
+    if (method === 'POST' && urlObj.searchParams.has('key')) {
+      const keyName = urlObj.searchParams.get('key');
+      // We wrap the original callback to capture the response
+      const originalCallback = callback;
+      callback = async (response) => {
+        try {
+          if (response.statusCode === 200) {
+            // Read the stream to get the key
+            const stream = response.data;
+            const chunks = [];
+            for await (const chunk of stream) {
+              chunks.push(chunk);
+            }
+            const buffer = Buffer.concat(chunks);
+            const driveKey = buffer.toString();
+
+            // Re-create the stream for the original response
+            response.data = Readable.from([buffer]);
+
+            // Log to Hyper cache only if it looks like a key (e.g. hex string)
+            const timestamp = Date.now();
+            // Basic validation: Hypercore keys are typically 64 hex chars
+            const isHexKey = /^[0-9a-fA-F]{64}$/.test(driveKey);
+
+            if (isHexKey && !hyperCache.some(entry => entry.key === driveKey)) {
+              hyperCache.push({
+                name: keyName,
+                key: driveKey,
+                timestamp: timestamp,
+                type: 'drive'
+              });
+              saveHyperCache();
+              console.log(`Logged Hyperdrive to cache: ${keyName} (${driveKey})`);
+            }
+          }
+        } catch (e) {
+          console.error("Error logging Hyperdrive key:", e);
+        }
+
+        try {
+          originalCallback(response);
+        } catch (err) {
+          console.error("Error in original Hyper request callback:", err);
+        }
+      };
+    }
+
     try {
       if (
         protocol === "hyper" &&
@@ -53,6 +106,149 @@ export async function createHandler(options, session) {
 }
 
 // Handle general hyper:// requests (not chat API).
+// Handle all chat‐related endpoints (create room, join room, send/receive messages, etc).
+async function handleChatRequest(req, callback, session) {
+  const { url, method, uploadData } = req;
+  const urlObj = new URL(url);
+  const action = urlObj.searchParams.get("action");
+  const roomKey = urlObj.searchParams.get("roomKey");
+
+  console.log(`Chat request: ${method} ${url}`);
+
+  try {
+    if (method === "POST" && action === "create-key") {
+      // Create a brand-new random roomKey
+      const newRoomKey = await generateChatRoom();
+      console.log("Generated new chat room key:", newRoomKey);
+      callback({
+        statusCode: 200,
+        headers: { "Content-Type": "application/json" },
+        data: Readable.from([
+          Buffer.from(JSON.stringify({ roomKey: newRoomKey })),
+        ]),
+      });
+    } else if (method === "POST" && action === "join") {
+      // Join an existing room
+      if (!roomKey) throw new Error("Missing roomKey in join request");
+      console.log("Joining chat room:", roomKey);
+      await joinChatRoom(roomKey);
+
+      // Log chat room to Hyper cache
+      try {
+        const timestamp = Date.now();
+        if (!hyperCache.some(entry => entry.key === roomKey)) {
+          hyperCache.push({
+            name: "Chat Room",
+            key: roomKey,
+            timestamp: timestamp,
+            type: 'chat'
+          });
+          saveHyperCache();
+          console.log(`Logged chat room to cache: ${roomKey}`);
+        }
+      } catch (err) {
+        console.error("Error logging chat room to cache:", err);
+      }
+
+      callback({
+        statusCode: 200,
+        headers: { "Content-Type": "application/json" },
+        data: Readable.from([
+          Buffer.from(JSON.stringify({ message: "Joined chat room" })),
+        ]),
+      });
+    } else if (method === "POST" && action === "send") {
+      // Send a message
+      if (!roomKey) throw new Error("Missing roomKey in send request");
+      const { sender, message } = await getJSONBody(uploadData, session);
+      console.log(`Sending message [${sender}]: ${message}`);
+
+      // Append to feed
+      await appendMessageToFeed(roomKey, {
+        sender,
+        message,
+        timestamp: Date.now(),
+      });
+
+      // Broadcast to peers
+      const data = JSON.stringify({
+        sender,
+        message,
+        timestamp: Date.now(),
+        roomKey,
+      });
+      sendMessageToPeers(data);
+
+      callback({
+        statusCode: 200,
+        headers: { "Content-Type": "application/json" },
+        data: Readable.from([
+          Buffer.from(JSON.stringify({ message: "Message sent" })),
+        ]),
+      });
+    } else if (method === "GET" && action === "receive") {
+      // SSE for receiving messages in real-time
+      if (!roomKey) throw new Error("Missing roomKey in receive request");
+      console.log("Setting up SSE for room:", roomKey);
+
+      const feed = roomFeeds[roomKey];
+      if (!feed) throw new Error("Feed not initialized for this room");
+
+      const stream = new PassThrough();
+      session.messageStream = stream; // keep reference
+
+      // Replay the entire feed so the client sees the full history
+      for (let i = 0; i < feed.length; i++) {
+        const msg = await feed.get(i);
+        stream.write(`data: ${JSON.stringify(msg)}\n\n`);
+      }
+
+      // Keep the SSE connection alive
+      const keepAlive = setInterval(() => {
+        stream.write(":\n\n");
+      }, 15000);
+
+      // Track SSE client
+      if (!roomSseClients[roomKey]) {
+        roomSseClients[roomKey] = [];
+      }
+      roomSseClients[roomKey].push(stream);
+
+      stream.on("close", () => {
+        clearInterval(keepAlive);
+        roomSseClients[roomKey] = roomSseClients[roomKey].filter(
+          (s) => s !== stream
+        );
+      });
+
+      callback({
+        statusCode: 200,
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        },
+        data: stream,
+      });
+    } else {
+      // Unknown action
+      callback({
+        statusCode: 400,
+        headers: { "Content-Type": "text/plain" },
+        data: Readable.from(["Invalid chat action"]),
+      });
+    }
+  } catch (err) {
+    console.error("Error in handleChatRequest:", err);
+    callback({
+      statusCode: 500,
+      headers: { "Content-Type": "text/plain" },
+      data: Readable.from([`Error in chat request: ${err.message}`]),
+    });
+  }
+}
+
+// Handle general hyper:// requests not related to “chat” API routes.
 async function handleHyperRequest(req, callback, session) {
   const { url, method = "GET", headers = {}, uploadData } = req;
   const fetchFn = await initializeHyperSDK();
