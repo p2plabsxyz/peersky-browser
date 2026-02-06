@@ -243,18 +243,9 @@ export async function createHandler() {
     try {
       const resolvedPath = await resolveFile(filePath);
       const format = path.extname(resolvedPath);
+      
       if (!['', '.html', '.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico'].includes(format)) {
-        sendResponse({
-          statusCode: 403,
-          headers: {
-            'Content-Type': 'text/plain',
-            'Access-Control-Allow-Origin': '*',
-            'Allow-CSP-From': '*',
-            'Cache-Control': 'no-cache'
-          },
-          data: Readable.from(['Unsupported file type'])
-        });
-        return;
+        throw new Error('Unsupported file type');
       }
 
       const statusCode = 200;
@@ -273,15 +264,9 @@ export async function createHandler() {
         data
       });
     } catch (e) {
+      // File not found - send error code so renderer.js shows error.html
       sendResponse({
-        statusCode: 404,
-        headers: {
-          'Content-Type': 'text/html',
-          'Access-Control-Allow-Origin': '*',
-          'Allow-CSP-From': '*',
-          'Cache-Control': 'no-cache'
-        },
-        data: fs.createReadStream('404.html')
+        errorCode: -6, // net::ERR_FILE_NOT_FOUND
       });
     }
   };

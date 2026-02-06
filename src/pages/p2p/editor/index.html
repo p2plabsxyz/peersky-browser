@@ -39,16 +39,34 @@
             </label>
             <input type="text" id="titleInput" placeholder="Project title" class="hidden">
             <button id="uploadButton">Upload to DWeb</button>
-        
+        </div>
+        <div id="ai-toggle-container">
+            <button id="toggleAiButton">🤖 Create with AI</button>
         </div>
         <div id="fetchContainer">
-            <input id="fetchCidInput" type="text" placeholder="Enter IPFS CID or Hyper URL">
-            <button id="fetchButton">Fetch from DWeb</button>
+            <input id="fetchCidInput" type="text" placeholder="Enter ipfs:// or hyper:// URL">
+            <button id="fetchButton">Fetch</button>
         </div>
     </div>
     <ul id="uploadListBox"></ul>
+    
+    <!-- AI Generation Section -->
+    <div id="ai-container" class="hidden">
+        <textarea id="aiPromptBox" rows="3">Create a simple page with a blue background and a red “Spider-Man” text in the center. When the user clicks this text, add a new “🕸️” emoji to the page at a random position on the screen.</textarea>
+        <div id="ai-buttons">
+            <button id="generateButton">✨ Generate</button>
+            <button id="showAiLog">📋 Open Logs</button>
+        </div>
+    </div>
+    
+    <!-- AI Logs Dialog -->
+    <dialog id="aiLogDialog">
+        <dl id="aiLogs"></dl>
+        <button id="closeAiLog">Close</button>
+    </dialog>
 </main>
 
 <script type="module" src="common.js"></script>
 <script type="module" src="dweb.js"></script>
 <script type="module" src="codeEditor.js"></script>
+<script type="module" src="ai-generator.js"></script>

@@ -23,10 +23,16 @@ class NavBox extends HTMLElement {
     
     this.buildNavBox();
     this.attachEvents();
+    this.updateSearchPlaceholder();
     this.attachThemeListener();
     this.attachExtensionListeners();
     this.attachAutocompleteListeners();
     this.initializeExtensionsPopup();
+  }
+
+  connectedCallback() {
+    // Ensure placeholder updates when element is attached to DOM
+    this.updateSearchPlaceholder();
   }
 
   setStyledUrl(url) {
@@ -69,8 +75,8 @@ class NavBox extends HTMLElement {
     const urlInput = document.createElement("input");
     urlInput.type = "text";
     urlInput.id = "url";
-    urlInput.placeholder = "Search with DuckDuckGo or type a P2P URL";
     urlInput.setAttribute("autocomplete", "off");
+    this.updateSearchPlaceholder();
 
     const qrButton = this.createButton(
       "qr-code",
@@ -654,6 +660,54 @@ class NavBox extends HTMLElement {
     }
   }
 
+  _titleCase(key) {
+    if (!key) return 'Search';
+    return key.replace(/(^|[\s-])(\w)/g, (_, p1, p2) => p1 + p2.toUpperCase());
+  }
+
+  _safeParseUrl(s) {
+    try { return new URL(s); } catch {}
+    try { return new URL('https://' + s); } catch {}
+    return null;
+  }
+
+  async updateSearchPlaceholder() {
+    const input = this.querySelector('#url');
+    if (!input) return;
+
+    try {
+      const { ipcRenderer } = require("electron");
+      const engineKey = await ipcRenderer.invoke('settings-get', 'searchEngine');
+
+      let name;
+      if (engineKey === 'custom') {
+        const tpl = await ipcRenderer.invoke('settings-get', 'customSearchTemplate');
+        const u = this._safeParseUrl(tpl);
+
+        if (u?.hostname) {
+          // remove 'www.' and the top-level domain (.com, .org, .net, etc.)
+          const cleanHost = u.hostname
+            .replace(/^www\./i, '') // remove www.
+            .replace(/\.[^.]+$/, ''); // remove last dot + tld
+
+          // capitalize first letter
+          name = this._titleCase(cleanHost);
+        } else {
+          name = 'Custom';
+        }
+      } else if (engineKey) {
+        name = this._titleCase(engineKey);
+      } else {
+        name = 'DuckDuckGo'
+      }
+
+      input.placeholder = `Search with ${name} or type a P2P URL`;
+    } catch (err) {
+      console.warn('updateSearchPlaceholder failed:', err);
+      input.placeholder = 'Search or type a P2P URL';
+    }
+  }
+
   attachEvents() {
     this.addEventListener("click", (event) => {
       const button = event.target.closest("button");
@@ -690,6 +744,57 @@ class NavBox extends HTMLElement {
           this.dispatchEvent(new CustomEvent("navigate", { detail: { url } }));
         }
       });
+
+      const normalizeFilePathToUrl = (filePath) => {
+        if (!filePath) return null;
+        if (process.platform === "win32") {
+          const normalized = filePath.replace(/\\/g, "/");
+          return `file://${normalized.startsWith("/") ? "" : "/"}${normalized}`;
+        }
+        return `file://${filePath}`;
+      };
+
+      const handleDropNavigate = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const { dataTransfer } = event;
+        if (!dataTransfer) return;
+
+        if (dataTransfer.files && dataTransfer.files.length > 0) {
+          const file = dataTransfer.files[0];
+          const targetUrl = normalizeFilePathToUrl(file.path);
+          if (targetUrl) {
+            urlInput.value = targetUrl;
+            this.dispatchEvent(new CustomEvent("navigate", { detail: { url: targetUrl } }));
+            return;
+          }
+        }
+
+        const textUrl = dataTransfer.getData("text/uri-list") || dataTransfer.getData("text/plain");
+        if (textUrl) {
+          const url = textUrl.trim();
+          if (url) {
+            urlInput.value = url;
+            this.dispatchEvent(new CustomEvent("navigate", { detail: { url } }));
+          }
+        }
+      };
+
+      const preventDefaultDrag = (event) => {
+        if (!event.dataTransfer) return;
+        if ((event.dataTransfer.files && event.dataTransfer.files.length > 0) ||
+            event.dataTransfer.types?.includes("text/uri-list") ||
+            event.dataTransfer.types?.includes("text/plain")) {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "copy";
+        }
+      };
+
+      ["dragenter", "dragover"].forEach((evt) => {
+        urlInput.addEventListener(evt, preventDefaultDrag);
+      });
+      urlInput.addEventListener("drop", handleDropNavigate);
     } else {
       console.error("URL input not found within nav-box.");
     }

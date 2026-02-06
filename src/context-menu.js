@@ -1,5 +1,6 @@
-import { Menu, MenuItem, clipboard } from "electron";
+import { Menu, MenuItem, clipboard, dialog } from "electron";
 import WindowManager from "./window-manager.js";
+import path from "path";
 
 const isMac = process.platform === "darwin";
 
@@ -157,12 +158,145 @@ export function attachContextMenus(browserWindow, windowManager) {
         })
       );
 
+    // Image handling features (copy, copy address, save as)
+        if (params.mediaType === "image" && params.srcURL) {
+        menu.append(
+          new MenuItem({
+            label: "Copy Image",
+            click: () => {
+              try {
+                // Use copyImageAt for best quality
+                const img = webContents.copyImageAt(params.x, params.y);
+                if (img && !img.isEmpty()) {
+                  clipboard.writeImage(img);
+                }
+              } catch (e) {
+                console.error("Copy Image failed:", e);
+              }
+            },
+          })
+        );
+        menu.append(
+          new MenuItem({
+            label: "Copy Image Address",
+            click: () => clipboard.writeText(params.srcURL),
+          })
+        );
+        menu.append(
+          new MenuItem({
+            label: "Save Image As...",
+            click: async () => {
+              try {
+                // Extract filename from URL
+                const urlPath = new URL(params.srcURL).pathname;
+                const defaultName = path.basename(urlPath) || "image.png";
+                
+                // Show save dialog
+                const result = await dialog.showSaveDialog(browserWindow, {
+                  title: "Save Image",
+                  defaultPath: defaultName,
+                  filters: [
+                    {
+                      name: "Image Files",
+                      extensions: [
+                        "png", "jpg", "jpeg", "gif", "webp", "bmp", "svg",
+                        "apng", "avif", "heic", "heif", "jxl",
+                        "ico", "cur", "tif", "tiff",
+                        "xbm", "pnm", "ppm", "pgm", "pbm"
+                      ]
+                    },
+                    { name: "All Files", extensions: ["*"] }
+                  ],
+                });
+
+                if (!result.canceled && result.filePath) {
+                  // Validate URL scheme
+                  try {
+                    const u = new URL(params.srcURL);
+                    const allowedSchemes = new Set(["http:", "https:", "ipfs:", "hyper:"]);
+
+                    if (!allowedSchemes.has(u.protocol)) {
+                      console.warn("Blocked download for unsupported scheme:", u.protocol);
+                      return;
+                    }
+                  } catch (err) {
+                    console.error("Invalid URL:", params.srcURL);
+                    return;
+                  }
+                  
+                  // Listen for the download and move it to the chosen location
+                  webContents.session.once("will-download", (event, item) => {
+                    // Guard clause to ensure this download matches our intended file
+                    if (item.getURL() !== params.srcURL) return;
+                    item.setSavePath(result.filePath);
+                    
+                    item.on("updated", (event, state) => {
+                      if (state === "interrupted") {
+                        console.error("Download interrupted");
+                      }
+                    });
+                    
+                    item.once("done", (event, state) => {
+                      if (state === "completed") {
+                        console.log("Image saved successfully to:", result.filePath);
+                      } else {
+                        console.error("Download failed:", state);
+                      }
+                    });
+                  });
+
+                  // Download the image using webContents session
+                  webContents.session.downloadURL(params.srcURL);
+                }
+              } catch (e) {
+                console.error("Save Image failed:", e);
+              }
+            },
+          })
+        );
+    menu.append(new MenuItem({ type: "separator" }));
+  }
+
       // Link handling
       if (params.linkURL) {
         menu.append(
           new MenuItem({
             label: "Copy Link Address",
             click: () => clipboard.writeText(params.linkURL),
+          })
+        );
+        menu.append(
+          new MenuItem({
+            label: "Open Link in New Tab",
+            click: () => {
+              // First, attempt to add the URL as a new tab in the current window
+              const escapedUrl = params.linkURL.replace(/'/g, "\\'");
+              
+              browserWindow.webContents
+                .executeJavaScript(`
+                  const tabBar = document.querySelector('#tabbar');
+                  if (tabBar && typeof tabBar.addTab === 'function') {
+                    tabBar.addTab('${escapedUrl}');
+                    // Indicate success so main process knows no fallback is required
+                    true;
+                  } else {
+                    // Tab bar not available – signal fallback
+                    false;
+                  }
+                `)
+                .then((added) => {
+                  if (!added && windowManagerInstance) {
+                    // Fallback: open in new window if tab creation failed
+                    windowManagerInstance.open({ url: params.linkURL });
+                  }
+                })
+                .catch((err) => {
+                  console.error('Failed to add tab from context menu:', err);
+                  if (windowManagerInstance) {
+                    windowManagerInstance.open({ url: params.linkURL });
+                  }
+                });
+            },
           })
         );
         menu.append(

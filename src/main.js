@@ -1,14 +1,18 @@
 import electron from "electron";
-const { app, protocol: globalProtocol, ipcMain, BrowserWindow, webContents } = electron;
+const { app, protocol: globalProtocol, ipcMain, BrowserWindow, webContents, Menu } = electron;
 import { createHandler as createBrowserHandler } from "./protocols/peersky-protocol.js";
 import { createHandler as createBrowserThemeHandler } from "./protocols/theme-handler.js";
 import { createHandler as createIPFSHandler } from "./protocols/ipfs-handler.js";
 import { createHandler as createHyperHandler } from "./protocols/hyper-handler.js";
 import { createHandler as createWeb3Handler } from "./protocols/web3-handler.js";
+import { createHandler as createFileHandler } from "./protocols/file-handler.js";
 import { ipfsOptions, hyperOptions } from "./protocols/config.js";
-import { registerShortcuts } from "./actions.js";
+import { createMenuTemplate } from "./actions.js";
 import WindowManager from "./window-manager.js";
+import settingsManager from "./settings-manager.js";
 import { setWindowManager } from "./context-menu.js";
+import { isBuiltInSearchEngine } from "./search-engine.js";
+import "./llm.js";
 // import { setupAutoUpdater } from "./auto-updater.js";
 
 // Import and initialize extension system
@@ -35,6 +39,16 @@ const BROWSER_PROTOCOL = {
   corsEnabled: true,
 };
 
+const FILE_PROTOCOL = {
+  standard: true,
+  secure: false,
+  allowServiceWorkers: false,
+  supportFetchAPI: true,
+  bypassCSP: true,
+  corsEnabled: true,
+  stream: true,
+};
+
 let windowManager;
 
 globalProtocol.registerSchemesAsPrivileged([
@@ -45,6 +59,7 @@ globalProtocol.registerSchemesAsPrivileged([
   { scheme: "pubsub", privileges: P2P_PROTOCOL },
   { scheme: "hyper", privileges: P2P_PROTOCOL },
   { scheme: "web3", privileges: P2P_PROTOCOL },
+  { scheme: "file", privileges: FILE_PROTOCOL },
 ]);
 
 app.whenReady().then(async () => {
@@ -92,6 +107,11 @@ app.whenReady().then(async () => {
     windowManager.open({ isMainWindow: true });
   }
 
+  // Register shortcuts from menu template (NOTE: all these shortcuts works on a window only if a window is in focus)
+  const menuTemplate = createMenuTemplate(windowManager);
+  const menu = Menu.buildFromTemplate(menuTemplate);
+  Menu.setApplicationMenu(menu);
+
   // Add diagnostics to main window after creation
   const mainWindow = windowManager.all[0];
   if (mainWindow?.window?.webContents) {
@@ -111,8 +131,6 @@ app.whenReady().then(async () => {
       console.log('[Session] Runtime assertion passed: using persist:peersky');
     }
   }
-
-  registerShortcuts(windowManager); // Pass windowManager to registerShortcuts
 
   windowManager.startSaver();
 
@@ -162,6 +180,7 @@ async function setupProtocols(session) {
   const { protocol: sessionProtocol } = session;
 
   app.setAsDefaultProtocolClient("peersky");
+  app.setAsDefaultProtocolClient("file");
   app.setAsDefaultProtocolClient("browser");
   app.setAsDefaultProtocolClient("ipfs");
   app.setAsDefaultProtocolClient("ipns");
@@ -184,6 +203,9 @@ async function setupProtocols(session) {
 
   const web3ProtocolHandler = await createWeb3Handler();
   sessionProtocol.registerStreamProtocol("web3", web3ProtocolHandler, P2P_PROTOCOL);
+
+  const fileProtocolHandler = await createFileHandler();
+  sessionProtocol.handle("file", fileProtocolHandler);
 }
 
 app.on("window-all-closed", () => {
@@ -323,5 +345,13 @@ ipcMain.on('update-group-properties', (_event, groupId, properties) => {
       peerskyWindow.window.webContents.send('group-properties-updated', groupId, properties);
     }
   });
+});
+ipcMain.handle('check-built-in-engine', (event, template) => {
+  try {
+    return isBuiltInSearchEngine(template);
+  } catch (error) {
+    console.error('Error in check-built-in-engine:', error);
+    return false; // fallback if anything goes wrong
+  }
 });
 export { windowManager };

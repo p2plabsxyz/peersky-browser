@@ -1,4 +1,7 @@
-import elf from 'peersky://static/elves/elf.js'
+import $elf from 'peersky://static/elves/elf.js'
 
-elf('hello-world')
-.draw((_target) => `Hello World`)
+const $ = $elf('hello-world')
+
+$.draw((_target) => `Hello World`)
+
+$elf($)

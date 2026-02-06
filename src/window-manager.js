@@ -44,42 +44,67 @@ class WindowManager {
     this.saverInterval = DEFAULT_SAVE_INTERVAL;
     this.isSaving = false;
     this.isQuitting = false;
-    this.isClosingLastWindow = false
     this.shutdownInProgress = false;
-    this.saveQueue = Promise.resolve();
     this.finalSaveCompleted = false;
+    this.saveQueue = Promise.resolve();
     this.registerListeners();
 
-    // Add signal handlers for graceful shutdown
-    process.on('SIGINT', this.handleGracefulShutdown.bind(this));
-    process.on('SIGTERM', this.handleGracefulShutdown.bind(this));
+    // Treat Ctrl+C / SIGTERM as explicit quits in dev:
+    if (!app.isPackaged) {
+      const handleSignal = (signal) => {
+        if (this.shutdownInProgress) {
+          console.log(`${signal} received while shutdown already in progress – ignoring.`);
+          return;
+        }
+      
+        this.isQuitting = true;
+        this.shutdownInProgress = true;
+        this.stopSaver();
+      
+        console.log(`${signal} received – saving session state WITHOUT clearing it, then exiting.`);
+      
+        (async () => {
+          try {
+            await this.saveCompleteState();
+          } catch (error) {
+            console.error(`Error during ${signal} shutdown save:`, error);
+          } finally {
+            this.finalSaveCompleted = true;
+            app.exit(0);
+          }
+        })();
+      };
+    
+      process.on('SIGINT', () => handleSignal('SIGINT'));
+      process.on('SIGTERM', () => handleSignal('SIGTERM'));
+    }
 
-    // Enhanced app event handlers for proper UI quit handling
     app.on('before-quit', (event) => {
-      if (!this.finalSaveCompleted) {
-        event.preventDefault();
-
-        if (!this.isQuitting && !this.shutdownInProgress) {
-          this.handleGracefulShutdown();
+      // Avoid re-entering if something calls app.quit() again
+      if (this.shutdownInProgress) {
+        console.log('before-quit: shutdown already in progress, ignoring.');
+        return;
+      }
+    
+      console.log('before-quit: performing final session save (without clearing).');
+      this.isQuitting = true;
+      this.shutdownInProgress = true;
+      this.stopSaver();
+    
+      // Prevent the default quit, we'll exit manually after the async save
+      event.preventDefault();
+    
+      (async () => {
+        try {
+          await this.saveCompleteState();
+        } catch (error) {
+          console.error('Error during final save in before-quit:', error);
+        } finally {
+          this.finalSaveCompleted = true;
+          // Important: app.exit() does not re-emit 'before-quit'
+          app.exit(0);
         }
-      }
-    });
-
-    // Handle when all windows are closed (UI quit)
-    app.on('window-all-closed', () => {
-      if (!this.isQuitting && !this.shutdownInProgress) {
-        // On macOS, keep app running, on other platforms quit
-        if (process.platform !== 'darwin') {
-          this.handleGracefulShutdown();
-        }
-      }
-    });
-
-    // Handle app activation (macOS specific)
-    app.on('activate', () => {
-      if (this.windows.size === 0 && !this.isQuitting) {
-        this.open();
-      }
+      })();
     });
   }
 
@@ -88,25 +113,22 @@ class WindowManager {
       this.open();
     });
 
-    // Add quit handler for UI quit button
+    // Explicit quit from UI (custom Quit button, etc.).
+    // We just call app.quit(); app.on('before-quit') will save session files.
     ipcMain.on("quit-app", () => {
       console.log("Quit app requested from UI");
-      this.handleGracefulShutdown();
+      this.isQuitting = true;
+      app.quit();
     });
 
-    // Add window close handler that checks if it's the last window
+    // Close the current window and let Electron/main.js decide
+    // whether the app should quit (non-macOS) or stay alive (macOS).
     ipcMain.on("close-window", (event) => {
       const senderId = event.sender.id;
       const window = this.findWindowBySenderId(senderId);
 
       if (window) {
-        // If this is the last window, trigger graceful shutdown
-        if (this.windows.size === 1 && !this.isQuitting) {
-          this.handleGracefulShutdown();
-        } else {
-          // Otherwise just close this window normally
-          window.window.close();
-        }
+        window.window.close();
       }
     });
 
@@ -261,6 +283,13 @@ class WindowManager {
         });
       }
       return { success: true };
+    });
+
+    // Handle save-state events from renderer (tabs/windows changed)
+    ipcMain.on("save-state", () => {
+      if (!this.isQuitting && !this.shutdownInProgress) {
+        this.saveOpened();
+      }
     });
   }
 
@@ -437,14 +466,15 @@ class WindowManager {
     this.windows.add(window);
 
     window.window.on("closed", () => {
+      const wasLastWindow = this.windows.size === 1;
       this.windows.delete(window);
       ipcMain.removeListener(
         `webview-did-navigate-${window.id}`,
         window.navigateListener
       );
 
-      // Only save if not shutting down
-      if (!this.isQuitting && !this.shutdownInProgress) {
+      // Only save if not shutting down and not closing the last window
+      if (!this.isQuitting && !this.shutdownInProgress && !wasLastWindow) {
         this.saveOpened();
       }
     });
@@ -456,15 +486,9 @@ class WindowManager {
         return;
       }
       
-      //treat closing the last window as a shutdown on non-macOS platforms.
-      if (process.platform !== 'darwin') {
-        // If this is the last window and we're not already shutting down
-        if (!this.isQuitting && !this.shutdownInProgress && this.windows.size === 1) {
-          console.log("Last window closing, initiating shutdown");
-          this.isClosingLastWindow = true;
-          event.preventDefault();
-          this.handleGracefulShutdown();
-        }
+      // If this is the last window, mark that we're clearing state
+      if (this.windows.size === 1) {
+        this.stopSaver();
       }
     });
 
@@ -514,48 +538,6 @@ class WindowManager {
       console.error("Error clearing saved session state:", error);
     }
   }
-  async handleGracefulShutdown() {
-    if (this.shutdownInProgress) {
-      console.log('Shutdown already in progress, ignoring additional signals');
-      return;
-    }
-
-    // Set flags IMMEDIATELY to block window closes and new saves
-    this.shutdownInProgress = true;
-    this.isQuitting = true;
-    console.log('Graceful shutdown initiated...');
-
-    // Stop the periodic saver immediately
-    this.stopSaver();
-
-    const forceExitTimeout = setTimeout(() => {
-      console.log('Forced exit after timeout');
-      process.exit(1);
-    }, 8000);
-
-    try {
-      console.log('Saving final state before exit...');
-      await this.saveCompleteState();
-      this.finalSaveCompleted = true;
-      console.log('State saved successfully. Now safe to close windows.');
-
-      // ONLY AFTER successful save, close all windows
-      console.log('Destroying windows...');
-      const windowsToClose = Array.from(this.windows);
-      for (const window of windowsToClose) {
-        if (!window.window.isDestroyed()) {
-          window.window.destroy();
-        }
-      }
-
-    } catch (error) {
-      console.error('Error during shutdown:', error);
-    } finally {
-      clearTimeout(forceExitTimeout);
-      console.log('Exiting application...');
-      app.quit();
-    }
-  }
 
   async saveCompleteState() {
     // Save both window positions/sizes and tab data
@@ -583,8 +565,26 @@ class WindowManager {
 
     console.log(`Found ${validWindows.length} valid windows to save`);
 
+    // If there are no live windows…
     if (validWindows.length === 0) {
-      console.warn('No valid windows to save!');
+      // When the app is quitting (Cmd+Q, menu Quit, SIGINT, etc.), we MUST NOT clear
+      // the session files. We just leave whatever was last saved on disk.
+      if (this.isQuitting || this.shutdownInProgress) {
+        console.warn('No valid windows to save during quit – leaving window state file untouched.');
+        return;
+      }
+    
+      // But if the app is still running and the user has closed the last window,
+      // we DO clear the file so the next launch starts fresh
+      console.warn('No valid windows to save – clearing window state file so session does not restore.');
+      try {
+        const tempPath = PERSIST_FILE + ".tmp";
+        await fs.outputJson(tempPath, [], { spaces: 2 });
+        await fs.move(tempPath, PERSIST_FILE, { overwrite: true });
+        console.log(`Wrote empty window state to ${PERSIST_FILE}`);
+      } catch (error) {
+        console.error("Error clearing window state file:", error);
+      }
       return;
     }
 
@@ -621,9 +621,19 @@ class WindowManager {
       }
     }
 
+    // If, for some reason, we ended up with nothing, also clear the file
+    // TODO: If this happens during app quit/shutdown, we probably should NOT clear
+    // the existing file. Match the earlier logic where (isQuitting || shutdownInProgress). keeps the last good snapshot instead of wiping it.
     if (windowStates.length === 0) {
-      console.error('Failed to save any window states!');
-      // Don't write an empty file - keep the existing one
+      console.warn('No window states collected during save – clearing window state file.');
+      try {
+        const tempPath = PERSIST_FILE + ".tmp";
+        await fs.outputJson(tempPath, [], { spaces: 2 });
+        await fs.move(tempPath, PERSIST_FILE, { overwrite: true });
+        console.log(`Wrote empty window state to ${PERSIST_FILE}`);
+      } catch (error) {
+        console.error("Error clearing window state file:", error);
+      }
       return;
     }
 
@@ -643,13 +653,28 @@ class WindowManager {
 
     try {
       const allTabsData = await this.getTabs();
+      const TABS_FILE = path.join(USER_DATA_PATH, "tabs.json");
 
+      // 🔑 If there are no tabs/windows, clear the tabs file
       if (!allTabsData || Object.keys(allTabsData).length === 0) {
-        console.warn("No tabs data to save - keeping existing file");
+        // Same logic as window states: if we're quitting, do NOT clear the file.
+        if (this.isQuitting || this.shutdownInProgress) {
+          console.warn("No tabs data to save during quit – leaving tabs file untouched.");
+          return;
+        }
+      
+        console.warn("No tabs data to save – clearing tabs file so session does not restore.");
+        try {
+          const tempPath = TABS_FILE + ".tmp";
+          await fs.outputJson(tempPath, {}, { spaces: 2 });
+          await fs.move(tempPath, TABS_FILE, { overwrite: true });
+          console.log(`Wrote empty tabs data to ${TABS_FILE}`);
+        } catch (error) {
+          console.error("Error clearing tabs data file:", error);
+        }
         return;
       }
 
-      const TABS_FILE = path.join(USER_DATA_PATH, "tabs.json");
       const windowCount = Object.keys(allTabsData).length;
 
       console.log(`Saving tabs for ${windowCount} windows...`);
@@ -666,6 +691,19 @@ class WindowManager {
   }
 
   async saveOpened(forceSave = false) {
+    // Prevent saving when the last window has no tabs (closing last tab)
+    if (
+      this.windows.size === 1 &&
+      !this.isQuitting &&
+      !this.shutdownInProgress
+    ) {
+      const onlyWindow = [...this.windows][0];
+      if (onlyWindow && onlyWindow.savedTabs === null) {
+        console.log("Preventing save: last window has no tabs (closing last tab).");
+        return;
+      }
+    }
+
     //Never save(periodic saves) during shutdown
     if (this.shutdownInProgress) {
       console.log("Shutdown in progress - saveOpened blocked");
@@ -860,7 +898,7 @@ class PeerskyWindow {
     });
 
     this.id = this.window.webContents.id;
-    this.windowId = windowId || this.id.toString()
+    this.windowId = windowId || randomUUID()
     this.savedTabs = savedTabs; // Store saved tabs for restoration
 
     const loadURL = path.join(__dirname, "pages", "index.html");

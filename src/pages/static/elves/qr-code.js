@@ -1,10 +1,10 @@
-import elf from 'peersky://static/elves/elf.js'
+import $elf from 'peersky://static/elves/elf.js'
 import QrCreator from 'peersky://static/js/vendor/qr-creator/qr-creator.js'
 
 // utilize this to hop off the bifrost
 function sleep(D) { return new Promise(x => setTimeout(x,D))}
 
-const $ = elf('qr-code')
+const $ = $elf('qr-code')
 
 $.draw(target => {
   const codes = $.learn()
@@ -60,7 +60,7 @@ $.style(`
     height: 100%;
     width: 100%;
     place-content: center;
-    border: 0;
+    border: none;
     background: transparent;
     border-radius: 0;
   }
@@ -72,3 +72,4 @@ $.style(`
   }
 `)
 
+$elf($)

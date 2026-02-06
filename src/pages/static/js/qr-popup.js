@@ -1,3 +1,5 @@
+import '../elves/qr-code.js'
+
 class QRPopup extends HTMLElement {
   connectedCallback() {
     this.render();

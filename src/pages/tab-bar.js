@@ -98,7 +98,10 @@ class TabBar extends HTMLElement {
     addButton.className = "add-tab-button";
     addButton.innerHTML = "+";
     addButton.title = "New Tab";
-    addButton.addEventListener("click", () => this.addTab());
+    addButton.addEventListener("click", (e) => {
+      e.currentTarget.blur();
+      this.addTab();
+    });
     
     this.tabContainer = document.createElement("div");
     this.tabContainer.className = "tab-container";
@@ -264,6 +267,14 @@ getAllTabGroups() {
       }
       allTabs[this.windowId] = tabsData;
       localStorage.setItem("peersky-browser-tabs", JSON.stringify(allTabs));
+      
+      // Trigger main process to save complete state
+      try {
+        const { ipcRenderer } = require('electron');
+        ipcRenderer.send('save-state');
+      } catch (e) {
+        console.error("Failed to send save-state event:", e);
+      }
     } catch (error) {
       console.error("Failed to save tabs state:", error);
     }
@@ -540,7 +551,7 @@ restoreTabs(persistedData) {
         urlInput.focus();
         urlInput.select();
       }
-    }, 100);
+    }, 400);
     
     return tabId;
   }
@@ -680,6 +691,22 @@ restoreTabs(persistedData) {
     webview.addEventListener("did-stop-loading", () => {
       this.saveTabsState();
     });
+    
+    // Handle in-page navigation 
+    webview.addEventListener("did-navigate-in-page", (e) => {
+      const newUrl = e.url;
+      this.updateTab(tabId, { url: newUrl });
+      
+      this.dispatchEvent(new CustomEvent("tab-navigated", { 
+        detail: { tabId, url: newUrl } 
+      }));
+      
+      setTimeout(() => {
+        this.dispatchEvent(new CustomEvent("navigation-state-changed", {
+          detail: { tabId }
+        }));
+      }, 100);
+    });
   
     // Handle audio state changes
     webview.addEventListener("media-started-playing", () => {
@@ -691,6 +718,7 @@ restoreTabs(persistedData) {
     });
   
     webview.addEventListener("new-window", (e) => {
+      e.preventDefault();
       this.addTab(e.url, "New Tab");
     });
 
@@ -732,24 +760,27 @@ restoreTabs(persistedData) {
     this.destroyHoverCard(); // remove lingering hover card
     const tabElement = document.getElementById(tabId);
     if (!tabElement) return;
-    
+
     // Get index of tab to close
     const tabIndex = this.tabs.findIndex(tab => tab.id === tabId);
     if (tabIndex === -1) return;
-    
-    // Prevent closing the last tab - always keep at least the home tab
+
+    // If this is the last tab, close the entire window instead of
+    // forcing a "home" tab. This matches normal browser behaviour.
     if (this.tabs.length === 1) {
-      // Instead of closing, navigate to home
-      this.updateTab(tabId, { url: "peersky://home", title: "Home" });
-      this.navigateActiveTab("peersky://home");
-      this.saveTabsState();
+      try {
+        const { ipcRenderer } = require('electron');
+        ipcRenderer.send('close-window');
+      } catch (error) {
+        console.error('Failed to close window on last-tab close:', error);
+      }
       return;
     }
-    
+
     // Remove tab from DOM and array
     tabElement.remove();
     this.tabs.splice(tabIndex, 1);
-    
+
     // Remove associated webview
     const webview = this.webviews.get(tabId);
     if (webview) {
@@ -767,10 +798,10 @@ restoreTabs(persistedData) {
       webview.remove();
       this.webviews.delete(tabId);
     }
-    
+
     // Remove tab from group
     this.removeTabFromGroup(tabId);
-    
+
     // If we closed the active tab, select another one
     if (this.activeTabId === tabId) {
       // Select the previous tab, or the next one if there is no previous
@@ -779,10 +810,10 @@ restoreTabs(persistedData) {
         this.selectTab(this.tabs[newTabIndex].id);
       }
     }
-    
+
     // Save state after closing tab
     this.saveTabsState();
-    
+
     // Dispatch event that tab was closed
     this.dispatchEvent(new CustomEvent("tab-closed", { detail: { tabId } }));
   }
@@ -1532,6 +1563,7 @@ restoreTabs(persistedData) {
     this.saveTabsState();
   }
 
+  // TODO: There are two handleGroupContextMenuAction() implementations. This one is overwritten by the later definition — decide which one to keep.
   // Enhanced handleGroupContextMenuAction to work with groups from any window
   handleGroupContextMenuAction(action, groupId) {
     console.log(`Handling group action: ${action} for group: ${groupId}`);
@@ -2063,6 +2095,7 @@ restoreTabs(persistedData) {
     document.body.appendChild(menu);
   }
 
+  // TODO: This overrides the earlier enhanced version — remove or merge the logic.
   // Handle group context menu actions
   handleGroupContextMenuAction(action, groupId) {
     switch (action) {

@@ -2,7 +2,7 @@
 // Handles settings storage, defaults, validation, and IPC communication
 // Pattern: Similar to window-manager.js
 
-import { app, ipcMain, BrowserWindow } from 'electron';
+import { app, ipcMain, BrowserWindow, session, safeStorage } from 'electron';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
@@ -20,6 +20,7 @@ function logDebug(message) {
 // Default settings configuration
 const DEFAULT_SETTINGS = {
   searchEngine: 'duckduckgo',
+  customSearchTemplate: "https://duckduckgo.com/?q=%s",
   theme: 'dark',
   showClock: true,
   verticalTabs: false,
@@ -27,8 +28,100 @@ const DEFAULT_SETTINGS = {
   wallpaper: 'redwoods',
   wallpaperCustomPath: null,
   extensionP2PEnabled: false,
-  extensionAutoUpdate: true
+  extensionAutoUpdate: true,
+  llm: {
+    enabled: false,
+    baseURL: 'http://127.0.0.1:11434/',
+    apiKey: 'ollama',
+    model: 'qwen2.5-coder:3b'
+  }
 };
+
+let isClearingBrowserCache = false;
+
+async function clearBrowserCache() {
+  if (isClearingBrowserCache)
+    throw new Error('Cache clearing already in progress');
+
+  isClearingBrowserCache = true;
+
+  try {
+    logDebug('Starting safe browser cache clearing...');
+
+    // Step 1 → Ask all renderer windows to detach webviews
+    const windows = BrowserWindow.getAllWindows();
+    logDebug('Requesting all renderers to detach webviews...');
+    await Promise.allSettled(
+      windows.map(win =>
+        win.webContents.executeJavaScript('window.detachWebviews?.()', true)
+      )
+    );
+
+    await new Promise(r => setTimeout(r, 100)); // small delay
+
+    // Step 2 → Clear cache and storage (in smaller groups)
+    const clear = storages =>
+      session.defaultSession.clearStorageData({ storages });
+
+    await session.defaultSession.clearCache();
+    await clear(['cookies', 'localstorage', 'sessionstorage']);
+    await clear(['indexdb']); // (Electron's internal key for IndexedDB)
+    await clear(['cachestorage', 'serviceworkers']);
+
+    logDebug('Cache and storage cleared safely');
+
+    // Step 3 → Notify all renderer processes to reinitialize
+    windows.forEach(win => {
+      if (!win.isDestroyed()) {
+        win.webContents.send('reload-ui-after-cache');
+      }
+    });
+
+    logDebug('UI reload triggered in all renderers');
+  } catch (error) {
+    logDebug(`Error during cache clearing: ${error.message}`);
+    throw error;
+  } finally {
+    isClearingBrowserCache = false;
+  }
+}
+
+async function pathExists(p) {
+  try { await fs.access(p); return true; } catch { return false; }
+}
+
+async function removeChildrenExcept(dir, keepNames = []) {
+  if (!(await pathExists(dir))) return;
+  const keep = new Set(keepNames);
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  await Promise.all(entries.map(async (ent) => {
+    if (keep.has(ent.name)) return;
+    const target = path.join(dir, ent.name);
+    await fs.rm(target, { recursive: true, force: true });
+  }));
+}
+
+async function resetP2PData({ resetIdentities = false } = {}) {
+  const USER_DATA = app.getPath('userData');
+  const ipfsDir  = path.join(USER_DATA, 'ipfs');
+  const hyperDir = path.join(USER_DATA, 'hyper');
+  const ensCache = path.join(USER_DATA, 'ensCache.json');
+
+  // ENS cache can always be removed
+  await fs.rm(ensCache, { recursive: true, force: true }).catch(() => {});
+
+  if (resetIdentities) {
+    // full wipe
+    await fs.rm(ipfsDir,  { recursive: true, force: true }).catch(() => {});
+    await fs.rm(hyperDir, { recursive: true, force: true }).catch(() => {});
+    logDebug('P2P reset: full wipe including identities');
+  } else {
+    // preserve identity files by default
+    await removeChildrenExcept(ipfsDir,  ['libp2p-key']);          // IPFS Peer ID
+    await removeChildrenExcept(hyperDir, ['swarm-keypair.json']);  // Hyper identity
+    logDebug('P2P reset: data cleared, identities preserved');
+  }
+}
 
 class SettingsManager {
   constructor() {
@@ -38,6 +131,49 @@ class SettingsManager {
     
     this.init();
     this.registerIpcHandlers();
+  }
+  
+  // Encrypt sensitive data (API keys)
+  encryptApiKey(apiKey) {
+    // Don't encrypt 'ollama' - it's not sensitive
+    if (!apiKey || apiKey === 'ollama') {
+      return apiKey;
+    }
+    
+    // Only encrypt if safeStorage is available
+    if (safeStorage.isEncryptionAvailable()) {
+      try {
+        const buffer = safeStorage.encryptString(apiKey);
+        return `encrypted:${buffer.toString('base64')}`;
+      } catch (error) {
+        logDebug(`Failed to encrypt API key: ${error.message}`);
+        return apiKey; // Fallback to plain text
+      }
+    }
+    
+    return apiKey;
+  }
+  
+  // Decrypt sensitive data (API keys)
+  decryptApiKey(encryptedKey) {
+    // Not encrypted
+    if (!encryptedKey || !encryptedKey.startsWith('encrypted:')) {
+      return encryptedKey;
+    }
+    
+    // Only decrypt if safeStorage is available
+    if (safeStorage.isEncryptionAvailable()) {
+      try {
+        const base64 = encryptedKey.replace('encrypted:', '');
+        const buffer = Buffer.from(base64, 'base64');
+        return safeStorage.decryptString(buffer);
+      } catch (error) {
+        logDebug(`Failed to decrypt API key: ${error.message}`);
+        return encryptedKey; // Return as-is if decryption fails
+      }
+    }
+    
+    return encryptedKey;
   }
 
   async init() {
@@ -153,55 +289,27 @@ class SettingsManager {
     // Handle clear cache
     ipcMain.handle('settings-clear-cache', async () => {
       try {
-        logDebug('Starting cache clearing operation');
-        
-        // 1. Clear Electron session data (browser cache, cookies, storage)
-        const userSession = getBrowserSession();
-        await userSession.clearStorageData({
-          storages: [
-            'cookies',
-            'localStorage', 
-            'sessionStorage',
-            'indexedDB',
-            'serviceworkers',
-            'cachestorage'
-          ]
-        });
-        
-        // Clear HTTP cache separately
-        await userSession.clearCache();
-        
-        logDebug('Electron session data cleared successfully');
-        
-        // 2. Clear P2P protocol cache files
-        const USER_DATA = app.getPath("userData");
-        const filesToClear = [
-          { path: path.join(USER_DATA, "ensCache.json"), type: "ENS cache" },
-          { path: path.join(USER_DATA, "ipfs"), type: "IPFS data" },
-          { path: path.join(USER_DATA, "hyper"), type: "Hyper data" }
-        ];
-        
-        // Clear P2P cache files/directories
-        for (const { path: filePath, type } of filesToClear) {
-          try {
-            await fs.rm(filePath, { recursive: true, force: true });
-            logDebug(`Cleared ${type}: ${filePath}`);
-          } catch (error) {
-            if (error.code === 'ENOENT') {
-              logDebug(`${type} not found (skipping): ${filePath}`);
-            } else {
-              logDebug(`Failed to clear ${type}: ${error.message}`);
-            }
-          }
-        }
-        
-        logDebug('Cache clearing operation completed successfully');
-        return { success: true, message: 'Cache cleared successfully' };
-        
+        await clearBrowserCache();
+        return { success: true, message: 'Browser cache cleared' };
       } catch (error) {
-        const errorMsg = `Failed to clear cache: ${error.message}`;
+        const errorMsg = `Failed to clear browser cache: ${error.message}`;
         logDebug(errorMsg);
-        console.error(errorMsg);
+        throw new Error(errorMsg);
+      }
+    });
+
+    ipcMain.handle('settings-reset-p2p', async (_event, opts = {}) => {
+      try {
+        await resetP2PData({ resetIdentities: !!opts.resetIdentities });
+        return {
+          success: true,
+          message: opts.resetIdentities
+            ? 'P2P data cleared (identities removed)'
+            : 'P2P data cleared (identities preserved)'
+        };
+      } catch (error) {
+        const errorMsg = `Failed to reset P2P data: ${error.message}`;
+        logDebug(errorMsg);
         throw new Error(errorMsg);
       }
     });
@@ -265,8 +373,37 @@ class SettingsManager {
       const data = await fs.readFile(SETTINGS_FILE, 'utf8');
       const loaded = JSON.parse(data);
       
-      // Merge with defaults for missing keys
-      this.settings = { ...DEFAULT_SETTINGS, ...loaded };
+      // Start with defaults
+      this.settings = { ...DEFAULT_SETTINGS };
+      
+      // Merge loaded settings, handling nested objects properly
+      for (const key in loaded) {
+        if (key === 'llm' && typeof loaded[key] === 'object' && loaded[key] !== null) {
+          // Simple LLM settings structure
+          const llmSettings = loaded.llm;
+          
+          // Ensure apiKey is 'ollama' for local setup
+          if (!llmSettings.apiKey || llmSettings.apiKey === '') {
+            llmSettings.apiKey = 'ollama';
+          }
+          
+          // Keep the user's selected model (don't reset it)
+          // Only use default if no model is set
+          if (!llmSettings.model) {
+            llmSettings.model = DEFAULT_SETTINGS.llm.model;
+          }
+          
+          // Only keep the fields we need
+          this.settings.llm = {
+            enabled: llmSettings.enabled || false,
+            baseURL: llmSettings.baseURL || DEFAULT_SETTINGS.llm.baseURL,
+            apiKey: this.decryptApiKey(llmSettings.apiKey || DEFAULT_SETTINGS.llm.apiKey),
+            model: llmSettings.model || DEFAULT_SETTINGS.llm.model
+          };
+        } else {
+          this.settings[key] = loaded[key];
+        }
+      }
       
       logDebug(`Settings loaded successfully: ${Object.keys(loaded).length} keys`);
       return this.settings;
@@ -295,9 +432,18 @@ class SettingsManager {
       // Ensure directory exists
       await fs.mkdir(path.dirname(SETTINGS_FILE), { recursive: true });
       
+      // Create a copy of settings with encrypted API key
+      const settingsToSave = { ...this.settings };
+      if (settingsToSave.llm && settingsToSave.llm.apiKey) {
+        settingsToSave.llm = {
+          ...settingsToSave.llm,
+          apiKey: this.encryptApiKey(settingsToSave.llm.apiKey)
+        };
+      }
+      
       // Atomic write: write to temp file then rename
       const tempFile = SETTINGS_FILE + '.tmp';
-      await fs.writeFile(tempFile, JSON.stringify(this.settings, null, 2), 'utf8');
+      await fs.writeFile(tempFile, JSON.stringify(settingsToSave, null, 2), 'utf8');
       await fs.rename(tempFile, SETTINGS_FILE);
       
       logDebug('Settings saved successfully');
@@ -311,13 +457,44 @@ class SettingsManager {
 
   validateSetting(key, value) {
     const validators = {
-      searchEngine: (v) => ['duckduckgo', 'ecosia', 'kagi', 'startpage'].includes(v),
-      theme: (v) => ['transparent', 'light', 'dark', 'green', 'cyan', 'yellow', 'violet'].includes(v),
-      showClock: (v) => typeof v === 'boolean',
-      verticalTabs: (v) => typeof v === 'boolean',
-      keepTabsExpanded: (v) => typeof v === 'boolean',
-      wallpaper: (v) => ['redwoods', 'mountains', 'custom'].includes(v),
-      wallpaperCustomPath: (v) => v === null || typeof v === 'string'
+      searchEngine: (v) => ['duckduckgo', 'brave', 'ecosia', 'kagi', 'startpage', "custom"].includes(v),
+      customSearchTemplate: (v) => {
+        if (typeof v !== "string" || v.length >= 2048) return false;
+        try {
+          // Just check if it’s parseable as a URL with any protocol
+          new URL(v);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      theme: (v) =>
+        [
+          "transparent",
+          "light",
+          "dark",
+          "green",
+          "cyan",
+          "yellow",
+          "violet",
+        ].includes(v),
+      showClock: (v) => typeof v === "boolean",
+      verticalTabs: (v) => typeof v === "boolean",
+      keepTabsExpanded: (v) => typeof v === "boolean",
+      wallpaper: (v) => ["redwoods", "mountains", "custom"].includes(v),
+      wallpaperCustomPath: (v) => v === null || typeof v === "string",
+      llm: (v) => {
+        // Validate LLM settings object (simplified for Ollama-only)
+        if (typeof v !== 'object' || v === null) return false;
+        
+        // Check required fields
+        if (typeof v.enabled !== 'boolean') return false;
+        if (typeof v.baseURL !== 'string') return false;
+        if (typeof v.apiKey !== 'string') return false;
+        if (typeof v.model !== 'string') return false;
+        
+        return true;
+      }
     };
     
     const validator = validators[key];
@@ -399,6 +576,15 @@ class SettingsManager {
             window.webContents.send('wallpaper-changed', this.settings.wallpaper);
           }
         });
+      } else if (key === "customSearchTemplate") {
+        windows.forEach((window) => {
+          if (window && !window.isDestroyed()) {
+            window.webContents.send(
+              "search-engine-changed",
+              this.settings.searchEngine
+            );
+          }
+        });
       }
       
       logDebug(`Applied setting change: ${key} to ${windows.length} windows`);
@@ -416,9 +602,11 @@ class SettingsManager {
   getSearchEngineName() {
     const engineNames = {
       'duckduckgo': 'DuckDuckGo',
+      'brave': 'Brave Search',
       'ecosia': 'Ecosia',
       'kagi': 'Kagi',
-      'startpage': 'Startpage'
+      'startpage': 'Startpage',
+      'custom' : 'Custom'
     };
     return engineNames[this.settings.searchEngine] || 'DuckDuckGo';
   }
@@ -445,6 +633,13 @@ class SettingsManager {
     return `peersky://static/assets/${wallpaperFile}`;
   }
 }
+
+app.on('before-quit', e => {
+  if (isClearingBrowserCache) {
+    e.preventDefault();
+    setTimeout(() => app.quit(), 200);
+  }
+});
 
 // Create singleton instance
 const settingsManager = new SettingsManager();
