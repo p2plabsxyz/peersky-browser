@@ -7,7 +7,7 @@ const DEFAULT_POLICY = {
   },
   files: {
     blockedExtensions: [
-      ".exe", ".dll", ".dylib", ".so", ".bat", ".cmd", ".sh", ".ps1", ".vbs", ".jar", ".pkg", ".dmg", ".bin", ".msi"
+      ".exe", ".dll", ".dylib", ".so", ".bat", ".cmd", ".ps1", ".vbs", ".jar", ".pkg", ".dmg", ".bin", ".msi"
     ],
     blockedPatterns: [
       // Strings or regex patterns serialized as strings; only simple substring tests used here
