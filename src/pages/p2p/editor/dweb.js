@@ -18,34 +18,162 @@ function safeLocalStorageSet(key, value) {
     }
 }
 
+const DRAFT_DRIVE_NAME = 'p2p-editor-drafts';
+const DRAFT_FILE = 'draft.json';
+let draftDriveUrl = null;
+let saveTimer = null;
+let lastDraftPayload = null;
+const saveDelay = 400;
+
+const htmlCodeArea = $('#htmlCode');
+const cssCodeArea = $('#cssCode');
+const javascriptCodeArea = $('#javascriptCode');
+const titleInput = $('#titleInput');
+const clearDraftButton = $('#clearDraftButton');
+
 // Read protocol from URL param or localStorage, default to 'ipfs'
 const urlParams = new URLSearchParams(window.location.search);
 const paramProtocol = urlParams.get('protocol');
 const storedProtocol = safeLocalStorageGet('lastProtocol');
-const initialProtocol = paramProtocol || storedProtocol || 'ipfs';
+const initialProtocol = paramProtocol || storedProtocol || 'hyper';
 protocolSelect.value = initialProtocol;
 
 // Toggle title input visibility based on protocol
 function toggleTitleInput() {
-    const titleInput = $('#titleInput');
-    if (protocolSelect.value === 'ipfs') {
-        titleInput.classList.add('hidden');
-        titleInput.removeAttribute('required');
-    } else {
+    if (protocolSelect.value === 'hyper') {
         titleInput.classList.remove('hidden');
         titleInput.setAttribute('required', '');
+    } else {
+        titleInput.classList.add('hidden');
+        titleInput.removeAttribute('required');
+    }
+}
+
+async function getDraftDriveUrl() {
+    if (!draftDriveUrl) {
+        const response = await fetch(`hyper://localhost/?key=${encodeURIComponent(DRAFT_DRIVE_NAME)}`, { method: 'POST' });
+        if (!response.ok) {
+            throw new Error(`Failed to generate Hyperdrive key: ${response.statusText}`);
+        }
+        draftDriveUrl = await response.text();
+    }
+    return draftDriveUrl;
+}
+
+function buildDraftPayload() {
+    return {
+        html: htmlCodeArea.value,
+        css: cssCodeArea.value,
+        javascript: javascriptCodeArea.value,
+        title: titleInput.value,
+        protocol: protocolSelect.value,
+        updatedAt: Date.now()
+    };
+}
+
+async function writeDraft(payload) {
+    const driveUrl = await getDraftDriveUrl();
+    const url = `${driveUrl}${DRAFT_FILE}`;
+    const response = await fetch(url, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    });
+    if (!response.ok) {
+        throw new Error(`Failed to save draft: ${response.statusText}`);
+    }
+}
+
+async function saveDraft({ force = false } = {}) {
+    try {
+        const payload = buildDraftPayload();
+        const serialized = JSON.stringify(payload);
+        if (!force && serialized === lastDraftPayload) {
+            return;
+        }
+        lastDraftPayload = serialized;
+        await writeDraft(payload);
+    } catch (error) {
+        console.error('[saveDraft] Error saving draft:', error);
+    }
+}
+
+export function scheduleDraftSave() {
+    if (saveTimer) {
+        clearTimeout(saveTimer);
+    }
+    saveTimer = setTimeout(() => {
+        saveDraft();
+    }, saveDelay);
+}
+
+async function loadDraft() {
+    try {
+        const driveUrl = await getDraftDriveUrl();
+        const url = `${driveUrl}${DRAFT_FILE}`;
+        const response = await fetch(url);
+        if (!response.ok) {
+            return;
+        }
+        const data = await response.json();
+        if (!data || data.isCleared) {
+            return;
+        }
+        if (typeof data.html === 'string') {
+            htmlCodeArea.value = data.html;
+        }
+        if (typeof data.css === 'string') {
+            cssCodeArea.value = data.css;
+        }
+        if (typeof data.javascript === 'string') {
+            javascriptCodeArea.value = data.javascript;
+        }
+        if (typeof data.title === 'string') {
+            titleInput.value = data.title;
+        }
+        if (typeof data.protocol === 'string' && !paramProtocol) {
+            protocolSelect.value = data.protocol;
+            safeLocalStorageSet('lastProtocol', data.protocol);
+            toggleTitleInput();
+            updateSelectorURL();
+        }
+        update();
+    } catch (error) {
+        console.error('[loadDraft] Error loading draft:', error);
+    }
+}
+
+async function clearDraft() {
+    try {
+        const driveUrl = await getDraftDriveUrl();
+        const url = `${driveUrl}${DRAFT_FILE}`;
+        const response = await fetch(url, { method: 'DELETE' });
+        if (response.ok || response.status === 404) {
+            return;
+        }
+    } catch (error) {
+        console.error('[clearDraft] Error deleting draft:', error);
+    }
+    try {
+        await writeDraft({ isCleared: true, clearedAt: Date.now() });
+    } catch (error) {
+        console.error('[clearDraft] Error saving cleared draft:', error);
     }
 }
 
 // Initialize UI state
 toggleTitleInput();
 updateSelectorURL();
+loadDraft();
 
 // When protocol changes: update UI, localStorage, and URL
 protocolSelect.addEventListener('change', () => {
     toggleTitleInput();
     safeLocalStorageSet('lastProtocol', protocolSelect.value);
     updateSelectorURL();
+    scheduleDraftSave();
 });
 
 function updateSelectorURL() {
@@ -96,6 +224,27 @@ export async function assembleCode() {
 }
 
 uploadButton.addEventListener('click', assembleCode);
+
+if (clearDraftButton) {
+    clearDraftButton.addEventListener('click', async () => {
+        htmlCodeArea.value = '';
+        cssCodeArea.value = '';
+        javascriptCodeArea.value = '';
+        titleInput.value = '';
+        update();
+        lastDraftPayload = null;
+        await clearDraft();
+    });
+}
+
+[htmlCodeArea, cssCodeArea, javascriptCodeArea, titleInput].forEach((el) => {
+    if (!el) {
+        return;
+    }
+    el.addEventListener('input', () => {
+        scheduleDraftSave();
+    });
+});
 
 // Upload code to Dweb
 async function uploadFile(file) {
@@ -171,15 +320,40 @@ function addURL(url) {
     const copyContainer = document.createElement('span');
     const copyIcon = '⊕';
     copyContainer.innerHTML = copyIcon;
-    copyContainer.onclick = function() {
-        navigator.clipboard.writeText(url).then(() => {
+    copyContainer.onclick = async function() {
+        let success = false;
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(url);
+                success = true;
+            } else {
+                throw new Error('Clipboard API unavailable');
+            }
+        } catch (err) {
+            console.warn('Clipboard API failed, attempting fallback...', err);
+            const textArea = document.createElement("textarea");
+            textArea.value = url;
+            textArea.style.position = "fixed";
+            textArea.style.left = "-9999px";
+            document.body.appendChild(textArea);
+            textArea.select();
+            try {
+                success = document.execCommand('copy');
+            } catch (e) {
+                console.error('Fallback copy failed:', e);
+            }
+            document.body.removeChild(textArea);
+        }
+
+        if (success) {
             copyContainer.textContent = ' Copied!';
             setTimeout(() => {
                 copyContainer.innerHTML = copyIcon;
             }, 3000);
-        }).catch(err => {
-            console.error('[addURL] Error in copying text: ', err);
-        });
+        } else {
+            console.error('[addURL] Failed to copy URL to clipboard');
+            alert('Failed to copy URL to clipboard');
+        }
     };
 
     listItem.appendChild(link);
@@ -248,4 +422,5 @@ function parseAndDisplayData(data) {
     $('#cssCode').value = cssContent;
     $('#javascriptCode').value = jsContent;
     update(0);
+    scheduleDraftSave();
 }

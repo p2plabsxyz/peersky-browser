@@ -31,8 +31,8 @@ function makeHttps(query) {
   return `https://${query}`;
 }
 
-function makeSearch(query, engine = 'duckduckgo') {
-  const template = BUILTIN_SEARCH_ENGINES[engine] || BUILTIN_SEARCH_ENGINES.duckduckgo;
+function makeSearch(query, engine = 'duckduckgo_noai') {
+  const template = BUILTIN_SEARCH_ENGINES[engine] || BUILTIN_SEARCH_ENGINES.duckduckgo_noai;
   return template.replace("%s", encodeURIComponent(query));
 }
 
@@ -53,7 +53,7 @@ function buildSearchUrl(template, term) {
     url = new URL(template);
   } catch {
     // Fallback if invalid URL
-    return makeSearch(term, 'duckduckgo');
+    return makeSearch(term, 'duckduckgo_noai');
   }
 
   // (a) Fill first empty param, e.g. ?q=

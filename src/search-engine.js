@@ -1,4 +1,5 @@
 export const BUILTIN_SEARCH_ENGINES = {
+  duckduckgo_noai: "https://noai.duckduckgo.com/?ia=web&q=%s",
   duckduckgo: "https://duckduckgo.com/?q=%s",
   brave: "https://search.brave.com/search?q=%s",
   ecosia: "https://www.ecosia.org/search?q=%s",

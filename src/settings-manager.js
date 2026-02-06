@@ -457,7 +457,7 @@ class SettingsManager {
 
   validateSetting(key, value) {
     const validators = {
-      searchEngine: (v) => ['duckduckgo', 'brave', 'ecosia', 'kagi', 'startpage', "custom"].includes(v),
+      searchEngine: (v) => ['duckduckgo_noai', 'duckduckgo', 'brave', 'ecosia', 'kagi', 'startpage', "custom"].includes(v),
       customSearchTemplate: (v) => {
         if (typeof v !== "string" || v.length >= 2048) return false;
         try {
@@ -601,14 +601,15 @@ class SettingsManager {
 
   getSearchEngineName() {
     const engineNames = {
-      'duckduckgo': 'DuckDuckGo',
+      'duckduckgo_noai': 'DuckDuckGo (No AI)',
+      'duckduckgo': 'DuckDuckGo (AI)',
       'brave': 'Brave Search',
       'ecosia': 'Ecosia',
       'kagi': 'Kagi',
       'startpage': 'Startpage',
       'custom' : 'Custom'
     };
-    return engineNames[this.settings.searchEngine] || 'DuckDuckGo';
+    return engineNames[this.settings.searchEngine] || 'DuckDuckGo (No AI)';
   }
 
   // Get wallpaper path for current setting

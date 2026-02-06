@@ -26,7 +26,7 @@ P2P apps can use this bridge to generate text, code, or metadata, then publish t
 | Setting      | Purpose                                                                                       |
 |--------------|------------------------------------------------------------------------------------------------|
 | Base URL     | Endpoint for the LLM server. Defaults to `http://127.0.0.1:11434/` for Ollama.                |
-| API Key      | `ollama` for local installs, or your cloud token (e.g. OpenAI).                               |
+| API Key      | `ollama` for local installs, or your cloud token (e.g. OpenRouter).                           |
 | Model Name   | Model to expose (default `qwen2.5-coder:3b`). PeerSky will pull it if not present.            |
 | Logs button  | Opens real-time download and generation logs.                                                 |
 
@@ -42,9 +42,9 @@ Local models are the default in PeerSky, but some developers/users still need ac
 {
   "llm": {
     "enabled": true,
-    "baseURL": "https://api.openai.com/v1/",
-    "apiKey": "sk-...",
-    "model": "gpt-4o-mini"
+  "baseURL": "https://openrouter.ai/api/v1/",
+  "apiKey": "sk-or-...",
+  "model": "anthropic/claude-4.5-sonnet"
   }
 }
 ```
@@ -111,14 +111,14 @@ const tagline = await window.llm.complete('PeerSky is a browser that', {
 
 ## Security and trusted domains
 
-- `window.llm` is automatically exposed to PeerSky-native pages (`peersky://p2p/*`).
-- External origins must currently be on an allowlist (`localhost`, `agregore.mauve.moe`). This prevents arbitrary websites from silently running your local Ollama or burning cloud API credits.
+- `window.llm` is exposed to PeerSky-native pages (`peersky://*`) and P2P protocols (`hyper://`, `ipfs://`, `ipns://`).
+- External origins must be on an allowlist (`localhost`, `agregore.mauve.moe`). This prevents arbitrary websites from silently running your local Ollama or burning cloud API credits.
 
 ## File reference
 
 | File | Purpose |
 |------|---------|
-| [src/llm.js](../src/llm.js) | Electron main-process bridge to Ollama/OpenAI with dialogs & downloads |
+| [src/llm.js](../src/llm.js) | Electron main-process bridge to Ollama/OpenRouter with dialogs & downloads |
 | [src/pages/unified-preload.js](../src/pages/unified-preload.js) | Exposes `window.llm` to trusted pages via contextBridge |
 | [src/pages/settings.html](../src/pages/settings.html) | UI for LLM config |
 | [src/pages/static/js/settings.js](../src/pages/static/js/settings.js) | Renderer logic for saving LLM settings and tracking downloads |

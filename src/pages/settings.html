@@ -125,9 +125,10 @@
             <div class="setting-label">Default search engine</div>
             <div class="setting-control">
               <div class="custom-select" id="search-engine-select">
-                <div class="select-display" data-value="duckduckgo">DuckDuckGo</div>
+                <div class="select-display" data-value="duckduckgo_noai">DuckDuckGo (No AI)</div>
                 <div class="select-dropdown">
-                  <div class="select-option" data-value="duckduckgo">DuckDuckGo</div>
+                  <div class="select-option" data-value="duckduckgo_noai">DuckDuckGo (No AI)</div>
+                  <div class="select-option" data-value="duckduckgo">DuckDuckGo (AI)</div>
                   <div class="select-option" data-value="brave">Brave Search</div>
                   <div class="select-option" data-value="ecosia">Ecosia</div>
                   <div class="select-option" data-value="kagi">Kagi</div>
@@ -135,7 +136,7 @@
                   <div class="select-option" data-value="custom">Custom</div>
                 </div>
               </div>
-              <input type="hidden" id="search-engine" value="duckduckgo">
+              <input type="hidden" id="search-engine" value="duckduckgo_noai">
             </div>
           </div>
 
@@ -203,7 +204,7 @@
               <div class="setting-control">
                 <input type="text" id="ollama-url" class="setting-input" placeholder="http://127.0.0.1:11434/" value="http://127.0.0.1:11434/">
                 <div class="setting-hint">
-                  Ollama: <code>http://127.0.0.1:11434/</code> or OpenAI: <code>https://api.openai.com/v1/</code>
+                  Ollama: <code>http://127.0.0.1:11434/</code> or OpenRouter: <code>https://openrouter.ai/api/v1/</code>
                 </div>
               </div>
             </div>
@@ -212,11 +213,11 @@
               <div class="setting-label">API Key</div>
               <div class="setting-control">
                 <div class="api-key-input-group">
-                  <input type="text" id="api-key" class="setting-input" placeholder="ollama for local, or your OpenAI API key" value="ollama">
+                  <input type="text" id="api-key" class="setting-input" placeholder="ollama for local, or your OpenRouter API key" value="ollama">
                   <img id="toggle-api-key-visibility" src="peersky://static/assets/svg/eye.svg" class="api-key-toggle-icon" alt="Toggle visibility" title="Show/Hide API key">
                 </div>
                 <div class="setting-hint">
-                  Use <code>ollama</code> for local models or paste your OpenAI API key for cloud models
+                  Use <code>ollama</code> for local models or your OpenRouter API key for cloud models (e.g. <code>sk-or-...</code>)
                 </div>
               </div>
             </div>
@@ -224,9 +225,7 @@
             <div class="setting-row">
               <div class="setting-label">Model Name</div>
               <div class="setting-control">
-                <input type="text" id="ollama-model" class="setting-input" placeholder="e.g., qwen2.5-coder:3b, gpt-4o-mini" value="qwen2.5-coder:3b">
-                <div class="setting-hint">
-                </div>
+                <input type="text" id="ollama-model" class="setting-input" placeholder="e.g. qwen2.5-coder:3b or anthropic/claude-4.5-sonnet" value="qwen2.5-coder:3b">
               </div>
             </div>
           </section>

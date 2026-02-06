@@ -270,31 +270,31 @@ export function attachContextMenus(browserWindow, windowManager) {
             label: "Open Link in New Tab",
             click: () => {
               // First, attempt to add the URL as a new tab in the current window
-              const escapedUrl = params.linkURL.replace(/'/g, "\\'");
               
               browserWindow.webContents
                 .executeJavaScript(`
-                  const tabBar = document.querySelector('#tabbar');
-                  if (tabBar && typeof tabBar.addTab === 'function') {
-                    tabBar.addTab('${escapedUrl}');
-                    // Indicate success so main process knows no fallback is required
-                    true;
-                  } else {
-                    // Tab bar not available – signal fallback
-                    false;
-                  }
+                  (function() {
+                    const tabBar = document.querySelector('tab-bar');
+                    const url = ${JSON.stringify(params.linkURL)};
+                    if (tabBar && typeof tabBar.addTab === 'function') {
+                      tabBar.addTab(url);
+                      return true;
+                    }
+                    const oldTabBar = document.querySelector('#tabbar');
+                    if (oldTabBar && typeof oldTabBar.addTab === 'function') {
+                      oldTabBar.addTab(url);
+                      return true;
+                    }
+                    return false;
+                  })()
                 `)
                 .then((added) => {
-                  if (!added && windowManagerInstance) {
-                    // Fallback: open in new window if tab creation failed
-                    windowManagerInstance.open({ url: params.linkURL });
+                  if (!added) {
+                    console.warn('Failed to find tab bar for new tab');
                   }
                 })
                 .catch((err) => {
                   console.error('Failed to add tab from context menu:', err);
-                  if (windowManagerInstance) {
-                    windowManagerInstance.open({ url: params.linkURL });
-                  }
                 });
             },
           })
@@ -406,11 +406,19 @@ export function attachContextMenus(browserWindow, windowManager) {
             const escapedUrlNo = (url || '').replace(/'/g, "\\'");
             browserWindow.webContents
               .executeJavaScript(`
-                const tabBar = document.querySelector('#tabbar');
-                if (tabBar && typeof tabBar.addTab === 'function') {
-                  tabBar.addTab('${escapedUrlNo}');
-                  true;
-                } else { false; }
+                (function() {
+                  const tabBar = document.querySelector('tab-bar');
+                  if (tabBar && typeof tabBar.addTab === 'function') {
+                    tabBar.addTab('${escapedUrlNo}');
+                    return true;
+                  }
+                  const oldTabBar = document.querySelector('#tabbar');
+                  if (oldTabBar && typeof oldTabBar.addTab === 'function') {
+                    oldTabBar.addTab('${escapedUrlNo}');
+                    return true;
+                  }
+                  return false;
+                })()
               `)
               .then((added) => {
                 if (!added && windowManagerInstance) {
@@ -431,11 +439,19 @@ export function attachContextMenus(browserWindow, windowManager) {
             const escapedUrl = (url || '').replace(/'/g, "\\'");
             browserWindow.webContents
               .executeJavaScript(`
-                const tabBar = document.querySelector('#tabbar');
-                if (tabBar && typeof tabBar.addTab === 'function') {
-                  tabBar.addTab('${escapedUrl}');
-                  true;
-                } else { false; }
+                (function() {
+                  const tabBar = document.querySelector('tab-bar');
+                  if (tabBar && typeof tabBar.addTab === 'function') {
+                    tabBar.addTab('${escapedUrl}');
+                    return true;
+                  }
+                  const oldTabBar = document.querySelector('#tabbar');
+                  if (oldTabBar && typeof oldTabBar.addTab === 'function') {
+                    oldTabBar.addTab('${escapedUrl}');
+                    return true;
+                  }
+                  return false;
+                })()
               `)
               .then((added) => {
                 if (!added && windowManagerInstance) {
