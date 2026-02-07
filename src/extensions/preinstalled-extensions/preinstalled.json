@@ -1,0 +1,34 @@
+{
+  "extensions": [
+    {
+      "id": "gbefmodhlophhakmoecijeppjblibmie",
+      "name": "Linguist - web page translator",
+      "url": "https://chromewebstore.google.com/detail/linguist-web-page-transla/gbefmodhlophhakmoecijeppjblibmie",
+      "archive": "linguist-web-page-transla.zip"
+    },
+    {
+      "id": "mlomiejdfkolichcflejclcbmpeaniij",
+      "name": "Ghostery - Tracker Ad Block",
+      "url": "https://chromewebstore.google.com/detail/ghostery-tracker-ad-block/mlomiejdfkolichcflejclcbmpeaniij",
+      "archive": "ghostery-tracker-ad-block.zip"
+    },
+    {
+      "id": "fpeoodllldobpkbkabpblcfaogecpndd",
+      "name": "Webrecorder ArchiveWeb.page",
+      "url": "https://chromewebstore.google.com/detail/webrecorder-archivewebpag/fpeoodllldobpkbkabpblcfaogecpndd",
+      "archive": "webrecorder-archivewebpag.zip"
+    },
+    {
+      "id": "mdjildafknihdffpkfmmpnpoiajfjnjd",
+      "name": "Consent AutoDeny",
+      "url": "https://chromewebstore.google.com/detail/consent-o-matic/mdjildafknihdffpkfmmpnpoiajfjnjd",
+      "archive": "consent-o-matic.zip"
+    },
+    {
+      "name": "PeerSky History",
+      "version": "1.1.0",
+      "url": "https://github.com/p2plabsxyz/extension-peersky-history/releases/download/v{version}/peersky-history-v{version}.zip",
+      "archive": "peersky-history-v1.1.0.zip"
+    }
+  ]
+}

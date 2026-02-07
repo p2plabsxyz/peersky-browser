@@ -6,6 +6,7 @@ import { app, ipcMain, BrowserWindow, session, safeStorage } from 'electron';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
+import { getBrowserSession } from './session.js';
 
 const SETTINGS_FILE = path.join(app.getPath("userData"), "settings.json");
 const DEBUG_LOG = path.join(os.homedir(), '.peersky', 'debug.log');
@@ -26,6 +27,8 @@ const DEFAULT_SETTINGS = {
   keepTabsExpanded: false,
   wallpaper: 'redwoods',
   wallpaperCustomPath: null,
+  extensionP2PEnabled: false,
+  extensionAutoUpdate: true,
   llm: {
     enabled: false,
     baseURL: 'http://127.0.0.1:11434/',

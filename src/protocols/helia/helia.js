@@ -23,7 +23,7 @@ import { ipnsValidator } from "ipns/validator";
 import { ipnsSelector } from "ipns/selector";
 import { userAgent } from "libp2p/user-agent";
 import { ipfsOptions, getLibp2pPrivateKey } from "../config.js";
-import pkg from '../../../package.json' assert { type: 'json' };
+import pkg from '../../../package.json' with { type: 'json' };
 const { version } = pkg;
 
 // https://github.com/ipfs/helia/blob/main/packages/helia/src/utils/bootstrappers.ts

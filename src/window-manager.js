@@ -5,6 +5,8 @@ import ScopedFS from 'scoped-fs';
 import { fileURLToPath } from "url";
 import { attachContextMenus } from "./context-menu.js";
 import { randomUUID } from "crypto";
+import { getPartition } from "./session.js";
+import extensionManager from "./extensions/index.js";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
@@ -16,7 +18,7 @@ const DEFAULT_SAVE_INTERVAL = 30 * 1000;
 const cssPath = path.join(__dirname, "pages", "theme");
 const cssFS = new ScopedFS(cssPath);
 
-ipcMain.handle("peersky-read-css", async (event, name) => {
+ipcMain.handle("peersky-read-css", async (_event, name) => {
   try {
     const safeName = path.basename(name).replace(/\.css$/, '') + '.css';
     const data = await new Promise((resolve, reject) => {
@@ -134,11 +136,42 @@ class WindowManager {
       this.addBookmark({ url, title, favicon });
     });
 
+    ipcMain.on('get-tab-navigation', (event, webContentsId) => {
+      try {
+        const wc = webContents.fromId(webContentsId);
+        if (!wc || wc.isDestroyed() || !wc.navigationHistory) {
+          event.returnValue = null;
+          return;
+        }
+        const history = wc.navigationHistory;
+        const entries = history.getAllEntries() || [];
+        const activeIndex = history.getActiveIndex();
+        event.returnValue = { entries, activeIndex };
+      } catch (err) {
+        console.warn('get-tab-navigation failed:', err);
+        event.returnValue = null;
+      }
+    });
+
+    ipcMain.handle('restore-navigation-history', async (event, { webContentsId, entries, activeIndex }) => {
+      try {
+        const wc = webContents.fromId(webContentsId);
+        if (!wc || wc.isDestroyed() || !wc.navigationHistory) return;
+        await wc.navigationHistory.restore({
+          entries,
+          index: activeIndex
+        });
+      } catch (err) {
+        console.warn('restore-navigation-history failed:', err);
+      }
+    });
+
+
     ipcMain.handle("get-bookmarks", () => {
       return this.loadBookmarks();
     });
 
-    ipcMain.handle("delete-bookmark", (event, { url }) => {
+    ipcMain.handle("delete-bookmark", (_event, { url }) => {
       return this.deleteBookmark(url);
     });
 
@@ -146,11 +179,11 @@ class WindowManager {
       return this.getTabs();
     });
 
-    ipcMain.handle("close-tab", (event, id) => {
+    ipcMain.handle("close-tab", (_event, id) => {
       this.sendToMainWindow('close-tab', id);
     });
 
-    ipcMain.handle("activate-tab", async (event, id) => {
+    ipcMain.handle("activate-tab", async (_event, id) => {
       console.log('Activating tab:', id);
 
       // Find which window contains this tab
@@ -204,8 +237,8 @@ class WindowManager {
         return { success: false, message: 'Tab not found, sent to main window' };
       }
     });
-
-    ipcMain.handle("group-action", (event, data) => {
+    
+    ipcMain.handle("group-action", (_event, data) => {
       const { action, groupId } = data;
 
       // For "add-tab" action, send to specific window
@@ -855,6 +888,7 @@ class PeerskyWindow {
       vibrancy: 'dark',
       backgroundMaterial: 'mica',
       webPreferences: {
+        partition: getPartition(),
         nodeIntegration: true,
         contextIsolation: false,
         nativeWindowOpen: true,
@@ -891,11 +925,34 @@ class PeerskyWindow {
     // Attach context menus
     attachContextMenus(this.window, windowManager);
 
+    // Register window with extension system for browser actions
+    try {
+      extensionManager.addWindow(this.window, this.window.webContents);
+    } catch (error) {
+      console.warn('Failed to register window with extension system:', error);
+    }
+
+    // Register webviews with the extension system as soon as they attach
+    // This ensures extensions (especially MV3) can target tabs at document_start
+    try {
+      this.window.webContents.on("did-attach-webview", (_event, webviewWebContents) => {
+        try {
+          if (webviewWebContents && !webviewWebContents.isDestroyed()) {
+            extensionManager.addWindow(this.window, webviewWebContents);
+          }
+        } catch (e) {
+          console.warn("Failed to register attached webview with extension system:", e);
+        }
+      });
+    } catch (e) {
+      console.warn("Unable to observe did-attach-webview for extension registration:", e);
+    }
+
     // Reference to windowManager for saving state
     this.windowManager = windowManager;
 
     // Define the listener function
-    this.navigateListener = (event, url) => {
+    this.navigateListener = (_event, url) => {
       this.currentURL = url;
       console.log(`Navigation detected in window ${this.id}: ${url}`);
       windowManager.saveOpened();
@@ -964,6 +1021,18 @@ class PeerskyWindow {
     });
 
     this.window.on("closed", () => {
+      // Unregister window from extension system
+      try {
+        // Store webContents reference before window is fully destroyed
+        const webContents = this.window?.webContents;
+        if (webContents && !webContents.isDestroyed()) {
+          extensionManager.removeWindow(webContents);
+        }
+      } catch (error) {
+        // Silently ignore errors during shutdown - the extension system is likely shutting down too
+        console.debug('Extension system cleanup during shutdown:', error.message);
+      }
+
       ipcMain.removeListener(
         `webview-did-navigate-${this.id}`,
         this.navigateListener
@@ -1032,6 +1101,7 @@ export function createIsolatedWindow(options = {}) {
     vibrancy: 'dark',
     backgroundMaterial: 'mica',
     webPreferences: {
+      partition: getPartition(),
       nodeIntegration: true,
       contextIsolation: false,
       nativeWindowOpen: true,
