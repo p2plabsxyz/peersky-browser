@@ -399,6 +399,8 @@ export function attachContextMenus(browserWindow, windowManager) {
         const featuresLower = String(features || '').toLowerCase();
         const hasNoOpener = /(?:^|,)(noopener|noreferrer)(?:=1)?(?:,|$)/.test(featuresLower);
         const wantsBackground = disposition === 'background-tab' || /(?:^|,)background(?:=1)?(?:,|$)/.test(featuresLower);
+        const hasPopupFeatures = /(?:^|,|\s)(width|height|left|top)=/i.test(featuresLower);
+        const isAboutBlank = url === 'about:blank';
 
         // If explicitly no opener requested, prefer tab UX instead of popup
         if (hasNoOpener) {
@@ -471,6 +473,39 @@ export function attachContextMenus(browserWindow, windowManager) {
         // Enforce modest rate limits per webview to discourage abuse
         if (!withinPopupLimits(webviewWebContents.id)) {
           console.warn('Popup blocked: rate limit exceeded for webview', webviewWebContents.id);
+          return { action: 'deny' };
+        }
+
+        if (!hasPopupFeatures && !isAboutBlank && disposition !== 'new-window') {
+          try {
+            const escapedUrl = (url || '').replace(/'/g, "\\'");
+            browserWindow.webContents
+              .executeJavaScript(`
+                (function() {
+                  const tabBar = document.querySelector('tab-bar');
+                  if (tabBar && typeof tabBar.addTab === 'function') {
+                    tabBar.addTab('${escapedUrl}');
+                    return true;
+                  }
+                  const oldTabBar = document.querySelector('#tabbar');
+                  if (oldTabBar && typeof oldTabBar.addTab === 'function') {
+                    oldTabBar.addTab('${escapedUrl}');
+                    return true;
+                  }
+                  return false;
+                })()
+              `)
+              .then((added) => {
+                if (!added && windowManagerInstance) {
+                  windowManagerInstance.open({ url });
+                }
+              })
+              .catch(() => {
+                if (windowManagerInstance) windowManagerInstance.open({ url });
+              });
+          } catch (_) {
+            if (windowManagerInstance) windowManagerInstance.open({ url });
+          }
           return { action: 'deny' };
         }
 
