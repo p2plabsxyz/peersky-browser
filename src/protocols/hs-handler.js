@@ -188,6 +188,13 @@ function handleDocRequest(req, res, session) {
       height: 100vh; 
       box-sizing: border-box; 
     }
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(128,128,128,0.4) transparent;
+    }
+    *::-webkit-scrollbar { width: 6px; }
+    *::-webkit-scrollbar-track { background: transparent; }
+    *::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.4); border-radius: 3px; }
     #editor { 
       width: 100%; 
       height: calc(100vh - 80px); 
