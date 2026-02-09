@@ -15,6 +15,7 @@ export const setupPage = $("#setup-page");
 export const editorPage = $("#editor-page");
 export const roomStatus = $("#room-status");
 export const roomKeyLabel = $("#room-key");
+export const copyRoomKey = $("#copy-room-key");
 export const peersCount = $("#peers-count");
 export const localUrlLabel = $("#local-url");
 export const exportMenu = $("#export-menu");

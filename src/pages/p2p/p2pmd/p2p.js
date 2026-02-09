@@ -11,6 +11,7 @@ import {
   editorPage,
   roomStatus,
   roomKeyLabel,
+  copyRoomKey,
   peersCount,
   localUrlLabel,
   exportMenu,
@@ -1523,6 +1524,30 @@ joinForm.addEventListener("submit", (event) => {
   joinRoom(key, storedState);
 });
 disconnectButton.addEventListener("click", disconnectRoom);
+
+if (copyRoomKey) {
+  copyRoomKey.style.cursor = "pointer";
+  copyRoomKey.addEventListener("click", async () => {
+    const key = roomKeyLabel.textContent;
+    if (!key) return;
+    try {
+      await navigator.clipboard.writeText(key);
+      copyRoomKey.textContent = "Copied!";
+      setTimeout(() => { copyRoomKey.textContent = "⊕"; }, 1000);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = key;
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      copyRoomKey.textContent = "Copied!";
+      setTimeout(() => { copyRoomKey.textContent = "⊕"; }, 1000);
+    }
+  });
+}
 
 markdownInput.addEventListener("input", () => {
   scheduleRender();
