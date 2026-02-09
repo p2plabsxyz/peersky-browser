@@ -13,6 +13,10 @@ const MARKDOWN_IT_PATH = path.join(app.getAppPath(), "src", "pages", "p2p", "p2p
 let markdownItScript = "";
 try { markdownItScript = fs.readFileSync(MARKDOWN_IT_PATH, "utf-8"); } catch {}
 
+const FAVICON_PATH = path.join(app.getAppPath(), "src", "pages", "static", "assets", "favicon.ico");
+let faviconBuffer = null;
+try { faviconBuffer = fs.readFileSync(FAVICON_PATH); } catch {}
+
 const PORTS_FILE = path.join(app.getPath("userData"), "peersky-ports.json");
 const SETTINGS_FILE = path.join(app.getPath("userData"), "settings.json");
 
@@ -160,6 +164,21 @@ function handleDocRequest(req, res, session) {
     return;
   }
 
+  if (url.pathname === "/favicon.ico" && req.method === "GET") {
+    if (faviconBuffer) {
+      res.writeHead(200, {
+        "Content-Type": "image/x-icon",
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "public, max-age=86400"
+      });
+      res.end(faviconBuffer);
+    } else {
+      res.writeHead(404);
+      res.end();
+    }
+    return;
+  }
+
   if ((url.pathname === "/" || url.pathname === "/index.html") && req.method === "GET") {
     res.writeHead(200, {
       "Content-Type": "text/html",
@@ -171,6 +190,7 @@ function handleDocRequest(req, res, session) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
   <title>p2pmd</title>
   <style>
     @import url("browser://theme/index.css");
