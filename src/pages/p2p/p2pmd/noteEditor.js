@@ -3,10 +3,9 @@ import { markdownInput, markdownPreview, loadingSpinner, backdrop } from "./comm
 let md = null;
 let renderTimer = null;
 
-export async function initMarkdown() {
+export function initMarkdown() {
   try {
-    const module = await import("https://cdn.jsdelivr.net/npm/markdown-it@14.1.0/+esm");
-    md = module.default({
+    md = window.markdownit({
       html: false,
       linkify: true,
       breaks: true

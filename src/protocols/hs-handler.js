@@ -9,6 +9,10 @@ const roomSessions = new Map();
 const roomPorts = new Map();
 let peerSequence = 0;
 
+const MARKDOWN_IT_PATH = path.join(app.getAppPath(), "src", "pages", "p2p", "p2pmd", "lib", "markdown-it.min.js");
+let markdownItScript = "";
+try { markdownItScript = fs.readFileSync(MARKDOWN_IT_PATH, "utf-8"); } catch {}
+
 const PORTS_FILE = path.join(app.getPath("userData"), "peersky-ports.json");
 const SETTINGS_FILE = path.join(app.getPath("userData"), "settings.json");
 
@@ -146,6 +150,16 @@ function handleDocRequest(req, res, session) {
     return;
   }
 
+  if (url.pathname === "/lib/markdown-it.min.js" && req.method === "GET") {
+    res.writeHead(200, {
+      "Content-Type": "application/javascript",
+      "Access-Control-Allow-Origin": "*",
+      "Cache-Control": "public, max-age=86400"
+    });
+    res.end(markdownItScript);
+    return;
+  }
+
   if ((url.pathname === "/" || url.pathname === "/index.html") && req.method === "GET") {
     res.writeHead(200, {
       "Content-Type": "text/html",
@@ -236,6 +250,7 @@ function handleDocRequest(req, res, session) {
   <div id="controls">
     <button id="toggle-preview">👁️</button>
   </div>
+  <script src="/lib/markdown-it.min.js"></script>
   <script type="module">
     const editor = document.getElementById('editor');
     const preview = document.getElementById('preview');
@@ -245,10 +260,9 @@ function handleDocRequest(req, res, session) {
     let lastContent = '';
     let isPreviewMode = false;
 
-    async function loadMarkdownIt() {
+    function loadMarkdownIt() {
       try {
-        const module = await import('https://cdn.jsdelivr.net/npm/markdown-it@14.1.0/+esm');
-        renderer = module.default({ html: false, linkify: true, breaks: true });
+        renderer = window.markdownit({ html: false, linkify: true, breaks: true });
       } catch {
         renderer = null;
       }
