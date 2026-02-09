@@ -46,7 +46,9 @@ const ROOM_CONTENT_PREFIX = "p2pmd-room-content-";
 const LAST_ROOM_KEY = "p2pmd-last-room";
 const LAST_ROOM_STATE = "p2pmd-last-room-state";
 const DRAFT_DRIVE_NAME = "p2pmd-drafts";
-const saveDelay = 400;
+const saveDelay = 2000;
+let hyperSaveInFlight = false;
+let draftSaveInFlight = false;
 
 const publishCSS = `
   :root {
@@ -211,16 +213,20 @@ async function writeDraft(payload, roomKey) {
 
 async function saveDraft({ force = false } = {}) {
   if (!currentRoomKey) return;
+  if (draftSaveInFlight && !force) return;
   try {
     const payload = buildDraftPayload(markdownInput.value || "");
     const serialized = JSON.stringify(payload);
     if (!force && serialized === lastDraftPayload) {
       return;
     }
+    draftSaveInFlight = true;
     lastDraftPayload = serialized;
     await writeDraft(payload, currentRoomKey);
   } catch (error) {
     console.error("[saveDraft] Error saving draft:", error);
+  } finally {
+    draftSaveInFlight = false;
   }
 }
 
@@ -569,11 +575,13 @@ async function loadRoomFromHyperdrive(roomKey) {
 }
 
 async function saveRoomToHyperdrive(roomKey, content) {
+  if (hyperSaveInFlight) return;
   try {
     const url = await getRoomStorageUrl(roomKey);
     if (!url) return;
     const payload = typeof content === "string" ? content : "";
     if (payload === lastSavedContent) return;
+    hyperSaveInFlight = true;
     const file = new File([payload], "document.md", { type: "text/markdown" });
     const response = await fetchWithTimeout(
       url,
@@ -582,12 +590,14 @@ async function saveRoomToHyperdrive(roomKey, content) {
         body: file,
         headers: { "Content-Type": file.type || "text/markdown" }
       },
-      2000
+      5000
     );
     if (response.ok) {
       lastSavedContent = payload;
     }
-  } catch {}
+  } catch {} finally {
+    hyperSaveInFlight = false;
+  }
 }
 
 export function scheduleDraftSave() {
@@ -1241,11 +1251,11 @@ async function uploadFile(file) {
   }
 
   try {
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       method: "PUT",
       body: file,
       headers: { "Content-Type": file.type || "text/html" }
-    });
+    }, 15000);
 
     console.log(`[uploadFile] Response status: ${response.status}, ok: ${response.ok}`);
     if (!response.ok) {
