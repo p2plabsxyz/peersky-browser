@@ -9,7 +9,7 @@ P2P Markdown is a real-time, peer-to-peer collaborative markdown editor built in
 - Drag-and-drop image upload to IPFS (auto-compressed, inserted as markdown)
 - Draft storage using local Hyperdrive
 - Content generation via local LLMs
-- Export to HTML or PDF
+- Export to HTML or PDF (check [export examples](./examples))
 - SSE keepalive + auto-reconnect for mobile/idle clients
 
 ## How it works (high level)
