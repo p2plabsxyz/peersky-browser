@@ -103,9 +103,10 @@ async function resetP2PData({ resetIdentities = false } = {}) {
   const ipfsDir  = path.join(USER_DATA, 'ipfs');
   const hyperDir = path.join(USER_DATA, 'hyper');
   const ensCache = path.join(USER_DATA, 'ensCache.json');
+  const portsFile = path.join(USER_DATA, 'peersky-ports.json');
 
-  // ENS cache can always be removed
   await fs.rm(ensCache, { recursive: true, force: true }).catch(() => {});
+  await fs.rm(portsFile, { recursive: true, force: true }).catch(() => {});
 
   if (resetIdentities) {
     // full wipe

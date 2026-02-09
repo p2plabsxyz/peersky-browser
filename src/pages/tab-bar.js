@@ -2222,6 +2222,9 @@ restoreTabs(persistedData) {
     if (url.startsWith('hyper://')) {
       return 'hyper';
     }
+    if (url.startsWith('hs://')) {
+      return 'hs';
+    }
     if (url.startsWith('web3://')) {
       return 'web3';
     }
@@ -2239,7 +2242,7 @@ restoreTabs(persistedData) {
     let indicator = tabElement.querySelector('.p2p-indicator');
     const protocol = this._getProtocol(tab.url);
 
-    if (['ipfs', 'hyper', 'web3'].includes(protocol)) {
+    if (['ipfs', 'hyper', 'web3', 'hs'].includes(protocol)) {
       if (!indicator) {
         indicator = document.createElement('img');
         indicator.className = 'p2p-indicator';
@@ -2265,6 +2268,9 @@ restoreTabs(persistedData) {
         case 'ipfs':
           // Cyan filter
           filterColor = 'brightness(0) saturate(100%) invert(70%) sepia(98%) saturate(1780%) hue-rotate(154deg) brightness(101%) contrast(101%)';
+          break;
+        case 'hs':
+          filterColor = 'brightness(0) saturate(100%) invert(81%) sepia(36%) saturate(1211%) hue-rotate(266deg) brightness(95%) contrast(98%)';
           break;
         case 'ipns':
           // Gray filter

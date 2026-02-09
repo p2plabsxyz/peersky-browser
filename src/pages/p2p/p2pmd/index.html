@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/png" href="peersky://static/assets/favicon.ico" />
+    <title>P2P Markdown</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main>
+      <div id="backdrop"></div>
+      <div id="loadingSpinner">
+        <div class="emoji-loader">↻</div>
+      </div>
+
+      <section id="setup-page" class="page">
+        <div id="room-panel">
+          <div id="setup">
+            <button id="create-room" type="button">Create Room</button>
+            <div class="connection-options"> 
+              <label class="option">
+                <input id="privateMode" type="checkbox" />
+                <span>Private</span>
+              </label>
+              <label class="option">
+                <input id="udpMode" type="checkbox" />
+                <span>UDP</span>
+              </label>
+              <input id="localHost" type="text" placeholder="Local host (127.0.0.1)" />
+              <input id="localPort" type="number" placeholder="Local port (8989)" />
+            </div>
+
+            <div class="divider">- or -</div>
+            <form id="join-form">
+              <input
+                id="join-room-key"
+                type="text"
+                placeholder="Enter hs:// key"
+                required
+              />
+              <button id="join-room" type="submit">Join Room</button>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <section id="editor-page" class="page hidden">
+        <section id="room-panel">
+          <div id="room-status" class="hidden">
+            <div>Room: <span id="room-key"></span></div>
+            <div>Peers: <span id="peers-count">0</span></div>
+            <div>Local URL: <a id="local-url" target="_blank" rel="noopener noreferrer"></a></div>
+            <details id="export-menu">
+              <summary>Export</summary>
+              <div class="export-actions">
+                <button id="exportHtmlButton" type="button">Export as HTML</button>
+                <button id="exportPdfButton" type="button">Export to PDF</button>
+              </div>
+            </details>
+            <button id="disconnect-room">Disconnect</button>
+          </div>
+        </section>
+
+        <section id="editor-panel">
+          <textarea
+            id="markdownInput"
+            spellcheck="false"
+            placeholder="Write Markdown here"
+          ></textarea>
+          <div id="markdownPreview"></div>
+        </section>
+
+        <section id="dweb-bottom">
+          <section id="dweb-container">
+            <div class="publish-controls">
+              <label for="protocolSelect">
+                <select id="protocolSelect">
+                  <option value="hyper" selected>hyper://</option>
+                  <option value="ipfs">ipfs://</option>
+                </select>
+              </label>
+              <input id="titleInput" type="text" placeholder="Document title" class="hidden" />
+              <button id="publishButton">Publish</button>
+              <button id="clearDraftButton">Clear</button>
+            </div>
+            <div id="ai-toggle-container">
+              <button id="toggleAiButton">🤖 Create with AI</button>
+            </div>
+            <div id="fetchContainer">
+              <input id="fetchCidInput" type="text" placeholder="Enter hyper:// or ipfs:// URL" />
+              <button id="fetchButton">Fetch</button>
+            </div>
+          </section>
+
+          <ul id="publishList"></ul>
+
+          <section id="ai-container" class="hidden">
+            <textarea id="aiPromptBox" rows="3">
+Write a playful README for a moonlight café that serves stardust lattes, with a menu list and a quirky FAQ.</textarea
+            >
+            <div id="ai-buttons">
+              <button id="generateButton">✨ Generate</button>
+              <button id="showAiLog">📋 Open Logs</button>
+            </div>
+          </section>
+        </section>
+
+        <dialog id="aiLogDialog">
+          <dl id="aiLogs"></dl>
+          <button id="closeAiLog">Close</button>
+        </dialog>
+      </section>
+    </main>
+
+    <script type="module" src="./common.js"></script>
+    <script type="module" src="./noteEditor.js"></script>
+    <script type="module" src="./p2p.js"></script>
+    <script type="module" src="./ai-generator.js"></script>
+  </body>
+</html>

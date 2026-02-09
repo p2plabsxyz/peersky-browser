@@ -1,0 +1,40 @@
+export function $(query) {
+  return document.querySelector(query);
+}
+
+export const markdownInput = $("#markdownInput");
+export const markdownPreview = $("#markdownPreview");
+export const createRoomButton = $("#create-room");
+export const joinForm = $("#join-form");
+export const joinRoomKey = $("#join-room-key");
+export const privateMode = $("#privateMode");
+export const udpMode = $("#udpMode");
+export const localHostInput = $("#localHost");
+export const localPortInput = $("#localPort");
+export const setupPage = $("#setup-page");
+export const editorPage = $("#editor-page");
+export const roomStatus = $("#room-status");
+export const roomKeyLabel = $("#room-key");
+export const peersCount = $("#peers-count");
+export const localUrlLabel = $("#local-url");
+export const exportMenu = $("#export-menu");
+export const exportHtmlButton = $("#exportHtmlButton");
+export const exportPdfButton = $("#exportPdfButton");
+export const disconnectButton = $("#disconnect-room");
+export const protocolSelect = $("#protocolSelect");
+export const titleInput = $("#titleInput");
+export const publishButton = $("#publishButton");
+export const clearDraftButton = $("#clearDraftButton");
+export const publishList = $("#publishList");
+export const fetchCidInput = $("#fetchCidInput");
+export const fetchButton = $("#fetchButton");
+export const loadingSpinner = $("#loadingSpinner");
+export const backdrop = $("#backdrop");
+export const toggleAiButton = $("#toggleAiButton");
+export const aiContainer = $("#ai-container");
+export const aiPromptBox = $("#aiPromptBox");
+export const generateButton = $("#generateButton");
+export const showAiLog = $("#showAiLog");
+export const aiLogDialog = $("#aiLogDialog");
+export const aiLogs = $("#aiLogs");
+export const closeAiLog = $("#closeAiLog");
