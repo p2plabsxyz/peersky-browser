@@ -1,7 +1,7 @@
 # P2P Markdown
 
 <div align="center">
-    <img src="/demo.png" width="639" alt="Three synced devices (laptop, external monitor, and iPhone) running the PeerSky p2pmd editor showing shared markdown text ‘Hello from phone/Desktop/Laptop!’ and a dog photo inserted via IPFS.">
+    <img src="./demo.png" width="639" alt="Three synced devices (laptop, external monitor, and iPhone) running the PeerSky p2pmd editor showing shared markdown text ‘Hello from phone/Desktop/Laptop!’ and a dog photo inserted via IPFS.">
 </div>
 
 P2P Markdown is a real-time, peer-to-peer collaborative markdown editor built into [PeerSky Browser](https://github.com/p2plabsxyz/peersky-browser). It connects peers directly using [Holesail](https://holesail.io/) keys, syncs edits live, and lets you publish or export your content without relying on centralized servers.
