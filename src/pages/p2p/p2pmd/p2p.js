@@ -1530,6 +1530,104 @@ markdownInput.addEventListener("input", () => {
   scheduleDraftSave();
 });
 
+markdownInput.addEventListener("dragover", (e) => {
+  const hasFiles = e.dataTransfer?.types?.includes("Files");
+  if (!hasFiles) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = "copy";
+});
+
+function compressImage(file) {
+  const SKIP_TYPES = ["image/gif", "image/svg+xml"];
+  if (SKIP_TYPES.includes(file.type)) return Promise.resolve(file);
+  return new Promise((resolve) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const MAX_W = 1920;
+      let { width, height } = img;
+      if (width <= MAX_W && file.size < 500 * 1024) {
+        resolve(file);
+        return;
+      }
+      if (width > MAX_W) {
+        height = Math.round(height * (MAX_W / width));
+        width = MAX_W;
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+      const outType = file.type === "image/png" ? "image/webp" : (file.type || "image/jpeg");
+      canvas.toBlob(
+        (blob) => {
+          if (blob && blob.size < file.size) {
+            const ext = outType === "image/webp" ? ".webp" : (file.name.match(/\.[^.]+$/)?.[0] || ".jpg");
+            const newName = file.name.replace(/\.[^.]+$/, ext);
+            resolve(new File([blob], newName, { type: outType }));
+          } else {
+            resolve(file);
+          }
+        },
+        outType,
+        0.8
+      );
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(file);
+    };
+    img.src = objectUrl;
+  });
+}
+
+markdownInput.addEventListener("drop", async (e) => {
+  const files = e.dataTransfer?.files;
+  if (!files || files.length === 0) return;
+  const imageFiles = Array.from(files).filter((f) => f.type.startsWith("image/"));
+  if (imageFiles.length === 0) return;
+  e.preventDefault();
+
+  for (const file of imageFiles) {
+    const uid = `uploading-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const placeholder = `![Uploading ${file.name}...](${uid})`;
+    const cursorPos = markdownInput.selectionStart;
+    const before = markdownInput.value.substring(0, cursorPos);
+    const after = markdownInput.value.substring(markdownInput.selectionEnd);
+    markdownInput.value = before + placeholder + after;
+    markdownInput.selectionStart = markdownInput.selectionEnd = cursorPos + placeholder.length;
+    renderPreview();
+
+    try {
+      const compressed = await compressImage(file);
+      const formData = new FormData();
+      formData.append("file", compressed, compressed.name);
+      const response = await fetch("ipfs://bafyaabakaieac/", {
+        method: "PUT",
+        body: formData,
+      });
+      if (!response.ok) throw new Error("IPFS upload failed");
+      const ipfsUrl = (response.headers.get("Location") || "").trim();
+      if (!ipfsUrl) throw new Error("No IPFS URL returned");
+      let gatewayUrl = ipfsUrl.replace(/^ipfs:\/\//, "https://dweb.link/ipfs/");
+      if (gatewayUrl.endsWith("/") || !gatewayUrl.match(/\/[^/]+\.[a-z0-9]+$/i)) {
+        if (!gatewayUrl.endsWith("/")) gatewayUrl += "/";
+        gatewayUrl += encodeURIComponent(compressed.name);
+      }
+      const altText = file.name.replace(/\.[^.]+$/, "");
+      markdownInput.value = markdownInput.value.replace(placeholder, `![${altText}](${gatewayUrl})`);
+    } catch (err) {
+      console.error("[p2pmd] Image upload failed:", err);
+      markdownInput.value = markdownInput.value.replace(placeholder, `![Upload failed: ${file.name}]()`);
+    }
+
+    renderPreview();
+    scheduleSend();
+    scheduleDraftSave();
+  }
+});
+
 if (titleInput) {
   titleInput.addEventListener("input", () => {
     scheduleDraftSave();

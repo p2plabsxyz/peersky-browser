@@ -6,14 +6,17 @@ P2P Markdown is a real-time, peer-to-peer collaborative markdown editor built in
 - Real-time P2P collaboration over Holesail (direct, encrypted connections)
 - Join or host rooms using `hs://` keys
 - Local publishing to `hyper://` or `ipfs://`
+- Drag-and-drop image upload to IPFS (auto-compressed, inserted as markdown)
 - Draft storage using local Hyperdrive
 - Content generation via local LLMs
 - Export to HTML or PDF
+- SSE keepalive + auto-reconnect for mobile/idle clients
 
 ## How it works (high level)
 - The editor hosts a local HTTP session for the document and syncs changes over SSE.
 - Holesail creates a direct peer connection using a shared key.
 - Publishing writes to Hyper/IPFS, making content shareable via P2P URLs.
+- Drag an image onto the editor to upload it to IPFS. Images are compressed (resized to max 1920px, re-encoded at 0.8 quality) before upload. GIFs are uploaded as-is to preserve animation. The resulting markdown link uses a `dweb.link` gateway URL.
 
 ## Build a similar P2P realtime app
 
