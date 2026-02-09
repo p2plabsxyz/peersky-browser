@@ -885,8 +885,9 @@ export async function createHandler(session) {
       const extractedPort = extractPort(hostValue);
       const portInput = normalizePort(body.port);
       const host = hostValue ? normalizeHost(hostValue) : null;
-      const port = portInput || extractedPort || null;
-      console.log("[p2pmd] join request", { key, secure, udp, host, port, bodyPort: body.port, portInput, extractedPort });
+      const keyPort = parsedKey?.port || null;
+      const port = keyPort || extractedPort || portInput || null;
+      console.log("[p2pmd] join request", { key, secure, udp, host, port, bodyPort: body.port, portInput, extractedPort, keyPort });
 
       // If this room already has a running holesail server, don't destroy it.
       // This happens when the page reloads after creating a room.
@@ -958,23 +959,27 @@ export async function createHandler(session) {
         sessionState = createSession(key);
         roomSessions.set(key, sessionState);
       }
+
+      // For a pure client join, do NOT start a local doc server. Just create a Holesail client
+      // and let it bind the local proxy port. If the user provided a port, honor it; otherwise
+      // allow Holesail to choose (which typically mirrors the server's port).
+      const requestedPort = port || savedEntry?.port || null;
       const finalHost = host || "127.0.0.1";
-      const { host: boundHost, port: boundPort } = await ensureDocServer(sessionState, finalHost, port, secure);
-      
-      // Pass 127.0.0.1 to holesail so it creates a local proxy on localhost
       const clientOptions = {
         client: true,
-        key
+        key,
+        host: finalHost,
+        log: 1
       };
       if (secure !== null) clientOptions.secure = secure;
       if (udp !== null) clientOptions.udp = udp;
-      clientOptions.host = "127.0.0.1";
-      clientOptions.port = boundPort;
-      clientOptions.log = 1;
+      if (requestedPort) clientOptions.port = requestedPort;
       console.log("[p2pmd] join creating client", { clientOptions });
       const holesailClient = new Holesail(clientOptions);
       sessionState.holesailClient = holesailClient;
       await holesailClient.ready();
+      const boundPort = holesailClient.info?.port || requestedPort || 0;
+      sessionState.port = boundPort;
       console.log("[p2pmd] join client ready");
       console.log("  Client info:", JSON.stringify(holesailClient.info, null, 2));
 
