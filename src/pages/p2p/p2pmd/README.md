@@ -18,14 +18,18 @@ P2P Markdown is a real-time, peer-to-peer collaborative markdown editor built in
 - Publishing writes to Hyper/IPFS, making content shareable via P2P URLs.
 - Drag an image onto the editor to upload it to IPFS. Images are compressed (resized to max 1920px, re-encoded at 0.8 quality) before upload. GIFs are uploaded as-is to preserve animation. The resulting markdown link uses a `dweb.link` gateway URL.
 
-## Access on mobile
+## Access 
+### Desktop
+Download [PeerSky Browser](https://peersky.p2plabs.xyz/) and open `peersky://p2p/p2pmd/` to access p2pmd.
+
+### Mobile
 To open p2pmd on your phone:
 1. Download the Holesail mobile app ([iOS](https://apps.apple.com/us/app/holesail-go/id6503728841)/[Android](https://play.google.com/store/apps/details?id=io.holesail.holesail.go&hl=en_US&pli=1))
 2. Enter the room key (`hs://...`) in the app to connect as a client
 3. Open the localhost URL (e.g., `http://127.0.0.1:8989`) in your phone's browser
 4. Edit and collaborate in real-time with desktop peers
 
-**Note:** A dedicated p2pmd iOS app with native editing would provide a similar experience without needing the Holesail app as an intermediary.
+**Note:** A dedicated p2pmd iOS/Android app with native editing would provide a similar experience without needing the Holesail app as an intermediary.
 
 ## Build a similar P2P realtime app
 
