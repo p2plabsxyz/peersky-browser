@@ -310,17 +310,54 @@ function handleDocRequest(req, res, session) {
       }
     }
 
-    const source = new EventSource('/events');
-    source.addEventListener('update', (event) => {
+    let source = null;
+    let reconnectTimer = null;
+
+    function connectSSE() {
+      if (source) { try { source.close(); } catch {} }
+      source = new EventSource('/events');
+      source.addEventListener('update', (event) => {
+        try {
+          const data = JSON.parse(event.data || '{}');
+          if (typeof data.content === "string" && data.content !== editor.value) {
+            editor.value = data.content;
+            lastContent = data.content;
+            render();
+          }
+        } catch {}
+      });
+      source.onerror = () => {
+        source.close();
+        scheduleReconnect();
+      };
+    }
+
+    async function reconnect() {
       try {
-        const data = JSON.parse(event.data || '{}');
-        if (typeof data.content === "string" && data.content !== editor.value) {
-          editor.value = data.content;
-          lastContent = data.content;
-          render();
+        const res = await fetch('/doc');
+        if (res.ok) {
+          const data = await res.json();
+          if (data && typeof data.content === 'string') {
+            editor.value = data.content;
+            lastContent = data.content;
+            render();
+          }
+          connectSSE();
+          return;
         }
       } catch {}
-    });
+      scheduleReconnect();
+    }
+
+    function scheduleReconnect() {
+      if (reconnectTimer) return;
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        reconnect();
+      }, 3000);
+    }
+
+    connectSSE();
   </script>
 </body>
 </html>`);
@@ -393,8 +430,19 @@ function handleDocRequest(req, res, session) {
     res.write(`event: update\ndata: ${JSON.stringify(session.docState)}\n\n`);
     broadcastPeers(session);
     broadcastPeerList(session);
+    if (!session.keepaliveInterval) {
+      session.keepaliveInterval = setInterval(() => {
+        for (const client of session.sseClients.values()) {
+          try { client.res.write(":keepalive\n\n"); } catch {}
+        }
+      }, 20000);
+    }
     req.on("close", () => {
       session.sseClients.delete(res);
+      if (session.sseClients.size === 0 && session.keepaliveInterval) {
+        clearInterval(session.keepaliveInterval);
+        session.keepaliveInterval = null;
+      }
       broadcastPeers(session);
       broadcastPeerList(session);
     });
@@ -420,6 +468,10 @@ function handleDocRequest(req, res, session) {
 
 async function stopDocServer(session) {
   if (!session?.server) return;
+  if (session.keepaliveInterval) {
+    clearInterval(session.keepaliveInterval);
+    session.keepaliveInterval = null;
+  }
   for (const client of session.sseClients.values()) {
     try {
       client.res.end();
