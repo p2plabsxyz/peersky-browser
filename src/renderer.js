@@ -21,6 +21,19 @@ const pageTitle = document.querySelector("title");
 const searchParams = new URL(window.location.href).searchParams;
 const toNavigate = searchParams.has("url") ? searchParams.get("url") : DEFAULT_PAGE;
 
+async function updateBookmarkIcon(currentUrl) {
+  if (!currentUrl) return;
+  try {
+    const bookmarks = await ipcRenderer.invoke("get-bookmarks");
+    const isBookmarked = bookmarks.some(
+      (bookmark) => bookmark.url === currentUrl
+    );
+    nav?.setBookmarkState?.(isBookmarked);
+  } catch (error) {
+    console.error("Failed to update bookmark icon:", error);
+  }
+}
+
 function setupWebviewErrorHandling(webview) {
   if (!webview || webview._errorHandlerInitialized) return;
   webview._errorHandlerInitialized = true;
@@ -614,19 +627,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
 
       return defaultFavicon;
-    }
-
-    async function updateBookmarkIcon(currentUrl) {
-      if (!currentUrl) return;
-      try {
-        const bookmarks = await ipcRenderer.invoke("get-bookmarks");
-        const isBookmarked = bookmarks.some(
-          (bookmark) => bookmark.url === currentUrl
-        );
-        nav.setBookmarkState(isBookmarked);
-      } catch (error) {
-        console.error("Failed to update bookmark icon:", error);
-      }
     }
 
     // Handle webview loading events to toggle refresh/stop button
