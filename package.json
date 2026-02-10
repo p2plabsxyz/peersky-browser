@@ -166,5 +166,8 @@
   "devDependencies": {
     "electron": "^29.0.1",
     "electron-builder": "^24.12.0"
+  },
+  "overrides": {
+    "sodium-native": "^4.3.1"
   }
 }
