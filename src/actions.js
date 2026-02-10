@@ -172,6 +172,36 @@ export function createActions(windowManager) {
         }
       },
     },
+    Print: {
+      label: "Print...",
+      accelerator: "CommandOrControl+P",
+      click: () => {
+        const focusedWindow = BrowserWindow.getFocusedWindow();
+        if (focusedWindow) {
+          focusedWindow.webContents.executeJavaScript(`
+            (function() {
+              const tabBar = document.querySelector('#tabbar');
+              if (tabBar && typeof tabBar.getActiveWebview === 'function') {
+                const activeWebview = tabBar.getActiveWebview();
+                if (activeWebview) {
+                  activeWebview.executeJavaScript('window.print()');
+                  return true;
+                }
+              }
+              // Fallback: find the currently visible webview
+              const webviews = document.querySelectorAll('webview');
+              for (const webview of webviews) {
+                if (webview.style.display !== 'none' && webview.offsetParent !== null) {
+                  webview.executeJavaScript('window.print()');
+                  return true;
+                }
+              }
+              return false;
+            })()
+          `).catch(err => console.error('Print action failed:', err));
+        }
+      },
+    },
     Minimize: {
       label: "Minimize",
       accelerator: "CommandOrControl+M",
@@ -350,6 +380,8 @@ export function createMenuTemplate(windowManager) {
             submenu: [
                 {...actions.NewWindow},
                 {...actions.NewTab},
+                { type: 'separator' },
+                {...actions.Print},
                 { type: 'separator' },
                 {...actions.CloseTab},
                 {...actions.Close},
