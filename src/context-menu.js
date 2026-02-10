@@ -145,6 +145,29 @@ export function attachContextMenus(browserWindow, windowManager) {
         })
       );
 
+      menu.append(new MenuItem({ type: "separator" }));
+
+      // Print
+      menu.append(
+        new MenuItem({
+          label: "Print...",
+          accelerator: "CommandOrControl+P",
+          click: () => {
+            webContents.print({ printBackground: true }, (success, failureReason) => {
+              if (!success) {
+                console.error("Print failed:", failureReason);
+                // Fallback: try window.print in the page context
+                webContents
+                  .executeJavaScript("window.print()")
+                  .catch((err) => console.error("window.print fallback failed:", err));
+              }
+            });
+          },
+        })
+      );
+
+      menu.append(new MenuItem({ type: "separator" }));
+
       // Element inspection
       menu.append(
         new MenuItem({
