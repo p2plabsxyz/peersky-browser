@@ -148,8 +148,19 @@ class NavBox extends HTMLElement {
     const currentUrl = this.querySelector("#url").value;
     if (!currentUrl) return;
 
+    let qrUrl = currentUrl;
+    try {
+      const urlObj = new URL(currentUrl);
+      if (urlObj.pathname.includes('/p2pmd/')) {
+        const roomKey = urlObj.searchParams.get('roomKey');
+        if (roomKey) {
+          qrUrl = decodeURIComponent(roomKey);
+        }
+      }
+    } catch {}
+
     this._qrPopup = document.createElement("qr-popup");
-    this._qrPopup.setAttribute("url", currentUrl);
+    this._qrPopup.setAttribute("url", qrUrl);
     this._qrPopup.setAttribute("visible", "");
     this._qrButton = this.buttonElements["qr-code"];
 
