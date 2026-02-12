@@ -63,6 +63,14 @@
     - [x] Fetch data from smart contracts using auto, manual, and resource request resolve modes.
     - [x] Query account balances or other data directly from smart contracts.
 
+- [x] BitTorrent protocol handler:
+
+  - [x] [WebTorrent](https://webtorrent.io/) in isolated child process
+  - [x] `bittorrent://` / `bt://` / `magnet:` native URLs support
+  - [x] Real-time download progress UI with pause/resume
+  - [x] Auto-destroy torrent on completion (no seeding)
+  - [ ] 🚧 `bt://` website seeding and hosting
+
 - [x] P2P Applications:
 
   - [x] `peersky://p2p/chat/`
