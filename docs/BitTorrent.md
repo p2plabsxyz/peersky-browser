@@ -54,3 +54,6 @@ The torrent page communicates with the handler via `bt://api?action=api&api=<act
 Downloaded files open in a new browser tab via `file://` URLs. This uses an IPC bridge (`open-url-in-tab`) because Electron blocks direct `file://` navigation from custom protocol pages. The IPC handler only accepts `file://` URLs for security.
 
 Media files (video, audio) stream instantly thanks to HTTP Range request support in the file protocol handler (`src/protocols/file-handler.js`).
+
+> [!IMPORTANT]
+> **Intended Use**: This BitTorrent feature is designed to download and stream legally distributed media only. This may include entertainment content where the user has explicit rights to access and download it. It is designed for **downloading only** — torrents are destroyed immediately on completion (no seeding) to avoid redistribution. Peersky does not support or condone piracy or copyright infringement; users are responsible for ensuring they have the rights to access the content and for complying with applicable laws.
