@@ -350,9 +350,27 @@ export async function createHandler() {
         });
       } else {
         // For files, serve them directly with Range request support for streaming
-        const contentType = mime.lookup(filePath) || 'application/octet-stream';
+        let contentType = mime.lookup(filePath) || 'application/octet-stream';
+
+        // Remap container types that Chromium won't play inline to compatible equivalents
+        const mimeRemaps = {
+          'video/x-matroska': 'video/webm', // MKV → WebM (same Matroska container)
+          'video/quicktime': 'video/mp4', // MOV → MP4 (same H.264/AAC codecs)
+          'audio/x-flac': 'audio/flac', // normalize x-flac to standard flac
+        };
+        if (mimeRemaps[contentType]) contentType = mimeRemaps[contentType];
+
         const fileSize = stats.size;
         const rangeHeader = request.headers.get('Range');
+
+        // Force inline display for media files (prevents download dialog)
+        const isMedia = contentType.startsWith('video/') || contentType.startsWith('audio/');
+        const baseHeaders = {
+          'Content-Type': contentType,
+          'Accept-Ranges': 'bytes',
+          'Cache-Control': 'public, max-age=3600',
+          ...(isMedia && { 'Content-Disposition': 'inline' })
+        };
 
         if (rangeHeader) {
           const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
@@ -365,11 +383,9 @@ export async function createHandler() {
             return new Response(stream, {
               status: 206,
               headers: {
-                'Content-Type': contentType,
+                ...baseHeaders,
                 'Content-Range': `bytes ${start}-${end}/${fileSize}`,
                 'Content-Length': chunkSize.toString(),
-                'Accept-Ranges': 'bytes',
-                'Cache-Control': 'public, max-age=3600'
               }
             });
           }
@@ -379,10 +395,8 @@ export async function createHandler() {
         return new Response(stream, {
           status: 200,
           headers: {
-            'Content-Type': contentType,
+            ...baseHeaders,
             'Content-Length': fileSize.toString(),
-            'Accept-Ranges': 'bytes',
-            'Cache-Control': 'public, max-age=3600'
           }
         });
       }
