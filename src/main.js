@@ -188,6 +188,11 @@ ipcMain.on('new-window-with-tab', (event, tabData) => {
 
 // IPC handler for opening local files in a new tab (used by torrent page)
 ipcMain.on('open-url-in-tab', (event, fileUrl) => {
+  // Security: only allow file:// URLs
+  if (typeof fileUrl !== 'string' || !fileUrl.startsWith('file://')) {
+    console.warn('[IPC] open-url-in-tab blocked non-file URL:', fileUrl);
+    return;
+  }
   // event.sender is the webview webContents, not the BrowserWindow webContents
   const parentWindow = BrowserWindow.fromWebContents(event.sender)
     || BrowserWindow.getFocusedWindow()

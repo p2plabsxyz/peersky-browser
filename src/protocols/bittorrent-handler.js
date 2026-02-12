@@ -144,7 +144,7 @@ export async function createHandler() {
 
     try {
       // Determine protocol from the raw URL
-      let protocol, infoHash, apiAction, magnetUri, queryParams;
+      let protocol, infoHash, magnetUri, queryParams;
 
       if (rawUrl.startsWith("magnet:")) {
         protocol = "magnet";
@@ -205,9 +205,6 @@ async function handleAPI(api, queryParams, infoHash) {
     } else if (api === "status") {
       // Serve from cache instantly — no IPC round-trip
       return getCachedStatus(hash);
-    } else if (api === "file") {
-      const fileIndex = parseInt(queryParams.get("index"), 10);
-      return streamTorrentFile(hash, fileIndex);
     } else if (api === "pause") {
       return await pauseResumeTorrent("pause", hash);
     } else if (api === "resume") {
@@ -284,13 +281,6 @@ function getCachedStatus(hash) {
   }
 
   return jsonResponse({ error: "Torrent not found in cache" }, 404);
-}
-
-function streamTorrentFile(hash, fileIndex) {
-  // File streaming from child process is complex; serve from disk if available
-  const downloadPath = path.join(app.getPath("downloads"), "PeerskyTorrents");
-  // For now, return a message that streaming isn't available yet
-  return jsonResponse({ error: "File streaming via protocol not yet supported. Files are saved to: " + downloadPath }, 501);
 }
 
 async function pauseResumeTorrent(action, hash) {
