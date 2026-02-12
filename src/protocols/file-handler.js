@@ -349,16 +349,39 @@ export async function createHandler() {
           }
         });
       } else {
-        // For files, serve them directly
+        // For files, serve them directly with Range request support for streaming
         const contentType = mime.lookup(filePath) || 'application/octet-stream';
+        const fileSize = stats.size;
+        const rangeHeader = request.headers.get('Range');
+
+        if (rangeHeader) {
+          const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+          if (match) {
+            const start = parseInt(match[1], 10);
+            const end = match[2] ? parseInt(match[2], 10) : fileSize - 1;
+            const chunkSize = end - start + 1;
+
+            const stream = fs.createReadStream(filePath, { start, end });
+            return new Response(stream, {
+              status: 206,
+              headers: {
+                'Content-Type': contentType,
+                'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+                'Content-Length': chunkSize.toString(),
+                'Accept-Ranges': 'bytes',
+                'Cache-Control': 'public, max-age=3600'
+              }
+            });
+          }
+        }
+
         const stream = fs.createReadStream(filePath);
-        // console.log('Serving file (streamed):', filePath, 'size:', stats.size, 'contentType:', contentType);
-            
         return new Response(stream, {
           status: 200,
           headers: {
             'Content-Type': contentType,
-            'Content-Length': stats.size.toString(),
+            'Content-Length': fileSize.toString(),
+            'Accept-Ranges': 'bytes',
             'Cache-Control': 'public, max-age=3600'
           }
         });
