@@ -2,6 +2,8 @@
 
 Peersky supports BitTorrent downloads natively using [WebTorrent](https://webtorrent.io/). Torrents run in an isolated child process to avoid blocking the browser.
 
+![PeerSky magnet: streaming](./images/peersky-magnet-stream.gif)
+
 ## Supported URL Schemes
 
 - `bittorrent://<infohash>` — open a torrent by info hash
