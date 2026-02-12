@@ -49,6 +49,14 @@
   - [x] Run a local [hyper](https://holepunch.to/) node
   - [x] `hyper://` native URLs support
 
+- [x] BitTorrent protocol handler:
+
+  - [x] [WebTorrent](https://webtorrent.io/) in isolated child process
+  - [x] `bittorrent://` / `bt://` / `magnet:` native URLs support
+  - [x] Real-time download progress UI with pause/resume
+  - [x] Auto-destroy torrent on completion (no seeding)
+  - [ ] 🚧 `bt://` website seeding and hosting
+
 - [x] Local `file://` browsing with P2P publishing:
   - [x] Custom `file://` support with privileged access
   - [x] Directory listings (Chrome-style)
@@ -62,14 +70,6 @@
     - [x] Access on-chain websites.
     - [x] Fetch data from smart contracts using auto, manual, and resource request resolve modes.
     - [x] Query account balances or other data directly from smart contracts.
-
-- [x] BitTorrent protocol handler:
-
-  - [x] [WebTorrent](https://webtorrent.io/) in isolated child process
-  - [x] `bittorrent://` / `bt://` / `magnet:` native URLs support
-  - [x] Real-time download progress UI with pause/resume
-  - [x] Auto-destroy torrent on completion (no seeding)
-  - [ ] 🚧 `bt://` website seeding and hosting
 
 - [x] P2P Applications:
 
