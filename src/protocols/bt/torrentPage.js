@@ -226,7 +226,12 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
         Object.keys(params).forEach(function(k) { qs.set(k, params[k]); });
       }
       var url = apiBase + '?' + qs.toString();
-      var resp = await fetch(url);
+      
+      // Use POST for mutations, GET for status
+      var mutationActions = ['start', 'pause', 'resume', 'remove'];
+      var method = mutationActions.includes(action) ? 'POST' : 'GET';
+      
+      var resp = await fetch(url, { method: method });
       var text = await resp.text();
       try {
         return JSON.parse(text);

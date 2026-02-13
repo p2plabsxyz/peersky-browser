@@ -166,7 +166,7 @@ export async function createHandler() {
       // Handle API requests
       if (action === "api") {
         const api = queryParams.get("api");
-        return await handleAPI(api, queryParams, infoHash);
+        return await handleAPI(api, queryParams, infoHash, request);
       }
 
       // Serve UI page (imported from bt/torrentPage.js)
@@ -194,9 +194,26 @@ export async function createHandler() {
   };
 }
 
-async function handleAPI(api, queryParams, infoHash) {
+async function handleAPI(api, queryParams, infoHash, request) {
   const hash = queryParams.get("hash") || infoHash;
   console.log(`[BT] API call: ${api}, hash: ${hash}`);
+
+  // Security: validate origin is a BitTorrent protocol page
+  const origin = request.headers.get('origin') || '';
+  const referer = request.headers.get('referer') || '';
+  const isBTOrigin = origin.startsWith('bt://') || origin.startsWith('bittorrent://') || origin.startsWith('magnet:') ||
+                     referer.startsWith('bt://') || referer.startsWith('bittorrent://') || referer.startsWith('magnet:');
+  
+  if (!isBTOrigin) {
+    console.warn(`[BT] API blocked: invalid origin/referer - origin: ${origin}, referer: ${referer}`);
+    return jsonResponse({ error: 'Forbidden: API only accessible from BitTorrent pages' }, 403);
+  }
+
+  // Security: mutations require POST method
+  const mutationActions = ['start', 'pause', 'resume', 'remove'];
+  if (mutationActions.includes(api) && request.method !== 'POST') {
+    return jsonResponse({ error: `${api} requires POST method` }, 405);
+  }
 
   try {
     if (api === "start") {
@@ -223,7 +240,12 @@ async function handleAPI(api, queryParams, infoHash) {
 function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { "Content-Type": "application/json; charset=utf-8" },
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST",
+      "Access-Control-Allow-Headers": "Content-Type",
+    },
   });
 }
 
