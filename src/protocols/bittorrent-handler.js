@@ -55,9 +55,19 @@ async function initializeWorker() {
       return;
     }
 
-    // Cache pushed status updates from the worker
+    // Cache status updates from worker push
     if (msg.type === "status-update" && msg.infoHash) {
       statusCache.set(msg.infoHash, msg);
+      return;
+    }
+
+    // Cache bulk status updates (multiple torrents in one message)
+    if (msg.type === "status-update-bulk" && msg.torrents) {
+      msg.torrents.forEach(status => {
+        if (status.infoHash) {
+          statusCache.set(status.infoHash, { ...status, type: "status-update" });
+        }
+      });
       return;
     }
 

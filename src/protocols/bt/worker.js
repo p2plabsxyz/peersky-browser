@@ -54,14 +54,34 @@ function initClient() {
 // Initialize immediately
 initClient();
 
+// Track previous status to avoid redundant updates
+const previousStatus = new Map();
+
+function hasStatusChanged(infoHash, newStatus) {
+  const prev = previousStatus.get(infoHash);
+  if (!prev) return true;
+  
+  // Check if significant fields changed (ignore minor fluctuations)
+  return (
+    prev.progress !== newStatus.progress ||
+    prev.downloadSpeed !== newStatus.downloadSpeed ||
+    prev.uploadSpeed !== newStatus.uploadSpeed ||
+    prev.numPeers !== newStatus.numPeers ||
+    prev.done !== newStatus.done ||
+    prev.paused !== newStatus.paused
+  );
+}
+
 // --- Periodic status push (every 2 seconds) ---
 setInterval(() => {
   if (!client || client.torrents.length === 0) return;
 
+  const updates = [];
+  
   for (const torrent of client.torrents) {
     if (!torrent.infoHash) continue;
-    send({
-      type: "status-update",
+    
+    const status = {
       infoHash: torrent.infoHash,
       name: torrent.name || "Fetching metadata...",
       downloadPath,
@@ -86,6 +106,20 @@ setInterval(() => {
           }))
         : [],
       magnetURI: torrent.magnetURI,
+    };
+    
+    // Only send if status changed
+    if (hasStatusChanged(torrent.infoHash, status)) {
+      updates.push(status);
+      previousStatus.set(torrent.infoHash, status);
+    }
+  }
+  
+  // Send bulk update if there are changes
+  if (updates.length > 0) {
+    send({
+      type: "status-update-bulk",
+      torrents: updates
     });
   }
 }, 2000);
