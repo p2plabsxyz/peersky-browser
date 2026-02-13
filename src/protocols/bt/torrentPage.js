@@ -362,6 +362,7 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
       // Encode path segments to handle spaces, brackets, parentheses in torrent names
       var encoded = fullPath.split('/').map(function(seg) { return encodeURIComponent(seg); }).join('/');
       var fileUrl = 'file://' + encoded;
+      // Use IPC bridge - window.open() doesn't work for file:// URLs from custom protocols
       if (window.peersky && window.peersky.openInTab) {
         window.peersky.openInTab(fileUrl);
       } else {

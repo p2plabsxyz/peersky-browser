@@ -186,29 +186,23 @@ ipcMain.on('new-window-with-tab', (event, tabData) => {
   });
 });
 
-// IPC handler for opening local files in a new tab (used by torrent page)
+
+// IPC handler for opening files in new tabs (used by BitTorrent pages)
 ipcMain.on('open-url-in-tab', (event, fileUrl) => {
   // Security: only allow file:// URLs
   if (typeof fileUrl !== 'string' || !fileUrl.startsWith('file://')) {
     console.warn('[IPC] open-url-in-tab blocked non-file URL:', fileUrl);
     return;
   }
-  // event.sender is the webview webContents, not the BrowserWindow webContents
+  
+  // Find the parent window
   const parentWindow = BrowserWindow.fromWebContents(event.sender)
     || BrowserWindow.getFocusedWindow()
     || BrowserWindow.getAllWindows()[0];
+  
   if (parentWindow) {
-    const safeUrl = JSON.stringify(fileUrl);
-    parentWindow.webContents.executeJavaScript(`
-      (function() {
-        const tabBar = document.querySelector('tab-bar');
-        if (tabBar && typeof tabBar.addTab === 'function') {
-          tabBar.addTab(${safeUrl});
-          return true;
-        }
-        return false;
-      })()
-    `).catch(err => console.error('Failed to open file in tab:', err));
+    // Send IPC message to renderer to add tab (safer than executeJavaScript)
+    parentWindow.webContents.send('add-tab-from-main', fileUrl);
   }
 });
 

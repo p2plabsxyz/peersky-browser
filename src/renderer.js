@@ -17,6 +17,13 @@ const nav = document.querySelector("#navbox");
 const findMenu = document.querySelector("#find");
 const pageTitle = document.querySelector("title");
 
+// Listen for IPC messages from main process to add tabs
+ipcRenderer.on('add-tab-from-main', (event, url) => {
+  if (tabBar && typeof tabBar.addTab === 'function') {
+    tabBar.addTab(url);
+  }
+});
+
 // Get initial URL from search params
 const searchParams = new URL(window.location.href).searchParams;
 const toNavigate = searchParams.has("url") ? searchParams.get("url") : DEFAULT_PAGE;
