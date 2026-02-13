@@ -198,15 +198,14 @@ async function handleAPI(api, queryParams, infoHash, request) {
   const hash = queryParams.get("hash") || infoHash;
   console.log(`[BT] API call: ${api}, hash: ${hash}`);
 
-  // Security: validate origin is a BitTorrent protocol page
-  const origin = request.headers.get('origin') || '';
-  const referer = request.headers.get('referer') || '';
-  const isBTOrigin = origin.startsWith('bt://') || origin.startsWith('bittorrent://') || origin.startsWith('magnet:') ||
-                     referer.startsWith('bt://') || referer.startsWith('bittorrent://') || referer.startsWith('magnet:');
+  // Security: validate request is from BitTorrent protocol
+  // Custom protocols don't send Origin/Referer headers in Electron, so check request.url
+  const requestUrl = request.url || '';
+  const isBTRequest = requestUrl.startsWith('bt://') || requestUrl.startsWith('bittorrent://') || requestUrl.startsWith('magnet:');
   
-  if (!isBTOrigin) {
-    console.warn(`[BT] API blocked: invalid origin/referer - origin: ${origin}, referer: ${referer}`);
-    return jsonResponse({ error: 'Forbidden: API only accessible from BitTorrent pages' }, 403);
+  if (!isBTRequest) {
+    console.warn(`[BT] API blocked: request not from BitTorrent protocol - url: ${requestUrl}`);
+    return jsonResponse({ error: 'Forbidden: API only accessible from BitTorrent protocol' }, 403);
   }
 
   // Security: mutations require POST method
