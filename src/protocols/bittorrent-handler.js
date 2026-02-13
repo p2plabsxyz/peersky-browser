@@ -179,6 +179,11 @@ export async function createHandler() {
         return await handleAPI(api, queryParams, infoHash, request);
       }
 
+      // TODO: Support file path resolution for website hosting
+      // e.g. bt://{INFO_HASH}/index.html should serve the file from the torrent
+      // This would enable hosting websites on BitTorrent (like https://gitlab.com/ivi.eco/akoopa)
+      // Implementation: parse pathname, seed torrent if needed, serve requested file
+
       // Serve UI page (imported from bt/torrentPage.js)
       if (protocol === "magnet") {
         magnetUri = magnetUri || rawUrl;
