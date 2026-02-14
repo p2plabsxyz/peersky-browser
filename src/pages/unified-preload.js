@@ -29,6 +29,19 @@ const isP2P =
   url.startsWith('ipns://') ||
   url.startsWith('hs://');
 
+const isBitTorrent =
+  url.startsWith('bt://') ||
+  url.startsWith('bittorrent://') ||
+  url.startsWith('magnet:');
+
+// Expose minimal API for BitTorrent pages to open files in new tabs
+// Note: window.open() doesn't work for file:// URLs from custom protocols due to Electron security
+if (isBitTorrent) {
+  contextBridge.exposeInMainWorld('peersky', {
+    openInTab: (fileUrl) => ipcRenderer.send('open-url-in-tab', fileUrl)
+  });
+}
+
 // Expose LLM API for internal pages and Agregore examples
 if (isInternal || isP2P || url.includes('agregore.mauve.moe')) {
   console.log('Unified-preload: Exposing LLM API for page:', url);

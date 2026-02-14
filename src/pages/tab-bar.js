@@ -2228,6 +2228,9 @@ restoreTabs(persistedData) {
     if (url.startsWith('web3://')) {
       return 'web3';
     }
+    if (url.startsWith('bt://') || url.startsWith('bittorrent://') || url.startsWith('magnet:')) {
+      return 'bt';
+    }
     if (url.startsWith('peersky://') || url.startsWith('browser://')) {
       return 'peersky';
     }
@@ -2242,7 +2245,7 @@ restoreTabs(persistedData) {
     let indicator = tabElement.querySelector('.p2p-indicator');
     const protocol = this._getProtocol(tab.url);
 
-    if (['ipfs', 'hyper', 'web3', 'hs'].includes(protocol)) {
+    if (['ipfs', 'hyper', 'web3', 'bt', 'hs'].includes(protocol)) {
       if (!indicator) {
         indicator = document.createElement('img');
         indicator.className = 'p2p-indicator';
@@ -2261,6 +2264,10 @@ restoreTabs(persistedData) {
     
       let filterColor;
       switch (protocol) {
+        case 'bt':
+          // Light green filter
+          filterColor = 'brightness(0) saturate(100%) invert(71%) sepia(48%) saturate(651%) hue-rotate(74deg) brightness(105%) contrast(92%)';
+          break;
         case 'hyper':
           // Light violet filter
           filterColor = 'brightness(0) saturate(100%) invert(81%) sepia(36%) saturate(1211%) hue-rotate(266deg) brightness(95%) contrast(98%)';
