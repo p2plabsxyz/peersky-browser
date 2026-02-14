@@ -17,47 +17,47 @@ let requestId = 0;
 // Cached status from worker push updates (no IPC round-trip needed for status)
 const statusCache = new Map();
 
-// Persist completed torrent statuses so they survive restarts
-const completedCachePath = path.join(app.getPath("userData"), "bt-completed.json");
+// Persist all torrent states (active, paused, completed) so they survive restarts
+const torrentStateCachePath = path.join(app.getPath("userData"), "bt-state.json");
 
-function loadCompletedCache() {
+function loadTorrentStateCache() {
   try {
-    if (fs.existsSync(completedCachePath)) {
-      const data = fs.readJsonSync(completedCachePath);
+    if (fs.existsSync(torrentStateCachePath)) {
+      const data = fs.readJsonSync(torrentStateCachePath);
       for (const [hash, status] of Object.entries(data)) {
         statusCache.set(hash, status);
       }
-      console.log(`[BT] Loaded ${Object.keys(data).length} completed torrent(s) from cache`);
+      console.log(`[BT] Loaded ${Object.keys(data).length} torrent(s) from state cache`);
     }
   } catch (err) {
-    console.error("[BT] Failed to load completed cache:", err.message);
+    console.error("[BT] Failed to load torrent state cache:", err.message);
   }
 }
 
-function saveCompletedStatus(infoHash, status) {
+function saveTorrentState(infoHash, status) {
   try {
-    const data = fs.existsSync(completedCachePath) ? fs.readJsonSync(completedCachePath) : {};
+    const data = fs.existsSync(torrentStateCachePath) ? fs.readJsonSync(torrentStateCachePath) : {};
     data[infoHash] = status;
-    fs.writeJsonSync(completedCachePath, data, { spaces: 2 });
+    fs.writeJsonSync(torrentStateCachePath, data, { spaces: 2 });
   } catch (err) {
-    console.error("[BT] Failed to save completed status:", err.message);
+    console.error("[BT] Failed to save torrent state:", err.message);
   }
 }
 
-function removeCompletedStatus(infoHash) {
+function removeTorrentState(infoHash) {
   try {
-    if (fs.existsSync(completedCachePath)) {
-      const data = fs.readJsonSync(completedCachePath);
+    if (fs.existsSync(torrentStateCachePath)) {
+      const data = fs.readJsonSync(torrentStateCachePath);
       delete data[infoHash];
-      fs.writeJsonSync(completedCachePath, data, { spaces: 2 });
+      fs.writeJsonSync(torrentStateCachePath, data, { spaces: 2 });
     }
   } catch (err) {
-    console.error("[BT] Failed to remove completed status:", err.message);
+    console.error("[BT] Failed to remove torrent state:", err.message);
   }
 }
 
-// Load persisted completed torrents on module init
-loadCompletedCache();
+// Load persisted torrent states on module init
+loadTorrentStateCache();
 
 const DEFAULT_TRACKERS = [
   "wss://tracker.openwebtorrent.com",
@@ -121,7 +121,7 @@ async function initializeWorker() {
         cached.downloadSpeed = 0;
         cached.uploadSpeed = 0;
         // Persist completed status to disk so it survives restarts
-        saveCompletedStatus(msg.infoHash, cached);
+        saveTorrentState(msg.infoHash, cached);
       }
       return;
     }
@@ -129,7 +129,7 @@ async function initializeWorker() {
     // Clean up cache on torrent removal
     if (msg.type === "removed" && msg.infoHash) {
       statusCache.delete(msg.infoHash);
-      removeCompletedStatus(msg.infoHash);
+      removeTorrentState(msg.infoHash);
     }
 
     // Resolve pending request if this message has an id
@@ -148,8 +148,26 @@ async function initializeWorker() {
     console.log(`[BT] Worker exited with code ${code}`);
     worker = null;
     workerReady = false;
+    
+    // Save all active torrents to disk before clearing cache
+    // Mark them as paused so they show resume button on restart
+    try {
+      const data = fs.existsSync(torrentStateCachePath) ? fs.readJsonSync(torrentStateCachePath) : {};
+      for (const [hash, status] of statusCache.entries()) {
+        if (!status.done) {
+          data[hash] = { ...status, paused: true };
+        }
+      }
+      fs.writeJsonSync(torrentStateCachePath, data, { spaces: 2 });
+      console.log(`[BT] Saved ${Object.keys(data).length} torrent state(s) on worker exit`);
+    } catch (err) {
+      console.error("[BT] Failed to save torrent states on exit:", err.message);
+    }
+    
     statusCache.clear();
     pendingRequests.clear();
+    // Reload persisted torrent states so they survive worker restarts
+    loadTorrentStateCache();
   });
 
   // Wait for worker to be ready (max 10s)
@@ -365,7 +383,29 @@ function getCachedStatus(hash) {
 async function pauseResumeTorrent(action, hash) {
   try {
     const result = await sendCommand(action, { hash });
-    if (result.error) return jsonResponse({ error: result.error }, 404);
+    if (result.error) {
+      // Resume failed — torrent may not be in worker after restart
+      if (action === "resume") {
+        const cached = statusCache.get(hash);
+        if (cached && cached.magnetURI) {
+          console.log(`[BT] Torrent not in worker, re-starting from cache: ${hash}`);
+          removeTorrentState(hash);
+          statusCache.delete(hash);
+          return await startTorrent(encodeURIComponent(cached.magnetURI));
+        }
+      }
+      return jsonResponse({ error: result.error }, 404);
+    }
+    // Persist paused status so it survives restarts
+    if (action === "pause") {
+      const cached = statusCache.get(hash);
+      if (cached) {
+        cached.paused = true;
+        saveTorrentState(hash, cached);
+      }
+    } else if (action === "resume") {
+      removeTorrentState(hash);
+    }
     return jsonResponse({ success: true, paused: action === "pause" });
   } catch (err) {
     return jsonResponse({ error: err.message }, 500);
