@@ -5,6 +5,7 @@ import { createHandler as createIPFSHandler } from "./protocols/ipfs-handler.js"
 import { createHandler as createHyperHandler } from "./protocols/hyper-handler.js";
 import { createHandler as createWeb3Handler } from "./protocols/web3-handler.js";
 import { createHandler as createFileHandler } from "./protocols/file-handler.js";
+import { createHandler as createBittorrentHandler } from "./protocols/bittorrent-handler.js";
 import { ipfsOptions, hyperOptions } from "./protocols/config.js";
 import { createMenuTemplate } from "./actions.js";
 import WindowManager, { createIsolatedWindow } from "./window-manager.js";
@@ -43,6 +44,16 @@ const FILE_PROTOCOL = {
   stream: true,
 };
 
+// Magnet URIs are just identifiers that redirect to bt:// — minimal privileges
+const MAGNET_PROTOCOL = {
+  standard: false,
+  secure: false,
+  allowServiceWorkers: false,
+  supportFetchAPI: false,
+  bypassCSP: false,
+  corsEnabled: true,
+};
+
 let windowManager;
 
 globalProtocol.registerSchemesAsPrivileged([
@@ -54,6 +65,9 @@ globalProtocol.registerSchemesAsPrivileged([
   { scheme: "hyper", privileges: P2P_PROTOCOL },
   { scheme: "web3", privileges: P2P_PROTOCOL },
   { scheme: "file", privileges: FILE_PROTOCOL },
+  { scheme: "bittorrent", privileges: P2P_PROTOCOL },
+  { scheme: "bt", privileges: P2P_PROTOCOL },
+  { scheme: "magnet", privileges: MAGNET_PROTOCOL },
 ]);
 
 app.whenReady().then(async () => {
@@ -95,6 +109,9 @@ async function setupProtocols(session) {
   app.setAsDefaultProtocolClient("ipns");
   app.setAsDefaultProtocolClient("hyper");
   app.setAsDefaultProtocolClient("web3");
+  app.setAsDefaultProtocolClient("bittorrent");
+  app.setAsDefaultProtocolClient("bt");
+  app.setAsDefaultProtocolClient("magnet");
 
   const browserProtocolHandler = await createBrowserHandler();
   sessionProtocol.registerStreamProtocol("peersky", browserProtocolHandler, BROWSER_PROTOCOL);
@@ -115,6 +132,11 @@ async function setupProtocols(session) {
 
   const fileProtocolHandler = await createFileHandler();
   sessionProtocol.handle("file", fileProtocolHandler);
+
+  const bittorrentProtocolHandler = await createBittorrentHandler();
+  sessionProtocol.handle("bittorrent", bittorrentProtocolHandler);
+  sessionProtocol.handle("bt", bittorrentProtocolHandler);
+  sessionProtocol.handle("magnet", bittorrentProtocolHandler);
 }
 
 app.on("window-all-closed", () => {
@@ -162,6 +184,26 @@ ipcMain.on('new-window-with-tab', (event, tabData) => {
       title: tabData.title
     }
   });
+});
+
+
+// IPC handler for opening files in new tabs (used by BitTorrent pages)
+ipcMain.on('open-url-in-tab', (event, fileUrl) => {
+  // Security: only allow file:// URLs
+  if (typeof fileUrl !== 'string' || !fileUrl.startsWith('file://')) {
+    console.warn('[IPC] open-url-in-tab blocked non-file URL:', fileUrl);
+    return;
+  }
+  
+  // Find the parent window
+  const parentWindow = BrowserWindow.fromWebContents(event.sender)
+    || BrowserWindow.getFocusedWindow()
+    || BrowserWindow.getAllWindows()[0];
+  
+  if (parentWindow) {
+    // Send IPC message to renderer to add tab (safer than executeJavaScript)
+    parentWindow.webContents.send('add-tab-from-main', fileUrl);
+  }
 });
 
 ipcMain.on('new-window', (event, options = {}) => {

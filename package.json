@@ -124,6 +124,15 @@
           "web3"
         ],
         "role": "Viewer"
+      },
+      {
+        "name": "bittorrent",
+        "schemes": [
+          "bittorrent",
+          "bt",
+          "magnet"
+        ],
+        "role": "Viewer"
       }
     ],
     "publish": [
@@ -161,7 +170,8 @@
     "mime-types": "^2.1.35",
     "multiformats": "^13.3.2",
     "scoped-fs": "^1.4.1",
-    "web3protocol": "^0.6.0"
+    "web3protocol": "^0.6.0",
+    "webtorrent": "^2.8.5"
   },
   "devDependencies": {
     "electron": "^29.0.1",
