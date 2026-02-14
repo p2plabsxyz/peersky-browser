@@ -17,9 +17,29 @@ const nav = document.querySelector("#navbox");
 const findMenu = document.querySelector("#find");
 const pageTitle = document.querySelector("title");
 
+// Listen for IPC messages from main process to add tabs
+ipcRenderer.on('add-tab-from-main', (event, url) => {
+  if (tabBar && typeof tabBar.addTab === 'function') {
+    tabBar.addTab(url);
+  }
+});
+
 // Get initial URL from search params
 const searchParams = new URL(window.location.href).searchParams;
 const toNavigate = searchParams.has("url") ? searchParams.get("url") : DEFAULT_PAGE;
+
+async function updateBookmarkIcon(currentUrl) {
+  if (!currentUrl) return;
+  try {
+    const bookmarks = await ipcRenderer.invoke("get-bookmarks");
+    const isBookmarked = bookmarks.some(
+      (bookmark) => bookmark.url === currentUrl
+    );
+    nav?.setBookmarkState?.(isBookmarked);
+  } catch (error) {
+    console.error("Failed to update bookmark icon:", error);
+  }
+}
 
 function setupWebviewErrorHandling(webview) {
   if (!webview || webview._errorHandlerInitialized) return;
@@ -599,19 +619,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
 
       return defaultFavicon;
-    }
-
-    async function updateBookmarkIcon(currentUrl) {
-      if (!currentUrl) return;
-      try {
-        const bookmarks = await ipcRenderer.invoke("get-bookmarks");
-        const isBookmarked = bookmarks.some(
-          (bookmark) => bookmark.url === currentUrl
-        );
-        nav.setBookmarkState(isBookmarked);
-      } catch (error) {
-        console.error("Failed to update bookmark icon:", error);
-      }
     }
 
     // Handle webview loading events to toggle refresh/stop button

@@ -49,6 +49,14 @@
   - [x] Run a local [hyper](https://holepunch.to/) node
   - [x] `hyper://` native URLs support
 
+- [x] BitTorrent protocol handler:
+
+  - [x] [WebTorrent](https://webtorrent.io/) in isolated child process
+  - [x] `bittorrent://` / `bt://` / `magnet:` native URLs support
+  - [x] Real-time download progress UI with pause/resume
+  - [x] Auto-destroy torrent on completion (no seeding)
+  - [ ] 🚧 `bt://` website seeding and hosting
+
 - [x] Local `file://` browsing with P2P publishing:
   - [x] Custom `file://` support with privileged access
   - [x] Directory listings (Chrome-style)

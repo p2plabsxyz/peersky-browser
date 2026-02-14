@@ -130,7 +130,7 @@ function openResetP2PModal() {
 
         <div class="modal-body">
           <div class="copy">
-            This will clear all IPFS/Hyper data while <span class="emphasis">preserving</span> your peer identities by default.
+            This will clear all IPFS/Hyper/BitTorrent data while <span class="emphasis">preserving</span> your peer identities by default.
           </div>
 
           <label class="checkbox-row">

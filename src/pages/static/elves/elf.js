@@ -9,7 +9,11 @@
  *
  */
 
-const { innerHTML } = self.diff
+const { innerHTML } = self.diff || { 
+  innerHTML: (target, html) => { 
+    target.innerHTML = html 
+  } 
+}
 
 if(!self.crypto.randomUUID) {
   self.crypto.randomUUID = () => {

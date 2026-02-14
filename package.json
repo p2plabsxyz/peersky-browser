@@ -1,6 +1,6 @@
 {
   "name": "peersky-browser",
-  "version": "1.0.0-beta.15",
+  "version": "1.0.0-beta.17",
   "description": "A minimal local-first p2p web browser: access, communicate, and publish offline.",
   "keywords": [
     "peersky",
@@ -124,6 +124,15 @@
           "web3"
         ],
         "role": "Viewer"
+      },
+      {
+        "name": "bittorrent",
+        "schemes": [
+          "bittorrent",
+          "bt",
+          "magnet"
+        ],
+        "role": "Viewer"
       }
     ],
     "publish": [
@@ -164,11 +173,15 @@
     "multiformats": "^13.3.2",
     "scoped-fs": "^1.4.1",
     "unzipper": "^0.10.14",
-    "web3protocol": "^0.6.0"
+    "web3protocol": "^0.6.0",
+    "webtorrent": "^2.8.5"
   },
   "devDependencies": {
     "chrome-extension-fetch": "^1.0.0",
     "electron": "^37.2.2",
     "electron-builder": "^26.0.12"
+  },
+  "overrides": {
+    "sodium-native": "^4.3.1"
   }
 }

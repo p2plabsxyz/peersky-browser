@@ -4,6 +4,9 @@ const IPFS_PREFIX = 'ipfs://';
 const IPNS_PREFIX = 'ipns://';
 const HYPER_PREFIX = 'hyper://';
 const WEB3_PREFIX = 'web3://';
+const BT_PREFIX = 'bt://';
+const BITTORRENT_PREFIX = 'bittorrent://';
+const MAGNET_PREFIX = 'magnet:';
 
 // Utility functions
 function isURL(string) {
@@ -88,7 +91,10 @@ async function handleURL(rawURL) {
     rawURL.startsWith(IPFS_PREFIX) || 
     rawURL.startsWith(IPNS_PREFIX) || 
     rawURL.startsWith(HYPER_PREFIX) || 
-    rawURL.startsWith(WEB3_PREFIX)
+    rawURL.startsWith(WEB3_PREFIX) ||
+    rawURL.startsWith(BT_PREFIX) ||
+    rawURL.startsWith(BITTORRENT_PREFIX) ||
+    rawURL.startsWith(MAGNET_PREFIX)
   ) {
     return rawURL;
   } else if (isURL(rawURL)) {
@@ -198,6 +204,9 @@ export {
   IPNS_PREFIX,
   HYPER_PREFIX,
   WEB3_PREFIX,
+  BT_PREFIX,
+  BITTORRENT_PREFIX,
+  MAGNET_PREFIX,
   isURL,
   looksLikeDomain,
   isBareLocalhost,
