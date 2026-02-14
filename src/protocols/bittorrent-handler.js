@@ -17,6 +17,48 @@ let requestId = 0;
 // Cached status from worker push updates (no IPC round-trip needed for status)
 const statusCache = new Map();
 
+// Persist completed torrent statuses so they survive restarts
+const completedCachePath = path.join(app.getPath("userData"), "bt-completed.json");
+
+function loadCompletedCache() {
+  try {
+    if (fs.existsSync(completedCachePath)) {
+      const data = fs.readJsonSync(completedCachePath);
+      for (const [hash, status] of Object.entries(data)) {
+        statusCache.set(hash, status);
+      }
+      console.log(`[BT] Loaded ${Object.keys(data).length} completed torrent(s) from cache`);
+    }
+  } catch (err) {
+    console.error("[BT] Failed to load completed cache:", err.message);
+  }
+}
+
+function saveCompletedStatus(infoHash, status) {
+  try {
+    const data = fs.existsSync(completedCachePath) ? fs.readJsonSync(completedCachePath) : {};
+    data[infoHash] = status;
+    fs.writeJsonSync(completedCachePath, data, { spaces: 2 });
+  } catch (err) {
+    console.error("[BT] Failed to save completed status:", err.message);
+  }
+}
+
+function removeCompletedStatus(infoHash) {
+  try {
+    if (fs.existsSync(completedCachePath)) {
+      const data = fs.readJsonSync(completedCachePath);
+      delete data[infoHash];
+      fs.writeJsonSync(completedCachePath, data, { spaces: 2 });
+    }
+  } catch (err) {
+    console.error("[BT] Failed to remove completed status:", err.message);
+  }
+}
+
+// Load persisted completed torrents on module init
+loadCompletedCache();
+
 const DEFAULT_TRACKERS = [
   "wss://tracker.openwebtorrent.com",
   "wss://tracker.btorrent.xyz",
@@ -78,15 +120,16 @@ async function initializeWorker() {
         cached.done = true;
         cached.downloadSpeed = 0;
         cached.uploadSpeed = 0;
+        // Persist completed status to disk so it survives restarts
+        saveCompletedStatus(msg.infoHash, cached);
       }
-      // Clean up cache after 5 minutes (UI has time to read the final state)
-      setTimeout(() => statusCache.delete(msg.infoHash), 5 * 60 * 1000);
       return;
     }
 
     // Clean up cache on torrent removal
     if (msg.type === "removed" && msg.infoHash) {
       statusCache.delete(msg.infoHash);
+      removeCompletedStatus(msg.infoHash);
     }
 
     // Resolve pending request if this message has an id

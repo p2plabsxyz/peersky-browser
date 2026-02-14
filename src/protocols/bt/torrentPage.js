@@ -241,7 +241,7 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
       }
     }
 
-    // On page load, check if torrent is already active or auto-resume
+    // On page load, check if torrent is already active (resume UI only)
     (async function checkExisting() {
       try {
         var s = await apiCall('status', { hash: currentInfoHash || '' });
@@ -262,15 +262,9 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
             showStatus('Torrent is active. Downloading...', 'success');
             statusInterval = setInterval(pollStatus, 2000);
           }
-          return;
         }
       } catch (err) {
-        // Status check failed — fall through to auto-start
-      }
-
-      // No active torrent found but we have a magnet URL — auto-start
-      if (magnetUrl) {
-        startTorrent();
+        // No active torrent — show start button (default UI)
       }
     })();
 
