@@ -1,8 +1,10 @@
 # BitTorrent Protocol
 
-Peersky supports BitTorrent downloads natively using [WebTorrent](https://webtorrent.io/). Torrents run in an isolated child process to avoid blocking the browser.
+Peersky supports BitTorrent downloading and streaming natively using [WebTorrent](https://webtorrent.io/). Torrents run in an isolated child process to avoid blocking the browser.
 
 ![PeerSky magnet: streaming](./images/peersky-magnet-stream.gif)
+
+> [Tears of Steel](https://en.wikipedia.org/wiki/Tears_of_Steel) is an open-source short film released under a Creative Commons license, so sharing and downloading it is permitted.
 
 ## Supported URL Schemes
 
@@ -11,6 +13,8 @@ Peersky supports BitTorrent downloads natively using [WebTorrent](https://webtor
 - `magnet:?xt=urn:btih:<infohash>` — standard magnet links
 
 All three schemes load the same torrent download UI.
+
+![PeerSky bittorrent: themes](./images/peersky-bittorrent.gif)
 
 ## How It Works
 
