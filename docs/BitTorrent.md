@@ -14,7 +14,7 @@ Peersky supports BitTorrent downloading and streaming natively using [WebTorrent
 
 All three schemes load the same torrent download UI.
 
-![PeerSky bittorrent: themes](./images/peersky-bittorrent.gif)
+![PeerSky bittorrent: themes](./images/peersky-bittorrent-themes.gif)
 
 ## How It Works
 
