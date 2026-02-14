@@ -93,7 +93,7 @@ async function handleURL(rawURL) {
     rawURL.startsWith(IPNS_PREFIX) || 
     rawURL.startsWith(HYPER_PREFIX) || 
     rawURL.startsWith(WEB3_PREFIX) ||
-    rawURL.startsWith(HS_PREFIX)
+    rawURL.startsWith(HS_PREFIX) ||
     rawURL.startsWith(BT_PREFIX) ||
     rawURL.startsWith(BITTORRENT_PREFIX) ||
     rawURL.startsWith(MAGNET_PREFIX)
