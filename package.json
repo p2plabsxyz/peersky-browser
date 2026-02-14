@@ -180,8 +180,5 @@
     "chrome-extension-fetch": "^1.0.0",
     "electron": "^37.2.2",
     "electron-builder": "^26.0.12"
-  },
-  "overrides": {
-    "sodium-native": "^4.3.1"
   }
 }
