@@ -17,8 +17,7 @@ import { kadDHT, removePrivateAddressesMapper } from "@libp2p/kad-dht";
 import { ping } from "@libp2p/ping";
 import { identify, identifyPush } from "@libp2p/identify";
 import { bootstrap } from "@libp2p/bootstrap";
-import { createDelegatedRoutingV1HttpApiClient } from "@helia/delegated-routing-v1-http-api-client";
-import { delegatedHTTPRoutingDefaults } from "@helia/routers";
+import { delegatedRoutingV1HttpApiClient } from "@helia/delegated-routing-v1-http-api-client";
 import { ipnsValidator } from "ipns/validator";
 import { ipnsSelector } from "ipns/selector";
 import { userAgent } from "libp2p/user-agent";
@@ -79,7 +78,9 @@ export async function createNode() {
       autoNAT: autoNAT(),
       autoTLS: autoTLS(),
       dcutr: dcutr(),
-      delegatedRouting: () => createDelegatedRoutingV1HttpApiClient('https://delegated-ipfs.dev', delegatedHTTPRoutingDefaults()),
+      delegatedRouting: delegatedRoutingV1HttpApiClient({
+        url: 'https://delegated-ipfs.dev'
+      }),
       aminoDHT: kadDHT({
         protocol: '/ipfs/kad/1.0.0',
         peerInfoMapper: removePrivateAddressesMapper,
