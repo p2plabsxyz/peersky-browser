@@ -48,18 +48,6 @@ export async function createHandler(ipfsOptions, session) {
     const startTime = Date.now();
     node = await createNode(ipfsOptions);
     console.log(`IPFS node initialized in ${Date.now() - startTime}ms`);
-
-    // Ensure the node's PeerId has toBytes()
-    if (typeof node.libp2p.peerId.toBytes !== "function") {
-      node.libp2p.peerId.toBytes = () => node.libp2p.peerId.multihash.bytes;
-      console.log("Patched node peerId to include toBytes() method.");
-    }
-    // Also ensure the PeerID has a 'bytes' property (required by IPNS)
-    if (!node.libp2p.peerId.bytes) {
-      node.libp2p.peerId.bytes = node.libp2p.peerId.toBytes();
-      console.log("Patched node peerId to include bytes property.");
-    }
-    
     unixFileSystem = unixfs(node);
     name = ipns(node);
     dnsLinkResolver = dnsLink(node);
