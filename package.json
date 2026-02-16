@@ -25,6 +25,12 @@
   "build": {
     "npmRebuild": false,
     "asar": true,
+    "asarUnpack": [
+      "node_modules/**",
+      "src/**",
+      "public/*",
+      "package.json"
+    ],
     "appId": "peersky.p2plabs.xyz",
     "productName": "Peersky Browser",
     "directories": {
@@ -161,7 +167,7 @@
     "electron-updater": "^6.2.1",
     "ethers": "^6.13.4",
     "fs-extra": "^11.2.0",
-    "helia": "^5.4.2",
+    "helia": "^6.0.20",
     "hyper-sdk": "^6.1.0",
     "hypercore-crypto": "^3.6.1",
     "hypercore-fetch": "^10.0.0",
