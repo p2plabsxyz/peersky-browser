@@ -24,13 +24,7 @@
   },
   "build": {
     "npmRebuild": false,
-    "asar": true,
-    "asarUnpack": [
-      "node_modules/**",
-      "src/**",
-      "public/*",
-      "package.json"
-    ],
+    "asar": false,
     "appId": "peersky.p2plabs.xyz",
     "productName": "Peersky Browser",
     "directories": {
