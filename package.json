@@ -72,13 +72,7 @@
         "--enable-accelerated-video"
       ],
       "target": [
-        {
-          "target": "deb",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        },
+        "deb",
         "AppImage",
         "apk",
         "pacman"
