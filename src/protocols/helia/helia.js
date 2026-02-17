@@ -21,7 +21,6 @@ import { bootstrap } from "@libp2p/bootstrap";
 import { keychain } from "@libp2p/keychain";
 import { http } from "@libp2p/http";
 import { delegatedRoutingV1HttpApiClient } from "@helia/delegated-routing-v1-http-api-client";
-import { delegatedHTTPRoutingDefaults } from "@helia/routers";
 import { ipnsValidator } from "ipns/validator";
 import { ipnsSelector } from "ipns/selector";
 import { userAgent } from "libp2p/user-agent";
@@ -81,7 +80,9 @@ export async function createNode() {
       autoNAT: autoNAT(),
       autoTLS: autoTLS(),
       dcutr: dcutr(),
-      delegatedRouting: delegatedRoutingV1HttpApiClient(delegatedHTTPRoutingDefaults()),
+      delegatedRouting: delegatedRoutingV1HttpApiClient({
+        url: 'https://delegated-ipfs.dev'
+      }),
       dht: kadDHT({
         validators: { ipns: ipnsValidator },
         selectors: { ipns: ipnsSelector },

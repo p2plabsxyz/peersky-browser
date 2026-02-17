@@ -153,7 +153,6 @@
   "dependencies": {
     "@helia/dnslink": "^1.1.4",
     "@helia/ipns": "^9.1.9",
-    "@helia/routers": "^5.0.3",
     "@helia/unixfs": "^7.0.4",
     "@libp2p/http": "^2.0.1",
     "@libp2p/kad-dht": "^16.1.3",
