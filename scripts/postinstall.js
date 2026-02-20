@@ -44,21 +44,6 @@ function downloadFile(url, destPath, redirectsLeft = 5) {
 async function main() {
   try {
     const root = process.cwd();
-
-    // Remove old nested sodium-native copies (v3.x) that try to download
-    // libsodium-1.0.18.tar.gz which no longer exists (404), breaking arm64 builds.
-    // These packages will fall back to the root-level sodium-native@5.x which works.
-    const nestedSodiumParents = [
-      'hypercore-protocol', 'simple-hypercore-protocol',
-      'noise-protocol', 'xsalsa20-universal', 'hmac-blake2b'
-    ];
-    for (const pkg of nestedSodiumParents) {
-      const nested = path.join(root, 'node_modules', pkg, 'node_modules', 'sodium-native');
-      if (fsSync.existsSync(nested)) {
-        await fs.rm(nested, { recursive: true, force: true });
-        console.log(`[postinstall] Removed outdated ${pkg}/sodium-native (dead upstream URL)`);
-      }
-    }
     const preRoot = path.join(root, 'src', 'extensions', 'preinstalled-extensions');
     const preinstalledJsonPath = path.join(preRoot, 'preinstalled.json');
 
