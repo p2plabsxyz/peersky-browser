@@ -2,14 +2,10 @@ import { create as createSDK } from "hyper-sdk";
 import makeHyperFetch from "hypercore-fetch";
 import { Readable, PassThrough } from "stream";
 import fs from "fs-extra";
-import HyperDHT from "hyperdht";
-import Hyperswarm from "hyperswarm";
-import crypto from "hypercore-crypto";
 import b4a from "b4a";
-import { hyperOptions, loadKeyPair, saveKeyPair } from "./config.js";
 
+// Single SDK and swarm for the app lifecycle (hyper:// browsing + chat share the same swarm).
 let sdk, fetch;
-let swarm = null;
 
 // Mapping: roomKey -> hypercore feed (stores chat messages)
 const roomFeeds = {};
@@ -19,66 +15,37 @@ const roomSseClients = {};
 let peers = [];
 // Keep track of which rooms we’ve joined in the swarm (avoid double-joining)
 const joinedRooms = new Set();
+const chatDiscoveryKeys = new Set();
 
-function createDHT() {
-  const dht = new HyperDHT({ ephemeral: false });
-  dht.on("error", (err) => {
-    console.error("HyperDHT error:", err);
-  });
-  return dht;
-}
-
-// Initialize Hyper SDK (once)
 async function initializeHyperSDK(options) {
-  if (sdk && fetch) return fetch;
+  if (sdk != null && fetch != null) return fetch;
 
   console.log("Initializing Hyper SDK...");
 
-  // Load or generate the swarm keypair
-  let keyPair = loadKeyPair();
-  if (!keyPair) {
-    keyPair = crypto.keyPair();
-    saveKeyPair(keyPair);
-    console.log("Generated new swarm keypair");
-  } else {
-    console.log("Loaded existing swarm keypair");
-  }
-
   sdk = await createSDK(options);
   fetch = makeHyperFetch({ sdk, writable: true });
-  console.log("Hyper SDK initialized.");
-  return fetch;
-}
 
-// Initialize Hyperswarm with the keypair from hyperOptions and a custom DHT.
-async function initializeSwarm() {
-  if (swarm) return;
-
-  const keyPair = hyperOptions.keyPair;
-  const dht = createDHT();
-
-  swarm = new Hyperswarm({
-    keyPair,
-    dht,
-    firewall: (remotePublicKey, details) => false,
-  });
-
-  swarm.on("error", (err) => {
-    console.error("Hyperswarm error:", err);
-  });
-
-  // On new peer connections:
-  swarm.on("connection", (connection, info) => {
+  sdk.swarm.on("connection", (connection, info) => {
     const shortID = connection.remotePublicKey
       ? b4a.toString(connection.remotePublicKey, "hex").substr(0, 6)
       : "peer";
 
-    if (info.discoveryKey) {
-      const discKey = b4a.toString(info.discoveryKey, "hex");
-      console.log(`New peer [${shortID}] connected, discKey: ${discKey}`);
-    } else {
-      console.log(`New peer [${shortID}] connected (no discKey).`);
+    const hasChatTopic =
+      info.topics &&
+      info.topics.length > 0 &&
+      info.topics.some((t) => chatDiscoveryKeys.has(b4a.toString(t, "hex")));
+    const isServerConnection = !info.topics || info.topics.length === 0;
+    const isChatConnection =
+      hasChatTopic || (isServerConnection && chatDiscoveryKeys.size > 0);
+
+    if (!isChatConnection) {
+      connection.on("error", (err) => {
+        console.error(`Peer [${shortID}] (replication) connection error:`, err);
+      });
+      return;
     }
+
+    console.log(`New chat peer [${shortID}] connected`);
 
     connection.on("error", (err) => {
       console.error(`Peer [${shortID}] connection error:`, err);
@@ -88,7 +55,6 @@ async function initializeSwarm() {
     console.log(`Peers connected: ${peers.length}`);
     broadcastPeerCount();
 
-    // Replicate all known feeds on this connection.
     for (const feed of Object.values(roomFeeds)) {
       feed.replicate(connection);
     }
@@ -106,8 +72,8 @@ async function initializeSwarm() {
       }
       msg.sender = shortID;
       if (!msg.timestamp) msg.timestamp = Date.now();
-      console.log(`Peer [${shortID}] =>`, msg);
       if (msg.roomKey && roomFeeds[msg.roomKey]) {
+        console.log(`Peer [${shortID}] =>`, msg);
         appendMessageToFeed(msg.roomKey, {
           sender: msg.sender,
           message: msg.message,
@@ -124,12 +90,13 @@ async function initializeSwarm() {
       broadcastPeerCount();
     });
   });
+
+  console.log("Hyper SDK initialized.");
+  return fetch;
 }
 
-// Main exported function to handle the `hyper://` protocol.
 export async function createHandler(options, session) {
   await initializeHyperSDK(options);
-  await initializeSwarm();
 
   return async function protocolHandler(req, callback) {
     const { url, method, headers, uploadData } = req;
@@ -230,7 +197,7 @@ async function handleChatRequest(req, callback, session) {
       if (!feed) throw new Error("Feed not initialized for this room");
 
       const stream = new PassThrough();
-      session.messageStream = stream; // keep reference
+      session.messageStream = stream;
 
       // Replay the entire feed so the client sees the full history
       for (let i = 0; i < feed.length; i++) {
@@ -286,7 +253,7 @@ async function handleChatRequest(req, callback, session) {
 // Handle general hyper:// requests not related to “chat” API routes.
 async function handleHyperRequest(req, callback, session) {
   const { url, method = "GET", headers = {}, uploadData } = req;
-  const fetchFn = await initializeHyperSDK(); // ensure sdk/fetch is initted
+  const fetchFn = await initializeHyperSDK();
 
   let body;
   if (uploadData) {
@@ -414,9 +381,10 @@ async function appendMessageToFeed(roomKey, { sender, message, timestamp }) {
 }
 
 // Create a brand-new random 32-byte hex “roomKey”.
-async function generateChatRoom() {
-  const buf = crypto.randomBytes(32);
-  return b4a.toString(buf, "hex");
+function generateChatRoom() {
+  const randomBuf = Buffer.alloc(32);
+  globalThis.crypto.getRandomValues(randomBuf);
+  return b4a.toString(randomBuf, "hex");
 }
 
 // Join a chat room: create/load the feed, join the swarm topic, etc.
@@ -425,7 +393,7 @@ async function joinChatRoom(roomKey) {
   let feed = roomFeeds[roomKey];
   if (!feed) {
     feed = sdk.corestore.get({
-      name: "chat-" + roomKey, // Use a deterministic name so every device gets the same feed.
+      name: "chat-" + roomKey,
       valueEncoding: "json",
     });
     await feed.ready();
@@ -446,8 +414,9 @@ async function joinChatRoom(roomKey) {
   if (!joinedRooms.has(roomKey)) {
     joinedRooms.add(roomKey);
     const topicBuf = b4a.from(roomKey, "hex");
-    swarm.join(topicBuf, { client: true, server: true });
-    await swarm.flush();
+    chatDiscoveryKeys.add(roomKey);
+    sdk.join(topicBuf, { client: true, server: true });
+    await sdk.swarm.flush();
     console.log(`Joined swarm for room: ${roomKey}`);
   } else {
     console.log(`Already joined swarm for room: ${roomKey}`);
