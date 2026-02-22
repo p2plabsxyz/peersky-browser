@@ -40,7 +40,9 @@
       "src/*"
     ],
     "asarUnpack": [
-      "node_modules/**"
+      "src/**",
+      "node_modules/**",
+      "package.json"
     ],
     "mac": {
       "artifactName": "${name}-${version}-${os}-${arch}.${ext}",
