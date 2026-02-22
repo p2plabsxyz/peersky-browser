@@ -869,7 +869,7 @@ async function loadArchiveData() {
             <td>${safeTime}</td>
             <td>
               <button class="btn btn-secondary btn-sm copy-btn" data-copy="${safeCid}">Copy CID</button>
-              <a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-sm">Open</a>
+              <a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm">Open</a>
             </td>
           </tr>`;
         });

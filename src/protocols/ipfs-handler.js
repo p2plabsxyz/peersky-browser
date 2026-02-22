@@ -65,6 +65,8 @@ export async function createHandler(ipfsOptions, session) {
       const entries = [];
       let currentFileName = null;
       const uploadedFileNames = [];
+      const uploadedFilePaths = []; // Track full paths for folder name detection
+      let directoryName = null; // Set when uploading a directory directly
 
       for (const data of request.uploadData || []) {
         console.log("Upload data entry:", JSON.stringify(Object.keys(data)), "type:", data.type);
@@ -74,18 +76,19 @@ export async function createHandler(ipfsOptions, session) {
           const stats = await fs.stat(filePath);
           if (stats.isDirectory()) {
             // Handle directory with globSource for recursive upload
+            directoryName = path.basename(filePath);
             const source = globSource(filePath, '**/*');
             for await (const entry of source) {
               entries.push({
                 path: entry.path,
                 content: entry.content, // Readable stream for file content
               });
-              // Note: filenames in directories are part of the path, we might not want to list them all as top-level uploads
             }
           } else {
             // Handle individual file
             const fileName = path.basename(filePath);
             uploadedFileNames.push(fileName);
+            uploadedFilePaths.push(filePath);
             entries.push({
               path: fileName,
               content: fs.createReadStream(filePath, { highWaterMark: 1024 * 1024 }),
@@ -161,12 +164,44 @@ export async function createHandler(ipfsOptions, session) {
       try {
         const timestamp = Date.now();
         const cidStr = rootCid.toString();
-        // Use the first file name or a summary if multiple files
+        // Determine upload name - prefer folder name for directory uploads
         let uploadName;
-        if (uploadedFileNames.length === 1) {
+        if (directoryName) {
+          // Direct directory upload
+          uploadName = directoryName;
+        } else if (uploadedFilePaths.length > 1) {
+          // Multiple files - check if they share a common parent directory (folder upload)
+          const dirs = uploadedFilePaths.map(p => path.dirname(p));
+          const commonDir = dirs.reduce((a, b) => {
+            const aParts = a.split(path.sep);
+            const bParts = b.split(path.sep);
+            const common = [];
+            for (let i = 0; i < Math.min(aParts.length, bParts.length); i++) {
+              if (aParts[i] === bParts[i]) common.push(aParts[i]);
+              else break;
+            }
+            return common.join(path.sep);
+          });
+          const folderName = path.basename(commonDir);
+          if (folderName && folderName !== path.sep && folderName !== '.') {
+            uploadName = folderName;
+          } else {
+            uploadName = `${uploadedFileNames[0]} + ${uploadedFileNames.length - 1} files`;
+          }
+        } else if (uploadedFileNames.length === 1) {
           uploadName = uploadedFileNames[0];
         } else if (uploadedFileNames.length > 1) {
-          uploadName = `${uploadedFileNames[0]} + ${uploadedFileNames.length - 1} files`;
+          // Blob uploads without path info - check for common folder prefix
+          const firstSlash = uploadedFileNames[0]?.indexOf('/');
+          if (firstSlash > 0) {
+            const folderName = uploadedFileNames[0].split('/')[0];
+            if (uploadedFileNames.every(n => n.startsWith(folderName + '/'))) {
+              uploadName = folderName;
+            }
+          }
+          if (!uploadName) {
+            uploadName = `${uploadedFileNames[0]} + ${uploadedFileNames.length - 1} files`;
+          }
         } else {
           uploadName = "Upload " + new Date(timestamp).toLocaleString();
         }
