@@ -39,9 +39,13 @@ jobs:
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         run: echo "This build was triggered without a tag."
 
+      - name: Install dependencies with npm
+        run: npm ci
+
       - name: Build binaries with electron-builder
         uses: coparse-inc/action-electron-builder@29a7606c7d726b5b0f4dc2f334026f58bea0e1bb # v1.6.0 but safer than a tag that can be changed
         with:
           max_attempts: 2
+          skip_install: true
           github_token: ${{ secrets.github_token }}
           release: ${{ startsWith(github.ref, 'refs/tags/v') }}
