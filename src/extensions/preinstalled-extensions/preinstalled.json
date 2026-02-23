@@ -19,16 +19,16 @@
       "archive": "webrecorder-archivewebpag.zip"
     },
     {
-      "id": "mdjildafknihdffpkfmmpnpoiajfjnjd",
-      "name": "Consent AutoDeny",
-      "url": "https://chromewebstore.google.com/detail/consent-o-matic/mdjildafknihdffpkfmmpnpoiajfjnjd",
-      "archive": "consent-o-matic.zip"
-    },
-    {
       "name": "PeerSky History",
       "version": "1.1.0",
       "url": "https://github.com/p2plabsxyz/extension-peersky-history/releases/download/v{version}/peersky-history-v{version}.zip",
       "archive": "peersky-history-v1.1.0.zip"
+    },
+    {
+      "name": "Consent Autodeny",
+      "version": "1.0.0",
+      "url": "https://github.com/p2plabsxyz/consent-autodeny/releases/download/v{version}/consent-autodeny-v{version}.zip",
+      "archive": "consent-autodeny-v1.0.0.zip"
     }
   ]
 }
