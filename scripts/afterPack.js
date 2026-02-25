@@ -20,12 +20,20 @@ const PREBUILD_MODULES = [
 export default async function afterPack(context) {
   const arch = ARCH_MAP[context.arch] || 'x64';
   const platform = context.electronPlatformName; // darwin, linux, win32
-  const appDir = path.join(context.appOutDir, context.packager.appInfo.productFilename + '.app',
+  
+  // With asar: true, node_modules are in app.asar.unpacked/
+  const appDirMac = path.join(context.appOutDir, context.packager.appInfo.productFilename + '.app',
+    'Contents', 'Resources', 'app.asar.unpacked');
+  const appDirMacNoAsar = path.join(context.appOutDir, context.packager.appInfo.productFilename + '.app',
     'Contents', 'Resources', 'app');
-
-  // On Linux/Windows the layout is different
-  const appDirAlt = path.join(context.appOutDir, 'resources', 'app');
-  const root = fs.existsSync(appDir) ? appDir : appDirAlt;
+  const appDirLinux = path.join(context.appOutDir, 'resources', 'app.asar.unpacked');
+  const appDirLinuxNoAsar = path.join(context.appOutDir, 'resources', 'app');
+  
+  // Try asar.unpacked first, then fall back to non-asar layout
+  const root = fs.existsSync(appDirMac) ? appDirMac 
+    : fs.existsSync(appDirLinux) ? appDirLinux
+    : fs.existsSync(appDirMacNoAsar) ? appDirMacNoAsar
+    : appDirLinuxNoAsar;
 
   console.log(`[afterPack] Fixing native prebuilds for ${platform}-${arch} in ${root}`);
 
