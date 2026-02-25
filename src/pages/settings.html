@@ -314,22 +314,41 @@
       <div id="archive-section" class="settings-page">
         <h1 class="section-title">Archive</h1>
 
-        <section class="settings-section">
+        <div class="archive-filter-bar">
+          <span class="filter-label">Time</span>
+          <select id="export-time-filter">
+            <option value="15m">Last 15 minutes</option>
+            <option value="1h">Last 1 hour</option>
+            <option value="1d" selected>Last 1 day</option>
+            <option value="1w">Last 1 week</option>
+            <option value="all">All time</option>
+          </select>
+          <div class="filter-actions">
+            <button id="export-archive-btn" class="btn btn-secondary">Export as JSON</button>
+            <button id="clear-archive-btn" class="btn btn-danger">Clear All</button>
+          </div>
+        </div>
+
+        <div class="archive-subsection">
           <h2>Hyperdrives</h2>
           <div id="hyper-archive-list">
-            <p>Loading...</p>
+            <p class="archive-empty">Loading...</p>
           </div>
+        </div>
 
+        <div class="archive-subsection">
           <h2>IPFS Uploads</h2>
           <div id="ipfs-archive-list">
-            <p>Loading...</p>
+            <p class="archive-empty">Loading...</p>
           </div>
+        </div>
 
+        <div class="archive-subsection">
           <h2>ENS Cache</h2>
           <div id="ens-archive-list">
-            <p>Loading...</p>
+            <p class="archive-empty">Loading...</p>
           </div>
-        </section>
+        </div>
       </div>
     </main>
   </div>

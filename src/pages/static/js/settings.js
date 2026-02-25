@@ -215,7 +215,9 @@ function createFallbackAPI(ipc) {
       clearBrowserCache: () => ipc.invoke('settings-clear-cache'),
       resetP2P: (opts = {}) => ipc.invoke('settings-reset-p2p', opts),
       uploadWallpaper: (filePath) => ipc.invoke('settings-upload-wallpaper', filePath),
-      getArchiveData: () => ipc.invoke('settings-get-archive-data')
+      getArchiveData: () => ipc.invoke('settings-get-archive-data'),
+      exportArchive: (jsonContent) => ipc.invoke('settings-export-archive', jsonContent),
+      clearArchive: () => ipc.invoke('settings-clear-archive')
     },
     onThemeChanged: (callback) => wrapCallback('theme-changed', callback),
     onSearchEngineChanged: (callback) => wrapCallback('search-engine-changed', callback),
@@ -818,15 +820,25 @@ async function loadArchiveData() {
 
   try {
     const data = await settingsAPI.settings.getArchiveData();
+    const filter = document.getElementById('export-time-filter')?.value || 'all';
+
+    // Calculate cutoff timestamp
+    const now = Date.now();
+    const durations = { '15m': 15 * 60 * 1000, '1h': 60 * 60 * 1000, '1d': 24 * 60 * 60 * 1000, '1w': 7 * 24 * 60 * 60 * 1000 };
+    const cutoff = filter === 'all' ? 0 : now - (durations[filter] || 0);
+
+    // Filter data by time
+    const filteredHyper = (data.hyper || []).filter(item => item.timestamp >= cutoff);
+    const filteredIpfs = (data.ipfs || []).filter(item => item.timestamp >= cutoff);
+    const filteredEns = (data.ens || []).filter(([, , ts]) => !ts || filter === 'all' || (ts && ts >= cutoff));
     // data = { ipfs: [], hyper: [], ens: [] }
 
     // Render Hyper
     const hyperList = document.getElementById('hyper-archive-list');
     if (hyperList) {
-      if (data.hyper && data.hyper.length > 0) {
+      if (filteredHyper.length > 0) {
         let html = '<table class="archive-table"><thead><tr><th>Name</th><th>Key</th><th>Type</th><th>Time</th><th>Action</th></tr></thead><tbody>';
-        // Use spread to avoid mutating the original array
-        [...data.hyper].reverse().forEach(item => {
+        [...filteredHyper].reverse().forEach(item => {
           const time = new Date(item.timestamp).toLocaleString();
           const safeName = escapeHtml(item.name || 'Unknown');
           const safeKey = escapeHtml(item.key);
@@ -846,17 +858,16 @@ async function loadArchiveData() {
         html += '</tbody></table>';
         hyperList.innerHTML = html;
       } else {
-        hyperList.innerHTML = '<p>No Hyperdrives found.</p>';
+        hyperList.innerHTML = '<p class="archive-empty">No Hyperdrives found.</p>';
       }
     }
 
     // Render IPFS
     const ipfsList = document.getElementById('ipfs-archive-list');
     if (ipfsList) {
-      if (data.ipfs && data.ipfs.length > 0) {
+      if (filteredIpfs.length > 0) {
         let html = '<table class="archive-table"><thead><tr><th>Name</th><th>CID</th><th>Time</th><th>Action</th></tr></thead><tbody>';
-        // Use spread to avoid mutating the original array
-        [...data.ipfs].reverse().forEach(item => {
+        [...filteredIpfs].reverse().forEach(item => {
           const time = new Date(item.timestamp).toLocaleString();
           const safeName = escapeHtml(item.name || 'Unknown');
           const safeCid = escapeHtml(item.cid);
@@ -876,7 +887,7 @@ async function loadArchiveData() {
         html += '</tbody></table>';
         ipfsList.innerHTML = html;
       } else {
-        ipfsList.innerHTML = '<p>No IPFS uploads found.</p>';
+        ipfsList.innerHTML = '<p class="archive-empty">No IPFS uploads found.</p>';
       }
     }
 
@@ -884,9 +895,9 @@ async function loadArchiveData() {
     const ensList = document.getElementById('ens-archive-list');
     if (ensList) {
       // ens is array of [name, contentHash]
-      if (data.ens && data.ens.length > 0) {
+      if (filteredEns.length > 0) {
         let html = '<table class="archive-table"><thead><tr><th>Name</th><th>Content Hash</th><th>Action</th></tr></thead><tbody>';
-        data.ens.forEach(([name, hash]) => {
+        filteredEns.forEach(([name, hash]) => {
           const safeName = escapeHtml(name);
           const safeHash = escapeHtml(hash);
 
@@ -901,7 +912,7 @@ async function loadArchiveData() {
         html += '</tbody></table>';
         ensList.innerHTML = html;
       } else {
-        ensList.innerHTML = '<p>No ENS records cached.</p>';
+        ensList.innerHTML = '<p class="archive-empty">No ENS records cached.</p>';
       }
     }
 
@@ -927,18 +938,82 @@ async function loadArchiveData() {
   } catch (err) {
     console.error('Failed to load archive data:', err);
     const hyperList = document.getElementById('hyper-archive-list');
-    if (hyperList) hyperList.innerHTML = `<p class="error">Error: ${escapeHtml(err.message)}</p>`;
+    if (hyperList) hyperList.innerHTML = `<p class="archive-empty error">Error: ${escapeHtml(err.message)}</p>`;
 
     const ipfsList = document.getElementById('ipfs-archive-list');
-    if (ipfsList) ipfsList.innerHTML = `<p class="error">Error: ${escapeHtml(err.message)}</p>`;
+    if (ipfsList) ipfsList.innerHTML = `<p class="archive-empty error">Error: ${escapeHtml(err.message)}</p>`;
 
     const ensList = document.getElementById('ens-archive-list');
-    if (ensList) ensList.innerHTML = `<p class="error">Error: ${escapeHtml(err.message)}</p>`;
+    if (ensList) ensList.innerHTML = `<p class="archive-empty error">Error: ${escapeHtml(err.message)}</p>`;
   }
 }
 
 
 
+
+// Export archive data as JSON with time filtering
+async function exportArchiveData() {
+  if (!settingsAPI?.settings?.getArchiveData) return;
+
+  try {
+    const data = await settingsAPI.settings.getArchiveData();
+    const filter = document.getElementById('export-time-filter')?.value || 'all';
+
+    // Calculate cutoff timestamp
+    const now = Date.now();
+    const durations = { '15m': 15 * 60 * 1000, '1h': 60 * 60 * 1000, '1d': 24 * 60 * 60 * 1000, '1w': 7 * 24 * 60 * 60 * 1000 };
+    const cutoff = filter === 'all' ? 0 : now - (durations[filter] || 0);
+
+    // Filter each category by timestamp
+    const filtered = {
+      hyperdrives: (data.hyper || []).filter(item => item.timestamp >= cutoff).map(item => ({
+        name: item.name,
+        key: item.key,
+        type: item.type || 'drive',
+        timestamp: new Date(item.timestamp).toISOString()
+      })),
+      ipfs: (data.ipfs || []).filter(item => item.timestamp >= cutoff).map(item => ({
+        name: item.name,
+        cid: item.cid,
+        url: item.url,
+        timestamp: new Date(item.timestamp).toISOString()
+      })),
+      ens: (data.ens || []).filter(([, , ts]) => !ts || ts >= cutoff).map(([name, hash]) => ({
+        name,
+        contentHash: hash
+      }))
+    };
+
+    const totalEntries = filtered.hyperdrives.length + filtered.ipfs.length + filtered.ens.length;
+    if (totalEntries === 0) {
+      showSettingsSavedMessage('No data found for the selected time range', 'error');
+      return;
+    }
+
+    const jsonContent = JSON.stringify(filtered, null, 2);
+
+    if (settingsAPI?.settings?.exportArchive) {
+      // Use IPC to show native save dialog
+      const result = await settingsAPI.settings.exportArchive(jsonContent);
+      if (result && !result.canceled) {
+        showSettingsSavedMessage(`Exported ${totalEntries} entries to ${result.filePath}`);
+      }
+    } else {
+      // Fallback: browser download
+      const blob = new Blob([jsonContent], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `peersky-archive-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showSettingsSavedMessage(`Exported ${totalEntries} entries`);
+    }
+  } catch (err) {
+    console.error('Failed to export archive data:', err);
+    showSettingsSavedMessage('Export failed: ' + err.message, 'error');
+  }
+}
 
 // Sidebar navigation functionality for page switching
 function initializeSidebarNavigation() {
@@ -1053,6 +1128,33 @@ function updateSectionUI(sectionName) {
   // Load data for Archive section
   if (sectionName === 'archive') {
     loadArchiveData();
+    // Attach export button handler
+    const exportBtn = document.getElementById('export-archive-btn');
+    if (exportBtn && !exportBtn.dataset.bound) {
+      exportBtn.addEventListener('click', exportArchiveData);
+      exportBtn.dataset.bound = 'true';
+    }
+    // Attach clear button handler
+    const clearBtn = document.getElementById('clear-archive-btn');
+    if (clearBtn && !clearBtn.dataset.bound) {
+      clearBtn.addEventListener('click', async () => {
+        if (!confirm('Are you sure you want to clear all archive data? This cannot be undone.')) return;
+        try {
+          await settingsAPI.settings.clearArchive();
+          loadArchiveData();
+          showSettingsSavedMessage('Archive cleared successfully');
+        } catch (err) {
+          showSettingsSavedMessage('Failed to clear archive: ' + err.message, 'error');
+        }
+      });
+      clearBtn.dataset.bound = 'true';
+    }
+    // Attach time filter change handler
+    const timeFilter = document.getElementById('export-time-filter');
+    if (timeFilter && !timeFilter.dataset.bound) {
+      timeFilter.addEventListener('change', () => loadArchiveData());
+      timeFilter.dataset.bound = 'true';
+    }
   }
 }
 

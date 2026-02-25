@@ -872,3 +872,113 @@ body {
   opacity: 0.75;
   margin-top: 4px;
 }
+/* Archive Section */
+.archive-filter-bar {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: var(--settings-card-bg);
+  border: 1px solid var(--settings-border);
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+}
+
+.archive-filter-bar .filter-label {
+  font-size: 0.85rem;
+  color: var(--settings-text-secondary);
+  margin-right: 0.5rem;
+  white-space: nowrap;
+}
+
+.archive-filter-bar select {
+  padding: 0.35em 0.6em;
+  border-radius: 4px;
+  background: var(--settings-bg-secondary);
+  color: var(--settings-text-primary);
+  border: 1px solid var(--settings-border);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.archive-filter-bar .filter-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.archive-subsection {
+  margin-bottom: 1.5rem;
+}
+
+.archive-subsection h2 {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--settings-text-primary);
+  margin-bottom: 0.75rem;
+}
+
+.archive-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--settings-card-bg);
+  border: 1px solid var(--settings-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.archive-table th,
+.archive-table td {
+  border-right: none;
+  border-left: none;
+}
+.archive-table thead {
+  background: var(--settings-bg-secondary);
+}
+
+.archive-table th {
+  text-align: left;
+  padding: 0.6rem 1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--settings-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-bottom: 1px solid var(--settings-border);
+}
+
+.archive-table td {
+  padding: 0.75rem 1rem;
+  font-size: 0.85rem;
+  color: var(--settings-text-primary);
+  border-bottom: 1px solid var(--settings-border);
+  vertical-align: middle;
+}
+
+.archive-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.archive-table td code {
+  background: rgba(88, 166, 255, 0.15);
+  color: #58a6ff;
+  padding: 0.15em 0.45em;
+  border-radius: 3px;
+  font-size: 0.8rem;
+}
+
+.archive-table td .btn {
+  margin-right: 0.35rem;
+}
+
+.archive-table td .btn:last-child {
+  margin-right: 0;
+}
+
+.archive-empty {
+  color: var(--settings-text-secondary);
+  font-size: 0.85rem;
+  padding: 1rem;
+  text-align: center;
+  background: var(--settings-card-bg);
+  border: 1px solid var(--settings-border);
+  border-radius: 8px;
+}

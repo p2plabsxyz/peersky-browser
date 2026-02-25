@@ -1,5 +1,5 @@
 import electron from "electron";
-const { app, protocol: globalProtocol, ipcMain, BrowserWindow, webContents, Menu } = electron;
+const { app, protocol: globalProtocol, ipcMain, BrowserWindow, webContents, Menu, dialog } = electron;
 import { createHandler as createBrowserHandler } from "./protocols/peersky-protocol.js";
 import { createHandler as createBrowserThemeHandler } from "./protocols/theme-handler.js";
 import { createHandler as createIPFSHandler } from "./protocols/ipfs-handler.js";
@@ -9,7 +9,7 @@ import { createHandler as createFileHandler } from "./protocols/file-handler.js"
 import { createHandler as createBittorrentHandler } from "./protocols/bittorrent-handler.js";
 import { ipfsOptions, hyperOptions } from "./protocols/config.js";
 import { createMenuTemplate } from "./actions.js";
-import { ipfsOptions, hyperOptions,ensCache, ipfsCache, hyperCache  } from "./protocols/config.js";
+import { ipfsOptions, hyperOptions,ensCache, ipfsCache, hyperCache , saveEnsCache, saveIpfsCache, saveHyperCache } from "./protocols/config.js";
 import { registerShortcuts } from "./actions.js";
 import WindowManager from "./window-manager.js";
 import settingsManager from "./settings-manager.js";
@@ -404,6 +404,28 @@ ipcMain.handle('settings-get-archive-data', async () => {
     hyper: hyperCache,
     ens: Array.from(ensCache.entries())
   };
+});
+
+ipcMain.handle('settings-export-archive', async (event, jsonContent) => {
+  const parentWindow = BrowserWindow.fromWebContents(event.sender);
+  const { canceled, filePath } = await dialog.showSaveDialog(parentWindow, {
+    defaultPath: `peersky-archive-${new Date().toISOString().slice(0, 10)}.json`,
+    filters: [{ name: 'JSON', extensions: ['json'] }]
+  });
+  if (canceled || !filePath) return { canceled: true };
+  const { writeFileSync } = await import('node:fs');
+  writeFileSync(filePath, jsonContent, 'utf-8');
+  return { canceled: false, filePath };
+});
+
+ipcMain.handle('settings-clear-archive', async () => {
+  ipfsCache.length = 0;
+  hyperCache.length = 0;
+  ensCache.clear();
+  saveIpfsCache();
+  saveHyperCache();
+  saveEnsCache();
+  return { success: true };
 });
 
 export { windowManager };
