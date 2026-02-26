@@ -138,15 +138,15 @@ Lifecycle
 
 Preinstalled extensions
 Preinstalled packages are imported on first launch, marked `isSystem: true` and `removable: false`, and ride the normal update track. Disablement is still allowed so users can opt out.
-1. Drop the MV3 package in `src/extensions/preinstalled-extensions/` (either unpacked directory or `.zip` archive) and ensure its `manifest.json` lives at the top level.
-2. Run `node scripts/postinstall.js` (or reinstall dependencies) to regenerate `preinstalled.json` when working with directories—this calculates deterministic IDs.
-3. If you store archives, add or update the matching entry in `preinstalled.json` with `archive`, `name`, `version`, and the generated `id`.
+1. Drop the MV3 package in `src/extensions/preinstalled-extensions/` as a `.zip` archive and ensure its `manifest.json` lives at the top level (not nested in a subdirectory).
+2. Run `node scripts/postinstall.js` to download extensions from Chrome Web Store or GitHub releases and update `preinstalled.json` with archive filenames.
+3. Add or update entries in `preinstalled.json` with `archive`, `name`, `version`, and optionally `id` (for Web Store extensions) or `url` (for custom releases).
 4. Launch the browser once to verify the package is imported and marked `isSystem`/`removable: false`.
 
 Validation & security
 - `policy.js`: MV3 default, file allow/deny lists, size caps, behavior.
 - `manifest-validator.js`: required fields, semantic versioning, permission/host risk checks, Web Store URL allowlist.
-- `zip.js`/`crx.js`: safe extraction and CRX parsing; optional key recovery via `chrome-extension-fetch`.
+- `zip.js`/`crx.js`: safe extraction and CRX parsing. Preinstalled extensions use `.zip` only; `.crx` is supported for manual installs via drag-and-drop or file picker.
 - Session hardening: `contextIsolation=true`, `sandbox=true`, no Node integration in webviews.
 
 ## 6. MV3 & Permissions

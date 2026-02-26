@@ -119,9 +119,14 @@ async function main() {
           outputDir: preRoot
         });
 
-        console.log(`[postinstall] ✓ ${ext.name} saved:`);
-        console.log(`  CRX: ${path.basename(crxPath)}`);
-        console.log(`  ZIP: ${path.basename(zipPath)}`);
+        // Delete .crx file - preinstalled extensions only use .zip
+        try {
+          await fs.unlink(crxPath);
+        } catch (err) {
+          console.warn(`[postinstall] Could not delete CRX: ${err.message}`);
+        }
+
+        console.log(`[postinstall] ✓ ${ext.name} saved: ${path.basename(zipPath)}`);
 
         // Update preinstalled.json with archive filename
         ext.archive = path.basename(zipPath);
