@@ -936,10 +936,24 @@ class NavBox extends HTMLElement {
         const result = await navBoxIPC.invoke('history-search', query);
         
         if (result.success && result.results && result.results.length > 0) {
-          this._autocompleteResults = result.results;
-          this._autocompleteSelectedIndex = -1;
-          this._renderAutocompleteResults();
-          this._showAutocomplete();
+          // Get current page URL from active webview via tab-bar
+          const tabBar = document.querySelector('tab-bar');
+          const currentPageUrl = tabBar?.getActiveWebview()?.getURL?.();
+          
+          // Filter out current page from suggestions
+          const filteredResults = currentPageUrl 
+            ? result.results.filter(r => r.url !== currentPageUrl)
+            : result.results;
+          
+          if (filteredResults.length > 0) {
+            this._autocompleteResults = filteredResults;
+            this._autocompleteSelectedIndex = -1;
+            this._renderAutocompleteResults();
+            this._showAutocomplete();
+          } else {
+            this._autocompleteResults = [];
+            this._hideAutocomplete();
+          }
         } else {
           this._autocompleteResults = [];
           this._hideAutocomplete();
