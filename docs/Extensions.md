@@ -7,14 +7,15 @@ PeerSky’s `peersky://extensions` page is the control center for managing brows
 ![Extensions Management](./images/peersky-extensions-management.png)
 
 Highlights
-- Three MV3 extensions ship preinstalled (Dark Reader, Linguist - web page translator, uBlock Origin Lite) on first launch; they stay installed but can be disabled any time.
+- Six MV3 extensions ship preinstalled (Dark Reader, Linguist, PeerSky History, Consent Autodeny, Ghostery, Wayback Machine) on first launch; they stay installed but can be disabled any time.
+- **PeerSky History** (`peersky://history`) provides local-first browsing history with full-text search, accessible via the extension or directly at `peersky://history`.
 - Context-isolated preload exposes only what this page needs, keeping privileged APIs out of `peersky://extensions`.
 - Browser actions integrate with the toolbar/puzzle menu, support pinning up to six entries.
 
 ## 2. User Guide
 
 Quick start
-- Preinstalled: three trusted extensions (Dark Reader, Linguist - web page translator, uBlock Origin Lite) ship enabled and can be disabled but not removed.
+- Preinstalled: six trusted extensions ship enabled and can be disabled but not removed: https://github.com/p2plabsxyz/essential-chromium-extensions
 - Install from Web Store: paste a Chrome Web Store URL, a `?id=` link, or the raw 32-character ID → Install.
 - Install from file: drag/drop a `.zip`, `.crx`, `.crx3` or use Choose File.
 
@@ -23,8 +24,6 @@ Common actions
 - Update: click Update All (Web Store installs only).
 - Uninstall (non-preinstalled only): click Remove and confirm.
 - Toolbar actions: appear under the puzzle menu; up to 6 can be pinned for quick access.
-
-![Pinned extensions menu showing pin/unpin options](./images/peersky-pinned-extensions.png)
 
 Pinning rules
 - Cap stays at six to keep the puzzle menu within 320 px and avoid cramped hover targets.
@@ -35,6 +34,33 @@ Icons
 - Served via `peersky://extension-icon/<id>/<size>` from the latest installed version.
 - A default SVG is used when no icon is found.
 
+### PeerSky History Extension
+
+**PeerSky History** is a custom-built extension that provides local-first browsing history with full-text search capabilities.
+
+![Peersky History Extension](./images/peersky-history-extension.png)
+
+**Key Features:**
+- **Local-first storage** - All history data stored locally using IndexedDB
+- **Full-text search** - Search through page titles, URLs, and content
+- **Privacy-focused** - No cloud sync, no tracking, data never leaves your device
+- **Direct access** - Available at `peersky://history` or via extension popup
+- **Integration** - Exposes `globalThis.search()` API for address bar autocomplete
+
+**Technical Details:**
+- **Repository:** https://github.com/p2plabsxyz/extension-peersky-history
+- **Storage:** IndexedDB via extension's background service worker
+- **Search API:** Async generator function `globalThis.search(query, maxResults, signal)`
+- **Address bar integration:** Nav-box queries history via `history-search` IPC channel
+- **Version:** 1.1.0 (preinstalled)
+
+**Usage:**
+1. Browse normally - history is automatically recorded
+2. Access via `peersky://history` to view and search full history
+3. Use address bar autocomplete (powered by PeerSky History search)
+4. Click extension icon for quick access to recent history
+
+**Privacy Note:** All history data is stored locally in your browser's user data directory and is never transmitted to external servers.
 
 ## 3. Electron Integration: Why Preload + IPC
 
