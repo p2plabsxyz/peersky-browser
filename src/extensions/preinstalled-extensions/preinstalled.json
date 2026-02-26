@@ -7,12 +7,6 @@
       "archive": "dark-reader.zip"
     },
     {
-      "id": "mlomiejdfkolichcflejclcbmpeaniij",
-      "name": "Ghostery - Tracker Ad Block",
-      "url": "https://chromewebstore.google.com/detail/ghostery-tracker-ad-block/mlomiejdfkolichcflejclcbmpeaniij",
-      "archive": "ghostery-tracker-ad-block.zip"
-    },
-    {
       "id": "gbefmodhlophhakmoecijeppjblibmie",
       "name": "Linguist - web page translator",
       "url": "https://chromewebstore.google.com/detail/linguist-web-page-transla/gbefmodhlophhakmoecijeppjblibmie",
@@ -29,6 +23,18 @@
       "version": "1.0.0",
       "url": "https://github.com/p2plabsxyz/consent-autodeny/releases/download/v{version}/consent-autodeny-v{version}.zip",
       "archive": "consent-autodeny-v1.0.0.zip"
+    },
+    {
+      "name": "Ghostery - Tracker Ad Block",
+      "version": "1.0.0",
+      "url": "https://github.com/p2plabsxyz/ghostery-extension/releases/download/v{version}/ghostery-chromium-v{version}.zip",
+      "archive": "ghostery-chromium-v1.0.0.zip"
+    },
+    {
+      "name": "Wayback Machine",
+      "version": "1.1.0",
+      "url": "https://github.com/p2plabsxyz/wayback-machine-extension/releases/download/v{version}/wayback-machine-v{version}.zip",
+      "archive": "wayback-machine-v1.1.0.zip"
     }
   ]
 }
