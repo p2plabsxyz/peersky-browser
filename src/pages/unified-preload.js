@@ -15,6 +15,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 // Context detection using window.location for immediate synchronous access
 const url = window.location.href;
 const isSettings = url.startsWith('peersky://settings');
+const isExtensions = url.startsWith('peersky://extensions');
 const isHome = url.startsWith('peersky://home');
 const isBookmarks = url.includes('peersky://bookmarks');
 const isTabsPage = url.includes('peersky://tabs');
@@ -289,10 +290,10 @@ if (isInternal || isP2P || url.includes('agregore.mauve.moe')) {
   }
 }
 
-const context = { url, isSettings, isHome, isBookmarks, isInternal, isExternal };
+const context = { url, isSettings, isExtensions, isHome, isBookmarks, isTabsPage, isInternal, isExternal };
 
 console.log(`Unified-preload: Context detection - URL: ${url}`);
-console.log(`Unified-preload: isSettings: ${isSettings}, isHome: ${isHome}, isBookmarks: ${isBookmarks}, isInternal: ${isInternal}, isExternal: ${isExternal}`);
+console.log(`Unified-preload: isSettings: ${isSettings}, isExtensions: ${isExtensions}, isHome: ${isHome}, isBookmarks: ${isBookmarks}, isInternal: ${isInternal}, isExternal: ${isExternal}`);
 
 // Factory function to create context-appropriate settings API with access control
 function createSettingsAPI(pageContext) {
@@ -326,6 +327,17 @@ function createSettingsAPI(pageContext) {
           throw new Error('File data must include name and content');
         }
         return ipcRenderer.invoke('settings-upload-wallpaper', fileData);
+      }
+    };
+  } else if (pageContext.isExtensions) {
+    // Extensions pages get limited settings API - only theme access
+    return {
+      get: (key) => {
+        const allowedKeys = ['theme'];
+        if (!allowedKeys.includes(key)) {
+          throw new Error(`Access denied: Extensions pages can only access: ${allowedKeys.join(', ')}`);
+        }
+        return baseAPI.get(key);
       }
     };
   } else if (pageContext.isHome) {
@@ -390,6 +402,67 @@ const bookmarkAPI = {
   deleteBookmark: (url) => ipcRenderer.invoke('delete-bookmark', { url })
 };
 
+// Extension API - Available only to settings pages for security
+const extensionAPI = {
+  listExtensions: () => ipcRenderer.invoke('extensions-list'),
+  toggleExtension: (id, enabled) => ipcRenderer.invoke('extensions-toggle', id, enabled),
+  installExtension: (source) => ipcRenderer.invoke('extensions-install', source),
+  openInstallFileDialog: () => ipcRenderer.invoke('extensions-show-open-dialog'),
+  installFromBlob: (name, arrayBuffer) => {
+    if (!name || typeof name !== 'string' || !arrayBuffer) {
+      throw new Error('Invalid upload arguments');
+    }
+    const lower = name.toLowerCase();
+    const allowed = lower.endsWith('.zip') || lower.endsWith('.crx') || lower.endsWith('.crx3');
+    if (!allowed) {
+      throw new Error('Unsupported file type');
+    }
+    const size = typeof arrayBuffer === 'object' && arrayBuffer !== null && typeof arrayBuffer.byteLength === 'number'
+      ? arrayBuffer.byteLength
+      : 0;
+    const MAX_UPLOAD_BYTES = 60 * 1024 * 1024; // 60MB
+    if (!Number.isFinite(size) || size <= 0) {
+      throw new Error('Invalid file content');
+    }
+    if (size > MAX_UPLOAD_BYTES) {
+      throw new Error(`File too large (max ${MAX_UPLOAD_BYTES} bytes)`);
+    }
+    return ipcRenderer.invoke('extensions-install-upload', { name, data: arrayBuffer });
+  },
+  uninstallExtension: (id) => ipcRenderer.invoke('extensions-uninstall', id),
+  unpinExtension: (id) => {
+    ipcRenderer.invoke("extensions-unpin", id);
+    ipcRenderer.send("refresh-browser-actions");
+  },
+  // Chrome Web Store APIs
+  installFromWebStore: (urlOrId) => ipcRenderer.invoke('extensions-install-webstore', urlOrId),
+  updateAll: () => ipcRenderer.invoke('extensions-update-all'),
+  // Session 1 implemented APIs
+  getExtensionInfo: (id) => ipcRenderer.invoke('extensions-get-info', id),
+  getStatus: () => ipcRenderer.invoke('extensions-status'),
+  // Icon API
+  getIconUrl: (id, size) => ipcRenderer.invoke('extensions-get-icon-url', id, size),
+  // Registry cleanup API
+  cleanupRegistry: () => ipcRenderer.invoke('extensions-cleanup-registry'),
+  
+  // Browser action APIs for extension toolbar integration
+  getBrowserActions: () => ipcRenderer.invoke('extensions-list-browser-actions'),
+  clickBrowserAction: (actionId) => ipcRenderer.invoke('extensions-click-browser-action', actionId),
+  openBrowserActionPopup: (actionId, anchorRect) => ipcRenderer.invoke('extensions-open-browser-action-popup', { actionId, anchorRect }),
+  
+  // Webview registration APIs for tab context
+  registerWebview: (webContentsId) => ipcRenderer.invoke('extensions-register-webview', webContentsId),
+  unregisterWebview: (webContentsId) => ipcRenderer.invoke('extensions-unregister-webview', webContentsId),
+
+  onExtensionChanged: (callback) => createEventListener('extension-changed', callback),
+  onExtensionInstalled: (callback) => createEventListener('extension-installed', callback),
+  onExtensionUninstalled: (callback) => createEventListener('extension-uninstalled', callback),
+  
+  // Browser action event listeners
+  onBrowserActionChanged: (callback) => createEventListener('browser-action-changed', callback),
+  onExtensionError: (callback) => createEventListener('extension-error', callback)
+};
+
 // Create context-appropriate APIs
 const settingsAPI = createSettingsAPI(context);
 
@@ -417,7 +490,7 @@ try {
       onShowClockChanged: (callback) => createEventListener('show-clock-changed', callback),
       onWallpaperChanged: (callback) => createEventListener('wallpaper-changed', callback),
       readCSS: cssAPI.readCSS,
-      // LLM API for settings page
+      extensions: extensionAPI,
       llm: {
         isSupported: () => ipcRenderer.invoke('llm-supported'),
         chat: (messages, options) => ipcRenderer.invoke('llm-chat', messages, options),
@@ -442,9 +515,22 @@ try {
       },
     });
     
-    console.log('Unified-preload: Full Settings electronAPI exposed with LLM API');
+    console.log('Unified-preload: Full Settings electronAPI exposed with extension and LLM APIs');
+    
+  } else if (isExtensions) {
+    // Extensions pages get full extension API + limited settings API (theme only)
+    contextBridge.exposeInMainWorld('electronAPI', {
+      settings: settingsAPI, // Limited to theme access only
+      onThemeChanged: (callback) => createEventListener('theme-changed', callback),
+      readCSS: cssAPI.readCSS,
+      extensions: extensionAPI
+    });
+    
+    console.log('Unified-preload: Extensions electronAPI and full extensionAPI exposed');
     
   } else if (isHome) {
+    // Home pages need browser action APIs for extension toolbar integration
+    
     // Zero-flicker wallpaper injection for home pages
     // Get wallpaper URL synchronously but inject when DOM is ready
     let wallpaperURL = null;
@@ -496,15 +582,25 @@ try {
       css: cssAPI
     });
     
-    // Limited electronAPI for home functionality only
+    // Home electronAPI with browser action support for extension toolbar
     contextBridge.exposeInMainWorld('electronAPI', {
       settings: settingsAPI, // Uses limited home API automatically
       getWallpaperUrl: () => ipcRenderer.invoke('settings-get-wallpaper-url'),
       onShowClockChanged: (callback) => createEventListener('show-clock-changed', callback),
-      onWallpaperChanged: (callback) => createEventListener('wallpaper-changed', callback)
+      onWallpaperChanged: (callback) => createEventListener('wallpaper-changed', callback),
+      // Extension browser action APIs for home page toolbar
+      extensions: {
+        getBrowserActions: () => ipcRenderer.invoke('extensions-list-browser-actions'),
+        clickBrowserAction: (actionId) => ipcRenderer.invoke('extensions-click-browser-action', actionId),
+        openBrowserActionPopup: (actionId, anchorRect) => ipcRenderer.invoke('extensions-open-browser-action-popup', { actionId, anchorRect }),
+        onBrowserActionChanged: (callback) => createEventListener('browser-action-changed', callback),
+        // Webview registration APIs for tab context
+        registerWebview: (webContentsId) => ipcRenderer.invoke('extensions-register-webview', webContentsId),
+        unregisterWebview: (webContentsId) => ipcRenderer.invoke('extensions-unregister-webview', webContentsId),
+      }
     });
     
-    console.log('Unified-preload: Home APIs exposed (showClock, wallpaper access only)');
+    console.log('Unified-preload: Home APIs exposed (showClock, wallpaper, browser actions)');
     
   } else if (isBookmarks) {
     // Bookmark pages get bookmark API + minimal environment
@@ -575,7 +671,7 @@ try {
   console.error('Unified-preload: Failed to expose APIs via contextBridge:', error);
   
   // Fallback only for settings pages in development
-  if (isSettings) {
+  if (isSettings && process?.env?.NODE_ENV === 'development') {
     try {
       window.electronIPC = ipcRenderer;
       console.log('Unified-preload: Fallback IPC exposed for settings (development mode)');

@@ -139,10 +139,10 @@
     - [ ] Settings toggle to enable/disable memory
     - [ ] “Reset P2P Data” also clears `llm.json`
 
-- [ ] 🚧 [Web extensions](https://github.com/p2plabsxyz/peersky-browser/issues/19):
-  - [ ] Ability to add and manage extensions
-  - [ ] [Default extensions](https://github.com/p2plabsxyz/essential-chromium-extensions)
-  - [ ] [Decentralized Extension Distribution](https://github.com/p2plabsxyz/peersky-browser/issues/42)
+- [x] [Web extensions](https://github.com/p2plabsxyz/peersky-browser/issues/19):
+  - [x] Ability to add and manage extensions
+  - [x] [Default extensions](https://github.com/p2plabsxyz/essential-chromium-extensions)
+  - [ ] 🚧 [Decentralized Extension Distribution](https://github.com/p2plabsxyz/peersky-browser/issues/42)
 
 - [x] Bookmarks (peersky://bookmarks):
 

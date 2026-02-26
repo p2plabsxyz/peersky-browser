@@ -1,4 +1,5 @@
-import { app, session, protocol as globalProtocol, ipcMain, BrowserWindow,Menu,shell,dialog, webContents} from "electron";
+import electron from "electron";
+const { app, protocol: globalProtocol, ipcMain, BrowserWindow, webContents, Menu } = electron;
 import { createHandler as createBrowserHandler } from "./protocols/peersky-protocol.js";
 import { createHandler as createBrowserThemeHandler } from "./protocols/theme-handler.js";
 import { createHandler as createIPFSHandler } from "./protocols/ipfs-handler.js";
@@ -8,12 +9,17 @@ import { createHandler as createFileHandler } from "./protocols/file-handler.js"
 import { createHandler as createBittorrentHandler } from "./protocols/bittorrent-handler.js";
 import { ipfsOptions, hyperOptions } from "./protocols/config.js";
 import { createMenuTemplate } from "./actions.js";
-import WindowManager, { createIsolatedWindow } from "./window-manager.js";
+import WindowManager from "./window-manager.js";
 import settingsManager from "./settings-manager.js";
-import { attachContextMenus, setWindowManager } from "./context-menu.js";
+import { setWindowManager } from "./context-menu.js";
 import { isBuiltInSearchEngine } from "./search-engine.js";
 import "./llm.js";
 // import { setupAutoUpdater } from "./auto-updater.js";
+
+// Import and initialize extension system
+import extensionManager from "./extensions/index.js";
+import { setupExtensionIpcHandlers } from "./extensions/extensions-ipc.js";
+import { getBrowserSession, usePersist } from "./session.js";
 
 const P2P_PROTOCOL = {
   standard: true,
@@ -75,7 +81,39 @@ app.whenReady().then(async () => {
 
   // Set the WindowManager instance in context-menu.js
   setWindowManager(windowManager);
-  await setupProtocols(session.defaultSession);
+  
+  // Get consistent session for protocols and extensions
+  const userSession = getBrowserSession();
+  await setupProtocols(userSession);
+
+  // Global webview partition alignment and security hardening
+  app.on('web-contents-created', (_e, wc) => {
+    wc.on('will-attach-webview', (_event, webPreferences, params) => {
+      // Force consistent partition when using persist mode
+      if (usePersist()) params.partition = 'persist:peersky';
+      
+      // Basic hardening for webviews (safe defaults)
+      webPreferences.nodeIntegration = false;
+      webPreferences.contextIsolation = true;
+      webPreferences.sandbox = true;
+    });
+  });
+
+  // Default-deny permissions for security
+  userSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
+
+  // Initialize extension system
+  try {
+    console.log("Initializing extension system...");
+    await extensionManager.initialize({ app, session: userSession });
+    console.log("Extension system initialized successfully");
+
+    // Setup extension IPC handlers
+    setupExtensionIpcHandlers(extensionManager);
+    console.log("Extension IPC handlers registered");
+  } catch (error) {
+    console.error("Failed to initialize extension system:", error);
+  }
 
   // Load saved windows or open a new one
   await windowManager.openSavedWindows();
@@ -88,6 +126,26 @@ app.whenReady().then(async () => {
   const menu = Menu.buildFromTemplate(menuTemplate);
   Menu.setApplicationMenu(menu);
 
+  // Add diagnostics to main window after creation
+  const mainWindow = windowManager.all[0];
+  if (mainWindow?.window?.webContents) {
+    mainWindow.window.webContents.on('did-fail-load', (_e, code, desc, url) =>
+      console.error(JSON.stringify({ evt: 'did-fail-load', code, desc, url }))
+    );
+    mainWindow.window.webContents.on('render-process-gone', (_e, details) =>
+      console.error(JSON.stringify({ evt: 'render-process-gone', details }))
+    );
+
+    // Runtime partition assertion (development only)
+    if (usePersist()) {
+      const partition = mainWindow.window.webContents.session.getPartition();
+      if (partition !== 'persist:peersky') {
+        throw new Error(`Session mismatch: expected 'persist:peersky', got '${partition}'`);
+      }
+      console.log('[Session] Runtime assertion passed: using persist:peersky');
+    }
+  }
+
   windowManager.startSaver();
 
   // Initialize AutoUpdater after windowManager is ready
@@ -98,6 +156,39 @@ app.whenReady().then(async () => {
 // Introduce a flag to prevent multiple 'before-quit' handling
 let isQuitting = false;
 
+app.on("before-quit", async (event) => {
+  if (isQuitting) {
+    return;
+  }
+  event.preventDefault(); // Prevent the default quit behavior
+
+  console.log("Before quit: Saving window states...");
+
+  isQuitting = true; // Set the quitting flag
+
+  windowManager.setQuitting(true); // Inform WindowManager that quitting is happening
+
+  // Shutdown extension system
+  try {
+    await extensionManager.shutdown();
+    console.log("Extension system shutdown successfully");
+  } catch (error) {
+    console.error("Error shutting down extension system:", error);
+  }
+
+  windowManager
+    .saveOpened()
+    .then(() => {
+      console.log("Window states saved successfully.");
+      windowManager.stopSaver();
+      app.quit(); // Proceed to quit the app
+    })
+    .catch((error) => {
+      console.error("Error saving window states on quit:", error);
+      windowManager.stopSaver();
+      app.quit(); // Proceed to quit the app even if saving fails
+    });
+});
 
 async function setupProtocols(session) {
   const { protocol: sessionProtocol } = session;
@@ -151,8 +242,40 @@ app.on("activate", () => {
   }
 });
 
-ipcMain.on("window-control", (event, command) => {
-  const window = BrowserWindow.fromWebContents(event.sender);
+ipcMain.on('remove-all-tempIcon', () => {
+  try {
+    const windows = BrowserWindow.getAllWindows();
+    const mainWindow = windows.find(w => w && !w.isDestroyed());
+    if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+      mainWindow.webContents.send('remove-all-tempIcon');
+    }
+  } catch (error) {
+    console.error('Error sending remove-all-tempIcon:', error);
+  }
+});
+
+ipcMain.on('refresh-browser-actions', () => {
+  try {
+    const windows = BrowserWindow.getAllWindows();
+    for (const win of windows) {
+      if (!win || win.isDestroyed()) continue;
+      const wc = win.webContents;
+      if (!wc || wc.isDestroyed()) continue;
+      wc.send('refresh-browser-actions');
+    }
+  } catch (error) {
+    console.error('Error sending refresh-browser-actions:', error);
+  }
+});
+
+ipcMain.on("open-tab-in-main-window", (_event, url) => {
+  const mainWindow = BrowserWindow.getAllWindows()[0]; 
+  if (!mainWindow) return;
+  mainWindow.webContents.send('create-new-tab', url);
+});
+
+ipcMain.on("window-control", (_event, command) => {
+  const window = BrowserWindow.fromWebContents(_event.sender);
   if (!window) return;
   
   switch (command) {
@@ -173,7 +296,7 @@ ipcMain.on("window-control", (event, command) => {
 });
 
 // IPC handler for moving tabs to new window
-ipcMain.on('new-window-with-tab', (event, tabData) => {
+ipcMain.on('new-window-with-tab', (_event, tabData) => {
   // Create new window using WindowManager for proper persistence
   windowManager.open({
     url: tabData.url,
@@ -185,7 +308,6 @@ ipcMain.on('new-window-with-tab', (event, tabData) => {
     }
   });
 });
-
 
 // IPC handler for opening files in new tabs (used by BitTorrent pages)
 ipcMain.on('open-url-in-tab', (event, fileUrl) => {
@@ -206,7 +328,7 @@ ipcMain.on('open-url-in-tab', (event, fileUrl) => {
   }
 });
 
-ipcMain.on('new-window', (event, options = {}) => {
+ipcMain.on('new-window', (_event, options = {}) => {
   if (options.isolate) {
     windowManager.open({ ...options, restoreTabs: false }); // not restoring other tabs of isolated window
   } else {
@@ -241,7 +363,7 @@ ipcMain.handle('get-tab-memory-usage', async (event, webContentsId) => {
   }
 });
 
-ipcMain.on('group-action', (event, data) => {
+ipcMain.on('group-action', (_event, data) => {
   console.log('Group action received:', data);
   const { action, groupId } = data;
   
@@ -255,7 +377,7 @@ ipcMain.on('group-action', (event, data) => {
   return { success: true }; 
 });
 
-ipcMain.on('update-group-properties', (event, groupId, properties) => {
+ipcMain.on('update-group-properties', (_event, groupId, properties) => {
   console.log('Updating group properties across all windows:', groupId, properties);
   
   // Broadcast to all windows
@@ -265,7 +387,6 @@ ipcMain.on('update-group-properties', (event, groupId, properties) => {
     }
   });
 });
-
 ipcMain.handle('check-built-in-engine', (event, template) => {
   try {
     return isBuiltInSearchEngine(template);
@@ -274,5 +395,4 @@ ipcMain.handle('check-built-in-engine', (event, template) => {
     return false; // fallback if anything goes wrong
   }
 });
-
 export { windowManager };

@@ -68,12 +68,12 @@
   const uploadListBox = $('#uploadListBox');
   const protocolSelect = $('#protocolSelect');
   
-  // Enable drag-and-drop
-  uploadBox.ondragover = () => false;
+  // Enable drag-and-drop (files only; use file picker for directories)
+  uploadBox.ondragover = (e) => { e.preventDefault(); return false; };
   uploadBox.ondrop = async (e) => {
       e.preventDefault();
       const { dataTransfer } = e;
-      if (!dataTransfer) return;
+      if (!dataTransfer || !dataTransfer.files.length) return;
       await uploadFiles(dataTransfer.files);
   };
   
@@ -103,15 +103,17 @@
           console.log(`Hyper base URL: ${hyperdriveUrl}`);
   
           for (const file of files) {
-              const url = `${hyperdriveUrl}${encodeURIComponent(file.name)}`;
-              console.log(`Uploading ${file.name} to ${url}`);
+              const filePath = file.webkitRelativePath || file.name;
+              const url = hyperdriveUrl + filePath.split('/').map(encodeURIComponent).join('/');
+              console.log(`Uploading ${filePath} to ${url}`);
   
               try {
+                  const buffer = await file.arrayBuffer();
                   const response = await fetch(url, {
                       method: 'PUT',
-                      body: file,
+                      body: new Uint8Array(buffer),
                       headers: {
-                          'Content-Type': file.type || 'application/octet-stream'
+                          'Content-Type': 'application/octet-stream'
                       }
                   });
   
