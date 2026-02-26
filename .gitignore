@@ -134,3 +134,9 @@ build/
 
 # macOS system files
 .DS_Store
+
+# Package lock
+package-lock.json
+
+# Unpacked preinstalled extensions (archives live in the same directory)
+src/extensions/preinstalled-extensions/*/

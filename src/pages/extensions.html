@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' peersky:; object-src 'none'; style-src 'self' 'unsafe-inline' browser:;">
+  <link rel="icon" type="image/png" href="peersky://static/assets/logo.png" />
+  <style>
+    @import url("browser://theme/index.css");
+    @import url("browser://theme/vars.css");
+    @import url("browser://theme/settings.css");
+    @import url("browser://theme/extensions-page.css");
+
+    .disclaimer-note {
+      color: var(--settings-text-secondary);
+      font-size: 0.9rem;
+    }
+
+    .disclaimer-note.api-limitations {
+      margin-top: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .disclaimer-note.preinstalled-warning {
+      margin-top: 1rem;
+      margin-bottom: 1rem;
+    }
+  </style>
+  <title>Extensions</title>
+</head>
+<body>
+
+<div class="settings-wrapper">
+  <div class="settings-layout">
+    <main class="settings-content">
+      <h1 class="page-title">Extension Management</h1>
+      
+      <!-- Install from URL Section -->
+      <section class="settings-section" id="install-section">
+        <div class="install-section-header">
+          <div class="setting-label">Install from Chrome Web Store URL</div>
+        </div>
+        <div class="install-section-controls">
+          <input type="url" id="install-url" class="install-input" placeholder="https://chrome.google.com/webstore/detail/...">
+          <button type="button" id="install-btn" class="btn btn-secondary">Install</button>
+        </div>
+      </section>
+
+      <!-- Install from File (ZIP/CRX) -->
+      <section class="settings-section" id="install-file-section" aria-label="Install extension from file">
+        <div class="install-section-header">
+          <div class="setting-label">Install from file (.zip or .crx)</div>
+        </div>
+        <div class="install-section-controls" style="gap: 0.75rem; align-items: stretch;">
+          <div id="extensions-drop-zone" style="flex:1; min-height: 64px; border: 1px dashed var(--settings-border); border-radius: 6px; display:flex; align-items:center; justify-content:center; color: var(--settings-text-secondary); cursor: pointer; transition: border-color 0.2s, color 0.2s;">
+            Drag & drop a .zip or .crx file here, or click to select
+          </div>
+          <input type="file" id="extensions-file-input" accept=".zip,.crx,.crx3" style="display:none" />
+        </div>
+      </section>
+
+      <!-- Disclaimer -->
+      <p class="disclaimer-note api-limitations">
+        <strong>Note:</strong> Some extensions might not work as expected because some Chrome APIs are not fully implemented in Electron.
+      </p>
+      
+      <!-- Installed Extensions (User) -->
+      <div class="installed-extensions-header">
+        <h1 class="section-title">Installed Extensions</h1>
+        <button type="button" id="update-all-btn" class="btn btn-secondary">Update All</button>
+      </div>
+
+      <div id="user-extensions-grid" class="extensions-grid" aria-label="User installed extensions"></div>
+
+      <!-- Preinstalled Extensions (System) -->
+      <div class="installed-extensions-header system-header">
+        <h1 class="section-title">Preinstalled Extensions</h1>
+      </div>
+      
+      <p class="disclaimer-note preinstalled-warning">
+        <strong>Note:</strong> Disabling these extensions may result in reduced browser functionality.
+      </p>
+
+      <div id="system-extensions-grid" class="extensions-grid" aria-label="Preinstalled system extensions"></div>
+    </main>
+  </div>
+</div>
+
+<script src="peersky://static/js/extensions-page.js" defer></script>
+</body>
+</html>

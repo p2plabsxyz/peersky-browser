@@ -208,14 +208,30 @@ getAllTabGroups() {
   getTabsStateForSaving() {
     try {
       const tabsData = {
-        tabs: this.tabs.map(tab => ({
-          id: tab.id,
-          url: tab.url,
-          title: tab.title,
-          protocol: tab.protocol,
-          isPinned: this.pinnedTabs.has(tab.id),
-          groupId: this.tabGroupAssignments.get(tab.id) || null
-        })),
+        tabs: this.tabs.map(tab => {
+          const webview = this.webviews.get(tab.id);
+          let navigation = null;
+
+          try {
+            if (webview && webview.getWebContentsId) {
+              const { ipcRenderer } = require("electron");
+              // Ask main process for nav history of this tab
+              navigation = ipcRenderer.sendSync('get-tab-navigation', webview.getWebContentsId());
+            }
+          } catch (e) {
+            console.warn("Failed to fetch nav history for tab", tab.id, e);
+          }
+
+          return {
+            id: tab.id,
+            url: tab.url,
+            title: tab.title,
+            protocol: tab.protocol,
+            isPinned: this.pinnedTabs.has(tab.id),
+            groupId: this.tabGroupAssignments.get(tab.id) || null,
+            navigation 
+          };
+        }),
         activeTabId: this.activeTabId,
         tabCounter: this.tabCounter,
         tabGroups: Array.from(this.tabGroups.entries()).map(([id, group]) => ({
@@ -283,6 +299,23 @@ restoreTabs(persistedData) {
   // Restore each tab
   persistedData.tabs.forEach(tabData => {
     const tabId = this.addTabWithId(tabData.id, tabData.url, tabData.title);
+
+    if (tabData.navigation && tabData.navigation.entries?.length) {
+      const { entries, activeIndex } = tabData.navigation;
+      const { ipcRenderer } = require("electron");
+      const webview = this.webviews.get(tabId);
+
+      setTimeout(() => {
+        try {
+          const webContentsId = webview.getWebContentsId();
+          ipcRenderer.invoke("restore-navigation-history", { webContentsId, entries, activeIndex })
+            .catch(err => console.warn("Failed to restore nav history:", err));
+        } catch (e) {
+          console.warn("Error sending restore-navigation-history:", e);
+        }
+      }, 150);
+    }
+
     
     // Restore pinned state
     if (tabData.isPinned) {
@@ -342,8 +375,7 @@ restoreTabs(persistedData) {
 }
 
   // Add tab with specific ID (for restoration)
-  addTabWithId(tabId, url = "peersky://home", title = "Home") {
-    // Create tab UI
+  addTabWithId(tabId, url = "peersky://home", title = "Home", tabData = {}) {    // Create tab UI
     const tab = document.createElement("div");
     tab.className = "tab";
     tab.id = tabId;
@@ -382,7 +414,19 @@ restoreTabs(persistedData) {
     
     // Create webview for this tab if container exists
     if (this.webviewContainer) {
-      this.createWebviewForTab(tabId, url);
+      const webview = this.createWebviewForTab(tabId, url);
+
+      if (tabData.navigation && tabData.navigation.entries?.length) {
+        const { entries, activeIndex } = tabData.navigation;
+        try {
+          const { ipcRenderer } = require("electron");
+          const webContentsId = webview.getWebContentsId();
+          ipcRenderer.invoke('restore-navigation-history', { webContentsId, entries, activeIndex })
+            .catch(err => console.warn("Failed to restore nav history:", err));
+        } catch (e) {
+          console.warn("Error sending restore-navigation-history:", e);
+        }
+      }
     }
     
     this._updateP2PIndicator(tabId);
@@ -546,6 +590,24 @@ restoreTabs(persistedData) {
         webview.style.display = "flex";
         webview.focus();
       }
+      
+      // Register webview with extension system for proper tab context
+      // Use a small delay to ensure webview is fully attached
+      setTimeout(() => {
+        try {
+          const webContentsId = webview.getWebContentsId();
+          const { ipcRenderer } = require('electron');
+          ipcRenderer.invoke('extensions-register-webview', webContentsId).then(result => {
+            if (!result.success) {
+              console.warn(`[TabBar] Failed to register webview ${webContentsId}:`, result.error);
+            }
+          }).catch(error => {
+            console.error(`[TabBar] Error registering webview:`, error);
+          });
+        } catch (error) {
+          console.warn(`[TabBar] Could not register webview with extension system:`, error);
+        }
+      }, 100); // Small delay to ensure webview is fully ready
     });
     
     // Set up event listeners for this webview
@@ -620,6 +682,14 @@ restoreTabs(persistedData) {
           detail: { tabId }
         }));
       }, 100);
+    });
+
+    webview.addEventListener("did-navigate", () => {
+      this.saveTabsState();
+    });
+
+    webview.addEventListener("did-stop-loading", () => {
+      this.saveTabsState();
     });
     
     // Handle in-page navigation 
@@ -714,6 +784,17 @@ restoreTabs(persistedData) {
     // Remove associated webview
     const webview = this.webviews.get(tabId);
     if (webview) {
+      // Unregister webview from extension system before removing
+      try {
+        const webContentsId = webview.getWebContentsId();
+        const { ipcRenderer } = require('electron');
+        ipcRenderer.invoke('extensions-unregister-webview', webContentsId).catch(error => {
+          console.warn(`[TabBar] Error unregistering webview:`, error);
+        });
+      } catch (error) {
+        // Webview might already be destroyed, which is fine
+      }
+      
       webview.remove();
       this.webviews.delete(tabId);
     }
@@ -758,6 +839,16 @@ restoreTabs(persistedData) {
     if (newActive) {
       newActive.classList.add("active");
       this.activeTabId = tabId;
+      
+      // Close all extension popups when switching tabs
+      try {
+        const { ipcRenderer } = require('electron');
+        ipcRenderer.invoke('extensions-close-all-popups').catch(error => {
+          console.warn('[TabBar] Failed to close extension popups on tab switch:', error);
+        });
+      } catch (error) {
+        console.warn('[TabBar] Error closing extension popups:', error);
+      }
       
       // Show ONLY the newly active webview
       const newWebview = this.webviews.get(tabId);

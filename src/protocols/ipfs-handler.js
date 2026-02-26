@@ -5,6 +5,7 @@ import { directoryListingHtml } from "./helia/directoryListingTemplate.js";
 import { createNode } from "./helia/helia.js";
 import { unixfs, globSource } from "@helia/unixfs";
 import { ipns } from "@helia/ipns";
+import { dnsLink } from "@helia/dnslink";
 import fs from "fs-extra";
 import contentHash from "content-hash";
 import { CID } from "multiformats/cid";
@@ -40,27 +41,16 @@ function getPeerIdFromString(peerIdString) {
 }
 
 export async function createHandler(ipfsOptions, session) {
-  let node, unixFileSystem, name;
+  let node, unixFileSystem, name, dnsLinkResolver;
 
   async function initializeIPFSNode() {
     console.log("Initializing IPFS node...");
     const startTime = Date.now();
     node = await createNode(ipfsOptions);
     console.log(`IPFS node initialized in ${Date.now() - startTime}ms`);
-
-    // Ensure the node's PeerId has toBytes()
-    if (typeof node.libp2p.peerId.toBytes !== "function") {
-      node.libp2p.peerId.toBytes = () => node.libp2p.peerId.multihash.bytes;
-      console.log("Patched node peerId to include toBytes() method.");
-    }
-    // Also ensure the PeerID has a 'bytes' property (required by IPNS)
-    if (!node.libp2p.peerId.bytes) {
-      node.libp2p.peerId.bytes = node.libp2p.peerId.toBytes();
-      console.log("Patched node peerId to include bytes property.");
-    }
-    
     unixFileSystem = unixfs(node);
     name = ipns(node);
+    dnsLinkResolver = dnsLink(node);
   }
 
   await initializeIPFSNode();
@@ -207,31 +197,68 @@ export async function createHandler(ipfsOptions, session) {
       console.log(`Failed to parse IPNS name as PeerId: ${e}`);
       // If it's not a valid PeerId, it might be a DNS-based IPNS name.
       if (ipnsName.includes(".")) {
-        // DNS-based IPNS: Use resolveDNSLink
+        // DNS-based IPNS: Use @helia/dnslink (separated from @helia/ipns in Helia v6)
         console.log(
-          "Attempting DNS-based IPNS resolution via resolveDNSLink..."
+          "Attempting DNS-based IPNS resolution via @helia/dnslink..."
         );
         try {
-          const resolutionResult = await name.resolveDNSLink(ipnsName, {
+          // dnsLinkResolver.resolve() returns an array of results
+          const results = await dnsLinkResolver.resolve(ipnsName, {
             signal: AbortSignal.timeout(5000),
           });
-          // resolutionResult might contain a cid as a string
-          let cid = resolutionResult.cid;
-          if (typeof cid === "string") {
-            cid = parseCID(cid);
+          
+          if (!results || results.length === 0) {
+            throw new Error(`No DNSLink records found for ${ipnsName}`);
           }
-          if (cid.version !== 1) {
-            cid = cid.toV1();
-          }
-          if (resolutionResult.path) {
-            // If there's a path in the resolutionResult, split it
-            const resolvedParts = resolutionResult.path
-              .split("/")
-              .filter(Boolean)
-              .map(decodeURIComponent);
-            return [cid, ...resolvedParts, ...urlParts];
+          
+          const result = results[0];
+          console.log(`DNSLink resolved: namespace=${result.namespace}, answer=${JSON.stringify(result.answer?.data)}`);
+          
+          if (result.namespace === "ipfs" && result.cid) {
+            // Direct IPFS CID result
+            let cid = result.cid;
+            if (cid.version !== 1) {
+              cid = cid.toV1();
+            }
+            if (result.path) {
+              const resolvedParts = result.path
+                .split("/")
+                .filter(Boolean)
+                .map(decodeURIComponent);
+              return [cid, ...resolvedParts, ...urlParts];
+            } else {
+              return [cid, ...urlParts];
+            }
+          } else if (result.namespace === "ipns" && result.peerId) {
+            // IPNS result - resolve the peerId further
+            console.log(`DNSLink points to IPNS peerId: ${result.peerId}`);
+            const ipnsResult = await name.resolve(result.peerId, {
+              signal: AbortSignal.timeout(5000),
+            });
+            let cid = ipnsResult.cid;
+            if (cid.version !== 1) {
+              cid = cid.toV1();
+            }
+            const allParts = [];
+            if (result.path) {
+              allParts.push(...result.path.split("/").filter(Boolean));
+            }
+            if (ipnsResult.path) {
+              allParts.push(...ipnsResult.path.split("/").filter(Boolean));
+            }
+            allParts.push(...urlParts);
+            return [cid, ...allParts];
           } else {
-            return [cid, ...urlParts];
+            // Fallback: try to parse the answer data directly
+            const data = result.answer?.data || "";
+            const match = data.match(/\/ipfs\/([^\s/]+)(.*)/);
+            if (match) {
+              let cid = parseCID(match[1]);
+              if (cid.version !== 1) cid = cid.toV1();
+              const pathParts = match[2] ? match[2].split("/").filter(Boolean) : [];
+              return [cid, ...pathParts, ...urlParts];
+            }
+            throw new Error(`Unsupported DNSLink namespace: ${result.namespace}`);
           }
         } catch (dnsErr) {
           console.error(

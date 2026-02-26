@@ -3,7 +3,6 @@ import { LevelBlockstore } from "blockstore-level";
 import { LevelDatastore } from "datastore-level";
 import path from "path";
 import fs from "fs-extra";
-import crypto from "hypercore-crypto";
 import { getDefaultChainList } from "web3protocol/chains";
 import { generateKeyPair, privateKeyFromProtobuf, privateKeyToProtobuf } from "@libp2p/crypto/keys";
 
@@ -13,31 +12,7 @@ const BLOCKSTORE_PATH = path.join(DEFAULT_IPFS_DIR, "blocks");
 const DATASTORE_PATH = path.join(DEFAULT_IPFS_DIR, "datastore"); 
 const DEFAULT_HYPER_DIR = path.join(USER_DATA, "hyper");
 const ENS_CACHE = path.join(USER_DATA, "ensCache.json");
-const KEYPAIR_PATH = path.join(DEFAULT_HYPER_DIR, "swarm-keypair.json");
 const LIBP2P_KEY_PATH = path.join(DEFAULT_IPFS_DIR, "libp2p-key");
-
-// Try loading an existing keypair from disk
-export function loadKeyPair() {
-  if (fs.existsSync(KEYPAIR_PATH)) {
-    const data = fs.readJsonSync(KEYPAIR_PATH);
-    return {
-      publicKey: Buffer.from(data.publicKey, "hex"),
-      secretKey: Buffer.from(data.secretKey, "hex")
-    };
-  }
-  return null;
-}
-
-// Save a new keypair to disk
-export function saveKeyPair(keyPair) {
-  // Ensure the hyper directory exists
-  fs.ensureDirSync(DEFAULT_HYPER_DIR);
-
-  fs.writeJsonSync(KEYPAIR_PATH, {
-    publicKey: keyPair.publicKey.toString("hex"),
-    secretKey: keyPair.secretKey.toString("hex")
-  });
-}
 
 // Load the libp2p private key from disk (for Helia)
 export async function loadLibp2pKey() {

@@ -1,29 +1,31 @@
 // @ts-check
 import { createHelia } from "helia";
 import { createLibp2p } from "libp2p";
-import { libp2pDefaults } from "helia";
 import { noise } from "@chainsafe/libp2p-noise";
 import { yamux } from "@chainsafe/libp2p-yamux";
+import { mplex } from "@libp2p/mplex";
+import { tls } from "@libp2p/tls";
 import { mdns } from "@libp2p/mdns";
 import { tcp } from "@libp2p/tcp";
 import { webRTC, webRTCDirect } from "@libp2p/webrtc";
 import { webSockets } from "@libp2p/websockets";
-import { circuitRelayTransport } from "@libp2p/circuit-relay-v2";
+import { circuitRelayTransport, circuitRelayServer } from "@libp2p/circuit-relay-v2";
 import { autoNAT } from "@libp2p/autonat";
-import { autoTLS } from '@ipshipyard/libp2p-auto-tls'
+import { autoTLS } from '@ipshipyard/libp2p-auto-tls';
 import { uPnPNAT } from "@libp2p/upnp-nat";
 import { dcutr } from "@libp2p/dcutr";
-import { kadDHT, removePrivateAddressesMapper } from "@libp2p/kad-dht";
+import { kadDHT } from "@libp2p/kad-dht";
 import { ping } from "@libp2p/ping";
 import { identify, identifyPush } from "@libp2p/identify";
 import { bootstrap } from "@libp2p/bootstrap";
-import { createDelegatedRoutingV1HttpApiClient } from "@helia/delegated-routing-v1-http-api-client";
-import { delegatedHTTPRoutingDefaults } from "@helia/routers";
+import { keychain } from "@libp2p/keychain";
+import { http } from "@libp2p/http";
+import { delegatedRoutingV1HttpApiClient } from "@helia/delegated-routing-v1-http-api-client";
 import { ipnsValidator } from "ipns/validator";
 import { ipnsSelector } from "ipns/selector";
 import { userAgent } from "libp2p/user-agent";
 import { ipfsOptions, getLibp2pPrivateKey } from "../config.js";
-import pkg from '../../../package.json' assert { type: 'json' };
+import pkg from '../../../package.json' with { type: 'json' };
 const { version } = pkg;
 
 // https://github.com/ipfs/helia/blob/main/packages/helia/src/utils/bootstrappers.ts
@@ -45,10 +47,8 @@ export async function createNode() {
   const privateKey = await getLibp2pPrivateKey();
   const agentVersion = `peersky-browser/${version} ${userAgent()}`;
 
-  const defaults = libp2pDefaults({ privateKey });
-
   const libp2p = await createLibp2p({
-    ...defaults,
+    privateKey,
     nodeInfo: {
       userAgent: agentVersion
     },
@@ -57,49 +57,48 @@ export async function createNode() {
         '/ip4/0.0.0.0/tcp/0',
         '/ip4/0.0.0.0/tcp/0/ws',
         '/ip4/0.0.0.0/udp/0/webrtc-direct',
+        '/ip6/::/tcp/0',
+        '/ip6/::/tcp/0/ws',
         '/ip6/::/udp/0/webrtc-direct',
         '/p2p-circuit'
       ],
     },
     transports: [
+      circuitRelayTransport(),
       tcp(),
-      webSockets(),
       webRTC(),
       webRTCDirect(),
-      circuitRelayTransport(),
+      webSockets(),
     ],
-    connectionEncrypters: [noise()],
-    streamMuxers: [yamux()],
+    connectionEncrypters: [noise(), tls()],
+    streamMuxers: [yamux(), mplex()],
     peerDiscovery: [
       mdns(),
       bootstrap(bootstrapConfig),
     ],
     services: {
-      ...defaults.services,
       autoNAT: autoNAT(),
       autoTLS: autoTLS(),
       dcutr: dcutr(),
-      delegatedRouting: () => createDelegatedRoutingV1HttpApiClient('https://delegated-ipfs.dev', delegatedHTTPRoutingDefaults()),
-      aminoDHT: kadDHT({
-        protocol: '/ipfs/kad/1.0.0',
-        peerInfoMapper: removePrivateAddressesMapper,
+      delegatedRouting: delegatedRoutingV1HttpApiClient({
+        url: 'https://delegated-ipfs.dev'
+      }),
+      dht: kadDHT({
         validators: { ipns: ipnsValidator },
         selectors: { ipns: ipnsSelector },
-        reprovide: { 
-          concurrency: 10,
-          interval: 60 * 60 * 1000,
-          threshold: 12 * 60 * 60 * 1000
-        }
       }),
       identify: identify(),
       identifyPush: identifyPush(),
+      keychain: keychain(),
       ping: ping(),
-      upnpNAT: uPnPNAT(),
+      relay: circuitRelayServer(),
+      upnp: uPnPNAT(),
+      http: http(),
     },
     connectionManager: {
-      maxConnections: 500,
-      inboundConnectionThreshold: 100,
-      maxIncomingPendingConnections: 100,
+      maxConnections: 100,
+      inboundConnectionThreshold: 50,
+      maxIncomingPendingConnections: 50,
     },
   });
 
