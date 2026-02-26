@@ -173,10 +173,13 @@ export function attachContextMenus(browserWindow, windowManager) {
         new MenuItem({
           label: "Inspect",
           click: () => {
-            if (!webContents.isDevToolsOpened()) {
-              webContents.openDevTools({ mode: "detach" });
+            // Ensure DevTools are opened in the main BrowserWindow
+            if (!browserWindow.webContents.isDevToolsOpened()) {
+              browserWindow.webContents.openDevTools({ mode: "right" });
             }
-            webContents.inspectElement(params.x, params.y);
+
+            // Inspect the element in the correct webContents
+            browserWindow.webContents.inspectElement(params.x, params.y);
           },
         })
       );
