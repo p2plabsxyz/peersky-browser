@@ -19,12 +19,6 @@
       "archive": "linguist-web-page-transla.zip"
     },
     {
-      "id": "fpeoodllldobpkbkabpblcfaogecpndd",
-      "name": "Webrecorder ArchiveWeb.page",
-      "url": "https://chromewebstore.google.com/detail/webrecorder-archivewebpag/fpeoodllldobpkbkabpblcfaogecpndd",
-      "archive": "webrecorder-archivewebpag.zip"
-    },
-    {
       "name": "PeerSky History",
       "version": "1.1.0",
       "url": "https://github.com/p2plabsxyz/extension-peersky-history/releases/download/v{version}/peersky-history-v{version}.zip",
