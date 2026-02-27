@@ -7,7 +7,6 @@ import { createHandler as createHyperHandler } from "./protocols/hyper-handler.j
 import { createHandler as createWeb3Handler } from "./protocols/web3-handler.js";
 import { createHandler as createFileHandler } from "./protocols/file-handler.js";
 import { createHandler as createBittorrentHandler } from "./protocols/bittorrent-handler.js";
-import { ipfsOptions, hyperOptions } from "./protocols/config.js";
 import { createMenuTemplate } from "./actions.js";
 import { ipfsOptions, hyperOptions,ensCache, ipfsCache, hyperCache , saveEnsCache, saveIpfsCache, saveHyperCache } from "./protocols/config.js";
 import { registerShortcuts } from "./actions.js";
