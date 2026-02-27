@@ -40,26 +40,26 @@
 
 /* Transparent Theme */
 [data-theme="transparent"] {
-  --browser-theme-background: none;
+  --browser-theme-background: rgba(24, 24, 27, 0.85);
   --browser-theme-text-color: #ffffff;
   --browser-theme-primary-highlight: #3b82f6;
   --browser-theme-secondary-highlight: #1d4ed8;
 
   /* Navigation */
-  --peersky-nav-background: none;
+  --peersky-nav-background: rgba(39, 39, 42, 0.80);
   --peersky-nav-button-color: #e5e7eb;
   --peersky-nav-button-hover: #9ca3af;
   --peersky-nav-button-active: #ffffff;
   --peersky-nav-button-inactive: #6b7280;
-  --peersky-background-url-input: #18181b;
-  --peersky-background-find-menu: #202125;
+  --peersky-background-url-input: rgba(24, 24, 27, 0.90);
+  --peersky-background-find-menu: rgba(32, 33, 37, 0.90);
 
   /* Settings Page */
-  --settings-bg-primary: none;
-  --settings-bg-secondary: #27272a;
+  --settings-bg-primary: rgba(24, 24, 27, 0.85);
+  --settings-bg-secondary: rgba(39, 39, 42, 0.80);
   --settings-text-primary: #ffffff;
   --settings-text-secondary: #e5e7eb;
-  --settings-card-bg: #27272a;
+  --settings-card-bg: rgba(39, 39, 42, 0.80);
   --settings-border: #6b7280;
   --settings-border-hover: #9ca3af;
   --settings-border-focus: #e5e7eb;
