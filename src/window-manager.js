@@ -885,6 +885,8 @@ class PeerskyWindow {
       height: 600,
       frame: false,
       titleBarStyle: 'hidden',
+      transparent: true,                // <-- add this
+      backgroundColor: '#00000000',     // <-- add this
       vibrancy: 'dark',
       backgroundMaterial: 'mica',
       webPreferences: {
@@ -1098,6 +1100,8 @@ export function createIsolatedWindow(options = {}) {
     height: 600,
     frame: false,
     titleBarStyle: 'hidden',
+    transparent: true,                // <-- add this
+    backgroundColor: '#00000000',     // <-- add this
     vibrancy: 'dark',
     backgroundMaterial: 'mica',
     webPreferences: {
@@ -1107,7 +1111,9 @@ export function createIsolatedWindow(options = {}) {
       nativeWindowOpen: true,
       webviewTag: true,
     },
+    ...options, // keep options extensible
   });
+
 
   if (options.isolate && options.singleTab) {
     // For isolated windows, pass the specific tab data as URL parameters
