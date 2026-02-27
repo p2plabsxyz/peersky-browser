@@ -73,22 +73,26 @@ async function handleHyperRequest(req, callback, session) {
   }
 
   try {
+    console.log(`[handleHyperRequest] Fetching: ${method} ${url}`);
     const resp = await fetchFn(url, {
       method,
       headers,
       body,
       duplex: "half",
     });
+    
+    console.log(`[handleHyperRequest] Response status: ${resp.status}, has body: ${!!resp.body}`);
+    
     if (resp.body) {
       const responseStream = Readable.from(resp.body);
-      console.log("Response received:", resp.status);
+      console.log(`[handleHyperRequest] Response received: ${resp.status}`);
       callback({
         statusCode: resp.status,
         headers: Object.fromEntries(resp.headers),
         data: responseStream,
       });
     } else {
-      console.warn("No response body.");
+      console.warn(`[handleHyperRequest] No response body for ${method} ${url}`);
       callback({
         statusCode: resp.status,
         headers: Object.fromEntries(resp.headers),

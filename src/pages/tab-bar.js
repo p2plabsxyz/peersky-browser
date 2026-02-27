@@ -584,6 +584,7 @@ restoreTabs(persistedData) {
     this.webviewContainer.appendChild(webview);
     
     // Add a load event to ensure webview is properly initialized
+    let extensionRegistered = false;
     webview.addEventListener('dom-ready', () => {
       // Ensure this webview is visible if it's the active tab
       if (this.activeTabId === tabId) {
@@ -591,8 +592,11 @@ restoreTabs(persistedData) {
         webview.focus();
       }
       
-      // Register webview with extension system for proper tab context
-      // Use a small delay to ensure webview is fully attached
+      // Register webview with extension system only once.
+      // electron-chrome-extensions.addTab() can trigger a navigation/reload on the
+      // webContents, which fires dom-ready again — causing an infinite reload loop.
+      if (extensionRegistered) return;
+      extensionRegistered = true;
       setTimeout(() => {
         try {
           const webContentsId = webview.getWebContentsId();
@@ -887,11 +891,6 @@ restoreTabs(persistedData) {
     if (url) {
       tab.url = url;
       tab.protocol = this._getProtocol(url);
-      // Update the webview if URL is updated externally
-      const webview = this.webviews.get(tabId);
-      if (webview && webview.getAttribute("src") !== url) {
-        webview.setAttribute("src", url);
-      }
     }
     
     if (title) {
@@ -2313,6 +2312,9 @@ restoreTabs(persistedData) {
     if (url.startsWith('hyper://')) {
       return 'hyper';
     }
+    if (url.startsWith('hs://')) {
+      return 'hs';
+    }
     if (url.startsWith('web3://')) {
       return 'web3';
     }
@@ -2333,7 +2335,7 @@ restoreTabs(persistedData) {
     let indicator = tabElement.querySelector('.p2p-indicator');
     const protocol = this._getProtocol(tab.url);
 
-    if (['ipfs', 'hyper', 'web3', 'bt'].includes(protocol)) {
+    if (['ipfs', 'hyper', 'web3', 'bt', 'hs'].includes(protocol)) {
       if (!indicator) {
         indicator = document.createElement('img');
         indicator.className = 'p2p-indicator';
@@ -2363,6 +2365,9 @@ restoreTabs(persistedData) {
         case 'ipfs':
           // Cyan filter
           filterColor = 'brightness(0) saturate(100%) invert(70%) sepia(98%) saturate(1780%) hue-rotate(154deg) brightness(101%) contrast(101%)';
+          break;
+        case 'hs':
+          filterColor = 'brightness(0) saturate(100%) invert(81%) sepia(36%) saturate(1211%) hue-rotate(266deg) brightness(95%) contrast(98%)';
           break;
         case 'ipns':
           // Gray filter

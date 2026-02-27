@@ -27,7 +27,8 @@ console.log('Unified-preload: URL detection', { url, isInternal, isExternal });
 const isP2P =
   url.startsWith('hyper://') ||
   url.startsWith('ipfs://')  ||
-  url.startsWith('ipns://');
+  url.startsWith('ipns://') ||
+  url.startsWith('hs://');
 
 const isBitTorrent =
   url.startsWith('bt://') ||
@@ -632,7 +633,7 @@ try {
       loadTabComponents: () => ipcRenderer.send('load-tab-components'),
       onVerticalTabsChanged: (callback) => createEventListener('vertical-tabs-changed', callback)
     })
-  } else if (isInternal) {
+  } else if (isInternal || isP2P) {
     // Other internal pages get minimal environment + very limited settings
     contextBridge.exposeInMainWorld('peersky', {
       environment: {
@@ -644,7 +645,8 @@ try {
         isSupported: () => ipcRenderer.invoke('llm-supported'),
         chat: (messages, options) => ipcRenderer.invoke('llm-chat', messages, options),
         complete: (prompt, options) => ipcRenderer.invoke('llm-complete', prompt, options)
-      }
+      },
+      printToPdf: (html, fileName) => ipcRenderer.invoke('p2pmd-print-to-pdf', { html, fileName })
     });
     
     // Very minimal electronAPI for theme and tabs settings

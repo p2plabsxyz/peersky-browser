@@ -862,6 +862,16 @@ class ExtensionManager {
   addWindow(window, webContents) {
     if (this.electronChromeExtensions) {
       try {
+        // Skip if this webContents is already registered to avoid duplicate
+        // addTab() calls which can trigger spurious navigations/reloads
+        if (!this._registeredTabs) this._registeredTabs = new Set();
+        const wcId = webContents.id;
+        if (this._registeredTabs.has(wcId)) return;
+        this._registeredTabs.add(wcId);
+        // Clean up when the webContents is destroyed
+        webContents.once('destroyed', () => {
+          this._registeredTabs?.delete(wcId);
+        });
         this.electronChromeExtensions.addTab(webContents, window);
         console.log(`[ExtensionManager] Registered webContents ${webContents.id} with extension system`);
       } catch (error) {
