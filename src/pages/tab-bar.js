@@ -584,6 +584,7 @@ restoreTabs(persistedData) {
     this.webviewContainer.appendChild(webview);
     
     // Add a load event to ensure webview is properly initialized
+    let extensionRegistered = false;
     webview.addEventListener('dom-ready', () => {
       // Ensure this webview is visible if it's the active tab
       if (this.activeTabId === tabId) {
@@ -591,8 +592,11 @@ restoreTabs(persistedData) {
         webview.focus();
       }
       
-      // Register webview with extension system for proper tab context
-      // Use a small delay to ensure webview is fully attached
+      // Register webview with extension system only once.
+      // electron-chrome-extensions.addTab() can trigger a navigation/reload on the
+      // webContents, which fires dom-ready again — causing an infinite reload loop.
+      if (extensionRegistered) return;
+      extensionRegistered = true;
       setTimeout(() => {
         try {
           const webContentsId = webview.getWebContentsId();
@@ -887,11 +891,6 @@ restoreTabs(persistedData) {
     if (url) {
       tab.url = url;
       tab.protocol = this._getProtocol(url);
-      // Update the webview if URL is updated externally
-      const webview = this.webviews.get(tabId);
-      if (webview && webview.getAttribute("src") !== url) {
-        webview.setAttribute("src", url);
-      }
     }
     
     if (title) {
