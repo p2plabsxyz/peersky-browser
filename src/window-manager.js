@@ -883,6 +883,7 @@ class PeerskyWindow {
     this.window = new BrowserWindow({
       width: 800,
       height: 600,
+      transparent: true,
       frame: false,
       titleBarStyle: 'hidden',
       vibrancy: 'dark',
@@ -1096,6 +1097,7 @@ export function createIsolatedWindow(options = {}) {
   const win = new BrowserWindow({
     width: 800,
     height: 600,
+    transparent: true,
     frame: false,
     titleBarStyle: 'hidden',
     vibrancy: 'dark',
