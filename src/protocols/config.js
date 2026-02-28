@@ -12,6 +12,8 @@ const BLOCKSTORE_PATH = path.join(DEFAULT_IPFS_DIR, "blocks");
 const DATASTORE_PATH = path.join(DEFAULT_IPFS_DIR, "datastore"); 
 const DEFAULT_HYPER_DIR = path.join(USER_DATA, "hyper");
 const ENS_CACHE = path.join(USER_DATA, "ensCache.json");
+const IPFS_CACHE = path.join(USER_DATA, "ipfsCache.json");
+const HYPER_CACHE = path.join(USER_DATA, "hyperCache.json");
 const LIBP2P_KEY_PATH = path.join(DEFAULT_IPFS_DIR, "libp2p-key");
 
 // Load the libp2p private key from disk (for Helia)
@@ -92,6 +94,36 @@ if (fs.existsSync(ENS_CACHE)) {
   );
 }
 
+// Initialize or load IPFS cache
+let ipfsCache = [];
+if (fs.existsSync(IPFS_CACHE)) {
+  try {
+    const data = fs.readFileSync(IPFS_CACHE, "utf-8");
+    ipfsCache = JSON.parse(data);
+  } catch (error) {
+    console.error("Failed to load IPFS cache from file:", error);
+  }
+} else {
+  console.log(
+    "No existing IPFS cache file found. Starting with an empty cache."
+  );
+}
+
+// Initialize or load Hyper cache
+let hyperCache = [];
+if (fs.existsSync(HYPER_CACHE)) {
+  try {
+    const data = fs.readFileSync(HYPER_CACHE, "utf-8");
+    hyperCache = JSON.parse(data);
+  } catch (error) {
+    console.error("Failed to load Hyper cache from file:", error);
+  }
+} else {
+  console.log(
+    "No existing Hyper cache file found. Starting with an empty cache."
+  );
+}
+
 // Function to save cache to file
 export function saveEnsCache() {
   try {
@@ -103,5 +135,25 @@ export function saveEnsCache() {
   }
 }
 
+export function saveIpfsCache() {
+  try {
+    const data = JSON.stringify(ipfsCache, null, 2);
+    fs.writeFileSync(IPFS_CACHE, data, "utf-8");
+    console.log("IPFS cache saved to file.");
+  } catch (error) {
+    console.error("Failed to save IPFS cache to file:", error);
+  }
+}
+
+export function saveHyperCache() {
+  try {
+    const data = JSON.stringify(hyperCache, null, 2);
+    fs.writeFileSync(HYPER_CACHE, data, "utf-8");
+    console.log("Hyper cache saved to file.");
+  } catch (error) {
+    console.error("Failed to save Hyper cache to file:", error);
+  }
+}
+
 // Export the cache and save function
-export { ensCache };
+export { ensCache, ipfsCache, hyperCache };

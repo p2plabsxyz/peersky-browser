@@ -32,6 +32,50 @@ export async function createHandler(options, session) {
 
     console.log(`Handling request: ${method} ${url}`);
 
+    // Intercept Hyperdrive key generation/retrieval
+    if (method === 'POST' && urlObj.searchParams.has('key')) {
+      const keyName = urlObj.searchParams.get('key');
+      // We wrap the original callback to capture the response
+      const originalCallback = callback;
+      callback = async (response) => {
+        try {
+          if (response.statusCode === 200) {
+            // Read the stream to get the key
+            const stream = response.data;
+            const chunks = [];
+            for await (const chunk of stream) {
+              chunks.push(chunk);
+            }
+            const buffer = Buffer.concat(chunks);
+            const driveKey = buffer.toString();
+            // Re-create the stream for the original response
+            response.data = Readable.from([buffer]);
+            // Log to Hyper cache only if it looks like a key (e.g. hex string)
+            const timestamp = Date.now();
+            // Basic validation: Hypercore keys are typically 64 hex chars
+            const isHexKey = /^[0-9a-fA-F]{64}$/.test(driveKey);
+            if (isHexKey && !hyperCache.some(entry => entry.key === driveKey)) {
+              hyperCache.push({
+                name: keyName,
+                key: driveKey,
+                timestamp: timestamp,
+                type: 'drive'
+              });
+              saveHyperCache();
+              console.log(`Logged Hyperdrive to cache: ${keyName} (${driveKey})`);
+            }
+          }
+        } catch (e) {
+          console.error("Error logging Hyperdrive key:", e);
+        }
+        try {
+          originalCallback(response);
+        } catch (err) {
+          console.error("Error in original Hyper request callback:", err);
+        }
+      };
+    }
+
     try {
       if (
         protocol === "hyper" &&
