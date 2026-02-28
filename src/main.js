@@ -205,7 +205,7 @@ async function setupProtocols(session) {
   app.setAsDefaultProtocolClient("magnet");
 
   const browserProtocolHandler = await createBrowserHandler();
-  sessionProtocol.registerStreamProtocol("peersky", browserProtocolHandler, BROWSER_PROTOCOL);
+  sessionProtocol.handle("peersky", browserProtocolHandler);
 
   const browserThemeHandler = await createBrowserThemeHandler();
   sessionProtocol.registerStreamProtocol("browser", browserThemeHandler, BROWSER_PROTOCOL);
