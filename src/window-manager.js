@@ -877,13 +877,15 @@ class WindowManager {
   }
 }
 
+const isMac = process.platform === 'darwin';
+const isWindows = process.platform === 'win32';
+
 class PeerskyWindow {
   constructor(options = {}, windowManager) {
     const { url, isMainWindow = false, newWindow = false, windowId, savedTabs, isolate, singleTab, ...windowOptions } = options;
     this.window = new BrowserWindow({
       width: 800,
       height: 600,
-      transparent: true,
       frame: false,
       titleBarStyle: 'hidden',
       vibrancy: 'dark',
@@ -919,9 +921,15 @@ class PeerskyWindow {
     this.window.loadFile(loadURL, query);
 
     // Configure window transparency and vibrancy effects
-    this.window.setVibrancy('fullscreen-ui');
-    this.window.setBackgroundColor('#00000000');
-    this.window.setBackgroundMaterial('mica');
+    if (isMac) {
+      this.window.setVibrancy('fullscreen-ui');
+      this.window.setBackgroundColor('#00000000');
+      this.window.setBackgroundMaterial('mica');
+    } else if (isWindows) {
+      // On Windows, rely on transparent + Mica; vibrancy is a no-op
+      this.window.setBackgroundColor('#00000000');
+      this.window.setBackgroundMaterial('mica');
+    }
 
     // Attach context menus
     attachContextMenus(this.window, windowManager);
@@ -1097,7 +1105,6 @@ export function createIsolatedWindow(options = {}) {
   const win = new BrowserWindow({
     width: 800,
     height: 600,
-    transparent: true,
     frame: false,
     titleBarStyle: 'hidden',
     vibrancy: 'dark',
@@ -1129,9 +1136,15 @@ export function createIsolatedWindow(options = {}) {
   }
 
   // Configure window transparency and vibrancy effects
-  win.setVibrancy('fullscreen-ui');
-  win.setBackgroundColor('#00000000');
-  win.setBackgroundMaterial('mica');
+  if (isMac) {
+    win.setVibrancy('fullscreen-ui');
+    win.setBackgroundColor('#00000000');
+    win.setBackgroundMaterial('mica');
+  } else if (isWindows) {
+    // On Windows, rely on transparent + Mica; vibrancy is a no-op
+    win.setBackgroundColor('#00000000');
+    win.setBackgroundMaterial('mica');
+  }
 
   return win;
 }
