@@ -20,6 +20,7 @@ import "./llm.js";
 import extensionManager from "./extensions/index.js";
 import { setupExtensionIpcHandlers } from "./extensions/extensions-ipc.js";
 import { getBrowserSession, usePersist } from "./session.js";
+import { setupPermissionHandler } from "./permissions.js";
 
 const P2P_PROTOCOL = {
   standard: true,
@@ -99,8 +100,7 @@ app.whenReady().then(async () => {
     });
   });
 
-  // Default-deny permissions for security
-  userSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
+  await setupPermissionHandler(userSession);
 
   // Initialize extension system
   try {
