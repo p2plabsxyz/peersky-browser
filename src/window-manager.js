@@ -917,6 +917,13 @@ class PeerskyWindow {
     };
     this.window.loadFile(loadURL, query);
 
+    // Frost/blur: vibrancy (macOS only), Mica (Win11 only). Win10 gets plain transparent from constructor.
+    if (process.platform === 'darwin') {
+      this.window.setVibrancy('fullscreen-ui');
+    } else if (process.platform === 'win32' && typeof this.window.setBackgroundMaterial === 'function') {
+      this.window.setBackgroundMaterial('mica');
+    }
+
     // Attach context menus
     attachContextMenus(this.window, windowManager);
 
@@ -1119,6 +1126,13 @@ export function createIsolatedWindow(options = {}) {
   } else {
     // Default window
     win.loadFile(path.join(__dirname, 'pages', 'index.html'));
+  }
+
+  // Frost/blur: vibrancy (macOS only), Mica (Win11 only). Win10 gets plain transparent.
+  if (process.platform === 'darwin') {
+    win.setVibrancy('fullscreen-ui');
+  } else if (process.platform === 'win32' && typeof win.setBackgroundMaterial === 'function') {
+    win.setBackgroundMaterial('mica');
   }
 
   return win;
