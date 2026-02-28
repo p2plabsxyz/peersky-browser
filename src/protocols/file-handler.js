@@ -325,6 +325,14 @@ export async function createHandler() {
             try {
               const entryPath = path.join(filePath, name);
               const stat = await fs.stat(entryPath);
+              
+              // Hide entries that cannot be opened to avoid dead links (e.g. protected system folders).
+              if (stat.isDirectory()) {
+                await fs.readdir(entryPath);
+              } else {
+                await fs.access(entryPath, fs.constants.R_OK);
+              }
+
               return {
                 name,
                 isDirectory: stat.isDirectory(),

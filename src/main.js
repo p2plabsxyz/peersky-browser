@@ -85,6 +85,7 @@ app.whenReady().then(async () => {
   // Get consistent session for protocols and extensions
   const userSession = getBrowserSession();
   await setupProtocols(userSession);
+  installWebviewFileRedirect(userSession);
 
   // Global webview partition alignment and security hardening
   app.on('web-contents-created', (_e, wc) => {
@@ -228,6 +229,12 @@ async function setupProtocols(session) {
   sessionProtocol.handle("bittorrent", bittorrentProtocolHandler);
   sessionProtocol.handle("bt", bittorrentProtocolHandler);
   sessionProtocol.handle("magnet", bittorrentProtocolHandler);
+}
+
+function installWebviewFileRedirect(session) {
+  session.webRequest.onBeforeRequest({ urls: ["file://*/*"] }, (_details, callback) => {
+    callback({});
+  });
 }
 
 app.on("window-all-closed", () => {
