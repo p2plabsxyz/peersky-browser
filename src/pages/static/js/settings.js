@@ -214,7 +214,10 @@ function createFallbackAPI(ipc) {
       reset: () => ipc.invoke('settings-reset'),
       clearBrowserCache: () => ipc.invoke('settings-clear-cache'),
       resetP2P: (opts = {}) => ipc.invoke('settings-reset-p2p', opts),
-      uploadWallpaper: (filePath) => ipc.invoke('settings-upload-wallpaper', filePath)
+      uploadWallpaper: (filePath) => ipc.invoke('settings-upload-wallpaper', filePath),
+      getArchiveData: () => ipc.invoke('settings-get-archive-data'),
+      exportArchive: (jsonContent) => ipc.invoke('settings-export-archive', jsonContent),
+      clearArchive: () => ipc.invoke('settings-clear-archive')
     },
     onThemeChanged: (callback) => wrapCallback('theme-changed', callback),
     onSearchEngineChanged: (callback) => wrapCallback('search-engine-changed', callback),
@@ -222,6 +225,18 @@ function createFallbackAPI(ipc) {
     onWallpaperChanged: (callback) => wrapCallback('wallpaper-changed', callback)
   };
 }
+
+// Escape HTML to prevent XSS
+function escapeHtml(text) {
+  if (!text) return text;
+  return String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 
 document.addEventListener('DOMContentLoaded', async () => {
   // Initialize API access
@@ -833,7 +848,7 @@ function initializeSidebarNavigation() {
   // Check for hash-based navigation (backward compatibility)
   else if (currentPath.includes('#')) {
     const hashSection = currentPath.replace('#', '');
-    if (hashSection && ['appearance', 'search','tabs', 'extensions'].includes(hashSection)) {
+    if (hashSection && ['appearance', 'search','tabs', 'extensions', 'archive'].includes(hashSection)) {
       targetSection = hashSection;
     }
   }
@@ -856,7 +871,7 @@ function initializeSidebarNavigation() {
         sectionFromHistory = subpathMatch[1];
       } else if (currentPath.includes('#')) {
         const hashSection = currentPath.replace('#', '');
-        if (hashSection && ['appearance', 'search', 'extensions'].includes(hashSection)) {
+        if (hashSection && ['appearance', 'search', 'extensions', 'archive'].includes(hashSection)) {
           sectionFromHistory = hashSection;
         }
       }
@@ -908,6 +923,41 @@ function updateSectionUI(sectionName) {
   const targetPage = document.getElementById(targetPageId);
   if (targetPage) {
     targetPage.classList.add('active');
+  }
+
+  // Load data for Archive section
+  if (sectionName === 'archive') {
+    loadArchiveData();
+
+    // Attach export button handler
+    const exportBtn = document.getElementById('export-archive-btn');
+    if (exportBtn && !exportBtn.dataset.bound) {
+      exportBtn.addEventListener('click', () => exportArchiveData(settingsAPI, showSettingsSavedMessage));
+      exportBtn.dataset.bound = 'true';
+    }
+
+    // Attach clear button handler
+    const clearBtn = document.getElementById('clear-archive-btn');
+    if (clearBtn && !clearBtn.dataset.bound) {
+      clearBtn.addEventListener('click', async () => {
+        if (!confirm('Are you sure you want to clear all archive data? This cannot be undone.')) return;
+        try {
+          await settingsAPI.settings.clearArchive();
+          loadArchiveData();
+          showSettingsSavedMessage('Archive cleared successfully');
+        } catch (err) {
+          showSettingsSavedMessage('Failed to clear archive: ' + err.message, 'error');
+        }
+      });
+      clearBtn.dataset.bound = 'true';
+    }
+
+    // Attach time filter change handler
+    const timeFilter = document.getElementById('export-time-filter');
+    if (timeFilter && !timeFilter.dataset.bound) {
+      timeFilter.addEventListener('change', () => loadArchiveData());
+      timeFilter.dataset.bound = 'true';
+    }
   }
 }
 

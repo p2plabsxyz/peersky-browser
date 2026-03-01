@@ -13,7 +13,7 @@ import { base32 } from "multiformats/bases/base32";
 import { base36 } from "multiformats/bases/base36";
 import { base58btc } from "multiformats/bases/base58";
 import { peerIdFromString, peerIdFromCID } from "@libp2p/peer-id";
-import { ensCache, saveEnsCache, RPC_URL, ipfsOptions } from "./config.js";
+import { ensCache, saveEnsCache, RPC_URL, ipfsOptions, ipfsCache, saveIpfsCache } from "./config.js";
 import { JsonRpcProvider } from "ethers";
 
 // Create a combined multibase decoder to handle base32, base36, and base58btc
@@ -64,7 +64,10 @@ export async function createHandler(ipfsOptions, session) {
       const startTime = Date.now();
       const entries = [];
       let currentFileName = null;
-      
+      const uploadedFileNames = [];
+      const uploadedFilePaths = []; // Track full paths for folder name detection
+      let directoryName = null; // Set when uploading a directory directly
+
       for (const data of request.uploadData || []) {
         console.log("Upload data entry:", JSON.stringify(Object.keys(data)), "type:", data.type);
         
@@ -73,6 +76,7 @@ export async function createHandler(ipfsOptions, session) {
           const stats = await fs.stat(filePath);
           if (stats.isDirectory()) {
             // Handle directory with globSource for recursive upload
+            directoryName = path.basename(filePath);
             const source = globSource(filePath, '**/*');
             for await (const entry of source) {
               entries.push({
@@ -83,6 +87,8 @@ export async function createHandler(ipfsOptions, session) {
           } else {
             // Handle individual file
             const fileName = path.basename(filePath);
+            uploadedFileNames.push(fileName);
+            uploadedFilePaths.push(filePath);
             entries.push({
               path: fileName,
               content: fs.createReadStream(filePath, { highWaterMark: 1024 * 1024 }),
@@ -104,6 +110,7 @@ export async function createHandler(ipfsOptions, session) {
           // Handle blob data from FormData - use the filename from previous rawData entry
           const blobData = await session.getBlobData(data.blobUUID);
           const fileName = currentFileName || "index.html";
+          uploadedFileNames.push(fileName);
           console.log("Processing blob with filename:", fileName, "blobUUID:", data.blobUUID);
           entries.push({ path: fileName, content: blobData });
           currentFileName = null; // Reset for next file
@@ -152,6 +159,65 @@ export async function createHandler(ipfsOptions, session) {
       });
   
       console.log("Files uploaded with root CID:", rootCid.toString());
+      // Log to IPFS cache
+      try {
+        const timestamp = Date.now();
+        const cidStr = rootCid.toString();
+        // Determine upload name - prefer folder name for directory uploads
+        let uploadName;
+        if (directoryName) {
+          // Direct directory upload
+          uploadName = directoryName;
+        } else if (uploadedFilePaths.length > 1) {
+          // Multiple files - check if they share a common parent directory (folder upload)
+          const dirs = uploadedFilePaths.map(p => path.dirname(p));
+          const commonDir = dirs.reduce((a, b) => {
+            const aParts = a.split(path.sep);
+            const bParts = b.split(path.sep);
+            const common = [];
+            for (let i = 0; i < Math.min(aParts.length, bParts.length); i++) {
+              if (aParts[i] === bParts[i]) common.push(aParts[i]);
+              else break;
+            }
+            return common.join(path.sep);
+          });
+          const folderName = path.basename(commonDir);
+          if (folderName && folderName !== path.sep && folderName !== '.') {
+            uploadName = folderName;
+          } else {
+            uploadName = `${uploadedFileNames[0]} + ${uploadedFileNames.length - 1} files`;
+          }
+        } else if (uploadedFileNames.length === 1) {
+          uploadName = uploadedFileNames[0];
+        } else if (uploadedFileNames.length > 1) {
+          // Blob uploads without path info - check for common folder prefix
+          const firstSlash = uploadedFileNames[0]?.indexOf('/');
+          if (firstSlash > 0) {
+            const folderName = uploadedFileNames[0].split('/')[0];
+            if (uploadedFileNames.every(n => n.startsWith(folderName + '/'))) {
+              uploadName = folderName;
+            }
+          }
+          if (!uploadName) {
+            uploadName = `${uploadedFileNames[0]} + ${uploadedFileNames.length - 1} files`;
+          }
+        } else {
+          uploadName = "Upload " + new Date(timestamp).toLocaleString();
+        }
+        // Check if already exists to avoid duplicates (optional but good)
+        if (!ipfsCache.some(entry => entry.cid === cidStr)) {
+          ipfsCache.push({
+            cid: cidStr,
+            timestamp: timestamp,
+            url: fileUrl,
+            name: uploadName
+          });
+          saveIpfsCache();
+          console.log(`Logged upload to IPFS cache: ${cidStr}`);
+        }
+      } catch (logErr) {
+        console.error("Error logging to IPFS cache:", logErr);
+      }
     } catch (e) {
       console.error("Error uploading file:", e);
       sendResponse({

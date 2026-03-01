@@ -3,6 +3,7 @@ import makeHyperFetch from "hypercore-fetch";
 import { Readable, PassThrough } from "stream";
 import fs from "fs-extra";
 import { initChat, handleChatRequest as handleChatRequestP2P } from "../pages/p2p/chat/p2p.js";
+import { hyperCache, saveHyperCache } from "./config.js";
 
 // Single SDK and swarm for the app lifecycle (hyper:// browsing + chat share the same swarm).
 let sdk, fetch;
@@ -31,6 +32,56 @@ export async function createHandler(options, session) {
     const pathname = urlObj.pathname;
 
     console.log(`Handling request: ${method} ${url}`);
+
+    // Intercept Hyperdrive key generation/retrieval
+    if (method === 'POST' && urlObj.searchParams.has('key')) {
+      const keyName = urlObj.searchParams.get('key');
+      // We wrap the original callback to capture the response
+      const originalCallback = callback;
+      callback = async (response) => {
+        try {
+          if (response.statusCode === 200) {
+            // Read the stream to get the key
+            const stream = response.data;
+            const chunks = [];
+            for await (const chunk of stream) {
+              chunks.push(chunk);
+            }
+            const buffer = Buffer.concat(chunks);
+            const driveKeyStr = buffer.toString();
+            // Re-create the stream for the original response
+            response.data = Readable.from([buffer]);
+            
+            // Log the raw key response for debugging
+            console.log("Extracted raw key response:", driveKeyStr);
+
+            // Extract the 52-character z32 key or 64-character hex key from the response
+            const match = driveKeyStr.match(/([0-9a-zA-Z]{52,64})/);
+            if (match) {
+              const driveKey = match[1];
+              const timestamp = Date.now();
+              if (!hyperCache.some(entry => entry.key === driveKey)) {
+                hyperCache.push({
+                  name: keyName || "Drive",
+                  key: driveKey,
+                  timestamp: timestamp,
+                  type: 'drive'
+                });
+                saveHyperCache();
+                console.log(`Logged Hyperdrive to cache: ${keyName} (${driveKey})`);
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Error logging Hyperdrive key:", e);
+        }
+        try {
+          originalCallback(response);
+        } catch (err) {
+          console.error("Error in original Hyper request callback:", err);
+        }
+      };
+    }
 
     try {
       if (

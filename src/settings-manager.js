@@ -2,11 +2,12 @@
 // Handles settings storage, defaults, validation, and IPC communication
 // Pattern: Similar to window-manager.js
 
-import { app, ipcMain, BrowserWindow, session, safeStorage } from 'electron';
+import { app, ipcMain, BrowserWindow, session, safeStorage, dialog } from 'electron';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
 import { getBrowserSession } from './session.js';
+import { ensCache, ipfsCache, hyperCache, saveEnsCache, saveIpfsCache, saveHyperCache } from './protocols/config.js';
 
 const SETTINGS_FILE = path.join(app.getPath("userData"), "settings.json");
 const DEBUG_LOG = path.join(os.homedir(), '.peersky', 'debug.log');
@@ -368,6 +369,49 @@ class SettingsManager {
         const errorMsg = `Failed to upload wallpaper: ${error.message}`;
         logDebug(errorMsg);
         throw new Error(errorMsg);
+      }
+    });
+
+    // IPC handlers for archive functionality
+    ipcMain.handle("settings-get-archive-data", async () => {
+      return {
+        ipfs: ipfsCache || [],
+        hyper: hyperCache || [],
+        ens: Array.from((ensCache || new Map()).entries()).map(([name, hash]) => ({ name, hash }))
+      };
+    });
+
+    ipcMain.handle("settings-export-archive", async (event, jsonContent) => {
+      const mainWindow = BrowserWindow.fromWebContents(event.sender);
+      const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+        title: "Export Archive Data",
+        defaultPath: path.join(app.getPath("downloads"), `peersky-archive-${new Date().toISOString().split('T')[0]}-${Math.floor(Math.random() * 1000000)}.json`),
+        filters: [{ name: "JSON", extensions: ["json"] }]
+      });
+
+      if (!canceled && filePath) {
+        await fs.writeFile(filePath, jsonContent, "utf-8");
+        return { success: true, filePath };
+      }
+      return { canceled: true };
+    });
+
+    ipcMain.handle("settings-clear-archive", async () => {
+      try {
+        // Clear in-memory caches
+        if (ipfsCache) ipfsCache.length = 0;
+        if (hyperCache) hyperCache.length = 0;
+        if (ensCache) ensCache.clear();
+
+        // Save empty caches to disk
+        saveIpfsCache();
+        saveHyperCache();
+        saveEnsCache();
+        
+        return { success: true };
+      } catch (error) {
+        logDebug(`Failed to clear archive: ${error.message}`);
+        return { success: false, error: error.message };
       }
     });
   }
