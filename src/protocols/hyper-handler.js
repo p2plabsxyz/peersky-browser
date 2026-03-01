@@ -3,6 +3,7 @@ import makeHyperFetch from "hypercore-fetch";
 import { Readable, PassThrough } from "stream";
 import fs from "fs-extra";
 import { initChat, handleChatRequest as handleChatRequestP2P } from "../pages/p2p/chat/p2p.js";
+import { hyperCache, saveHyperCache } from "./config.js";
 
 // Single SDK and swarm for the app lifecycle (hyper:// browsing + chat share the same swarm).
 let sdk, fetch;
@@ -47,22 +48,28 @@ export async function createHandler(options, session) {
               chunks.push(chunk);
             }
             const buffer = Buffer.concat(chunks);
-            const driveKey = buffer.toString();
+            const driveKeyStr = buffer.toString();
             // Re-create the stream for the original response
             response.data = Readable.from([buffer]);
-            // Log to Hyper cache only if it looks like a key (e.g. hex string)
-            const timestamp = Date.now();
-            // Basic validation: Hypercore keys are typically 64 hex chars
-            const isHexKey = /^[0-9a-fA-F]{64}$/.test(driveKey);
-            if (isHexKey && !hyperCache.some(entry => entry.key === driveKey)) {
-              hyperCache.push({
-                name: keyName,
-                key: driveKey,
-                timestamp: timestamp,
-                type: 'drive'
-              });
-              saveHyperCache();
-              console.log(`Logged Hyperdrive to cache: ${keyName} (${driveKey})`);
+            
+            // Log the raw key response for debugging
+            console.log("Extracted raw key response:", driveKeyStr);
+
+            // Extract the 52-character z32 key or 64-character hex key from the response
+            const match = driveKeyStr.match(/([0-9a-zA-Z]{52,64})/);
+            if (match) {
+              const driveKey = match[1];
+              const timestamp = Date.now();
+              if (!hyperCache.some(entry => entry.key === driveKey)) {
+                hyperCache.push({
+                  name: keyName || "Drive",
+                  key: driveKey,
+                  timestamp: timestamp,
+                  type: 'drive'
+                });
+                saveHyperCache();
+                console.log(`Logged Hyperdrive to cache: ${keyName} (${driveKey})`);
+              }
             }
           }
         } catch (e) {

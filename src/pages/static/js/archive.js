@@ -1,38 +1,3 @@
-// Archive logic extracted from settings.js
-
-// Normalize ENS entries from IPC into a consistent shape:
-// { name: string, hash: string, timestamp: number|null }
-function normalizeEnsEntries(rawEns) {
-  if (!Array.isArray(rawEns)) return [];
-  const normalized = [];
-
-  for (const entry of rawEns) {
-    // Tuple format: [name, hash, timestamp?]
-    if (Array.isArray(entry)) {
-      const [name, second, third] = entry;
-      if (typeof second === 'object' && second !== null) {
-        // Legacy map value object: [name, { hash|contentHash, timestamp }]
-        const hash = second.hash ?? second.contentHash;
-        const ts = second.timestamp ?? third ?? null;
-        if (name && hash) normalized.push({ name, hash, timestamp: ts });
-      } else if (name && second) {
-        normalized.push({ name, hash: second, timestamp: third ?? null });
-      }
-      continue;
-    }
-
-    // Object format: { name, hash|contentHash, timestamp? }
-    if (entry && typeof entry === 'object') {
-      const name = entry.name;
-      const hash = entry.hash ?? entry.contentHash;
-      const ts = entry.timestamp ?? null;
-      if (name && hash) normalized.push({ name, hash, timestamp: ts });
-    }
-  }
-
-  return normalized;
-}
-
 // Load archive data for the Archive section
 async function loadArchiveData() {
   if (!settingsAPI?.settings?.getArchiveData) return;
@@ -69,6 +34,7 @@ async function loadArchiveData() {
             <td>${safeTime}</td>
             <td>
               <button class="btn btn-secondary btn-sm copy-btn" data-copy="${safeKey}">Copy Key</button>
+              <a href="hyper://${safeKey}/" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm">Open</a>
             </td>
           </tr>`;
         });
@@ -120,6 +86,7 @@ async function loadArchiveData() {
             <td><code>${safeHash.substring(0, 20)}...</code></td>
             <td>
               <button class="btn btn-secondary btn-sm copy-btn" data-copy="${safeHash}">Copy Hash</button>
+              <a href="${safeHash}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm">Open</a>
             </td>
           </tr>`;
         });
@@ -132,20 +99,28 @@ async function loadArchiveData() {
     
     // Add copy functionality
     document.querySelectorAll('.copy-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
         const text = btn.dataset.copy;
-        navigator.clipboard.writeText(text)
-          .then(() => {
-            const originalText = btn.textContent;
-            btn.textContent = 'Copied!';
-            setTimeout(() => btn.textContent = originalText, 2000);
-          })
-          .catch(err => {
-            console.error('Failed to copy to clipboard:', err);
-            const originalText = btn.textContent;
-            btn.textContent = 'Failed';
-            setTimeout(() => btn.textContent = originalText, 2000);
-          });
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+          } else {
+            const temp = document.createElement('textarea');
+            temp.value = text;
+            document.body.appendChild(temp);
+            temp.select();
+            document.execCommand('copy');
+            document.body.removeChild(temp);
+          }
+          const originalText = btn.textContent;
+          btn.textContent = 'Copied!';
+          setTimeout(() => btn.textContent = originalText, 2000);
+        } catch (err) {
+          console.error('Failed to copy to clipboard:', err);
+          const originalText = btn.textContent;
+          btn.textContent = 'Failed';
+          setTimeout(() => btn.textContent = originalText, 2000);
+        }
       });
     });
   } catch (err) {
@@ -217,4 +192,35 @@ async function exportArchiveData() {
     console.error('Failed to export archive data:', err);
     showSettingsSavedMessage('Export failed: ' + err.message, 'error');
   }
+}
+
+function normalizeEnsEntries(rawEns) {
+  if (!Array.isArray(rawEns)) return [];
+  const normalized = [];
+
+  for (const entry of rawEns) {
+    // Tuple format: [name, hash, timestamp?]
+    if (Array.isArray(entry)) {
+      const [name, second, third] = entry;
+      if (typeof second === 'object' && second !== null) {
+        // Legacy map value object: [name, { hash|contentHash, timestamp }]
+        const hash = second.hash ?? second.contentHash;
+        const ts = second.timestamp ?? third ?? null;
+        if (name && hash) normalized.push({ name, hash, timestamp: ts });
+      } else if (name && second) {
+        normalized.push({ name, hash: second, timestamp: third ?? null });
+      }
+      continue;
+    }
+
+    // Object format: { name, hash|contentHash, timestamp? }
+    if (entry && typeof entry === 'object') {
+      const name = entry.name;
+      const hash = entry.hash ?? entry.contentHash;
+      const ts = entry.timestamp ?? null;
+      if (name && hash) normalized.push({ name, hash, timestamp: ts });
+    }
+  }
+
+  return normalized;
 }
