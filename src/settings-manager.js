@@ -385,7 +385,7 @@ class SettingsManager {
       const mainWindow = BrowserWindow.fromWebContents(event.sender);
       const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
         title: "Export Archive Data",
-        defaultPath: path.join(app.getPath("downloads"), `peersky-archive-${new Date().toISOString().split('T')[0]}.json`),
+        defaultPath: path.join(app.getPath("downloads"), `peersky-archive-${new Date().toISOString().split('T')[0]}-${Math.floor(Math.random() * 1000000)}.json`),
         filters: [{ name: "JSON", extensions: ["json"] }]
       });
 
