@@ -79,14 +79,18 @@ async function loadArchiveData() {
       if (filteredEns.length > 0) {
         let html = '<table class="archive-table"><thead><tr><th>Name</th><th>Content Hash</th><th>Action</th></tr></thead><tbody>';
         filteredEns.forEach(item => {
+          const rawHash = item.hash || '';
           const safeName = escapeHtml(item.name);
-          const safeHash = escapeHtml(item.hash);
+          const safeHash = escapeHtml(rawHash);
+          const openLinkHtml = isSupportedEnsOpenTarget(rawHash)
+            ? `<a href="${safeHash}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm">Open</a>`
+            : '';
           html += `<tr>
             <td>${safeName}</td>
             <td><code>${safeHash.substring(0, 20)}...</code></td>
             <td>
               <button class="btn btn-secondary btn-sm copy-btn" data-copy="${safeHash}">Copy Hash</button>
-              <a href="${safeHash}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm">Open</a>
+              ${openLinkHtml}
             </td>
           </tr>`;
         });
@@ -223,4 +227,10 @@ function normalizeEnsEntries(rawEns) {
   }
 
   return normalized;
+}
+
+function isSupportedEnsOpenTarget(value) {
+  if (typeof value !== 'string') return false;
+  const lower = value.toLowerCase();
+  return lower.startsWith('ipfs://') || lower.startsWith('ipns://');
 }

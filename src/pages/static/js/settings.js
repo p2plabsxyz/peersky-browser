@@ -932,7 +932,7 @@ function updateSectionUI(sectionName) {
     // Attach export button handler
     const exportBtn = document.getElementById('export-archive-btn');
     if (exportBtn && !exportBtn.dataset.bound) {
-      exportBtn.addEventListener('click', () => exportArchiveData(settingsAPI, showSettingsSavedMessage));
+      exportBtn.addEventListener('click', () => exportArchiveData());
       exportBtn.dataset.bound = 'true';
     }
 

@@ -99,9 +99,16 @@ let ipfsCache = [];
 if (fs.existsSync(IPFS_CACHE)) {
   try {
     const data = fs.readFileSync(IPFS_CACHE, "utf-8");
-    ipfsCache = JSON.parse(data);
+    const parsed = JSON.parse(data);
+    if (Array.isArray(parsed)) {
+      ipfsCache = parsed;
+    } else {
+      console.warn("IPFS cache file is not an array. Falling back to empty cache.");
+      ipfsCache = [];
+    }
   } catch (error) {
     console.error("Failed to load IPFS cache from file:", error);
+    ipfsCache = [];
   }
 } else {
   console.log(
@@ -114,9 +121,16 @@ let hyperCache = [];
 if (fs.existsSync(HYPER_CACHE)) {
   try {
     const data = fs.readFileSync(HYPER_CACHE, "utf-8");
-    hyperCache = JSON.parse(data);
+    const parsed = JSON.parse(data);
+    if (Array.isArray(parsed)) {
+      hyperCache = parsed;
+    } else {
+      console.warn("Hyper cache file is not an array. Falling back to empty cache.");
+      hyperCache = [];
+    }
   } catch (error) {
     console.error("Failed to load Hyper cache from file:", error);
+    hyperCache = [];
   }
 } else {
   console.log(
