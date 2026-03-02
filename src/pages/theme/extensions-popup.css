@@ -4,8 +4,8 @@
 .extensions-popup {
     position: fixed;
     z-index: 1000;
-    background: var(--browser-theme-background);
-    border: 1px solid var(--peersky-nav-button-inactive);
+    background: var(--settings-card-bg);
+    border: 1px solid var(--settings-border);
     border-radius: 8px;
     width: 320px;
     max-height: 420px;
@@ -31,7 +31,7 @@
 /* Header */
 .extensions-popup-header {
     padding: 16px 16px 12px 16px;
-    border-bottom: 1px solid var(--peersky-nav-button-inactive);
+    border-bottom: 1px solid var(--settings-border);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -368,9 +368,9 @@
     font-size: 14px;
     min-width: 120px;
     color: var(--browser-theme-text-color);
-    border: 1px solid var(--peersky-nav-button-inactive);
+    border: 1px solid var(--settings-border);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    background: var(--browser-theme-background);
+    background: var(--settings-card-bg);
   }
   
   .extension-kebab-menu ul {

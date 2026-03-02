@@ -3,6 +3,9 @@
 import { app, BrowserWindow, Menu, webContents } from 'electron';
 import { registerPopupForStabilization } from './popup-guards.js';
 
+/** opaque background for extension popup window to match settings-card-bg on transparent/dark theme*/
+const EXTENSION_POPUP_BG = '#27272a';
+
 export async function listBrowserActions(manager, window) {
   let state = null;
   try {
@@ -237,6 +240,7 @@ export async function openBrowserAction(manager, actionId, window, anchorRect) {
               app.once("browser-window-created", (event, newWindow) => {
                 // Register for stabilization IMMEDIATELY to prevent race condition
                 registerPopupForStabilization(newWindow);
+                newWindow.setBackgroundColor(EXTENSION_POPUP_BG);
                 if (manager.activePopups) {
                   manager.activePopups.add(newWindow);
                   newWindow.on('closed', () => manager.activePopups.delete(newWindow));
@@ -295,6 +299,7 @@ export async function openBrowserAction(manager, actionId, window, anchorRect) {
             const popupUrl = `chrome-extension://${extension.electronId}/${resolvedPopupRel}`;
             const popupWindow = new (await import('electron')).BrowserWindow({
               width: 400, height: 600, x: Math.round(anchorRect.x), y: Math.round(anchorRect.bottom + 5), show: false, frame: false, resizable: false,
+              backgroundColor: EXTENSION_POPUP_BG,
               webPreferences: { nodeIntegration: false, contextIsolation: true, enableRemoteModule: false, partition: window.webContents.session.partition }
             });
             // Register for stabilization to prevent early closure
