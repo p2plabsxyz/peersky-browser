@@ -942,11 +942,17 @@ function updateSectionUI(sectionName) {
       clearBtn.addEventListener('click', async () => {
         if (!confirm('Are you sure you want to clear all archive data? This cannot be undone.')) return;
         try {
-          await settingsAPI.settings.clearArchive();
+          const result = await settingsAPI.settings.clearArchive();
+          if (!result || result.success === false) {
+            const errorMsg = result && result.error ? String(result.error) : 'Unknown error';
+            showSettingsSavedMessage('Failed to clear archive: ' + errorMsg, 'error');
+            return;
+          }
           loadArchiveData();
           showSettingsSavedMessage('Archive cleared successfully');
         } catch (err) {
-          showSettingsSavedMessage('Failed to clear archive: ' + err.message, 'error');
+          const errorMsg = err && err.message ? err.message : String(err);
+          showSettingsSavedMessage('Failed to clear archive: ' + errorMsg, 'error');
         }
       });
       clearBtn.dataset.bound = 'true';
