@@ -11,11 +11,42 @@ import { ensCache, ipfsCache, hyperCache, saveEnsCache, saveIpfsCache, saveHyper
 
 const SETTINGS_FILE = path.join(app.getPath("userData"), "settings.json");
 const DEBUG_LOG = path.join(os.homedir(), '.peersky', 'debug.log');
+const MAX_ARCHIVE_EXPORT_BYTES = 5 * 1024 * 1024; // 5MB safety cap
 
 // Debug logging helper
 function logDebug(message) {
   const entry = `[${new Date().toISOString()}] Settings: ${message}\n`;
   fs.appendFile(DEBUG_LOG, entry).catch(() => {}); // Don't crash on failure
+}
+
+function normalizeArchiveJsonContent(jsonContent) {
+  let content;
+
+  if (typeof jsonContent === 'string') {
+    content = jsonContent;
+    try {
+      JSON.parse(content);
+    } catch {
+      throw new Error('Invalid archive export payload: string is not valid JSON');
+    }
+  } else if (jsonContent && typeof jsonContent === 'object') {
+    try {
+      content = JSON.stringify(jsonContent, null, 2);
+    } catch {
+      throw new Error('Invalid archive export payload: object could not be serialized');
+    }
+  } else {
+    throw new Error('Invalid archive export payload: expected a JSON string or object');
+  }
+
+  const sizeInBytes = Buffer.byteLength(content, 'utf8');
+  if (sizeInBytes > MAX_ARCHIVE_EXPORT_BYTES) {
+    throw new Error(
+      `Archive export payload too large: ${sizeInBytes} bytes (max ${MAX_ARCHIVE_EXPORT_BYTES} bytes)`
+    );
+  }
+
+  return content;
 }
 
 // Default settings configuration
@@ -382,6 +413,7 @@ class SettingsManager {
     });
 
     ipcMain.handle("settings-export-archive", async (event, jsonContent) => {
+      const normalizedJsonContent = normalizeArchiveJsonContent(jsonContent);
       const mainWindow = BrowserWindow.fromWebContents(event.sender);
       const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
         title: "Export Archive Data",
@@ -390,7 +422,7 @@ class SettingsManager {
       });
 
       if (!canceled && filePath) {
-        await fs.writeFile(filePath, jsonContent, "utf-8");
+        await fs.writeFile(filePath, normalizedJsonContent, "utf-8");
         return { success: true, filePath };
       }
       return { canceled: true };
