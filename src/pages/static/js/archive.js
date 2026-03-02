@@ -231,6 +231,11 @@ function normalizeEnsEntries(rawEns) {
 
 function isSupportedEnsOpenTarget(value) {
   if (typeof value !== 'string') return false;
-  const lower = value.toLowerCase();
-  return lower.startsWith('ipfs://') || lower.startsWith('ipns://');
+
+  return (
+    value.startsWith('ipfs://') ||
+    value.startsWith('ipns://') ||
+    value.startsWith('IPFS://') ||
+    value.startsWith('IPNS://')
+  );
 }
