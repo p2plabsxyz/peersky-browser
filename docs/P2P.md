@@ -2,15 +2,13 @@
 
 Peersky includes a section of static apps served from the `peersky://p2p/` namespace. These apps are fully local or served via distributed protocols like IPFS, Hypercore, etc. This allows building collaborative and offline-capable tools that do not rely on centralized servers.
 
-## Building P2P static apps
+## 🛠️ Building P2P static apps
 
 Static apps work especially well with P2P protocols: they can be **served locally**, cached by peers, and stay available even when your origin server is offline. Publishing a bundle of HTML/CSS/JS to Hyper or IPFS gives you:
 
 - **Offline / flaky-network resilience** – once content is seeded, peers can load it without a central server.
 - **Versioned, content-addressed builds** – immutable URLs for each deploy, easy rollbacks and integrity checks.
 - **Low/zero infra** – no origin to maintain; distribution happens over the P2P network.
-
-Below are minimal examples that mirror Agregore-style P2P fetch APIs and work the same way in Peersky.
 
 ### Publish to Hyper
 
@@ -63,7 +61,7 @@ async function publishToIPFS(files) {
 
 Check our p2p apps in `/pages/p2p/`: https://github.com/p2plabsxyz/peersky-browser/tree/main/src/pages/p2p
 
-## LLM-powered P2P apps
+## 🤖 LLM-powered P2P apps
 
 To build P2P apps that call a local or cloud LLM from the browser, see [`docs/LLM.md`](./LLM.md) for the `window.llm` API, configuration, and examples.
 
