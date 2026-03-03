@@ -15,6 +15,7 @@ export class ExtensionsPopup {
         this.hide = this.hide.bind(this);
         this.handleClickOutside = this.handleClickOutside.bind(this);
         this.handleKeyDown = this.handleKeyDown.bind(this);
+        this._handleWindowBlur = this._handleWindowBlur.bind(this);
         
         // Setup IPC access (same pattern as nav-box)
         this.ipc = (() => {
@@ -295,6 +296,7 @@ export class ExtensionsPopup {
         // Setup global event listeners
         document.addEventListener('click', this.handleClickOutside);
         document.addEventListener('keydown', this.handleKeyDown);
+        window.addEventListener('blur', this._handleWindowBlur);
     }
 
     /**
@@ -395,6 +397,12 @@ export class ExtensionsPopup {
         // Remove global event listeners
         document.removeEventListener('click', this.handleClickOutside);
         document.removeEventListener('keydown', this.handleKeyDown);
+        window.removeEventListener('blur', this._handleWindowBlur);
+    }
+
+    _handleWindowBlur() {
+        if (!this.isVisible) return;
+        this.hide();
     }
 
     /**
