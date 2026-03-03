@@ -51,8 +51,10 @@
       "extendInfo": {
         "NSMicrophoneUsageDescription": "The current page is asking to use your microphone",
         "NSCameraUsageDescription": "The current page is asking to use your camera",
+        "NSLocationWhenInUseUsageDescription": "The current page is asking to access your location",
         "com.apple.security.device.audio-input": true,
-        "com.apple.security.device.camera": true
+        "com.apple.security.device.camera": true,
+        "com.apple.security.personal-information.location": true
       },
       "target": [
         {
