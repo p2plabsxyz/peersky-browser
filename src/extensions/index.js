@@ -76,6 +76,8 @@ class ExtensionManager {
 
     // Track active popups for auto-close on tab switch
     this.activePopups = new Set();
+    this.popupToOpener = new Map();
+    this.popupToExtensionId = new Map();
 
     // Paths (set in initialize)
     this.extensionsBaseDir = null;
