@@ -5,6 +5,9 @@ const navBoxIPC = (() => {
   return ipcRenderer;
 })();
 
+// webUtils for getting file paths from dropped files (Electron 25+)
+const { webUtils } = require('electron');
+
 class NavBox extends HTMLElement {
   constructor() {
     super();
@@ -763,7 +766,7 @@ class NavBox extends HTMLElement {
 
         if (dataTransfer.files && dataTransfer.files.length > 0) {
           const file = dataTransfer.files[0];
-          const targetUrl = normalizeFilePathToUrl(file.path);
+          const targetUrl = normalizeFilePathToUrl(webUtils.getPathForFile(file));
           if (targetUrl) {
             urlInput.value = targetUrl;
             this.dispatchEvent(new CustomEvent("navigate", { detail: { url: targetUrl } }));
