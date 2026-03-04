@@ -3,7 +3,7 @@
  * Requires the shared Hyper SDK (and its single swarm) to be initialized first;
  * initChat(sdk) registers the chat connection handler on that swarm.
  */
-import { Readable, PassThrough } from "stream";
+import { PassThrough } from "stream";
 import b4a from "b4a";
 
 // Room key -> hypercore feed (chat message history)
@@ -212,18 +212,14 @@ async function joinChatRoom(sdk, roomKey) {
 
 /**
  * Handle hyper://chat requests (create-key, join, send, receive/SSE).
- * @param {object} req - Protocol request (url, method, uploadData)
- * @param {function} callback - (response) => void
- * @param {object} session - Electron session (for getBlobData if needed)
- * @param {object} deps - { getJSONBody(req.uploadData, session) => Promise<object> }
+ * @param {Request} req - Fetch-style protocol request
  * @param {import('hyper-sdk').SDK} sdk - Hyper SDK (for joinChatRoom / room feeds)
  */
-export async function handleChatRequest(req, callback, session, deps, sdk) {
-  const { url, method, uploadData } = req;
+export async function handleChatRequest(req, sdk) {
+  const { url, method } = req;
   const urlObj = new URL(url);
   const action = urlObj.searchParams.get("action");
   const roomKey = urlObj.searchParams.get("roomKey");
-  const { getJSONBody } = deps;
 
   console.log(`Chat request: ${method} ${url}`);
 
@@ -231,29 +227,23 @@ export async function handleChatRequest(req, callback, session, deps, sdk) {
     if (method === "POST" && action === "create-key") {
       const newRoomKey = generateChatRoom();
       console.log("Generated new chat room key:", newRoomKey);
-      callback({
-        statusCode: 200,
+      return new Response(JSON.stringify({ roomKey: newRoomKey }), {
+        status: 200,
         headers: { "Content-Type": "application/json" },
-        data: Readable.from([
-          Buffer.from(JSON.stringify({ roomKey: newRoomKey })),
-        ]),
       });
     } else if (method === "POST" && action === "join") {
       if (!roomKey) throw new Error("Missing roomKey in join request");
       if (!isValidRoomKey(roomKey)) throw new Error("Invalid roomKey format");
       console.log("Joining chat room:", roomKey);
       await joinChatRoom(sdk, roomKey);
-      callback({
-        statusCode: 200,
+      return new Response(JSON.stringify({ message: "Joined chat room" }), {
+        status: 200,
         headers: { "Content-Type": "application/json" },
-        data: Readable.from([
-          Buffer.from(JSON.stringify({ message: "Joined chat room" })),
-        ]),
       });
     } else if (method === "POST" && action === "send") {
       if (!roomKey) throw new Error("Missing roomKey in send request");
       if (!isValidRoomKey(roomKey)) throw new Error("Invalid roomKey format");
-      const raw = await getJSONBody(uploadData, session);
+      const raw = await req.json();
       const { sender, message } = sanitizeSendPayload(raw.sender, raw.message);
       console.log(`Sending message [${sender}]: ${message}`);
 
@@ -271,12 +261,9 @@ export async function handleChatRequest(req, callback, session, deps, sdk) {
       });
       sendMessageToPeers(data);
 
-      callback({
-        statusCode: 200,
+      return new Response(JSON.stringify({ message: "Message sent" }), {
+        status: 200,
         headers: { "Content-Type": "application/json" },
-        data: Readable.from([
-          Buffer.from(JSON.stringify({ message: "Message sent" })),
-        ]),
       });
     } else if (method === "GET" && action === "receive") {
       if (!roomKey) throw new Error("Missing roomKey in receive request");
@@ -309,28 +296,25 @@ export async function handleChatRequest(req, callback, session, deps, sdk) {
         );
       });
 
-      callback({
-        statusCode: 200,
+      return new Response(stream, {
+        status: 200,
         headers: {
           "Content-Type": "text/event-stream",
           "Cache-Control": "no-cache",
           Connection: "keep-alive",
         },
-        data: stream,
       });
     } else {
-      callback({
-        statusCode: 400,
+      return new Response("Invalid chat action", {
+        status: 400,
         headers: { "Content-Type": "text/plain" },
-        data: Readable.from(["Invalid chat action"]),
       });
     }
   } catch (err) {
     console.error("Error in handleChatRequest:", err);
-    callback({
-      statusCode: 500,
+    return new Response(`Error in chat request: ${err.message}`, {
+      status: 500,
       headers: { "Content-Type": "text/plain" },
-      data: Readable.from([`Error in chat request: ${err.message}`]),
     });
   }
 }

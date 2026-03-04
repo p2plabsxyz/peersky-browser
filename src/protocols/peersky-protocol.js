@@ -1,10 +1,8 @@
 import path from "path";
 import { fileURLToPath } from 'url';
 import mime from "mime-types";
-import { Readable } from 'stream';
 import ScopedFS from 'scoped-fs';
 import { app } from 'electron';
-import { createReadStream } from 'fs';
 import { promises as fsPromises } from 'fs';
 import extensionManager from '../extensions/index.js';
 
@@ -54,54 +52,58 @@ function findHistoryExtension() {
   }) || null;
 }
 
-async function handleHistory(sendResponse) {
+async function handleHistory() {
   const historyExtension = findHistoryExtension();
   if (!historyExtension || !historyExtension.electronId) {
-    sendResponse({
-      statusCode: 404,
+    return new Response('History extension not found', {
+      status: 404,
       headers: { 'Content-Type': 'text/plain', 'Cache-Control': 'no-cache' },
-      data: Readable.from(['History extension not found'])
     });
-    return;
   }
+
   const viewUrl = `chrome-extension://${historyExtension.electronId}/view.html`;
-  sendResponse({
-    statusCode: 302,
+  return new Response('', {
+    status: 302,
     headers: {
       'Location': viewUrl,
       'Cache-Control': 'no-cache',
       'Access-Control-Allow-Origin': '*',
       'Allow-CSP-From': '*'
     },
-    data: Readable.from([])
   });
 }
 
+async function streamToBuffer(stream) {
+  const chunks = [];
+  for await (const chunk of stream) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
+}
+
 // Handle wallpaper requests cleanly
-async function handleWallpaper(filename, sendResponse) {
+async function handleWallpaper(filename) {
   try {
     const wallpaperPath = path.join(app.getPath("userData"), "wallpapers", filename);
     await fsPromises.access(wallpaperPath);
     
-    const data = createReadStream(wallpaperPath);
+    const data = await fsPromises.readFile(wallpaperPath);
     const contentType = mime.lookup(wallpaperPath) || 'image/jpeg';
     
-    sendResponse({
-      statusCode: 200,
+    return new Response(data, {
+      status: 200,
       headers: { 'Content-Type': contentType, 'Cache-Control': 'public, max-age=3600' },
-      data
     });
   } catch {
-    sendResponse({
-      statusCode: 404,
+    return new Response('Not found', {
+      status: 404,
       headers: { 'Content-Type': 'text/plain' },
-      data: Readable.from(['Not found'])
     });
   }
 }
 
 // Handle extension icon requests
-async function handleExtensionIcon(extensionId, size, sendResponse) {
+async function handleExtensionIcon(extensionId, size) {
   try {
     // Path to extension: userData/extensions/{extensionId}/{version}/
     let extensionsPath = path.join(app.getPath("userData"), "extensions", extensionId);
@@ -192,47 +194,45 @@ async function handleExtensionIcon(extensionId, size, sendResponse) {
     const iconPath = path.join(extensionRoot, iconRelativePath);
     await fsPromises.access(iconPath);
     
-    const data = createReadStream(iconPath);
+    const data = await fsPromises.readFile(iconPath);
     const contentType = mime.lookup(iconPath) || 'image/png';
     
-    sendResponse({
-      statusCode: 200,
+    return new Response(data, {
+      status: 200,
       headers: { 'Content-Type': contentType, 'Cache-Control': 'public, max-age=3600' },
-      data
     });
   } catch (error) {
     console.log(`Extension icon not found: ${extensionId}/${size} - ${error.message}`);
     try {
       const defaultIconPath = path.join(pagesPath, 'static/assets/svg/default-extension-icon.svg');
-      const data = createReadStream(defaultIconPath);
+      const data = await fsPromises.readFile(defaultIconPath);
       const contentType = mime.lookup(defaultIconPath) || 'image/svg+xml';
-      sendResponse({
-        statusCode: 200,
+      return new Response(data, {
+        status: 200,
         headers: { 'Content-Type': contentType, 'Cache-Control': 'public, max-age=3600' },
-        data
       });
     } catch (_) {
-      sendResponse({
-        statusCode: 404,
+      return new Response('Extension icon not found', {
+        status: 404,
         headers: { 'Content-Type': 'text/plain' },
-        data: Readable.from(['Extension icon not found'])
       });
     }
   }
 }
 
 export async function createHandler() {
-  return async function protocolHandler({ url }, sendResponse) {
+  return async function protocolHandler(request) {
+    const { url } = request;
     const parsedUrl = new URL(url);
     let filePath = parsedUrl.hostname + parsedUrl.pathname;
 
     if (filePath === '/') filePath = 'home';
-    if (filePath === 'history' || filePath.startsWith('history/')) return handleHistory(sendResponse);
-    if (filePath.startsWith('wallpaper/')) return handleWallpaper(filePath.slice(10), sendResponse);
+    if (filePath === 'history' || filePath.startsWith('history/')) return handleHistory();
+    if (filePath.startsWith('wallpaper/')) return handleWallpaper(filePath.slice(10));
     if (filePath.startsWith('extension-icon/')) {
       const iconPath = filePath.slice(15); // Remove 'extension-icon/'
       const [extensionId, size] = iconPath.split('/');
-      return handleExtensionIcon(extensionId, size || '64', sendResponse);
+      return handleExtensionIcon(extensionId, size || '64');
     }
     
     // Handle settings subpaths - map all /settings/* to settings.html
@@ -248,9 +248,9 @@ export async function createHandler() {
         throw new Error('Unsupported file type');
       }
 
-      const statusCode = 200;
-      const data = fs.createReadStream(resolvedPath);
+      const data = await streamToBuffer(fs.createReadStream(resolvedPath));
       const contentType = mime.lookup(resolvedPath) || 'text/plain';
+      const statusCode = 200;
       const headers = {
         'Content-Type': contentType,
         'Access-Control-Allow-Origin': '*',
@@ -258,15 +258,23 @@ export async function createHandler() {
         'Cache-Control': 'no-cache'
       };
 
-      sendResponse({
-        statusCode,
+      return new Response(data, {
+        status: statusCode,
         headers,
-        data
       });
     } catch (e) {
-      // File not found - send error code so renderer.js shows error.html
-      sendResponse({
-        errorCode: -6, // net::ERR_FILE_NOT_FOUND
+
+      if (filePath !== 'error' && filePath !== 'error.html') {
+        return Response.error();
+      }
+
+      // Guard for missing error page itself.
+      return new Response('File not found', {
+        status: 404,
+        headers: {
+          'Content-Type': 'text/plain',
+          'Cache-Control': 'no-cache',
+        }
       });
     }
   };
