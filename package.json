@@ -178,7 +178,7 @@
     "multiformats": "^13.3.2",
     "scoped-fs": "^1.4.1",
     "unzipper": "^0.10.14",
-    "web3protocol": "^0.6.0",
+    "web3protocol": "^0.6.3",
     "webtorrent": "^2.8.5"
   },
   "devDependencies": {
