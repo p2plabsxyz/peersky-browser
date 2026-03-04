@@ -415,11 +415,14 @@ class SettingsManager {
     ipcMain.handle("settings-export-archive", async (event, jsonContent) => {
       const normalizedJsonContent = normalizeArchiveJsonContent(jsonContent);
       const mainWindow = BrowserWindow.fromWebContents(event.sender);
-      const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+      const saveDialogOptions = {
         title: "Export Archive Data",
         defaultPath: path.join(app.getPath("downloads"), `peersky-archive-${new Date().toISOString().split('T')[0]}-${Math.floor(Math.random() * 1000000)}.json`),
         filters: [{ name: "JSON", extensions: ["json"] }]
-      });
+      };
+      const { canceled, filePath } = mainWindow
+        ? await dialog.showSaveDialog(mainWindow, saveDialogOptions)
+        : await dialog.showSaveDialog(saveDialogOptions);
 
       if (!canceled && filePath) {
         await fs.writeFile(filePath, normalizedJsonContent, "utf-8");

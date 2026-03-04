@@ -871,7 +871,7 @@ function initializeSidebarNavigation() {
         sectionFromHistory = subpathMatch[1];
       } else if (currentPath.includes('#')) {
         const hashSection = currentPath.replace('#', '');
-        if (hashSection && ['appearance', 'search', 'extensions', 'archive'].includes(hashSection)) {
+        if (hashSection && ['appearance', 'search', 'tabs', 'extensions', 'archive'].includes(hashSection)) {
           sectionFromHistory = hashSection;
         }
       }
