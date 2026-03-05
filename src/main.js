@@ -21,6 +21,7 @@ import extensionManager from "./extensions/index.js";
 import { setupExtensionIpcHandlers } from "./extensions/extensions-ipc.js";
 import { getBrowserSession, usePersist } from "./session.js";
 import { setupPermissionHandler } from "./permissions.js";
+import { setupDPKI } from "./dpki.js";
 
 const P2P_PROTOCOL = {
   standard: true,
@@ -82,18 +83,21 @@ app.whenReady().then(async () => {
 
   // Set the WindowManager instance in context-menu.js
   setWindowManager(windowManager);
-  
+
   // Get consistent session for protocols and extensions
   const userSession = getBrowserSession();
   await setupProtocols(userSession);
   installWebviewFileRedirect(userSession);
+
+  // Setup DPKI consensus mechanism (Issue #28)
+  setupDPKI(userSession);
 
   // Global webview partition alignment and security hardening
   app.on('web-contents-created', (_e, wc) => {
     wc.on('will-attach-webview', (_event, webPreferences, params) => {
       // Force consistent partition when using persist mode
       if (usePersist()) params.partition = 'persist:peersky';
-      
+
       // Basic hardening for webviews (safe defaults)
       webPreferences.nodeIntegration = false;
       webPreferences.contextIsolation = true;
@@ -276,7 +280,7 @@ ipcMain.on('refresh-browser-actions', () => {
 });
 
 ipcMain.on("open-tab-in-main-window", (_event, url) => {
-  const mainWindow = BrowserWindow.getAllWindows()[0]; 
+  const mainWindow = BrowserWindow.getAllWindows()[0];
   if (!mainWindow) return;
   mainWindow.webContents.send('create-new-tab', url);
 });
@@ -284,7 +288,7 @@ ipcMain.on("open-tab-in-main-window", (_event, url) => {
 ipcMain.on("window-control", (_event, command) => {
   const window = BrowserWindow.fromWebContents(_event.sender);
   if (!window) return;
-  
+
   switch (command) {
     case "minimize":
       window.minimize();
@@ -323,12 +327,12 @@ ipcMain.on('open-url-in-tab', (event, fileUrl) => {
     console.warn('[IPC] open-url-in-tab blocked non-file URL:', fileUrl);
     return;
   }
-  
+
   // Find the parent window
   const parentWindow = BrowserWindow.fromWebContents(event.sender)
     || BrowserWindow.getFocusedWindow()
     || BrowserWindow.getAllWindows()[0];
-  
+
   if (parentWindow) {
     // Send IPC message to renderer to add tab (safer than executeJavaScript)
     parentWindow.webContents.send('add-tab-from-main', fileUrl);
@@ -344,7 +348,7 @@ ipcMain.on('new-window', (_event, options = {}) => {
 });
 
 ipcMain.handle('get-tab-memory-usage', async (event, webContentsId) => {
-  try{
+  try {
     const wc = webContents.fromId(webContentsId);
     if (!wc) {
       throw new Error(`WebContents with ID ${webContentsId} not found`);
@@ -355,11 +359,11 @@ ipcMain.handle('get-tab-memory-usage', async (event, webContentsId) => {
 
     const processMetrics = metrics.find(m => m.pid === processId);
 
-    if(processMetrics && processMetrics.memory) {
+    if (processMetrics && processMetrics.memory) {
       return {
-        workingSetSize : processMetrics.memory.workingSetSize*1024, // KB to Bytes
-        peakWorkingSetSize : processMetrics.memory.peakWorkingSetSize*1024,
-        privateBytes : processMetrics.memory.privateBytes*1024,
+        workingSetSize: processMetrics.memory.workingSetSize * 1024, // KB to Bytes
+        peakWorkingSetSize: processMetrics.memory.peakWorkingSetSize * 1024,
+        privateBytes: processMetrics.memory.privateBytes * 1024,
       }
     }
     return null;
@@ -373,20 +377,20 @@ ipcMain.handle('get-tab-memory-usage', async (event, webContentsId) => {
 ipcMain.on('group-action', (_event, data) => {
   console.log('Group action received:', data);
   const { action, groupId } = data;
-  
+
   // Broadcast to all windows
   windowManager.all.forEach(peerskyWindow => {
     if (peerskyWindow.window && !peerskyWindow.window.isDestroyed()) {
       peerskyWindow.window.webContents.send('group-action', { action, groupId });
     }
   });
-  
-  return { success: true }; 
+
+  return { success: true };
 });
 
 ipcMain.on('update-group-properties', (_event, groupId, properties) => {
   console.log('Updating group properties across all windows:', groupId, properties);
-  
+
   // Broadcast to all windows
   windowManager.all.forEach(peerskyWindow => {
     if (peerskyWindow.window && !peerskyWindow.window.isDestroyed()) {
