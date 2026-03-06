@@ -23,17 +23,15 @@ async function loadArchiveData() {
     const hyperList = document.getElementById('hyper-archive-list');
     if (hyperList) {
       if (filteredHyper.length > 0) {
-        let html = '<table class="archive-table"><colgroup><col style="width:25%"><col style="width:25%"><col style="width:10%"><col style="width:20%"><col style="width:20%"></colgroup><thead><tr><th>Name</th><th>Key</th><th>Type</th><th>Time</th><th>Action</th></tr></thead><tbody>';
+        let html = '<table class="archive-table"><colgroup><col style="width:25%"><col style="width:30%"><col style="width:25%"><col style="width:20%"></colgroup><thead><tr><th>Name</th><th>Key</th><th>Time</th><th>Action</th></tr></thead><tbody>';
         [...filteredHyper].reverse().forEach(item => {
           const time = new Date(item.timestamp).toLocaleString();
           const safeName = escapeHtml(item.name || 'Unknown');
           const safeKey = escapeHtml(item.key);
-          const safeType = escapeHtml(item.type || 'drive');
           const safeTime = escapeHtml(time);
           html += `<tr>
             <td>${safeName}</td>
             <td><code>${safeKey.substring(0, 16)}...</code></td>
-            <td>${safeType}</td>
             <td>${safeTime}</td>
             <td>
               <button class="btn btn-secondary btn-sm copy-btn" data-copy="${safeKey}" title="Copy Key">${COPY_ICON}</button>

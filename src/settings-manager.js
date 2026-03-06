@@ -431,14 +431,36 @@ class SettingsManager {
       return { canceled: true };
     });
 
-    ipcMain.handle("settings-clear-archive", async () => {
+    ipcMain.handle("settings-clear-archive", async (event, cutoff) => {
       try {
-        // Clear in-memory caches
-        if (ipfsCache) ipfsCache.length = 0;
-        if (hyperCache) hyperCache.length = 0;
-        if (ensCache) ensCache.clear();
+        if (!cutoff || cutoff <= 0) {
+          // Clear all
+          if (ipfsCache) ipfsCache.length = 0;
+          if (hyperCache) hyperCache.length = 0;
+          if (ensCache) ensCache.clear();
+        } else {
+          // Keep entries outside the time window (before cutoff)
+          if (ipfsCache) {
+            const kept = ipfsCache.filter(item => item.timestamp < cutoff);
+            ipfsCache.length = 0;
+            kept.forEach(item => ipfsCache.push(item));
+          }
+          if (hyperCache) {
+            const kept = hyperCache.filter(item => item.timestamp < cutoff);
+            hyperCache.length = 0;
+            kept.forEach(item => hyperCache.push(item));
+          }
+          // ENS entries often lack timestamps, so only remove entries that have
+          // a timestamp within the window; keep all entries without timestamps.
+          if (ensCache) {
+            for (const [name, value] of ensCache.entries()) {
+              const ts = (typeof value === 'object' && value !== null) ? value.timestamp : null;
+              if (ts && ts >= cutoff) ensCache.delete(name);
+            }
+          }
+        }
 
-        // Save empty caches to disk
+        // Save caches to disk
         saveIpfsCache();
         saveHyperCache();
         saveEnsCache();
