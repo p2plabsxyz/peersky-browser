@@ -1,3 +1,6 @@
+const COPY_ICON = '<img src="peersky://static/assets/svg/copy.svg" width="16" height="16" alt="Copy">';
+const OPEN_ICON = '<img src="peersky://static/assets/svg/box-arrow-up-right.svg" width="16" height="16" alt="Open">';
+
 // Load archive data for the Archive section
 async function loadArchiveData() {
   if (!settingsAPI?.settings?.getArchiveData) return;
@@ -33,8 +36,8 @@ async function loadArchiveData() {
             <td>${safeType}</td>
             <td>${safeTime}</td>
             <td>
-              <button class="btn btn-secondary btn-sm copy-btn" data-copy="${safeKey}">Copy Key</button>
-              <a href="hyper://${safeKey}/" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm">Open</a>
+              <button class="btn btn-secondary btn-sm copy-btn" data-copy="${safeKey}" title="Copy Key">${COPY_ICON}</button>
+              <a href="hyper://${safeKey}/" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" title="Open">${OPEN_ICON}</a>
             </td>
           </tr>`;
         });
@@ -61,8 +64,8 @@ async function loadArchiveData() {
             <td><code>${safeCid.substring(0, 16)}...</code></td>
             <td>${safeTime}</td>
             <td>
-              <button class="btn btn-secondary btn-sm copy-btn" data-copy="${safeCid}">Copy CID</button>
-              <a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm">Open</a>
+              <button class="btn btn-secondary btn-sm copy-btn" data-copy="${safeCid}" title="Copy CID">${COPY_ICON}</button>
+              <a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" title="Open">${OPEN_ICON}</a>
             </td>
           </tr>`;
         });
@@ -83,13 +86,13 @@ async function loadArchiveData() {
           const safeName = escapeHtml(item.name);
           const safeHash = escapeHtml(rawHash);
           const openLinkHtml = isSupportedEnsOpenTarget(rawHash)
-            ? `<a href="${safeHash}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm">Open</a>`
+            ? `<a href="${safeHash}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" title="Open">${OPEN_ICON}</a>`
             : '';
           html += `<tr>
             <td>${safeName}</td>
             <td><code>${safeHash.substring(0, 20)}...</code></td>
             <td>
-              <button class="btn btn-secondary btn-sm copy-btn" data-copy="${safeHash}">Copy Hash</button>
+              <button class="btn btn-secondary btn-sm copy-btn" data-copy="${safeHash}" title="Copy Hash">${COPY_ICON}</button>
               ${openLinkHtml}
             </td>
           </tr>`;
@@ -116,14 +119,14 @@ async function loadArchiveData() {
             document.execCommand('copy');
             document.body.removeChild(temp);
           }
-          const originalText = btn.textContent;
+          const originalHTML = btn.innerHTML;
           btn.textContent = 'Copied!';
-          setTimeout(() => btn.textContent = originalText, 2000);
+          setTimeout(() => btn.innerHTML = originalHTML, 2000);
         } catch (err) {
           console.error('Failed to copy to clipboard:', err);
-          const originalText = btn.textContent;
+          const originalHTML = btn.innerHTML;
           btn.textContent = 'Failed';
-          setTimeout(() => btn.textContent = originalText, 2000);
+          setTimeout(() => btn.innerHTML = originalHTML, 2000);
         }
       });
     });
