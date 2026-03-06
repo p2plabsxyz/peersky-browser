@@ -23,7 +23,7 @@ async function loadArchiveData() {
     const hyperList = document.getElementById('hyper-archive-list');
     if (hyperList) {
       if (filteredHyper.length > 0) {
-        let html = '<table class="archive-table"><thead><tr><th>Name</th><th>Key</th><th>Type</th><th>Time</th><th>Action</th></tr></thead><tbody>';
+        let html = '<table class="archive-table"><colgroup><col style="width:25%"><col style="width:25%"><col style="width:10%"><col style="width:20%"><col style="width:20%"></colgroup><thead><tr><th>Name</th><th>Key</th><th>Type</th><th>Time</th><th>Action</th></tr></thead><tbody>';
         [...filteredHyper].reverse().forEach(item => {
           const time = new Date(item.timestamp).toLocaleString();
           const safeName = escapeHtml(item.name || 'Unknown');
@@ -52,7 +52,7 @@ async function loadArchiveData() {
     const ipfsList = document.getElementById('ipfs-archive-list');
     if (ipfsList) {
       if (filteredIpfs.length > 0) {
-        let html = '<table class="archive-table"><thead><tr><th>Name</th><th>CID</th><th>Time</th><th>Action</th></tr></thead><tbody>';
+        let html = '<table class="archive-table"><colgroup><col style="width:30%"><col style="width:25%"><col style="width:25%"><col style="width:20%"></colgroup><thead><tr><th>Name</th><th>CID</th><th>Time</th><th>Action</th></tr></thead><tbody>';
         [...filteredIpfs].reverse().forEach(item => {
           const time = new Date(item.timestamp).toLocaleString();
           const safeName = escapeHtml(item.name || 'Unknown');
@@ -80,7 +80,7 @@ async function loadArchiveData() {
     const ensList = document.getElementById('ens-archive-list');
     if (ensList) {
       if (filteredEns.length > 0) {
-        let html = '<table class="archive-table"><thead><tr><th>Name</th><th>Content Hash</th><th>Action</th></tr></thead><tbody>';
+        let html = '<table class="archive-table"><colgroup><col style="width:35%"><col style="width:40%"><col style="width:25%"></colgroup><thead><tr><th>Name</th><th>Content Hash</th><th>Action</th></tr></thead><tbody>';
         filteredEns.forEach(item => {
           const rawHash = item.hash || '';
           const safeName = escapeHtml(item.name);
@@ -120,13 +120,17 @@ async function loadArchiveData() {
             document.body.removeChild(temp);
           }
           const originalHTML = btn.innerHTML;
+          const w = btn.offsetWidth;
+          btn.style.width = w + 'px';
           btn.textContent = 'Copied!';
-          setTimeout(() => btn.innerHTML = originalHTML, 2000);
+          setTimeout(() => { btn.innerHTML = originalHTML; btn.style.width = ''; }, 2000);
         } catch (err) {
           console.error('Failed to copy to clipboard:', err);
           const originalHTML = btn.innerHTML;
+          const w = btn.offsetWidth;
+          btn.style.width = w + 'px';
           btn.textContent = 'Failed';
-          setTimeout(() => btn.innerHTML = originalHTML, 2000);
+          setTimeout(() => { btn.innerHTML = originalHTML; btn.style.width = ''; }, 2000);
         }
       });
     });

@@ -920,11 +920,14 @@ body {
   border: 1px solid var(--settings-border);
   border-radius: 8px;
   overflow: hidden;
+  table-layout: fixed;
 }
 .archive-table th,
 .archive-table td {
   border-right: none;
   border-left: none;
+  overflow-wrap: break-word;
+  word-break: break-all;
 }
 .archive-table thead {
   background: var(--settings-bg-secondary);
@@ -958,9 +961,17 @@ body {
 }
 .archive-table td .btn {
   margin-right: 0.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 60px;
+  box-sizing: border-box;
 }
 .archive-table td .btn:last-child {
   margin-right: 0;
+}
+.archive-table td:last-child {
+  white-space: nowrap;
 }
 .archive-empty {
   color: var(--settings-text-secondary);
