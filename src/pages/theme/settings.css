@@ -982,3 +982,20 @@ body {
   border: 1px solid var(--settings-border);
   border-radius: 8px;
 }
+.archive-note {
+  color: var(--settings-text-secondary);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  margin: 0.75rem 0 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--settings-bg-secondary);
+  border: 1px solid var(--settings-border);
+  border-radius: 6px;
+}
+.archive-note-link {
+  color: var(--browser-theme-primary-highlight);
+  text-decoration: none;
+}
+.archive-note-link:hover {
+  text-decoration: underline;
+}
