@@ -13,6 +13,7 @@ import { CID } from 'multiformats/cid';
 import { base32 } from 'multiformats/bases/base32';
 import { base36 } from 'multiformats/bases/base36';
 import { base58btc } from 'multiformats/bases/base58';
+import { clearPersistedPermissions } from './permissions.js';
 
 const SETTINGS_FILE = path.join(app.getPath("userData"), "settings.json");
 const DEBUG_LOG = path.join(os.homedir(), '.peersky', 'debug.log');
@@ -137,6 +138,8 @@ async function clearBrowserCache() {
     await clear(['cookies', 'localstorage', 'sessionstorage']);
     await clear(['indexdb']); // (Electron's internal key for IndexedDB)
     await clear(['cachestorage', 'serviceworkers']);
+
+    await clearPersistedPermissions();
 
     logDebug('Cache and storage cleared safely');
 

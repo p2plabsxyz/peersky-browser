@@ -22,9 +22,20 @@ import "./llm.js";
 import extensionManager from "./extensions/index.js";
 import { setupExtensionIpcHandlers } from "./extensions/extensions-ipc.js";
 import { getBrowserSession, usePersist } from "./session.js";
+import { setupPermissionHandler } from "./permissions.js";
 
 const P2P_PROTOCOL = {
   standard: true,
+  secure: true,
+  allowServiceWorkers: true,
+  supportFetchAPI: true,
+  bypassCSP: false,
+  corsEnabled: true,
+  stream: true,
+};
+
+const WEB3_PROTOCOL = {
+  standard: false,
   secure: true,
   allowServiceWorkers: true,
   supportFetchAPI: true,
@@ -72,7 +83,7 @@ globalProtocol.registerSchemesAsPrivileged([
   { scheme: "pubsub", privileges: P2P_PROTOCOL },
   { scheme: "hyper", privileges: P2P_PROTOCOL },
   { scheme: "hs", privileges: P2P_PROTOCOL },
-  { scheme: "web3", privileges: P2P_PROTOCOL },
+  { scheme: "web3", privileges: WEB3_PROTOCOL },
   { scheme: "file", privileges: FILE_PROTOCOL },
   { scheme: "bittorrent", privileges: P2P_PROTOCOL },
   { scheme: "bt", privileges: P2P_PROTOCOL },
@@ -88,6 +99,7 @@ app.whenReady().then(async () => {
   // Get consistent session for protocols and extensions
   const userSession = getBrowserSession();
   await setupProtocols(userSession);
+  installWebviewFileRedirect(userSession);
 
   // Global webview partition alignment and security hardening
   app.on('web-contents-created', (_e, wc) => {
@@ -102,8 +114,7 @@ app.whenReady().then(async () => {
     });
   });
 
-  // Default-deny permissions for security
-  userSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
+  await setupPermissionHandler(userSession);
 
   // Initialize extension system
   try {
@@ -235,6 +246,12 @@ async function setupProtocols(session) {
   sessionProtocol.handle("bittorrent", bittorrentProtocolHandler);
   sessionProtocol.handle("bt", bittorrentProtocolHandler);
   sessionProtocol.handle("magnet", bittorrentProtocolHandler);
+}
+
+function installWebviewFileRedirect(session) {
+  session.webRequest.onBeforeRequest({ urls: ["file://*/*"] }, (_details, callback) => {
+    callback({});
+  });
 }
 
 app.on("window-all-closed", () => {
