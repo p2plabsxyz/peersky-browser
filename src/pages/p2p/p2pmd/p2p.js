@@ -1247,7 +1247,7 @@ async function uploadFile(file) {
     url = `${hyperdriveUrl}${encodeURIComponent(file.name)}`;
     console.log(`[uploadFile] Hyper URL: ${url}`);
   } else {
-    url = `ipfs://bafyaabakaieac/${encodeURIComponent(file.name)}`;
+    url = `ipfs://bafyaabakaieac/${encodeURIComponent(file.name)}?peerskyOrigin=${encodeURIComponent(window.location.href)}`;
     console.log(`[uploadFile] IPFS URL: ${url}`);
   }
 
@@ -1628,7 +1628,7 @@ markdownInput.addEventListener("drop", async (e) => {
       const compressed = await compressImage(file);
       const formData = new FormData();
       formData.append("file", compressed, compressed.name);
-      const response = await fetch("ipfs://bafyaabakaieac/", {
+      const response = await fetch(`ipfs://bafyaabakaieac/?peerskyOrigin=${encodeURIComponent(window.location.href)}`, {
         method: "PUT",
         body: formData,
       });

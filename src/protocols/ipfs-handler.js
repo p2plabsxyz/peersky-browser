@@ -16,6 +16,52 @@ import { peerIdFromString, peerIdFromCID } from "@libp2p/peer-id";
 import { ensCache, saveEnsCache, RPC_URL, ipfsCache, saveIpfsCache } from "./config.js";
 import { JsonRpcProvider } from "ethers";
 
+const P2P_APP_NAMES = {
+  "editor": "P2P Editor",
+  "p2pmd": "P2P Markdown",
+  "chat": "P2P Chat",
+  "ai-chat": "AI Chat",
+  "wiki": "P2P Wiki",
+  "drive": "P2P Drive",
+  "extensions": "Extension Archiver",
+};
+
+function getAppNameFromPeerskyUrl(rawUrl) {
+  if (!rawUrl) return null;
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol !== "peersky:") return null;
+
+    const hostname = (parsed.hostname || "").toLowerCase();
+    const pathSegments = parsed.pathname
+      .split("/")
+      .filter(Boolean)
+      .map((segment) => segment.toLowerCase());
+
+    // Supported formats:
+    // - peersky://p2p/p2pmd/
+    // - peersky://editor/
+    const appKey = hostname === "p2p" ? pathSegments[0] : hostname;
+    if (!appKey) return null;
+    return P2P_APP_NAMES[appKey] || `Peersky App (${appKey})`;
+  } catch (_) {
+    return null;
+  }
+}
+
+function getAppNameFromRequest(request) {
+  if (request && request.url) {
+    try {
+      const parsed = new URL(request.url);
+      const urlOrigin = parsed.searchParams.get('peerskyOrigin');
+      if (urlOrigin) {
+        return getAppNameFromPeerskyUrl(urlOrigin);
+      }
+    } catch (_) {}
+  }
+  return null;
+}
+
 // Create a combined multibase decoder to handle base32, base36, and base58btc
 const multibaseDecoder = base32.decoder
   .or(base36.decoder)
@@ -163,8 +209,9 @@ export async function createHandler(ipfsOptions, session) {
       try {
         const timestamp = Date.now();
         const cidStr = rootCid.toString();
-        // Determine upload name - prefer folder name for directory uploads
+        // Determine upload name - prefer app context, then folder name, then filename
         let uploadName;
+        const appName = getAppNameFromRequest(request);
         if (directoryName) {
           // Direct directory upload
           uploadName = directoryName;
@@ -204,16 +251,31 @@ export async function createHandler(ipfsOptions, session) {
         } else {
           uploadName = "Upload " + new Date(timestamp).toLocaleString();
         }
-        // Check if already exists to avoid duplicates (optional but good)
-        if (!ipfsCache.some(entry => entry.cid === cidStr)) {
+        // Prefer app context labels (e.g. "P2P Markdown") when the determined name is generic, otherwise keep the folder/file name
+        if (appName && (!uploadName || uploadName === 'index.html' || uploadName === 'untitled' || uploadName.startsWith('index.html +'))) {
+          uploadName = appName;
+        }
+        // Keep one entry per CID, but refresh old generic labels when a better one is available.
+        const existingEntry = ipfsCache.find((entry) => entry.cid === cidStr);
+        if (!existingEntry) {
           ipfsCache.push({
             cid: cidStr,
             timestamp: timestamp,
             url: fileUrl,
-            name: uploadName
+            name: uploadName,
           });
           saveIpfsCache();
           console.log(`Logged upload to IPFS cache: ${cidStr}`);
+        } else {
+          const existingName = String(existingEntry.name || "").trim().toLowerCase();
+          const isGenericExistingName =
+            !existingName || existingName === "index.html" || existingName === "untitled";
+          if (uploadName && existingEntry.name !== uploadName && (isGenericExistingName || appName)) {
+            existingEntry.name = uploadName;
+            if (!existingEntry.url) existingEntry.url = fileUrl;
+            saveIpfsCache();
+            console.log(`Updated IPFS cache label: ${cidStr} -> ${uploadName}`);
+          }
         }
       } catch (logErr) {
         console.error("Error logging to IPFS cache:", logErr);
@@ -343,7 +405,6 @@ export async function createHandler(ipfsOptions, session) {
 
   return async function protocolHandler(request, sendResponse) {
     const { url, method, uploadData, headers } = request;
-
     if (!node) {
       console.log("IPFS node is not ready yet");
       return;
@@ -356,7 +417,7 @@ export async function createHandler(ipfsOptions, session) {
       url.startsWith("ipfs://")
     ) {
       console.log(`Handling file upload for URL: ${url}`);
-      return handleFileUpload({ uploadData, headers }, sendResponse);
+      return handleFileUpload({ uploadData, headers, referrer: request.referrer, url: request.url }, sendResponse);
     }
 
     let ipfsPath;
