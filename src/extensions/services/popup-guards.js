@@ -59,6 +59,24 @@ export function installExtensionPopupGuards(manager) {
 
   console.log('[PopupGuards] Installing extension popup guards...');
 
+  // Close extension popups when focus moves elsewhere (outside click)
+  if (!manager.__peerskyPopupFocusHandlerInstalled) {
+    manager.__peerskyPopupFocusHandlerInstalled = true;
+    app.on('browser-window-focus', (_event, focusedWindow) => {
+      const popups = manager.activePopups;
+      if (!popups || popups.size === 0) return;
+      for (const popup of [...popups]) {
+        if (!popup || popup.isDestroyed()) {
+          popups.delete(popup);
+          continue;
+        }
+        if (focusedWindow && popup === focusedWindow) continue;
+        if (isPopupStabilizing(popup)) continue;
+        try { popup.close(); } catch (_) { }
+      }
+    });
+  }
+
   // Override closeAllPopups to respect stabilization period
   const originalCloseAllPopups = manager.closeAllPopups?.bind(manager);
   if (originalCloseAllPopups) {

@@ -883,10 +883,10 @@ class PeerskyWindow {
     this.window = new BrowserWindow({
       width: 800,
       height: 600,
+      transparent: true,
+      backgroundColor: '#00000000',
       frame: false,
       titleBarStyle: 'hidden',
-      vibrancy: 'dark',
-      backgroundMaterial: 'mica',
       webPreferences: {
         partition: getPartition(),
         nodeIntegration: true,
@@ -917,10 +917,12 @@ class PeerskyWindow {
     };
     this.window.loadFile(loadURL, query);
 
-    // Configure window transparency and vibrancy effects
-    this.window.setVibrancy('fullscreen-ui');
-    this.window.setBackgroundColor('#00000000');
-    this.window.setBackgroundMaterial('mica');
+    // Frost/blur: vibrancy (macOS only), Mica (Win11 only). Win10 gets plain transparent from constructor.
+    if (process.platform === 'darwin') {
+      this.window.setVibrancy('fullscreen-ui');
+    } else if (process.platform === 'win32' && typeof this.window.setBackgroundMaterial === 'function') {
+      this.window.setBackgroundMaterial('mica');
+    }
 
     // Attach context menus
     attachContextMenus(this.window, windowManager);
@@ -1096,10 +1098,10 @@ export function createIsolatedWindow(options = {}) {
   const win = new BrowserWindow({
     width: 800,
     height: 600,
+    transparent: true,
+    backgroundColor: '#00000000',
     frame: false,
     titleBarStyle: 'hidden',
-    vibrancy: 'dark',
-    backgroundMaterial: 'mica',
     webPreferences: {
       partition: getPartition(),
       nodeIntegration: true,
@@ -1126,10 +1128,12 @@ export function createIsolatedWindow(options = {}) {
     win.loadFile(path.join(__dirname, 'pages', 'index.html'));
   }
 
-  // Configure window transparency and vibrancy effects
-  win.setVibrancy('fullscreen-ui');
-  win.setBackgroundColor('#00000000');
-  win.setBackgroundMaterial('mica');
+  // Frost/blur: vibrancy (macOS only), Mica (Win11 only). Win10 gets plain transparent.
+  if (process.platform === 'darwin') {
+    win.setVibrancy('fullscreen-ui');
+  } else if (process.platform === 'win32' && typeof win.setBackgroundMaterial === 'function') {
+    win.setBackgroundMaterial('mica');
+  }
 
   return win;
 }

@@ -4,6 +4,8 @@
 
 PeerSky’s `peersky://extensions` page is the control center for managing browser extensions. You can install from the Chrome Web Store or local files, enable/disable, update, uninstall, and see toolbar actions for supported extensions.
 
+> **Note:** Not all Chrome extension APIs are supported yet (for example `chrome.debugger`, `chrome.identity`, `chrome.proxy`, `chrome.storage.sync`, and some `chrome.webRequest` behaviors). For an up‑to‑date list and roadmap, see [⚠️ Chrome Extension API Limitations in Peersky](https://github.com/p2plabsxyz/peersky-browser/issues/125).
+
 ![Extensions Management](./images/peersky-extensions-management.png)
 
 Highlights
@@ -182,7 +184,6 @@ Validation & security
 - Manifest `permissions` and `host_permissions` are validated at install. Risky hosts (`*://*/*`, LAN ranges, etc.) surface warnings in `extension.warnings` for UI review.
 - Optional permission prompts (`chrome.permissions.request`) are currently blocked; calls reject with `E_INVALID_STATE` so extensions must declare needed hosts up front.
 - Runtime host-permission reviews are manual today—disable the extension or uninstall if the warning set looks unsafe.
-
 
 ## 7. File Reference
 

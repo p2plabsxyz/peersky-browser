@@ -595,8 +595,8 @@ find-menu {
 }
 
 .tab-context-menu {
-  background: var(--browser-theme-background);
-  border: 1px solid var(--peersky-nav-border-color);
+  background: var(--settings-card-bg);
+  border: 1px solid var(--settings-border);
   border-radius: 6px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   padding: 4px 0;

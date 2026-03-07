@@ -297,8 +297,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   
   ipcRenderer.on("remove-all-tempIcon", () => {
     const navBox = document.querySelector("nav-box");
-    if (navBox && typeof navBox.renderBrowserActions === "function") {
+    if (navBox && typeof navBox.removeAllTempIcon === "function") {
       navBox.removeAllTempIcon();
+    }
+  });
+
+  ipcRenderer.on("remove-tempIcon", (_event, extensionId) => {
+    const navBox = document.querySelector("nav-box");
+    if (navBox && typeof navBox.removeTempIconForExtension === "function") {
+      navBox.removeTempIconForExtension(extensionId);
     }
   });
 
