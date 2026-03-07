@@ -252,8 +252,13 @@ export async function createHandler(ipfsOptions, session) {
           uploadName = "Upload " + new Date(timestamp).toLocaleString();
         }
         // Prefer app context labels (e.g. "P2P Markdown") when the determined name is generic, otherwise keep the folder/file name
-        if (appName && (!uploadName || uploadName === 'index.html' || uploadName === 'untitled' || uploadName.startsWith('index.html +'))) {
-          uploadName = appName;
+        if (appName) {
+          const salt = Math.random().toString(36).substring(2, 6);
+          if (!uploadName || uploadName === 'index.html' || uploadName === 'untitled' || uploadName.startsWith('index.html +')) {
+            uploadName = `${appName} / index.html + ${salt}`;
+          } else {
+            uploadName = `${appName} / ${uploadName} + ${salt}`;
+          }
         }
         // Keep one entry per CID, but refresh old generic labels when a better one is available.
         const existingEntry = ipfsCache.find((entry) => entry.cid === cidStr);
@@ -270,7 +275,7 @@ export async function createHandler(ipfsOptions, session) {
           const existingName = String(existingEntry.name || "").trim().toLowerCase();
           const isGenericExistingName =
             !existingName || existingName === "index.html" || existingName === "untitled";
-          if (uploadName && existingEntry.name !== uploadName && (isGenericExistingName || appName)) {
+          if (uploadName && existingEntry.name !== uploadName && (isGenericExistingName || (appName && !existingName.includes(appName.toLowerCase())))) {
             existingEntry.name = uploadName;
             if (!existingEntry.url) existingEntry.url = fileUrl;
             saveIpfsCache();
