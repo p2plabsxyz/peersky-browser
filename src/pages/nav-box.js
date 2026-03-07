@@ -413,6 +413,17 @@ class NavBox extends HTMLElement {
     document.querySelectorAll('.temp-icon').forEach(el => el.remove());
   }
 
+  removeTempIconForExtension(extensionId) {
+    if (!extensionId) return;
+    const icons = this.querySelectorAll('.temp-icon');
+    for (const el of icons) {
+      if (el.dataset.extensionId === extensionId) {
+        this.removeTempIcon(el);
+        break;
+      }
+    }
+  }
+
   removeTempIcon(tempIcon) {
     if (!tempIcon || !tempIcon.parentNode) return;
     

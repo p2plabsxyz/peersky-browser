@@ -6,6 +6,17 @@ import { registerPopupForStabilization } from './popup-guards.js';
 /** opaque background for extension popup window to match settings-card-bg on transparent/dark theme*/
 const EXTENSION_POPUP_BG = '#27272a';
 
+function cleanupPopupOnClose(manager, popup) {
+  manager.activePopups.delete(popup);
+  const opener = manager.popupToOpener.get(popup);
+  const extId = manager.popupToExtensionId.get(popup);
+  if (opener && !opener.isDestroyed() && opener.webContents && !opener.webContents.isDestroyed() && extId) {
+    opener.webContents.send('remove-tempIcon', extId);
+  }
+  manager.popupToOpener.delete(popup);
+  manager.popupToExtensionId.delete(popup);
+}
+
 export async function listBrowserActions(manager, window) {
   let state = null;
   try {
@@ -197,6 +208,9 @@ export async function openBrowserAction(manager, actionId, window, anchorRect) {
     if (!action.default_popup) {
       console.log(`ExtensionManager: Extension ${extension.displayName || extension.name} has no popup, triggering click instead`);
       await clickBrowserAction(manager, actionId, window);
+      if (window && !window.isDestroyed() && window.webContents && !window.webContents.isDestroyed()) {
+        window.webContents.send('remove-tempIcon', actionId);
+      }
       return { success: true };
     }
     const popupRelRaw = String(action.default_popup || '').replace(/^\//, '');
@@ -243,7 +257,9 @@ export async function openBrowserAction(manager, actionId, window, anchorRect) {
                 newWindow.setBackgroundColor(EXTENSION_POPUP_BG);
                 if (manager.activePopups) {
                   manager.activePopups.add(newWindow);
-                  newWindow.on('closed', () => manager.activePopups.delete(newWindow));
+                  manager.popupToOpener.set(newWindow, window);
+                  manager.popupToExtensionId.set(newWindow, actionId);
+                  newWindow.on('closed', () => cleanupPopupOnClose(manager, newWindow));
                 }
 
                 newWindow.webContents.once("did-finish-load", () => {
@@ -276,10 +292,6 @@ export async function openBrowserAction(manager, actionId, window, anchorRect) {
                       return { x: (mainBounds.x + anchorRect.x - popupBounds.width + anchorRect.width), y: mainBounds.y + anchorRect.y + 38 };
                     };
                     lockWindowPosition(newWindow, calcPosition);
-                    newWindow.on("closed", () => {
-                      const mainWindow = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
-                      if (mainWindow) { mainWindow.webContents.send("remove-all-tempIcon"); }
-                    });
                   }
                 });
               });
@@ -306,7 +318,9 @@ export async function openBrowserAction(manager, actionId, window, anchorRect) {
             registerPopupForStabilization(popupWindow);
             if (manager.activePopups) {
               manager.activePopups.add(popupWindow);
-              popupWindow.on('closed', () => manager.activePopups.delete(popupWindow));
+              manager.popupToOpener.set(popupWindow, window);
+              manager.popupToExtensionId.set(popupWindow, actionId);
+              popupWindow.on('closed', () => cleanupPopupOnClose(manager, popupWindow));
             }
             try { manager.addWindow(popupWindow, popupWindow.webContents); } catch (_) { }
 
