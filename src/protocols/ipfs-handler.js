@@ -466,7 +466,8 @@ export async function createHandler(ipfsOptions, session) {
 
         let contentHashRaw;
         if (ensCache.has(ensName)) {
-          contentHashRaw = ensCache.get(ensName);
+          const cachedEntry = ensCache.get(ensName);
+          contentHashRaw = typeof cachedEntry === 'object' ? cachedEntry.hash : cachedEntry;
           console.log(
             `[${new Date().toISOString()}] ENS cache hit for ${ensName}`
           );
@@ -475,7 +476,10 @@ export async function createHandler(ipfsOptions, session) {
           if (!contentHashRaw) {
             throw new Error("No content hash set for ENS name " + ensName);
           }
-          ensCache.set(ensName, contentHashRaw);
+          ensCache.set(ensName, {
+            hash: contentHashRaw,
+            timestamp: Date.now()
+          });
           saveEnsCache(); // Persist the updated cache
           console.log(
             `[${new Date().toISOString()}] ENS cache miss for ${ensName}, fetched contentHash.`

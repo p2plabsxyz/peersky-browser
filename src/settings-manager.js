@@ -449,7 +449,11 @@ class SettingsManager {
       return {
         ipfs: ipfsCache || [],
         hyper: hyperCache || [],
-        ens: Array.from((ensCache || new Map()).entries()).map(([name, hash]) => ({ name, hash: normalizeEnsHash(hash) }))
+        ens: Array.from((ensCache || new Map()).entries()).map(([name, entry]) => {
+          const rawHash = typeof entry === 'object' && entry !== null ? entry.hash : entry;
+          const timestamp = typeof entry === 'object' && entry !== null ? entry.timestamp : null;
+          return { name, hash: normalizeEnsHash(rawHash), timestamp };
+        })
       };
     });
 
@@ -513,18 +517,7 @@ class SettingsManager {
       }
     });
 
-    ipcMain.handle("settings-clear-ens-cache", async () => {
-      try {
-        if (ensCache) {
-          ensCache.clear();
-          saveEnsCache();
-        }
-        return { success: true };
-      } catch (error) {
-        logDebug(`Failed to clear ENS cache: ${error.message}`);
-        return { success: false, error: error.message };
-      }
-    });
+
   }
 
   async loadSettings() {

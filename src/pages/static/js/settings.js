@@ -967,27 +967,7 @@ function updateSectionUI(sectionName) {
       clearBtn.dataset.bound = 'true';
     }
 
-    // Attach ENS clear button handler
-    const clearEnsBtn = document.getElementById('clear-ens-btn');
-    if (clearEnsBtn && !clearEnsBtn.dataset.bound) {
-      clearEnsBtn.addEventListener('click', async () => {
-        if (!confirm('Are you sure you want to clear the ENS cache? This cannot be undone.')) return;
-        try {
-          const result = await settingsAPI.settings.clearEnsCache();
-          if (!result || result.success === false) {
-            const errorMsg = result && result.error ? String(result.error) : 'Unknown error';
-            showSettingsSavedMessage('Failed to clear ENS cache: ' + errorMsg, 'error');
-            return;
-          }
-          loadArchiveData();
-          showSettingsSavedMessage('ENS cache cleared successfully');
-        } catch (err) {
-          const errorMsg = err && err.message ? err.message : String(err);
-          showSettingsSavedMessage('Failed to clear ENS cache: ' + errorMsg, 'error');
-        }
-      });
-      clearEnsBtn.dataset.bound = 'true';
-    }
+
 
     // Attach time filter change handler
     const timeFilter = document.getElementById('export-time-filter');

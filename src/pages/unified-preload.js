@@ -331,8 +331,7 @@ function createSettingsAPI(pageContext) {
       },
       getArchiveData: () => ipcRenderer.invoke('settings-get-archive-data'),
       exportArchive: (jsonContent) => ipcRenderer.invoke('settings-export-archive', jsonContent),
-      clearArchive: (cutoff) => ipcRenderer.invoke('settings-clear-archive', cutoff),
-      clearEnsCache: () => ipcRenderer.invoke('settings-clear-ens-cache')
+      clearArchive: (cutoff) => ipcRenderer.invoke('settings-clear-archive', cutoff)
     };
   } else if (pageContext.isExtensions) {
     // Extensions pages get limited settings API - only theme access
