@@ -29,7 +29,7 @@ function normalizeEnsHash(raw) {
       const cidStr = raw.slice(7);
       const cid = CID.parse(cidStr, archiveMultibaseDecoder);
       const v1 = cid.version === 1 ? cid : cid.toV1();
-      return 'ipfs://' + v1.toString();
+      return 'ipfs://' + v1.toString(base32);
     }
     if (raw.startsWith('ipns://') || raw.startsWith('IPNS://')) {
       return raw.toLowerCase();
@@ -40,7 +40,7 @@ function normalizeEnsHash(raw) {
     if (codec === 'ipfs-ns') {
       const cid = CID.parse(decoded, archiveMultibaseDecoder);
       const v1 = cid.version === 1 ? cid : cid.toV1();
-      return 'ipfs://' + v1.toString();
+      return 'ipfs://' + v1.toString(base32);
     }
     if (codec === 'ipns-ns') {
       return 'ipns://' + decoded;
