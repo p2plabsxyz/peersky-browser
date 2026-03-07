@@ -251,13 +251,12 @@ export async function createHandler(ipfsOptions, session) {
         } else {
           uploadName = "Upload " + new Date(timestamp).toLocaleString();
         }
-        // Prefer app context labels (e.g. "P2P Markdown") when the determined name is generic, otherwise keep the folder/file name
         if (appName) {
           const salt = Math.random().toString(36).substring(2, 6);
-          if (!uploadName || uploadName === 'index.html' || uploadName === 'untitled' || uploadName.startsWith('index.html +')) {
-            uploadName = `${appName} / index.html + ${salt}`;
+          if (!uploadName || uploadName === 'index.html' || uploadName === 'untitled' || uploadName.startsWith('index.html +') || uploadName.startsWith('index.html-')) {
+            uploadName = `${appName}-index.html-${salt}`;
           } else {
-            uploadName = `${appName} / ${uploadName} + ${salt}`;
+            uploadName = `${appName}-${uploadName}-${salt}`;
           }
         }
         // Keep one entry per CID, but refresh old generic labels when a better one is available.
