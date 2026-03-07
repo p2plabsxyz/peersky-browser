@@ -509,6 +509,19 @@ class SettingsManager {
         return { success: false, error: error.message };
       }
     });
+
+    ipcMain.handle("settings-clear-ens-cache", async () => {
+      try {
+        if (ensCache) {
+          ensCache.clear();
+          saveEnsCache();
+        }
+        return { success: true };
+      } catch (error) {
+        logDebug(`Failed to clear ENS cache: ${error.message}`);
+        return { success: false, error: error.message };
+      }
+    });
   }
 
   async loadSettings() {

@@ -217,7 +217,8 @@ function createFallbackAPI(ipc) {
       uploadWallpaper: (filePath) => ipc.invoke('settings-upload-wallpaper', filePath),
       getArchiveData: () => ipc.invoke('settings-get-archive-data'),
       exportArchive: (jsonContent) => ipc.invoke('settings-export-archive', jsonContent),
-      clearArchive: (cutoff) => ipc.invoke('settings-clear-archive', cutoff)
+      clearArchive: (cutoff) => ipc.invoke('settings-clear-archive', cutoff),
+      clearEnsCache: () => ipc.invoke('settings-clear-ens-cache')
     },
     onThemeChanged: (callback) => wrapCallback('theme-changed', callback),
     onSearchEngineChanged: (callback) => wrapCallback('search-engine-changed', callback),
@@ -964,6 +965,28 @@ function updateSectionUI(sectionName) {
         }
       });
       clearBtn.dataset.bound = 'true';
+    }
+
+    // Attach ENS clear button handler
+    const clearEnsBtn = document.getElementById('clear-ens-btn');
+    if (clearEnsBtn && !clearEnsBtn.dataset.bound) {
+      clearEnsBtn.addEventListener('click', async () => {
+        if (!confirm('Are you sure you want to clear the ENS cache? This cannot be undone.')) return;
+        try {
+          const result = await settingsAPI.settings.clearEnsCache();
+          if (!result || result.success === false) {
+            const errorMsg = result && result.error ? String(result.error) : 'Unknown error';
+            showSettingsSavedMessage('Failed to clear ENS cache: ' + errorMsg, 'error');
+            return;
+          }
+          loadArchiveData();
+          showSettingsSavedMessage('ENS cache cleared successfully');
+        } catch (err) {
+          const errorMsg = err && err.message ? err.message : String(err);
+          showSettingsSavedMessage('Failed to clear ENS cache: ' + errorMsg, 'error');
+        }
+      });
+      clearEnsBtn.dataset.bound = 'true';
     }
 
     // Attach time filter change handler
