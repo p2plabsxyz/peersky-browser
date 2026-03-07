@@ -8,7 +8,7 @@ import path from 'path';
 import os from 'os';
 import { getBrowserSession } from './session.js';
 import { ensCache, ipfsCache, hyperCache, saveEnsCache, saveIpfsCache, saveHyperCache } from './protocols/config.js';
-import { normalizeEnsHash } from './utils.js';
+import { normalizeEnsHash } from './ens-utils.js';
 import { clearPersistedPermissions } from './permissions.js';
 
 const SETTINGS_FILE = path.join(app.getPath("userData"), "settings.json");
