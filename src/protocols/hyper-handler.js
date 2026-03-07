@@ -60,7 +60,8 @@ export async function createHandler(options, session) {
             if (match) {
               const driveKey = match[1];
               const timestamp = Date.now();
-              if (!hyperCache.some(entry => entry.key === driveKey)) {
+              const existingEntry = hyperCache.find(entry => entry.key === driveKey);
+              if (!existingEntry) {
                 hyperCache.push({
                   name: keyName || "Drive",
                   key: driveKey,
@@ -69,6 +70,13 @@ export async function createHandler(options, session) {
                 });
                 saveHyperCache();
                 console.log(`Logged Hyperdrive to cache: ${keyName} (${driveKey})`);
+              } else {
+                existingEntry.timestamp = timestamp;
+                if (keyName && (existingEntry.name === "Drive" || !existingEntry.name)) {
+                  existingEntry.name = keyName;
+                }
+                saveHyperCache();
+                console.log(`Updated Hyperdrive in cache: ${keyName} (${driveKey})`);
               }
             }
           }
