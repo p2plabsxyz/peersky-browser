@@ -65,6 +65,10 @@ Check our p2p apps in `/pages/p2p/`: https://github.com/p2plabsxyz/peersky-brows
 
 To build P2P apps that call a local or cloud LLM from the browser, see [`docs/LLM.md`](./LLM.md) for the `window.llm` API, configuration, and examples.
 
+## Web3 protocol
+
+For `web3://` examples (contract reads, HTML resources, and `fetch` usage), see [`docs/web3.md`](./web3.md).
+
 ## 📄 p2p-list.js
 
 The file [`p2p-list.js`](../src/pages/p2p/p2p-list.js) exports a list of registered P2P app names.

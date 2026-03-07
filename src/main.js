@@ -32,6 +32,16 @@ const P2P_PROTOCOL = {
   stream: true,
 };
 
+const WEB3_PROTOCOL = {
+  standard: false,
+  secure: true,
+  allowServiceWorkers: true,
+  supportFetchAPI: true,
+  bypassCSP: false,
+  corsEnabled: true,
+  stream: true,
+};
+
 const BROWSER_PROTOCOL = {
   standard: false,
   secure: true,
@@ -70,7 +80,7 @@ globalProtocol.registerSchemesAsPrivileged([
   { scheme: "ipns", privileges: P2P_PROTOCOL },
   { scheme: "pubsub", privileges: P2P_PROTOCOL },
   { scheme: "hyper", privileges: P2P_PROTOCOL },
-  { scheme: "web3", privileges: P2P_PROTOCOL },
+  { scheme: "web3", privileges: WEB3_PROTOCOL },
   { scheme: "file", privileges: FILE_PROTOCOL },
   { scheme: "bittorrent", privileges: P2P_PROTOCOL },
   { scheme: "bt", privileges: P2P_PROTOCOL },
