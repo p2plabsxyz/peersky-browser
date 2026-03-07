@@ -310,6 +310,7 @@
         <tabs-box style="width:100%;"></tabs-box>
       </div>
       <!-- Archive Section -->
+      <!-- TODO: Add pagination with search bar at top - if more than 10 rows then it will move to another page (we can have a reusable web component for this?) -->
       <div id="archive-section" class="settings-page">
         <h1 class="section-title">Archive</h1>
 
@@ -332,21 +333,21 @@
         <p class="archive-note">This page is for discoverability of your published P2P data. Archive only clears your history of Hyperdrives/IPFS uploads/ENS lookups. To clear the underlying P2P data (IPFS blocks, Hyperdrive storage, etc.), go to <a href="peersky://settings/search" class="archive-note-link">peersky://settings/search</a> and use Reset P2P Data.</p>
 
         <div class="archive-subsection">
-          <h2>Hyperdrives</h2>
+          <span class="archive-subsection-label">Hyperdrives</span>
           <div id="hyper-archive-list">
             <p class="archive-empty">Loading...</p>
           </div>
         </div>
 
         <div class="archive-subsection">
-          <h2>IPFS Uploads</h2>
+          <span class="archive-subsection-label">IPFS Uploads</span>
           <div id="ipfs-archive-list">
             <p class="archive-empty">Loading...</p>
           </div>
         </div>
 
         <div class="archive-subsection">
-          <h2>ENS Cache</h2>
+          <span class="archive-subsection-label">ENS Cache</span>
           <div id="ens-archive-list">
             <p class="archive-empty">Loading...</p>
           </div>

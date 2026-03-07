@@ -907,7 +907,8 @@ body {
 .archive-subsection {
   margin-bottom: 1.5rem;
 }
-.archive-subsection h2 {
+.archive-subsection-label {
+  display: block;
   font-size: 0.95rem;
   font-weight: 500;
   color: var(--settings-text-primary);
@@ -966,6 +967,7 @@ body {
   justify-content: center;
   min-width: 60px;
   box-sizing: border-box;
+  border: none;
 }
 .archive-table td .btn:last-child {
   margin-right: 0;
