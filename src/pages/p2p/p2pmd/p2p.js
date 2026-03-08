@@ -2272,6 +2272,10 @@ fullPreviewButton.addEventListener("click", openFullPreview);
 document.addEventListener("keydown", (e) => {
   if (!isSlideMode) return;
   
+  // Only navigate slides if focus is NOT on the markdown editor
+  const isFocusedOnEditor = document.activeElement === markdownInput;
+  if (isFocusedOnEditor) return;
+  
   if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
     e.preventDefault();
     prevInlineSlide();
