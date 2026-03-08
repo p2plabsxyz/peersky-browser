@@ -654,7 +654,10 @@ async function connectToRoom(localUrl, role = "client") {
   let usedFallback = false;
   didSeedContent = false;
   
-  await pingServerStatus(localUrl, 5);
+  const serverReady = await pingServerStatus(localUrl, 5);
+  if (!serverReady) {
+    console.warn("[p2pmd] Server not responding, continuing anyway...");
+  }
   
   let retries = 5;
   while (retries > 0) {
