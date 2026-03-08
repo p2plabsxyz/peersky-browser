@@ -28,6 +28,7 @@ import {
 
 } from "./common.js";
 import { initMarkdown, renderPreview, scheduleRender, showSpinner, renderMarkdown } from "./noteEditor.js";
+import { initToolbar } from "./toolbar.js";
 
 let sendTimer = null;
 let saveTimer = null;
@@ -1688,6 +1689,7 @@ fetchButton.addEventListener("click", fetchMarkdownFromDweb);
 toggleTitleInput();
 updateSelectorURL();
 initMarkdown();
+initToolbar();
 
 (async () => {
   const viewParam = getViewParam();

@@ -63,11 +63,52 @@
         </section>
 
         <section id="editor-panel">
-          <textarea
-            id="markdownInput"
-            spellcheck="false"
-            placeholder="Write Markdown here"
-          ></textarea>
+          <div id="editor-left-column">
+            <div id="formatting-toolbar">
+              <button id="toolbar-bold" class="toolbar-btn" title="Bold (Ctrl/Cmd+B)">
+                <span class="toolbar-icon icon-bold"></span>
+              </button>
+              <button id="toolbar-italic" class="toolbar-btn" title="Italic (Ctrl/Cmd+I)">
+                <span class="toolbar-icon icon-italic"></span>
+              </button>
+              <div class="toolbar-divider"></div>
+              <button id="toolbar-h1" class="toolbar-btn" title="Heading 1">
+                <span class="toolbar-icon icon-h1"></span>
+              </button>
+              <button id="toolbar-h2" class="toolbar-btn" title="Heading 2">
+                <span class="toolbar-icon icon-h2"></span>
+              </button>
+              <div class="toolbar-divider"></div>
+              <button id="toolbar-ul" class="toolbar-btn" title="Bullet List">
+                <span class="toolbar-icon icon-ul"></span>
+              </button>
+              <button id="toolbar-ol" class="toolbar-btn" title="Numbered List">
+                <span class="toolbar-icon icon-ol"></span>
+              </button>
+              <div class="toolbar-divider"></div>
+              <button id="toolbar-link" class="toolbar-btn" title="Insert Link (Ctrl/Cmd+K)">
+                <span class="toolbar-icon icon-link"></span>
+              </button>
+              <button id="toolbar-image" class="toolbar-btn" title="Insert Image">
+                <span class="toolbar-icon icon-image"></span>
+              </button>
+              <div class="toolbar-divider"></div>
+              <button id="toolbar-inline-code" class="toolbar-btn" title="Inline Code">
+                <span class="toolbar-icon icon-inline-code"></span>
+              </button>
+              <button id="toolbar-code" class="toolbar-btn" title="Code Block">
+                <span class="toolbar-icon icon-code"></span>
+              </button>
+              <button id="toolbar-quote" class="toolbar-btn" title="Quote">
+                <span class="toolbar-icon icon-quote"></span>
+              </button>
+            </div>
+            <textarea
+              id="markdownInput"
+              spellcheck="false"
+              placeholder="Write Markdown here"
+            ></textarea>
+          </div>
           <div id="markdownPreview"></div>
         </section>
 
@@ -116,6 +157,7 @@ Write a playful README for a moonlight café that serves stardust lattes, with a
     <script src="./lib/markdown-it.min.js"></script>
     <script type="module" src="./common.js"></script>
     <script type="module" src="./noteEditor.js"></script>
+    <script type="module" src="./toolbar.js"></script>
     <script type="module" src="./p2p.js"></script>
     <script type="module" src="./ai-generator.js"></script>
   </body>
