@@ -257,7 +257,7 @@ async function uploadFile(file) {
         url = `${hyperdriveUrl}${encodeURIComponent(file.name)}`;
         console.log(`[uploadFile] Hyper URL: ${url}`);
     } else {
-        url = `ipfs://bafyaabakaieac/${encodeURIComponent(file.name)}`;
+        url = `ipfs://bafyaabakaieac/${encodeURIComponent(file.name)}?peerskyOrigin=${encodeURIComponent(window.location.href)}`;
         console.log(`[uploadFile] IPFS URL: ${url}`);
     }
 

@@ -214,7 +214,11 @@ function createFallbackAPI(ipc) {
       reset: () => ipc.invoke('settings-reset'),
       clearBrowserCache: () => ipc.invoke('settings-clear-cache'),
       resetP2P: (opts = {}) => ipc.invoke('settings-reset-p2p', opts),
-      uploadWallpaper: (filePath) => ipc.invoke('settings-upload-wallpaper', filePath)
+      uploadWallpaper: (filePath) => ipc.invoke('settings-upload-wallpaper', filePath),
+      getArchiveData: () => ipc.invoke('settings-get-archive-data'),
+      exportArchive: (jsonContent) => ipc.invoke('settings-export-archive', jsonContent),
+      clearArchive: (cutoff) => ipc.invoke('settings-clear-archive', cutoff),
+      clearEnsCache: () => ipc.invoke('settings-clear-ens-cache')
     },
     onThemeChanged: (callback) => wrapCallback('theme-changed', callback),
     onSearchEngineChanged: (callback) => wrapCallback('search-engine-changed', callback),
@@ -222,6 +226,18 @@ function createFallbackAPI(ipc) {
     onWallpaperChanged: (callback) => wrapCallback('wallpaper-changed', callback)
   };
 }
+
+// Escape HTML to prevent XSS
+function escapeHtml(text) {
+  if (!text) return text;
+  return String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 
 document.addEventListener('DOMContentLoaded', async () => {
   // Initialize API access
@@ -833,7 +849,7 @@ function initializeSidebarNavigation() {
   // Check for hash-based navigation (backward compatibility)
   else if (currentPath.includes('#')) {
     const hashSection = currentPath.replace('#', '');
-    if (hashSection && ['appearance', 'search','tabs', 'extensions'].includes(hashSection)) {
+    if (hashSection && ['appearance', 'search','tabs', 'extensions', 'archive'].includes(hashSection)) {
       targetSection = hashSection;
     }
   }
@@ -856,7 +872,7 @@ function initializeSidebarNavigation() {
         sectionFromHistory = subpathMatch[1];
       } else if (currentPath.includes('#')) {
         const hashSection = currentPath.replace('#', '');
-        if (hashSection && ['appearance', 'search', 'extensions'].includes(hashSection)) {
+        if (hashSection && ['appearance', 'search', 'tabs', 'extensions', 'archive'].includes(hashSection)) {
           sectionFromHistory = hashSection;
         }
       }
@@ -909,6 +925,67 @@ function updateSectionUI(sectionName) {
   if (targetPage) {
     targetPage.classList.add('active');
   }
+
+  // Load data for Archive section
+  if (sectionName === 'archive') {
+    loadArchiveData();
+
+    // Attach export button handler
+    const exportBtn = document.getElementById('export-archive-btn');
+    if (exportBtn && !exportBtn.dataset.bound) {
+      exportBtn.addEventListener('click', () => exportArchiveData());
+      exportBtn.dataset.bound = 'true';
+    }
+
+    // Attach clear button handler
+    const clearBtn = document.getElementById('clear-archive-btn');
+    if (clearBtn && !clearBtn.dataset.bound) {
+      clearBtn.addEventListener('click', async () => {
+        const filter = document.getElementById('export-time-filter')?.value || 'all';
+        const isAll = filter === 'all';
+        const confirmMsg = isAll
+          ? 'Are you sure you want to clear all archive data? This cannot be undone.'
+          : 'Are you sure you want to clear archive data for the selected time range? This cannot be undone.';
+        if (!confirm(confirmMsg)) return;
+        const now = Date.now();
+        const durations = { '15m': 15 * 60 * 1000, '1h': 60 * 60 * 1000, '1d': 24 * 60 * 60 * 1000, '1w': 7 * 24 * 60 * 60 * 1000 };
+        const cutoff = isAll ? 0 : now - (durations[filter] || 0);
+        try {
+          const result = await settingsAPI.settings.clearArchive(cutoff);
+          if (!result || result.success === false) {
+            const errorMsg = result && result.error ? String(result.error) : 'Unknown error';
+            showSettingsSavedMessage('Failed to clear archive: ' + errorMsg, 'error');
+            return;
+          }
+          loadArchiveData();
+          showSettingsSavedMessage(isAll ? 'Archive cleared successfully' : 'Filtered archive entries cleared');
+        } catch (err) {
+          const errorMsg = err && err.message ? err.message : String(err);
+          showSettingsSavedMessage('Failed to clear archive: ' + errorMsg, 'error');
+        }
+      });
+      clearBtn.dataset.bound = 'true';
+    }
+
+
+
+    // Attach time filter change handler
+    const timeFilter = document.getElementById('export-time-filter');
+    if (timeFilter && !timeFilter.dataset.bound) {
+      timeFilter.addEventListener('change', () => {
+        loadArchiveData();
+        updateClearBtnLabel();
+      });
+      timeFilter.dataset.bound = 'true';
+    }
+    updateClearBtnLabel();
+  }
+}
+
+function updateClearBtnLabel() {
+  const filter = document.getElementById('export-time-filter')?.value || 'all';
+  const clearBtn = document.getElementById('clear-archive-btn');
+  if (clearBtn) clearBtn.textContent = filter === 'all' ? 'Clear All' : 'Clear';
 }
 
 // Custom dropdown functionality
