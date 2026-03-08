@@ -717,7 +717,15 @@ async function connectToRoom(localUrl, role = "client") {
         const incomingMeaningful = hasMeaningfulContent(incoming);
         const localMeaningful = hasMeaningfulContent(markdownInput.value);
         if (incomingMeaningful && incoming !== markdownInput.value) {
+          const isFocused = document.activeElement === markdownInput;
+          const start = markdownInput.selectionStart;
+          const end = markdownInput.selectionEnd;
           markdownInput.value = incoming;
+          if (isFocused && start !== null && end !== null) {
+            const newStart = Math.min(start, incoming.length);
+            const newEnd = Math.min(end, incoming.length);
+            markdownInput.setSelectionRange(newStart, newEnd);
+          }
           renderPreview();
           scheduleDraftSave();
         } else if (!incomingMeaningful && usedFallback && localMeaningful && !didSeedContent) {
