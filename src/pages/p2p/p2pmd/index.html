@@ -56,6 +56,7 @@
               <div class="export-actions">
                 <button id="exportHtmlButton" type="button">Export as HTML</button>
                 <button id="exportPdfButton" type="button">Export to PDF</button>
+                <button id="exportSlidesButton" type="button">Export as Slides</button>
               </div>
             </details>
             <button id="disconnect-room">Disconnect</button>
@@ -102,6 +103,11 @@
               <button id="toolbar-quote" class="toolbar-btn" title="Quote">
                 <span class="toolbar-icon icon-quote"></span>
               </button>
+              <div class="toolbar-divider"></div>
+              <button id="viewSlidesButton" class="toolbar-btn" title="View as Slides">
+                <span class="toolbar-icon icon-slides"></span>
+              </button>
+              <button id="fullPreviewButton" class="toolbar-btn hidden" title="Full Screen Preview">⛶</button>
             </div>
             <textarea
               id="markdownInput"
@@ -109,7 +115,10 @@
               placeholder="Write Markdown here"
             ></textarea>
           </div>
-          <div id="markdownPreview"></div>
+          <div id="preview-container">
+            <div id="markdownPreview"></div>
+            <div id="slidesPreview" class="hidden"></div>
+          </div>
         </section>
 
         <section id="dweb-bottom">

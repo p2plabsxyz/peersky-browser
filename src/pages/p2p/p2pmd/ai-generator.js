@@ -80,13 +80,13 @@ async function generateMarkdown() {
     let systemContent, userContent;
 
     if (hasDraft && editMode) {
-      systemContent = "You are a document editor. Apply the user's edit instruction to the draft below. Return ONLY the complete updated document. Do not add explanations, commentary, or any text outside the document.";
+      systemContent = "You are a document editor. Apply the user's edit instruction to the draft below. Return ONLY the complete updated document. Do not add explanations, commentary, or any text outside the document.\n\nFor presentation slides: Use '---' to separate slides. Add speaker notes as HTML comments like <!-- Speaker notes: your notes here -->. Example:\n# Title Slide\nContent here\n<!-- Speaker notes: Introduction -->\n---\n# Second Slide\nMore content";
       userContent = `Edit instruction: ${prompt}\n\nDocument:\n${draft}`;
     } else if (hasDraft) {
       systemContent = "The user has a document and wants to ask a question. Answer the question concisely. Do NOT include or repeat the document in your response.";
       userContent = `Question: ${prompt}\n\nDocument for context:\n${draft}`;
     } else {
-      systemContent = "You are a helpful assistant. Generate markdown content based on the user's request.";
+      systemContent = "You are a helpful assistant. Generate markdown content based on the user's request.\n\nFor presentation slides: Use '---' to separate slides. Add speaker notes as HTML comments like <!-- Speaker notes: your notes here -->. Each slide should be concise and focused. Example:\n# Title Slide\nYour opening content\n<!-- Speaker notes: Introduce yourself and topic -->\n---\n# Key Points\n- Point 1\n- Point 2\n<!-- Speaker notes: Elaborate on each point -->";
       userContent = prompt;
     }
 

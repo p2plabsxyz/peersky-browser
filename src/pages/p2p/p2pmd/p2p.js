@@ -1,5 +1,9 @@
 import {
   markdownInput,
+  markdownPreview,
+  slidesPreview,
+  viewSlidesButton,
+  fullPreviewButton,
   createRoomButton,
   joinForm,
   joinRoomKey,
@@ -17,6 +21,7 @@ import {
   exportMenu,
   exportHtmlButton,
   exportPdfButton,
+  exportSlidesButton,
   disconnectButton,
   protocolSelect,
   titleInput,
@@ -1057,6 +1062,133 @@ function buildPublishHtml(markdown) {
 </html>`;
 }
 
+function buildSlidesHtml(markdown) {
+  const slideDelimiters = /^---$|^<!-- slide -->$/gm;
+  const slides = markdown.split(slideDelimiters)
+    .map(slide => slide.trim())
+    .filter(slide => slide.length > 0);
+  
+  const slidesHtml = slides.map((slideContent, index) => {
+    const rendered = renderMarkdown(slideContent);
+    return `<div class="slide${index === 0 ? ' active' : ''}">${rendered}</div>`;
+  }).join('\n');
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Presentation Slides</title>
+  <style>
+    @font-face {
+      font-family: 'FontWithASyntaxHighlighter';
+      src: url('browser://theme/fonts/FontWithASyntaxHighlighter-Regular.woff2') format('woff2');
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #ffffff; color: #1a1a1a; overflow: hidden; height: 100vh; width: 100vw; display: flex; flex-direction: column; }
+    #slides-container { position: relative; flex: 1; width: 100%; display: flex; align-items: center; justify-content: center; }
+    #slides-footer { padding: 0.75rem; text-align: center; font-size: 0.85rem; color: rgba(0, 0, 0, 0.4); background: transparent; }
+    #slides-footer a { color: rgba(0, 0, 0, 0.5); text-decoration: none; }
+    #slides-footer a:hover { color: rgba(0, 0, 0, 0.7); text-decoration: underline; }
+    .slide { display: none; width: 90%; max-width: 1200px; height: 85%; padding: 4rem; background: #fff; color: #1a1a1a; overflow-y: auto; animation: slideIn 0.3s ease-out; text-align: center; flex-direction: column; align-items: center; justify-content: center; }
+    .slide.active { display: flex; }
+    .slide > * { max-width: 100%; }
+    @keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+    .slide h1 { font-size: 4rem; margin-bottom: 2rem; color: #1a1a1a; text-align: center; }
+    .slide h2 { font-size: 3rem; margin: 2rem 0 1.5rem; color: #333; text-align: center; }
+    .slide h3 { font-size: 2.2rem; margin: 1.5rem 0 1rem; color: #444; text-align: center; }
+    .slide h4 { font-size: 1.8rem; margin: 1.2rem 0 0.8rem; color: #555; text-align: center; }
+    .slide h5 { font-size: 1.5rem; margin: 1rem 0 0.6rem; color: #666; text-align: center; }
+    .slide h6 { font-size: 1.3rem; margin: 0.8rem 0 0.5rem; color: #777; text-align: center; }
+    .slide p { font-size: 1.5rem; line-height: 2; margin-bottom: 1.2rem; color: #333; text-align: center; }
+    .slide ul, .slide ol { font-size: 1.5rem; line-height: 2; margin: 0 auto 1.2rem; margin-bottom: 1.2rem; display: inline-block; text-align: left; }
+    .slide li { margin-bottom: 0.8rem; }
+    .slide pre { background: #2d2d2d; color: #f8f8f2; padding: 1.5rem; border-radius: 6px; overflow-x: auto; margin: 1.5rem auto; font-size: 1.2rem; max-width: 90%; text-align: left; }
+    .slide code { font-family: 'FontWithASyntaxHighlighter', monospace; background: #2d2d2d; color: #f8f8f2; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 1.1rem; }
+    .slide pre code { background: transparent; padding: 0; }
+    .slide blockquote { border-left: 4px solid #0066cc; padding-left: 1.5rem; margin: 1.5rem auto; font-style: italic; color: #555; max-width: 80%; text-align: left; display: inline-block; }
+    .slide img { max-width: 90%; max-height: 60vh; width: auto; height: auto; border-radius: 6px; margin: 1.5rem auto; display: block; object-fit: contain; }
+    .slide a { color: #0066cc; text-decoration: none; }
+    .slide a:hover { text-decoration: underline; }
+    .nav-arrow { position: fixed; top: 50%; transform: translateY(-50%); background: rgba(0,0,0,0.1); border: none; color: #333; font-size: 3rem; width: 80px; height: 80px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: opacity 0.5s ease, transform 0.3s ease, background 0.3s ease; z-index: 100; opacity: 1; }
+    .nav-arrow.hidden { opacity: 0; pointer-events: none; }
+    .nav-arrow:hover { background: rgba(0,0,0,0.2); transform: translateY(-50%) scale(1.1); }
+    .nav-arrow:active { transform: translateY(-50%) scale(0.95); }
+    .nav-arrow.disabled { opacity: 0.3; cursor: not-allowed; }
+    .nav-arrow.disabled:hover { background: rgba(0,0,0,0.1); transform: translateY(-50%) scale(1); }
+    #prev-arrow { left: 2rem; }
+    #next-arrow { right: 2rem; }
+    #progress-bar { position: fixed; bottom: 0; left: 0; height: 4px; background: #0066cc; transition: width 0.3s ease; z-index: 101; }
+    #slide-counter { position: fixed; bottom: 1rem; right: 2rem; background: rgba(0,0,0,0.1); color: #333; padding: 0.5rem 1rem; border-radius: 20px; font-size: 0.9rem; z-index: 100; transition: opacity 0.5s ease; }
+    #slide-counter.hidden { opacity: 0; }
+    @media (max-width: 768px) { .slide { width: 95%; height: 90%; padding: 2rem; } .slide h1 { font-size: 2rem; } .slide h2 { font-size: 1.6rem; } .slide p, .slide ul, .slide ol { font-size: 1.1rem; } .nav-arrow { width: 60px; height: 60px; font-size: 2rem; } #prev-arrow { left: 1rem; } #next-arrow { right: 1rem; } }
+  </style>
+</head>
+<body>
+  <div id="slides-container">${slidesHtml}</div>
+  <div id="slides-footer">
+    Made by <a href="https://github.com/p2plabsxyz/p2pmd" target="_blank" rel="noopener noreferrer">p2pmd</a> in <a href="https://peersky.p2plabs.xyz/" target="_blank" rel="noopener noreferrer">PeerSky</a>
+  </div>
+  <button id="prev-arrow" class="nav-arrow" aria-label="Previous slide">‹</button>
+  <button id="next-arrow" class="nav-arrow" aria-label="Next slide">›</button>
+  <div id="progress-bar"></div>
+  <div id="slide-counter"></div>
+  <script>
+    let currentSlide = 0;
+    const slides = document.querySelectorAll('.slide');
+    const totalSlides = slides.length;
+    function updateUI() {
+      const progress = ((currentSlide + 1) / totalSlides) * 100;
+      document.getElementById('progress-bar').style.width = progress + '%';
+      document.getElementById('slide-counter').textContent = (currentSlide + 1) + ' / ' + totalSlides;
+      const prevBtn = document.getElementById('prev-arrow');
+      const nextBtn = document.getElementById('next-arrow');
+      prevBtn.classList.toggle('disabled', currentSlide === 0);
+      nextBtn.classList.toggle('disabled', currentSlide === totalSlides - 1);
+    }
+    function showSlide(index) {
+      if (index < 0 || index >= totalSlides) return;
+      slides[currentSlide].classList.remove('active');
+      currentSlide = index;
+      slides[currentSlide].classList.add('active');
+      updateUI();
+    }
+    function nextSlide() { if (currentSlide < totalSlides - 1) showSlide(currentSlide + 1); }
+    function prevSlide() { if (currentSlide > 0) showSlide(currentSlide - 1); }
+    document.getElementById('prev-arrow').addEventListener('click', prevSlide);
+    document.getElementById('next-arrow').addEventListener('click', nextSlide);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') prevSlide();
+      else if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') { e.preventDefault(); nextSlide(); }
+      else if (e.key === 'Home') showSlide(0);
+      else if (e.key === 'End') showSlide(totalSlides - 1);
+    });
+    document.getElementById('slides-container').addEventListener('click', (e) => {
+      const clickX = e.clientX;
+      const windowWidth = window.innerWidth;
+      if (clickX < windowWidth / 2) prevSlide(); else nextSlide();
+    });
+    let hideTimeout;
+    function showControls() {
+      document.getElementById('prev-arrow').classList.remove('hidden');
+      document.getElementById('next-arrow').classList.remove('hidden');
+      document.getElementById('slide-counter').classList.remove('hidden');
+      clearTimeout(hideTimeout);
+      hideTimeout = setTimeout(() => {
+        document.getElementById('prev-arrow').classList.add('hidden');
+        document.getElementById('next-arrow').classList.add('hidden');
+        document.getElementById('slide-counter').classList.add('hidden');
+      }, 2000);
+    }
+    document.addEventListener('mousemove', showControls);
+    document.addEventListener('keydown', showControls);
+    showControls();
+    updateUI();
+  </script>
+</body>
+</html>`;
+}
+
 function normalizeFileBase(value) {
   const trimmed = typeof value === "string" ? value.trim() : "";
   if (!trimmed) return "p2pmd-document";
@@ -1086,11 +1218,231 @@ function triggerDownload(blob, filename) {
 }
 
 function exportAsHtml() {
-  const html = buildPublishHtml(markdownInput.value);
+  const markdown = markdownInput.value;
+  const html = isSlideMode ? buildSlidesHtml(markdown) : buildPublishHtml(markdown);
   const fileName = getExportFileName("html");
   const blob = new Blob([html], { type: "text/html" });
   triggerDownload(blob, fileName);
   if (exportMenu?.open) exportMenu.open = false;
+}
+
+function exportAsSlides() {
+  const markdown = markdownInput.value;
+  const slidesHtml = buildSlidesHtml(markdown);
+  const fileName = getExportFileName("slides.html");
+  const blob = new Blob([slidesHtml], { type: "text/html" });
+  triggerDownload(blob, fileName);
+  if (exportMenu?.open) exportMenu.open = false;
+}
+
+let currentSlideIndex = 0;
+let slidesData = [];
+let isSlideMode = false;
+
+function autoRenderSlides() {
+  const markdown = markdownInput.value;
+  const slideDelimiters = /^---$|^<!-- slide -->$/gm;
+  slidesData = markdown.split(slideDelimiters)
+    .map(slide => slide.trim())
+    .filter(slide => slide.length > 0);
+  
+  if (slidesData.length === 0) return;
+  
+  isSlideMode = true;
+  window.isSlideMode = true;
+  currentSlideIndex = 0;
+  
+  markdownPreview.classList.add('hidden');
+  slidesPreview.classList.remove('hidden');
+  viewSlidesButton.style.background = 'var(--browser-theme-secondary-highlight)';
+  fullPreviewButton.classList.remove('hidden');
+  
+  renderInlineSlides();
+}
+
+function viewAsSlides() {
+  const markdown = markdownInput.value;
+  const slideDelimiters = /^---$|^<!-- slide -->$/gm;
+  const hasSlideDelimiters = slideDelimiters.test(markdown);
+  
+  if (!hasSlideDelimiters) {
+    const skipConfirmation = markdown.trim().length === 0;
+    insertSlidesTemplate(skipConfirmation);
+    return;
+  }
+  
+  slidesData = markdown.split(slideDelimiters)
+    .map(slide => slide.trim())
+    .filter(slide => slide.length > 0);
+  
+  isSlideMode = true;
+  window.isSlideMode = true;
+  currentSlideIndex = 0;
+  
+  markdownPreview.classList.add('hidden');
+  slidesPreview.classList.remove('hidden');
+  viewSlidesButton.style.background = 'var(--browser-theme-secondary-highlight)';
+  fullPreviewButton.classList.remove('hidden');
+  
+  renderInlineSlides();
+}
+
+function exitSlideMode() {
+  isSlideMode = false;
+  window.isSlideMode = false;
+  markdownPreview.classList.remove('hidden');
+  slidesPreview.classList.add('hidden');
+  viewSlidesButton.style.background = '';
+  fullPreviewButton.classList.add('hidden');
+}
+
+function renderInlineSlides() {
+  if (!isSlideMode || slidesData.length === 0) return;
+  
+  const slidesHtml = slidesData.map((slideContent, index) => {
+    const rendered = renderMarkdown(slideContent);
+    return `<div class="slide${index === currentSlideIndex ? ' active' : ''}">${rendered}</div>`;
+  }).join('\n');
+  
+  slidesPreview.innerHTML = `
+    <div class="slides-content">
+      ${slidesHtml}
+      <button id="slides-prev" class="slides-nav" aria-label="Previous slide">‹</button>
+      <button id="slides-next" class="slides-nav" aria-label="Next slide">›</button>
+      <div id="slides-progress"></div>
+      <div id="slides-counter"></div>
+    </div>
+    <div class="slides-footer">
+      Made by <a href="https://github.com/p2plabsxyz/peersky-browser/tree/main/src/pages/p2p/p2pmd" target="_blank" rel="noopener noreferrer">p2pmd</a> with <a href="https://peersky.xyz" target="_blank" rel="noopener noreferrer">PeerSky</a>
+    </div>
+  `;
+  
+  updateInlineSlidesUI();
+  attachInlineSlidesListeners();
+}
+
+function updateInlineSlidesUI() {
+  const progress = ((currentSlideIndex + 1) / slidesData.length) * 100;
+  const progressBar = document.getElementById('slides-progress');
+  const counter = document.getElementById('slides-counter');
+  const prevBtn = document.getElementById('slides-prev');
+  const nextBtn = document.getElementById('slides-next');
+  
+  if (progressBar) progressBar.style.width = progress + '%';
+  if (counter) counter.textContent = (currentSlideIndex + 1) + ' / ' + slidesData.length;
+  
+  if (prevBtn) {
+    if (currentSlideIndex === 0) {
+      prevBtn.classList.add('disabled');
+    } else {
+      prevBtn.classList.remove('disabled');
+    }
+  }
+  
+  if (nextBtn) {
+    if (currentSlideIndex === slidesData.length - 1) {
+      nextBtn.classList.add('disabled');
+    } else {
+      nextBtn.classList.remove('disabled');
+    }
+  }
+}
+
+function showInlineSlide(index) {
+  if (index < 0 || index >= slidesData.length) return;
+  
+  const slides = slidesPreview.querySelectorAll('.slide');
+  if (slides[currentSlideIndex]) slides[currentSlideIndex].classList.remove('active');
+  currentSlideIndex = index;
+  if (slides[currentSlideIndex]) slides[currentSlideIndex].classList.add('active');
+  updateInlineSlidesUI();
+}
+
+function nextInlineSlide() {
+  if (currentSlideIndex < slidesData.length - 1) {
+    showInlineSlide(currentSlideIndex + 1);
+  }
+}
+
+function prevInlineSlide() {
+  if (currentSlideIndex > 0) {
+    showInlineSlide(currentSlideIndex - 1);
+  }
+}
+
+function attachInlineSlidesListeners() {
+  const prevBtn = document.getElementById('slides-prev');
+  const nextBtn = document.getElementById('slides-next');
+  
+  if (prevBtn) prevBtn.addEventListener('click', prevInlineSlide);
+  if (nextBtn) nextBtn.addEventListener('click', nextInlineSlide);
+}
+
+function insertSlidesTemplate(skipConfirmation = false) {
+  const template = `# Welcome to Your Presentation
+
+Your first slide content goes here
+
+<!-- Speaker notes: Introduce yourself and the topic -->
+
+---
+
+# Slide 2: Key Points
+
+- Point 1
+- Point 2
+- Point 3
+
+<!-- Speaker notes: Elaborate on each point -->
+
+---
+
+# Slide 3: More Content
+
+Add your content here
+
+<!-- Speaker notes: Add additional context -->
+
+---
+
+# Thank You!
+
+Any questions?
+
+<!-- Speaker notes: Open floor for Q&A -->`;
+  
+  if (!skipConfirmation && markdownInput.value.trim().length > 0) {
+    const confirmed = confirm("This will clear your notes and give you a slides template. Continue?");
+    if (!confirmed) return false;
+  }
+  
+  markdownInput.value = template;
+  renderPreview();
+  
+  setTimeout(() => {
+    autoRenderSlides();
+  }, 100);
+  
+  return true;
+}
+
+function getCursorSlideIndex() {
+  const cursorPos = markdownInput.selectionStart;
+  const textBeforeCursor = markdownInput.value.substring(0, cursorPos);
+  const slideDelimiters = /^---$|^<!-- slide -->$/gm;
+  const matches = textBeforeCursor.match(slideDelimiters);
+  return matches ? matches.length : 0;
+}
+
+function openFullPreview() {
+  const markdown = markdownInput.value;
+  const slidesHtml = buildSlidesHtml(markdown);
+  const blob = new Blob([slidesHtml], { type: "text/html" });
+  const url = URL.createObjectURL(blob);
+  const slidesWindow = window.open(url, "_blank");
+  if (!slidesWindow) {
+    alert("Please allow pop-ups to view slides in full screen");
+  }
 }
 
 function exportToPdf() {
@@ -1220,8 +1572,16 @@ function addPublishError(name, text) {
 }
 
 async function publishDocument() {
-  console.log("[p2pmd] publish start", { protocol: protocolSelect.value });
+  const markdown = markdownInput.value;
+  if (!markdown.trim()) {
+    alert("Cannot publish empty document");
+    return;
+  }
   const protocol = protocolSelect.value;
+  const slideDelimiters = /^---$|^<!-- slide -->$/gm;
+  const hasSlides = slideDelimiters.test(markdown);
+  const useSlides = isSlideMode && hasSlides;
+  const html = useSlides ? buildSlidesHtml(markdown) : buildPublishHtml(markdown);
   let fileName = "index.html";
   if (protocol === "hyper") {
     const title = titleInput.value.trim();
@@ -1234,7 +1594,6 @@ async function publishDocument() {
 
   showSpinner(true);
   try {
-    const html = buildPublishHtml(markdownInput.value);
     const blob = new Blob([html], { type: "text/html" });
     const file = new File([blob], fileName, { type: "text/html" });
     await uploadFile(file);
@@ -1284,8 +1643,193 @@ async function uploadFile(file) {
   }
 }
 
+function extractMarkdownFromSlidesHtml(html) {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const slidesContainer = doc.getElementById('slides-container');
+  
+  if (!slidesContainer) return null;
+  
+  const slides = slidesContainer.querySelectorAll('.slide');
+  if (slides.length === 0) return null;
+  
+  const slideContents = [];
+  slides.forEach(slide => {
+    // Get the inner HTML and convert back to markdown
+    const slideMarkdown = htmlToMarkdownContent(slide);
+    if (slideMarkdown.trim()) {
+      slideContents.push(slideMarkdown.trim());
+    }
+  });
+  
+  return slideContents.join('\n\n---\n\n');
+}
+
+function htmlToMarkdownContent(element) {
+  let result = "";
+  
+  for (const node of element.childNodes) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent.trim();
+      if (text) result += text + "\n";
+    } else if (node.nodeType === Node.COMMENT_NODE) {
+      // Preserve HTML comments (speaker notes)
+      const comment = node.textContent.trim();
+      if (comment) {
+        result += `<!-- ${comment} -->\n\n`;
+      }
+    } else if (node.nodeType === Node.ELEMENT_NODE) {
+      const tag = node.tagName.toLowerCase();
+      
+      switch (tag) {
+        case "h1":
+          result += `# ${node.textContent.trim()}\n\n`;
+          break;
+        case "h2":
+          result += `## ${node.textContent.trim()}\n\n`;
+          break;
+        case "h3":
+          result += `### ${node.textContent.trim()}\n\n`;
+          break;
+        case "h4":
+          result += `#### ${node.textContent.trim()}\n\n`;
+          break;
+        case "h5":
+          result += `##### ${node.textContent.trim()}\n\n`;
+          break;
+        case "h6":
+          result += `###### ${node.textContent.trim()}\n\n`;
+          break;
+        case "p":
+          // Check if paragraph contains only inline elements or text
+          const pContent = extractInlineContent(node);
+          if (pContent.trim()) {
+            result += `${pContent}\n\n`;
+          }
+          break;
+        case "ul":
+          for (const li of node.querySelectorAll(":scope > li")) {
+            result += `- ${li.textContent.trim()}\n`;
+          }
+          result += "\n";
+          break;
+        case "ol":
+          let index = 1;
+          for (const li of node.querySelectorAll(":scope > li")) {
+            result += `${index}. ${li.textContent.trim()}\n`;
+            index++;
+          }
+          result += "\n";
+          break;
+        case "a":
+          const href = node.getAttribute("href");
+          const text = node.textContent.trim();
+          if (href && text) {
+            result += `[${text}](${href})`;
+          } else {
+            result += text;
+          }
+          break;
+        case "img":
+          const src = node.getAttribute("src");
+          const alt = node.getAttribute("alt") || "";
+          if (src) {
+            result += `![${alt}](${src})\n\n`;
+          }
+          break;
+        case "pre":
+          const codeChild = node.querySelector("code");
+          if (codeChild) {
+            result += `\`\`\`\n${codeChild.textContent}\n\`\`\`\n\n`;
+          } else {
+            result += `\`\`\`\n${node.textContent}\n\`\`\`\n\n`;
+          }
+          break;
+        case "code":
+          if (node.parentElement?.tagName.toLowerCase() !== "pre") {
+            result += `\`${node.textContent}\``;
+          }
+          break;
+        case "blockquote":
+          const lines = node.textContent.trim().split("\n");
+          result += lines.map(line => `> ${line}`).join("\n") + "\n\n";
+          break;
+        case "strong":
+        case "b":
+          result += `**${node.textContent.trim()}**`;
+          break;
+        case "em":
+        case "i":
+          result += `*${node.textContent.trim()}*`;
+          break;
+        case "br":
+          result += "\n";
+          break;
+        default:
+          result += htmlToMarkdownContent(node);
+      }
+    }
+  }
+  
+  return result;
+}
+
+function extractInlineContent(element) {
+  let result = "";
+  
+  for (const node of element.childNodes) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      result += node.textContent;
+    } else if (node.nodeType === Node.ELEMENT_NODE) {
+      const tag = node.tagName.toLowerCase();
+      
+      switch (tag) {
+        case "strong":
+        case "b":
+          result += `**${node.textContent.trim()}**`;
+          break;
+        case "em":
+        case "i":
+          result += `*${node.textContent.trim()}*`;
+          break;
+        case "code":
+          result += `\`${node.textContent}\``;
+          break;
+        case "a":
+          const href = node.getAttribute("href");
+          const text = node.textContent.trim();
+          if (href && text) {
+            result += `[${text}](${href})`;
+          } else {
+            result += text;
+          }
+          break;
+        case "img":
+          const src = node.getAttribute("src");
+          const alt = node.getAttribute("alt") || "";
+          if (src) {
+            result += `![${alt}](${src})`;
+          }
+          break;
+        case "br":
+          result += "\n";
+          break;
+        default:
+          result += extractInlineContent(node);
+      }
+    }
+  }
+  
+  return result;
+}
+
 function extractMarkdownFromHtml(html) {
   const doc = new DOMParser().parseFromString(html, "text/html");
+  
+  // First check if this is a slides HTML
+  const slidesMarkdown = extractMarkdownFromSlidesHtml(html);
+  if (slidesMarkdown) {
+    return slidesMarkdown;
+  }
   
   // Helper function to convert HTML elements to markdown
   function htmlToMarkdown(element) {
@@ -1676,6 +2220,63 @@ protocolSelect.addEventListener("change", () => {
 publishButton.addEventListener("click", publishDocument);
 exportHtmlButton.addEventListener("click", exportAsHtml);
 exportPdfButton.addEventListener("click", exportToPdf);
+exportSlidesButton.addEventListener("click", exportAsSlides);
+window.autoRenderSlides = autoRenderSlides;
+window.exitSlideMode = exitSlideMode;
+window.isSlideMode = false;
+
+Object.defineProperty(window, 'isSlideMode', {
+  get: () => isSlideMode,
+  set: (value) => { isSlideMode = value; }
+});
+
+viewSlidesButton.addEventListener("click", () => {
+  if (isSlideMode) {
+    exitSlideMode();
+    renderPreview();
+  } else {
+    viewAsSlides();
+  }
+});
+
+markdownInput.addEventListener('click', () => {
+  if (isSlideMode) {
+    const slideIndex = getCursorSlideIndex();
+    if (slideIndex !== currentSlideIndex && slideIndex < slidesData.length) {
+      showInlineSlide(slideIndex);
+    }
+  }
+});
+
+markdownInput.addEventListener('keyup', () => {
+  if (isSlideMode) {
+    const slideIndex = getCursorSlideIndex();
+    if (slideIndex !== currentSlideIndex && slideIndex < slidesData.length) {
+      showInlineSlide(slideIndex);
+    }
+  }
+});
+fullPreviewButton.addEventListener("click", openFullPreview);
+
+document.addEventListener("keydown", (e) => {
+  if (!isSlideMode) return;
+  
+  if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+    e.preventDefault();
+    prevInlineSlide();
+  } else if (e.key === "ArrowRight" || e.key === "ArrowDown" || e.key === " ") {
+    e.preventDefault();
+    nextInlineSlide();
+  } else if (e.key === "Escape") {
+    exitSlideMode();
+  } else if (e.key === "Home") {
+    e.preventDefault();
+    showInlineSlide(0);
+  } else if (e.key === "End") {
+    e.preventDefault();
+    showInlineSlide(slidesData.length - 1);
+  }
+});
 if (clearDraftButton) {
   clearDraftButton.addEventListener("click", async () => {
     markdownInput.value = "";

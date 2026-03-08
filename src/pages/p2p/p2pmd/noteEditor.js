@@ -1,4 +1,4 @@
-import { markdownInput, markdownPreview, loadingSpinner, backdrop } from "./common.js";
+import { markdownInput, markdownPreview, slidesPreview, viewSlidesButton, fullPreviewButton, loadingSpinner, backdrop } from "./common.js";
 
 let md = null;
 let renderTimer = null;
@@ -40,7 +40,8 @@ export function initMarkdown() {
 
 export function renderMarkdown(markdown) {
   if (!md) return markdown || "";
-  return md.render(markdown || "");
+  const cleanedMarkdown = (markdown || "").replace(/<!--[\s\S]*?-->/g, '');
+  return md.render(cleanedMarkdown);
 }
 
 export function renderPreview() {
@@ -48,7 +49,18 @@ export function renderPreview() {
     markdownPreview.textContent = markdownInput.value || "";
     return;
   }
-  markdownPreview.innerHTML = md.render(markdownInput.value || "");
+  
+  const markdown = markdownInput.value || "";
+  const hasSlides = /^---$|^<!-- slide -->$/gm.test(markdown);
+  
+  if (hasSlides && window.autoRenderSlides) {
+    window.autoRenderSlides();
+  } else {
+    if (window.isSlideMode) {
+      window.exitSlideMode();
+    }
+    markdownPreview.innerHTML = md.render(markdown);
+  }
 }
 
 export function scheduleRender() {

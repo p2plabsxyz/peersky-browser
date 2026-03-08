@@ -4,6 +4,9 @@ export function $(query) {
 
 export const markdownInput = $("#markdownInput");
 export const markdownPreview = $("#markdownPreview");
+export const slidesPreview = $("#slidesPreview");
+export const viewSlidesButton = $("#viewSlidesButton");
+export const fullPreviewButton = $("#fullPreviewButton");
 export const createRoomButton = $("#create-room");
 export const joinForm = $("#join-form");
 export const joinRoomKey = $("#join-room-key");
@@ -21,6 +24,7 @@ export const localUrlLabel = $("#local-url");
 export const exportMenu = $("#export-menu");
 export const exportHtmlButton = $("#exportHtmlButton");
 export const exportPdfButton = $("#exportPdfButton");
+export const exportSlidesButton = $("#exportSlidesButton");
 export const disconnectButton = $("#disconnect-room");
 export const protocolSelect = $("#protocolSelect");
 export const titleInput = $("#titleInput");
