@@ -45,9 +45,8 @@ Your opening content
 - Footer with p2pmd and PeerSky branding
 
 ### Formatting Toolbar
-<div align="center">
-    <img src="./toolbar.png" alt="Formatting toolbar with buttons for bold, italic, headings, lists, links, images, code, quote, slides mode">
-</div>
+
+![Formatting toolbar](./toolbar.png)
 
 Quick formatting buttons with keyboard shortcuts:
 - **Bold** (`Ctrl/Cmd+B`): `**text**`
