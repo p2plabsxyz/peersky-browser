@@ -6,6 +6,37 @@ import { registerPopupForStabilization } from './popup-guards.js';
 /** opaque background for extension popup window to match settings-card-bg on transparent/dark theme*/
 const EXTENSION_POPUP_BG = '#27272a';
 
+function pinECEWindowFocus(manager, window, activeTab) {
+  try {
+    const ece = manager.electronChromeExtensions;
+    if (!ece) return;
+    const store = ece.ctx.store;
+
+    store.lastFocusedWindowId = window.id;
+
+    if (!store.tabs.has(activeTab)) {
+      ece.addTab(activeTab, window);
+    }
+
+    ece.selectTab(activeTab);
+
+    store.windowToActiveTab.set(window, activeTab);
+
+    const cached = store.tabDetailsCache.get(activeTab.id);
+    if (cached) {
+      cached.active = true;
+      cached.windowId = window.id;
+    }
+
+    try {
+      if (ece.ctx && ece.ctx.router) {
+        ece.ctx.router.broadcastEvent('windows.onFocusChanged', window.id);
+        ece.ctx.router.broadcastEvent('tabs.onActivated', { tabId: activeTab.id, windowId: window.id });
+      }
+    } catch (_) { }
+  } catch (_) { }
+}
+
 function cleanupPopupOnClose(manager, popup) {
   manager.activePopups.delete(popup);
   const opener = manager.popupToOpener.get(popup);
@@ -93,17 +124,7 @@ export async function clickBrowserAction(manager, actionId, window) {
       const activeWebview = await getAndRegisterActiveWebview(manager, window);
       const activeTab = activeWebview || window.webContents;
       
-      // IMPORTANT: Set the active tab BEFORE triggering the action
-      // This ensures the extension's background script has proper context
-      try {
-        if (manager.electronChromeExtensions.setActiveTab) {
-          manager.electronChromeExtensions.setActiveTab(activeTab);
-        } else if (manager.electronChromeExtensions.activateTab) {
-          manager.electronChromeExtensions.activateTab(activeTab);
-        }
-      } catch (setTabError) {
-        console.warn(`ExtensionManager: Could not set active tab for action click:`, setTabError);
-      }
+      pinECEWindowFocus(manager, window, activeTab);
 
       // Method 1: Use activateExtension if available (preferred for extensions without popups)
       if (manager.electronChromeExtensions.activateExtension) {
@@ -228,17 +249,9 @@ export async function openBrowserAction(manager, actionId, window, anchorRect) {
         console.log(`ExtensionManager: Opening popup for ${extension.displayName || extension.name} at`, anchorRect);
         const activeWebview = await getAndRegisterActiveWebview(manager, window);
         const activeTab = activeWebview || window.webContents;
-        try {
-          if (manager.electronChromeExtensions.setActiveTab) {
-            manager.electronChromeExtensions.setActiveTab(activeTab);
-          } else if (manager.electronChromeExtensions.activateTab) {
-            manager.electronChromeExtensions.activateTab(activeTab);
-          } else if (manager.electronChromeExtensions.selectTab) {
-            manager.electronChromeExtensions.selectTab(activeTab);
-          }
-        } catch (error) {
-          console.warn(`[ExtensionManager] Could not set active tab:`, error);
-        }
+
+        pinECEWindowFocus(manager, window, activeTab);
+
         if (manager.electronChromeExtensions.getBrowserAction && popupExists) {
           const browserAction = manager.electronChromeExtensions.getBrowserAction(extension.electronId);
           if (browserAction && browserAction.onClicked) {
@@ -247,10 +260,11 @@ export async function openBrowserAction(manager, actionId, window, anchorRect) {
             return { success: true };
           }
         }
-        if (manager.electronChromeExtensions.api && popupExists) {
+        // Method 2: Use browserAction.openPopup
+        if (manager.electronChromeExtensions.api && manager.electronChromeExtensions.api.browserAction) {
+          const browserActionAPI = manager.electronChromeExtensions.api.browserAction;
           try {
-            const api = manager.electronChromeExtensions.api;
-            if (api.browserAction && api.browserAction.openPopup) {
+            if (browserActionAPI.openPopup) {
               app.once("browser-window-created", (event, newWindow) => {
                 // Register for stabilization IMMEDIATELY to prevent race condition
                 registerPopupForStabilization(newWindow);
@@ -265,7 +279,8 @@ export async function openBrowserAction(manager, actionId, window, anchorRect) {
                 newWindow.webContents.once("did-finish-load", () => {
                   const url = newWindow.webContents.getURL();
                   if (url.includes(`chrome-extension://${extension.electronId}/`)) {
-                    try { manager.addWindow(newWindow, newWindow.webContents); } catch (_) { }
+                    // CRITICAL FIX: DO NOT call manager.addWindow(newWindow, newWindow.webContents) here.
+                    // Doing so registers the popup as a tab, which steals ECE's internal focus and breaks extensions like Linguist.
                     newWindow.webContents.on("context-menu", (evt, params) => {
                       const menu = Menu.buildFromTemplate([
                         {
@@ -295,12 +310,11 @@ export async function openBrowserAction(manager, actionId, window, anchorRect) {
                   }
                 });
               });
-              await api.browserAction.openPopup({ extension: { id: extension.electronId } }, { windowId: window.id });
-              console.log(`ExtensionManager: Popup opened directly for ${extension.displayName || extension.name}`);
+              await browserActionAPI.openPopup({ extension: { id: extension.electronId } }, { windowId: window.id });
               return { success: true };
             }
-          } catch (directError) {
-            console.warn(`ExtensionManager: Direct popup API failed for ${extension.displayName || extension.name}:`, directError);
+          } catch (openPopupError) {
+            console.warn(`ExtensionManager: browserAction.openPopup failed for ${extension.displayName || extension.name}:`, openPopupError);
           }
         }
         console.log(`ExtensionManager: Falling back to regular click for ${extension.displayName || extension.name}`);
@@ -308,7 +322,7 @@ export async function openBrowserAction(manager, actionId, window, anchorRect) {
         if (resolvedPopupRel) {
           console.log(`ExtensionManager: Attempting manual popup creation for ${extension.displayName || extension.name}`);
           try {
-            const popupUrl = `chrome-extension://${extension.electronId}/${resolvedPopupRel}`;
+            const popupUrl = `chrome-extension://${extension.electronId}/${resolvedPopupRel}?windowId=${window.id}&tabId=${activeTab.id}`;
             const popupWindow = new (await import('electron')).BrowserWindow({
               width: 400, height: 600, x: Math.round(anchorRect.x), y: Math.round(anchorRect.bottom + 5), show: false, frame: false, resizable: false,
               backgroundColor: EXTENSION_POPUP_BG,
@@ -322,7 +336,6 @@ export async function openBrowserAction(manager, actionId, window, anchorRect) {
               manager.popupToExtensionId.set(popupWindow, actionId);
               popupWindow.on('closed', () => cleanupPopupOnClose(manager, popupWindow));
             }
-            try { manager.addWindow(popupWindow, popupWindow.webContents); } catch (_) { }
 
             const isExternalUrl = (u) => /^(https?:|ipfs:|ipns:|hyper:|web3:)/i.test(u);
             popupWindow.webContents.setWindowOpenHandler(({ url }) => {
