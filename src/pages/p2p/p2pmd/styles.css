@@ -633,6 +633,11 @@ main {
   -webkit-mask-image: url('./assets/svg/slides.svg');
 }
 
+.icon-fullscreen {
+  mask-image: url('./assets/svg/fullscreen.svg');
+  -webkit-mask-image: url('./assets/svg/fullscreen.svg');
+}
+
 .toolbar-divider {
   width: 1px;
   height: 24px;
