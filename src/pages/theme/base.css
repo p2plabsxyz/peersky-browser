@@ -1,5 +1,10 @@
 @import url('browser://theme/vars.css');
 
+@font-face {
+  font-family: 'FontWithASyntaxHighlighter';
+  src: url('browser://theme/fonts/FontWithASyntaxHighlighter-Regular.woff2') format('woff2');
+}
+
 html,
 body {
   margin: auto;
@@ -12,4 +17,5 @@ body > code {
   margin: 0px;
   padding: 12px;
   min-height: calc(100vh - 24px);
+  font-family: 'FontWithASyntaxHighlighter', monospace;
 }

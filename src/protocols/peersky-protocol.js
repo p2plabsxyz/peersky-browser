@@ -244,7 +244,7 @@ export async function createHandler() {
       const resolvedPath = await resolveFile(filePath);
       const format = path.extname(resolvedPath);
       
-      if (!['', '.html', '.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico'].includes(format)) {
+      if (!['', '.html', '.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.woff2', '.woff', '.ttf'].includes(format)) {
         throw new Error('Unsupported file type');
       }
 

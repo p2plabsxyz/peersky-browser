@@ -752,6 +752,23 @@ window.addEventListener('DOMContentLoaded', async () => {
       }
     }
     
+    // Inject syntax highlighting font for internal pages only (peersky://, browser://)
+    const isInternalPage = window.location.protocol === 'peersky:' || window.location.protocol === 'browser:';
+    if (isInternalPage) {
+      const fontStyle = document.createElement('style');
+      fontStyle.textContent = `
+        @font-face {
+          font-family: 'FontWithASyntaxHighlighter';
+          src: url('browser://theme/fonts/FontWithASyntaxHighlighter-Regular.woff2') format('woff2');
+        }
+        pre, code {
+          font-family: 'FontWithASyntaxHighlighter', monospace;
+        }
+      `;
+      document.head.appendChild(fontStyle);
+      console.log('Unified-preload: Syntax highlighting font injected for internal page');
+    }
+
     // Check if page already has stylesheets
     const hasStylesheets = [...document.styleSheets].some(s => {
       try { return !!s.cssRules } catch { return false }

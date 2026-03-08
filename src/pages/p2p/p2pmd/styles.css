@@ -364,7 +364,7 @@ main {
 
 #markdownPreview pre,
 #markdownPreview code {
-  font-family: ui-monospace, SFMono-Regular, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-family: 'FontWithASyntaxHighlighter', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   background: rgba(255, 255, 255, 0.08);
   border-radius: 6px;
 }

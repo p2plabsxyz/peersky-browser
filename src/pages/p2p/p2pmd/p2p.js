@@ -53,6 +53,10 @@ let hyperSaveInFlight = false;
 let draftSaveInFlight = false;
 
 const publishCSS = `
+  @font-face {
+    font-family: 'FontWithASyntaxHighlighter';
+    src: url('browser://theme/fonts/FontWithASyntaxHighlighter-Regular.woff2') format('woff2');
+  }
   :root {
     color-scheme: light;
   }
@@ -72,6 +76,7 @@ const publishCSS = `
     background: #f3f4f6;
     padding: 0.15rem 0.35rem;
     border-radius: 6px;
+    font-family: 'FontWithASyntaxHighlighter', monospace;
   }
   pre code {
     display: block;
