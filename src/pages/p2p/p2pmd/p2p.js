@@ -73,7 +73,9 @@ const publishCSS = `
     padding: 2rem;
   }
   pre, code {
-    background: #f3f4f6;
+    background: #2d2d2d;
+    color: #f8f8f2;
+    font-weight: 1000;
     padding: 0.15rem 0.35rem;
     border-radius: 6px;
     font-family: 'FontWithASyntaxHighlighter', monospace;
