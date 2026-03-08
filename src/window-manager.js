@@ -928,8 +928,9 @@ class PeerskyWindow {
     attachContextMenus(this.window, windowManager);
 
     // Register window with extension system for browser actions
+    // Important: Do NOT register this.window.webContents as a tab - it's the shell UI.
     try {
-      extensionManager.addWindow(this.window, this.window.webContents);
+      extensionManager.addWindow(this.window);
     } catch (error) {
       console.warn('Failed to register window with extension system:', error);
     }
