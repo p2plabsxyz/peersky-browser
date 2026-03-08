@@ -876,6 +876,7 @@ class ExtensionManager {
    */
   addWindow(window, webContents) {
     if (this.electronChromeExtensions) {
+      if (!webContents) return; // avoid registering shell UI or popups as tabs
       try {
         this.electronChromeExtensions.addTab(webContents, window);
         console.log(`[ExtensionManager] Registered webContents ${webContents.id} with extension system`);

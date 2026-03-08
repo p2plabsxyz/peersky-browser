@@ -265,6 +265,51 @@ export async function openBrowserAction(manager, actionId, window, anchorRect) {
           const browserActionAPI = manager.electronChromeExtensions.api.browserAction;
           try {
             if (browserActionAPI.openPopup) {
+              app.once("browser-window-created", (event, newWindow) => {
+                // Register for stabilization IMMEDIATELY to prevent race condition
+                registerPopupForStabilization(newWindow);
+                newWindow.setBackgroundColor(EXTENSION_POPUP_BG);
+                if (manager.activePopups) {
+                  manager.activePopups.add(newWindow);
+                  manager.popupToOpener.set(newWindow, window);
+                  manager.popupToExtensionId.set(newWindow, actionId);
+                  newWindow.on('closed', () => cleanupPopupOnClose(manager, newWindow));
+                }
+
+                newWindow.webContents.once("did-finish-load", () => {
+                  const url = newWindow.webContents.getURL();
+                  if (url.includes(`chrome-extension://${extension.electronId}/`)) {
+                    // CRITICAL FIX: DO NOT call manager.addWindow(newWindow, newWindow.webContents) here.
+                    // Doing so registers the popup as a tab, which steals ECE's internal focus and breaks extensions like Linguist.
+                    newWindow.webContents.on("context-menu", (evt, params) => {
+                      const menu = Menu.buildFromTemplate([
+                        {
+                          label: "Inspect", click: () => {
+                            try { if (!newWindow.webContents.isDevToolsOpened()) { newWindow.webContents.openDevTools({ mode: "detach" }); } } catch (_) { }
+                            try { newWindow.webContents.inspectElement(params.x, params.y); } catch (_) { }
+                          }
+                        }
+                      ]);
+                      try { menu.popup({ window: newWindow, x: params.x, y: params.y }); } catch (_) { menu.popup({ window: newWindow }); }
+                    });
+                    function lockWindowPosition(win, getPosition) {
+                      if (!win || win.isDestroyed()) return;
+                      const _setBounds = win.setBounds.bind(win);
+                      const _setBoundsSafe = (newBounds) => {
+                        if (win.isDestroyed()) return;
+                        const pos = getPosition(newBounds);
+                        _setBounds({ x: pos.x, y: pos.y, width: newBounds.width, height: newBounds.height });
+                      };
+                      win.setBounds = _setBoundsSafe;
+                    }
+                    const calcPosition = (popupBounds) => {
+                      const mainBounds = window.getBounds();
+                      return { x: (mainBounds.x + anchorRect.x - popupBounds.width + anchorRect.width), y: mainBounds.y + anchorRect.y + 38 };
+                    };
+                    lockWindowPosition(newWindow, calcPosition);
+                  }
+                });
+              });
               await browserActionAPI.openPopup({ extension: { id: extension.electronId } }, { windowId: window.id });
               return { success: true };
             }
