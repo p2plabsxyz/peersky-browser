@@ -458,6 +458,19 @@ class ExtensionManager {
           },
         });
         console.log('ExtensionManager: ElectronChromeExtensions initialized');
+        // this is a patch fix for the tabs.query to work properly
+        try {
+          const ece = this.electronChromeExtensions;
+          if (ece?.ctx?.router && ece?.api?.tabs) {
+            const originalQuery = ece.api.tabs.query.bind(ece.api.tabs);
+            ece.ctx.router.handle("tabs.query", (event, info = {}) => {
+              if (info.currentWindow || info.lastFocusedWindow) {
+                info.windowId = -2; // Maps to ece.api.tabs.WINDOW_ID_CURRENT
+              }
+              return originalQuery(event, info);
+            });
+          }
+        } catch (err) { }
 
         try {
           const api = this.electronChromeExtensions?.api?.browserAction;
@@ -863,6 +876,7 @@ class ExtensionManager {
    */
   addWindow(window, webContents) {
     if (this.electronChromeExtensions) {
+      if (!webContents) return; // avoid registering shell UI or popups as tabs
       try {
         // Skip if this webContents is already registered to avoid duplicate
         // addTab() calls which can trigger spurious navigations/reloads
