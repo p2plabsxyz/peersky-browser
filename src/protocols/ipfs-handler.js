@@ -13,7 +13,7 @@ import { base32 } from "multiformats/bases/base32";
 import { base36 } from "multiformats/bases/base36";
 import { base58btc } from "multiformats/bases/base58";
 import { peerIdFromString, peerIdFromCID } from "@libp2p/peer-id";
-import { ensCache, saveEnsCache, RPC_URL, ipfsOptions } from "./config.js";
+import { ensCache, saveEnsCache, ENS_CACHE_TTL_MS, RPC_URL, ipfsOptions } from "./config.js";
 import { JsonRpcProvider } from "ethers";
 
 // Create a combined multibase decoder to handle base32, base36, and base58btc
@@ -333,8 +333,11 @@ export async function createHandler(ipfsOptions, session) {
           throw new Error("No resolver found for ENS name " + ensName);
 
         let contentHashRaw;
-        if (ensCache.has(ensName)) {
-          contentHashRaw = ensCache.get(ensName);
+        const cached = ensCache.get(ensName);
+        const isFresh =
+          cached && Date.now() - cached.timestamp < ENS_CACHE_TTL_MS;
+        if (isFresh) {
+          contentHashRaw = cached.value;
           console.log(
             `[${new Date().toISOString()}] ENS cache hit for ${ensName}`
           );
@@ -343,7 +346,7 @@ export async function createHandler(ipfsOptions, session) {
           if (!contentHashRaw) {
             throw new Error("No content hash set for ENS name " + ensName);
           }
-          ensCache.set(ensName, contentHashRaw);
+          ensCache.set(ensName, { value: contentHashRaw, timestamp: Date.now() });
           saveEnsCache(); // Persist the updated cache
           console.log(
             `[${new Date().toISOString()}] ENS cache miss for ${ensName}, fetched contentHash.`

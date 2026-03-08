@@ -76,13 +76,26 @@ export const RPC_URL =
     ? targetChain.rpcUrls[0]
     : (console.error(`Could not find RPC URL for chain ${targetChainId}`), null);
 
+// ENS cache TTL: 1 hour (ENS contract TTL is typically 24h; use a conservative 1h)
+export const ENS_CACHE_TTL_MS = 60 * 60 * 1000;
+
 // Initialize or load ENS cache
+// Each entry is { value: string, timestamp: number }
 let ensCache = new Map();
 if (fs.existsSync(ENS_CACHE)) {
   try {
     const data = fs.readFileSync(ENS_CACHE, "utf-8");
     const parsedData = JSON.parse(data);
-    ensCache = new Map(parsedData);
+    // Migrate legacy entries (bare strings) to the new { value, timestamp } shape,
+    // setting timestamp to 0 so they are treated as immediately expired.
+    ensCache = new Map(
+      parsedData.map(([k, v]) => [
+        k,
+        typeof v === "object" && v !== null && "value" in v
+          ? v
+          : { value: v, timestamp: 0 },
+      ])
+    );
   } catch (error) {
     console.error("Failed to load ENS cache from file:", error);
   }
