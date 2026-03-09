@@ -233,8 +233,8 @@ async function setupProtocols(session) {
   const hyperProtocolHandler = await createHyperHandler(hyperOptions, session);
   sessionProtocol.registerStreamProtocol("hyper", hyperProtocolHandler, P2P_PROTOCOL);
 
-  const hsProtocolHandler = await createHSHandler(session);
-  sessionProtocol.registerStreamProtocol("hs", hsProtocolHandler, P2P_PROTOCOL);
+  const hsProtocolHandler = await createHSHandler();
+  sessionProtocol.handle("hs", hsProtocolHandler);
 
   const web3ProtocolHandler = await createWeb3Handler();
   sessionProtocol.registerStreamProtocol("web3", web3ProtocolHandler, P2P_PROTOCOL);

@@ -1,6 +1,6 @@
 import Holesail from "holesail";
 import http from "http";
-import { Readable, PassThrough } from "stream";
+import { PassThrough } from "stream";
 import fs from "fs";
 import path from "path";
 import { app, safeStorage } from "electron";
@@ -140,25 +140,23 @@ function redactKey(key) {
   return key.length > 10 ? `${key.slice(0, 10)}...` : key;
 }
 
-function sendJson(callback, statusCode, payload) {
-  callback({
-    statusCode,
+function buildJsonResponse(statusCode, payload) {
+  return new Response(JSON.stringify(payload), {
+    status: statusCode,
     headers: {
       "Content-Type": "application/json",
       ...getCorsHeaders()
-    },
-    data: Readable.from([Buffer.from(JSON.stringify(payload))])
+    }
   });
 }
 
-function sendText(callback, statusCode, text) {
-  callback({
-    statusCode,
+function buildTextResponse(statusCode, text) {
+  return new Response(text, {
+    status: statusCode,
     headers: {
       "Content-Type": "text/plain",
       ...getCorsHeaders()
-    },
-    data: Readable.from([Buffer.from(text)])
+    }
   });
 }
 
@@ -749,69 +747,23 @@ function getResponseHost(session) {
   return "127.0.0.1";
 }
 
-function readBody(body, session) {
-  const stream = new PassThrough();
-  (async () => {
-    try {
-      for (const data of body || []) {
-        if (data.bytes) {
-          stream.write(data.bytes);
-        } else if (data.file) {
-          const fileStream = fs.createReadStream(data.file);
-          fileStream.pipe(stream, { end: false });
-          await new Promise((resolve, reject) => {
-            fileStream.on("end", resolve);
-            fileStream.on("error", reject);
-          });
-        } else if (data.blobUUID) {
-          const blobData = await session.getBlobData(data.blobUUID);
-          stream.write(blobData);
-        }
-      }
-      stream.end();
-    } catch (err) {
-      stream.emit("error", err);
-    }
-  })();
-  return stream;
-}
-
-async function getJSONBody(uploadData, session) {
-  if (!uploadData || uploadData.length === 0) {
-    return {};
-  }
-  const stream = readBody(uploadData, session);
-  const chunks = [];
-  for await (const chunk of stream) {
-    chunks.push(chunk);
-  }
-  const buf = Buffer.concat(chunks);
-  try {
-    return JSON.parse(buf.toString() || "{}");
-  } catch {
-    return {};
-  }
-}
-
-export async function createHandler(session) {
-  return async function protocolHandler(req, callback) {
-    const { url, method, uploadData } = req;
+export async function createHandler() {
+  return async function protocolHandler(req) {
+    const { url, method } = req;
     const urlObj = new URL(url);
     const action = urlObj.searchParams.get("action");
 
     if (urlObj.hostname !== "p2pmd") {
-      sendText(callback, 404, "Unknown hs target");
-      return;
+      return buildTextResponse(404, "Unknown hs target");
     }
 
     if (method === "POST" && action === "create") {
       // SECURITY: Rate limit room creation (5 per minute)
       if (!checkRateLimit('create', 5, 60000)) {
-        sendJson(callback, 429, { error: "Too many requests. Please wait before creating another room." });
-        return;
+        return buildJsonResponse(429, { error: "Too many requests. Please wait before creating another room." });
       }
 
-      const body = await getJSONBody(uploadData, session);
+      const body = await req.json();
       const secure = parseBoolean(body.secure, false);
       const udp = parseBoolean(body.udp, false);
       const host = normalizeHost(body.host);
@@ -855,7 +807,7 @@ export async function createHandler(session) {
       console.log("[p2pmd] create ready", { key: redactKey(roomKey), port: boundPort });
 
       const responseHost = getResponseHost(sessionState);
-      sendJson(callback, 200, {
+      return buildJsonResponse(200, {
         key: roomKey,
         localHost: responseHost,
         localPort: boundPort,
@@ -863,21 +815,18 @@ export async function createHandler(session) {
         secure,
         udp
       });
-      return;
     }
 
     if (method === "POST" && action === "rehost") {
       // SECURITY: Rate limit rehost (10 per minute)
       if (!checkRateLimit('rehost', 10, 60000)) {
-        sendJson(callback, 429, { error: "Too many requests. Please wait before rehosting." });
-        return;
+        return buildJsonResponse(429, { error: "Too many requests. Please wait before rehosting." });
       }
 
-      const body = await getJSONBody(uploadData, session);
+      const body = await req.json();
       const key = body.key || "";
       if (!key) {
-        sendJson(callback, 400, { error: "Missing key" });
-        return;
+        return buildJsonResponse(400, { error: "Missing key" });
       }
       const parsedKey = Holesail.urlParser(key);
       const secure = body.secure === undefined ? parsedKey.secure === true : parseBoolean(body.secure, true);
@@ -932,7 +881,7 @@ export async function createHandler(session) {
       console.log("[p2pmd] rehost ready", { key: redactKey(roomKey), port: boundPort });
 
       const responseHost = getResponseHost(sessionState);
-      sendJson(callback, 200, {
+      return buildJsonResponse( 200, {
         key: roomKey,
         localHost: responseHost,
         localPort: boundPort,
@@ -940,19 +889,17 @@ export async function createHandler(session) {
         secure,
         udp
       });
-      return;
     }
 
     if (method === "POST" && action === "resume") {
-      const body = await getJSONBody(uploadData, session);
+      const body = await req.json();
       const key = body.key || "";
       const sessionState = key ? getExistingSession(key) : (roomSessions.size === 1 ? Array.from(roomSessions.values())[0] : null);
       if (!sessionState || !sessionState.server) {
-        sendJson(callback, 404, { error: "No active room" });
-        return;
+        return buildJsonResponse(404, { error: "No active room" });
       }
       const responseHost = getResponseHost(sessionState);
-      sendJson(callback, 200, {
+      return buildJsonResponse( 200, {
         key: sessionState.key,
         localHost: responseHost,
         localPort: sessionState.port,
@@ -960,15 +907,13 @@ export async function createHandler(session) {
         secure: sessionState.holesailServer?.info?.secure,
         udp: sessionState.holesailServer?.info?.udp
       });
-      return;
     }
 
     if (method === "POST" && action === "join") {
-      const body = await getJSONBody(uploadData, session);
+      const body = await req.json();
       const key = body.key || "";
       if (!key) {
-        sendJson(callback, 400, { error: "Missing key" });
-        return;
+        return buildJsonResponse(400, { error: "Missing key" });
       }
 
       const parsedKey = Holesail.urlParser(key);
@@ -989,13 +934,12 @@ export async function createHandler(session) {
         const responseHost = getResponseHost(sessionState);
         const localUrl = `http://${responseHost}:${sessionState.port}`;
         console.log("[p2pmd] join: server already running", { key: redactKey(key), port: sessionState.port });
-        sendJson(callback, 200, {
+        return buildJsonResponse(200, {
           key,
           localHost: responseHost,
           localPort: sessionState.port,
           localUrl
         });
-        return;
       }
 
       // If this device has a saved port+seed for this room (creator), automatically rehost on the same port with the same seed
@@ -1033,7 +977,7 @@ export async function createHandler(session) {
         roomSessions.set(rehostedKey, sessionState);
         console.log("[p2pmd] join: auto-rehosted existing room", { key: redactKey(rehostedKey), port: boundPort });
         const responseHost = getResponseHost(sessionState);
-        sendJson(callback, 200, {
+        return buildJsonResponse(200, {
           key: sessionState.key,
           localHost: responseHost,
           localPort: boundPort,
@@ -1041,7 +985,6 @@ export async function createHandler(session) {
           secure: resolvedSecure,
           udp: resolvedUdp
         });
-        return;
       }
 
       if (sessionState) {
@@ -1086,30 +1029,27 @@ export async function createHandler(session) {
       const localUrl = `http://${responseHost}:${boundPort}`;
       console.log("[p2pmd] join ready", { key: redactKey(key), port: boundPort });
       
-      sendJson(callback, 200, {
+      return buildJsonResponse(200, {
         key,
         localHost: responseHost,
         localPort: boundPort,
         localUrl
       });
-      return;
     }
 
     if (method === "POST" && action === "close") {
-      const body = await getJSONBody(uploadData, session);
+      const body = await req.json();
       const key = body.key || "";
       if (key) {
         const sessionState = getExistingSession(key);
         if (!sessionState) {
-          sendJson(callback, 404, { error: "Room not found" });
-          return;
+          return buildJsonResponse(404, { error: "Room not found" });
         }
         await stopHolesailClient(sessionState);
         await stopHolesailServer(sessionState);
         await stopDocServer(sessionState);
         roomSessions.delete(key);
-        sendJson(callback, 200, { ok: true });
-        return;
+        return buildJsonResponse(200, { ok: true });
       }
       for (const sessionState of roomSessions.values()) {
         await stopHolesailClient(sessionState);
@@ -1117,10 +1057,9 @@ export async function createHandler(session) {
         await stopDocServer(sessionState);
       }
       roomSessions.clear();
-      sendJson(callback, 200, { ok: true });
-      return;
+      return buildJsonResponse(200, { ok: true });
     }
 
-    sendJson(callback, 404, { error: "Unknown action" });
+    return buildJsonResponse(404, { error: "Unknown action" });
   };
 }
