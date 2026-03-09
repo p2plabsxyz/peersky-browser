@@ -755,7 +755,6 @@ async function createRoom() {
     host,
     port
   };
-  console.log("[p2pmd] create payload", payload);
   resetNetworkSettingsOnCreate();
   showSpinner(true);
   try {
@@ -883,15 +882,7 @@ function buildJoinOptions(state) {
     port = normalizePort(localPortInput.value, extractedPort || null);
   }
   
-  console.log("[p2pmd] buildJoinOptions", { 
-    statePort: state.port, 
-    urlPartsPort: urlParts.port, 
-    finalPort: port, 
-    host,
-    state 
-  });
-  
-  // Only include host if it's not empty
+  // Build join options from state
   const options = {
     secure: typeof state.secure === "boolean" ? state.secure : undefined,
     udp: typeof state.udp === "boolean" ? state.udp : undefined
@@ -914,7 +905,6 @@ async function joinRoom(key, state = {}) {
   // Merge stored state with passed state so hosted/creator flags from storage
   // are preserved even when the URL state doesn't include them (e.g. on restart)
   const resolvedState = { ...storedState, ...(state || {}) };
-  console.log("[p2pmd] joinRoom", { key, storedState, resolvedState });
   const baseOptions = buildJoinOptions(resolvedState);
   const attempts = [baseOptions];
   let lastError = null;
@@ -1037,14 +1027,12 @@ async function getOrCreateHyperdrive() {
     const name = "p2pmd";
     try {
       const response = await fetch(`hyper://localhost/?key=${encodeURIComponent(name)}`, { method: "POST" });
-      console.log(`[getOrCreateHyperdrive] Response status: ${response.status}, ok: ${response.ok}`);
       if (!response.ok) {
         const errorText = await response.text();
         console.error(`[getOrCreateHyperdrive] Error response: ${errorText}`);
         throw new Error(`Failed to generate Hyperdrive key: ${response.statusText}`);
       }
       hyperdriveUrl = await response.text();
-      console.log(`[getOrCreateHyperdrive] Hyperdrive URL: ${hyperdriveUrl}`);
       if (!hyperdriveUrl || !hyperdriveUrl.startsWith("hyper://")) {
         throw new Error(`Invalid hyperdrive URL received: ${hyperdriveUrl}`);
       }
@@ -1575,7 +1563,6 @@ function addPublishUrl(url) {
 }
 
 function addPublishError(name, text) {
-  console.log(`[addPublishError] Error in ${name}: ${text}`);
   const listItem = document.createElement("li");
   listItem.className = "log";
   listItem.textContent = `Error in ${name}: ${text}`;
@@ -1617,16 +1604,13 @@ async function publishDocument() {
 
 async function uploadFile(file) {
   const protocol = protocolSelect.value;
-  console.log(`[uploadFile] Uploading ${file.name}, protocol: ${protocol}`);
 
   let url;
   if (protocol === "hyper") {
     const hyperdriveUrl = await getOrCreateHyperdrive();
     url = `${hyperdriveUrl}${encodeURIComponent(file.name)}`;
-    console.log(`[uploadFile] Hyper URL: ${url}`);
   } else {
     url = `ipfs://bafyaabakaieac/${encodeURIComponent(file.name)}?peerskyOrigin=${encodeURIComponent(window.location.href)}`;
-    console.log(`[uploadFile] IPFS URL: ${url}`);
   }
 
   try {
@@ -1636,7 +1620,6 @@ async function uploadFile(file) {
       headers: { "Content-Type": file.type || "text/html" }
     }, 15000);
 
-    console.log(`[uploadFile] Response status: ${response.status}, ok: ${response.ok}`);
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`[uploadFile] Error uploading ${file.name}: ${errorText}`);
