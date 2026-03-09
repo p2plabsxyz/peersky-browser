@@ -66,6 +66,14 @@ Quick formatting buttons with keyboard shortcuts:
 
 <img src="./themes.png" width="639" alt="Different themes available in p2pmd">
 
+## Security
+P2PMD implements production-grade security measures:
+- **Encrypted Seeds**: Room keys encrypted at rest using Electron's `safeStorage` (OS-level keychain)
+- **Rate Limiting**: DoS protection (5 room creations/min, 10 rehosts/min)
+- **CORS Policy**: Protocol-level origin validation prevents external API access
+- **Minimal Logging**: Sensitive data (keys, seeds) redacted from production logs
+- **Modern API**: Uses Electron's `protocol.handle()` with native Request/Response objects
+
 ## How it works (high level)
 - The editor hosts a local HTTP session for the document and syncs changes over SSE.
 - Holesail creates a direct peer connection using a shared key.
