@@ -378,6 +378,9 @@ export function setupExtensionIpcHandlers(extensionManager) {
         }
 
         const senderWindow = BrowserWindow.fromWebContents(event.sender);
+
+        if (senderWindow && !senderWindow.isDestroyed()) senderWindow.focus();
+        
         await extensionManager.clickBrowserAction(actionId, senderWindow);
         return { success: true };
       } catch (error) {
@@ -398,7 +401,9 @@ export function setupExtensionIpcHandlers(extensionManager) {
         }
 
         const senderWindow = BrowserWindow.fromWebContents(event.sender);
-        
+
+        if (senderWindow && !senderWindow.isDestroyed()) senderWindow.focus();
+
         // Validate anchorRect has required fields
         const safeRect = anchorRect && typeof anchorRect === "object" ? {
           x: Number(anchorRect.x) || 100,

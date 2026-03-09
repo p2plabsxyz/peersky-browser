@@ -13,8 +13,54 @@ import { base32 } from "multiformats/bases/base32";
 import { base36 } from "multiformats/bases/base36";
 import { base58btc } from "multiformats/bases/base58";
 import { peerIdFromString, peerIdFromCID } from "@libp2p/peer-id";
-import { ensCache, saveEnsCache, RPC_URL, ipfsOptions } from "./config.js";
+import { ensCache, saveEnsCache, RPC_URL, ipfsCache, saveIpfsCache } from "./config.js";
 import { JsonRpcProvider } from "ethers";
+
+const P2P_APP_NAMES = {
+  "editor": "P2P Editor",
+  "p2pmd": "P2P Markdown",
+  "chat": "P2P Chat",
+  "ai-chat": "AI Chat",
+  "wiki": "P2P Wiki",
+  "drive": "P2P Drive",
+  "extensions": "Extension Archiver",
+};
+
+function getAppNameFromPeerskyUrl(rawUrl) {
+  if (!rawUrl) return null;
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol !== "peersky:") return null;
+
+    const hostname = (parsed.hostname || "").toLowerCase();
+    const pathSegments = parsed.pathname
+      .split("/")
+      .filter(Boolean)
+      .map((segment) => segment.toLowerCase());
+
+    // Supported formats:
+    // - peersky://p2p/p2pmd/
+    // - peersky://editor/
+    const appKey = hostname === "p2p" ? pathSegments[0] : hostname;
+    if (!appKey) return null;
+    return P2P_APP_NAMES[appKey] || `Peersky App (${appKey})`;
+  } catch (_) {
+    return null;
+  }
+}
+
+function getAppNameFromRequest(request) {
+  if (request && request.url) {
+    try {
+      const parsed = new URL(request.url);
+      const urlOrigin = parsed.searchParams.get('peerskyOrigin');
+      if (urlOrigin) {
+        return getAppNameFromPeerskyUrl(urlOrigin);
+      }
+    } catch (_) {}
+  }
+  return null;
+}
 
 // Create a combined multibase decoder to handle base32, base36, and base58btc
 const multibaseDecoder = base32.decoder
@@ -64,7 +110,10 @@ export async function createHandler(ipfsOptions, session) {
       const startTime = Date.now();
       const entries = [];
       let currentFileName = null;
-      
+      const uploadedFileNames = [];
+      const uploadedFilePaths = []; // Track full paths for folder name detection
+      let directoryName = null; // Set when uploading a directory directly
+
       for (const data of request.uploadData || []) {
         console.log("Upload data entry:", JSON.stringify(Object.keys(data)), "type:", data.type);
         
@@ -73,6 +122,7 @@ export async function createHandler(ipfsOptions, session) {
           const stats = await fs.stat(filePath);
           if (stats.isDirectory()) {
             // Handle directory with globSource for recursive upload
+            directoryName = path.basename(filePath);
             const source = globSource(filePath, '**/*');
             for await (const entry of source) {
               entries.push({
@@ -83,6 +133,8 @@ export async function createHandler(ipfsOptions, session) {
           } else {
             // Handle individual file
             const fileName = path.basename(filePath);
+            uploadedFileNames.push(fileName);
+            uploadedFilePaths.push(filePath);
             entries.push({
               path: fileName,
               content: fs.createReadStream(filePath, { highWaterMark: 1024 * 1024 }),
@@ -104,6 +156,7 @@ export async function createHandler(ipfsOptions, session) {
           // Handle blob data from FormData - use the filename from previous rawData entry
           const blobData = await session.getBlobData(data.blobUUID);
           const fileName = currentFileName || "index.html";
+          uploadedFileNames.push(fileName);
           console.log("Processing blob with filename:", fileName, "blobUUID:", data.blobUUID);
           entries.push({ path: fileName, content: blobData });
           currentFileName = null; // Reset for next file
@@ -152,6 +205,85 @@ export async function createHandler(ipfsOptions, session) {
       });
   
       console.log("Files uploaded with root CID:", rootCid.toString());
+      // Log to IPFS cache
+      try {
+        const timestamp = Date.now();
+        const cidStr = rootCid.toString();
+        // Determine upload name - prefer app context, then folder name, then filename
+        let uploadName;
+        const appName = getAppNameFromRequest(request);
+        if (directoryName) {
+          // Direct directory upload
+          uploadName = directoryName;
+        } else if (uploadedFilePaths.length > 1) {
+          // Multiple files - check if they share a common parent directory (folder upload)
+          const dirs = uploadedFilePaths.map(p => path.dirname(p));
+          const commonDir = dirs.reduce((a, b) => {
+            const aParts = a.split(path.sep);
+            const bParts = b.split(path.sep);
+            const common = [];
+            for (let i = 0; i < Math.min(aParts.length, bParts.length); i++) {
+              if (aParts[i] === bParts[i]) common.push(aParts[i]);
+              else break;
+            }
+            return common.join(path.sep);
+          });
+          const folderName = path.basename(commonDir);
+          if (folderName && folderName !== path.sep && folderName !== '.') {
+            uploadName = folderName;
+          } else {
+            uploadName = `${uploadedFileNames[0]} + ${uploadedFileNames.length - 1} files`;
+          }
+        } else if (uploadedFileNames.length === 1) {
+          uploadName = uploadedFileNames[0];
+        } else if (uploadedFileNames.length > 1) {
+          // Blob uploads without path info - check for common folder prefix
+          const firstSlash = uploadedFileNames[0]?.indexOf('/');
+          if (firstSlash > 0) {
+            const folderName = uploadedFileNames[0].split('/')[0];
+            if (uploadedFileNames.every(n => n.startsWith(folderName + '/'))) {
+              uploadName = folderName;
+            }
+          }
+          if (!uploadName) {
+            uploadName = `${uploadedFileNames[0]} + ${uploadedFileNames.length - 1} files`;
+          }
+        } else {
+          uploadName = "Upload " + new Date(timestamp).toLocaleString();
+        }
+        if (appName) {
+          const salt = Math.random().toString(36).substring(2, 6);
+          if (!uploadName || uploadName === 'index.html' || uploadName === 'untitled' || uploadName.startsWith('index.html +') || uploadName.startsWith('index.html-')) {
+            uploadName = `${appName}-index.html-${salt}`;
+          } else {
+            uploadName = `${appName}-${uploadName}-${salt}`;
+          }
+        }
+        // Keep one entry per CID, but refresh old generic labels when a better one is available.
+        const existingEntry = ipfsCache.find((entry) => entry.cid === cidStr);
+        if (!existingEntry) {
+          ipfsCache.push({
+            cid: cidStr,
+            timestamp: timestamp,
+            url: fileUrl,
+            name: uploadName,
+          });
+          saveIpfsCache();
+          console.log(`Logged upload to IPFS cache: ${cidStr}`);
+        } else {
+          const existingName = String(existingEntry.name || "").trim().toLowerCase();
+          const isGenericExistingName =
+            !existingName || existingName === "index.html" || existingName === "untitled";
+          if (uploadName && existingEntry.name !== uploadName && (isGenericExistingName || (appName && !existingName.includes(appName.toLowerCase())))) {
+            existingEntry.name = uploadName;
+            if (!existingEntry.url) existingEntry.url = fileUrl;
+            saveIpfsCache();
+            console.log(`Updated IPFS cache label: ${cidStr} -> ${uploadName}`);
+          }
+        }
+      } catch (logErr) {
+        console.error("Error logging to IPFS cache:", logErr);
+      }
     } catch (e) {
       console.error("Error uploading file:", e);
       sendResponse({
@@ -277,7 +409,6 @@ export async function createHandler(ipfsOptions, session) {
 
   return async function protocolHandler(request, sendResponse) {
     const { url, method, uploadData, headers } = request;
-
     if (!node) {
       console.log("IPFS node is not ready yet");
       return;
@@ -290,7 +421,7 @@ export async function createHandler(ipfsOptions, session) {
       url.startsWith("ipfs://")
     ) {
       console.log(`Handling file upload for URL: ${url}`);
-      return handleFileUpload({ uploadData, headers }, sendResponse);
+      return handleFileUpload({ uploadData, headers, referrer: request.referrer, url: request.url }, sendResponse);
     }
 
     let ipfsPath;
@@ -334,7 +465,8 @@ export async function createHandler(ipfsOptions, session) {
 
         let contentHashRaw;
         if (ensCache.has(ensName)) {
-          contentHashRaw = ensCache.get(ensName);
+          const cachedEntry = ensCache.get(ensName);
+          contentHashRaw = typeof cachedEntry === 'object' ? cachedEntry.hash : cachedEntry;
           console.log(
             `[${new Date().toISOString()}] ENS cache hit for ${ensName}`
           );
@@ -343,7 +475,10 @@ export async function createHandler(ipfsOptions, session) {
           if (!contentHashRaw) {
             throw new Error("No content hash set for ENS name " + ensName);
           }
-          ensCache.set(ensName, contentHashRaw);
+          ensCache.set(ensName, {
+            hash: contentHashRaw,
+            timestamp: Date.now()
+          });
           saveEnsCache(); // Persist the updated cache
           console.log(
             `[${new Date().toISOString()}] ENS cache miss for ${ensName}, fetched contentHash.`

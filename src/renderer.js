@@ -45,10 +45,29 @@ function setupWebviewErrorHandling(webview) {
   if (!webview || webview._errorHandlerInitialized) return;
   webview._errorHandlerInitialized = true;
 
+  const isLocalUrl = (value) => {
+    try {
+      const { hostname } = new URL(value);
+      if (!hostname) return false;
+      if (hostname === "localhost" || hostname === "0.0.0.0") return true;
+      if (hostname.startsWith("127.")) return true;
+      if (hostname.startsWith("10.")) return true;
+      if (hostname.startsWith("192.168.")) return true;
+      if (hostname.startsWith("172.")) {
+        const second = Number(hostname.split(".")[1]);
+        return Number.isFinite(second) && second >= 16 && second <= 31;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  };
+
   const state = {
     isShowingError: false,
     abortTimeout: null,
-    lastFailedUrl: null
+    lastFailedUrl: null,
+    retryCounts: new Map()
   };
 
   const handleFailLoad = (event) => {
@@ -84,6 +103,21 @@ function setupWebviewErrorHandling(webview) {
         }
       }, 300);
       return;
+    }
+
+    if (errorCode === -102 && validatedURL && isLocalUrl(validatedURL)) {
+      const count = state.retryCounts.get(validatedURL) || 0;
+      if (count < 1) {
+        state.retryCounts.set(validatedURL, count + 1);
+        setTimeout(() => {
+          try {
+            if (webview.src === validatedURL) {
+              webview.src = validatedURL;
+            }
+          } catch (e) {}
+        }, 3000);
+        return;
+      }
     }
 
     // Get Chromium error details
@@ -125,6 +159,9 @@ function setupWebviewErrorHandling(webview) {
     if (!url.includes('error.html')) {
       state.isShowingError = false;
       state.lastFailedUrl = null;
+      if (url) {
+        state.retryCounts.delete(url);
+      }
       if (state.abortTimeout) {
         clearTimeout(state.abortTimeout);
         state.abortTimeout = null;

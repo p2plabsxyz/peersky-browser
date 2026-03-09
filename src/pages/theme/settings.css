@@ -327,6 +327,7 @@ body {
   box-sizing: border-box;
   white-space: nowrap;
   vertical-align: middle;
+  text-decoration: none;
 }
 
 .btn-secondary {
@@ -871,4 +872,174 @@ body {
   color: var(--settings-text-secondary);
   opacity: 0.75;
   margin-top: 4px;
+}
+
+/* Archive Section */
+.archive-filter-bar {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: var(--settings-card-bg);
+  border: 1px solid var(--settings-border);
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+}
+.archive-filter-bar .filter-label {
+  font-size: 0.85rem;
+  color: var(--settings-text-secondary);
+  margin-right: 0.5rem;
+  white-space: nowrap;
+}
+.archive-filter-bar select {
+  padding: 0.35em 0.6em;
+  border-radius: 4px;
+  background: var(--settings-bg-secondary);
+  color: var(--settings-text-primary);
+  border: 1px solid var(--settings-border);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.archive-filter-bar .filter-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 0.5rem;
+}
+.archive-subsection {
+  margin-bottom: 1.5rem;
+}
+.archive-subsection-label {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--settings-text-primary);
+  margin-bottom: 0.75rem;
+}
+.archive-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--settings-card-bg);
+  border: 1px solid var(--settings-border);
+  border-radius: 8px;
+  overflow: hidden;
+  table-layout: fixed;
+}
+.archive-table th,
+.archive-table td {
+  border-right: none;
+  border-left: none;
+  overflow-wrap: break-word;
+  word-break: break-all;
+}
+.archive-table thead {
+  background: var(--settings-bg-secondary);
+}
+.archive-table th {
+  text-align: left;
+  padding: 0.6rem 1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--settings-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-bottom: 1px solid var(--settings-border);
+}
+.archive-table td {
+  padding: 0.75rem 1rem;
+  font-size: 0.85rem;
+  color: var(--settings-text-primary);
+  border-bottom: 1px solid var(--settings-border);
+  vertical-align: middle;
+}
+.archive-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.archive-table td code {
+  background: rgba(88, 166, 255, 0.15);
+  color: #58a6ff;
+  padding: 0.15em 0.45em;
+  border-radius: 3px;
+  font-size: 0.8rem;
+}
+.archive-table td .btn {
+  margin-right: 0.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 60px;
+  box-sizing: border-box;
+  border: none;
+}
+.archive-table td .btn:last-child {
+  margin-right: 0;
+}
+.archive-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin-right: 12px;
+  background: none !important;
+  border: none;
+  cursor: pointer;
+  text-decoration: none;
+  color: var(--settings-text-primary);
+}
+.archive-action-btn:last-child {
+  margin-right: 0;
+}
+.archive-action-btn img {
+  width: 14px;
+  height: 14px;
+  opacity: 0.7;
+  filter: invert(1) brightness(0.8);
+  transition: opacity 0.2s ease, filter 0.2s ease;
+}
+.archive-action-btn:hover img {
+  opacity: 1;
+  filter: invert(1) brightness(1);
+}
+html[data-theme="light"] .archive-action-btn img {
+  filter: invert(0) brightness(0.2);
+}
+html[data-theme="light"] .archive-action-btn:hover img {
+  opacity: 1;
+  filter: invert(0) brightness(0);
+}
+.archive-hash {
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Droid Sans Mono', 'Source Code Pro', monospace;
+  font-size: 0.85rem;
+  color: #58a6ff;
+  font-weight: 400;
+}
+html[data-theme="light"] .archive-hash {
+  color: #bf8700;
+}
+.archive-table td:last-child {
+  white-space: nowrap;
+}
+.archive-empty {
+  color: var(--settings-text-secondary);
+  font-size: 0.85rem;
+  padding: 1rem;
+  text-align: center;
+  background: var(--settings-card-bg);
+  border: 1px solid var(--settings-border);
+  border-radius: 8px;
+}
+.archive-note {
+  color: var(--settings-text-secondary);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  margin: 0.75rem 0 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--settings-bg-secondary);
+  border: 1px solid var(--settings-border);
+  border-radius: 6px;
+}
+.archive-note-link {
+  color: var(--browser-theme-primary-highlight);
+  text-decoration: none;
+}
+.archive-note-link:hover {
+  text-decoration: underline;
 }

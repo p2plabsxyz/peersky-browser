@@ -2,20 +2,55 @@
 // Handles settings storage, defaults, validation, and IPC communication
 // Pattern: Similar to window-manager.js
 
-import { app, ipcMain, BrowserWindow, session, safeStorage } from 'electron';
+import { app, ipcMain, BrowserWindow, session, safeStorage, dialog } from 'electron';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
 import { getBrowserSession } from './session.js';
+import { ensCache, ipfsCache, hyperCache, saveEnsCache, saveIpfsCache, saveHyperCache } from './protocols/config.js';
+import { normalizeEnsHash } from './ens-utils.js';
 import { clearPersistedPermissions } from './permissions.js';
 
 const SETTINGS_FILE = path.join(app.getPath("userData"), "settings.json");
 const DEBUG_LOG = path.join(os.homedir(), '.peersky', 'debug.log');
+const MAX_ARCHIVE_EXPORT_BYTES = 5 * 1024 * 1024; // 5MB safety cap
+
+
 
 // Debug logging helper
 function logDebug(message) {
   const entry = `[${new Date().toISOString()}] Settings: ${message}\n`;
   fs.appendFile(DEBUG_LOG, entry).catch(() => {}); // Don't crash on failure
+}
+
+function normalizeArchiveJsonContent(jsonContent) {
+  let content;
+
+  if (typeof jsonContent === 'string') {
+    content = jsonContent;
+    try {
+      JSON.parse(content);
+    } catch {
+      throw new Error('Invalid archive export payload: string is not valid JSON');
+    }
+  } else if (jsonContent && typeof jsonContent === 'object') {
+    try {
+      content = JSON.stringify(jsonContent, null, 2);
+    } catch {
+      throw new Error('Invalid archive export payload: object could not be serialized');
+    }
+  } else {
+    throw new Error('Invalid archive export payload: expected a JSON string or object');
+  }
+
+  const sizeInBytes = Buffer.byteLength(content, 'utf8');
+  if (sizeInBytes > MAX_ARCHIVE_EXPORT_BYTES) {
+    throw new Error(
+      `Archive export payload too large: ${sizeInBytes} bytes (max ${MAX_ARCHIVE_EXPORT_BYTES} bytes)`
+    );
+  }
+
+  return content;
 }
 
 // Default settings configuration
@@ -111,10 +146,12 @@ async function resetP2PData({ resetIdentities = false } = {}) {
   const hyperDir = path.join(USER_DATA, 'hyper');
   const ensCache = path.join(USER_DATA, 'ensCache.json');
   const btState = path.join(USER_DATA, 'bt-state.json');
+  const portsFile = path.join(USER_DATA, 'peersky-ports.json');
 
-  // ENS cache and BitTorrent state cache can always be removed
+  // ENS cache, BitTorrent state, and hs cache can always be removed
   await fs.rm(ensCache, { recursive: true, force: true }).catch(() => {});
   await fs.rm(btState, { recursive: true, force: true }).catch(() => {});
+  await fs.rm(portsFile, { recursive: true, force: true }).catch(() => {});
 
   if (resetIdentities) {
     // full wipe
@@ -372,6 +409,81 @@ class SettingsManager {
         throw new Error(errorMsg);
       }
     });
+
+    // IPC handlers for archive functionality
+    ipcMain.handle("settings-get-archive-data", async () => {
+      return {
+        ipfs: ipfsCache || [],
+        hyper: hyperCache || [],
+        ens: Array.from((ensCache || new Map()).entries()).map(([name, entry]) => {
+          const rawHash = typeof entry === 'object' && entry !== null ? entry.hash : entry;
+          const timestamp = typeof entry === 'object' && entry !== null ? entry.timestamp : null;
+          return { name, hash: normalizeEnsHash(rawHash), timestamp };
+        })
+      };
+    });
+
+    ipcMain.handle("settings-export-archive", async (event, jsonContent) => {
+      const normalizedJsonContent = normalizeArchiveJsonContent(jsonContent);
+      const mainWindow = BrowserWindow.fromWebContents(event.sender);
+      const saveDialogOptions = {
+        title: "Export Archive Data",
+        defaultPath: path.join(app.getPath("downloads"), `peersky-archive-${new Date().toISOString().split('T')[0]}-${Math.floor(Math.random() * 1000000)}.json`),
+        filters: [{ name: "JSON", extensions: ["json"] }]
+      };
+      const { canceled, filePath } = mainWindow
+        ? await dialog.showSaveDialog(mainWindow, saveDialogOptions)
+        : await dialog.showSaveDialog(saveDialogOptions);
+
+      if (!canceled && filePath) {
+        await fs.writeFile(filePath, normalizedJsonContent, "utf-8");
+        return { success: true, filePath };
+      }
+      return { canceled: true };
+    });
+
+    ipcMain.handle("settings-clear-archive", async (event, cutoff) => {
+      try {
+        if (!cutoff || cutoff <= 0) {
+          // Clear all
+          if (ipfsCache) ipfsCache.length = 0;
+          if (hyperCache) hyperCache.length = 0;
+          if (ensCache) ensCache.clear();
+        } else {
+          // Keep entries outside the time window (before cutoff)
+          if (ipfsCache) {
+            const kept = ipfsCache.filter(item => item.timestamp < cutoff);
+            ipfsCache.length = 0;
+            kept.forEach(item => ipfsCache.push(item));
+          }
+          if (hyperCache) {
+            const kept = hyperCache.filter(item => item.timestamp < cutoff);
+            hyperCache.length = 0;
+            kept.forEach(item => hyperCache.push(item));
+          }
+          // ENS entries often lack timestamps, so only remove entries that have
+          // a timestamp within the window; keep all entries without timestamps.
+          if (ensCache) {
+            for (const [name, value] of ensCache.entries()) {
+              const ts = (typeof value === 'object' && value !== null) ? value.timestamp : null;
+              if (ts && ts >= cutoff) ensCache.delete(name);
+            }
+          }
+        }
+
+        // Save caches to disk
+        saveIpfsCache();
+        saveHyperCache();
+        saveEnsCache();
+        
+        return { success: true };
+      } catch (error) {
+        logDebug(`Failed to clear archive: ${error.message}`);
+        return { success: false, error: error.message };
+      }
+    });
+
+
   }
 
   async loadSettings() {
