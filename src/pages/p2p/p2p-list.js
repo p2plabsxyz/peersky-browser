@@ -2,6 +2,7 @@ const p2pApps = [
   { id: "ai-chat", name: "AI Chat", icon: "robot.svg", url: "peersky://p2p/ai-chat/" },
   { id: "chat", name: "Chat", icon: "chat.svg", url: "peersky://p2p/chat/" },
   { id: "editor", name: "Editor", icon: "file-code.svg", url: "peersky://p2p/editor/" },
+  { id: "p2pmd", name: "P2P Markdown", icon: "markdown.svg", url: "peersky://p2p/p2pmd/" },
   { id: "upload", name: "Upload", icon: "file-upload.svg", url: "peersky://p2p/upload/" },
   { id: "wiki", name: "Wiki", icon: "wikipedia.svg", url: "peersky://p2p/wiki/" }
 ];
