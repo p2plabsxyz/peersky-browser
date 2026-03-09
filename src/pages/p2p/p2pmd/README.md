@@ -62,6 +62,12 @@ Quick formatting buttons with keyboard shortcuts:
 - **Quote**: `> text`
 - **Slides Mode**: Toggle presentation view
 
+### Themes
+
+<div align="center">
+    <img src="./themes.png" width="639" alt="Different themes available in p2pmd">
+</div>
+
 ## How it works (high level)
 - The editor hosts a local HTTP session for the document and syncs changes over SSE.
 - Holesail creates a direct peer connection using a shared key.
