@@ -71,14 +71,37 @@ For `web3://` examples (contract reads, HTML resources, and `fetch` usage), see 
 
 ## 📄 p2p-list.js
 
-The file [`p2p-list.js`](../src/pages/p2p/p2p-list.js) exports a list of registered P2P app names.
+The file [`p2p-list.js`](../src/pages/p2p/p2p-list.js) exports a list of registered P2P app objects.
+It also provides helpers to manage pinned apps on the home screen:
+
+- `getPinnedApps()`: Returns an array of pinned app IDs (async, reads from the main-process settings via IPC).
+- `setPinnedState(id, isPinned)`: Updates the `pinnedP2PApps` setting and broadcasts a `pinned-apps-changed` event to sync the home screen P2P bar dynamically (follows the same IPC pattern as `showClock`).
+- `isPinned(id)`: Checks if a specific app is pinned (async).
+
+### Always-visible P2P bar
+
+The home screen includes a **P2P bar** (`<peer-bar>` web component in `peer-bar.js`) that is always visible at the bottom. It contains:
+
+1. A **constant box icon** (colored with `--browser-theme-primary-highlight`) that always links to `peersky://p2p/` — the P2P app management page. This icon cannot be removed or unpinned.
+2. **Pinned app icons** — each P2P app that the user has pinned appears as an SVG icon in the bar.
+3. A **Social Reader** link at the end.
+
+Icons appear with a "scale pop-in" animation on page load for a polished feel.
+
+### Managing apps at peersky://p2p/
+
+The page at `peersky://p2p/` (`pages/p2p/index.html`) serves as the P2P app management UI. It uses a `<p2p-app-manager>` web component that displays a table with columns:
+
+| Pin / Unpin | App Name | Open |
+|---|---|---|
+| Button to toggle pin state | Link to the app | Direct open link |
+
+Pin/unpin changes are persisted via the main-process settings system (`pinnedP2PApps` key in `settings.json`), ensuring the home screen P2P bar updates across windows in real time.
 
 To register a new P2P app:
 
 1. Add the folder for your app inside `./src/pages/p2p/`
-2. Update `p2p-list.js` with the new app name (e.g. `"chat"` or `"upload"`)
-3. Make sure your app is accessible at `peersky://p2p/your-app-name/`
-
-This list is used by the main P2P apps page to display and link to available apps.
+2. Update the `p2pApps` array in `p2p-list.js` with the new app object (e.g. `{ id: "chat", name: "Chat", icon: "chat.svg", url: "peersky://p2p/chat/" }`)
+3. Make sure your app is accessible at `peersky://p2p/your-app-id/`
 
 <!-- TODO: Add section about Git submodules for P2P apps -->

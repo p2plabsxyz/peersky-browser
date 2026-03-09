@@ -28,6 +28,7 @@ const DEFAULT_SETTINGS = {
   keepTabsExpanded: false,
   wallpaper: 'redwoods',
   wallpaperCustomPath: null,
+  pinnedP2PApps: null,
   extensionP2PEnabled: false,
   extensionAutoUpdate: true,
   llm: {
@@ -488,6 +489,7 @@ class SettingsManager {
       keepTabsExpanded: (v) => typeof v === "boolean",
       wallpaper: (v) => ["redwoods", "mountains", "custom"].includes(v),
       wallpaperCustomPath: (v) => v === null || typeof v === "string",
+      pinnedP2PApps: (v) => v === null || (Array.isArray(v) && v.every(id => typeof id === 'string')),
       llm: (v) => {
         // Validate LLM settings object (simplified for Ollama-only)
         if (typeof v !== 'object' || v === null) return false;
@@ -524,6 +526,7 @@ class SettingsManager {
     this.applySettingChange('verticalTabs', this.settings.verticalTabs);
     this.applySettingChange('keepTabsExpanded', this.settings.keepTabsExpanded);
     this.applySettingChange('wallpaper', this.settings.wallpaper);
+    this.applySettingChange('pinnedP2PApps', this.settings.pinnedP2PApps);
   }
 
   applySettingChange(key, value) {
@@ -579,6 +582,12 @@ class SettingsManager {
         windows.forEach(window => {
           if (window && !window.isDestroyed()) {
             window.webContents.send('wallpaper-changed', this.settings.wallpaper);
+          }
+        });
+      } else if (key === 'pinnedP2PApps') {
+        windows.forEach(window => {
+          if (window && !window.isDestroyed()) {
+            window.webContents.send('pinned-apps-changed', value);
           }
         });
       } else if (key === "customSearchTemplate") {
