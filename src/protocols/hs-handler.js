@@ -77,13 +77,13 @@ function savePortsToFile() {
 
 loadPortsFromFile();
 
-// SECURITY: Validate request origin - only allow peersky:// protocol
+// SECURITY: CORS headers for local HTTP server responses
+// Note: Electron custom protocols (peersky://, bt://, ipfs://, hyper://) don't send Origin headers
+// Security is enforced via hostname validation (urlObj.hostname !== "p2pmd") in protocol handler
+// This prevents external websites from calling hs://p2pmd APIs
 function getCorsHeaders(session) {
-  // Electron custom protocols don't send Origin header
-  // We validate at protocol handler level instead
-  // Only allow localhost for local server connections
   return {
-    "Access-Control-Allow-Origin": "http://127.0.0.1",
+    "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type"
   };
