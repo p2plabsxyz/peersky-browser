@@ -64,9 +64,7 @@ Quick formatting buttons with keyboard shortcuts:
 
 ### Themes
 
-<div align="center">
-    <img src="./themes.png" width="639" alt="Different themes available in p2pmd">
-</div>
+<img src="./themes.png" width="639" alt="Different themes available in p2pmd">
 
 ## How it works (high level)
 - The editor hosts a local HTTP session for the document and syncs changes over SSE.
