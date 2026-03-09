@@ -79,6 +79,11 @@
     - Decentralized file storage
   - [x] `peersky://p2p/editor/`
     - Build and publish websites
+  - [x] `peersky://p2p/p2pmd/`
+    - Real-time collaborative markdown editor
+    - Presentation slides mode with speaker notes
+    - AI-powered content generation
+    - Publish to IPFS/Hypercore
   - [x] `peersky://p2p/wiki/`
     - Browse Wikipedia over IPFS
   - [x] [reader.p2plabs.xyz](https://reader.distributed.press/)

@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en" style="background:#ffffff;color:#111111">
+<head>
+  <meta charset="utf-8">
+  <title>p2pmd document</title>
+  <style>
+  :root {
+    color-scheme: light;
+  }
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    background: #ffffff;
+    color: #111111;
+  }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    line-height: 1.6;
+    padding: 2rem;
+  }
+  pre, code {
+    background: #f3f4f6;
+    padding: 0.15rem 0.35rem;
+    border-radius: 6px;
+  }
+  pre code {
+    display: block;
+    padding: 1rem;
+    overflow: auto;
+  }
+  blockquote {
+    border-left: 3px solid #d1d5db;
+    padding-left: 1rem;
+    color: #374151;
+  }
+  footer.p2pmd-footer {
+    margin-top: 2rem;
+    font-size: 0.9rem;
+    color: #4b5563;
+  }
+  footer.p2pmd-footer a {
+    color: inherit;
+  }
+</style>
+</head>
+<body style="background:#ffffff;color:#111111">
+  <h1>Markdown Formatting Guide</h1>
+<p>This document shows the most common Markdown features and how they render.</p>
+<hr>
+<h2>Headings</h2>
+<h1>H1</h1>
+<h2>H2</h2>
+<h3>H3</h3>
+<h4>H4</h4>
+<h5>H5</h5>
+<h6>H6</h6>
+<hr>
+<h2>Text Styles</h2>
+<p><strong>Bold</strong><br>
+<em>Italic</em><br>
+<em><strong>Bold + Italic</strong></em><br>
+<s>Strikethrough</s></p>
+<p>Inline code: <code>const x = 42</code></p>
+<hr>
+<h2>Images</h2>
+<p><img src="https://dweb.link/ipfs/bafybeigk35lwlkef3x5637on77mid4oa36a3ymccr4ptv7x6ng6mg6iof4/peersky.png" alt="peersky"></p>
+<hr>
+<h2>Links</h2>
+<p><a href="https://peersky.p2plabs.xyz/" target="_blank" rel="noopener noreferrer">PeerSky Browser</a><br>
+<a href="./README.md" target="_blank" rel="noopener noreferrer">Relative link</a></p>
+<hr>
+<h2>Code Blocks</h2>
+<pre><code class="language-js">function hello() {
+  console.log(&quot;Hello world&quot;);
+}
+</code></pre>
+<hr>
+<h2>Paragraphs &amp; Line Breaks</h2>
+<p>This is a paragraph.</p>
+<p>This is another paragraph.</p>
+<p>Add two spaces at the end of a line for a<br>
+manual line break.</p>
+<hr>
+<h2>Blockquotes</h2>
+<blockquote>
+<p>This is a quote.</p>
+<p>It can span multiple lines.</p>
+</blockquote>
+<hr>
+<h2>Lists</h2>
+<h3>Unordered</h3>
+<ul>
+<li>Item one</li>
+<li>Item two
+<ul>
+<li>Nested item</li>
+<li>Nested item</li>
+</ul>
+</li>
+<li>Item three</li>
+</ul>
+<h3>Ordered</h3>
+<ol>
+<li>First</li>
+<li>Second</li>
+<li>Third</li>
+</ol>
+<hr>
+<h2>Task Lists</h2>
+<ul>
+<li>[x] Write document</li>
+<li>[ ] Add features</li>
+<li>[ ] Ship it</li>
+</ul>
+
+  <footer class="p2pmd-footer">Made by <a href="https://github.com/p2plabsxyz/p2pmd" target="_blank" rel="noopener noreferrer">p2pmd</a> and published with <a href="https://peersky.p2plabs.xyz/" target="_blank" rel="noopener noreferrer">PeerSky</a>.</footer>
+</body>
+</html>

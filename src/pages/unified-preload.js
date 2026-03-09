@@ -27,7 +27,8 @@ console.log('Unified-preload: URL detection', { url, isInternal, isExternal });
 const isP2P =
   url.startsWith('hyper://') ||
   url.startsWith('ipfs://')  ||
-  url.startsWith('ipns://');
+  url.startsWith('ipns://') ||
+  url.startsWith('hs://');
 
 const isBitTorrent =
   url.startsWith('bt://') ||
@@ -327,7 +328,10 @@ function createSettingsAPI(pageContext) {
           throw new Error('File data must include name and content');
         }
         return ipcRenderer.invoke('settings-upload-wallpaper', fileData);
-      }
+      },
+      getArchiveData: () => ipcRenderer.invoke('settings-get-archive-data'),
+      exportArchive: (jsonContent) => ipcRenderer.invoke('settings-export-archive', jsonContent),
+      clearArchive: (cutoff) => ipcRenderer.invoke('settings-clear-archive', cutoff)
     };
   } else if (pageContext.isExtensions) {
     // Extensions pages get limited settings API - only theme access
@@ -632,7 +636,7 @@ try {
       loadTabComponents: () => ipcRenderer.send('load-tab-components'),
       onVerticalTabsChanged: (callback) => createEventListener('vertical-tabs-changed', callback)
     })
-  } else if (isInternal) {
+  } else if (isInternal || isP2P) {
     // Other internal pages get minimal environment + very limited settings
     contextBridge.exposeInMainWorld('peersky', {
       environment: {
@@ -644,7 +648,8 @@ try {
         isSupported: () => ipcRenderer.invoke('llm-supported'),
         chat: (messages, options) => ipcRenderer.invoke('llm-chat', messages, options),
         complete: (prompt, options) => ipcRenderer.invoke('llm-complete', prompt, options)
-      }
+      },
+      printToPdf: (html, fileName) => ipcRenderer.invoke('p2pmd-print-to-pdf', { html, fileName })
     });
     
     // Very minimal electronAPI for theme and tabs settings
@@ -750,6 +755,23 @@ window.addEventListener('DOMContentLoaded', async () => {
       }
     }
     
+    // Inject syntax highlighting font for internal pages only (peersky://, browser://)
+    const isInternalPage = window.location.protocol === 'peersky:' || window.location.protocol === 'browser:';
+    if (isInternalPage) {
+      const fontStyle = document.createElement('style');
+      fontStyle.textContent = `
+        @font-face {
+          font-family: 'FontWithASyntaxHighlighter';
+          src: url('browser://theme/fonts/FontWithASyntaxHighlighter-Regular.woff2') format('woff2');
+        }
+        pre, code {
+          font-family: 'FontWithASyntaxHighlighter', monospace;
+        }
+      `;
+      document.head.appendChild(fontStyle);
+      console.log('Unified-preload: Syntax highlighting font injected for internal page');
+    }
+
     // Check if page already has stylesheets
     const hasStylesheets = [...document.styleSheets].some(s => {
       try { return !!s.cssRules } catch { return false }

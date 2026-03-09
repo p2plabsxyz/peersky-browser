@@ -99,7 +99,16 @@
       const protocol = protocolSelect.value;
   
       if (protocol === 'hyper') {
-          const hyperdriveUrl = await generateHyperdriveKey('drag-and-drop');
+          let name = 'untitled'; // Default name if we can't determine one
+          if (files.length > 0) {
+              const file = files[0];
+              if (file.webkitRelativePath) {
+                  name = file.webkitRelativePath.split('/')[0] || file.name;
+              } else {
+                  name = file.name;
+              }
+          }
+          const hyperdriveUrl = await generateHyperdriveKey(name);
           console.log(`Hyper base URL: ${hyperdriveUrl}`);
   
           for (const file of files) {
@@ -134,8 +143,10 @@
       } else {
           const formData = new FormData();
           for (const file of files) {
-              console.log(`Appending file for IPFS: ${file.name}`);
-              formData.append('file', file, file.name);
+              // Use webkitRelativePath to preserve folder structure for directory uploads
+              const filePath = file.webkitRelativePath || file.name;
+              console.log(`Appending file for IPFS: ${filePath}`);
+              formData.append('file', file, filePath);
           }
           const url = `ipfs://bafyaabakaieac/`;
           console.log(`Sending to IPFS: ${url}`);
