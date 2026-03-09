@@ -25,17 +25,19 @@ async function loadArchiveData() {
       if (filteredHyper.length > 0) {
         let html = '<table class="archive-table"><colgroup><col style="width:25%"><col style="width:30%"><col style="width:25%"><col style="width:20%"></colgroup><thead><tr><th>Name</th><th>Key</th><th>Time</th><th>Action</th></tr></thead><tbody>';
         [...filteredHyper].reverse().forEach(item => {
-          const time = new Date(item.timestamp).toLocaleString();
+          const date = new Date(item.timestamp);
+          const time = date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' }) + ', ' + 
+                       date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
           const safeName = escapeHtml(item.name || 'Unknown');
           const safeKey = escapeHtml(item.key);
           const safeTime = escapeHtml(time);
           html += `<tr>
             <td>${safeName}</td>
-            <td><code>${safeKey.substring(0, 16)}...</code></td>
+            <td class="archive-hash">${safeKey.substring(0, 16)}...</td>
             <td>${safeTime}</td>
             <td>
-              <button class="btn btn-secondary btn-sm copy-btn" data-copy="${safeKey}" title="Copy Key">${COPY_ICON}</button>
-              <a href="hyper://${safeKey}/" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" title="Open">${OPEN_ICON}</a>
+              <button class="archive-action-btn copy-btn" data-copy="${safeKey}" title="Copy Key">${COPY_ICON}</button>
+              <a href="hyper://${safeKey}/" target="_blank" rel="noopener noreferrer" class="archive-action-btn" title="Open">${OPEN_ICON}</a>
             </td>
           </tr>`;
         });
@@ -52,18 +54,20 @@ async function loadArchiveData() {
       if (filteredIpfs.length > 0) {
         let html = '<table class="archive-table"><colgroup><col style="width:30%"><col style="width:25%"><col style="width:25%"><col style="width:20%"></colgroup><thead><tr><th>Name</th><th>CID</th><th>Time</th><th>Action</th></tr></thead><tbody>';
         [...filteredIpfs].reverse().forEach(item => {
-          const time = new Date(item.timestamp).toLocaleString();
+          const date = new Date(item.timestamp);
+          const time = date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' }) + ', ' + 
+                       date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
           const safeName = escapeHtml(item.name || 'Unknown');
           const safeCid = escapeHtml(item.cid);
           const safeUrl = escapeHtml(item.url);
           const safeTime = escapeHtml(time);
           html += `<tr>
             <td>${safeName}</td>
-            <td><code>${safeCid.substring(0, 16)}...</code></td>
+            <td class="archive-hash">${safeCid.substring(0, 16)}...</td>
             <td>${safeTime}</td>
             <td>
-              <button class="btn btn-secondary btn-sm copy-btn" data-copy="${safeCid}" title="Copy CID">${COPY_ICON}</button>
-              <a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" title="Open">${OPEN_ICON}</a>
+              <button class="archive-action-btn copy-btn" data-copy="${safeCid}" title="Copy CID">${COPY_ICON}</button>
+              <a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="archive-action-btn" title="Open">${OPEN_ICON}</a>
             </td>
           </tr>`;
         });
@@ -84,13 +88,13 @@ async function loadArchiveData() {
           const safeName = escapeHtml(item.name);
           const safeHash = escapeHtml(rawHash);
           const openLinkHtml = isSupportedEnsOpenTarget(rawHash)
-            ? `<a href="${safeHash}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" title="Open">${OPEN_ICON}</a>`
+            ? `<a href="${safeHash}" target="_blank" rel="noopener noreferrer" class="archive-action-btn" title="Open">${OPEN_ICON}</a>`
             : '';
           html += `<tr>
             <td>${safeName}</td>
-            <td><code>${safeHash.substring(0, 20)}...</code></td>
+            <td class="archive-hash">${safeHash.substring(0, 20)}...</td>
             <td>
-              <button class="btn btn-secondary btn-sm copy-btn" data-copy="${safeHash}" title="Copy Hash">${COPY_ICON}</button>
+              <button class="archive-action-btn copy-btn" data-copy="${safeHash}" title="Copy Hash">${COPY_ICON}</button>
               ${openLinkHtml}
             </td>
           </tr>`;
