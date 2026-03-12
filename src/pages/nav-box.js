@@ -782,20 +782,33 @@ class NavBox extends HTMLElement {
       const handleDropNavigate = (event) => {
         event.preventDefault();
         event.stopPropagation();
-
         const { dataTransfer } = event;
         if (!dataTransfer) return;
-
         if (dataTransfer.files && dataTransfer.files.length > 0) {
           const file = dataTransfer.files[0];
-          const targetUrl = normalizeFilePathToUrl(webUtils.getPathForFile(file));
+          const filePath = webUtils.getPathForFile(file);
+          
+          // Check for .torrent BEFORE falling back to normal file browsing
+          if (file.name && file.name.toLowerCase().endsWith('.torrent')) {
+            navBoxIPC.invoke('resolve-torrent-file', filePath).then(torrentUrl => {
+              if (torrentUrl) {
+                urlInput.value = torrentUrl;
+                this.dispatchEvent(new CustomEvent("navigate", { detail: { url: torrentUrl } }));
+              }
+            }).catch(err => {
+              console.error('[NavBox] Failed to resolve torrent file:', err);
+              this.showToast('Failed to open torrent file', 'error');
+            });
+            
+            return;
+          }
+          const targetUrl = normalizeFilePathToUrl(filePath);
           if (targetUrl) {
             urlInput.value = targetUrl;
             this.dispatchEvent(new CustomEvent("navigate", { detail: { url: targetUrl } }));
             return;
           }
         }
-
         const textUrl = dataTransfer.getData("text/uri-list") || dataTransfer.getData("text/plain");
         if (textUrl) {
           const url = textUrl.trim();

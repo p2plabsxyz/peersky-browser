@@ -8,7 +8,7 @@ import { createHandler as createHyperHandler } from "./protocols/hyper-handler.j
 import { createHandler as createHSHandler } from "./protocols/hs-handler.js";
 import { createHandler as createWeb3Handler } from "./protocols/web3-handler.js";
 import { createHandler as createFileHandler } from "./protocols/file-handler.js";
-import { createHandler as createBittorrentHandler } from "./protocols/bittorrent-handler.js";
+import { createHandler as createBittorrentHandler, setupBittorrentIpc } from "./protocols/bittorrent-handler.js";
 import { ipfsOptions, hyperOptions } from "./protocols/config.js";
 import { createMenuTemplate } from "./actions.js";
 import WindowManager from "./window-manager.js";
@@ -100,6 +100,7 @@ app.whenReady().then(async () => {
   const userSession = getBrowserSession();
   await setupProtocols(userSession);
   installWebviewFileRedirect(userSession);
+  setupBittorrentIpc();
 
   // Global webview partition alignment and security hardening
   app.on('web-contents-created', (_e, wc) => {

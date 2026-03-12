@@ -5,6 +5,8 @@ import fs from "fs-extra";
 import { app } from "electron";
 import { generateTorrentUI } from "./bt/torrentPage.js";
 import settingsManager from "../settings-manager.js";
+import { ipcMain } from "electron";
+import parseTorrent from "parse-torrent";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -269,6 +271,43 @@ export async function createHandler() {
     }
   };
 }
+
+export function setupBittorrentIpc() {
+  ipcMain.handle('resolve-torrent-file', async (event, filePath) => {
+    try {
+      if (!filePath || typeof filePath !== 'string' || !filePath.toLowerCase().endsWith('.torrent')) {
+        throw new Error('Invalid .torrent file path');
+      }
+
+      const buffer = await fs.readFile(filePath);
+      const parsed = await parseTorrent(buffer);
+
+      if (!parsed || !parsed.infoHash) {
+        throw new Error('Could not extract infoHash from file');
+      }
+
+      // Build magnet URI with trackers from the .torrent file
+      let magnetUri = `magnet:?xt=urn:btih:${parsed.infoHash}`;
+      
+      // Add display name if available
+      if (parsed.name) {
+        magnetUri += `&dn=${encodeURIComponent(parsed.name)}`;
+      }
+      
+      // Add tracker URLs from the .torrent file — this is what makes it fast
+      if (parsed.announce && parsed.announce.length > 0) {
+        const trackers = parsed.announce.map(tr => `&tr=${encodeURIComponent(tr)}`).join('');
+        magnetUri += trackers;
+      }
+
+      return magnetUri;
+    } catch (err) {
+      console.error('[BT] IPC Error resolving torrent:', err.message);
+      return null;
+    }
+  });
+}
+
 
 async function handleAPI(api, queryParams, infoHash, request) {
   const hash = queryParams.get("hash") || infoHash;
