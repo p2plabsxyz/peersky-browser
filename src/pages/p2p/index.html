@@ -20,7 +20,7 @@
   </div>
 
   <script type="module">
-    import p2pApps, { isPinned, setPinnedState } from "peersky://p2p/p2p-list.js";
+    import p2pApps, { isPinned, setPinnedState, getPinnedApps } from "peersky://p2p/p2p-list.js";
     
     class P2PAppManager extends HTMLElement {
       constructor() {
@@ -93,10 +93,9 @@
           </style>
         `;
 
-        // Resolve pinned states in parallel
-        const pinnedStates = await Promise.all(
-          p2pApps.map(app => isPinned(app.id))
-        );
+        // Get all pinned apps once
+        const pinnedIds = await getPinnedApps();
+        const pinnedStates = p2pApps.map(app => pinnedIds.includes(app.id));
 
         const sorted = p2pApps
           .map((app, i) => ({ ...app, pinned: pinnedStates[i] }))
@@ -140,7 +139,7 @@
             const appId = e.target.getAttribute('data-id');
             const currentlyPinned = e.target.getAttribute('data-pinned') === 'true';
             await setPinnedState(appId, !currentlyPinned);
-            this.render();
+            // Re-render is triggered by the onPinnedAppsChanged listener in connectedCallback
           });
         });
       }

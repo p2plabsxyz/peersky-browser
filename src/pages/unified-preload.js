@@ -295,7 +295,7 @@ if (isInternal || isP2P || url.includes('agregore.mauve.moe')) {
 const context = { url, isSettings, isExtensions, isHome, isBookmarks, isTabsPage, isP2PPage, isInternal, isExternal };
 
 console.log(`Unified-preload: Context detection - URL: ${url}`);
-console.log(`Unified-preload: isSettings: ${isSettings}, isExtensions: ${isExtensions}, isHome: ${isHome}, isBookmarks: ${isBookmarks}, isInternal: ${isInternal}, isExternal: ${isExternal}`);
+console.log(`Unified-preload: isSettings: ${isSettings}, isExtensions: ${isExtensions}, isHome: ${isHome}, isBookmarks: ${isBookmarks}, isP2PPage: ${isP2PPage}, isInternal: ${isInternal}, isExternal: ${isExternal}`);
 
 // Factory function to create context-appropriate settings API with access control
 function createSettingsAPI(pageContext) {
@@ -354,6 +354,24 @@ function createSettingsAPI(pageContext) {
           throw new Error(`Access denied: Home pages can only access: ${allowedKeys.join(', ')}`);
         }
         return baseAPI.get(key);
+      }
+    };
+  } else if (pageContext.isP2PPage) {
+    // P2P pages can read/write pinnedP2PApps setting
+    return {
+      get: (key) => {
+        const allowedKeys = ['theme', 'verticalTabs', 'pinnedP2PApps'];
+        if (!allowedKeys.includes(key)) {
+          throw new Error(`Access denied: P2P pages can only access: ${allowedKeys.join(', ')}`);
+        }
+        return baseAPI.get(key);
+      },
+      set: (key, value) => {
+        const allowedKeys = ['pinnedP2PApps'];
+        if (!allowedKeys.includes(key)) {
+          throw new Error(`Access denied: P2P pages can only set: ${allowedKeys.join(', ')}`);
+        }
+        return ipcRenderer.invoke('settings-set', key, value);
       }
     };
   } else if (pageContext.isInternal) {
@@ -652,33 +670,14 @@ try {
       }
     });
 
-    // P2P pages can read/write pinnedP2PApps setting
-    const p2pSettingsAPI = {
-      get: (key) => {
-        const allowedKeys = ['theme', 'verticalTabs', 'pinnedP2PApps'];
-        if (!allowedKeys.includes(key)) {
-          throw new Error(`Access denied: P2P pages can only access: ${allowedKeys.join(', ')}`);
-        }
-        return ipcRenderer.invoke('settings-get', key);
-      },
-      set: (key, value) => {
-        const allowedKeys = ['pinnedP2PApps'];
-        if (!allowedKeys.includes(key)) {
-          throw new Error(`Access denied: P2P pages can only set: ${allowedKeys.join(', ')}`);
-        }
-        return ipcRenderer.invoke('settings-set', key, value);
-      }
-    };
-
     contextBridge.exposeInMainWorld('electronAPI', {
-      settings: p2pSettingsAPI,
+      settings: settingsAPI,
       onPinnedAppsChanged: (callback) => createEventListener('pinned-apps-changed', callback)
     });
 
     console.log('Unified-preload: P2P page API exposed (pinnedP2PApps settings)');
 
-  } 
-  else if (isInternal || isP2P) {
+  } else if (isInternal || isP2P) {
     // Other internal pages get minimal environment + very limited settings
     contextBridge.exposeInMainWorld('peersky', {
       environment: {

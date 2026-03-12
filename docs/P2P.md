@@ -116,7 +116,7 @@ The file [`p2p-list.js`](../src/pages/p2p/p2p-list.js) exports a list of registe
 It also provides helpers to manage pinned apps on the home screen:
 
 - `getPinnedApps()`: Returns an array of pinned app IDs (async, reads from the main-process settings via IPC).
-- `setPinnedState(id, isPinned)`: Updates the `pinnedP2PApps` setting and broadcasts a `pinned-apps-changed` event to sync the home screen P2P bar dynamically (follows the same IPC pattern as `showClock`).
+- `setPinnedState(id, pinned)`: Updates the `pinnedP2PApps` setting. Saving this setting triggers the main process to broadcast a `pinned-apps-changed` event to sync the home screen P2P bar dynamically (follows the same IPC pattern as `showClock`).
 - `isPinned(id)`: Checks if a specific app is pinned (async).
 
 ### Always-visible P2P bar

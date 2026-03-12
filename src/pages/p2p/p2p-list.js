@@ -9,7 +9,7 @@ const p2pApps = [
 
 /**
  * Get pinned app IDs from settings via IPC.
- * Returns null (meaning all pinned) or an array of IDs.
+ * Returns an array of pinned app IDs. Returns all app IDs if none are explicitly pinned.
  */
 export const getPinnedApps = async () => {
   try {
