@@ -3,6 +3,7 @@ const p2pApps = [
   { id: "chat", name: "Chat", icon: "chat.svg", url: "peersky://p2p/chat/" },
   { id: "editor", name: "Editor", icon: "file-code.svg", url: "peersky://p2p/editor/" },
   { id: "p2pmd", name: "P2P Markdown", icon: "markdown.svg", url: "peersky://p2p/p2pmd/" },
+  { id: "reader", name: "Social Reader", icon: "people.svg", url: "https://reader.distributed.press/" },
   { id: "upload", name: "Upload", icon: "file-upload.svg", url: "peersky://p2p/upload/" },
   { id: "wiki", name: "Wiki", icon: "wikipedia.svg", url: "peersky://p2p/wiki/" }
 ];
@@ -14,12 +15,12 @@ const p2pApps = [
 export const getPinnedApps = async () => {
   try {
     const stored = await window.electronAPI.settings.get('pinnedP2PApps');
-    // A stored value of null means all apps are pinned by default
-    if (stored === null || stored === undefined) return p2pApps.map(a => a.id);
+    // A stored value of null means all apps are pinned by default except Social Reader
+    if (stored === null || stored === undefined) return p2pApps.filter(a => a.id !== 'reader').map(a => a.id);
     return stored;
   } catch (e) {
     console.warn("Failed to read pinnedP2PApps from settings", e);
-    return p2pApps.map(a => a.id);
+    return p2pApps.filter(a => a.id !== 'reader').map(a => a.id);
   }
 };
 

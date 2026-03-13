@@ -65,16 +65,7 @@ class PeerBar extends HTMLElement {
       container.appendChild(a);
     });
 
-    // 3. Social Reader
-    const socialReader = document.createElement('a');
-    socialReader.href = 'https://reader.distributed.press/';
-    const socialImg = document.createElement('img');
-    socialImg.src = 'peersky://static/assets/svg/people.svg';
-    socialImg.title = 'Social Reader';
-    socialImg.alt = 'Social Reader';
-    socialImg.style.animationDelay = `${(pinnedApps.length + 1) * 0.1}s`;
-    socialReader.appendChild(socialImg);
-    container.appendChild(socialReader);
+    // Social Reader is now dynamically pulled if pinned
 
     this.appendChild(container);
     } finally {
