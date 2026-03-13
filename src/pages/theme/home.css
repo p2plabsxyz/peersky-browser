@@ -75,6 +75,7 @@ body::before {
   mask: url("peersky://static/assets/svg/box.svg") no-repeat center;
   -webkit-mask-size: 25px;
   mask-size: 25px;
+  filter: drop-shadow(0.5px 0 0 var(--browser-theme-primary-highlight, #3b82f6)) drop-shadow(-0.5px 0 0 var(--browser-theme-primary-highlight, #3b82f6)) drop-shadow(0 0.5px 0 var(--browser-theme-primary-highlight, #3b82f6)) drop-shadow(0 -0.5px 0 var(--browser-theme-primary-highlight, #3b82f6));
   animation: pulseIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
   animation-delay: 0s;
   box-sizing: content-box;

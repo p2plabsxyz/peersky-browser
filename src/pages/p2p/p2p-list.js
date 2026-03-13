@@ -9,12 +9,12 @@ const p2pApps = [
 
 /**
  * Get pinned app IDs from settings via IPC.
- * Returns an array of pinned app IDs. Returns all app IDs if none are explicitly pinned.
+ * @returns {Promise<string[]>} Returns an array of pinned app IDs. Returns all app IDs if none are explicitly pinned.
  */
 export const getPinnedApps = async () => {
   try {
     const stored = await window.electronAPI.settings.get('pinnedP2PApps');
-    // null means all apps pinned (default)
+    // A stored value of null means all apps are pinned by default
     if (stored === null || stored === undefined) return p2pApps.map(a => a.id);
     return stored;
   } catch (e) {
