@@ -54,14 +54,23 @@ body::before {
 }
 
 .peerbar a {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 35px;
+  height: 35px;
+  transition: transform 0.3s ease;
+}
+
+.peerbar a:hover {
+  transform: scale(1.5);
 }
 
 .peerbar img, .peerbar .p2p-base-icon {
   width: 25px;
   height: 25px;
   padding: 5px;
-  transition: transform 0.3s ease, filter 0.3s ease;
+  transition: filter 0.3s ease;
   animation: scalePopIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
 }
 
@@ -90,8 +99,4 @@ body::before {
   0% { transform: scale(0.8); opacity: 0; }
   50% { transform: scale(1.08); opacity: 1; }
   100% { transform: scale(1); opacity: 1; }
-}
-
-.peerbar img:hover, .peerbar .p2p-base-icon:hover {
-  transform: scale(1.1);
 }
