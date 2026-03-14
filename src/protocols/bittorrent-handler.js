@@ -20,12 +20,19 @@ let requestId = 0;
 const statusCache = new Map();
 
 // Persist all torrent states (active, paused, completed) so they survive restarts
-const torrentStateCachePath = path.join(app.getPath("userData"), "bt-state.json");
+let torrentStateCachePath = null;
+function getTorrentStateCachePath() {
+  if (!torrentStateCachePath) {
+    torrentStateCachePath = path.join(app.getPath("userData"), "bt-state.json");
+  }
+  return torrentStateCachePath;
+}
 
 function loadTorrentStateCache() {
   try {
-    if (fs.existsSync(torrentStateCachePath)) {
-      const data = fs.readJsonSync(torrentStateCachePath);
+    const cachePath = getTorrentStateCachePath();
+    if (fs.existsSync(cachePath)) {
+      const data = fs.readJsonSync(cachePath);
       for (const [hash, status] of Object.entries(data)) {
         statusCache.set(hash, status);
       }
@@ -38,9 +45,10 @@ function loadTorrentStateCache() {
 
 function saveTorrentState(infoHash, status) {
   try {
-    const data = fs.existsSync(torrentStateCachePath) ? fs.readJsonSync(torrentStateCachePath) : {};
+    const cachePath = getTorrentStateCachePath();
+    const data = fs.existsSync(cachePath) ? fs.readJsonSync(cachePath) : {};
     data[infoHash] = status;
-    fs.writeJsonSync(torrentStateCachePath, data, { spaces: 2 });
+    fs.writeJsonSync(cachePath, data, { spaces: 2 });
   } catch (err) {
     console.error("[BT] Failed to save torrent state:", err.message);
   }
@@ -48,10 +56,11 @@ function saveTorrentState(infoHash, status) {
 
 function removeTorrentState(infoHash) {
   try {
-    if (fs.existsSync(torrentStateCachePath)) {
-      const data = fs.readJsonSync(torrentStateCachePath);
+    const cachePath = getTorrentStateCachePath();
+    if (fs.existsSync(cachePath)) {
+      const data = fs.readJsonSync(cachePath);
       delete data[infoHash];
-      fs.writeJsonSync(torrentStateCachePath, data, { spaces: 2 });
+      fs.writeJsonSync(cachePath, data, { spaces: 2 });
     }
   } catch (err) {
     console.error("[BT] Failed to remove torrent state:", err.message);
@@ -59,7 +68,6 @@ function removeTorrentState(infoHash) {
 }
 
 // Load persisted torrent states on module init
-loadTorrentStateCache();
 
 const DEFAULT_TRACKERS = [
   "wss://tracker.openwebtorrent.com",
@@ -75,6 +83,8 @@ const DEFAULT_TRACKERS = [
 
 async function initializeWorker() {
   if (worker) return;
+
+  loadTorrentStateCache();
 
   const downloadPath = path.join(app.getPath("downloads"), "PeerskyTorrents");
   await fs.ensureDir(downloadPath);
@@ -154,13 +164,14 @@ async function initializeWorker() {
     // Save all active torrents to disk before clearing cache
     // Mark them as paused so they show resume button on restart
     try {
-      const data = fs.existsSync(torrentStateCachePath) ? fs.readJsonSync(torrentStateCachePath) : {};
+      const cachePath = getTorrentStateCachePath();
+      const data = fs.existsSync(cachePath) ? fs.readJsonSync(cachePath) : {};
       for (const [hash, status] of statusCache.entries()) {
         if (!status.done) {
           data[hash] = { ...status, paused: true };
         }
       }
-      fs.writeJsonSync(torrentStateCachePath, data, { spaces: 2 });
+      fs.writeJsonSync(cachePath, data, { spaces: 2 });
       console.log(`[BT] Saved ${Object.keys(data).length} torrent state(s) on worker exit`);
     } catch (err) {
       console.error("[BT] Failed to save torrent states on exit:", err.message);

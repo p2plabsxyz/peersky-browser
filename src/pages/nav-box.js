@@ -794,6 +794,8 @@ class NavBox extends HTMLElement {
               if (torrentUrl) {
                 urlInput.value = torrentUrl;
                 this.dispatchEvent(new CustomEvent("navigate", { detail: { url: torrentUrl } }));
+              } else {
+                throw new Error('Could not resolve .torrent file');
               }
             }).catch(err => {
               console.error('[NavBox] Failed to resolve torrent file:', err);
