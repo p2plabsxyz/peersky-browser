@@ -68,3 +68,10 @@ body::before {
 .peerbar img:hover {
   transform: scale(1.1);
 }
+
+.clock-period {
+  font-size: 0.35em;
+  vertical-align: super;
+  margin-left: 3px;
+  opacity: 0.9;
+}
