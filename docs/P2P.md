@@ -119,16 +119,6 @@ It also provides helpers to manage pinned apps on the home screen:
 - `setPinnedState(id, pinned)`: Updates the `pinnedP2PApps` setting. Saving this setting triggers the main process to broadcast a `pinned-apps-changed` event to sync the home screen P2P bar dynamically (follows the same IPC pattern as `showClock`).
 - `isPinned(id)`: Checks if a specific app is pinned (async).
 
-### Always-visible P2P bar
-
-The home screen includes a **P2P bar** (`<peer-bar>` web component in `peer-bar.js`) that is always visible at the bottom. It contains:
-
-1. A **constant box icon** (colored with `--browser-theme-primary-highlight`) that always links to `peersky://p2p/` — the P2P app management page. This icon cannot be removed or unpinned.
-2. **Pinned app icons** — each P2P app that the user has pinned appears as an SVG icon in the bar.
-3. A **Social Reader** link at the end.
-
-Icons appear with a "scale pop-in" animation on page load for a polished feel.
-
 ### Managing apps at peersky://p2p/
 
 The page at `peersky://p2p/` (`pages/p2p/index.html`) serves as the P2P app management UI. It uses a `<p2p-app-manager>` web component that displays a table with columns:

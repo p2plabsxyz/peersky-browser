@@ -65,8 +65,6 @@ class PeerBar extends HTMLElement {
       container.appendChild(a);
     });
 
-    // Social Reader is now dynamically pulled if pinned
-
     this.appendChild(container);
     } finally {
       this._building = false;

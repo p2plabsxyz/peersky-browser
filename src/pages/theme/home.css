@@ -63,7 +63,7 @@ body::before {
 }
 
 .peerbar a:hover {
-  transform: scale(1.5);
+  transform: scale(1.3);
 }
 
 .peerbar img, .peerbar .p2p-base-icon {
