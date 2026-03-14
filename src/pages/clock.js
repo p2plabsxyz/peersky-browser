@@ -77,7 +77,7 @@ class Clock extends HTMLElement {
         this.style.backdropFilter = "blur(10px) saturate(180%)";
         this.style.border = "1px solid rgba(255, 255, 255, 0.2)";
         this.style.boxShadow = "0 4px 10px rgba(0, 0, 0, 0.2)";
-        this.textContent = this.formatTime(this.currentTime);
+        this.innerHTML = this.formatTime(this.currentTime);
     }
 
     startClock() {
@@ -98,7 +98,7 @@ class Clock extends HTMLElement {
         if (this.clockFormat === '12h') {
             const period = hours >= 12 ? 'PM' : 'AM';
             hours = hours % 12 || 12;
-            return `${hours}:${minutes} ${period}`;
+            return `${hours}:${minutes}<span class="clock-period">${period}</span>`;
         }
 
         return `${String(hours).padStart(2, "0")}:${minutes}`;
