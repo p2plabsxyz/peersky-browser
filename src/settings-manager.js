@@ -59,6 +59,7 @@ const DEFAULT_SETTINGS = {
   customSearchTemplate: "https://duckduckgo.com/?q=%s",
   theme: 'dark',
   showClock: true,
+  clockFormat: '24h',
   verticalTabs: false,
   keepTabsExpanded: false,
   wallpaper: 'redwoods',
@@ -303,6 +304,14 @@ class SettingsManager {
       } catch (error) {
         logDebug(`Error resetting settings: ${error.message}`);
         throw error;
+      }
+    });
+
+    ipcMain.on('settings-get-clock-format-sync', (event) => {
+      try {
+        event.returnValue = this.settings.clockFormat || '24h';
+      } catch {
+        event.returnValue = '24h';
       }
     });
 
@@ -597,6 +606,7 @@ class SettingsManager {
           "violet",
         ].includes(v),
       showClock: (v) => typeof v === "boolean",
+      clockFormat: (v) => ['12h', '24h'].includes(v),
       verticalTabs: (v) => typeof v === "boolean",
       keepTabsExpanded: (v) => typeof v === "boolean",
       wallpaper: (v) => ["redwoods", "mountains", "custom"].includes(v),
@@ -635,6 +645,7 @@ class SettingsManager {
     this.applySettingChange('theme', this.settings.theme);
     this.applySettingChange('searchEngine', this.settings.searchEngine);
     this.applySettingChange('showClock', this.settings.showClock);
+    this.applySettingChange('clockFormat', this.settings.clockFormat);
     this.applySettingChange('verticalTabs', this.settings.verticalTabs);
     this.applySettingChange('keepTabsExpanded', this.settings.keepTabsExpanded);
     this.applySettingChange('wallpaper', this.settings.wallpaper);
@@ -668,6 +679,12 @@ class SettingsManager {
         windows.forEach(window => {
           if (window && !window.isDestroyed()) {
             window.webContents.send('show-clock-changed', value);
+          }
+        });
+      } else if (key === 'clockFormat') {
+        windows.forEach(window => {
+          if (window && !window.isDestroyed()) {
+            window.webContents.send('clock-format-changed', value);
           }
         });
       } else if (key === 'wallpaper') {

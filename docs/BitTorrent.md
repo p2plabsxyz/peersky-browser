@@ -14,6 +14,9 @@ Peersky supports BitTorrent downloading and streaming natively using [WebTorrent
 
 All three schemes load the same torrent download UI.
 
+### Opening Local Torrent Files
+You can drag and drop a local `.torrent` file directly onto the browser's address bar. The browser will automatically parse the file to obtain its infohash and resolve it to a `magnet:` URI, opening the standard torrent start page.
+
 ![PeerSky bittorrent: themes](./images/peersky-bittorrent-themes.gif)
 
 ## How It Works

@@ -349,7 +349,7 @@ function createSettingsAPI(pageContext) {
     // Limited API for home pages - clock, wallpaper, and pinned P2P apps
     return {
       get: (key) => {
-        const allowedKeys = ['showClock', 'wallpaper', 'pinnedP2PApps'];
+        const allowedKeys = ['showClock', 'wallpaper', 'clockFormat', 'pinnedP2PApps'];
         if (!allowedKeys.includes(key)) {
           throw new Error(`Access denied: Home pages can only access: ${allowedKeys.join(', ')}`);
         }
@@ -511,6 +511,7 @@ try {
       onThemeChanged: (callback) => createEventListener('theme-changed', callback),
       onSearchEngineChanged: (callback) => createEventListener('search-engine-changed', callback),
       onShowClockChanged: (callback) => createEventListener('show-clock-changed', callback),
+      onClockFormatChanged: (callback) => createEventListener('clock-format-changed', callback),
       onWallpaperChanged: (callback) => createEventListener('wallpaper-changed', callback),
       readCSS: cssAPI.readCSS,
       extensions: extensionAPI,
@@ -564,6 +565,14 @@ try {
       console.warn('Unified-preload: Failed to get wallpaper URL:', error.message);
     }
 
+    let clockFormat = '24h';
+    try {
+      clockFormat = ipcRenderer.sendSync('settings-get-clock-format-sync');
+      console.log('Unified-preload: Clock format retrieved:', clockFormat);
+    } catch (error) {
+      console.warn('Unified-preload: Failed to get clock format:', error.message);
+    }
+
     // Function to inject wallpaper style
     const injectWallpaper = () => {
       if (wallpaperURL && typeof wallpaperURL === 'string') {
@@ -608,9 +617,11 @@ try {
     // Home electronAPI with browser action support for extension toolbar
     contextBridge.exposeInMainWorld('electronAPI', {
       settings: settingsAPI, // Uses limited home API automatically
+      getClockFormatSync: () => clockFormat,
       getWallpaperUrl: () => ipcRenderer.invoke('settings-get-wallpaper-url'),
       onShowClockChanged: (callback) => createEventListener('show-clock-changed', callback),
       onPinnedAppsChanged: (callback) => createEventListener('pinned-apps-changed', callback),
+      onClockFormatChanged: (callback) => createEventListener('clock-format-changed', callback),
       onWallpaperChanged: (callback) => createEventListener('wallpaper-changed', callback),
       // Extension browser action APIs for home page toolbar
       extensions: {

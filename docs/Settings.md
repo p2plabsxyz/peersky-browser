@@ -1,4 +1,3 @@
-
 # Peersky Settings (`peersky://settings`)
 
 ## 1. Overview
@@ -46,17 +45,18 @@ All settings-related functionality in Peersky flows through a unified preload an
 
 ### API Overview
 
-| API Method                          | IPC Channel                     | Description                              |
-|------------------------------------|----------------------------------|------------------------------------------|
-| `settings.get(key)`                | `settings-get`                  | Get a single setting                     |
-| `settings.getAll()`                | `settings-get-all`              | Retrieve all settings                    |
-| `settings.set(key, value)`         | `settings-set`                  | Update setting → persist → broadcast     |
-| `settings.reset()`                 | `settings-reset`                | Reset all settings to defaults           |
-| `settings.clearBrowserCache()`     | `settings-clear-cache`          | Clears browser cache                     |
-| `settings.resetP2PData()`          | `settings-reset-p2p`            | Clears P2P caches                        |
-| `settings.uploadWallpaper(data)`   | `settings-upload-wallpaper`     | Save + set custom wallpaper              |
-| `getWallpaperUrl()`                | `settings-get-wallpaper-url`    | Get wallpaper path (async)               |
-| `getWallpaperUrlSync()`            | `settings-get-wallpaper-url-sync` | Preload sync load for zero-flicker    |
+| API Method                          | IPC Channel                       | Description                              |
+|-------------------------------------|-----------------------------------|------------------------------------------|
+| `settings.get(key)`                 | `settings-get`                    | Get a single setting                     |
+| `settings.getAll()`                 | `settings-get-all`                | Retrieve all settings                    |
+| `settings.set(key, value)`          | `settings-set`                    | Update setting → persist → broadcast     |
+| `settings.reset()`                  | `settings-reset`                  | Reset all settings to defaults           |
+| `settings.clearBrowserCache()`      | `settings-clear-cache`            | Clears browser cache                     |
+| `settings.resetP2PData()`           | `settings-reset-p2p`              | Clears P2P caches                        |
+| `settings.uploadWallpaper(data)`    | `settings-upload-wallpaper`       | Save + set custom wallpaper              |
+| `getWallpaperUrl()`                 | `settings-get-wallpaper-url`      | Get wallpaper path (async)               |
+| `getWallpaperUrlSync()`             | `settings-get-wallpaper-url-sync` | Preload sync load for zero-flicker       |
+| `getClockFormatSync()`              | `settings-get-clock-format-sync`  | Preload sync load for clock format       |
 
 ### Event Listeners
 
@@ -64,6 +64,7 @@ All settings-related functionality in Peersky flows through a unified preload an
 - `onWallpaperChanged(cb)`
 - `onSearchEngineChanged(cb)`
 - `onShowClockChanged(cb)`
+- `onClockFormatChanged(cb)`
 
 ---
 
@@ -92,6 +93,10 @@ Each section is built using simple HTML blocks styled with internal and theme-pr
 - Built-in or uploaded image via `uploadWallpaper(data)`
 - Live updated via `wallpaper-changed` event
 
+### Clock
+
+- Toggle visibility via `settings.set('showClock', boolean)`
+- Switch between 12-hour and 24-hour formats via `settings.set('clockFormat', '12h' | '24h')`
 
 ### Search Engine
 

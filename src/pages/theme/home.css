@@ -100,3 +100,10 @@ body::before {
   50% { transform: scale(1.08); opacity: 1; }
   100% { transform: scale(1); opacity: 1; }
 }
+
+.clock-period {
+  font-size: 0.35em;
+  vertical-align: super;
+  margin-left: 3px;
+  opacity: 0.9;
+}
