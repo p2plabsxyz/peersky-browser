@@ -9,20 +9,9 @@
   body {
     background-color: var(--browser-theme-background);
     color: var(--browser-theme-text-color);
-  }
-  #app-list ul {
-  list-style-type: disc;
-  }
-  #app-list li {
-    margin: 2px 0;
-  }
-  #app-list a {
-    color: var(--browser-theme-text-color);
-    text-decoration: none;
-    font-size: 1.1rem;
-  }
-  #app-list a:hover {
-    text-decoration: underline;
+    font-family: var(--browser-theme-font-family, Arial, sans-serif);
+    margin: 0;
+    padding: 20px;
   }
 </style>
 <body>
@@ -31,25 +20,9 @@
   </div>
 
   <script type="module">
-    import p2pApps from "peersky://p2p/p2p-list.js";
+    import "peersky://static/js/p2p-app-manager.js";
     const container = document.getElementById('app-list');
     container.textContent = '';
-
-    // TODO: Add filtering UI & logic here for p2pApps
-    const ul = document.createElement('ul');
-
-    p2pApps
-      .slice()
-      .sort((a, b) => a.localeCompare(b))
-      .forEach(app => {
-        const li = document.createElement('li');
-        const link = document.createElement('a');
-        link.href = `peersky://p2p/${app}/`;
-        link.textContent = `${app}/`;
-        li.appendChild(link);
-        ul.appendChild(li);
-      });
-
-    container.appendChild(ul);
+    container.appendChild(document.createElement('p2p-app-manager'));
   </script>
 </body>
