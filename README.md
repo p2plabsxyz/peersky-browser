@@ -157,11 +157,11 @@
 
   - [x] Option to generate QR Code for every page in the URL prompt with [plan1](./docs/Plan1.md).
 
-- [ ] Archive (peersky://archive):
+- [x] Archive (peersky://archive):
 
-  - [ ] List and showcase published content from `peersky://p2p/` apps for enhanced discoverability.
-  - [ ] Provide metadata (e.g., creation date, content type) to improve navigation and usability.
-  - [ ] Ability to download all the hashes of published data in a .json file.
+  - [x] List and showcase published content from `peersky://p2p/` apps for enhanced discoverability.
+  - [x] Provide metadata (e.g., creation date, content type) to improve navigation and usability.
+  - [x] Ability to download all the hashes of published data in a .json file.
 
 ## Development
 
