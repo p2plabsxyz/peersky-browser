@@ -678,7 +678,8 @@ try {
         isSupported: () => ipcRenderer.invoke('llm-supported'),
         chat: (messages, options) => ipcRenderer.invoke('llm-chat', messages, options),
         complete: (prompt, options) => ipcRenderer.invoke('llm-complete', prompt, options)
-      }
+      },
+      printToPdf: (html, fileName) => ipcRenderer.invoke('p2pmd-print-to-pdf', { html, fileName })
     });
 
     contextBridge.exposeInMainWorld('electronAPI', {
