@@ -250,7 +250,21 @@ async function setupProtocols(session) {
 }
 
 function installWebviewFileRedirect(session) {
-  session.webRequest.onBeforeRequest({ urls: ["file://*/*"] }, (_details, callback) => {
+  session.webRequest.onBeforeRequest({ urls: ["<all_urls>"] }, (details, callback) => {
+    const url = details?.url || "";
+    if (url.startsWith("file://")) {
+      callback({});
+      return;
+    }
+    if (url.startsWith("chrome-extension://")) {
+      callback({});
+      return;
+    }
+    try {
+      extensionManager.electronChromeExtensions?.notifyWebRequestOnBeforeRequest(details);
+    } catch (e) {
+      console.warn("[webRequest] Extension dispatch failed:", e?.message);
+    }
     callback({});
   });
 }
