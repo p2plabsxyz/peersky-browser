@@ -59,10 +59,12 @@ const DEFAULT_SETTINGS = {
   customSearchTemplate: "https://duckduckgo.com/?q=%s",
   theme: 'dark',
   showClock: true,
+  clockFormat: '24h',
   verticalTabs: false,
   keepTabsExpanded: false,
   wallpaper: 'redwoods',
   wallpaperCustomPath: null,
+  pinnedP2PApps: null,
   extensionP2PEnabled: false,
   extensionAutoUpdate: true,
   llm: {
@@ -302,6 +304,14 @@ class SettingsManager {
       } catch (error) {
         logDebug(`Error resetting settings: ${error.message}`);
         throw error;
+      }
+    });
+
+    ipcMain.on('settings-get-clock-format-sync', (event) => {
+      try {
+        event.returnValue = this.settings.clockFormat || '24h';
+      } catch {
+        event.returnValue = '24h';
       }
     });
 
@@ -596,10 +606,12 @@ class SettingsManager {
           "violet",
         ].includes(v),
       showClock: (v) => typeof v === "boolean",
+      clockFormat: (v) => ['12h', '24h'].includes(v),
       verticalTabs: (v) => typeof v === "boolean",
       keepTabsExpanded: (v) => typeof v === "boolean",
       wallpaper: (v) => ["redwoods", "mountains", "custom"].includes(v),
       wallpaperCustomPath: (v) => v === null || typeof v === "string",
+      pinnedP2PApps: (v) => v === null || (Array.isArray(v) && v.every(id => typeof id === 'string')),
       llm: (v) => {
         // Validate LLM settings object (simplified for Ollama-only)
         if (typeof v !== 'object' || v === null) return false;
@@ -633,9 +645,11 @@ class SettingsManager {
     this.applySettingChange('theme', this.settings.theme);
     this.applySettingChange('searchEngine', this.settings.searchEngine);
     this.applySettingChange('showClock', this.settings.showClock);
+    this.applySettingChange('clockFormat', this.settings.clockFormat);
     this.applySettingChange('verticalTabs', this.settings.verticalTabs);
     this.applySettingChange('keepTabsExpanded', this.settings.keepTabsExpanded);
     this.applySettingChange('wallpaper', this.settings.wallpaper);
+    this.applySettingChange('pinnedP2PApps', this.settings.pinnedP2PApps);
   }
 
   applySettingChange(key, value) {
@@ -667,6 +681,12 @@ class SettingsManager {
             window.webContents.send('show-clock-changed', value);
           }
         });
+      } else if (key === 'clockFormat') {
+        windows.forEach(window => {
+          if (window && !window.isDestroyed()) {
+            window.webContents.send('clock-format-changed', value);
+          }
+        });
       } else if (key === 'wallpaper') {
         // Notify windows of wallpaper change
         windows.forEach(window => {
@@ -691,6 +711,12 @@ class SettingsManager {
         windows.forEach(window => {
           if (window && !window.isDestroyed()) {
             window.webContents.send('wallpaper-changed', this.settings.wallpaper);
+          }
+        });
+      } else if (key === 'pinnedP2PApps') {
+        windows.forEach(window => {
+          if (window && !window.isDestroyed()) {
+            window.webContents.send('pinned-apps-changed', value);
           }
         });
       } else if (key === "customSearchTemplate") {

@@ -1,0 +1,133 @@
+import p2pApps, { isPinned, setPinnedState, getPinnedApps } from "peersky://p2p/p2p-list.js";
+
+class P2PAppManager extends HTMLElement {
+  constructor() {
+    super();
+    this.attachShadow({ mode: 'open' });
+  }
+
+  connectedCallback() {
+    this.render();
+    // Listen for pinned apps changes from other windows
+    if (window.electronAPI?.onPinnedAppsChanged) {
+      window.electronAPI.onPinnedAppsChanged(() => this.render());
+    }
+  }
+
+  async render() {
+    if (this._rendering) return;
+    this._rendering = true;
+    try {
+      const style = `
+        <style>
+          :host {
+            display: block;
+          }
+          h2 {
+            color: var(--browser-theme-text-color, #fff);
+            margin-top: 0;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 12px;
+          }
+          th, td {
+            padding: 5px 8px;
+            text-align: left;
+            border-bottom: 1px solid var(--browser-theme-border, #333);
+          }
+          th {
+            color: var(--browser-theme-text-color, #fff);
+            font-weight: 600;
+            font-size: 0.9rem;
+            opacity: 0.7;
+          }
+          a {
+            color: var(--browser-theme-primary-highlight, #00ffff);
+            text-decoration: none;
+          }
+          a:hover {
+            text-decoration: underline;
+          }
+          .pin-btn {
+            background: none;
+            border: 1px solid var(--browser-theme-primary-highlight, #00ffff);
+            color: var(--browser-theme-primary-highlight, #00ffff);
+            padding: 4px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: background 0.2s, color 0.2s;
+          }
+          .pin-btn:hover {
+            background: var(--browser-theme-primary-highlight, #00ffff);
+            color: var(--browser-theme-background, #18181b);
+          }
+          .pin-btn.pinned {
+            background: var(--browser-theme-primary-highlight, #00ffff);
+            color: var(--browser-theme-background, #18181b);
+          }
+          .open-link {
+            font-size: 0.9rem;
+          }
+        </style>
+      `;
+
+      // Get all pinned apps once
+      const pinnedIds = await getPinnedApps();
+      const pinnedStates = p2pApps.map(app => pinnedIds.includes(app.id));
+
+      const sorted = p2pApps
+        .map((app, i) => ({ ...app, pinned: pinnedStates[i] }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      let tableHtml = `
+        <h2>P2P Apps</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Pin / Unpin</th>
+              <th>App Name</th>
+              <th>Open</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      sorted.forEach(app => {
+        const btnLabel = app.pinned ? 'Unpin' : 'Pin';
+        const btnClass = app.pinned ? 'pin-btn pinned' : 'pin-btn';
+        tableHtml += `
+          <tr>
+            <td><button class="${btnClass}" data-id="${app.id}" data-pinned="${app.pinned}">${btnLabel}</button></td>
+            <td><a href="${app.url}">${app.name}</a></td>
+            <td><a class="open-link" href="${app.url}">Open &#x2192;</a></td>
+          </tr>
+        `;
+      });
+
+      tableHtml += `
+          </tbody>
+        </table>
+      `;
+
+      this.shadowRoot.innerHTML = style + tableHtml;
+
+      // Attach event listeners to pin/unpin buttons
+      this.shadowRoot.querySelectorAll('.pin-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          const appId = e.target.getAttribute('data-id');
+          const currentlyPinned = e.target.getAttribute('data-pinned') === 'true';
+          await setPinnedState(appId, !currentlyPinned);
+          // Re-render manually to provide immediate feedback on the originating page
+          this.render();
+        });
+      });
+    } finally {
+      this._rendering = false;
+    }
+  }
+}
+
+customElements.define('p2p-app-manager', P2PAppManager);

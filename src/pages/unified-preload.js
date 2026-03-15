@@ -19,6 +19,7 @@ const isExtensions = url.startsWith('peersky://extensions');
 const isHome = url.startsWith('peersky://home');
 const isBookmarks = url.includes('peersky://bookmarks');
 const isTabsPage = url.includes('peersky://tabs');
+const isP2PPage = url.startsWith('peersky://p2p');
 const isInternal = url.startsWith('peersky://') || url.startsWith('file://') || url.includes('agregore.mauve.moe');
 const isExternal = !isInternal;
 
@@ -291,10 +292,10 @@ if (isInternal || isP2P || url.includes('agregore.mauve.moe')) {
   }
 }
 
-const context = { url, isSettings, isExtensions, isHome, isBookmarks, isTabsPage, isInternal, isExternal };
+const context = { url, isSettings, isExtensions, isHome, isBookmarks, isTabsPage, isP2PPage, isInternal, isExternal };
 
 console.log(`Unified-preload: Context detection - URL: ${url}`);
-console.log(`Unified-preload: isSettings: ${isSettings}, isExtensions: ${isExtensions}, isHome: ${isHome}, isBookmarks: ${isBookmarks}, isInternal: ${isInternal}, isExternal: ${isExternal}`);
+console.log(`Unified-preload: isSettings: ${isSettings}, isExtensions: ${isExtensions}, isHome: ${isHome}, isBookmarks: ${isBookmarks}, isP2PPage: ${isP2PPage}, isInternal: ${isInternal}, isExternal: ${isExternal}`);
 
 // Factory function to create context-appropriate settings API with access control
 function createSettingsAPI(pageContext) {
@@ -345,14 +346,32 @@ function createSettingsAPI(pageContext) {
       }
     };
   } else if (pageContext.isHome) {
-    // Limited API for home pages - only clock and wallpaper
+    // Limited API for home pages - clock, wallpaper, and pinned P2P apps
     return {
       get: (key) => {
-        const allowedKeys = ['showClock', 'wallpaper'];
+        const allowedKeys = ['showClock', 'wallpaper', 'clockFormat', 'pinnedP2PApps'];
         if (!allowedKeys.includes(key)) {
           throw new Error(`Access denied: Home pages can only access: ${allowedKeys.join(', ')}`);
         }
         return baseAPI.get(key);
+      }
+    };
+  } else if (pageContext.isP2PPage) {
+    // P2P pages can read/write pinnedP2PApps setting
+    return {
+      get: (key) => {
+        const allowedKeys = ['theme', 'verticalTabs', 'pinnedP2PApps'];
+        if (!allowedKeys.includes(key)) {
+          throw new Error(`Access denied: P2P pages can only access: ${allowedKeys.join(', ')}`);
+        }
+        return baseAPI.get(key);
+      },
+      set: (key, value) => {
+        const allowedKeys = ['pinnedP2PApps'];
+        if (!allowedKeys.includes(key)) {
+          throw new Error(`Access denied: P2P pages can only set: ${allowedKeys.join(', ')}`);
+        }
+        return ipcRenderer.invoke('settings-set', key, value);
       }
     };
   } else if (pageContext.isInternal) {
@@ -492,6 +511,7 @@ try {
       onThemeChanged: (callback) => createEventListener('theme-changed', callback),
       onSearchEngineChanged: (callback) => createEventListener('search-engine-changed', callback),
       onShowClockChanged: (callback) => createEventListener('show-clock-changed', callback),
+      onClockFormatChanged: (callback) => createEventListener('clock-format-changed', callback),
       onWallpaperChanged: (callback) => createEventListener('wallpaper-changed', callback),
       readCSS: cssAPI.readCSS,
       extensions: extensionAPI,
@@ -545,6 +565,14 @@ try {
       console.warn('Unified-preload: Failed to get wallpaper URL:', error.message);
     }
 
+    let clockFormat = '24h';
+    try {
+      clockFormat = ipcRenderer.sendSync('settings-get-clock-format-sync');
+      console.log('Unified-preload: Clock format retrieved:', clockFormat);
+    } catch (error) {
+      console.warn('Unified-preload: Failed to get clock format:', error.message);
+    }
+
     // Function to inject wallpaper style
     const injectWallpaper = () => {
       if (wallpaperURL && typeof wallpaperURL === 'string') {
@@ -589,8 +617,11 @@ try {
     // Home electronAPI with browser action support for extension toolbar
     contextBridge.exposeInMainWorld('electronAPI', {
       settings: settingsAPI, // Uses limited home API automatically
+      getClockFormatSync: () => clockFormat,
       getWallpaperUrl: () => ipcRenderer.invoke('settings-get-wallpaper-url'),
       onShowClockChanged: (callback) => createEventListener('show-clock-changed', callback),
+      onPinnedAppsChanged: (callback) => createEventListener('pinned-apps-changed', callback),
+      onClockFormatChanged: (callback) => createEventListener('clock-format-changed', callback),
       onWallpaperChanged: (callback) => createEventListener('wallpaper-changed', callback),
       // Extension browser action APIs for home page toolbar
       extensions: {
@@ -636,6 +667,28 @@ try {
       loadTabComponents: () => ipcRenderer.send('load-tab-components'),
       onVerticalTabsChanged: (callback) => createEventListener('vertical-tabs-changed', callback)
     })
+  } else if (isP2PPage) {
+    // P2P management pages get environment + pinned apps settings access
+    contextBridge.exposeInMainWorld('peersky', {
+      environment: {
+        platform: process.platform,
+        version: process.versions.electron
+      },
+      llm: {
+        isSupported: () => ipcRenderer.invoke('llm-supported'),
+        chat: (messages, options) => ipcRenderer.invoke('llm-chat', messages, options),
+        complete: (prompt, options) => ipcRenderer.invoke('llm-complete', prompt, options)
+      },
+      printToPdf: (html, fileName) => ipcRenderer.invoke('p2pmd-print-to-pdf', { html, fileName })
+    });
+
+    contextBridge.exposeInMainWorld('electronAPI', {
+      settings: settingsAPI,
+      onPinnedAppsChanged: (callback) => createEventListener('pinned-apps-changed', callback)
+    });
+
+    console.log('Unified-preload: P2P page API exposed (pinnedP2PApps settings)');
+
   } else if (isInternal || isP2P) {
     // Other internal pages get minimal environment + very limited settings
     contextBridge.exposeInMainWorld('peersky', {

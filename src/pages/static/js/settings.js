@@ -223,6 +223,7 @@ function createFallbackAPI(ipc) {
     onThemeChanged: (callback) => wrapCallback('theme-changed', callback),
     onSearchEngineChanged: (callback) => wrapCallback('search-engine-changed', callback),
     onShowClockChanged: (callback) => wrapCallback('show-clock-changed', callback),
+    onClockFormatChanged: (callback) => wrapCallback('clock-format-changed', callback),
     onWallpaperChanged: (callback) => wrapCallback('wallpaper-changed', callback)
   };
 }
@@ -289,6 +290,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
       eventCleanupFunctions.push(cleanup3);
     }
+
+    if (settingsAPI.onClockFormatChanged) {
+      const cleanupFormat = settingsAPI.onClockFormatChanged((format) => {
+        const clockFormatToggle = document.getElementById('clock-format');
+        if (clockFormatToggle && clockFormatToggle.value !== format) {
+          clockFormatToggle.value = format;
+          updateCustomDropdownDisplays();
+        }
+      });
+      eventCleanupFunctions.push(cleanupFormat);
+    }
     
     if (settingsAPI.onWallpaperChanged) {
       const cleanup4 = settingsAPI.onWallpaperChanged((wallpaperType) => {
@@ -330,6 +342,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const themeToggle = document.getElementById('theme-toggle');
   const showClock = document.getElementById('show-clock');
+  const clockFormat = document.getElementById('clock-format');
   const verticalTabs = document.getElementById('vertical-tabs');
   const keepTabsExpanded = document.getElementById('keep-tabs-expanded');
   const wallpaperSelector = document.getElementById('wallpaper-selector');
@@ -543,6 +556,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     await saveSettingToBackend('showClock', e.target.checked);
   });
 
+  clockFormat?.addEventListener('change', async (e) => {
+    console.log('Clock format changed:', e.target.value);
+    await saveSettingToBackend('clockFormat', e.target.value);
+  });
+
   verticalTabs?.addEventListener('change', async (e) => {
     const enabled = e.target.checked;
     console.log('Vertical tabs changed:', enabled);
@@ -620,6 +638,7 @@ function populateFormFields(settings) {
 
   const themeToggle = document.getElementById('theme-toggle');
   const showClock = document.getElementById('show-clock');
+  const clockFormat = document.getElementById('clock-format');
   const verticalTabs = document.getElementById('vertical-tabs');
   const keepTabsExpanded = document.getElementById('keep-tabs-expanded');
   const wallpaperSelector = document.getElementById('wallpaper-selector');
@@ -668,6 +687,9 @@ function populateFormFields(settings) {
   }
   if (showClock && typeof settings.showClock === 'boolean') {
     showClock.checked = settings.showClock;
+  }
+  if (clockFormat && settings.clockFormat) {
+    clockFormat.value = settings.clockFormat;
   }
   if (verticalTabs && typeof settings.verticalTabs === 'boolean') {
     verticalTabs.checked = settings.verticalTabs;
@@ -749,6 +771,7 @@ async function saveSettingToBackend(key, value) {
       'customSearchTemplate': "Custom template updated successfully!",
       'theme': 'Theme updated successfully!',
       'showClock': 'Clock setting updated successfully!',
+      'clockFormat': 'Clock format updated successfully!',
       'wallpaper': 'Wallpaper updated successfully!',
       'verticalTabs': 'Vertical tabs setting updated successfully!'
     };

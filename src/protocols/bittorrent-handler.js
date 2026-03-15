@@ -5,6 +5,8 @@ import fs from "fs-extra";
 import { app } from "electron";
 import { generateTorrentUI } from "./bt/torrentPage.js";
 import settingsManager from "../settings-manager.js";
+import { ipcMain } from "electron";
+import parseTorrent from "parse-torrent";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,12 +20,19 @@ let requestId = 0;
 const statusCache = new Map();
 
 // Persist all torrent states (active, paused, completed) so they survive restarts
-const torrentStateCachePath = path.join(app.getPath("userData"), "bt-state.json");
+let torrentStateCachePath = null;
+function getTorrentStateCachePath() {
+  if (!torrentStateCachePath) {
+    torrentStateCachePath = path.join(app.getPath("userData"), "bt-state.json");
+  }
+  return torrentStateCachePath;
+}
 
 function loadTorrentStateCache() {
   try {
-    if (fs.existsSync(torrentStateCachePath)) {
-      const data = fs.readJsonSync(torrentStateCachePath);
+    const cachePath = getTorrentStateCachePath();
+    if (fs.existsSync(cachePath)) {
+      const data = fs.readJsonSync(cachePath);
       for (const [hash, status] of Object.entries(data)) {
         statusCache.set(hash, status);
       }
@@ -36,9 +45,10 @@ function loadTorrentStateCache() {
 
 function saveTorrentState(infoHash, status) {
   try {
-    const data = fs.existsSync(torrentStateCachePath) ? fs.readJsonSync(torrentStateCachePath) : {};
+    const cachePath = getTorrentStateCachePath();
+    const data = fs.existsSync(cachePath) ? fs.readJsonSync(cachePath) : {};
     data[infoHash] = status;
-    fs.writeJsonSync(torrentStateCachePath, data, { spaces: 2 });
+    fs.writeJsonSync(cachePath, data, { spaces: 2 });
   } catch (err) {
     console.error("[BT] Failed to save torrent state:", err.message);
   }
@@ -46,10 +56,11 @@ function saveTorrentState(infoHash, status) {
 
 function removeTorrentState(infoHash) {
   try {
-    if (fs.existsSync(torrentStateCachePath)) {
-      const data = fs.readJsonSync(torrentStateCachePath);
+    const cachePath = getTorrentStateCachePath();
+    if (fs.existsSync(cachePath)) {
+      const data = fs.readJsonSync(cachePath);
       delete data[infoHash];
-      fs.writeJsonSync(torrentStateCachePath, data, { spaces: 2 });
+      fs.writeJsonSync(cachePath, data, { spaces: 2 });
     }
   } catch (err) {
     console.error("[BT] Failed to remove torrent state:", err.message);
@@ -57,7 +68,6 @@ function removeTorrentState(infoHash) {
 }
 
 // Load persisted torrent states on module init
-loadTorrentStateCache();
 
 const DEFAULT_TRACKERS = [
   "wss://tracker.openwebtorrent.com",
@@ -73,6 +83,8 @@ const DEFAULT_TRACKERS = [
 
 async function initializeWorker() {
   if (worker) return;
+
+  loadTorrentStateCache();
 
   const downloadPath = path.join(app.getPath("downloads"), "PeerskyTorrents");
   await fs.ensureDir(downloadPath);
@@ -152,13 +164,14 @@ async function initializeWorker() {
     // Save all active torrents to disk before clearing cache
     // Mark them as paused so they show resume button on restart
     try {
-      const data = fs.existsSync(torrentStateCachePath) ? fs.readJsonSync(torrentStateCachePath) : {};
+      const cachePath = getTorrentStateCachePath();
+      const data = fs.existsSync(cachePath) ? fs.readJsonSync(cachePath) : {};
       for (const [hash, status] of statusCache.entries()) {
         if (!status.done) {
           data[hash] = { ...status, paused: true };
         }
       }
-      fs.writeJsonSync(torrentStateCachePath, data, { spaces: 2 });
+      fs.writeJsonSync(cachePath, data, { spaces: 2 });
       console.log(`[BT] Saved ${Object.keys(data).length} torrent state(s) on worker exit`);
     } catch (err) {
       console.error("[BT] Failed to save torrent states on exit:", err.message);
@@ -269,6 +282,43 @@ export async function createHandler() {
     }
   };
 }
+
+export function setupBittorrentIpc() {
+  ipcMain.handle('resolve-torrent-file', async (event, filePath) => {
+    try {
+      if (!filePath || typeof filePath !== 'string' || !filePath.toLowerCase().endsWith('.torrent')) {
+        throw new Error('Invalid .torrent file path');
+      }
+
+      const buffer = await fs.readFile(filePath);
+      const parsed = await parseTorrent(buffer);
+
+      if (!parsed || !parsed.infoHash) {
+        throw new Error('Could not extract infoHash from file');
+      }
+
+      // Build magnet URI with trackers from the .torrent file
+      let magnetUri = `magnet:?xt=urn:btih:${parsed.infoHash}`;
+      
+      // Add display name if available
+      if (parsed.name) {
+        magnetUri += `&dn=${encodeURIComponent(parsed.name)}`;
+      }
+      
+      // Add tracker URLs from the .torrent file — this is what makes it fast
+      if (parsed.announce && parsed.announce.length > 0) {
+        const trackers = parsed.announce.map(tr => `&tr=${encodeURIComponent(tr)}`).join('');
+        magnetUri += trackers;
+      }
+
+      return magnetUri;
+    } catch (err) {
+      console.error('[BT] IPC Error resolving torrent:', err.message);
+      return null;
+    }
+  });
+}
+
 
 async function handleAPI(api, queryParams, infoHash, request) {
   const hash = queryParams.get("hash") || infoHash;
