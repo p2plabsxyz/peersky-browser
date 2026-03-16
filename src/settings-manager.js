@@ -62,7 +62,7 @@ const DEFAULT_SETTINGS = {
   clockFormat: '24h',
   verticalTabs: false,
   keepTabsExpanded: false,
-  wallpaper: 'redwoods',
+  wallpaper: 'ten_lakes',
   wallpaperCustomPath: null,
   pinnedP2PApps: null,
   extensionP2PEnabled: false,
@@ -312,6 +312,22 @@ class SettingsManager {
         event.returnValue = this.settings.clockFormat || '24h';
       } catch {
         event.returnValue = '24h';
+      }
+    });
+
+    // Get list of default wallpapers
+    ipcMain.handle('settings-get-default-wallpapers', async () => {
+      try {
+        const srcDir = path.dirname(new URL(import.meta.url).pathname);
+        const defaultsDir = path.join(srcDir, 'pages', 'static', 'assets', 'wallpapers', 'defaults');
+        const files = await fs.readdir(defaultsDir);
+        const names = files
+          .filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f))
+          .map(f => f.replace(/\.(jpg|jpeg|png|webp)$/i, ''));
+        return names;
+      } catch (error) {
+        logDebug(`Error listing default wallpapers: ${error.message}`);
+        return ['ten_lakes'];
       }
     });
 
@@ -609,7 +625,7 @@ class SettingsManager {
       clockFormat: (v) => ['12h', '24h'].includes(v),
       verticalTabs: (v) => typeof v === "boolean",
       keepTabsExpanded: (v) => typeof v === "boolean",
-      wallpaper: (v) => ["redwoods", "mountains", "custom"].includes(v),
+      wallpaper: (v) => typeof v === "string",
       wallpaperCustomPath: (v) => v === null || typeof v === "string",
       pinnedP2PApps: (v) => v === null || (Array.isArray(v) && v.every(id => typeof id === 'string')),
       llm: (v) => {
@@ -760,9 +776,17 @@ class SettingsManager {
     if (this.settings.wallpaper === 'custom' && this.settings.wallpaperCustomPath) {
       return this.settings.wallpaperCustomPath;
     }
-    // Return path to built-in wallpaper
-    const wallpaperFile = this.settings.wallpaper === 'mountains' ? 'mountains.jpg' : 'redwoods.jpg';
-    return path.join(__dirname, 'pages', 'static', 'assets', wallpaperFile);
+    // Return path to built-in wallpaper in wallpapers/defaults/
+    const fileName = `${this.settings.wallpaper}.jpg`;
+    return path.join(
+      __dirname,
+      'pages',
+      'static',
+      'assets',
+      'wallpapers',
+      'defaults',
+      fileName
+    );
   }
 
   // Get wallpaper URL for browser usage
@@ -772,9 +796,9 @@ class SettingsManager {
       const filename = path.basename(this.settings.wallpaperCustomPath);
       return `peersky://wallpaper/${filename}`;
     }
-    // Return URL to built-in wallpaper
-    const wallpaperFile = this.settings.wallpaper === 'mountains' ? 'mountains.jpg' : 'redwoods.jpg';
-    return `peersky://static/assets/${wallpaperFile}`;
+    // Return URL to built-in wallpaper in wallpapers/defaults/
+    const fileName = `${this.settings.wallpaper}.jpg`;
+    return `peersky://static/assets/wallpapers/defaults/${fileName}`;
   }
 }
 

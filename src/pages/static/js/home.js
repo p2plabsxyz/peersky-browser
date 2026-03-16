@@ -6,12 +6,12 @@
 // Apply wallpaper from settings
 async function applyWallpaper() {
   try {
-    const wallpaperUrl = await window.electronAPI?.getWallpaperUrl?.() || 'peersky://static/assets/redwoods.jpg';
+    const wallpaperUrl = await window.electronAPI?.getWallpaperUrl?.() || 'peersky://static/assets/wallpapers/defaults/ten_lakes.jpg';
     document.body.style.backgroundImage = `url("${wallpaperUrl}")`;
     console.log('Wallpaper applied:', wallpaperUrl);
   } catch (error) {
     console.error('Failed to apply wallpaper:', error);
-    document.body.style.backgroundImage = 'url("peersky://static/assets/redwoods.jpg")';
+    document.body.style.backgroundImage = 'url("peersky://static/assets/wallpapers/defaults/ten_lakes.jpg")';
   }
 }
 
