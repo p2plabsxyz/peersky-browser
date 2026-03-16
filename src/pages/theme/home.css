@@ -107,3 +107,48 @@ body::before {
   margin-left: 3px;
   opacity: 0.9;
 }
+
+.home-bookmarks {
+  position: absolute;
+  top: 110px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.home-bookmarks img {
+  width: 25px;
+  height: 25px;
+  filter: invert(100%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(100%)
+    contrast(100%);
+  padding: 5px;
+  transition: transform 0.3s ease, filter 0.3s ease;
+}
+
+.home-bookmarks img:hover {
+  transform: scale(1.1);
+}
+
+.home-appearance {
+  position: absolute;
+  top: 110px;
+  right: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.home-appearance img {
+  width: 25px;
+  height: 25px;
+  filter: invert(100%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(100%)
+    contrast(100%);
+  padding: 5px;
+  transition: transform 0.3s ease, filter 0.3s ease;
+}
+
+.home-appearance img:hover {
+  transform: scale(1.1);
+}
+
