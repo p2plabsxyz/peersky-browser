@@ -881,8 +881,8 @@ class PeerskyWindow {
   constructor(options = {}, windowManager) {
     const { url, isMainWindow = false, newWindow = false, windowId, savedTabs, isolate, singleTab, ...windowOptions } = options;
     this.window = new BrowserWindow({
-      width: 800,
-      height: 600,
+      width: 1280,
+      height: 800,
       transparent: true,
       backgroundColor: '#00000000',
       frame: false,
@@ -1097,8 +1097,8 @@ class PeerskyWindow {
 // handling for isolated windows
 export function createIsolatedWindow(options = {}) {
   const win = new BrowserWindow({
-    width: 800,
-    height: 600,
+    width: 1280,
+    height: 800,
     transparent: true,
     backgroundColor: '#00000000',
     frame: false,
