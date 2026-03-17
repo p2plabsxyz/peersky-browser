@@ -250,24 +250,24 @@ async function setupProtocols(session) {
   app.setAsDefaultProtocolClient("magnet");
 
   const browserProtocolHandler = await createBrowserHandler();
-  sessionProtocol.registerStreamProtocol("peersky", browserProtocolHandler, BROWSER_PROTOCOL);
+  sessionProtocol.handle("peersky", browserProtocolHandler);
 
   const browserThemeHandler = await createBrowserThemeHandler();
-  sessionProtocol.registerStreamProtocol("browser", browserThemeHandler, BROWSER_PROTOCOL);
+  sessionProtocol.handle("browser", browserThemeHandler);
 
-  const ipfsProtocolHandler = await createIPFSHandler(ipfsOptions, session);
-  sessionProtocol.registerStreamProtocol("ipfs", ipfsProtocolHandler, P2P_PROTOCOL);
-  sessionProtocol.registerStreamProtocol("ipns", ipfsProtocolHandler, P2P_PROTOCOL);
-  sessionProtocol.registerStreamProtocol("pubsub", ipfsProtocolHandler, P2P_PROTOCOL);
+  const ipfsProtocolHandler = await createIPFSHandler(ipfsOptions);
+  sessionProtocol.handle("ipfs", ipfsProtocolHandler);
+  sessionProtocol.handle("ipns", ipfsProtocolHandler);
+  sessionProtocol.handle("pubsub", ipfsProtocolHandler);
 
-  const hyperProtocolHandler = await createHyperHandler(hyperOptions, session);
-  sessionProtocol.registerStreamProtocol("hyper", hyperProtocolHandler, P2P_PROTOCOL);
+  const hyperProtocolHandler = await createHyperHandler(hyperOptions);
+  sessionProtocol.handle("hyper", hyperProtocolHandler);
 
   const hsProtocolHandler = await createHSHandler();
   sessionProtocol.handle("hs", hsProtocolHandler);
 
   const web3ProtocolHandler = await createWeb3Handler();
-  sessionProtocol.registerStreamProtocol("web3", web3ProtocolHandler, P2P_PROTOCOL);
+  sessionProtocol.handle("web3", web3ProtocolHandler);
 
   const fileProtocolHandler = await createFileHandler();
   sessionProtocol.handle("file", fileProtocolHandler);
