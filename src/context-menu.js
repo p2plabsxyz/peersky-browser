@@ -86,7 +86,7 @@ export function attachContextMenus(browserWindow, windowManager) {
       menu.append(
         new MenuItem({
           label: "Back",
-          enabled: webContents.canGoBack(),
+          enabled: webContents.navigationHistory?.canGoBack?.() ?? webContents.canGoBack?.(),
           click: () => {
             // Try tab-based navigation first, fallback to direct webContents
             browserWindow.webContents.executeJavaScript(`
@@ -108,7 +108,7 @@ export function attachContextMenus(browserWindow, windowManager) {
       menu.append(
         new MenuItem({
           label: "Forward",
-          enabled: webContents.canGoForward(),
+          enabled: webContents.navigationHistory?.canGoForward?.() ?? webContents.canGoForward?.(),
           click: () => {
             browserWindow.webContents.executeJavaScript(`
               const tabBar = document.querySelector('#tabbar');

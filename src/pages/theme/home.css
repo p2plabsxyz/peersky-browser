@@ -17,12 +17,13 @@ html {
 
 body::before {
   content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(0, 0, 0, 0.2);
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at top left, rgba(0, 0, 0, 0.4), transparent 50%),
+    radial-gradient(circle at top right, rgba(0, 0, 0, 0.4), transparent 50%),
+    radial-gradient(circle at bottom, rgba(0, 0, 0, 0.5), transparent 55%);
   z-index: 0;
 }
 
