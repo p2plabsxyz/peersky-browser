@@ -129,6 +129,10 @@ function runHarness({ mode, userDataDir, fixtureDir, timeoutMs = 120000 }) {
 describe("Full app restart extension integration", function () {
   this.timeout(300000);
 
+  afterEach(function() {
+    return new Promise(resolve => setTimeout(resolve, 2000));
+  });
+
   it("keeps MV3 service worker alive across real app restart and keeps sandbox restrictions", async function () {
     const root = await mkdtemp(path.join(os.tmpdir(), "peersky-e2e-restart-"));
     const userDataDir = path.join(root, "user-data");
