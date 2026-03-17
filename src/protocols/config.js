@@ -1,18 +1,24 @@
-import { app } from "electron";
 import { LevelBlockstore } from "blockstore-level";
 import { LevelDatastore } from "datastore-level";
+import os from "os";
 import path from "path";
 import fs from "fs-extra";
 import { getDefaultChainList } from "web3protocol/chains";
 import { generateKeyPair, privateKeyFromProtobuf, privateKeyToProtobuf } from "@libp2p/crypto/keys";
-import { createLogger } from '../logger.js';
+import electron from "electron";
+import { createLogger } from "../logger.js";
 
-const log = createLogger('protocols:config');
+const log = createLogger("protocols:config");
+
+const fallbackUserData = process.env.PEERSKY_TEST_USERDATA || path.join(os.tmpdir(), "peersky-test-userdata");
+const app = (electron && typeof electron === "object" && electron.app && typeof electron.app.getPath === "function")
+  ? electron.app
+  : { getPath: () => fallbackUserData };
 
 const USER_DATA = app.getPath("userData");
 const DEFAULT_IPFS_DIR = path.join(USER_DATA, "ipfs");
 const BLOCKSTORE_PATH = path.join(DEFAULT_IPFS_DIR, "blocks");
-const DATASTORE_PATH = path.join(DEFAULT_IPFS_DIR, "datastore"); 
+const DATASTORE_PATH = path.join(DEFAULT_IPFS_DIR, "datastore");
 const DEFAULT_HYPER_DIR = path.join(USER_DATA, "hyper");
 const ENS_CACHE = path.join(USER_DATA, "ensCache.json");
 const IPFS_CACHE = path.join(USER_DATA, "ipfsCache.json");
@@ -138,6 +144,7 @@ if (fs.existsSync(HYPER_CACHE)) {
 // Function to save cache to file
 export function saveEnsCache() {
   try {
+    fs.ensureDirSync(path.dirname(ENS_CACHE));
     const data = JSON.stringify(Array.from(ensCache.entries()), null, 2);
     fs.writeFileSync(ENS_CACHE, data, "utf-8");
     log.info("ENS cache saved to file.");
@@ -148,6 +155,7 @@ export function saveEnsCache() {
 
 export function saveIpfsCache() {
   try {
+    fs.ensureDirSync(path.dirname(IPFS_CACHE));
     const data = JSON.stringify(ipfsCache, null, 2);
     fs.writeFileSync(IPFS_CACHE, data, "utf-8");
     log.info("IPFS cache saved to file.");
@@ -158,6 +166,7 @@ export function saveIpfsCache() {
 
 export function saveHyperCache() {
   try {
+    fs.ensureDirSync(path.dirname(HYPER_CACHE));
     const data = JSON.stringify(hyperCache, null, 2);
     fs.writeFileSync(HYPER_CACHE, data, "utf-8");
     log.info("Hyper cache saved to file.");

@@ -10,6 +10,7 @@ import {
 } from "../pages/p2p/peerchat/p2p.js";
 import { createLogger } from '../logger.js';
 import { hyperCache, saveHyperCache } from "./config.js";
+import { enforceExtensionWritePolicy } from "./request-policy.js";
 
 const log = createLogger('protocols:hyper');
 
@@ -109,7 +110,8 @@ async function initializeHyperSDK(options) {
   return fetch;
 }
 
-export async function createHandler(options) {
+export async function createHandler(options, securityOptions = {}) {
+  const { isExtensionWriteAllowed } = securityOptions;
   await initializeHyperSDK(options);
 
   return async function protocolHandler(req) {
@@ -175,6 +177,13 @@ export async function createHandler(options) {
     }
 
     try {
+      const denied = await enforceExtensionWritePolicy({
+        request: req,
+        scheme: "hyper",
+        isExtensionWriteAllowed,
+      });
+      if (denied) return denied;
+
       if (
         protocol === "hyper" &&
         (urlObj.hostname === "chat" || pathname.startsWith("/chat"))
@@ -197,7 +206,6 @@ export async function createHandler(options) {
 async function handleHyperRequest(req) {
   const { url, method = "GET", headers } = req;
   const fetchFn = await initializeHyperSDK();
-
   const upperMethod = method.toUpperCase();
   const hasBody = upperMethod !== "GET" && upperMethod !== "HEAD";
 
