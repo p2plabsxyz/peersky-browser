@@ -31,11 +31,7 @@ jobs:
         run: npm ci
 
       - name: Run test suites
-        run: npm test
-
-      - name: Run integration test (Linux)
-        if: startsWith(matrix.os, 'ubuntu')
-        run: xvfb-run -a npm run test:integration
+        run: npm run test:p2p && npm run test:p2p:e2e && npm run test:extensions && npm run test:security
 
       - name: Run integration test (Windows/macOS)
         if: ${{ !startsWith(matrix.os, 'ubuntu') }}
