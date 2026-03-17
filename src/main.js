@@ -130,10 +130,13 @@ app.whenReady().then(async () => {
     console.error("Failed to initialize extension system:", error);
   }
 
+  // Check for --new-window argument (from Windows taskbar jump list)
+  const hasNewWindowArg = process.argv.includes('--new-window');
+  
   // Load saved windows or open a new one
   await windowManager.openSavedWindows();
-  if (windowManager.all.length === 0) {
-    windowManager.open({ isMainWindow: true });
+  if (windowManager.all.length === 0 || hasNewWindowArg) {
+    windowManager.open({ isMainWindow: windowManager.all.length === 0 });
   }
 
   // Register shortcuts from menu template (NOTE: all these shortcuts works on a window only if a window is in focus)
@@ -162,6 +165,32 @@ app.whenReady().then(async () => {
   }
 
   windowManager.startSaver();
+
+  // Setup dock/taskbar menu for "New Window" option
+  if (process.platform === 'darwin') {
+    // macOS dock menu
+    const dockMenu = Menu.buildFromTemplate([
+      {
+        label: 'New Window',
+        click: () => {
+          windowManager.open({ isMainWindow: false });
+        }
+      }
+    ]);
+    app.dock.setMenu(dockMenu);
+  } else if (process.platform === 'win32') {
+    // Windows taskbar jump list
+    app.setUserTasks([
+      {
+        program: process.execPath,
+        arguments: '--new-window',
+        iconPath: process.execPath,
+        iconIndex: 0,
+        title: 'New Window',
+        description: 'Open a new browser window'
+      }
+    ]);
+  }
 
   // Initialize AutoUpdater after windowManager is ready
   // console.log("App is prepared, setting up AutoUpdater...");
