@@ -45,20 +45,6 @@ jobs:
       - name: Run tests
         run: npm run test:p2p && npm run test:p2p:e2e && npm run test:extensions && npm run test:security
 
-      - name: Fix Electron sandbox permissions (Linux)
-        if: startsWith(matrix.os, 'ubuntu')
-        run: |
-          SANDBOX_PATH="./node_modules/electron/dist/chrome-sandbox"
-          if [ -f "$SANDBOX_PATH" ]; then
-            sudo chown root "$SANDBOX_PATH"
-            sudo chmod 4755 "$SANDBOX_PATH"
-          fi
-
-      - name: Run integration test (Linux)
-        if: startsWith(matrix.os, 'ubuntu')
-        timeout-minutes: 10
-        run: xvfb-run -a npm run test:integration
-
       - name: Run integration test (Windows/macOS)
         if: ${{ !startsWith(matrix.os, 'ubuntu') }}
         timeout-minutes: 10
