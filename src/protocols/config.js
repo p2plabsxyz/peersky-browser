@@ -1,10 +1,16 @@
-import { app } from "electron";
 import { LevelBlockstore } from "blockstore-level";
 import { LevelDatastore } from "datastore-level";
+import os from "os";
 import path from "path";
 import fs from "fs-extra";
 import { getDefaultChainList } from "web3protocol/chains";
 import { generateKeyPair, privateKeyFromProtobuf, privateKeyToProtobuf } from "@libp2p/crypto/keys";
+import electron from "electron";
+
+const fallbackUserData = process.env.PEERSKY_TEST_USERDATA || path.join(os.tmpdir(), "peersky-test-userdata");
+const app = (electron && typeof electron === "object" && electron.app && typeof electron.app.getPath === "function")
+  ? electron.app
+  : { getPath: () => fallbackUserData };
 
 const USER_DATA = app.getPath("userData");
 const DEFAULT_IPFS_DIR = path.join(USER_DATA, "ipfs");
@@ -94,53 +100,10 @@ if (fs.existsSync(ENS_CACHE)) {
   );
 }
 
-// Initialize or load IPFS cache
-let ipfsCache = [];
-if (fs.existsSync(IPFS_CACHE)) {
-  try {
-    const data = fs.readFileSync(IPFS_CACHE, "utf-8");
-    const parsed = JSON.parse(data);
-    if (Array.isArray(parsed)) {
-      ipfsCache = parsed;
-    } else {
-      console.warn("IPFS cache file is not an array. Falling back to empty cache.");
-      ipfsCache = [];
-    }
-  } catch (error) {
-    console.error("Failed to load IPFS cache from file:", error);
-    ipfsCache = [];
-  }
-} else {
-  console.log(
-    "No existing IPFS cache file found. Starting with an empty cache."
-  );
-}
-
-// Initialize or load Hyper cache
-let hyperCache = [];
-if (fs.existsSync(HYPER_CACHE)) {
-  try {
-    const data = fs.readFileSync(HYPER_CACHE, "utf-8");
-    const parsed = JSON.parse(data);
-    if (Array.isArray(parsed)) {
-      hyperCache = parsed;
-    } else {
-      console.warn("Hyper cache file is not an array. Falling back to empty cache.");
-      hyperCache = [];
-    }
-  } catch (error) {
-    console.error("Failed to load Hyper cache from file:", error);
-    hyperCache = [];
-  }
-} else {
-  console.log(
-    "No existing Hyper cache file found. Starting with an empty cache."
-  );
-}
-
 // Function to save cache to file
 export function saveEnsCache() {
   try {
+    fs.ensureDirSync(path.dirname(ENS_CACHE));
     const data = JSON.stringify(Array.from(ensCache.entries()), null, 2);
     fs.writeFileSync(ENS_CACHE, data, "utf-8");
     console.log("ENS cache saved to file.");
@@ -149,25 +112,45 @@ export function saveEnsCache() {
   }
 }
 
+// Export the cache and save function
+export { ensCache };
+
+// Initialize or load IPFS upload cache
+export let ipfsCache = [];
+if (fs.existsSync(IPFS_CACHE)) {
+  try {
+    const data = fs.readFileSync(IPFS_CACHE, "utf-8");
+    ipfsCache = JSON.parse(data);
+  } catch (error) {
+    console.error("Failed to load IPFS cache from file:", error);
+  }
+}
+
 export function saveIpfsCache() {
   try {
-    const data = JSON.stringify(ipfsCache, null, 2);
-    fs.writeFileSync(IPFS_CACHE, data, "utf-8");
-    console.log("IPFS cache saved to file.");
+    fs.ensureDirSync(path.dirname(IPFS_CACHE));
+    fs.writeFileSync(IPFS_CACHE, JSON.stringify(ipfsCache, null, 2), "utf-8");
   } catch (error) {
     console.error("Failed to save IPFS cache to file:", error);
   }
 }
 
+// Initialize or load Hyper upload cache
+export let hyperCache = [];
+if (fs.existsSync(HYPER_CACHE)) {
+  try {
+    const data = fs.readFileSync(HYPER_CACHE, "utf-8");
+    hyperCache = JSON.parse(data);
+  } catch (error) {
+    console.error("Failed to load Hyper cache from file:", error);
+  }
+}
+
 export function saveHyperCache() {
   try {
-    const data = JSON.stringify(hyperCache, null, 2);
-    fs.writeFileSync(HYPER_CACHE, data, "utf-8");
-    console.log("Hyper cache saved to file.");
+    fs.ensureDirSync(path.dirname(HYPER_CACHE));
+    fs.writeFileSync(HYPER_CACHE, JSON.stringify(hyperCache, null, 2), "utf-8");
   } catch (error) {
     console.error("Failed to save Hyper cache to file:", error);
   }
 }
-
-// Export the cache and save function
-export { ensCache, ipfsCache, hyperCache };
