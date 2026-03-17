@@ -15,6 +15,7 @@ import { base58btc } from "multiformats/bases/base58";
 import { peerIdFromString, peerIdFromCID } from "@libp2p/peer-id";
 import { ensCache, saveEnsCache, RPC_URL, ipfsCache, saveIpfsCache } from "./config.js";
 import { JsonRpcProvider } from "ethers";
+import { enforceExtensionWritePolicy } from "./request-policy.js";
 
 const P2P_APP_NAMES = {
   "editor": "P2P Editor",
@@ -86,7 +87,8 @@ function getPeerIdFromString(peerIdString) {
   return peerIdFromCID(CID.parse(peerIdString, multibaseDecoder));
 }
 
-export async function createHandler(ipfsOptions, session) {
+export async function createHandler(ipfsOptions, session, securityOptions = {}) {
+  const { isExtensionWriteAllowed } = securityOptions;
   let node, unixFileSystem, name, dnsLinkResolver;
 
   async function initializeIPFSNode() {
@@ -196,8 +198,10 @@ export async function createHandler(ipfsOptions, session) {
 
       const peerCount = node.libp2p.getPeers().length;
       console.log(`Providing ${rootCid} with ${peerCount} peers connected`);
-  
-      // Provide the root CID to the DHT in the background
+
+      // Provide the root CID to the DHT in the background (fire-and-forget).
+      // If no peers are connected yet the call will fail silently — the node
+      // will re-announce as it connects to bootstrap peers via kad-DHT.
       node.libp2p.contentRouting.provide(rootCid).then(() => {
         console.log(`Provided ${rootCid} to DHT in ${Date.now() - startTime}ms`);
       }).catch(err => {
@@ -407,7 +411,7 @@ export async function createHandler(ipfsOptions, session) {
     }
   }
 
-  return async function protocolHandler(request, sendResponse) {
+  const handler = async function protocolHandler(request, sendResponse) {
     const { url, method, uploadData, headers } = request;
     if (!node) {
       console.log("IPFS node is not ready yet");
@@ -415,6 +419,22 @@ export async function createHandler(ipfsOptions, session) {
     }
 
     // Handle file uploads for ipfs:// URLs
+    // Enforce extension write policy first (mirrors hyper-handler.js).
+    const writeBlocked = await enforceExtensionWritePolicy({
+      request,
+      scheme: "ipfs",
+      isExtensionWriteAllowed,
+    });
+    if (writeBlocked) {
+      const body = await writeBlocked.text();
+      sendResponse({
+        statusCode: writeBlocked.status,
+        headers: { "Content-Type": "text/plain", "Access-Control-Allow-Origin": "*" },
+        data: Readable.from(Buffer.from(body)),
+      });
+      return;
+    }
+
     if (
       (method === "PUT" || method === "POST") &&
       uploadData &&
@@ -717,4 +737,9 @@ export async function createHandler(ipfsOptions, session) {
 
     sendResponse({ statusCode, headers: responseHeaders, data });
   };
+
+  // Expose the node for integration tests (non-breaking; ignored in prod).
+  handler.__node = node;
+
+  return handler;
 }

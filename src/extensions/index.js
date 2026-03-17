@@ -76,8 +76,6 @@ class ExtensionManager {
 
     // Track active popups for auto-close on tab switch
     this.activePopups = new Set();
-    this.popupToOpener = new Map();
-    this.popupToExtensionId = new Map();
 
     // Paths (set in initialize)
     this.extensionsBaseDir = null;
@@ -458,19 +456,6 @@ class ExtensionManager {
           },
         });
         console.log('ExtensionManager: ElectronChromeExtensions initialized');
-        // this is a patch fix for the tabs.query to work properly
-        try {
-          const ece = this.electronChromeExtensions;
-          if (ece?.ctx?.router && ece?.api?.tabs) {
-            const originalQuery = ece.api.tabs.query.bind(ece.api.tabs);
-            ece.ctx.router.handle("tabs.query", (event, info = {}) => {
-              if (info.currentWindow || info.lastFocusedWindow) {
-                info.windowId = -2; // Maps to ece.api.tabs.WINDOW_ID_CURRENT
-              }
-              return originalQuery(event, info);
-            });
-          }
-        } catch (err) { }
 
         try {
           const api = this.electronChromeExtensions?.api?.browserAction;
@@ -876,18 +861,7 @@ class ExtensionManager {
    */
   addWindow(window, webContents) {
     if (this.electronChromeExtensions) {
-      if (!webContents) return; // avoid registering shell UI or popups as tabs
       try {
-        // Skip if this webContents is already registered to avoid duplicate
-        // addTab() calls which can trigger spurious navigations/reloads
-        if (!this._registeredTabs) this._registeredTabs = new Set();
-        const wcId = webContents.id;
-        if (this._registeredTabs.has(wcId)) return;
-        this._registeredTabs.add(wcId);
-        // Clean up when the webContents is destroyed
-        webContents.once('destroyed', () => {
-          this._registeredTabs?.delete(wcId);
-        });
         this.electronChromeExtensions.addTab(webContents, window);
         console.log(`[ExtensionManager] Registered webContents ${webContents.id} with extension system`);
       } catch (error) {
@@ -1178,6 +1152,52 @@ class ExtensionManager {
    */
   _getById(extensionId) {
     return this.loadedExtensions.get(extensionId);
+  }
+
+  /**
+   * Resolve extension metadata by Electron extension ID.
+   *
+   * @param {string} electronId - Electron runtime extension ID
+   * @returns {Object|null} Extension metadata or null
+   */
+  getExtensionByElectronId(electronId) {
+    if (!electronId || typeof electronId !== "string") return null;
+    for (const extension of this.loadedExtensions.values()) {
+      if (extension && extension.electronId === electronId) {
+        return extension;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Check whether an extension can write to p2p protocols.
+   * Default is deny unless explicit permission is present.
+   *
+   * Accepted manifest permissions:
+   * - p2pWrite
+   * - p2pWriteAll
+   * - p2pWrite:<scheme> (for example p2pWrite:ipfs)
+   *
+   * @param {string} electronId - Electron runtime extension ID
+   * @param {string} scheme - Protocol scheme being written
+   * @returns {boolean} True when write is explicitly allowed
+   */
+  isP2PWriteAllowed(electronId, scheme) {
+    const extension = this.getExtensionByElectronId(electronId);
+    if (!extension || extension.enabled !== true) return false;
+
+    const permissions = new Set([
+      ...(Array.isArray(extension.manifest?.permissions) ? extension.manifest.permissions : []),
+      ...(Array.isArray(extension.manifest?.optional_permissions) ? extension.manifest.optional_permissions : []),
+    ]);
+
+    const scopedPermission = `p2pWrite:${String(scheme || "").toLowerCase()}`;
+    return (
+      permissions.has("p2pWrite") ||
+      permissions.has("p2pWriteAll") ||
+      permissions.has(scopedPermission)
+    );
   }
 
   /**
