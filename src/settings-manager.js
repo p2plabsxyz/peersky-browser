@@ -55,7 +55,7 @@ function normalizeArchiveJsonContent(jsonContent) {
 
 // Default settings configuration
 const DEFAULT_SETTINGS = {
-  searchEngine: 'duckduckgo',
+  searchEngine: 'duckduckgo_noai',
   customSearchTemplate: "https://duckduckgo.com/?q=%s",
   theme: 'dark',
   showClock: true,
