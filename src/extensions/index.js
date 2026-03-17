@@ -80,8 +80,6 @@ class ExtensionManager {
 
     // Track active popups for auto-close on tab switch
     this.activePopups = new Set();
-    this.popupToOpener = new Map();
-    this.popupToExtensionId = new Map();
 
     // Paths (set in initialize)
     this.extensionsBaseDir = null;
@@ -843,7 +841,6 @@ class ExtensionManager {
    */
   addWindow(window, webContents) {
     if (this.electronChromeExtensions) {
-      if (!webContents) return; // avoid registering shell UI or popups as tabs
       try {
         // Skip if this webContents is already registered to avoid duplicate
         // addTab() calls which can trigger spurious navigations/reloads
@@ -1145,6 +1142,52 @@ class ExtensionManager {
    */
   _getById(extensionId) {
     return this.loadedExtensions.get(extensionId);
+  }
+
+  /**
+   * Resolve extension metadata by Electron extension ID.
+   *
+   * @param {string} electronId - Electron runtime extension ID
+   * @returns {Object|null} Extension metadata or null
+   */
+  getExtensionByElectronId(electronId) {
+    if (!electronId || typeof electronId !== "string") return null;
+    for (const extension of this.loadedExtensions.values()) {
+      if (extension && extension.electronId === electronId) {
+        return extension;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Check whether an extension can write to p2p protocols.
+   * Default is deny unless explicit permission is present.
+   *
+   * Accepted manifest permissions:
+   * - p2pWrite
+   * - p2pWriteAll
+   * - p2pWrite:<scheme> (for example p2pWrite:ipfs)
+   *
+   * @param {string} electronId - Electron runtime extension ID
+   * @param {string} scheme - Protocol scheme being written
+   * @returns {boolean} True when write is explicitly allowed
+   */
+  isP2PWriteAllowed(electronId, scheme) {
+    const extension = this.getExtensionByElectronId(electronId);
+    if (!extension || extension.enabled !== true) return false;
+
+    const permissions = new Set([
+      ...(Array.isArray(extension.manifest?.permissions) ? extension.manifest.permissions : []),
+      ...(Array.isArray(extension.manifest?.optional_permissions) ? extension.manifest.optional_permissions : []),
+    ]);
+
+    const scopedPermission = `p2pWrite:${String(scheme || "").toLowerCase()}`;
+    return (
+      permissions.has("p2pWrite") ||
+      permissions.has("p2pWriteAll") ||
+      permissions.has(scopedPermission)
+    );
   }
 
   /**
