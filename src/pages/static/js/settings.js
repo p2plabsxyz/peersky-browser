@@ -329,6 +329,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Initialize sidebar navigation
   initializeSidebarNavigation();
   
+  // Populate wallpaper dropdown from wallpaper/defaults/
+  await populateWallpaperDropdown();
+  
   // Initialize custom dropdowns
   initializeCustomDropdowns();
   
@@ -369,10 +372,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (confirm('Remove custom wallpaper and switch to default?')) {
       try {
         // Switch back to default wallpaper
-        await saveSettingToBackend('wallpaper', 'redwoods');
+        await saveSettingToBackend('wallpaper', 'ten_lakes');
         
         // Update UI
-        wallpaperSelector.value = 'redwoods';
+        wallpaperSelector.value = 'ten_lakes';
         updateCustomDropdownDisplays();
         updateCustomWallpaperUI(false);
         
@@ -605,7 +608,7 @@ function loadDefaultSettings() {
   if (showClock) showClock.checked = true;
   if (verticalTabs) verticalTabs.checked = false;
   if (keepTabsExpanded) keepTabsExpanded.checked = false;
-  if (wallpaperSelector) wallpaperSelector.value = 'redwoods';
+  if (wallpaperSelector) wallpaperSelector.value = 'ten_lakes';
 }
 
 // Load settings from backend
@@ -699,9 +702,9 @@ function populateFormFields(settings) {
   }
   if (wallpaperSelector && settings.wallpaper) {
     // Only set built-in wallpaper values, ignore custom
-    if (settings.wallpaper === 'redwoods' || settings.wallpaper === 'mountains') {
+    if (settings.wallpaper !== 'custom') {
       wallpaperSelector.value = settings.wallpaper;
-    } else if (settings.wallpaper === 'custom') {
+    } else {
       // For custom wallpaper, show custom UI but keep built-in selector unchanged
       updateCustomWallpaperUI(true);
     }
@@ -1009,6 +1012,31 @@ function updateClearBtnLabel() {
   const filter = document.getElementById('export-time-filter')?.value || 'all';
   const clearBtn = document.getElementById('clear-archive-btn');
   if (clearBtn) clearBtn.textContent = filter === 'all' ? 'Clear All' : 'Clear';
+}
+
+// Populate wallpaper dropdown dynamically
+async function populateWallpaperDropdown() {
+  const wallpaperSelect = document.getElementById('wallpaper-select');
+  if (!wallpaperSelect) return;
+  
+  const dropdown = wallpaperSelect.querySelector('.select-dropdown');
+  if (!dropdown) return;
+  
+  try {
+    const names = await settingsAPI.settings.getDefaultWallpapers();
+    if (!names || names.length === 0) return;
+    
+    dropdown.innerHTML = '';
+    names.forEach(name => {
+      const option = document.createElement('div');
+      option.className = 'select-option';
+      option.dataset.value = name;
+      option.textContent = name.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      dropdown.appendChild(option);
+    });
+  } catch (error) {
+    console.error('Failed to populate wallpaper dropdown:', error);
+  }
 }
 
 // Custom dropdown functionality

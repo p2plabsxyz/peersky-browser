@@ -49,8 +49,8 @@ class NavBox extends HTMLElement {
   buildNavBox() {
     this.id = "navbox";
     const buttons = [
-      { id: "back", svg: "left.svg", position: "start" },
-      { id: "forward", svg: "right.svg", position: "start" },
+      { id: "back", svg: "arrow-left.svg", position: "start" },
+      { id: "forward", svg: "arrow-right.svg", position: "start" },
       { id: "refresh", svg: "reload.svg", position: "start" },
       { id: "home", svg: "home.svg", position: "start" },
       { id: "bookmark", svg: "bookmark.svg", position: "start" },
