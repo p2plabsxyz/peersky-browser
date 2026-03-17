@@ -4,6 +4,8 @@ Peersky includes a section of static apps served from the `peersky://p2p/` names
 
 ## 🛠️ Building P2P static apps
 
+<img src="./images/peersky-p2p-editor.gif" width="639" alt="A demo gif of the PeerSky P2P Editor showing HTML, CSS, and JavaScript panels, a live preview of a blue page with red ‘Spider-Man’ text, and AI code-generation controls">
+
 Static apps work especially well with P2P protocols: they can be **served locally**, cached by peers, and stay available even when your origin server is offline. Publishing a bundle of HTML/CSS/JS to Hyper or IPFS gives you:
 
 - **Offline / flaky-network resilience** – once content is seeded, peers can load it without a central server.
