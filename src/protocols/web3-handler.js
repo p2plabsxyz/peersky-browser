@@ -1,6 +1,5 @@
 import { Client } from 'web3protocol';
 import { getDefaultChainList } from 'web3protocol/chains';
-import { Readable } from 'stream';
 
 async function initializeWeb3Client() {
   // Get the default chain list
@@ -15,7 +14,7 @@ async function initializeWeb3Client() {
 export async function createHandler() {
   const web3Client = await initializeWeb3Client();
 
-  return async function protocolHandler(request, callback) {
+  return async function protocolHandler(request) {
     const { url } = request;
 
     try {
@@ -30,11 +29,9 @@ export async function createHandler() {
       }
       const data = Buffer.concat(chunks);
 
-      // Send response back to the browser
-      callback({
-        statusCode: fetchedWeb3Url.httpCode,
+      return new Response(data, {
+        status: fetchedWeb3Url.httpCode,
         headers: fetchedWeb3Url.httpHeaders,
-        data: Readable.from(data)
       });
     } catch (error) {
       console.error('Error fetching with Web3 protocol:', error);
@@ -43,10 +40,9 @@ export async function createHandler() {
         `RPC URLs: ${error.rpcUrls?.join(', ')}\n` +
         `RPC URLs Errors: ${error.rpcUrlsErrors?.join(', ')}`;
 
-      callback({
-        statusCode: 500,
+      return new Response(errorResponse, {
+        status: 500,
         headers: { 'Content-Type': 'text/plain' },
-        data: Readable.from(errorResponse)
       });
     }
   };

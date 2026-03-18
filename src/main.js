@@ -1,11 +1,9 @@
-import { app, session, protocol as globalProtocol, ipcMain, BrowserWindow, Menu, shell, dialog, webContents} from "electron";
-import fs from "fs/promises";
-import path from "path";
+import electron from "electron";
+const { app, protocol: globalProtocol, ipcMain, BrowserWindow, webContents, Menu } = electron;
 import { createHandler as createBrowserHandler } from "./protocols/peersky-protocol.js";
 import { createHandler as createBrowserThemeHandler } from "./protocols/theme-handler.js";
 import { createHandler as createIPFSHandler } from "./protocols/ipfs-handler.js";
 import { createHandler as createHyperHandler } from "./protocols/hyper-handler.js";
-import { createHandler as createHSHandler } from "./protocols/hs-handler.js";
 import { createHandler as createWeb3Handler } from "./protocols/web3-handler.js";
 import { createHandler as createFileHandler } from "./protocols/file-handler.js";
 import { createHandler as createBittorrentHandler, setupBittorrentIpc } from "./protocols/bittorrent-handler.js";
@@ -26,16 +24,6 @@ import { setupPermissionHandler } from "./permissions.js";
 
 const P2P_PROTOCOL = {
   standard: true,
-  secure: true,
-  allowServiceWorkers: true,
-  supportFetchAPI: true,
-  bypassCSP: false,
-  corsEnabled: true,
-  stream: true,
-};
-
-const WEB3_PROTOCOL = {
-  standard: false,
   secure: true,
   allowServiceWorkers: true,
   supportFetchAPI: true,
@@ -82,8 +70,7 @@ globalProtocol.registerSchemesAsPrivileged([
   { scheme: "ipns", privileges: P2P_PROTOCOL },
   { scheme: "pubsub", privileges: P2P_PROTOCOL },
   { scheme: "hyper", privileges: P2P_PROTOCOL },
-  { scheme: "hs", privileges: P2P_PROTOCOL },
-  { scheme: "web3", privileges: WEB3_PROTOCOL },
+  { scheme: "web3", privileges: P2P_PROTOCOL },
   { scheme: "file", privileges: FILE_PROTOCOL },
   { scheme: "bittorrent", privileges: P2P_PROTOCOL },
   { scheme: "bt", privileges: P2P_PROTOCOL },
@@ -236,6 +223,8 @@ app.on("before-quit", async (event) => {
 
 async function setupProtocols(session) {
   const { protocol: sessionProtocol } = session;
+  const isExtensionWriteAllowed = ({ extensionId, scheme }) =>
+    extensionManager.isP2PWriteAllowed(extensionId, scheme);
 
   app.setAsDefaultProtocolClient("peersky");
   app.setAsDefaultProtocolClient("file");
@@ -243,31 +232,27 @@ async function setupProtocols(session) {
   app.setAsDefaultProtocolClient("ipfs");
   app.setAsDefaultProtocolClient("ipns");
   app.setAsDefaultProtocolClient("hyper");
-  app.setAsDefaultProtocolClient("hs");
   app.setAsDefaultProtocolClient("web3");
   app.setAsDefaultProtocolClient("bittorrent");
   app.setAsDefaultProtocolClient("bt");
   app.setAsDefaultProtocolClient("magnet");
 
   const browserProtocolHandler = await createBrowserHandler();
-  sessionProtocol.registerStreamProtocol("peersky", browserProtocolHandler, BROWSER_PROTOCOL);
+  sessionProtocol.handle("peersky", browserProtocolHandler);
 
   const browserThemeHandler = await createBrowserThemeHandler();
-  sessionProtocol.registerStreamProtocol("browser", browserThemeHandler, BROWSER_PROTOCOL);
+  sessionProtocol.handle("browser", browserThemeHandler);
 
-  const ipfsProtocolHandler = await createIPFSHandler(ipfsOptions, session);
+  const ipfsProtocolHandler = await createIPFSHandler(ipfsOptions, session, { isExtensionWriteAllowed });
   sessionProtocol.registerStreamProtocol("ipfs", ipfsProtocolHandler, P2P_PROTOCOL);
   sessionProtocol.registerStreamProtocol("ipns", ipfsProtocolHandler, P2P_PROTOCOL);
   sessionProtocol.registerStreamProtocol("pubsub", ipfsProtocolHandler, P2P_PROTOCOL);
 
-  const hyperProtocolHandler = await createHyperHandler(hyperOptions, session);
-  sessionProtocol.registerStreamProtocol("hyper", hyperProtocolHandler, P2P_PROTOCOL);
-
-  const hsProtocolHandler = await createHSHandler();
-  sessionProtocol.handle("hs", hsProtocolHandler);
+  const hyperProtocolHandler = await createHyperHandler(hyperOptions, { isExtensionWriteAllowed });
+  sessionProtocol.handle("hyper", hyperProtocolHandler);
 
   const web3ProtocolHandler = await createWeb3Handler();
-  sessionProtocol.registerStreamProtocol("web3", web3ProtocolHandler, P2P_PROTOCOL);
+  sessionProtocol.handle("web3", web3ProtocolHandler);
 
   const fileProtocolHandler = await createFileHandler();
   sessionProtocol.handle("file", fileProtocolHandler);
@@ -449,38 +434,4 @@ ipcMain.handle('check-built-in-engine', (event, template) => {
     return false; // fallback if anything goes wrong
   }
 });
-
-ipcMain.handle('p2pmd-print-to-pdf', async (event, { html, fileName } = {}) => {
-  const parentWindow = BrowserWindow.fromWebContents(event.sender);
-  const safeName = typeof fileName === "string" && fileName.trim() ? fileName : "p2pmd-document.pdf";
-  const { canceled, filePath } = await dialog.showSaveDialog(parentWindow, {
-    defaultPath: path.join(app.getPath("downloads"), safeName),
-    filters: [{ name: "PDF", extensions: ["pdf"] }]
-  });
-  if (canceled || !filePath) {
-    return { canceled: true };
-  }
-  const printWindow = new BrowserWindow({
-    show: false,
-    webPreferences: {
-      sandbox: false,
-      contextIsolation: true
-    }
-  });
-  try {
-    const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(html || "")}`;
-    await printWindow.loadURL(dataUrl);
-    const pdfBuffer = await printWindow.webContents.printToPDF({
-      printBackground: true,
-      preferCSSPageSize: true
-    });
-    await fs.writeFile(filePath, pdfBuffer);
-    return { canceled: false, filePath };
-  } finally {
-    if (!printWindow.isDestroyed()) {
-      printWindow.close();
-    }
-  }
-});
-
 export { windowManager };
