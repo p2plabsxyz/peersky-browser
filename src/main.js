@@ -13,6 +13,7 @@ import { ipfsOptions, hyperOptions } from "./protocols/config.js";
 import { createMenuTemplate } from "./actions.js";
 import WindowManager from "./window-manager.js";
 import settingsManager from "./settings-manager.js";
+import p2pAppRegistry from "./p2p-app-registry.js";
 import { setWindowManager } from "./context-menu.js";
 import { isBuiltInSearchEngine } from "./search-engine.js";
 import "./llm.js";
@@ -92,6 +93,8 @@ globalProtocol.registerSchemesAsPrivileged([
 
 app.whenReady().then(async () => {
   windowManager = new WindowManager();
+  await p2pAppRegistry.init();
+  p2pAppRegistry.setupIpc();
 
   // Set the WindowManager instance in context-menu.js
   setWindowManager(windowManager);

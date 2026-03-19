@@ -487,6 +487,13 @@ const extensionAPI = {
   onExtensionError: (callback) => createEventListener('extension-error', callback)
 };
 
+const p2pAppsAPI = {
+  list: () => ipcRenderer.invoke('p2p-user-apps-list'),
+  addFromUrl: (url) => ipcRenderer.invoke('p2p-user-apps-add-from-url', url),
+  uploadIcon: (appId, name, data) => ipcRenderer.invoke('p2p-user-apps-upload-icon', { appId, name, data }),
+  importFolder: (name, files) => ipcRenderer.invoke('p2p-user-apps-import-folder', { name, files })
+};
+
 // Create context-appropriate APIs
 const settingsAPI = createSettingsAPI(context);
 
@@ -624,6 +631,9 @@ try {
       onPinnedAppsChanged: (callback) => createEventListener('pinned-apps-changed', callback),
       onClockFormatChanged: (callback) => createEventListener('clock-format-changed', callback),
       onWallpaperChanged: (callback) => createEventListener('wallpaper-changed', callback),
+      p2pApps: {
+        list: p2pAppsAPI.list
+      },
       // Extension browser action APIs for home page toolbar
       extensions: {
         getBrowserActions: () => ipcRenderer.invoke('extensions-list-browser-actions'),
@@ -685,7 +695,8 @@ try {
 
     contextBridge.exposeInMainWorld('electronAPI', {
       settings: settingsAPI,
-      onPinnedAppsChanged: (callback) => createEventListener('pinned-apps-changed', callback)
+      onPinnedAppsChanged: (callback) => createEventListener('pinned-apps-changed', callback),
+      p2pApps: p2pAppsAPI
     });
 
     console.log('Unified-preload: P2P page API exposed (pinnedP2PApps settings)');

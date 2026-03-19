@@ -221,6 +221,49 @@ async function handleExtensionIcon(extensionId, size, sendResponse) {
   }
 }
 
+async function handleUserP2PAppAsset(assetPath, sendResponse) {
+  try {
+    const [rawAppId, ...restPath] = String(assetPath || "").split("/");
+    const appId = String(rawAppId || "").trim();
+    if (!/^[a-z0-9-]{1,64}$/.test(appId)) {
+      throw new Error("Invalid app id");
+    }
+
+    let relativePath = restPath.join("/");
+    if (!relativePath) relativePath = "app/index.html";
+    if (relativePath.endsWith("/")) relativePath += "index.html";
+
+    const normalizedRelative = relativePath.replace(/\\/g, "/");
+    if (normalizedRelative.includes("\0")) throw new Error("Invalid path");
+    const baseDir = path.join(app.getPath("userData"), "p2p-user-apps", appId);
+    const resolvedPath = path.resolve(baseDir, normalizedRelative);
+    const baseResolved = path.resolve(baseDir);
+    if (!resolvedPath.startsWith(baseResolved + path.sep) && resolvedPath !== baseResolved) {
+      throw new Error("Path traversal blocked");
+    }
+
+    await fsPromises.access(resolvedPath);
+    const stat = await fsPromises.stat(resolvedPath);
+    if (!stat.isFile()) throw new Error("Not a file");
+
+    sendResponse({
+      statusCode: 200,
+      headers: {
+        "Content-Type": mime.lookup(resolvedPath) || "application/octet-stream",
+        "Cache-Control": "public, max-age=3600",
+        "Access-Control-Allow-Origin": "*"
+      },
+      data: createReadStream(resolvedPath)
+    });
+  } catch {
+    sendResponse({
+      statusCode: 404,
+      headers: { "Content-Type": "text/plain" },
+      data: Readable.from(["Not found"])
+    });
+  }
+}
+
 export async function createHandler() {
   return async function protocolHandler({ url }, sendResponse) {
     const parsedUrl = new URL(url);
@@ -233,6 +276,9 @@ export async function createHandler() {
       const iconPath = filePath.slice(15); // Remove 'extension-icon/'
       const [extensionId, size] = iconPath.split('/');
       return handleExtensionIcon(extensionId, size || '64', sendResponse);
+    }
+    if (filePath.startsWith("user-p2p-apps/")) {
+      return handleUserP2PAppAsset(filePath.slice("user-p2p-apps/".length), sendResponse);
     }
     
     // Handle settings subpaths - map all /settings/* to settings.html

@@ -15,14 +15,12 @@ class PeerBar extends HTMLElement {
   }
 
   async fetchApps() {
-    if (!this.appsData) {
-      try {
-        const module = await import('peersky://p2p/p2p-list.js');
-        this.appsData = module.default;
-      } catch (e) {
-        console.error("Failed to load p2p apps data", e);
-        this.appsData = [];
-      }
+    try {
+      const module = await import('peersky://p2p/p2p-list.js');
+      this.appsData = await module.getAllApps();
+    } catch (e) {
+      console.error("Failed to load p2p apps data", e);
+      this.appsData = [];
     }
   }
 
@@ -57,7 +55,7 @@ class PeerBar extends HTMLElement {
       const a = document.createElement('a');
       a.href = app.url;
       const img = document.createElement('img');
-      img.src = `peersky://static/assets/svg/${app.icon}`;
+      img.src = app.iconUrl || `peersky://static/assets/svg/${app.icon}`;
       img.title = app.name;
       img.alt = app.name;
       img.style.animationDelay = `${(index + 1) * 0.1}s`; 
@@ -73,4 +71,3 @@ class PeerBar extends HTMLElement {
 }
 
 window.customElements.define('peer-bar', PeerBar);
-

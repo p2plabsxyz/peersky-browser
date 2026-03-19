@@ -1,0 +1,4 @@
+body { font-family: sans-serif; margin: 0; padding: 20px; background: #0f172a; color: #e2e8f0; }
+main { max-width: 700px; margin: 0 auto; }
+textarea { width: 100%; min-height: 220px; padding: 10px; border: 1px solid #334155; background: #020617; color: #f8fafc; }
+.hint { opacity: 0.75; font-size: 14px; }
