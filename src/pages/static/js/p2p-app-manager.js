@@ -153,6 +153,19 @@ class P2PAppManager extends HTMLElement {
             opacity: 0.55;
             font-size: 0.8rem;
           }
+          .delete-btn {
+            background: transparent;
+            border: 1px solid #f87171;
+            color: #f87171;
+            padding: 2px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            margin-left: 6px;
+          }
+          .delete-btn:hover {
+            background: rgba(248, 113, 113, 0.1);
+          }
         </style>
       `;
 
@@ -179,14 +192,13 @@ class P2PAppManager extends HTMLElement {
         </div>
         ${this.statusMessage ? `<div class="status ${this.statusType}">${this.statusMessage}</div>` : ""}
         <input id="icon-file-input" type="file" accept=".svg,image/svg+xml" style="display:none;" />
-        <input id="folder-file-input" type="file" webkitdirectory directory multiple style="display:none;" />
         <table>
           <thead>
             <tr>
               <th>Icon</th>
               <th>Pin / Unpin</th>
               <th>App Name</th>
-              <th>Icon Upload</th>
+              <th>Actions</th>
               <th>Open</th>
             </tr>
           </thead>
@@ -203,7 +215,8 @@ class P2PAppManager extends HTMLElement {
             <td><a href="${app.url}">${app.name}</a></td>
             <td>
               ${app.source === "user"
-                ? `<button class="icon-upload-btn" data-upload-id="${app.id}">Upload SVG</button>`
+                ? `<button class="icon-upload-btn" data-upload-id="${app.id}">Upload SVG</button>
+                   <button class="delete-btn" data-delete-id="${app.id}">Delete</button>`
                 : `<span class="builtin-label">Built-in</span>`
               }
             </td>
@@ -234,6 +247,7 @@ class P2PAppManager extends HTMLElement {
       this.setupUrlInput();
       this.setupIconUpload();
       this.setupFolderUpload();
+      this.setupDelete();
     } finally {
       this._rendering = false;
     }
@@ -253,9 +267,26 @@ class P2PAppManager extends HTMLElement {
     dropZone.addEventListener("drop", async (event) => {
       event.preventDefault();
       dropZone.classList.remove("dragover");
+
+      if (event.dataTransfer.files && event.dataTransfer.files.length > 0) {
+        const file = event.dataTransfer.files[0];
+        if (file.path && window.electronAPI?.p2pApps?.importFromDrop) {
+          const result = await window.electronAPI.p2pApps.importFromDrop(file.path);
+          if (result?.success) {
+            this.setStatus(`Imported folder app "${result.app?.name}". You can now pin it and upload an SVG icon.`, "info");
+            this.render();
+            return;
+          } else if (!result.error.includes("not a valid folder")) {
+            this.setStatus(result.error || "Failed to import folder from drop.", "error");
+            this.render();
+            return;
+          }
+        }
+      }
+
       const droppedUrl = this.extractDroppedUrl(event.dataTransfer);
       if (!droppedUrl) {
-        this.setStatus("Drop a valid URL to add an app.", "error");
+        this.setStatus("Drop a valid URL or folder to add an app.", "error");
         return;
       }
       await this.addUrlApp(droppedUrl);
@@ -308,7 +339,7 @@ class P2PAppManager extends HTMLElement {
     const fileInput = this.shadowRoot.getElementById("icon-file-input");
     if (!fileInput) return;
 
-    this.shadowRoot.querySelectorAll(".icon-upload-btn").forEach((btn) => {
+    this.shadowRoot.querySelectorAll(".icon-upload-btn[data-upload-id]").forEach((btn) => {
       btn.addEventListener("click", () => {
         this.iconUploadTargetId = btn.getAttribute("data-upload-id");
         fileInput.value = "";
@@ -343,44 +374,54 @@ class P2PAppManager extends HTMLElement {
 
   setupFolderUpload() {
     const triggerBtn = this.shadowRoot.getElementById("folder-upload-btn");
-    const folderInput = this.shadowRoot.getElementById("folder-file-input");
-    if (!triggerBtn || !folderInput) return;
+    if (!triggerBtn) return;
 
-    triggerBtn.addEventListener("click", () => {
-      folderInput.value = "";
-      folderInput.click();
-    });
-
-    folderInput.addEventListener("change", async () => {
-      const files = Array.from(folderInput.files || []);
-      if (!files.length) return;
-
-      const importFn = window.electronAPI?.p2pApps?.importFolder;
-      if (!importFn) {
-        this.setStatus("Folder import API is unavailable on this page.", "error");
+    triggerBtn.addEventListener("click", async () => {
+      const selectFn = window.electronAPI?.p2pApps?.selectAndImportFolder;
+      if (!selectFn) {
+        this.setStatus("Select folder API is unavailable on this page.", "error");
         this.render();
         return;
       }
-
-      const folderName = this.inferFolderName(files);
-      const payloadFiles = [];
-      for (const file of files) {
-        const relPath = file.webkitRelativePath || file.name;
-        payloadFiles.push({
-          path: relPath,
-          data: await file.arrayBuffer()
-        });
-      }
-
-      const result = await importFn(folderName, payloadFiles);
+      const result = await selectFn();
+      if (result?.canceled) return;
       if (!result?.success) {
         this.setStatus(result?.error || "Failed to import folder.", "error");
         this.render();
         return;
       }
 
-      this.setStatus(`Imported folder app "${result.app?.name || folderName}". You can now pin it and upload an SVG icon.`, "info");
+      this.setStatus(`Imported folder app "${result.app?.name}". You can now pin it and upload an SVG icon.`, "info");
       this.render();
+    });
+  }
+
+  setupDelete() {
+    this.shadowRoot.querySelectorAll(".delete-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const appId = btn.getAttribute("data-delete-id");
+        if (!appId || !confirm("Are you sure you want to delete this app?")) return;
+        const removeFn = window.electronAPI?.p2pApps?.removeApp;
+        if (!removeFn) {
+           this.setStatus("Remove API is unavailable.", "error"); 
+           return;
+        }
+        const result = await removeFn(appId);
+        if (!result.success) {
+           this.setStatus(result.error || "Failed to remove app.", "error"); 
+           return;
+        }
+        
+        // Also unpin it visually if pinned
+        import("peersky://p2p/p2p-list.js").then(async ({ setPinnedState }) => {
+           await setPinnedState(appId, false);
+           this.setStatus("App deleted successfully.", "info");
+           this.render();
+        }).catch(err => {
+           this.setStatus("App deleted successfully.", "info");
+           this.render();
+        });
+      });
     });
   }
 

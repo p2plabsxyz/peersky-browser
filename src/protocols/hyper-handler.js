@@ -1,6 +1,7 @@
 import { create as createSDK } from "hyper-sdk";
 import makeHyperFetch from "hypercore-fetch";
 import { Readable, PassThrough } from "stream";
+import path from "path";
 import fs from "fs-extra";
 import { initChat, handleChatRequest as handleChatRequestP2P } from "../pages/p2p/chat/p2p.js";
 import { hyperCache, saveHyperCache } from "./config.js";
@@ -114,6 +115,7 @@ export async function createHandler(options, session) {
 // Handle general hyper:// requests (not chat API).
 async function handleHyperRequest(req, callback, session) {
   const { url, method = "GET", headers = {}, uploadData } = req;
+  const urlObj = new URL(url);
   const fetchFn = await initializeHyperSDK();
 
   let body;
@@ -132,6 +134,41 @@ async function handleHyperRequest(req, callback, session) {
   }
 
   try {
+    if (urlObj.searchParams.get('__peerskyManifest') === '1') {
+      const drive = sdk.drive(urlObj.hostname);
+      await drive.ready();
+      
+      const fetchHyperManifest = async (dirPath) => {
+        const result = [];
+        const entries = await drive.readdir(dirPath, { includeStats: true });
+        for (const entry of entries) {
+          // Some hyper SDK versions return string array without stats if includeStats not supported,
+          // Handle both forms gracefully
+          const name = typeof entry === 'string' ? entry : entry.name;
+          const stat = typeof entry === 'string' ? await drive.stat(path.join(dirPath, name)).catch(()=>null) : entry.stat;
+          
+          if (!stat) continue;
+          
+          const fullPath = dirPath.endsWith('/') ? `${dirPath}${name}` : `${dirPath}/${name}`;
+          if (stat.isDirectory()) {
+            const subFiles = await fetchHyperManifest(fullPath);
+            result.push(...subFiles);
+          } else {
+            result.push({ path: fullPath.replace(/^\/+/, ''), type: "file" });
+          }
+        }
+        return result;
+      };
+
+      const manifest = await fetchHyperManifest(urlObj.pathname || '/');
+      callback({
+        statusCode: 200,
+        headers: { "Content-Type": "application/json" },
+        data: Readable.from([Buffer.from(JSON.stringify(manifest))])
+      });
+      return;
+    }
+
     console.log(`[handleHyperRequest] Fetching: ${method} ${url}`);
     const resp = await fetchFn(url, {
       method,

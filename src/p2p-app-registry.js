@@ -1,5 +1,5 @@
 import path from "path";
-import { app, ipcMain } from "electron";
+import { app, ipcMain, dialog } from "electron";
 import { promises as fs } from "fs";
 
 const MAX_ICON_BYTES = 512 * 1024;
@@ -277,6 +277,54 @@ class P2PAppRegistry {
     return { ...entry };
   }
 
+  async importFolderFromPath(folderPath) {
+    const stat = await fs.stat(folderPath).catch(() => null);
+    if (!stat || !stat.isDirectory()) {
+      throw new Error("Dropped item is not a valid folder");
+    }
+
+    const folderName = path.basename(folderPath);
+
+    const getFiles = async (dirPath, baseDir) => {
+      const entries = await fs.readdir(dirPath, { withFileTypes: true });
+      let fileList = [];
+      for (const entry of entries) {
+        const fullPath = path.join(dirPath, entry.name);
+        if (entry.isDirectory()) {
+          fileList = fileList.concat(await getFiles(fullPath, baseDir));
+        } else {
+          const relPath = path.relative(baseDir, fullPath).replace(/\\/g, "/");
+          const data = await fs.readFile(fullPath);
+          fileList.push({ path: relPath, data });
+        }
+      }
+      return fileList;
+    };
+
+    const files = await getFiles(folderPath, folderPath);
+    return await this.importFolder({ name: folderName, files });
+  }
+
+  async removeApp(appId) {
+    const safeId = sanitizeId(appId);
+    if (!safeId) throw new Error("Invalid app id");
+
+    const index = this.registry.findIndex(a => a.id === safeId);
+    if (index === -1) throw new Error("App not found");
+
+    this.registry.splice(index, 1);
+    await this.saveRegistry();
+
+    const appDir = path.join(getUserAppsDir(), safeId);
+    try {
+      await fs.rm(appDir, { recursive: true, force: true });
+    } catch {
+      // Ignore deletion errors gracefully
+    }
+
+    return { success: true, id: safeId };
+  }
+
   setupIpc() {
     ipcMain.handle("p2p-user-apps-list", async () => {
       try {
@@ -308,6 +356,39 @@ class P2PAppRegistry {
       try {
         const entry = await this.importFolder(payload);
         return { success: true, app: entry };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    });
+
+    ipcMain.handle("p2p-user-apps-select-folder", async () => {
+      try {
+        const result = await dialog.showOpenDialog({
+          properties: ["openDirectory"]
+        });
+        if (result.canceled || !result.filePaths.length) {
+          return { success: true, canceled: true };
+        }
+
+        const imported = await this.importFolderFromPath(result.filePaths[0]);
+        return { success: true, app: imported };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    });
+
+    ipcMain.handle("p2p-user-apps-import-drop", async (_event, folderPath) => {
+      try {
+        const imported = await this.importFolderFromPath(folderPath);
+        return { success: true, app: imported };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    });
+
+    ipcMain.handle("p2p-user-apps-remove", async (_event, appId) => {
+      try {
+        return await this.removeApp(appId);
       } catch (error) {
         return { success: false, error: error.message };
       }
