@@ -12,7 +12,10 @@ html, body {
   font-family: var(--browser-theme-font-family, Arial, sans-serif);
   overflow: hidden;
 }
-
+.tab-bar {
+  backdrop-filter: blur(10px);
+  background: rgba(20, 20, 30, 0.7);
+}
 input, button, textarea, select, select *, option  {
   color: inherit;
   font-family: inherit;
