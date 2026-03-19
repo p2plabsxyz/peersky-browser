@@ -34,7 +34,22 @@ class TabBar extends HTMLElement {
     // Force activation of the initial tab's webview after a delay
     setTimeout(() => this.forceActivateCurrentTab(), 300);
   }
+function activateTab(tab) {
+  document.querySelectorAll('.tab').forEach(t => {
+    t.classList.remove('active');
+  });
 
+  tab.classList.add('active');
+
+  // Add animation effect
+  tab.animate([
+    { transform: 'scale(0.95)', opacity: 0.5 },
+    { transform: 'scale(1)', opacity: 1 }
+  ], {
+    duration: 200,
+    easing: 'ease-out'
+  });
+}
   forceActivateCurrentTab() {
     if (!this.activeTabId) {
       if (this.tabs.length > 0) {
