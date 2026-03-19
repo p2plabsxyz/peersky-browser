@@ -39,12 +39,12 @@ async function exists(filePath) {
 async function get404Response() {
   try {
     await new Promise((resolve, reject) => {
-      pagesFS.stat('404.html', (err, stat) => {
+      pagesFS.stat('error.html', (err, stat) => {
         if (err) reject(err);
         else resolve(stat.isFile());
       });
     });
-    const html404Stream = Readable.toWeb(pagesFS.createReadStream('404.html'));
+    const html404Stream = Readable.toWeb(pagesFS.createReadStream('error.html'));
     return new Response(html404Stream, {
       status: 404,
       headers: {
@@ -55,7 +55,7 @@ async function get404Response() {
       },
     });
   } catch (e) {
-    console.error('Failed to serve 404.html:', e);
+    console.error('Failed to serve error.html:', e);
     return new Response('File not found', {
       status: 404,
       headers: {
