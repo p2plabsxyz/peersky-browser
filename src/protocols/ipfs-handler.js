@@ -194,15 +194,29 @@ export async function createHandler(ipfsOptions, session) {
         data: Readable.from(Buffer.from(fileUrl)),
       });
 
-      const peerCount = node.libp2p.getPeers().length;
-      console.log(`Providing ${rootCid} with ${peerCount} peers connected`);
-  
-      // Provide the root CID to the DHT in the background
-      node.libp2p.contentRouting.provide(rootCid).then(() => {
-        console.log(`Provided ${rootCid} to DHT in ${Date.now() - startTime}ms`);
-      }).catch(err => {
-        console.log('Error providing to DHT (non-critical):', err.message);
-      });
+      // Provide the root CID to the DHT in the background with retry.
+      // On fresh startup the DHT routing table may be empty; retry after
+      // a short delay to give bootstrap peers time to connect.
+      (async () => {
+        const maxAttempts = 3;
+        const retryDelayMs = 10_000;
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+          const peerCount = node.libp2p.getPeers().length;
+          console.log(`Providing ${rootCid} (attempt ${attempt}/${maxAttempts}, peers: ${peerCount})`);
+          try {
+            await node.libp2p.contentRouting.provide(rootCid);
+            console.log(`Provided ${rootCid} in ${Date.now() - startTime}ms`);
+            break;
+          } catch (err) {
+            console.warn(`Provide attempt ${attempt} failed: ${err.message}`);
+            if (attempt < maxAttempts) {
+              await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+            } else {
+              console.error(`Failed to provide ${rootCid} after ${maxAttempts} attempts`);
+            }
+          }
+        }
+      })();
   
       console.log("Files uploaded with root CID:", rootCid.toString());
       // Log to IPFS cache
