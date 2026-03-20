@@ -105,26 +105,7 @@ class P2PAppManager extends HTMLElement {
             opacity: 0.75;
             font-size: 0.88rem;
           }
-          .url-row {
-            margin-top: 10px;
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-          }
-          .url-input {
-            flex: 1 1 340px;
-            min-width: 240px;
-            background: var(--browser-theme-background, #111);
-            color: var(--browser-theme-text-color, #fff);
-            border: 1px solid var(--browser-theme-border, #333);
-            border-radius: 6px;
-            padding: 6px 10px;
-            font-size: 0.9rem;
-          }
-          .url-input:focus {
-            outline: none;
-            border-color: var(--browser-theme-primary-highlight, #00ffff);
-          }
+          /* Removed raw URL inputs to focus fully on Local Folder uploads */
           .icon-cell {
             width: 36px;
           }
@@ -181,13 +162,9 @@ class P2PAppManager extends HTMLElement {
         <h2>P2P Apps</h2>
         <div class="drop-zone" id="drop-zone">
           <div class="drop-title">Drop a folder here to add a local app</div>
-          <div class="drop-help">Two input methods: (1) paste a P2P URL, (2) drop or upload a local folder containing HTML/CSS/JS files.</div>
-          <div class="url-row">
-            <input id="url-input" class="url-input" type="url" placeholder="Paste P2P URL (peersky://, ipfs://, ipns://, hyper://, hs://, web3://)" />
-            <button class="icon-upload-btn" id="add-url-btn">Add URL</button>
-          </div>
-          <div style="margin-top:8px;">
-            <button class="icon-upload-btn" id="folder-upload-btn">Upload Folder (HTML/CSS/JS)</button>
+          <div class="drop-help">Drag and drop a local folder containing your HTML/CSS/JS files, or click the button below to browse.</div>
+          <div style="margin-top:14px;">
+            <button class="icon-upload-btn" id="folder-upload-btn" style="padding: 6px 14px; font-size: 0.9rem;">Select Folder to Upload</button>
           </div>
         </div>
         ${this.statusMessage ? `<div class="status ${this.statusType}">${this.statusMessage}</div>` : ""}
@@ -244,7 +221,7 @@ class P2PAppManager extends HTMLElement {
       });
 
       this.setupDragAndDrop();
-      this.setupUrlInput();
+      // setupUrlInput method was removed
       this.setupIconUpload();
       this.setupFolderUpload();
       this.setupDelete();
@@ -341,47 +318,7 @@ class P2PAppManager extends HTMLElement {
     });
   }
 
-  setupUrlInput() {
-    const input = this.shadowRoot.getElementById("url-input");
-    const button = this.shadowRoot.getElementById("add-url-btn");
-    if (!input || !button) return;
-
-    const submit = async () => {
-      const value = input.value.trim();
-      if (!value) {
-        this.setStatus("Enter a URL to add an app.", "error");
-        this.render();
-        return;
-      }
-      await this.addUrlApp(value);
-      input.value = "";
-    };
-
-    button.addEventListener("click", submit);
-    input.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        submit();
-      }
-    });
-  }
-
-  async addUrlApp(url) {
-    const addFn = window.electronAPI?.p2pApps?.addFromUrl;
-    if (!addFn) {
-      this.setStatus("App registry API is unavailable on this page.", "error");
-      this.render();
-      return;
-    }
-    const result = await addFn(url);
-    if (!result?.success) {
-      this.setStatus(result?.error || "Failed to add app.", "error");
-      this.render();
-      return;
-    }
-    this.setStatus(`Added app "${result.app?.name || url}". Upload an SVG icon next.`, "info");
-    this.render();
-  }
+  /* Removed setupUrlInput and addUrlApp as they are out of scope for Local App imports */
 
   setupIconUpload() {
     const fileInput = this.shadowRoot.getElementById("icon-file-input");
