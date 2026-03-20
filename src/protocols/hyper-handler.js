@@ -138,6 +138,18 @@ async function handleHyperRequest(req, callback, session) {
       const drive = sdk.drive(urlObj.hostname);
       await drive.ready();
       
+      // Must explicitly wait for remote metadata to sync before we can read paths
+      if (typeof drive.update === 'function') {
+        try {
+          await Promise.race([
+            drive.update(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("Swarm timeout")), 15000))
+          ]);
+        } catch (err) {
+          console.warn("Hyperdrive update failed or timed out. Manifest might be empty.", err.message);
+        }
+      }
+
       const fetchHyperManifest = async (dirPath) => {
         const result = [];
         const entries = await drive.readdir(dirPath, { includeStats: true });

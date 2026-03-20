@@ -190,19 +190,34 @@ class P2PAppRegistry {
             await fs.mkdir(appDir, { recursive: true });
 
             let hasIndexHtml = false;
+            let titleFromName = null;
             for (const file of filesContent) {
               const destination = path.join(appDir, file.path);
               await fs.mkdir(path.dirname(destination), { recursive: true });
               await fs.writeFile(destination, Buffer.from(file.data));
-              if (file.path.toLowerCase() === 'index.html') hasIndexHtml = true;
+              if (file.path.toLowerCase() === 'index.html') {
+                 hasIndexHtml = true;
+                 try {
+                   const contentStr = Buffer.from(file.data).toString('utf8');
+                   const match = contentStr.match(/<title[^>]*>([^<]+)<\/title>/im);
+                   if (match && match[1]) {
+                     titleFromName = match[1].trim();
+                   }
+                 } catch (e) { }
+              }
             }
 
             // Only complete the local folder clone if it has an index.html at root, 
             // otherwise treating it as a standard external application might be better.
             if (hasIndexHtml) {
+              let finalName = titleFromName || inferredName;
+              if (/^[a-z0-9]{40,}$/i.test(finalName.replace(/ /g, ''))) {
+                 finalName = "P2P App";
+              }
+
               const entry = {
                 id: uniqueId,
-                name: inferredName.slice(0, 80),
+                name: finalName.slice(0, 80),
                 url: `peersky://user-p2p-apps/${uniqueId}/`,
                 hasIcon: false,
                 iconUrl: null,
@@ -223,12 +238,17 @@ class P2PAppRegistry {
     }
     
     // Fallback if downloading failed, it's not a folder, or no index.html found.
+    let finalFallbackName = inferredName;
+    if (/^[a-z0-9]{40,}$/i.test(finalFallbackName.replace(/ /g, ''))) {
+      finalFallbackName = "P2P App";
+    }
+
     const baseId = slugify(inferredName) || "user-app";
     const uniqueId = this.makeUniqueId(baseId, new Set(this.registry.map((a) => a.id)));
 
     const entry = {
       id: uniqueId,
-      name: inferredName.slice(0, 80),
+      name: finalFallbackName.slice(0, 80),
       url: normalizedUrl,
       hasIcon: false,
       iconUrl: null,
