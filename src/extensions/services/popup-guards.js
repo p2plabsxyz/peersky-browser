@@ -9,7 +9,7 @@
  * @module popup-guards
  */
 
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, webContents } from 'electron';
 
 // Popup stabilization period - prevent closing for this duration after creation
 const POPUP_STABILIZATION_MS = 2000;
@@ -49,6 +49,39 @@ function isExtensionUrl(url) {
 }
 
 /**
+ * Open a chrome-extension:// URL in a proper browser tab instead of a popup.
+ * Mirrors the createTab pattern used by ExtensionManager.
+ */
+async function openExtensionUrlInTab(url) {
+  try {
+    const allWindows = BrowserWindow.getAllWindows();
+    for (const w of allWindows) {
+      if (w.isDestroyed()) continue;
+      const bounds = w.getBounds();
+      if (bounds.width < 500 || bounds.height < 400) continue;
+      try {
+        const hasTabBar = await w.webContents.executeJavaScript(
+          `!!(document.getElementById('tabbar') && typeof document.getElementById('tabbar').addTab === 'function')`,
+          true,
+        );
+        if (hasTabBar) {
+          const escaped = JSON.stringify(url);
+          await w.webContents.executeJavaScript(
+            `(function(){var tb=document.getElementById('tabbar');if(tb&&typeof tb.addTab==='function'){tb.addTab(${escaped},"Extension Page")}})()`,
+            true,
+          );
+          console.log('[PopupGuards] Opened extension URL in browser tab:', url.substring(0, 80));
+          return;
+        }
+      } catch (_) { /* skip window */ }
+    }
+    console.warn('[PopupGuards] No window with tabbar found for extension URL');
+  } catch (e) {
+    console.error('[PopupGuards] Failed to open extension URL in tab:', e);
+  }
+}
+
+/**
  * Install popup navigation guards on the extension manager
  */
 export function installExtensionPopupGuards(manager) {
@@ -71,6 +104,14 @@ export function installExtensionPopupGuards(manager) {
           continue;
         }
         if (focusedWindow && popup === focusedWindow) continue;
+        // If focus moves back to the popup's opener (main browser window),
+        // don't auto-close. Some extension popups (eg ArchiveWeb.page) trigger
+        // tab creation/navigation and focus remains on the opener while the popup
+        // is still expected to stay open.
+        try {
+          const opener = manager.popupToOpener?.get?.(popup) || popup.getParentWindow?.();
+          if (focusedWindow && opener && focusedWindow === opener) continue;
+        } catch (_) { }
         if (isPopupStabilizing(popup)) continue;
         try { popup.close(); } catch (_) { }
       }
@@ -166,8 +207,17 @@ export function installExtensionPopupGuards(manager) {
     wc.setWindowOpenHandler((details) => {
       const { url } = details;
 
-      // If from extension, allow ALL popups (MetaMask login, OAuth, etc.)
+      // If from extension, handle window.open requests
       if (isFromExtension) {
+        // chrome-extension:// pages (like ArchiveWeb.page's index.html) should
+        // open as proper browser tabs, matching Chrome's behaviour.
+        if (isExtensionUrl(url)) {
+          console.log('[PopupGuards] Routing extension URL to browser tab:', url?.substring(0, 80));
+          openExtensionUrlInTab(url);
+          return { action: 'deny' };
+        }
+
+        // Non-extension URLs (OAuth login popups, etc.) still open as popup windows
         console.log('[PopupGuards] Allowing popup from extension:', url?.substring(0, 60) || 'about:blank');
 
         // Register the new window for stabilization when it's created
