@@ -884,10 +884,35 @@ class ExtensionManager {
         const wcId = webContents.id;
         if (this._registeredTabs.has(wcId)) return;
         this._registeredTabs.add(wcId);
+        try {
+          const url = (typeof webContents.getURL === 'function') ? webContents.getURL() : '';
+          console.log(`[Extensions] Register tab webContents=${wcId} url=${url}`);
+        } catch (_) {
+          console.log(`[Extensions] Register tab webContents=${wcId}`);
+        }
         // Clean up when the webContents is destroyed
         webContents.once('destroyed', () => {
           this._registeredTabs?.delete(wcId);
+          console.log(`[Extensions] Tab webContents destroyed: ${wcId}`);
         });
+        // Extra diagnostics: tab lifecycle signals relevant to chrome.debugger.
+        if (!webContents.__peerskyExtDiagAttached) {
+          webContents.__peerskyExtDiagAttached = true;
+          const id = webContents.id;
+          webContents.on?.("render-process-gone", (_e, details) => {
+            console.error(`[Extensions][Tab ${id}] render-process-gone:`, details);
+          });
+          webContents.on?.("did-fail-load", (_e, code, desc, url) => {
+            console.error(`[Extensions][Tab ${id}] did-fail-load:`, { code, desc, url });
+          });
+          webContents.on?.("unresponsive", () => {
+            console.warn(`[Extensions][Tab ${id}] unresponsive`);
+          });
+          webContents.on?.("responsive", () => {
+            console.log(`[Extensions][Tab ${id}] responsive`);
+          });
+        }
+
         this.electronChromeExtensions.addTab(webContents, window);
         console.log(`[ExtensionManager] Registered webContents ${webContents.id} with extension system`);
       } catch (error) {

@@ -18,6 +18,11 @@ import { isBuiltInSearchEngine } from "./search-engine.js";
 import "./llm.js";
 // import { setupAutoUpdater } from "./auto-updater.js";
 
+// Diagnostic IPC from preload for chrome.runtime inspection
+ipcMain.on('crx-diag', (_event, msg) => {
+  console.log(msg);
+});
+
 // Import and initialize extension system
 import extensionManager from "./extensions/index.js";
 import { setupExtensionIpcHandlers } from "./extensions/extensions-ipc.js";
@@ -95,6 +100,19 @@ app.whenReady().then(async () => {
 
   // Set the WindowManager instance in context-menu.js
   setWindowManager(windowManager);
+
+  // Optional: enable verbose extension bridge logging in the npm start terminal.
+  // Usage: set PEERSKY_EXT_DEBUG=1 before running `npm start`.
+  try {
+    if (process.env.PEERSKY_EXT_DEBUG === "1") {
+      const dbg = (await import("debug")).default;
+      // Enable electron-chrome-extensions internal debug namespaces
+      dbg.enable("electron-chrome-extensions:*");
+      console.log("[Extensions] Debug logging enabled (electron-chrome-extensions:*)");
+    }
+  } catch (e) {
+    console.warn("[Extensions] Failed to enable debug logging:", e?.message);
+  }
   
   // Get consistent session for protocols and extensions
   const userSession = getBrowserSession();
@@ -278,9 +296,145 @@ async function setupProtocols(session) {
   sessionProtocol.handle("magnet", bittorrentProtocolHandler);
 }
 
-function installWebviewFileRedirect(session) {
-  session.webRequest.onBeforeRequest({ urls: ["file://*/*"] }, (_details, callback) => {
-    callback({});
+async function installWebviewFileRedirect(session) {
+  session.webRequest.onBeforeRequest({ urls: ["<all_urls>"] }, async (details, callback) => {
+    const url = details?.url || "";
+    if (url.startsWith("file://")) {
+      callback({});
+      return;
+    }
+    if (url.startsWith("chrome-extension://")) {
+      callback({});
+      return;
+    }
+    let result = {};
+    try {
+      result =
+        (await extensionManager.electronChromeExtensions?.notifyWebRequestOnBeforeRequest(
+          details,
+        )) ?? {};
+    } catch (e) {
+      console.warn("[webRequest] onBeforeRequest extension dispatch failed:", e?.message);
+    }
+    callback(result);
+  });
+
+  session.webRequest.onBeforeSendHeaders(
+    { urls: ["<all_urls>"] },
+    async (details, callback) => {
+      const url = details?.url || "";
+      if (url.startsWith("file://")) {
+        callback({});
+        return;
+      }
+      if (url.startsWith("chrome-extension://")) {
+        callback({});
+        return;
+      }
+
+      let result = {};
+      try {
+        result =
+          (await extensionManager.electronChromeExtensions?.notifyWebRequestOnBeforeSendHeaders(
+            details,
+          )) ?? {};
+      } catch (e) {
+        console.warn(
+          "[webRequest] onBeforeSendHeaders extension dispatch failed:",
+          e?.message,
+        );
+      }
+
+      callback(result);
+    },
+  );
+
+  session.webRequest.onSendHeaders({ urls: ["<all_urls>"] }, async (details) => {
+    const url = details?.url || "";
+    if (url.startsWith("file://") || url.startsWith("chrome-extension://")) {
+      return;
+    }
+    try {
+      await extensionManager.electronChromeExtensions?.notifyWebRequestOnSendHeaders(details);
+    } catch (e) {
+      console.warn("[webRequest] onSendHeaders extension dispatch failed:", e?.message);
+    }
+  });
+
+  session.webRequest.onHeadersReceived(
+    { urls: ["<all_urls>"] },
+    async (details, callback) => {
+      const url = details?.url || "";
+      if (url.startsWith("file://")) {
+        callback({});
+        return;
+      }
+      if (url.startsWith("chrome-extension://")) {
+        callback({});
+        return;
+      }
+
+      let result = {};
+      try {
+        result =
+          (await extensionManager.electronChromeExtensions?.notifyWebRequestOnHeadersReceived(
+            details,
+          )) ?? {};
+      } catch (e) {
+        console.warn(
+          "[webRequest] onHeadersReceived extension dispatch failed:",
+          e?.message,
+        );
+      }
+
+      callback(result);
+    },
+  );
+
+  session.webRequest.onResponseStarted({ urls: ["<all_urls>"] }, async (details) => {
+    const url = details?.url || "";
+    if (url.startsWith("file://") || url.startsWith("chrome-extension://")) {
+      return;
+    }
+    try {
+      await extensionManager.electronChromeExtensions?.notifyWebRequestOnResponseStarted(
+        details,
+      );
+    } catch (e) {
+      console.warn(
+        "[webRequest] onResponseStarted extension dispatch failed:",
+        e?.message,
+      );
+    }
+  });
+
+  session.webRequest.onCompleted({ urls: ["<all_urls>"] }, async (details) => {
+    const url = details?.url || "";
+    if (url.startsWith("file://") || url.startsWith("chrome-extension://")) {
+      return;
+    }
+    try {
+      await extensionManager.electronChromeExtensions?.notifyWebRequestOnCompleted(details);
+    } catch (e) {
+      console.warn("[webRequest] onCompleted extension dispatch failed:", e?.message);
+    }
+  });
+
+  session.webRequest.onErrorOccurred({ urls: ["<all_urls>"] }, async (details) => {
+    const url = details?.url || "";
+    if (url.startsWith("file://") || url.startsWith("chrome-extension://")) {
+      return;
+    }
+    try {
+      await extensionManager.electronChromeExtensions?.notifyWebRequestOnErrorOccurred(
+        details,
+      );
+    } catch (e) {
+      console.warn(
+        "[webRequest] onErrorOccurred extension dispatch failed:",
+        e?.message,
+      );
+    }
   });
 }
 
