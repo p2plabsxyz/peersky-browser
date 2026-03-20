@@ -326,7 +326,7 @@ class P2PAppRegistry {
     try {
       await fs.rm(appDir, { recursive: true, force: true });
     } catch {
-      // Ignore deletion errors gracefully
+      console.error("Failed to remove app directory");
     }
 
     return { success: true, id: safeId };

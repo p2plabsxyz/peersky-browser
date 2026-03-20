@@ -397,7 +397,6 @@ class P2PAppManager extends HTMLElement {
            return;
         }
         
-        // Also unpin it visually if pinned
         import("peersky://p2p/p2p-list.js").then(async ({ setPinnedState }) => {
            await setPinnedState(appId, false);
            this.setStatus("App deleted successfully.", "info");
