@@ -1,9 +1,8 @@
 import path from "path";
 import { fileURLToPath } from 'url';
 import mime from "mime-types";
-import { Readable } from 'stream';
 import ScopedFS from 'scoped-fs';
-import settingsManager from '../settings-manager.js';
+import { Readable } from 'stream';
 
 const __dirname = fileURLToPath(new URL('./', import.meta.url));
 const themePath = path.join(__dirname, '../pages/theme');
@@ -40,38 +39,38 @@ async function exists(filePath) {
 async function get404Response() {
   try {
     await new Promise((resolve, reject) => {
-      pagesFS.stat('404.html', (err, stat) => {
+      pagesFS.stat('error.html', (err, stat) => {
         if (err) reject(err);
         else resolve(stat.isFile());
       });
     });
-    return {
-      statusCode: 404,
+    const html404Stream = Readable.toWeb(pagesFS.createReadStream('error.html'));
+    return new Response(html404Stream, {
+      status: 404,
       headers: {
         'Content-Type': 'text/html',
         'Access-Control-Allow-Origin': '*',
         'Allow-CSP-From': '*',
         'Cache-Control': 'no-cache'
       },
-      data: pagesFS.createReadStream('404.html')
-    };
+    });
   } catch (e) {
-    console.error('Failed to serve 404.html:', e);
-    return {
-      statusCode: 404,
+    console.error('Failed to serve error.html:', e);
+    return new Response('File not found', {
+      status: 404,
       headers: {
         'Content-Type': 'text/plain',
         'Access-Control-Allow-Origin': '*',
         'Allow-CSP-From': '*',
         'Cache-Control': 'no-cache'
       },
-      data: Readable.from(['File not found'])
-    };
+    });
   }
 }
 
 export async function createHandler() {
-  return async function protocolHandler({ url }, sendResponse) {
+  return async function protocolHandler(request) {
+    const { url } = request;
     const parsedUrl = new URL(url);
 
     if (parsedUrl.hostname === 'theme') {
@@ -95,9 +94,9 @@ export async function createHandler() {
           resolvedPath = await resolveFile(fileName);
         }
 
-        const statusCode = 200;
-        const data = themeFS.createReadStream(resolvedPath);
+        const data = Readable.toWeb(themeFS.createReadStream(resolvedPath));
         const contentType = mime.lookup(resolvedPath) || 'text/plain';
+        const statusCode = 200;
         const headers = {
           'Content-Type': contentType,
           'Access-Control-Allow-Origin': '*',
@@ -109,17 +108,16 @@ export async function createHandler() {
           'Last-Modified': new Date().toUTCString()
         };
 
-        sendResponse({
-          statusCode,
+        return new Response(data, {
+          status: statusCode,
           headers,
-          data
         });
       } catch (e) {
         console.log('File not found:', fileName);
-        sendResponse(await get404Response());
+        return get404Response();
       }
     } else {
-      sendResponse(await get404Response());
+      return get404Response();
     }
   };
 }
