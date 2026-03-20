@@ -592,6 +592,28 @@ export async function createHandler(ipfsOptions, session) {
 
       const stats = await unixFileSystem.stat(cid, { path: pathString });
       if (stats.type === "directory") {
+        if (urlObj.searchParams.get('__peerskyManifest') === '1') {
+          const fetchIpfsManifest = async (currentCid, currentPath) => {
+            const result = [];
+            for await (const file of unixFileSystem.ls(currentCid, { path: currentPath })) {
+              const fullPath = currentPath ? `${currentPath}/${file.name}` : file.name;
+              if (file.type === "directory") {
+                const subFiles = await fetchIpfsManifest(currentCid, fullPath);
+                result.push(...subFiles);
+              } else {
+                result.push({ path: fullPath, type: "file" });
+              }
+            }
+            return result;
+          };
+
+          const manifest = await fetchIpfsManifest(cid, pathString);
+          responseHeaders["Content-Type"] = "application/json";
+          data = Readable.from([Buffer.from(JSON.stringify(manifest))]);
+          sendResponse({ statusCode, headers: responseHeaders, data });
+          return;
+        }
+
         // Directory => try "index.html" or show directory listing
         const indexPath = pathString
           ? pathString.replace(/\/+$/, "") + "/index.html"

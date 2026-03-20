@@ -46,7 +46,7 @@ const WEB3_PROTOCOL = {
 };
 
 const BROWSER_PROTOCOL = {
-  standard: false,
+  standard: true,
   secure: true,
   allowServiceWorkers: false,
   supportFetchAPI: true,

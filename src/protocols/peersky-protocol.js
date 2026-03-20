@@ -230,8 +230,13 @@ async function handleUserP2PAppAsset(assetPath, sendResponse) {
     }
 
     let relativePath = restPath.join("/");
-    if (!relativePath) relativePath = "app/index.html";
+    if (!relativePath) relativePath = "index.html";
     if (relativePath.endsWith("/")) relativePath += "index.html";
+
+    // All web assets are stored in the 'app/' subfolder except the app icon
+    if (relativePath !== "icon.svg") {
+      relativePath = "app/" + relativePath;
+    }
 
     const normalizedRelative = relativePath.replace(/\\/g, "/");
     if (normalizedRelative.includes("\0")) throw new Error("Invalid path");
@@ -267,9 +272,11 @@ async function handleUserP2PAppAsset(assetPath, sendResponse) {
 export async function createHandler() {
   return async function protocolHandler({ url }, sendResponse) {
     const parsedUrl = new URL(url);
-    let filePath = parsedUrl.hostname + parsedUrl.pathname;
+    let filePath = (parsedUrl.hostname + parsedUrl.pathname)
+      .replace(/^\/+/, '')
+      .replace(/\/+$/, '');
 
-    if (filePath === '/') filePath = 'home';
+    if (!filePath || filePath === 'home') filePath = 'home';
     if (filePath === 'history' || filePath.startsWith('history/')) return handleHistory(sendResponse);
     if (filePath.startsWith('wallpaper/')) return handleWallpaper(filePath.slice(10), sendResponse);
     if (filePath.startsWith('extension-icon/')) {

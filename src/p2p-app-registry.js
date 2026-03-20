@@ -1,5 +1,5 @@
 import path from "path";
-import { app, ipcMain, dialog } from "electron";
+import { app, ipcMain, dialog, net } from "electron";
 import { promises as fs } from "fs";
 
 const MAX_ICON_BYTES = 512 * 1024;
@@ -151,6 +151,78 @@ class P2PAppRegistry {
     if (existingByUrl) return { ...existingByUrl };
 
     const inferredName = inferNameFromUrl(urlObj);
+    
+    // Try to download as a folder first using the custom peersky manifest
+    try {
+      const manifestUrl = new URL(normalizedUrl);
+      manifestUrl.searchParams.set('__peerskyManifest', '1');
+      
+      const manifestResp = await net.fetch(manifestUrl.toString());
+      if (manifestResp.ok) {
+        const contentType = manifestResp.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          const manifest = await manifestResp.json();
+          if (Array.isArray(manifest) && manifest.length > 0) {
+            const filesContent = [];
+            const requestedPath = manifestUrl.pathname.replace(/^\/+/, '').replace(/\/+$/, '');
+            
+            for (const fileDesc of manifest) {
+              if (fileDesc.type === 'file') {
+                const fileUrl = new URL(normalizedUrl);
+                // The manifest paths are absolute to the domain/CID root
+                fileUrl.pathname = '/' + fileDesc.path;
+                
+                const fileResp = await net.fetch(fileUrl.toString());
+                if (!fileResp.ok) throw new Error(`Failed to fetch ${fileDesc.path}`);
+                const arrayBuf = await fileResp.arrayBuffer();
+                
+                // calculate relative path to map exactly to local root
+                let relPath = fileDesc.path;
+                if (requestedPath && relPath.startsWith(requestedPath + '/')) {
+                  relPath = relPath.slice(requestedPath.length + 1);
+                }
+                filesContent.push({ path: relPath, data: arrayBuf });
+              }
+            }
+            
+            const uniqueId = this.makeUniqueId(slugify(inferredName) || "user-app", new Set(this.registry.map((a) => a.id)));
+            const appDir = path.join(getUserAppsDir(), uniqueId, "app");
+            await fs.mkdir(appDir, { recursive: true });
+
+            let hasIndexHtml = false;
+            for (const file of filesContent) {
+              const destination = path.join(appDir, file.path);
+              await fs.mkdir(path.dirname(destination), { recursive: true });
+              await fs.writeFile(destination, Buffer.from(file.data));
+              if (file.path.toLowerCase() === 'index.html') hasIndexHtml = true;
+            }
+
+            // Only complete the local folder clone if it has an index.html at root, 
+            // otherwise treating it as a standard external application might be better.
+            if (hasIndexHtml) {
+              const entry = {
+                id: uniqueId,
+                name: inferredName.slice(0, 80),
+                url: `peersky://user-p2p-apps/${uniqueId}/`,
+                hasIcon: false,
+                iconUrl: null,
+                createdAt: new Date().toISOString()
+              };
+              this.registry.push(entry);
+              await this.saveRegistry();
+              return { ...entry };
+            } else {
+              // Revert files since we fall back
+              await fs.rm(path.join(getUserAppsDir(), uniqueId), { recursive: true, force: true }).catch(()=>{});
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.log("Failed to download P2P app as a folder. Falling back to single URL entry. Error:", e);
+    }
+    
+    // Fallback if downloading failed, it's not a folder, or no index.html found.
     const baseId = slugify(inferredName) || "user-app";
     const uniqueId = this.makeUniqueId(baseId, new Set(this.registry.map((a) => a.id)));
 

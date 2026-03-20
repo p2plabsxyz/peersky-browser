@@ -180,8 +180,8 @@ class P2PAppManager extends HTMLElement {
       let tableHtml = `
         <h2>P2P Apps</h2>
         <div class="drop-zone" id="drop-zone">
-          <div class="drop-title">Drop a URL here to add a P2P app</div>
-          <div class="drop-help">Three input methods: (1) paste a P2P URL, (2) drag and drop a P2P URL, (3) upload a local folder with HTML/CSS/JS files.</div>
+          <div class="drop-title">Drop a folder here to add a local app</div>
+          <div class="drop-help">Two input methods: (1) paste a P2P URL, (2) drop or upload a local folder containing HTML/CSS/JS files.</div>
           <div class="url-row">
             <input id="url-input" class="url-input" type="url" placeholder="Paste P2P URL (peersky://, ipfs://, ipns://, hyper://, hs://, web3://)" />
             <button class="icon-upload-btn" id="add-url-btn">Add URL</button>
@@ -268,28 +268,76 @@ class P2PAppManager extends HTMLElement {
       event.preventDefault();
       dropZone.classList.remove("dragover");
 
-      if (event.dataTransfer.files && event.dataTransfer.files.length > 0) {
-        const file = event.dataTransfer.files[0];
-        if (file.path && window.electronAPI?.p2pApps?.importFromDrop) {
-          const result = await window.electronAPI.p2pApps.importFromDrop(file.path);
-          if (result?.success) {
-            this.setStatus(`Imported folder app "${result.app?.name}". You can now pin it and upload an SVG icon.`, "info");
-            this.render();
-            return;
-          } else if (!result.error.includes("not a valid folder")) {
-            this.setStatus(result.error || "Failed to import folder from drop.", "error");
-            this.render();
-            return;
+      this.setStatus("Processing dropped folder...", "info");
+      this.render();
+
+      try {
+        if (event.dataTransfer.items && event.dataTransfer.items.length > 0) {
+          const item = event.dataTransfer.items[0];
+          const rootEntry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
+          
+          if (rootEntry && rootEntry.isDirectory) {
+            const filesToUpload = [];
+            
+            const readEntry = async (entry, pathPrefix = "") => {
+              if (entry.isFile) {
+                return new Promise((resolve) => {
+                  entry.file(async (file) => {
+                    try {
+                      const arrayBuf = await file.arrayBuffer();
+                      filesToUpload.push({ path: pathPrefix + file.name, data: new Uint8Array(arrayBuf) });
+                    } catch (e) {
+                      console.error("Failed to read dropped file", entry.name, e);
+                    }
+                    resolve();
+                  });
+                });
+              } else if (entry.isDirectory) {
+                const dirReader = entry.createReader();
+                const getEntries = () => new Promise((resolve, reject) => dirReader.readEntries(resolve, reject));
+                let entries = await getEntries();
+                while (entries.length > 0) {
+                  for (const child of entries) {
+                    await readEntry(child, pathPrefix + entry.name + "/");
+                  }
+                  entries = await getEntries();
+                }
+              }
+            };
+
+            const dirReader = rootEntry.createReader();
+            const getEntries = () => new Promise((resolve, reject) => dirReader.readEntries(resolve, reject));
+            let topEntries = await getEntries();
+            while (topEntries.length > 0) {
+              for (const child of topEntries) {
+                 await readEntry(child, ""); 
+              }
+              topEntries = await getEntries();
+            }
+
+            if (filesToUpload.length > 0 && window.electronAPI?.p2pApps?.importFolder) {
+              const importFn = window.electronAPI.p2pApps.importFolder;
+              const result = await importFn(rootEntry.name || "Local App", filesToUpload);
+              if (result?.success) {
+                this.setStatus(`Imported folder app "${result.app?.name}". You can now pin it and upload an SVG icon.`, "info");
+                this.render();
+                return;
+              } else {
+                this.setStatus(result.error || "Failed to import folder from drop.", "error");
+                this.render();
+                return;
+              }
+            }
           }
         }
-      }
 
-      const droppedUrl = this.extractDroppedUrl(event.dataTransfer);
-      if (!droppedUrl) {
-        this.setStatus("Drop a valid URL or folder to add an app.", "error");
-        return;
+        this.setStatus("Please drop a valid local folder containing an index.html file to add an app.", "error");
+        this.render();
+      } catch (e) {
+        console.error("Error processing drop:", e);
+        this.setStatus("An error occurred during drag and drop.", "error");
+        this.render();
       }
-      await this.addUrlApp(droppedUrl);
     });
   }
 
@@ -423,21 +471,6 @@ class P2PAppManager extends HTMLElement {
         });
       });
     });
-  }
-
-  extractDroppedUrl(dataTransfer) {
-    if (!dataTransfer) return null;
-    const uriList = dataTransfer.getData("text/uri-list");
-    if (uriList) {
-      const candidate = uriList.split(/\r?\n/).find((line) => line && !line.startsWith("#"));
-      if (this.isValidUrl(candidate)) return candidate;
-    }
-    const plain = dataTransfer.getData("text/plain");
-    if (plain) {
-      const candidate = plain.trim().split(/\s+/).find((token) => this.isValidUrl(token));
-      if (candidate) return candidate;
-    }
-    return null;
   }
 
   isValidUrl(value) {

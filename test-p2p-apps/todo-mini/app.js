@@ -18,3 +18,4 @@ document.getElementById('f').addEventListener('submit', (e)=>{
   if(!t.value.trim()) return; items.push(t.value.trim()); t.value=''; save(); render();
 });
 render();
+
