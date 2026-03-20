@@ -213,19 +213,70 @@ async function handleExtensionIcon(extensionId, size) {
   }
 }
 
+async function handleUserP2PAppAsset(assetPath) {
+  try {
+    const [rawAppId, ...restPath] = String(assetPath || "").split("/");
+    const appId = String(rawAppId || "").trim();
+    if (!/^[a-z0-9-]{1,64}$/.test(appId)) {
+      throw new Error("Invalid app id");
+    }
+
+    let relativePath = restPath.join("/");
+    if (!relativePath) relativePath = "index.html";
+    if (relativePath.endsWith("/")) relativePath += "index.html";
+
+    // All web assets are stored in the 'app/' subfolder except the app icon
+    if (relativePath !== "icon.svg") {
+      relativePath = "app/" + relativePath;
+    }
+
+    const normalizedRelative = relativePath.replace(/\\/g, "/");
+    if (normalizedRelative.includes("\0")) throw new Error("Invalid path");
+    const baseDir = path.join(app.getPath("userData"), "p2p-user-apps", appId);
+    const resolvedPath = path.resolve(baseDir, normalizedRelative);
+    const baseResolved = path.resolve(baseDir);
+    if (!resolvedPath.startsWith(baseResolved + path.sep) && resolvedPath !== baseResolved) {
+      throw new Error("Path traversal blocked");
+    }
+
+    await fsPromises.access(resolvedPath);
+    const stat = await fsPromises.stat(resolvedPath);
+    if (!stat.isFile()) throw new Error("Not a file");
+
+    return new Response(Readable.toWeb(createReadStream(resolvedPath)), {
+      status: 200,
+      headers: {
+        "Content-Type": mime.lookup(resolvedPath) || "application/octet-stream",
+        "Cache-Control": "public, max-age=3600",
+        "Access-Control-Allow-Origin": "*"
+      }
+    });
+  } catch {
+    return new Response('Not found', {
+      status: 404,
+      headers: { 'Content-Type': 'text/plain' }
+    });
+  }
+}
+
 export async function createHandler() {
   return async function protocolHandler(request) {
     const { url } = request;
     const parsedUrl = new URL(url);
-    let filePath = parsedUrl.hostname + parsedUrl.pathname;
+    let filePath = (parsedUrl.hostname + parsedUrl.pathname)
+      .replace(/^\/+/, '')
+      .replace(/\/+$/, '');
 
-    if (filePath === '/') filePath = 'home';
+    if (!filePath || filePath === 'home' || filePath === '/') filePath = 'home';
     if (filePath === 'history' || filePath.startsWith('history/')) return handleHistory();
     if (filePath.startsWith('wallpaper/')) return handleWallpaper(filePath.slice(10));
     if (filePath.startsWith('extension-icon/')) {
       const iconPath = filePath.slice(15); // Remove 'extension-icon/'
       const [extensionId, size] = iconPath.split('/');
       return handleExtensionIcon(extensionId, size || '64');
+    }
+    if (filePath.startsWith("user-p2p-apps/")) {
+      return handleUserP2PAppAsset(filePath.slice("user-p2p-apps/".length));
     }
     
     // Handle settings subpaths - map all /settings/* to settings.html
