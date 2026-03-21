@@ -1,4 +1,4 @@
-import {
+﻿import {
   markdownInput,
   markdownPreview,
   slidesPreview,
@@ -35,18 +35,23 @@ import {
 import { initMarkdown, renderPreview, scheduleRender, showSpinner, renderMarkdown } from "./noteEditor.js";
 import { initToolbar } from "./toolbar.js";
 
-let sendTimer = null;
 let saveTimer = null;
 let eventSource = null;
-let lastSentContent = "";
 let lastSavedContent = "";
 let currentRoomUrl = null;
 let currentRoomKey = null;
 let hyperdriveUrl = null;
 let draftDriveUrl = null;
 let lastDraftPayload = null;
-let didSeedContent = false;
 let justCreatedRoom = false;
+
+let ydoc = null;
+let ytext = null;
+let pendingUpdate = null;
+let sendUpdateTimer = null;
+let prevText = "";
+let isApplyingRemote = false;
+const MAX_PENDING_UPDATE_BYTES = 2 * 1024 * 1024;
 
 const ROOM_STATE_PREFIX = "p2pmd-room-";
 const ROOM_CONTENT_PREFIX = "p2pmd-room-content-";
@@ -512,30 +517,89 @@ function persistRoomState(state) {
 }
 
 export function scheduleSend() {
-  if (!currentRoomUrl) return;
-  if (sendTimer) clearTimeout(sendTimer);
-  sendTimer = setTimeout(async () => {
-    const content = markdownInput.value;
-    if (content === lastSentContent) return;
-    lastSentContent = content;
-    try {
-      await fetch(`${currentRoomUrl}/doc`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content })
-      });
-    } catch {
-      updatePeers(0);
-    } finally {
-      scheduleDraftSave();
+  if (!currentRoomUrl || !ydoc || !ytext) return;
+  const newText = markdownInput.value;
+  if (newText === prevText) return;
+  applyTextDiff(ytext, prevText, newText);
+  prevText = newText;
+}
+
+function bytesToBase64(bytes) {
+  let binary = "";
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+function base64ToBytes(b64) {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+function applyTextDiff(ytextRef, oldText, newText) {
+  if (!ytextRef || oldText === newText) return;
+  // Trim unchanged edges so we emit one minimal delete/insert change.
+  let prefixLen = 0;
+  const minLen = Math.min(oldText.length, newText.length);
+  while (prefixLen < minLen && oldText[prefixLen] === newText[prefixLen]) prefixLen++;
+  let oldSuffix = oldText.length;
+  let newSuffix = newText.length;
+  while (oldSuffix > prefixLen && newSuffix > prefixLen &&
+         oldText[oldSuffix - 1] === newText[newSuffix - 1]) {
+    oldSuffix--;
+    newSuffix--;
+  }
+  const deleteLen = oldSuffix - prefixLen;
+  const insertStr = newText.slice(prefixLen, newSuffix);
+  ytextRef.doc.transact(() => {
+    if (deleteLen > 0) ytextRef.delete(prefixLen, deleteLen);
+    if (insertStr)     ytextRef.insert(prefixLen, insertStr);
+  });
+}
+
+async function flushYjsUpdate() {
+  if (!pendingUpdate || !currentRoomUrl) return;
+  const toSend = pendingUpdate;
+  pendingUpdate = null;
+  try {
+    const res = await fetch(`${currentRoomUrl}/doc/update`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ update: bytesToBase64(toSend) })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  } catch {
+    // Keep unsent changes across transient failures; cap memory growth.
+    let merged = pendingUpdate
+      ? window.Y.mergeUpdates([toSend, pendingUpdate])
+      : toSend;
+    if (merged.byteLength > MAX_PENDING_UPDATE_BYTES && ydoc) {
+      try {
+        merged = window.Y.encodeStateAsUpdate(ydoc);
+      } catch {}
     }
-  }, 200);
+    if (merged.byteLength > MAX_PENDING_UPDATE_BYTES) {
+      console.warn("[p2pmd] Dropping oversized pending CRDT update buffer");
+      pendingUpdate = null;
+    } else {
+      pendingUpdate = merged;
+    }
+    updatePeers(0);
+  }
+}
+
+function destroyYjs() {
+  if (sendUpdateTimer) { clearTimeout(sendUpdateTimer); sendUpdateTimer = null; }
+  pendingUpdate = null;
+  if (ydoc) { try { ydoc.destroy(); } catch {} ydoc = null; }
+  ytext = null;
+  prevText = "";
+  isApplyingRemote = false;
 }
 
 async function postContentNow() {
   if (!currentRoomUrl) return;
   const content = markdownInput.value;
-  lastSentContent = content;
   try {
     await fetch(`${currentRoomUrl}/doc`, {
       method: "POST",
@@ -647,12 +711,12 @@ async function connectToRoom(localUrl, role = "client") {
     eventSource.close();
     eventSource = null;
   }
+  destroyYjs();
 
   let hasRoomSnapshot = false;
   let snapshotContent = "";
   let serverHadMeaningful = false;
-  let usedFallback = false;
-  didSeedContent = false;
+  let yjsStateBase64 = null;
   
   const serverReady = await pingServerStatus(localUrl, 5);
   if (!serverReady) {
@@ -682,6 +746,18 @@ async function connectToRoom(localUrl, role = "client") {
     }
   }
 
+  try {
+    const yjsRes = await fetchWithTimeout(`${localUrl}/doc/yjsstate`, {}, 3000);
+    if (yjsRes.ok) {
+      const yjsData = await yjsRes.json();
+      if (typeof yjsData.yjsState === "string") {
+        yjsStateBase64 = yjsData.yjsState;
+      }
+    }
+  } catch (e) {
+    console.warn("[p2pmd] Failed to fetch /doc/yjsstate:", e);
+  }
+
   if (!hasRoomSnapshot && currentRoomKey) {
     const roomKey = currentRoomKey;
     const draftContent = await loadDraftFromHyperdrive(roomKey);
@@ -695,7 +771,6 @@ async function connectToRoom(localUrl, role = "client") {
     if (hasMeaningfulContent(fallbackContent)) {
       snapshotContent = fallbackContent;
       hasRoomSnapshot = true;
-      usedFallback = true;
     }
   }
 
@@ -704,36 +779,91 @@ async function connectToRoom(localUrl, role = "client") {
     renderPreview();
     if (hasRoomSnapshot && (!serverHadMeaningful || role === "host")) {
       await postContentNow();
-      didSeedContent = true;
     }
+  }
+
+  if (window.Y) {
+    ydoc = new window.Y.Doc();
+    ytext = ydoc.getText("content");
+
+    if (yjsStateBase64) {
+      try {
+        window.Y.applyUpdate(ydoc, base64ToBytes(yjsStateBase64));
+      } catch (e) {
+        console.warn("[p2pmd] Failed to apply Yjs state:", e);
+      }
+      const ytextContent = ytext.toString();
+      if (ytextContent && ytextContent !== markdownInput.value) {
+        markdownInput.value = ytextContent;
+        renderPreview();
+      }
+    } else if (snapshotContent) {
+      ydoc.transact(() => ytext.insert(0, snapshotContent));
+    }
+
+    prevText = ytext.toString();
+
+    ydoc.on("update", (update) => {
+      if (isApplyingRemote) return;
+      if (pendingUpdate) {
+        pendingUpdate = window.Y.mergeUpdates([pendingUpdate, update]);
+      } else {
+        pendingUpdate = update;
+      }
+      if (sendUpdateTimer) clearTimeout(sendUpdateTimer);
+      sendUpdateTimer = setTimeout(flushYjsUpdate, 50);
+    });
+
+    ytext.observe((event) => {
+      const newContent = ytext.toString();
+      if (newContent === markdownInput.value) return;
+
+      // Rebase local selection against Yjs delta so remote edits don't jump cursor.
+      let s = markdownInput.selectionStart ?? 0;
+      let e = markdownInput.selectionEnd ?? 0;
+      let pos = 0;
+      for (const d of event.changes.delta) {
+        if (d.retain) {
+          pos += d.retain;
+        } else if (d.insert) {
+          const len = typeof d.insert === "string" ? d.insert.length : 0;
+          if (pos < s) s += len;
+          if (pos < e) e += len;
+          pos += len;
+        } else if (d.delete) {
+          const len = d.delete;
+          if (pos < s) s -= Math.min(len, s - pos);
+          if (pos < e) e -= Math.min(len, e - pos);
+        }
+      }
+
+      markdownInput.value = newContent;
+      markdownInput.setSelectionRange(
+        Math.max(0, Math.min(s, newContent.length)),
+        Math.max(0, Math.min(e, newContent.length))
+      );
+      prevText = newContent;
+      renderPreview();
+      scheduleDraftSave();
+    });
+  } else {
+    console.error("[p2pmd] Yjs failed to load; collaborative sync is unavailable.");
   }
 
   try {
     eventSource = new EventSource(`${localUrl}/events?role=${encodeURIComponent(role)}`);
-    eventSource.addEventListener("update", (event) => {
+
+    eventSource.addEventListener("yjsupdate", (event) => {
+      if (!ydoc) return;
       try {
-        const data = JSON.parse(event.data || "{}");
-        const incoming = typeof data.content === "string" ? data.content : "";
-        const incomingMeaningful = hasMeaningfulContent(incoming);
-        const localMeaningful = hasMeaningfulContent(markdownInput.value);
-        if (incomingMeaningful && incoming !== markdownInput.value) {
-          const isFocused = document.activeElement === markdownInput;
-          const start = markdownInput.selectionStart;
-          const end = markdownInput.selectionEnd;
-          markdownInput.value = incoming;
-          if (isFocused && start !== null && end !== null) {
-            const newStart = Math.min(start, incoming.length);
-            const newEnd = Math.min(end, incoming.length);
-            markdownInput.setSelectionRange(newStart, newEnd);
-          }
-          renderPreview();
-          scheduleDraftSave();
-        } else if (!incomingMeaningful && usedFallback && localMeaningful && !didSeedContent) {
-          postContentNow().then(() => {
-            didSeedContent = true;
-          });
-        }
-      } catch {}
+        isApplyingRemote = true;
+        window.Y.applyUpdate(ydoc, base64ToBytes(event.data));
+        prevText = ytext.toString();
+      } catch (e) {
+        console.warn("[p2pmd] Failed to apply yjsupdate:", e);
+      } finally {
+        isApplyingRemote = false;
+      }
     });
     eventSource.addEventListener("peers", (event) => {
       updatePeers(Number(event.data));
@@ -980,6 +1110,7 @@ async function disconnectRoom() {
     eventSource.close();
     eventSource = null;
   }
+  destroyYjs();
   const key = currentRoomKey;
   if (key) {
     try {
@@ -2099,7 +2230,7 @@ markdownInput.addEventListener("input", () => {
   scheduleRender();
   scheduleSend();
   scheduleDraftSave();
-});
+  });
 
 markdownInput.addEventListener("dragover", (e) => {
   const hasFiles = e.dataTransfer?.types?.includes("Files");
