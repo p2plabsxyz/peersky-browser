@@ -4,6 +4,7 @@ import { PassThrough } from "stream";
 import fs from "fs";
 import path from "path";
 import { app, safeStorage } from "electron";
+import * as Y from "yjs";
 
 const roomSessions = new Map();
 const roomPorts = new Map();
@@ -18,6 +19,10 @@ const DEBUG = process.env.NODE_ENV === 'development';
 const MARKDOWN_IT_PATH = path.join(app.getAppPath(), "src", "pages", "p2p", "p2pmd", "lib", "markdown-it.min.js");
 let markdownItScript = "";
 try { markdownItScript = fs.readFileSync(MARKDOWN_IT_PATH, "utf-8"); } catch {}
+
+const YJS_PATH = path.join(app.getAppPath(), "src", "pages", "p2p", "p2pmd", "lib", "yjs.min.js");
+let yjsScript = "";
+try { yjsScript = fs.readFileSync(YJS_PATH, "utf-8"); } catch {}
 
 const FAVICON_PATH = path.join(app.getAppPath(), "src", "pages", "static", "assets", "favicon.ico");
 let faviconBuffer = null;
@@ -171,8 +176,20 @@ function createSession(key = null) {
     sockets: new Set(),
     docState: { content: "", updatedAt: Date.now() },
     holesailServer: null,
-    holesailClient: null
+    holesailClient: null,
+    ydoc: null,
+    ytext: null
   };
+}
+function initSessionCrdt(session, initialText = "") {
+  if (session.ydoc) {
+    try { session.ydoc.destroy(); } catch {}
+  }
+  session.ydoc = new Y.Doc();
+  session.ytext = session.ydoc.getText("content");
+  if (initialText) {
+    session.ydoc.transact(() => session.ytext.insert(0, initialText));
+  }
 }
 
 function getExistingSession(key) {
@@ -210,11 +227,9 @@ function broadcastPeerList(session) {
     client.res.write(`event: peerlist\ndata: ${payload}\n\n`);
   }
 }
-
-function broadcastUpdate(session) {
-  const payload = JSON.stringify(session.docState);
+function broadcastYjsUpdate(session, base64Update) {
   for (const client of session.sseClients.values()) {
-    client.res.write(`event: update\ndata: ${payload}\n\n`);
+    client.res.write(`event: yjsupdate\ndata: ${base64Update}\n\n`);
   }
 }
 
@@ -237,6 +252,21 @@ function handleDocRequest(req, res, session) {
       "Cache-Control": "public, max-age=86400"
     });
     res.end(markdownItScript);
+    return;
+  }
+
+  if (url.pathname === "/lib/yjs.min.js" && req.method === "GET") {
+    if (!yjsScript) {
+      res.writeHead(404, { "Content-Type": "text/plain" });
+      res.end("Not found");
+      return;
+    }
+    res.writeHead(200, {
+      "Content-Type": "application/javascript",
+      "Access-Control-Allow-Origin": "*",
+      "Cache-Control": "public, max-age=86400"
+    });
+    res.end(yjsScript);
     return;
   }
 
@@ -354,44 +384,76 @@ function handleDocRequest(req, res, session) {
     <button id="toggle-preview">👁️</button>
   </div>
   <script src="/lib/markdown-it.min.js"></script>
+  <script src="/lib/yjs.min.js"></script>
   <script type="module">
     const editor = document.getElementById('editor');
     const preview = document.getElementById('preview');
     const toggleButton = document.getElementById('toggle-preview');
     let renderer = null;
-    let sendTimer = null;
-    let lastContent = '';
     let isPreviewMode = false;
+    let ydoc = null;
+    let ytext = null;
+    let prevText = '';
+    let pendingUpdate = null;
+    let sendUpdateTimer = null;
+    let isApplyingRemote = false;
+    const MAX_PENDING_UPDATE_BYTES = 2 * 1024 * 1024;
 
-    function loadMarkdownIt() {
+    function bytesToBase64(bytes) {
+      let bin = '';
+      for (let i = 0; i < bytes.byteLength; i++) bin += String.fromCharCode(bytes[i]);
+      return btoa(bin);
+    }
+    function base64ToBytes(b64) {
+      const bin = atob(b64);
+      const u8 = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      return u8;
+    }
+    function applyTextDiff(ytextRef, oldText, newText) {
+      if (!ytextRef || oldText === newText) return;
+      let pre = 0;
+      const minLen = Math.min(oldText.length, newText.length);
+      while (pre < minLen && oldText[pre] === newText[pre]) pre++;
+      let oldSuf = oldText.length, newSuf = newText.length;
+      while (oldSuf > pre && newSuf > pre && oldText[oldSuf-1] === newText[newSuf-1]) { oldSuf--; newSuf--; }
+      const delLen = oldSuf - pre;
+      const ins = newText.slice(pre, newSuf);
+      ytextRef.doc.transact(() => {
+        if (delLen > 0) ytextRef.delete(pre, delLen);
+        if (ins)        ytextRef.insert(pre, ins);
+      });
+    }
+    async function flushUpdate() {
+      if (!pendingUpdate) return;
+      const toSend = pendingUpdate; pendingUpdate = null;
       try {
-        renderer = window.markdownit({ html: false, linkify: true, breaks: true });
+        const res = await fetch('/doc/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ update: bytesToBase64(toSend) })
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
       } catch {
-        renderer = null;
+        let merged = pendingUpdate
+          ? window.Y.mergeUpdates([toSend, pendingUpdate])
+          : toSend;
+        if (merged.byteLength > MAX_PENDING_UPDATE_BYTES && ydoc) {
+          try { merged = window.Y.encodeStateAsUpdate(ydoc); } catch {}
+        }
+        if (merged.byteLength > MAX_PENDING_UPDATE_BYTES) {
+          pendingUpdate = null;
+          console.warn('[p2pmd] inline editor: dropping oversized pending CRDT update buffer');
+        } else {
+          pendingUpdate = merged;
+        }
       }
     }
 
     function render() {
       const value = editor.value || '';
-      if (isPreviewMode && renderer) {
-        preview.innerHTML = renderer.render(value);
-      } else if (isPreviewMode) {
-        preview.textContent = value;
-      }
-    }
-
-    function scheduleSend() {
-      if (sendTimer) clearTimeout(sendTimer);
-      sendTimer = setTimeout(async () => {
-        const content = editor.value || '';
-        if (content === lastContent) return;
-        lastContent = content;
-        await fetch('/doc', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content })
-        });
-      }, 200);
+      if (isPreviewMode && renderer) preview.innerHTML = renderer.render(value);
+      else if (isPreviewMode) preview.textContent = value;
     }
 
     function togglePreview() {
@@ -409,46 +471,84 @@ function handleDocRequest(req, res, session) {
     }
 
     editor.addEventListener('input', () => {
-      if (!isPreviewMode) {
-        render();
+      if (!isPreviewMode) render();
+      if (ydoc && ytext) {
+        const newText = editor.value;
+        applyTextDiff(ytext, prevText, newText);
+        prevText = newText;
       }
-      scheduleSend();
     });
-
     toggleButton.addEventListener('click', togglePreview);
 
-    await loadMarkdownIt();
-    const initial = await fetch('/doc');
-    if (initial.ok) {
-      const data = await initial.json();
-      if (data && typeof data.content === "string") {
+    try { renderer = window.markdownit({ html: false, linkify: true, breaks: true }); } catch {}
+
+    const initRes = await fetch('/doc');
+    if (initRes.ok) {
+      const data = await initRes.json();
+      if (data && typeof data.content === 'string') {
         editor.value = data.content;
-        lastContent = data.content;
+        prevText = data.content;
       }
+    }
+
+    if (window.Y) {
+      ydoc = new window.Y.Doc();
+      ytext = ydoc.getText('content');
+      try {
+        const yjsRes = await fetch('/doc/yjsstate');
+        if (yjsRes.ok) {
+          const yjsData = await yjsRes.json();
+          if (typeof yjsData.yjsState === 'string') {
+            window.Y.applyUpdate(ydoc, base64ToBytes(yjsData.yjsState));
+            const ytContent = ytext.toString();
+            if (ytContent) { editor.value = ytContent; prevText = ytContent; }
+          }
+        }
+      } catch {}
+      if (!prevText && editor.value) {
+        ydoc.transact(() => ytext.insert(0, editor.value));
+      }
+      ydoc.on('update', (upd) => {
+        if (isApplyingRemote) return;
+        pendingUpdate = pendingUpdate ? window.Y.mergeUpdates([pendingUpdate, upd]) : upd;
+        if (sendUpdateTimer) clearTimeout(sendUpdateTimer);
+        sendUpdateTimer = setTimeout(flushUpdate, 50);
+      });
+      ytext.observe((event) => {
+        const newContent = ytext.toString();
+        if (newContent === editor.value) return;
+        // Keep caret stable while applying remote inserts/deletes.
+        let s = editor.selectionStart ?? 0, e = editor.selectionEnd ?? 0, pos = 0;
+        for (const d of event.changes.delta) {
+          if (d.retain) { pos += d.retain; }
+          else if (d.insert) { const l = typeof d.insert === 'string' ? d.insert.length : 0; if (pos<s) s+=l; if (pos<e) e+=l; pos+=l; }
+          else if (d.delete) { const l = d.delete; if (pos<s) s-=Math.min(l,s-pos); if (pos<e) e-=Math.min(l,e-pos); }
+        }
+        editor.value = newContent;
+        editor.setSelectionRange(Math.max(0,Math.min(s,newContent.length)), Math.max(0,Math.min(e,newContent.length)));
+        prevText = newContent;
+        render();
+      });
     }
 
     let source = null;
     let reconnectTimer = null;
-
     function connectSSE() {
       if (source) { try { source.close(); } catch {} }
       source = new EventSource('/events');
-      source.addEventListener('update', (event) => {
+      source.addEventListener('yjsupdate', (event) => {
+        if (!ydoc) return;
         try {
-          const data = JSON.parse(event.data || '{}');
-          if (typeof data.content === "string" && data.content !== editor.value) {
-            editor.value = data.content;
-            lastContent = data.content;
-            render();
-          }
-        } catch {}
+          isApplyingRemote = true;
+          window.Y.applyUpdate(ydoc, base64ToBytes(event.data));
+          prevText = ytext.toString();
+        } catch {} finally { isApplyingRemote = false; }
       });
       source.onerror = () => {
         source.close();
         scheduleReconnect();
       };
     }
-
     async function reconnect() {
       try {
         const res = await fetch('/doc');
@@ -456,7 +556,7 @@ function handleDocRequest(req, res, session) {
           const data = await res.json();
           if (data && typeof data.content === 'string') {
             editor.value = data.content;
-            lastContent = data.content;
+            prevText = data.content;
             render();
           }
           connectSSE();
@@ -465,7 +565,6 @@ function handleDocRequest(req, res, session) {
       } catch {}
       scheduleReconnect();
     }
-
     function scheduleReconnect() {
       if (reconnectTimer) return;
       reconnectTimer = setTimeout(() => {
@@ -473,7 +572,6 @@ function handleDocRequest(req, res, session) {
         reconnect();
       }, 3000);
     }
-
     connectSSE();
   </script>
 </body>
@@ -488,6 +586,86 @@ function handleDocRequest(req, res, session) {
       "Cache-Control": "no-cache"
     });
     res.end(JSON.stringify(session.docState));
+    return;
+  }
+
+  if (url.pathname === "/doc/yjsstate" && req.method === "GET") {
+    if (!session.ydoc) {
+      res.writeHead(200, {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "no-cache"
+      });
+      res.end(JSON.stringify({ yjsState: null }));
+      return;
+    }
+    const stateBytes = Y.encodeStateAsUpdate(session.ydoc);
+    const stateBase64 = Buffer.from(stateBytes).toString("base64");
+    res.writeHead(200, {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+      "Cache-Control": "no-cache"
+    });
+    res.end(JSON.stringify({ yjsState: stateBase64 }));
+    return;
+  }
+
+  if (url.pathname === "/doc/update" && req.method === "POST") {
+    if (!session.ydoc) {
+      res.writeHead(503, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+      res.end(JSON.stringify({ ok: false, error: "No Y.Doc on this node (client-only session)" }));
+      return;
+    }
+    let body = "";
+    const MAX_UPDATE_SIZE = 1 * 1024 * 1024;
+    let overflow = false;
+    req.on("data", (chunk) => {
+      body += chunk.toString();
+      if (body.length > MAX_UPDATE_SIZE) {
+        overflow = true;
+        res.writeHead(413, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+        res.end(JSON.stringify({ ok: false, error: "Update too large" }));
+        req.destroy();
+      }
+    });
+    req.on("end", () => {
+      if (overflow) return;
+      try {
+        const parsed = JSON.parse(body || "{}");
+        const base64 = typeof parsed.update === "string" ? parsed.update : null;
+        if (!base64) {
+          res.writeHead(400, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+          res.end(JSON.stringify({ ok: false, error: "Missing update field" }));
+          return;
+        }
+        let updateBytes;
+        try {
+          updateBytes = new Uint8Array(Buffer.from(base64, "base64"));
+        } catch {
+          res.writeHead(400, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+          res.end(JSON.stringify({ ok: false, error: "Invalid base64" }));
+          return;
+        }
+      
+        try {
+          Y.applyUpdate(session.ydoc, updateBytes);
+        } catch (applyErr) {
+          console.warn("[p2pmd] /doc/update: Y.applyUpdate rejected payload:", applyErr.message);
+          res.writeHead(400, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+          res.end(JSON.stringify({ ok: false, error: "Invalid Yjs update payload" }));
+          return;
+        }
+        session.docState.content = session.ytext.toString();
+        session.docState.updatedAt = Date.now();
+        broadcastYjsUpdate(session, base64);
+        res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+        res.end(JSON.stringify({ ok: true }));
+      } catch (err) {
+        console.error("[p2pmd] /doc/update error:", err.message);
+        res.writeHead(500, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+        res.end(JSON.stringify({ ok: false, error: "Internal error" }));
+      }
+    });
     return;
   }
 
@@ -511,7 +689,18 @@ function handleDocRequest(req, res, session) {
         const content = typeof parsed.content === "string" ? parsed.content : "";
         session.docState.content = content;
         session.docState.updatedAt = Date.now();
-        broadcastUpdate(session);
+        if (session.ydoc && session.ytext) {
+          const current = session.ytext.toString();
+          if (current !== content) {
+            session.ydoc.transact(() => {
+              session.ytext.delete(0, session.ytext.length);
+              if (content) session.ytext.insert(0, content);
+            });
+            const stateBytes = Y.encodeStateAsUpdate(session.ydoc);
+            const stateBase64 = Buffer.from(stateBytes).toString("base64");
+            broadcastYjsUpdate(session, stateBase64);
+          }
+        }
         res.writeHead(200, {
           "Content-Type": "application/json",
           "Access-Control-Allow-Origin": "*",
@@ -544,7 +733,11 @@ function handleDocRequest(req, res, session) {
     
     res.write(`event: peers\ndata: ${currentPeerCount}\n\n`);
     res.write(`event: peerlist\ndata: ${JSON.stringify(getPeerList(session))}\n\n`);
-    res.write(`event: update\ndata: ${JSON.stringify(session.docState)}\n\n`);
+    if (session.ydoc) {
+      const stateBytes = Y.encodeStateAsUpdate(session.ydoc);
+      const stateBase64 = Buffer.from(stateBytes).toString("base64");
+      res.write(`event: yjsupdate\ndata: ${stateBase64}\n\n`);
+    }
     broadcastPeers(session);
     broadcastPeerList(session);
     if (!session.keepaliveInterval) {
@@ -795,6 +988,7 @@ export async function createHandler() {
       }
       sessionState.key = roomKey;
       sessionState.holesailServer = holesailServer;
+      initSessionCrdt(sessionState);
       // Extract seed from holesail-server so we can recreate with the same key later
       const serverSeed = holesailServer.dht?.seed ? holesailServer.dht.seed.toString("hex") : null;
       if (roomKey) {
@@ -851,6 +1045,7 @@ export async function createHandler() {
         sessionState.docState.content = initialContent;
         sessionState.docState.updatedAt = Date.now();
       }
+      initSessionCrdt(sessionState, sessionState.docState.content);
       
       // Pass 127.0.0.1 to holesail so clients connect to localhost
       // Holesail forwards tunnel traffic to this address, and stores it on DHT for clients
@@ -975,6 +1170,7 @@ export async function createHandler() {
         sessionState.key = rehostedKey;
         sessionState.holesailServer = holesailServer;
         roomSessions.set(rehostedKey, sessionState);
+        initSessionCrdt(sessionState, sessionState.docState.content);
         console.log("[p2pmd] join: auto-rehosted existing room", { key: redactKey(rehostedKey), port: boundPort });
         const responseHost = getResponseHost(sessionState);
         return buildJsonResponse(200, {
