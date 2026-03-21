@@ -256,9 +256,9 @@ async function setupProtocols(session) {
   sessionProtocol.handle("browser", browserThemeHandler);
 
   const ipfsProtocolHandler = await createIPFSHandler(ipfsOptions, session);
-  sessionProtocol.registerStreamProtocol("ipfs", ipfsProtocolHandler, P2P_PROTOCOL);
-  sessionProtocol.registerStreamProtocol("ipns", ipfsProtocolHandler, P2P_PROTOCOL);
-  sessionProtocol.registerStreamProtocol("pubsub", ipfsProtocolHandler, P2P_PROTOCOL);
+  sessionProtocol.handle("ipfs", ipfsProtocolHandler);
+  sessionProtocol.handle("ipns", ipfsProtocolHandler);
+  sessionProtocol.handle("pubsub", ipfsProtocolHandler);
 
   const hyperProtocolHandler = await createHyperHandler(hyperOptions);
   sessionProtocol.handle("hyper", hyperProtocolHandler);
