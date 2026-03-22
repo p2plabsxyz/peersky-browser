@@ -124,6 +124,8 @@ It exports the hardcoded `p2pApps` array for built-in apps, and dynamic helper f
 
 ### Managing apps at peersky://p2p/
 
+![alt text](images/peersky-p2p-registry.png)
+
 The page at `peersky://p2p/` (`pages/p2p/index.html`) serves as the core P2P app management registry. It uses a `<p2p-app-manager>` web component with full drag-and-drop support, displaying a table with columns:
 
 | Icon | Pin / Unpin | App Name | Actions (SVG icon upload, Delete) | Open |

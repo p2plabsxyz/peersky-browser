@@ -215,7 +215,7 @@ class P2PAppManager extends HTMLElement {
           </tbody>
         </table>
         <div style="margin-top: 15px; font-size: 0.9em; color: var(--text-secondary);">
-          If you want to delete myapps, then go to settings -&gt; search -&gt; Reset P2P Data
+          To delete myapps, go to <a href="peersky://settings">Settings</a> -&gt; search -&gt; Reset P2P Data.
         </div>
       `;
 
