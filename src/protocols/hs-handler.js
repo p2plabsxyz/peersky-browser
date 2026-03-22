@@ -228,6 +228,13 @@ function broadcastPeerList(session) {
   }
 }
 
+function broadcastUpdate(session) {
+  const payload = JSON.stringify(session.docState);
+  for (const client of session.sseClients.values()) {
+    client.res.write(`event: update\ndata: ${payload}\n\n`);
+  }
+}
+
 function broadcastYjsUpdate(session, base64Update) {
   for (const client of session.sseClients.values()) {
     client.res.write(`event: yjsupdate\ndata: ${base64Update}\n\n`);
@@ -413,6 +420,8 @@ function handleDocRequest(req, res, session) {
     const preview = document.getElementById('preview');
     const toggleButton = document.getElementById('toggle-preview');
     let renderer = null;
+    let sendTimer = null;
+    let lastContent = '';
     let isPreviewMode = false;
     let ydoc = null;
     let ytext = null;
@@ -479,6 +488,22 @@ function handleDocRequest(req, res, session) {
       else if (isPreviewMode) preview.textContent = value;
     }
 
+    function scheduleSend() {
+      if (sendTimer) clearTimeout(sendTimer);
+      sendTimer = setTimeout(async () => {
+        const content = editor.value || '';
+        if (content === lastContent) return;
+        lastContent = content;
+        try {
+          await fetch('/doc', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content })
+          });
+        } catch {}
+      }, 200);
+    }
+
     function togglePreview() {
       isPreviewMode = !isPreviewMode;
       if (isPreviewMode) {
@@ -499,6 +524,8 @@ function handleDocRequest(req, res, session) {
         const newText = editor.value;
         applyTextDiff(ytext, prevText, newText);
         prevText = newText;
+      } else {
+        scheduleSend();
       }
     });
     toggleButton.addEventListener('click', togglePreview);
@@ -511,6 +538,7 @@ function handleDocRequest(req, res, session) {
       if (data && typeof data.content === 'string') {
         editor.value = data.content;
         prevText = data.content;
+        lastContent = data.content;
       }
     }
 
@@ -524,7 +552,7 @@ function handleDocRequest(req, res, session) {
           if (typeof yjsData.yjsState === 'string') {
             window.Y.applyUpdate(ydoc, base64ToBytes(yjsData.yjsState));
             const ytContent = ytext.toString();
-            if (ytContent) { editor.value = ytContent; prevText = ytContent; }
+            if (ytContent) { editor.value = ytContent; prevText = ytContent; lastContent = ytContent; }
           }
         }
       } catch {}
@@ -550,6 +578,7 @@ function handleDocRequest(req, res, session) {
         editor.value = newContent;
         editor.setSelectionRange(Math.max(0,Math.min(s,newContent.length)), Math.max(0,Math.min(e,newContent.length)));
         prevText = newContent;
+        lastContent = newContent;
         render();
       });
     }
@@ -565,7 +594,20 @@ function handleDocRequest(req, res, session) {
           isApplyingRemote = true;
           window.Y.applyUpdate(ydoc, base64ToBytes(event.data));
           prevText = ytext.toString();
+          lastContent = prevText;
         } catch {} finally { isApplyingRemote = false; }
+      });
+      source.addEventListener('update', (event) => {
+        if (ydoc) return;
+        try {
+          const data = JSON.parse(event.data || '{}');
+          if (typeof data.content === 'string' && data.content !== editor.value) {
+            editor.value = data.content;
+            prevText = data.content;
+            lastContent = data.content;
+            render();
+          }
+        } catch {}
       });
       source.onerror = () => {
         source.close();
@@ -580,6 +622,7 @@ function handleDocRequest(req, res, session) {
           if (data && typeof data.content === 'string') {
             editor.value = data.content;
             prevText = data.content;
+            lastContent = data.content;
             render();
           }
           connectSSE();
@@ -712,6 +755,7 @@ function handleDocRequest(req, res, session) {
         const content = typeof parsed.content === "string" ? parsed.content : "";
         session.docState.content = content;
         session.docState.updatedAt = Date.now();
+        broadcastUpdate(session);
         if (session.ydoc && session.ytext) {
           const current = session.ytext.toString();
           if (current !== content) {
@@ -763,6 +807,7 @@ function handleDocRequest(req, res, session) {
     
     res.write(`event: peers\ndata: ${currentPeerCount}\n\n`);
     res.write(`event: peerlist\ndata: ${JSON.stringify(getPeerList(session))}\n\n`);
+    res.write(`event: update\ndata: ${JSON.stringify(session.docState)}\n\n`);
     if (session.ydoc) {
       const stateBytes = Y.encodeStateAsUpdate(session.ydoc);
       const stateBase64 = Buffer.from(stateBytes).toString("base64");

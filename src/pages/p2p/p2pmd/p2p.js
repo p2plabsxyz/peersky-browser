@@ -35,8 +35,10 @@
 import { initMarkdown, renderPreview, scheduleRender, showSpinner, renderMarkdown } from "./noteEditor.js";
 import { initToolbar } from "./toolbar.js";
 
+let sendTimer = null;
 let saveTimer = null;
 let eventSource = null;
+let lastSentContent = "";
 let lastSavedContent = "";
 let currentRoomUrl = null;
 let currentRoomKey = null;
@@ -516,7 +518,31 @@ function persistRoomState(state) {
 }
 
 export function scheduleSend() {
-  if (!currentRoomUrl || !ydoc || !ytext) return;
+  if (!currentRoomUrl) return;
+  if (!ydoc || !ytext) {
+    if (sendTimer) clearTimeout(sendTimer);
+    sendTimer = setTimeout(async () => {
+      const content = markdownInput.value;
+      if (content === lastSentContent) return;
+      lastSentContent = content;
+      try {
+        await fetch(`${currentRoomUrl}/doc`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content })
+        });
+      } catch {
+        updatePeers(0);
+      } finally {
+        scheduleDraftSave();
+      }
+    }, 200);
+    return;
+  }
+  if (sendTimer) {
+    clearTimeout(sendTimer);
+    sendTimer = null;
+  }
   const newText = markdownInput.value;
   if (newText === prevText) return;
   applyTextDiff(ytext, prevText, newText);
@@ -588,6 +614,7 @@ async function flushYjsUpdate() {
 }
 
 function destroyYjs() {
+  if (sendTimer) { clearTimeout(sendTimer); sendTimer = null; }
   if (sendUpdateTimer) { clearTimeout(sendUpdateTimer); sendUpdateTimer = null; }
   pendingUpdate = null;
   if (ydoc) { try { ydoc.destroy(); } catch {} ydoc = null; }
@@ -599,6 +626,7 @@ function destroyYjs() {
 async function postContentNow() {
   if (!currentRoomUrl) return;
   const content = markdownInput.value;
+  lastSentContent = content;
   try {
     await fetch(`${currentRoomUrl}/doc`, {
       method: "POST",
@@ -863,6 +891,26 @@ async function connectToRoom(localUrl, role = "client") {
       } finally {
         isApplyingRemote = false;
       }
+    });
+    eventSource.addEventListener("update", (event) => {
+      if (ydoc) return;
+      try {
+        const data = JSON.parse(event.data || "{}");
+        const incoming = typeof data.content === "string" ? data.content : "";
+        if (incoming === markdownInput.value) return;
+        const isFocused = document.activeElement === markdownInput;
+        const start = markdownInput.selectionStart;
+        const end = markdownInput.selectionEnd;
+        markdownInput.value = incoming;
+        lastSentContent = incoming;
+        if (isFocused && start !== null && end !== null) {
+          const newStart = Math.min(start, incoming.length);
+          const newEnd = Math.min(end, incoming.length);
+          markdownInput.setSelectionRange(newStart, newEnd);
+        }
+        renderPreview();
+        scheduleDraftSave();
+      } catch {}
     });
     eventSource.addEventListener("peers", (event) => {
       updatePeers(Number(event.data));
