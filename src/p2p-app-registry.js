@@ -1,5 +1,5 @@
 import path from "path";
-import { app, ipcMain, dialog, net } from "electron";
+import { app, ipcMain, dialog } from "electron";
 import { promises as fs } from "fs";
 
 const MAX_ICON_BYTES = 512 * 1024;
@@ -292,23 +292,35 @@ class P2PAppRegistry {
 
     const folderName = path.basename(folderPath);
 
+    const files = [];
+    let totalBytes = 0;
+
     const getFiles = async (dirPath, baseDir) => {
       const entries = await fs.readdir(dirPath, { withFileTypes: true });
-      let fileList = [];
       for (const entry of entries) {
         const fullPath = path.join(dirPath, entry.name);
         if (entry.isDirectory()) {
-          fileList = fileList.concat(await getFiles(fullPath, baseDir));
-        } else {
+          await getFiles(fullPath, baseDir);
+        } else if (entry.isFile()) {
           const relPath = path.relative(baseDir, fullPath).replace(/\\/g, "/");
           const data = await fs.readFile(fullPath);
-          fileList.push({ path: relPath, data });
+          const nextFileCount = files.length + 1;
+          const nextTotalBytes = totalBytes + data.length;
+          
+          if (nextFileCount > MAX_BUNDLE_FILES) {
+            throw new Error(`App bundle has too many files (max ${MAX_BUNDLE_FILES})`);
+          }
+          if (nextTotalBytes > MAX_BUNDLE_BYTES) {
+            throw new Error(`App bundle is too large (max ${Math.floor(MAX_BUNDLE_BYTES / (1024 * 1024))}MB)`);
+          }
+          
+          totalBytes = nextTotalBytes;
+          files.push({ path: relPath, data });
         }
       }
-      return fileList;
     };
 
-    const files = await getFiles(folderPath, folderPath);
+    await getFiles(folderPath, folderPath);
     return await this.importFolder({ name: folderName, files });
   }
 

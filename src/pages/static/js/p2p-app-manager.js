@@ -9,6 +9,15 @@ class P2PAppManager extends HTMLElement {
     this.iconUploadTargetId = null;
   }
 
+  escapeHTML(str) {
+    return String(str || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
   connectedCallback() {
     this.render();
     // Listen for pinned apps changes from other windows
@@ -167,7 +176,7 @@ class P2PAppManager extends HTMLElement {
             <button class="icon-upload-btn" id="folder-upload-btn" style="padding: 6px 14px; font-size: 0.9rem;">Select Folder to Upload</button>
           </div>
         </div>
-        ${this.statusMessage ? `<div class="status ${this.statusType}">${this.statusMessage}</div>` : ""}
+        ${this.statusMessage ? `<div class="status ${this.escapeHTML(this.statusType)}">${this.escapeHTML(this.statusMessage)}</div>` : ""}
         <input id="icon-file-input" type="file" accept=".svg,image/svg+xml" style="display:none;" />
         <table>
           <thead>
@@ -187,17 +196,17 @@ class P2PAppManager extends HTMLElement {
         const btnClass = app.pinned ? 'pin-btn pinned' : 'pin-btn';
         tableHtml += `
           <tr>
-            <td class="icon-cell"><img src="${app.iconUrl}" alt="${app.name} icon" /></td>
-            <td><button class="${btnClass}" data-id="${app.id}" data-pinned="${app.pinned}">${btnLabel}</button></td>
-            <td><a href="${app.url}">${app.name}</a></td>
+            <td class="icon-cell"><img src="${this.escapeHTML(app.iconUrl)}" alt="${this.escapeHTML(app.name)} icon" /></td>
+            <td><button class="${this.escapeHTML(btnClass)}" data-id="${this.escapeHTML(app.id)}" data-pinned="${app.pinned}">${this.escapeHTML(btnLabel)}</button></td>
+            <td><a href="${this.escapeHTML(app.url)}">${this.escapeHTML(app.name)}</a></td>
             <td>
               ${app.source === "user"
-                ? `<button class="icon-upload-btn" data-upload-id="${app.id}">Upload SVG</button>
-                   <button class="delete-btn" data-delete-id="${app.id}">Delete</button>`
+                ? `<button class="icon-upload-btn" data-upload-id="${this.escapeHTML(app.id)}">Upload SVG</button>
+                   <button class="delete-btn" data-delete-id="${this.escapeHTML(app.id)}">Delete</button>`
                 : `<span class="builtin-label">Built-in</span>`
               }
             </td>
-            <td><a class="open-link" href="${app.url}">Open &#x2192;</a></td>
+            <td><a class="open-link" href="${this.escapeHTML(app.url)}">Open &#x2192;</a></td>
           </tr>
         `;
       });
@@ -397,14 +406,13 @@ class P2PAppManager extends HTMLElement {
            return;
         }
         
-        import("peersky://p2p/p2p-list.js").then(async ({ setPinnedState }) => {
+        try {
            await setPinnedState(appId, false);
-           this.setStatus("App deleted successfully.", "info");
-           this.render();
-        }).catch(err => {
-           this.setStatus("App deleted successfully.", "info");
-           this.render();
-        });
+        } catch (err) {
+           // Ignore pin state errors after successful deletion
+        }
+        this.setStatus("App deleted successfully.", "info");
+        this.render();
       });
     });
   }
