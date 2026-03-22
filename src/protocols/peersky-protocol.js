@@ -232,7 +232,7 @@ async function handleUserP2PAppAsset(assetPath) {
 
     const normalizedRelative = relativePath.replace(/\\/g, "/");
     if (normalizedRelative.includes("\0")) throw new Error("Invalid path");
-    const baseDir = path.join(app.getPath("userData"), "p2p-user-apps", appId);
+    const baseDir = path.join(app.getPath("userData"), "myapps", appId);
     const resolvedPath = path.resolve(baseDir, normalizedRelative);
     const baseResolved = path.resolve(baseDir);
     if (!resolvedPath.startsWith(baseResolved + path.sep) && resolvedPath !== baseResolved) {
@@ -275,8 +275,8 @@ export async function createHandler() {
       const [extensionId, size] = iconPath.split('/');
       return handleExtensionIcon(extensionId, size || '64');
     }
-    if (filePath.startsWith("user-p2p-apps/")) {
-      return handleUserP2PAppAsset(filePath.slice("user-p2p-apps/".length));
+    if (filePath.startsWith("myapps/")) {
+      return handleUserP2PAppAsset(filePath.slice("myapps/".length));
     }
     
     // Handle settings subpaths - map all /settings/* to settings.html

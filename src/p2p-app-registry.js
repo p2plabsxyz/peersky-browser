@@ -12,11 +12,11 @@ const ALLOWED_BUNDLE_EXTENSIONS = new Set([
 ]);
 
 function getUserAppsDir() {
-  return path.join(app.getPath("userData"), "p2p-user-apps");
+  return path.join(app.getPath("userData"), "myapps");
 }
 
 function getRegistryFilePath() {
-  return path.join(getUserAppsDir(), "registry.json");
+  return path.join(getUserAppsDir(), "p2p-app-registry.json");
 }
 
 function slugify(value) {
@@ -105,7 +105,7 @@ class P2PAppRegistry {
       name: entry.name.trim().slice(0, 80),
       url: entry.url.trim(),
       hasIcon: !!entry.hasIcon,
-      iconUrl: iconFilename ? `peersky://user-p2p-apps/${id}/${iconFilename}` : null,
+      iconUrl: iconFilename ? `peersky://myapps/${id}/${iconFilename}` : null,
       createdAt: typeof entry.createdAt === "string" ? entry.createdAt : new Date().toISOString()
     };
   }
@@ -211,7 +211,7 @@ class P2PAppRegistry {
     await fs.writeFile(path.join(appDir, "icon.svg"), iconBuffer);
 
     appEntry.hasIcon = true;
-    appEntry.iconUrl = `peersky://user-p2p-apps/${appId}/icon.svg`;
+    appEntry.iconUrl = `peersky://myapps/${appId}/icon.svg`;
     await this.saveRegistry();
     return { ...appEntry };
   }
@@ -274,7 +274,7 @@ class P2PAppRegistry {
     const entry = {
       id: uniqueId,
       name: inferredName.slice(0, 80),
-      url: `peersky://user-p2p-apps/${uniqueId}/`,
+      url: `peersky://myapps/${uniqueId}/`,
       hasIcon: false,
       iconUrl: null,
       createdAt: new Date().toISOString()
@@ -342,6 +342,18 @@ class P2PAppRegistry {
     }
 
     return { success: true, id: safeId };
+  }
+
+  async reset() {
+    this.registry = [];
+    const dir = getUserAppsDir();
+    try {
+      await fs.rm(dir, { recursive: true, force: true });
+    } catch (e) {
+      console.error("Failed to cleanly remove myapps directory on reset", e);
+    }
+    await fs.mkdir(dir, { recursive: true }).catch(() => {});
+    await this.saveRegistry();
   }
 
   setupIpc() {

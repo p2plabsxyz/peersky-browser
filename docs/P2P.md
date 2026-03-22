@@ -132,7 +132,7 @@ The page at `peersky://p2p/` (`pages/p2p/index.html`) serves as the core P2P app
 Pin/unpin changes are persisted via the main-process settings system (`pinnedP2PApps` key), updating the home screen P2P bar dynamically.
 
 **To register a new P2P app:**
-1. **(Users)** Easily drag-and-drop any standard HTML/CSS/JS web folder directly onto the dropzone via the UI. The application gets locally wrapped and assigned a `peersky://user-p2p-apps/...` protocol URL.
+1. **(Users)** Easily drag-and-drop any standard HTML/CSS/JS web folder directly onto the dropzone via the UI. The application gets locally wrapped and assigned a `peersky://myapps/...` protocol URL.
 2. **(Core Developers)** Add the folder for native components in `./src/pages/p2p/`, and explicitly register it into the `p2pApps` list located in `p2p-list.js`.
 
 <!-- TODO: Add section about Git submodules for P2P apps -->

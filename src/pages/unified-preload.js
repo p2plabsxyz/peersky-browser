@@ -20,7 +20,7 @@ const isHome = url.startsWith('peersky://home');
 const isBookmarks = url.includes('peersky://bookmarks');
 const isTabsPage = url.includes('peersky://tabs');
 const isP2PPage = url.startsWith('peersky://p2p');
-const isUserP2PApp = url.startsWith('peersky://user-p2p-apps');
+const isUserP2PApp = url.startsWith('peersky://myapps');
 const isInternal = (url.startsWith('peersky://') && !isUserP2PApp) || url.startsWith('file://') || url.includes('agregore.mauve.moe');
 const isExternal = !isInternal;
 
