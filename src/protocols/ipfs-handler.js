@@ -137,7 +137,13 @@ export async function createHandler(ipfsOptions, session) {
           // Try to extract filename from URL or use default
           const url = new URL(request.url);
           const pathParts = url.pathname.split('/').filter(Boolean);
-          const fileName = pathParts[pathParts.length - 1] || "index.html";
+          const rawFileName = pathParts[pathParts.length - 1] || "index.html";
+          let fileName = rawFileName;
+          try {
+            fileName = decodeURIComponent(rawFileName);
+          } catch (decodeErr) {
+            console.warn(`Failed to decode upload filename "${rawFileName}": ${decodeErr.message}`);
+          }
           
           uploadedFileNames.push(fileName);
           console.log(`Processing raw upload: ${fileName}`);
@@ -492,6 +498,8 @@ export async function createHandler(ipfsOptions, session) {
           ipfsPath = [cid, ...urlParts];
         } else if (codec === "ipns-ns") {
           ipfsPath = await handleIPNSResolution(cidOrName, urlParts);
+        } else {
+          throw new Error("Unsupported content hash codec: " + codec);
         }
       } catch (e) {
         console.error("Failed to resolve ENS name:", e);
