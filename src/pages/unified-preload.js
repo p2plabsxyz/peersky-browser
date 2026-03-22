@@ -20,7 +20,8 @@ const isHome = url.startsWith('peersky://home');
 const isBookmarks = url.includes('peersky://bookmarks');
 const isTabsPage = url.includes('peersky://tabs');
 const isP2PPage = url.startsWith('peersky://p2p');
-const isInternal = url.startsWith('peersky://') || url.startsWith('file://') || url.includes('agregore.mauve.moe');
+const isUserP2PApp = url.startsWith('peersky://myapps');
+const isInternal = (url.startsWith('peersky://') && !isUserP2PApp) || url.startsWith('file://') || url.includes('agregore.mauve.moe');
 const isExternal = !isInternal;
 
 console.log('Unified-preload: URL detection', { url, isInternal, isExternal });
@@ -44,8 +45,8 @@ if (isBitTorrent) {
   });
 }
 
-// Expose LLM API for internal pages and Agregore examples
-if (isInternal || isP2P || url.includes('agregore.mauve.moe')) {
+// Expose LLM API for internal pages, remote P2P apps, Agregore examples, and local user P2P apps
+if (isInternal || isP2P || isUserP2PApp || url.includes('agregore.mauve.moe')) {
   console.log('Unified-preload: Exposing LLM API for page:', url);
   // Iterator management for streaming
   const iteratorMaps = new Map();
@@ -487,6 +488,15 @@ const extensionAPI = {
   onExtensionError: (callback) => createEventListener('extension-error', callback)
 };
 
+const p2pAppsAPI = {
+  list: () => ipcRenderer.invoke('p2p-user-apps-list'),
+  uploadIcon: (appId, name, data) => ipcRenderer.invoke('p2p-user-apps-upload-icon', { appId, name, data }),
+  importFolder: (name, files) => ipcRenderer.invoke('p2p-user-apps-import-folder', { name, files }),
+  selectAndImportFolder: () => ipcRenderer.invoke('p2p-user-apps-select-folder'),
+  removeApp: (appId) => ipcRenderer.invoke('p2p-user-apps-remove', appId),
+  importFromDrop: (folderPath) => ipcRenderer.invoke('p2p-user-apps-import-drop', folderPath)
+};
+
 // Create context-appropriate APIs
 const settingsAPI = createSettingsAPI(context);
 
@@ -624,6 +634,9 @@ try {
       onPinnedAppsChanged: (callback) => createEventListener('pinned-apps-changed', callback),
       onClockFormatChanged: (callback) => createEventListener('clock-format-changed', callback),
       onWallpaperChanged: (callback) => createEventListener('wallpaper-changed', callback),
+      p2pApps: {
+        list: p2pAppsAPI.list
+      },
       // Extension browser action APIs for home page toolbar
       extensions: {
         getBrowserActions: () => ipcRenderer.invoke('extensions-list-browser-actions'),
@@ -685,7 +698,8 @@ try {
 
     contextBridge.exposeInMainWorld('electronAPI', {
       settings: settingsAPI,
-      onPinnedAppsChanged: (callback) => createEventListener('pinned-apps-changed', callback)
+      onPinnedAppsChanged: (callback) => createEventListener('pinned-apps-changed', callback),
+      p2pApps: p2pAppsAPI
     });
 
     console.log('Unified-preload: P2P page API exposed (pinnedP2PApps settings)');
