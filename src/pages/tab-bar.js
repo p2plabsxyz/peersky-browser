@@ -118,10 +118,7 @@ class TabBar extends HTMLElement {
       }
     });
     
-    // Add drag and drop listeners
-    this.tabContainer.addEventListener('dragstart', this.handleDragStart.bind(this));
-    this.tabContainer.addEventListener('dragend', this.handleDragEnd.bind(this));
-    this.tabContainer.addEventListener('dragover', this.handleDragOver.bind(this));
+    this.tabContainer.addEventListener('pointerdown', this.handlePointerDown.bind(this));
     
     // Don't add first tab automatically here anymore
     // Will be handled in restoreOrCreateInitialTabs
@@ -377,7 +374,7 @@ restoreTabs(persistedData) {
   // Add tab with specific ID (for restoration)
   addTabWithId(tabId, url = "peersky://home", title = "Home", tabData = {}) {    // Create tab UI
     const tab = document.createElement("div");
-    tab.className = "tab";
+    tab.className = "tab opening";
     tab.id = tabId;
     tab.dataset.url = url;
     tab.draggable = true;
@@ -405,10 +402,28 @@ restoreTabs(persistedData) {
     tab.appendChild(closeButton);
     
     tab.addEventListener("click", () => this.selectTab(tabId));
+
+    tab.addEventListener("mousemove", (e) => {
+      const rect = tab.getBoundingClientRect();
+      tab.style.setProperty('--mouse-x', `${e.clientX - rect.left}px`);
+      tab.style.setProperty('--mouse-y', `${e.clientY - rect.top}px`);
+    });
     
     this.setupTabHoverCard(tab, tabId);
     
-    this.tabContainer.appendChild(tab);
+    const addButton = this.tabContainer.querySelector('#add-tab');
+    if (addButton) {
+      this.tabContainer.insertBefore(tab, addButton);
+    } else {
+      this.tabContainer.appendChild(tab);
+    }
+    const index = this.tabs.length;
+    tab.style.transitionDelay = `${index * 15}ms`;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        tab.classList.remove('opening');
+      });
+    });
     const protocol = this._getProtocol(url);
     this.tabs.push({id: tabId, url, title, protocol});
     
@@ -782,8 +797,14 @@ restoreTabs(persistedData) {
     }
 
     // Remove tab from DOM and array
-    tabElement.remove();
+    tabElement.classList.add('closing');
     this.tabs.splice(tabIndex, 1);
+
+    setTimeout(() => {
+      if (tabElement.parentNode) {
+        tabElement.remove();
+      }
+    }, 220);
 
     // Remove associated webview
     const webview = this.webviews.get(tabId);
@@ -1319,17 +1340,22 @@ restoreTabs(persistedData) {
     // Insert at new position in array
     this.tabs.splice(position, 0, tab);
     
-    // Update DOM order
+    // Update DOM order safely
     const tabElement = document.getElementById(tabId);
     if (tabElement && this.tabContainer) {
       this.tabContainer.removeChild(tabElement);
+      const addButton = this.tabContainer.querySelector('#add-tab');
       
       if (position === 0) {
         // Insert at beginning
         this.tabContainer.insertBefore(tabElement, this.tabContainer.firstChild);
       } else if (position >= this.tabs.length - 1) {
         // Insert at end
-        this.tabContainer.appendChild(tabElement);
+        if (addButton) {
+          this.tabContainer.insertBefore(tabElement, addButton);
+        } else {
+          this.tabContainer.appendChild(tabElement);
+        }
       } else {
         // Insert at specific position
         const nextTabId = this.tabs[position + 1].id;
@@ -1337,7 +1363,12 @@ restoreTabs(persistedData) {
         if (nextTabElement) {
           this.tabContainer.insertBefore(tabElement, nextTabElement);
         } else {
-          this.tabContainer.appendChild(tabElement);
+          // Fallback to inserting before add button
+          if (addButton) {
+            this.tabContainer.insertBefore(tabElement, addButton);
+          } else {
+            this.tabContainer.appendChild(tabElement);
+          }
         }
       }
     }
@@ -2231,76 +2262,163 @@ restoreTabs(persistedData) {
     this.saveTabsState();
   }
 
-  // Drag and Drop Handlers
-  handleDragStart(e) {
-    const tabElement = e.target.closest('.tab');
-    if (tabElement) {
-      this.draggedTabId = tabElement.id;
-      // Add a delay to allow the browser to create the drag image
-      setTimeout(() => {
-        tabElement.classList.add('dragging');
-      }, 0);
-    }
-  }
+  animateTabReorder() {
+    const elements = [...this.tabContainer.querySelectorAll('.tab:not(.dragging), #add-tab')];
 
-  handleDragEnd() {
-    if (!this.draggedTabId) return;
-
-    const tabElement = document.getElementById(this.draggedTabId);
-    if (tabElement) {
-      tabElement.classList.remove('dragging');
-    }
-
-    // Get the new order of tab IDs from the DOM
-    const newTabElements = Array.from(this.tabContainer.querySelectorAll('.tab'));
-    const newTabOrderIds = newTabElements.map(el => el.id);
-
-    // Reorder the internal `this.tabs` array to match the DOM
-    this.tabs.sort((a, b) => {
-      return newTabOrderIds.indexOf(a.id) - newTabOrderIds.indexOf(b.id);
+    const firstRects = new Map();
+    
+    elements.forEach(el => {
+      firstRects.set(el, el.getBoundingClientRect());
+      el.style.transition = 'none';
     });
 
-    // Save the new state and refresh group UI to ensure headers are correct
-    this.saveTabsState();
-    this.refreshGroupStyles();
+    requestAnimationFrame(() => {
+      elements.forEach(el => {
+        const last = el.getBoundingClientRect();
+        const first = firstRects.get(el);
+        if (!first) return;
 
-    this.draggedTabId = null;
+        const dx = first.left - last.left;
+
+        if (dx !== 0) {
+          el.style.transform = `translateX(${dx}px)`;
+
+          requestAnimationFrame(() => {
+            el.style.transition = 'transform 0.15s cubic-bezier(0.25, 0.8, 0.25, 1)';
+            el.style.transform = '';
+          });
+
+          el.addEventListener('transitionend', () => {
+            el.style.transition = '';
+          }, { once: true });
+        } else {
+          el.style.transition = ''; 
+        }
+      });
+    });
   }
 
-  handleDragOver(e) {
-    e.preventDefault();
-    
-    const draggingElement = document.getElementById(this.draggedTabId);
-    if (!draggingElement) return;
+  // Drag and Drop Handlers
+  handlePointerDown(e) {
+    // Only accept left-clicks. Ignore clicks on close buttons or the add tab button.
+    if (e.button !== 0 || e.target.closest('.close-tab') || e.target.closest('.add-tab-button')) return;
 
-    // Find the tab we are hovering over to insert before it
-    const afterElement = this.getDragAfterElement(this.tabContainer, e.clientX);
+    const tab = e.target.closest('.tab');
+    if (!tab) return;
 
-    if (afterElement) {
-      this.tabContainer.insertBefore(draggingElement, afterElement);
-    } else {
-      // We are at the end, so append it
-      this.tabContainer.appendChild(draggingElement);
+    this.draggedTab = tab;
+    this.dragStartX = e.clientX;
+    this.isDragging = false;
+
+    this.onPointerMove = this.handlePointerMove.bind(this);
+    this.onPointerUp = this.handlePointerUp.bind(this);
+    window.addEventListener('pointermove', this.onPointerMove);
+    window.addEventListener('pointerup', this.onPointerUp);
+  }
+
+  handlePointerMove(e) {
+    if (!this.draggedTab) return;
+
+    const dx = e.clientX - this.dragStartX;
+
+    if (!this.isDragging && Math.abs(dx) > 3) {
+      this.isDragging = true;
+      this.destroyHoverCard();
+
+      const rect = this.draggedTab.getBoundingClientRect();
+      this.initialTabLeft = this.draggedTab.offsetLeft;
+
+      this.placeholder = document.createElement('div');
+      this.placeholder.className = 'tab-placeholder';
+      this.placeholder.style.width = `${rect.width}px`;
+
+      this.draggedTab.parentNode.insertBefore(this.placeholder, this.draggedTab);
+
+      this.draggedTab.classList.add('dragging');
+      this.draggedTab.style.left = `${this.initialTabLeft}px`;
+      this.draggedTab.style.width = `${rect.width}px`; 
+    }
+
+    if (this.isDragging) {
+      this.draggedTab.style.left = `${this.initialTabLeft + dx}px`;
+
+      const containerRect = this.tabContainer.getBoundingClientRect();
+      
+      // A small 20px vertical buffer so it doesn't cancel if you accidentally wiggle slightly up/down,
+      // combined with strict horizontal boundaries for the left/right edges of the window.
+      const isOutsideY = e.clientY < (containerRect.top - 20) || e.clientY > (containerRect.bottom + 20);
+      const isOutsideX = e.clientX < containerRect.left || e.clientX > containerRect.right;
+
+      if (isOutsideY || isOutsideX) {
+        this.handlePointerUp(e);
+        return;
+      }
+
+      const draggedCenterRelative = this.initialTabLeft + dx + (this.draggedTab.offsetWidth / 2);
+      const tabs = Array.from(this.tabContainer.querySelectorAll('.tab:not(.dragging)'));
+      let insertBeforeTab = null;
+
+      for (let tab of tabs) {
+        const tabCenterRelative = tab.offsetLeft + (tab.offsetWidth / 2);
+        
+        if (draggedCenterRelative < tabCenterRelative) {
+          insertBeforeTab = tab;
+          break;
+        }
+      }
+
+      const targetNode = insertBeforeTab || this.tabContainer.querySelector('#add-tab');
+      if (this.placeholder.nextElementSibling !== targetNode) {
+        this.animateTabReorder(); 
+        this.tabContainer.insertBefore(this.placeholder, targetNode);
+      }
     }
   }
 
-  getDragAfterElement(container, x) {
-    // Get all draggable tabs, excluding the one being dragged
-    const draggableElements = [...container.querySelectorAll('.tab:not(.dragging)')];
+  handlePointerUp(e) {
+    window.removeEventListener('pointermove', this.onPointerMove);
+    window.removeEventListener('pointerup', this.onPointerUp);
 
-    return draggableElements.reduce((closest, child) => {
-      const box = child.getBoundingClientRect();
-      // Calculate the offset of the cursor from the center of the element
-      const offset = x - box.left - box.width / 2;
-      
-      // We are looking for the element that is immediately to the right of the cursor,
-      // so we want a negative offset that is closest to zero.
-      if (offset < 0 && offset > closest.offset) {
-        return { offset: offset, element: child };
-      } else {
-        return closest;
+    if (!this.isDragging || !this.draggedTab) {
+      this.draggedTab = null;
+      return;
+    }
+
+    this.isDragging = false;
+
+    const finalLeft = this.placeholder.offsetLeft;
+
+    this.draggedTab.style.position = 'absolute';
+    this.draggedTab.style.zIndex = '1000';
+    
+    this.draggedTab.classList.remove('dragging');
+    this.draggedTab.style.transition = 'left 0.2s cubic-bezier(0.25, 0.8, 0.25, 1)';
+    this.draggedTab.style.left = `${finalLeft}px`;
+
+    setTimeout(() => {
+      if (!this.draggedTab) return;
+
+      this.draggedTab.style.position = '';
+      this.draggedTab.style.left = '';
+      this.draggedTab.style.width = '';
+      this.draggedTab.style.transition = '';
+      this.draggedTab.style.zIndex = '';
+
+      if (this.placeholder && this.placeholder.parentNode) {
+        this.tabContainer.insertBefore(this.draggedTab, this.placeholder);
+        this.placeholder.remove();
       }
-    }, { offset: Number.NEGATIVE_INFINITY }).element;
+      this.placeholder = null;
+
+      // Sync the internal state array with the new DOM order
+      const newTabOrderIds = Array.from(this.tabContainer.querySelectorAll('.tab')).map(el => el.id);
+      this.tabs.sort((a, b) => newTabOrderIds.indexOf(a.id) - newTabOrderIds.indexOf(b.id));
+
+      this.saveTabsState();
+      this.refreshGroupStyles();
+
+      this.draggedTab = null;
+    }, 200);
   }
 
   // --- P2P Protocol Helpers ---
