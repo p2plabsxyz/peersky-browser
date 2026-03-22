@@ -45,7 +45,7 @@ if (isBitTorrent) {
   });
 }
 
-// Expose LLM API for internal pages, remote P2P apps, aggregated examples, and local user P2P apps
+// Expose LLM API for internal pages, remote P2P apps, Agregore examples, and local user P2P apps
 if (isInternal || isP2P || isUserP2PApp || url.includes('agregore.mauve.moe')) {
   console.log('Unified-preload: Exposing LLM API for page:', url);
   // Iterator management for streaming

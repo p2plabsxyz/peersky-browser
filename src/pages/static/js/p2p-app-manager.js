@@ -215,7 +215,7 @@ class P2PAppManager extends HTMLElement {
           </tbody>
         </table>
         <div style="margin-top: 15px; font-size: 0.9em; color: var(--text-secondary);">
-          To delete myapps, go to <a href="peersky://settings">Settings</a> -&gt; search -&gt; Reset P2P Data.
+          To delete myapps, go to <a href="peersky://settings/search">Settings -&gt; Search</a> -&gt; Reset P2P Data.
         </div>
       `;
 
@@ -330,8 +330,6 @@ class P2PAppManager extends HTMLElement {
     });
   }
 
-  /* Removed setupUrlInput and addUrlApp as they are out of scope for Local App imports */
-
   setupIconUpload() {
     const fileInput = this.shadowRoot.getElementById("icon-file-input");
     if (!fileInput) return;
@@ -412,7 +410,7 @@ class P2PAppManager extends HTMLElement {
         try {
            await setPinnedState(appId, false);
         } catch (err) {
-           // Ignore pin state errors after successful deletion
+           console.error("Failed to unpin app", err);
         }
         this.setStatus("App deleted successfully.", "info");
         this.render();
