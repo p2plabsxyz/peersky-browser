@@ -498,6 +498,8 @@ export async function createHandler(ipfsOptions, session) {
           ipfsPath = [cid, ...urlParts];
         } else if (codec === "ipns-ns") {
           ipfsPath = await handleIPNSResolution(cidOrName, urlParts);
+        } else {
+          throw new Error("Unsupported content hash codec: " + codec);
         }
       } catch (e) {
         console.error("Failed to resolve ENS name:", e);
