@@ -233,7 +233,6 @@ class P2PAppManager extends HTMLElement {
       });
 
       this.setupDragAndDrop();
-      // setupUrlInput method was removed
       this.setupIconUpload();
       this.setupFolderUpload();
       this.setupDelete();
