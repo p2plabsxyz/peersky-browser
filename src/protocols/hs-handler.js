@@ -227,10 +227,33 @@ function broadcastPeerList(session) {
     client.res.write(`event: peerlist\ndata: ${payload}\n\n`);
   }
 }
+
 function broadcastYjsUpdate(session, base64Update) {
   for (const client of session.sseClients.values()) {
     client.res.write(`event: yjsupdate\ndata: ${base64Update}\n\n`);
   }
+}
+
+function applyTextDiffToYText(ytextRef, oldText, newText) {
+  if (!ytextRef || oldText === newText) return;
+  let prefixLen = 0;
+  const minLen = Math.min(oldText.length, newText.length);
+  while (prefixLen < minLen && oldText[prefixLen] === newText[prefixLen]) prefixLen++;
+
+  let oldSuffix = oldText.length;
+  let newSuffix = newText.length;
+  while (oldSuffix > prefixLen && newSuffix > prefixLen &&
+         oldText[oldSuffix - 1] === newText[newSuffix - 1]) {
+    oldSuffix--;
+    newSuffix--;
+  }
+
+  const deleteLen = oldSuffix - prefixLen;
+  const insertStr = newText.slice(prefixLen, newSuffix);
+  ytextRef.doc.transact(() => {
+    if (deleteLen > 0) ytextRef.delete(prefixLen, deleteLen);
+    if (insertStr) ytextRef.insert(prefixLen, insertStr);
+  });
 }
 
 function handleDocRequest(req, res, session) {
@@ -692,13 +715,20 @@ function handleDocRequest(req, res, session) {
         if (session.ydoc && session.ytext) {
           const current = session.ytext.toString();
           if (current !== content) {
-            session.ydoc.transact(() => {
-              session.ytext.delete(0, session.ytext.length);
-              if (content) session.ytext.insert(0, content);
-            });
-            const stateBytes = Y.encodeStateAsUpdate(session.ydoc);
-            const stateBase64 = Buffer.from(stateBytes).toString("base64");
-            broadcastYjsUpdate(session, stateBase64);
+            let deltaUpdate = null;
+            const onUpdate = (update) => {
+              deltaUpdate = deltaUpdate ? Y.mergeUpdates([deltaUpdate, update]) : update;
+            };
+            session.ydoc.on("update", onUpdate);
+            try {
+              applyTextDiffToYText(session.ytext, current, content);
+            } finally {
+              session.ydoc.off("update", onUpdate);
+            }
+            if (deltaUpdate) {
+              const updateBase64 = Buffer.from(deltaUpdate).toString("base64");
+              broadcastYjsUpdate(session, updateBase64);
+            }
           }
         }
         res.writeHead(200, {
