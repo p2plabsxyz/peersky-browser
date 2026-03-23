@@ -109,10 +109,29 @@ body::before {
   opacity: 0.9;
 }
 
-.home-bookmarks {
+.top-right-controls {
   position: absolute;
-  top: 110px;
+  top: 20px;
   right: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 16px;
+  z-index: 3;
+}
+
+simple-clock {
+  position: static !important;
+  margin: 0 !important;
+}
+
+.top-icons {
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+}
+
+.home-bookmarks {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -132,9 +151,6 @@ body::before {
 }
 
 .home-appearance {
-  position: absolute;
-  top: 110px;
-  right: 60px;
   display: flex;
   align-items: center;
   justify-content: center;
