@@ -53,10 +53,8 @@ class TabBar extends HTMLElement {
         this.memorySaverEnabled = data.enabled;
         this.memorySaverExclusions = data.exclusions || [];
         
-        // If disabled, wake up any sleeping tabs that might be active/needed
         if (!this.memorySaverEnabled) {
-          // You could optionally wake all tabs here, but it's better to keep them sleeping
-          // until clicked to avoid a massive memory spike when turning off the setting.
+          // Sleeping tabs will wake on click.
         }
       });
       
@@ -99,8 +97,8 @@ class TabBar extends HTMLElement {
   checkMemorySaver() {
     if (!this.memorySaverEnabled) return;
 
-    // 2 minutes in ms
-    const IDLE_THRESHOLD =  15 * 1000;
+    // 30 minutes in ms
+    const IDLE_THRESHOLD =  30 * 60 * 1000;
     const now = Date.now();
 
     for (const tab of this.tabs) {
@@ -110,7 +108,7 @@ class TabBar extends HTMLElement {
       // Skip correctly already suspended ones
       if (tab.isSuspended) continue;
       
-      // Skip pinned tabs (Chrome behavior)
+      // Skip pinned tabs 
       if (this.pinnedTabs.has(tab.id)) continue;
       
       // Check idle time
@@ -123,10 +121,9 @@ class TabBar extends HTMLElement {
         // Check if audible (playing audio/video media)
         const webview = this.webviews.get(tab.id);
         if (webview && typeof webview.isCurrentlyAudible === 'function' && webview.isCurrentlyAudible()) {
-          continue; // Don't sleep tabs playing audio
+          continue;
         }
         
-        // All checks passed -> suspend tab
         this.suspendTab(tab.id);
       }
     }
@@ -617,7 +614,6 @@ restoreTabs(persistedData) {
           return div.innerHTML;
         }
 
-        // Render card immediately with placeholder for memory
         hoverCard.innerHTML = `
           <div class="hover-card-title">${escapeHtml(tab.title)}</div>
           <div class="hover-card-url">${escapeHtml(tab.url)}</div>
@@ -642,14 +638,14 @@ restoreTabs(persistedData) {
           hoverCard.style.top = `${tabRect.top - cardRect.height - 8}px`;
         }
         
-        // Async memory lookup — update the memory div in-place after card is shown
+        // Async memory lookup
         if (webview) {
           try {
             const processId = webview.getWebContentsId();
             const { ipcRenderer } = require('electron');
             ipcRenderer.invoke('get-tab-memory-usage', processId).then(memoryUsage => {
               const memDiv = document.getElementById(`hover-memory-${tabId}`);
-              if (!memDiv) return; // card was closed already
+              if (!memDiv) return;
               if (memoryUsage && memoryUsage.workingSetSize) {
                 const memoryMB = Math.round(memoryUsage.workingSetSize / 1024 / 1024);
                 memDiv.textContent = `Memory usage: ${memoryMB} MB`;

@@ -57,8 +57,7 @@
           <span>History</span>
         </a>
         <a href="#performance" class="nav-item" data-section="performance">
-          <!-- using robot.svg as fallback if speed icon isn't there -->
-          <img src="peersky://static/assets/svg/speed.svg" class="nav-icon" alt="Performance Icon" onerror="this.src='peersky://static/assets/svg/robot.svg'">
+          <img src="peersky://static/assets/svg/speedometer2.svg" class="nav-icon" alt="Performance Icon">
           <span>Performance</span>
         </a>
       </div>
@@ -273,7 +272,7 @@
           <div class="setting-row">
             <div class="setting-label">
               <div style="font-weight: 500;">Memory Saver</div>
-              <div class="setting-hint" style="margin-top: 4px; max-width: 400px;">Inactive tabs are suspended after <strong>2 minutes</strong> to free up RAM. Pinned tabs and tabs playing audio are never suspended.</div>
+              <div class="setting-hint" style="margin-top: 4px; max-width: 400px;">Inactive tabs are suspended after <strong>30 minutes</strong> to free up RAM. Pinned tabs and tabs playing audio are never suspended.</div>
             </div>
             <div class="setting-control">
               <label class="toggle-label">
@@ -295,7 +294,6 @@
             <button type="button" id="add-exclusion-btn" class="btn btn-secondary">Add</button>
           </div>
           <div id="exclusion-list-container" style="border: 1px solid var(--settings-border); border-radius: 8px; padding: 6px 8px; min-height: 44px; max-height: 180px; overflow-y: auto; background: var(--settings-bg-secondary);">
-            <!-- List items rendered by JS -->
           </div>
         </section>
       </div>

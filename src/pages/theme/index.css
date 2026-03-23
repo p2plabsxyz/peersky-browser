@@ -567,7 +567,6 @@ find-menu {
   transition: box-shadow 0.2s ease, opacity 0.2s ease;
 }
 
-/* Sleeping tab — dotted circle around favicon */
 .tab.sleeping .tab-favicon {
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.15), 0 0 0 3px currentColor;
   outline: 2px dashed var(--peersky-nav-button-inactive);
@@ -575,17 +574,14 @@ find-menu {
   opacity: 0.55;
 }
 
-/* Dim the title for sleeping tabs */
 .tab.sleeping .tab-title {
   opacity: 0.55;
 }
 
-/* Override the inline opacity so we use CSS class instead */
 .tab.sleeping {
-  opacity: 1 !important; /* Don't dim the whole tab, just the favicon/title */
+  opacity: 1 !important; 
 }
 
-/* Hide the sleep emoji indicator (we use dotted circle instead) */
 .sleeping-indicator {
   display: none;
 }
