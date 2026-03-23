@@ -269,10 +269,11 @@
         <h1 class="section-title">Performance</h1>
         
         <section class="settings-section">
+          <!-- Memory Saver Toggle Row -->
           <div class="setting-row">
             <div class="setting-label">
-              <div>Memory Saver</div>
-              <div class="setting-hint" style="margin-top: 4px;">When on, PeerSky suspends inactive tabs to free up maximum RAM. Tabs become sleeping after 15 minutes.</div>
+              <div style="font-weight: 500;">Memory Saver</div>
+              <div class="setting-hint" style="margin-top: 4px; max-width: 400px;">Inactive tabs are suspended after <strong>2 minutes</strong> to free up RAM. Pinned tabs and tabs playing audio are never suspended.</div>
             </div>
             <div class="setting-control">
               <label class="toggle-label">
@@ -281,21 +282,20 @@
               </label>
             </div>
           </div>
-          
-          <div class="setting-row tall-row">
-            <div class="setting-label">
-              <div>Always keep these sites active</div>
-              <div class="setting-hint" style="margin-top: 4px;">Add domains to prevent them from being suspended (e.g. youtube.com, *.google.com).</div>
-            </div>
-            <div class="setting-control" style="flex-direction: column; align-items: flex-start; width: 100%;">
-              <div style="display: flex; gap: 8px; width: 100%; margin-bottom: 12px;">
-                <input type="text" id="memory-exclusion-input" class="text-input input-fill" placeholder="Add a site" autocomplete="off" style="flex-grow: 1; min-height: 36px;">
-                <button type="button" id="add-exclusion-btn" class="btn btn-secondary">Add</button>
-              </div>
-              <div id="exclusion-list-container" style="width: 100%; min-height: 50px; max-height: 150px; overflow-y: auto; background: var(--peersky-bg); border-radius: 8px; padding: 8px; border: 1px solid var(--peersky-border);">
-                <!-- List items will be injected here -->
-              </div>
-            </div>
+        </section>
+
+        <!-- Exclusion list — conditionally visible -->
+        <section class="settings-section" id="memory-exclusions-section">
+          <div style="margin-bottom: 10px;">
+            <div style="font-weight: 500; margin-bottom: 4px;">Always keep these sites active</div>
+            <div class="setting-hint">Sites matching these domains will never be suspended (e.g. <code>youtube.com</code>, <code>*.google.com</code>).</div>
+          </div>
+          <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+            <input type="text" id="memory-exclusion-input" class="text-input input-fill" placeholder="Add a site (e.g. youtube.com)" autocomplete="off" style="flex: 1; min-height: 36px;">
+            <button type="button" id="add-exclusion-btn" class="btn btn-secondary">Add</button>
+          </div>
+          <div id="exclusion-list-container" style="border: 1px solid var(--settings-border); border-radius: 8px; padding: 6px 8px; min-height: 44px; max-height: 180px; overflow-y: auto; background: var(--settings-bg-secondary);">
+            <!-- List items rendered by JS -->
           </div>
         </section>
       </div>

@@ -99,8 +99,8 @@ class TabBar extends HTMLElement {
   checkMemorySaver() {
     if (!this.memorySaverEnabled) return;
 
-    // 15 minutes in ms
-    const IDLE_THRESHOLD = 15 * 60 * 1000;
+    // 2 minutes in ms
+    const IDLE_THRESHOLD =  15 * 1000;
     const now = Date.now();
 
     for (const tab of this.tabs) {
@@ -163,7 +163,6 @@ class TabBar extends HTMLElement {
     const tabElement = document.getElementById(tabId);
     if (tabElement) {
       tabElement.classList.add('sleeping');
-      tabElement.style.opacity = '0.5'; // Visual fade
       
       const titleElement = tabElement.querySelector('.tab-title');
       if (titleElement && !titleElement.querySelector('.sleeping-indicator')) {
@@ -610,27 +609,6 @@ restoreTabs(persistedData) {
         
         // Get webview to check memory usage (if available)
         const webview = this.webviews.get(tabId);
-        let memoryInfo = 'Memory usage: Loading...';
-        
-        // Try to get memory usage (this is an approximation)
-        if (webview) {
-          try {
-            const processId = webview.getWebContentsId();
-            const { ipcRenderer } = require('electron');
-            const memoryUsage = await ipcRenderer.invoke('get-tab-memory-usage', processId);
-            
-            if (memoryUsage && memoryUsage.workingSetSize) {
-              // Convert bytes to MB
-              const memoryMB = Math.round(memoryUsage.workingSetSize / 1024 / 1024);
-              memoryInfo = `Memory usage: ${memoryMB} MB`;
-            } else {
-              memoryInfo = 'Memory usage: N/A';
-            }
-          } catch (e) {
-            console.error("Failed to get memory usage:", e);
-            memoryInfo = 'Memory usage: N/A';
-          }
-        }
         
         // Helper function to escape HTML
         function escapeHtml(text) {
@@ -639,11 +617,12 @@ restoreTabs(persistedData) {
           return div.innerHTML;
         }
 
+        // Render card immediately with placeholder for memory
         hoverCard.innerHTML = `
           <div class="hover-card-title">${escapeHtml(tab.title)}</div>
           <div class="hover-card-url">${escapeHtml(tab.url)}</div>
           <div class="hover-card-separator"></div>
-          <div class="hover-card-memory">${escapeHtml(memoryInfo)}</div>
+          <div class="hover-card-memory" id="hover-memory-${tabId}">Memory usage: Loading...</div>
         `;
         
         // Position the card
@@ -662,7 +641,36 @@ restoreTabs(persistedData) {
         if (cardRect.bottom > window.innerHeight) {
           hoverCard.style.top = `${tabRect.top - cardRect.height - 8}px`;
         }
+        
+        // Async memory lookup — update the memory div in-place after card is shown
+        if (webview) {
+          try {
+            const processId = webview.getWebContentsId();
+            const { ipcRenderer } = require('electron');
+            ipcRenderer.invoke('get-tab-memory-usage', processId).then(memoryUsage => {
+              const memDiv = document.getElementById(`hover-memory-${tabId}`);
+              if (!memDiv) return; // card was closed already
+              if (memoryUsage && memoryUsage.workingSetSize) {
+                const memoryMB = Math.round(memoryUsage.workingSetSize / 1024 / 1024);
+                memDiv.textContent = `Memory usage: ${memoryMB} MB`;
+              } else {
+                memDiv.textContent = 'Memory usage: N/A';
+              }
+            }).catch(() => {
+              const memDiv = document.getElementById(`hover-memory-${tabId}`);
+              if (memDiv) memDiv.textContent = 'Memory usage: N/A';
+            });
+          } catch (e) {
+            const memDiv = document.getElementById(`hover-memory-${tabId}`);
+            if (memDiv) memDiv.textContent = 'Memory usage: N/A';
+          }
+        } else {
+          // Tab is sleeping — no webview
+          const memDiv = document.getElementById(`hover-memory-${tabId}`);
+          if (memDiv) memDiv.textContent = tab.isSuspended ? 'Tab is sleeping' : 'Memory usage: N/A';
+        }
       }, 800); // Show after 800ms hover
+
     };
     
     const hideHoverCard = () => {
@@ -1032,7 +1040,7 @@ restoreTabs(persistedData) {
           // Fix UI
           if (newActive) {
             newActive.classList.remove('sleeping');
-            newActive.style.opacity = '1.0';
+            newActive.style.opacity = '';
             const sleepIndicator = newActive.querySelector('.sleeping-indicator');
             if (sleepIndicator) sleepIndicator.remove();
           }
