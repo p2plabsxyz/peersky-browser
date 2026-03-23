@@ -83,10 +83,8 @@ class TabBar extends HTMLElement {
       for (const pattern of this.memorySaverExclusions) {
         if (!pattern) continue;
         
-        // Exact match or wildcard host match
         if (pattern.includes('*')) {
           try {
-            // Escape special regex characters except '*'
             const escapedPattern = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
             const regexPattern = escapedPattern.replace(/\*/g, '.*');
             const regex = new RegExp(`^${regexPattern}$`, 'i');
@@ -97,14 +95,12 @@ class TabBar extends HTMLElement {
             console.warn(`[Memory Saver] Invalid pattern: ${pattern}`, err);
           }
         } else {
-          // Simple host or domain match
           if (parsedUrl.host === pattern || parsedUrl.host.endsWith('.' + pattern) || url.startsWith(pattern)) {
             return true;
           }
         }
       }
     } catch (e) {
-      // In case of invalid URL, just do a simple substring match
       return this.memorySaverExclusions.some(pattern => url.includes(pattern.replace(/\*/g, '')));
     }
     return false;
@@ -114,7 +110,7 @@ class TabBar extends HTMLElement {
     if (!this.memorySaverEnabled) return;
 
     // 30 minutes in ms
-    const IDLE_THRESHOLD =  30 * 60 * 1000/(30*5);
+    const IDLE_THRESHOLD =  30 * 60 * 1000;
     const now = Date.now();
 
     for (const tab of this.tabs) {
@@ -147,7 +143,7 @@ class TabBar extends HTMLElement {
               if (isAudible) continue;
             }
           } catch (e) {
-            // If we cannot determine audibility, fall through and allow suspension
+            console.warn("Failed to determine audibility for tab", e);
           }
         }
         
@@ -1059,7 +1055,6 @@ restoreTabs(persistedData) {
           
           tab.isSuspended = false;
           
-          // Fix UI
           if (newActive) {
             newActive.classList.remove('sleeping');
             newActive.style.opacity = '';
@@ -1069,11 +1064,9 @@ restoreTabs(persistedData) {
           console.log(`Memory Saver: Woke up tab ${tabId} (${tab.url})`);
         }
         
-        // Track last active time for new tab
         tab.lastActiveTime = Date.now();
       }
       
-      // Update last active time for old tab (the tab whose webview is currently visible)
       const now = Date.now();
       for (const [id, webviewEl] of this.webviews.entries()) {
         if (id !== tabId && webviewEl && webviewEl.style.display === "flex") {
