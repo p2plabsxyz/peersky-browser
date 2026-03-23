@@ -40,6 +40,19 @@ class TabBar extends HTMLElement {
     this.initMemorySaver();
   }
 
+  disconnectedCallback() {
+    // Cleanup Memory Saver listeners and intervals
+    if (this._memorySaverInterval) {
+      clearInterval(this._memorySaverInterval);
+      this._memorySaverInterval = null;
+    }
+    if (this._memorySaverListener) {
+      const { ipcRenderer } = require('electron');
+      ipcRenderer.removeListener('memory-saver-changed', this._memorySaverListener);
+      this._memorySaverListener = null;
+    }
+  }
+
   async initMemorySaver() {
     try {
       const { ipcRenderer } = require('electron');
@@ -49,17 +62,14 @@ class TabBar extends HTMLElement {
       this.memorySaverExclusions = await ipcRenderer.invoke('settings-get', 'memorySaverExclusions');
       
       // Listen for changes
-      ipcRenderer.on('memory-saver-changed', (_, data) => {
+      this._memorySaverListener = (_, data) => {
         this.memorySaverEnabled = data.enabled;
         this.memorySaverExclusions = data.exclusions || [];
-        
-        if (!this.memorySaverEnabled) {
-          // Sleeping tabs will wake on click.
-        }
-      });
+      };
+      ipcRenderer.on('memory-saver-changed', this._memorySaverListener);
       
       // Start background check loop (every 1 minute)
-      setInterval(() => this.checkMemorySaver(), 60000);
+      this._memorySaverInterval = setInterval(() => this.checkMemorySaver(), 60000);
     } catch (error) {
       console.warn('Failed to initialize memory saver in TabBar:', error);
     }
@@ -75,10 +85,16 @@ class TabBar extends HTMLElement {
         
         // Exact match or wildcard host match
         if (pattern.includes('*')) {
-          const regexPattern = pattern.replace(/\*/g, '.*');
-          const regex = new RegExp(`^${regexPattern}$`, 'i');
-          if (regex.test(url) || regex.test(parsedUrl.host + parsedUrl.pathname)) {
-            return true;
+          try {
+            // Escape special regex characters except '*'
+            const escapedPattern = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+            const regexPattern = escapedPattern.replace(/\*/g, '.*');
+            const regex = new RegExp(`^${regexPattern}$`, 'i');
+            if (regex.test(url) || regex.test(parsedUrl.host + parsedUrl.pathname)) {
+              return true;
+            }
+          } catch (err) {
+            console.warn(`[Memory Saver] Invalid pattern: ${pattern}`, err);
           }
         } else {
           // Simple host or domain match
@@ -98,7 +114,7 @@ class TabBar extends HTMLElement {
     if (!this.memorySaverEnabled) return;
 
     // 30 minutes in ms
-    const IDLE_THRESHOLD =  30 * 60 * 1000;
+    const IDLE_THRESHOLD =  30 * 60 * 1000/(30*5);
     const now = Date.now();
 
     for (const tab of this.tabs) {
@@ -138,7 +154,13 @@ class TabBar extends HTMLElement {
     try {
       const { ipcRenderer } = require("electron");
       const webContentsId = webview.getWebContentsId();
-      tab.savedNavigation = ipcRenderer.sendSync('get-tab-navigation', webContentsId);
+      
+      const timeoutMs = 2000;
+      const navigationPromise = ipcRenderer.invoke('get-tab-navigation', webContentsId);
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('get-tab-navigation timed out')), timeoutMs);
+      });
+      tab.savedNavigation = await Promise.race([navigationPromise, timeoutPromise]);
     } catch (e) {
       console.warn("Failed to save nav history for sleeping tab", e);
     }
@@ -1047,10 +1069,16 @@ restoreTabs(persistedData) {
         tab.lastActiveTime = Date.now();
       }
       
-      // Update last active time for old tab
-      if (this.activeTabId && this.activeTabId !== tabId) {
-         const oldTab = this.tabs.find(t => t.id === this.activeTabId);
-         if (oldTab) oldTab.lastActiveTime = Date.now();
+      // Update last active time for old tab (the tab whose webview is currently visible)
+      const now = Date.now();
+      for (const [id, webviewEl] of this.webviews.entries()) {
+        if (id !== tabId && webviewEl && webviewEl.style.display === "flex") {
+          const oldTab = this.tabs.find(t => t.id === id);
+          if (oldTab) {
+            oldTab.lastActiveTime = now;
+          }
+          break;
+        }
       }
       
       // Show ONLY the newly active webview

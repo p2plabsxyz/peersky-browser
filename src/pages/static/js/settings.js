@@ -969,7 +969,7 @@ function initializeSidebarNavigation() {
   // Check for hash-based navigation (backward compatibility)
   else if (currentPath.includes('#')) {
     const hashSection = currentPath.replace('#', '');
-    if (hashSection && ['appearance', 'search','tabs', 'extensions', 'archive'].includes(hashSection)) {
+    if (hashSection && ['appearance', 'search', 'tabs', 'extensions', 'archive', 'performance'].includes(hashSection)) {
       targetSection = hashSection;
     }
   }
