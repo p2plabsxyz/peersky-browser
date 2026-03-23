@@ -136,8 +136,19 @@ class TabBar extends HTMLElement {
         
         // Check if audible (playing audio/video media)
         const webview = this.webviews.get(tab.id);
-        if (webview && typeof webview.isCurrentlyAudible === 'function' && webview.isCurrentlyAudible()) {
-          continue;
+        if (webview) {
+          try {
+            const { ipcRenderer } = require("electron");
+            const webContentsId = typeof webview.getWebContentsId === 'function'
+              ? webview.getWebContentsId()
+              : null;
+            if (webContentsId != null) {
+              const isAudible = ipcRenderer.sendSync('is-webcontents-audible', webContentsId);
+              if (isAudible) continue;
+            }
+          } catch (e) {
+            // If we cannot determine audibility, fall through and allow suspension
+          }
         }
         
         this.suspendTab(tab.id);
@@ -181,15 +192,8 @@ class TabBar extends HTMLElement {
     // Update UI (add sleeping styling)
     const tabElement = document.getElementById(tabId);
     if (tabElement) {
+      // Add sleeping UI state
       tabElement.classList.add('sleeping');
-      
-      const titleElement = tabElement.querySelector('.tab-title');
-      if (titleElement && !titleElement.querySelector('.sleeping-indicator')) {
-        const sleepIndicator = document.createElement('span');
-        sleepIndicator.className = 'sleeping-indicator';
-        sleepIndicator.textContent = ' 💤';
-        titleElement.appendChild(sleepIndicator);
-      }
     }
     
     console.log(`Memory Saver: Suspended inactive tab ${tabId} (${tab.url})`);

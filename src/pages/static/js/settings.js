@@ -46,10 +46,7 @@ function renderExclusionList() {
     removeBtn.onclick = async () => {
       memoryExclusionsList.splice(index, 1);
       renderExclusionList();
-      // Ensure saveSettingToBackend is available globally or inline its logic
-      if (settingsAPI?.settings) {
-        await settingsAPI.settings.set('memorySaverExclusions', memoryExclusionsList);
-      }
+      await saveSettingToBackend('memorySaverExclusions', memoryExclusionsList);
     };
 
     item.appendChild(text);
