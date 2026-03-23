@@ -13,6 +13,7 @@ import { ipfsOptions, hyperOptions } from "./protocols/config.js";
 import { createMenuTemplate } from "./actions.js";
 import WindowManager from "./window-manager.js";
 import settingsManager from "./settings-manager.js";
+import p2pAppRegistry from "./p2p-app-registry.js";
 import { setWindowManager } from "./context-menu.js";
 import { isBuiltInSearchEngine } from "./search-engine.js";
 import "./llm.js";
@@ -50,7 +51,7 @@ const WEB3_PROTOCOL = {
 };
 
 const BROWSER_PROTOCOL = {
-  standard: false,
+  standard: true,
   secure: true,
   allowServiceWorkers: false,
   supportFetchAPI: true,
@@ -97,6 +98,8 @@ globalProtocol.registerSchemesAsPrivileged([
 
 app.whenReady().then(async () => {
   windowManager = new WindowManager();
+  await p2pAppRegistry.init();
+  p2pAppRegistry.setupIpc();
 
   // Set the WindowManager instance in context-menu.js
   setWindowManager(windowManager);
@@ -274,9 +277,9 @@ async function setupProtocols(session) {
   sessionProtocol.handle("browser", browserThemeHandler);
 
   const ipfsProtocolHandler = await createIPFSHandler(ipfsOptions, session);
-  sessionProtocol.registerStreamProtocol("ipfs", ipfsProtocolHandler, P2P_PROTOCOL);
-  sessionProtocol.registerStreamProtocol("ipns", ipfsProtocolHandler, P2P_PROTOCOL);
-  sessionProtocol.registerStreamProtocol("pubsub", ipfsProtocolHandler, P2P_PROTOCOL);
+  sessionProtocol.handle("ipfs", ipfsProtocolHandler);
+  sessionProtocol.handle("ipns", ipfsProtocolHandler);
+  sessionProtocol.handle("pubsub", ipfsProtocolHandler);
 
   const hyperProtocolHandler = await createHyperHandler(hyperOptions);
   sessionProtocol.handle("hyper", hyperProtocolHandler);

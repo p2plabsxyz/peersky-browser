@@ -10,6 +10,7 @@ import { getBrowserSession } from './session.js';
 import { ensCache, ipfsCache, hyperCache, saveEnsCache, saveIpfsCache, saveHyperCache } from './protocols/config.js';
 import { normalizeEnsHash } from './ens-utils.js';
 import { clearPersistedPermissions } from './permissions.js';
+import p2pAppRegistry from './p2p-app-registry.js';
 
 const SETTINGS_FILE = path.join(app.getPath("userData"), "settings.json");
 const DEBUG_LOG = path.join(os.homedir(), '.peersky', 'debug.log');
@@ -137,7 +138,9 @@ async function removeChildrenExcept(dir, keepNames = []) {
   await Promise.all(entries.map(async (ent) => {
     if (keep.has(ent.name)) return;
     const target = path.join(dir, ent.name);
-    await fs.rm(target, { recursive: true, force: true });
+    await fs.rm(target, { recursive: true, force: true }).catch((e) => {
+      logDebug(`Failed to remove ${target}: ${e.message}`);
+    });
   }));
 }
 
@@ -153,6 +156,9 @@ async function resetP2PData({ resetIdentities = false } = {}) {
   await fs.rm(ensCache, { recursive: true, force: true }).catch(() => {});
   await fs.rm(btState, { recursive: true, force: true }).catch(() => {});
   await fs.rm(portsFile, { recursive: true, force: true }).catch(() => {});
+  
+  // Wipe internal P2P User App Registry data and cleanly re-sync it
+  await p2pAppRegistry.reset();
 
   if (resetIdentities) {
     // full wipe
