@@ -17,6 +17,8 @@ class TabBar extends HTMLElement {
       'var(--peersky-nav-button-hover)',
       'var(--peersky-nav-button-inactive)',
     ];
+    this.memorySaverEnabled = false;
+    this.memorySaverExclusions = [];
     this.draggedTabId = null;
     const params = new URLSearchParams(window.location.search);
     this.windowId = params.get('windowId') || 'main';
@@ -33,6 +35,146 @@ class TabBar extends HTMLElement {
     
     // Force activation of the initial tab's webview after a delay
     setTimeout(() => this.forceActivateCurrentTab(), 300);
+
+    // Initialize memory saver
+    this.initMemorySaver();
+  }
+
+  async initMemorySaver() {
+    try {
+      const { ipcRenderer } = require('electron');
+      
+      // Load initial settings
+      this.memorySaverEnabled = await ipcRenderer.invoke('settings-get', 'memorySaverEnabled');
+      this.memorySaverExclusions = await ipcRenderer.invoke('settings-get', 'memorySaverExclusions');
+      
+      // Listen for changes
+      ipcRenderer.on('memory-saver-changed', (_, data) => {
+        this.memorySaverEnabled = data.enabled;
+        this.memorySaverExclusions = data.exclusions || [];
+        
+        // If disabled, wake up any sleeping tabs that might be active/needed
+        if (!this.memorySaverEnabled) {
+          // You could optionally wake all tabs here, but it's better to keep them sleeping
+          // until clicked to avoid a massive memory spike when turning off the setting.
+        }
+      });
+      
+      // Start background check loop (every 1 minute)
+      setInterval(() => this.checkMemorySaver(), 60000);
+    } catch (error) {
+      console.warn('Failed to initialize memory saver in TabBar:', error);
+    }
+  }
+
+  isUrlExcluded(url) {
+    if (!url || !this.memorySaverExclusions || !this.memorySaverExclusions.length) return false;
+    try {
+      const parsedUrl = new URL(url);
+      
+      for (const pattern of this.memorySaverExclusions) {
+        if (!pattern) continue;
+        
+        // Exact match or wildcard host match
+        if (pattern.includes('*')) {
+          const regexPattern = pattern.replace(/\*/g, '.*');
+          const regex = new RegExp(`^${regexPattern}$`, 'i');
+          if (regex.test(url) || regex.test(parsedUrl.host + parsedUrl.pathname)) {
+            return true;
+          }
+        } else {
+          // Simple host or domain match
+          if (parsedUrl.host === pattern || parsedUrl.host.endsWith('.' + pattern) || url.startsWith(pattern)) {
+            return true;
+          }
+        }
+      }
+    } catch (e) {
+      // In case of invalid URL, just do a simple substring match
+      return this.memorySaverExclusions.some(pattern => url.includes(pattern.replace(/\*/g, '')));
+    }
+    return false;
+  }
+
+  checkMemorySaver() {
+    if (!this.memorySaverEnabled) return;
+
+    // 15 minutes in ms
+    const IDLE_THRESHOLD = 15 * 60 * 1000;
+    const now = Date.now();
+
+    for (const tab of this.tabs) {
+      // Skip active tab
+      if (tab.id === this.activeTabId) continue;
+      
+      // Skip correctly already suspended ones
+      if (tab.isSuspended) continue;
+      
+      // Skip pinned tabs (Chrome behavior)
+      if (this.pinnedTabs.has(tab.id)) continue;
+      
+      // Check idle time
+      const idleTime = now - (tab.lastActiveTime || now);
+      if (idleTime > IDLE_THRESHOLD) {
+        
+        // Check exclusion list
+        if (this.isUrlExcluded(tab.url)) continue;
+        
+        // Check if audible (playing audio/video media)
+        const webview = this.webviews.get(tab.id);
+        if (webview && typeof webview.isCurrentlyAudible === 'function' && webview.isCurrentlyAudible()) {
+          continue; // Don't sleep tabs playing audio
+        }
+        
+        // All checks passed -> suspend tab
+        this.suspendTab(tab.id);
+      }
+    }
+  }
+
+  async suspendTab(tabId) {
+    const tab = this.tabs.find(t => t.id === tabId);
+    const webview = this.webviews.get(tabId);
+    if (!tab || !webview) return;
+    
+    // Save history
+    try {
+      const { ipcRenderer } = require("electron");
+      const webContentsId = webview.getWebContentsId();
+      tab.savedNavigation = ipcRenderer.sendSync('get-tab-navigation', webContentsId);
+    } catch (e) {
+      console.warn("Failed to save nav history for sleeping tab", e);
+    }
+    
+    // Destroy webview
+    webview.remove();
+    this.webviews.delete(tabId);
+    
+    // Unregister extension cleanly
+    try {
+      const { ipcRenderer } = require("electron");
+      ipcRenderer.invoke('extensions-unregister-webview', webview.getWebContentsId()).catch(() => {});
+    } catch (e) {}
+    
+    // Mark as suspended
+    tab.isSuspended = true;
+    
+    // Update UI (add sleeping styling)
+    const tabElement = document.getElementById(tabId);
+    if (tabElement) {
+      tabElement.classList.add('sleeping');
+      tabElement.style.opacity = '0.5'; // Visual fade
+      
+      const titleElement = tabElement.querySelector('.tab-title');
+      if (titleElement && !titleElement.querySelector('.sleeping-indicator')) {
+        const sleepIndicator = document.createElement('span');
+        sleepIndicator.className = 'sleeping-indicator';
+        sleepIndicator.textContent = ' 💤';
+        titleElement.appendChild(sleepIndicator);
+      }
+    }
+    
+    console.log(`Memory Saver: Suspended inactive tab ${tabId} (${tab.url})`);
   }
 
   forceActivateCurrentTab() {
@@ -410,7 +552,14 @@ restoreTabs(persistedData) {
     
     this.tabContainer.appendChild(tab);
     const protocol = this._getProtocol(url);
-    this.tabs.push({id: tabId, url, title, protocol});
+    this.tabs.push({
+      id: tabId, 
+      url, 
+      title, 
+      protocol,
+      lastActiveTime: Date.now(),
+      isSuspended: false
+    });
     
     // Create webview for this tab if container exists
     if (this.webviewContainer) {
@@ -626,6 +775,10 @@ restoreTabs(persistedData) {
   // Set up all event handlers for a webview
   setupWebviewEvents(webview, tabId) {
     webview.addEventListener("did-start-loading", () => {
+      // Update last active time on interaction/loading
+      const tab = this.tabs.find(t => t.id === tabId);
+      if (tab) tab.lastActiveTime = Date.now();
+      
       const tabElement = document.getElementById(tabId);
       if (tabElement) {
         tabElement.classList.add("loading");
@@ -854,6 +1007,48 @@ restoreTabs(persistedData) {
         console.warn('[TabBar] Error closing extension popups:', error);
       }
       
+      // WAKE UP TAB IF SLEEPING
+      const tab = this.tabs.find(t => t.id === tabId);
+      if (tab) {
+        if (tab.isSuspended) {
+          // Recreate webview
+          const newWebview = this.createWebviewForTab(tabId, tab.url);
+          
+          // Restore history
+          if (tab.savedNavigation && tab.savedNavigation.entries?.length) {
+            const { entries, activeIndex } = tab.savedNavigation;
+            setTimeout(() => {
+              try {
+                const { ipcRenderer } = require("electron");
+                const wcId = newWebview.getWebContentsId();
+                ipcRenderer.invoke('restore-navigation-history', { webContentsId: wcId, entries, activeIndex })
+                  .catch(err => console.warn("Failed to restore sleeping tab nav history:", err));
+              } catch(e) {}
+            }, 150);
+          }
+          
+          tab.isSuspended = false;
+          
+          // Fix UI
+          if (newActive) {
+            newActive.classList.remove('sleeping');
+            newActive.style.opacity = '1.0';
+            const sleepIndicator = newActive.querySelector('.sleeping-indicator');
+            if (sleepIndicator) sleepIndicator.remove();
+          }
+          console.log(`Memory Saver: Woke up tab ${tabId} (${tab.url})`);
+        }
+        
+        // Track last active time for new tab
+        tab.lastActiveTime = Date.now();
+      }
+      
+      // Update last active time for old tab
+      if (this.activeTabId && this.activeTabId !== tabId) {
+         const oldTab = this.tabs.find(t => t.id === this.activeTabId);
+         if (oldTab) oldTab.lastActiveTime = Date.now();
+      }
+      
       // Show ONLY the newly active webview
       const newWebview = this.webviews.get(tabId);
       if (newWebview) {
@@ -871,11 +1066,11 @@ restoreTabs(persistedData) {
       }
       
       // Find the URL for this tab
-      const tab = this.tabs.find(t => t.id === tabId);
-      if (tab) {
+      const selectedTab = this.tabs.find(t => t.id === tabId);
+      if (selectedTab) {
         // Dispatch event that tab was selected with the URL
         this.dispatchEvent(new CustomEvent("tab-selected", { 
-          detail: { tabId, url: tab.url } 
+          detail: { tabId, url: selectedTab.url } 
         }));
       }
     }
