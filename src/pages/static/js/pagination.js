@@ -202,6 +202,28 @@ class PaginationControl extends HTMLElement {
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         margin-left: 4px;
       }
+      /* Arrow Prev/Next buttons */
+      .pagination-btn-arrow {
+        padding: 4px 7px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .arrow-icon {
+        display: block;
+        width: 13px;
+        height: 13px;
+        opacity: 0.75;
+        filter: var(--pagination-icon-filter, invert(1) brightness(0.85));
+        transition: opacity 0.15s ease, filter 0.15s ease;
+      }
+      .pagination-btn-arrow:hover:not(:disabled) .arrow-icon {
+        opacity: 1;
+        filter: var(--pagination-icon-filter-hover, invert(1) brightness(1.2));
+      }
+      .pagination-btn-arrow:disabled .arrow-icon {
+        opacity: 0.3;
+      }
 
       /* ── Empty / error states ─────────────────────────────────── */
       .content-area .archive-empty {
@@ -319,9 +341,10 @@ class PaginationControl extends HTMLElement {
 
     // Prev
     const prev = document.createElement('button');
-    prev.className = 'pagination-btn';
-    prev.textContent = 'Prev';
+    prev.className = 'pagination-btn pagination-btn-arrow';
+    prev.title = 'Previous page';
     prev.disabled = this.currentPage === 1;
+    prev.innerHTML = '<img src="peersky://static/assets/svg/arrow-left.svg" width="13" height="13" alt="Prev" class="arrow-icon">';
     prev.addEventListener('click', () => { this.currentPage--; this.renderPage(); });
     this.controlsArea.appendChild(prev);
 
@@ -340,9 +363,10 @@ class PaginationControl extends HTMLElement {
 
     // Next
     const next = document.createElement('button');
-    next.className = 'pagination-btn';
-    next.textContent = 'Next';
+    next.className = 'pagination-btn pagination-btn-arrow';
+    next.title = 'Next page';
     next.disabled = this.currentPage === totalPages;
+    next.innerHTML = '<img src="peersky://static/assets/svg/arrow-right.svg" width="13" height="13" alt="Next" class="arrow-icon">';
     next.addEventListener('click', () => { this.currentPage++; this.renderPage(); });
     this.controlsArea.appendChild(next);
 
