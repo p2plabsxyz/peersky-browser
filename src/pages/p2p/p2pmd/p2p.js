@@ -507,8 +507,6 @@ function persistRoomState(state) {
   for (const candidate of candidates) {
     safeLocalStorageSet(`${ROOM_STATE_PREFIX}${candidate}`, payload);
   }
-  safeLocalStorageSet(LAST_ROOM_KEY, normalizeRoomKey(normalized.key));
-  safeLocalStorageSet(LAST_ROOM_STATE, payload);
 }
 
 export function scheduleSend() {
@@ -2300,16 +2298,8 @@ initToolbar();
 (async () => {
   const viewParam = getViewParam();
   const stateFromUrl = readRoomStateFromUrl();
-  const lastKey = safeLocalStorageGet(LAST_ROOM_KEY);
   
-  let stateFromStorage = null;
-  if (stateFromUrl?.key) {
-    stateFromStorage = resolveRoomState(stateFromUrl.key);
-  } else if (lastKey) {
-    stateFromStorage = resolveRoomState(lastKey);
-  }
-  
-  const state = stateFromUrl || stateFromStorage;
+  const state = stateFromUrl;
   if (viewParam === "setup") {
     setView("setup");
     return;

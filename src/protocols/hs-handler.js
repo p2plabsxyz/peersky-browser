@@ -966,7 +966,8 @@ export async function createHandler() {
           port: boundPort,
           log: 1
         });
-        holesailServer.seed = savedEntry.seed;
+        // Convert hex string seed to Buffer (seed is stored as hex after decryption)
+        holesailServer.seed = Buffer.from(savedEntry.seed, 'hex');
         await holesailServer.ready();
         const rehostedKey = holesailServer.info?.url || key;
         if (rehostedKey !== key) {
