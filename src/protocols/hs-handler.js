@@ -854,15 +854,22 @@ export async function createHandler() {
       
       // Pass 127.0.0.1 to holesail so clients connect to localhost
       // Holesail forwards tunnel traffic to this address, and stores it on DHT for clients
+      // IMPORTANT: Do NOT pass `key` to Holesail - it derives seed=SHA256(key), producing a
+      // different DHT keypair/identity so clients can't find the rehostted server.
+      // Instead, restore the original seed so the same keypair (and thus same room URL) is used.
+      const savedReHostEntry = roomPorts.get(key);
       const holesailServer = new Holesail({
         server: true,
         secure,
         udp,
         host: "127.0.0.1",
         port: boundPort,
-        key,
+        ...(savedReHostEntry?.seed ? {} : { key }),
         log: 1
       });
+      if (savedReHostEntry?.seed) {
+        holesailServer.seed = Buffer.from(savedReHostEntry.seed, 'hex');
+      }
       await holesailServer.ready();
       const roomKey = holesailServer.info?.url || key;
       console.log("[p2pmd] rehost server ready", { key: redactKey(roomKey), port: boundPort });
