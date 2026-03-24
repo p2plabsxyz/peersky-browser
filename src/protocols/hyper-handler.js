@@ -1,3 +1,4 @@
+import { Readable } from "stream";
 import { create as createSDK } from "hyper-sdk";
 import makeHyperFetch from "hypercore-fetch";
 import { initChat, handleChatRequest as handleChatRequestP2P } from "../pages/p2p/chat/p2p.js";
@@ -5,6 +6,82 @@ import { hyperCache, saveHyperCache } from "./config.js";
 
 // Single SDK and swarm for the app lifecycle (hyper:// browsing + chat share the same swarm).
 let sdk, fetch;
+
+// keep chunks smaller to avoid oversized blocks.
+const MAX_UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024;
+
+function isWebReadableStream(body) {
+  return body && typeof body.getReader === "function";
+}
+
+function isAsyncIterable(body) {
+  return body && typeof body[Symbol.asyncIterator] === "function";
+}
+
+async function* readWebStream(stream) {
+  const reader = stream.getReader();
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (value) yield value;
+    }
+  } finally {
+    if (reader.releaseLock) reader.releaseLock();
+  }
+}
+
+async function* chunkAsyncIterable(iterable, chunkSize) {
+  for await (const chunk of iterable) {
+    if (chunk == null) continue;
+    const buf = Buffer.isBuffer(chunk)
+      ? chunk
+      : chunk instanceof Uint8Array
+        ? Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength)
+        : Buffer.from(chunk);
+    for (let offset = 0; offset < buf.length; offset += chunkSize) {
+      yield buf.subarray(offset, offset + chunkSize);
+    }
+  }
+}
+
+function getChunkedBody(req) {
+  const body = req.body;
+  if (!body) return body;
+
+  const contentType = req.headers?.get?.("content-type") || "";
+  if (contentType.includes("multipart/form-data")) {
+    return body;
+  }
+
+  const iterable = isWebReadableStream(body)
+    ? readWebStream(body)
+    : isAsyncIterable(body)
+      ? body
+      : null;
+
+  if (!iterable) {
+    if (Buffer.isBuffer(body)) {
+      return Readable.from(chunkAsyncIterable([body], MAX_UPLOAD_CHUNK_BYTES));
+    }
+    if (body instanceof Uint8Array) {
+      const buf = Buffer.from(body.buffer, body.byteOffset, body.byteLength);
+      return Readable.from(chunkAsyncIterable([buf], MAX_UPLOAD_CHUNK_BYTES));
+    }
+    if (body instanceof ArrayBuffer) {
+      return Readable.from(
+        chunkAsyncIterable([Buffer.from(body)], MAX_UPLOAD_CHUNK_BYTES)
+      );
+    }
+    if (typeof body === "string") {
+      return Readable.from(
+        chunkAsyncIterable([Buffer.from(body)], MAX_UPLOAD_CHUNK_BYTES)
+      );
+    }
+    return body;
+  }
+  return Readable.from(chunkAsyncIterable(iterable, MAX_UPLOAD_CHUNK_BYTES));
+}
 
 async function initializeHyperSDK(options) {
   if (sdk != null && fetch != null) return fetch;
@@ -39,7 +116,7 @@ export async function createHandler(options) {
         const resp = await fetchFn(url, {
           method,
           headers: req.headers,
-          body: req.body,
+          body: getChunkedBody(req),
           duplex: "half",
         });
         if (resp.status === 200) {
@@ -117,7 +194,7 @@ async function handleHyperRequest(req) {
     const resp = await fetchFn(url, {
       method,
       headers,
-      body: hasBody ? req.body : undefined,
+      body: hasBody ? getChunkedBody(req) : undefined,
       ...(hasBody ? { duplex: "half" } : {}),
     });
 
