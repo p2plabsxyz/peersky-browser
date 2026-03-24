@@ -387,7 +387,7 @@ export async function getAndRegisterActiveWebview(manager, window) {
           const activeWebview = tabBar.getActiveWebview();
           if (!activeWebview) return null;
           return { tabId: activeTab.id, url: activeTab.url, title: activeTab.title, webContentsId: activeWebview.getWebContentsId() };
-        } catch (error) { log.error('[ExtensionManager] Error getting active tab:', error); return null; }
+        } catch (error) { console.error('[ExtensionManager] Error getting active tab:', error); return null; }
       })();
     `);
     if (!activeTabData || !activeTabData.webContentsId) return null;

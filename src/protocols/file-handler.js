@@ -141,11 +141,11 @@ function generateDirectoryListing(dirPath, entries) {
 
         if (protocol === 'hyper') {
           const hyperdriveUrl = await generateHyperdriveKey('directory-' + Date.now());
-          log.info('Hyper base URL:', hyperdriveUrl);
+          console.log('Hyper base URL:', hyperdriveUrl);
 
           for (const fileEntry of files) {
             const url = hyperdriveUrl + encodeURIComponent(fileEntry.relativePath);
-            log.info('Uploading', fileEntry.relativePath, 'to', url);
+            console.log('Uploading', fileEntry.relativePath, 'to', url);
 
             const fileResponse = await fetch(fileEntry.fileUrl);
             const blob = await fileResponse.blob();
@@ -174,7 +174,7 @@ function generateDirectoryListing(dirPath, entries) {
           const formData = new FormData();
 
           for (const fileEntry of files) {
-            log.info('Processing file:', fileEntry.relativePath);
+            console.log('Processing file:', fileEntry.relativePath);
 
             const response = await fetch(fileEntry.fileUrl);
             if (!response.ok) {
@@ -189,7 +189,7 @@ function generateDirectoryListing(dirPath, entries) {
           }
           
           const url = 'ipfs://bafyaabakaieac/';
-          log.info('Uploading to IPFS...');
+          console.log('Uploading to IPFS...');
           
           const response = await fetch(url, {
             method: 'PUT',
@@ -216,7 +216,7 @@ function generateDirectoryListing(dirPath, entries) {
         }
         
       } catch (error) {
-        log.error('Publish error:', error);
+        console.error('Publish error:', error);
         status.textContent = '❌ Error: ' + error.message;
       } finally {
         publishBtn.disabled = false;

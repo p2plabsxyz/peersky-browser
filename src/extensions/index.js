@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Extension Manager - Core Extension System
  * 
  * This module provides the main extension management system for Peersky Browser.
@@ -193,11 +193,9 @@ class ExtensionManager {
                 (function() {
                   const tabBar = document.getElementById('tabbar');
                   if (!tabBar || typeof tabBar.addTab !== 'function') {
-                    log.error('No tabBar found for addTab');
                     return null;
                   }
                   const tabId = tabBar.addTab(${JSON.stringify(url)}, "New Tab");
-                  log.info('[createTab] Added tab:', tabId);
                   return tabId;
                 })();
               `;
@@ -323,7 +321,7 @@ class ExtensionManager {
                 (function() {
                   const tabBar = document.getElementById('tabbar');
                   if (!tabBar) {
-                    log.error('[removeTab] No tabBar found');
+                    console.error('[removeTab] No tabBar found');
                     return false;
                   }
                   
@@ -331,7 +329,7 @@ class ExtensionManager {
                   if (tabBar.webviews && typeof tabBar.webviews.entries === 'function') {
                     for (const [tabId, wv] of tabBar.webviews.entries()) {
                       if (wv && typeof wv.getWebContentsId === 'function' && wv.getWebContentsId() === ${wcId}) {
-                        log.info('[removeTab] Found tab to close:', tabId);
+                        console.error('[removeTab] Found tab to close:', tabId);
                         if (typeof tabBar.closeTab === 'function') {
                           tabBar.closeTab(tabId);
                           return true;
@@ -340,7 +338,7 @@ class ExtensionManager {
                     }
                   }
                   
-                  log.warn('[removeTab] Tab with webContentsId ${wcId} not found');
+                  console.warn('[removeTab] Tab with webContentsId ${wcId} not found');
                   return false;
                 })();
               `;

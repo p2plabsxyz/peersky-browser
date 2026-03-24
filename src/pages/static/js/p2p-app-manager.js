@@ -194,9 +194,6 @@ class P2PAppManager extends HTMLElement {
       sorted.forEach(app => {
         const btnLabel = app.pinned ? 'Unpin' : 'Pin';
         const btnClass = app.pinned ? 'pin-btn pinned' : 'pin-btn';
-        const safeName = this.escapeHtml(app.name);
-        const safeUrl = this.escapeHtml(app.url);
-        const safeIcon = this.escapeHtml(app.iconUrl);
         tableHtml += `
           <tr>
             <td class="icon-cell"><img src="${this.escapeHTML(app.iconUrl)}" alt="${this.escapeHTML(app.name)} icon" /></td>
@@ -427,15 +424,6 @@ class P2PAppManager extends HTMLElement {
     } catch {
       return false;
     }
-  }
-
-  escapeHtml(unsafe) {
-    return String(unsafe || "")
-         .replace(/&/g, "&amp;")
-         .replace(/</g, "&lt;")
-         .replace(/>/g, "&gt;")
-         .replace(/"/g, "&quot;")
-         .replace(/'/g, "&#039;");
   }
 
   setStatus(message, type = "info") {

@@ -98,10 +98,10 @@ async function initializeWorker() {
 
   // Forward worker stdout/stderr to main process console
   worker.stdout.on("data", (data) => {
-    log.info(`[Worker] ${data.toString().trimEnd()}`);
+    process.stdout.write(data);
   });
   worker.stderr.on("data", (data) => {
-    log.error(`[Worker] ${data.toString().trimEnd()}`);
+    process.stderr.write(data);
   });
 
   worker.on("message", (msg) => {

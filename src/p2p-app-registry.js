@@ -304,7 +304,6 @@ class P2PAppRegistry {
         } else if (entry.isFile()) {
           const relPath = path.relative(baseDir, fullPath).replace(/\\/g, "/");
           const data = await fs.readFile(fullPath);
-          
           const nextFileCount = files.length + 1;
           const nextTotalBytes = totalBytes + data.length;
           

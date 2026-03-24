@@ -439,13 +439,13 @@ class WindowManager {
               return tabBar.getTabsStateForSaving();
             }
             // Fallback to localStorage if the new method isn't available for some reason.
-            log.warn('Falling back to localStorage to get tab state for window ${windowId}');
+            console.warn('Falling back to localStorage to get tab state for window ${windowId}');
             const stored = localStorage.getItem("peersky-browser-tabs");
             if (!stored) return null;
             const allTabs = JSON.parse(stored);
             return allTabs["${windowId}"] || null;
           } catch (e) {
-            log.error("Failed to get tabs data from renderer:", e);
+            console.error("Failed to get tabs data from renderer:", e);
             return null;
           }
         })()
