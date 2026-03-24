@@ -19,11 +19,6 @@ import { isBuiltInSearchEngine } from "./search-engine.js";
 import "./llm.js";
 // import { setupAutoUpdater } from "./auto-updater.js";
 
-// Diagnostic IPC from preload for chrome.runtime inspection
-ipcMain.on('crx-diag', (_event, msg) => {
-  console.log(msg);
-});
-
 // Import and initialize extension system
 import extensionManager from "./extensions/index.js";
 import { setupExtensionIpcHandlers } from "./extensions/extensions-ipc.js";
@@ -104,19 +99,6 @@ app.whenReady().then(async () => {
   // Set the WindowManager instance in context-menu.js
   setWindowManager(windowManager);
 
-  // Optional: enable verbose extension bridge logging in the npm start terminal.
-  // Usage: set PEERSKY_EXT_DEBUG=1 before running `npm start`.
-  try {
-    if (process.env.PEERSKY_EXT_DEBUG === "1") {
-      const dbg = (await import("debug")).default;
-      // Enable electron-chrome-extensions internal debug namespaces
-      dbg.enable("electron-chrome-extensions:*");
-      console.log("[Extensions] Debug logging enabled (electron-chrome-extensions:*)");
-    }
-  } catch (e) {
-    console.warn("[Extensions] Failed to enable debug logging:", e?.message);
-  }
-  
   // Get consistent session for protocols and extensions
   const userSession = getBrowserSession();
   await setupProtocols(userSession);

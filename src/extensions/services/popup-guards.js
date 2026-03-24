@@ -9,7 +9,7 @@
  * @module popup-guards
  */
 
-import { app, BrowserWindow, webContents } from 'electron';
+import { app, BrowserWindow } from 'electron';
 
 // Popup stabilization period - prevent closing for this duration after creation
 const POPUP_STABILIZATION_MS = 2000;
@@ -70,7 +70,6 @@ async function openExtensionUrlInTab(url) {
             `(function(){var tb=document.getElementById('tabbar');if(tb&&typeof tb.addTab==='function'){tb.addTab(${escaped},"Extension Page")}})()`,
             true,
           );
-          console.log('[PopupGuards] Opened extension URL in browser tab:', url.substring(0, 80));
           return;
         }
       } catch (_) { /* skip window */ }
@@ -212,14 +211,11 @@ export function installExtensionPopupGuards(manager) {
         // chrome-extension:// pages (like ArchiveWeb.page's index.html) should
         // open as proper browser tabs, matching Chrome's behaviour.
         if (isExtensionUrl(url)) {
-          console.log('[PopupGuards] Routing extension URL to browser tab:', url?.substring(0, 80));
           openExtensionUrlInTab(url);
           return { action: 'deny' };
         }
 
         // Non-extension URLs (OAuth login popups, etc.) still open as popup windows
-        console.log('[PopupGuards] Allowing popup from extension:', url?.substring(0, 60) || 'about:blank');
-
         // Register the new window for stabilization when it's created
         app.once('browser-window-created', (_evt, newWin) => {
           registerPopupForStabilization(newWin);

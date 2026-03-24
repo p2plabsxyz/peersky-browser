@@ -620,10 +620,6 @@ restoreTabs(persistedData) {
       if (currentWcId === registeredWcId || registering) return;
 
       registering = true;
-      const isReplacement = registeredWcId !== null;
-      if (isReplacement) {
-        console.warn(`[TabBar] webContents replaced for ${tabId}: ${registeredWcId} → ${currentWcId}`);
-      }
       registeredWcId = currentWcId;
 
       setTimeout(() => {
