@@ -907,6 +907,17 @@ body {
 .archive-subsection {
   margin-bottom: 1.5rem;
 }
+/* Suppress the browser focus ring that wraps the entire <pagination-control>
+   element when the inner search input is focused */
+pagination-control {
+  display: block;
+  outline: none !important;
+}
+pagination-control:focus-within {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
 .archive-subsection-label {
   display: block;
   font-size: 0.95rem;
