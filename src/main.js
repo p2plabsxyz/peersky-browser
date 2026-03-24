@@ -1,4 +1,5 @@
 import { app, session, protocol as globalProtocol, ipcMain, BrowserWindow, Menu, shell, dialog, webContents} from "electron";
+import { createLogger } from './logger.js';
 import fs from "fs/promises";
 import path from "path";
 import { createHandler as createBrowserHandler } from "./protocols/peersky-protocol.js";
@@ -74,7 +75,7 @@ const MAGNET_PROTOCOL = {
   corsEnabled: true,
 };
 
-let windowManager;
+const log = createLogger('main');
 
 globalProtocol.registerSchemesAsPrivileged([
   { scheme: "peersky", privileges: BROWSER_PROTOCOL },
@@ -122,15 +123,15 @@ app.whenReady().then(async () => {
 
   // Initialize extension system
   try {
-    console.log("Initializing extension system...");
+    log.info("Initializing extension system...");
     await extensionManager.initialize({ app, session: userSession });
-    console.log("Extension system initialized successfully");
+    log.info("Extension system initialized successfully");
 
     // Setup extension IPC handlers
     setupExtensionIpcHandlers(extensionManager);
-    console.log("Extension IPC handlers registered");
+    log.info("Extension IPC handlers registered");
   } catch (error) {
-    console.error("Failed to initialize extension system:", error);
+    log.error("Failed to initialize extension system:", error);
   }
 
   // Check for --new-window argument (from Windows taskbar jump list)
@@ -151,10 +152,10 @@ app.whenReady().then(async () => {
   const mainWindow = windowManager.all[0];
   if (mainWindow?.window?.webContents) {
     mainWindow.window.webContents.on('did-fail-load', (_e, code, desc, url) =>
-      console.error(JSON.stringify({ evt: 'did-fail-load', code, desc, url }))
+      log.error(JSON.stringify({ evt: 'did-fail-load', code, desc, url }))
     );
     mainWindow.window.webContents.on('render-process-gone', (_e, details) =>
-      console.error(JSON.stringify({ evt: 'render-process-gone', details }))
+      log.error(JSON.stringify({ evt: 'render-process-gone', details }))
     );
 
     // Runtime partition assertion (development only)
@@ -163,7 +164,7 @@ app.whenReady().then(async () => {
       if (partition !== 'persist:peersky') {
         throw new Error(`Session mismatch: expected 'persist:peersky', got '${partition}'`);
       }
-      console.log('[Session] Runtime assertion passed: using persist:peersky');
+      log.info('[Session] Runtime assertion passed: using persist:peersky');
     }
   }
 
@@ -209,7 +210,7 @@ app.on("before-quit", async (event) => {
   }
   event.preventDefault(); // Prevent the default quit behavior
 
-  console.log("Before quit: Saving window states...");
+  log.info("Before quit: Saving window states...");
 
   isQuitting = true; // Set the quitting flag
 
@@ -218,20 +219,20 @@ app.on("before-quit", async (event) => {
   // Shutdown extension system
   try {
     await extensionManager.shutdown();
-    console.log("Extension system shutdown successfully");
+    log.info("Extension system shutdown successfully");
   } catch (error) {
-    console.error("Error shutting down extension system:", error);
+    log.error("Error shutting down extension system:", error);
   }
 
   windowManager
     .saveOpened()
     .then(() => {
-      console.log("Window states saved successfully.");
+      log.info("Window states saved successfully.");
       windowManager.stopSaver();
       app.quit(); // Proceed to quit the app
     })
     .catch((error) => {
-      console.error("Error saving window states on quit:", error);
+      log.error("Error saving window states on quit:", error);
       windowManager.stopSaver();
       app.quit(); // Proceed to quit the app even if saving fails
     });
@@ -307,7 +308,7 @@ ipcMain.on('remove-all-tempIcon', () => {
       mainWindow.webContents.send('remove-all-tempIcon');
     }
   } catch (error) {
-    console.error('Error sending remove-all-tempIcon:', error);
+    log.error('Error sending remove-all-tempIcon:', error);
   }
 });
 
@@ -321,7 +322,7 @@ ipcMain.on('refresh-browser-actions', () => {
       wc.send('refresh-browser-actions');
     }
   } catch (error) {
-    console.error('Error sending refresh-browser-actions:', error);
+    log.error('Error sending refresh-browser-actions:', error);
   }
 });
 
@@ -370,7 +371,7 @@ ipcMain.on('new-window-with-tab', (_event, tabData) => {
 ipcMain.on('open-url-in-tab', (event, fileUrl) => {
   // Security: only allow file:// URLs
   if (typeof fileUrl !== 'string' || !fileUrl.startsWith('file://')) {
-    console.warn('[IPC] open-url-in-tab blocked non-file URL:', fileUrl);
+    log.warn('[IPC] open-url-in-tab blocked non-file URL:', fileUrl);
     return;
   }
   
@@ -415,13 +416,13 @@ ipcMain.handle('get-tab-memory-usage', async (event, webContentsId) => {
     return null;
   }
   catch (error) {
-    console.error(`Error getting memory usage for webContents ID ${webContentsId}:`, error);
+    log.error(`Error getting memory usage for webContents ID ${webContentsId}:`, error);
     return null;
   }
 });
 
 ipcMain.on('group-action', (_event, data) => {
-  console.log('Group action received:', data);
+  log.info('Group action received:', data);
   const { action, groupId } = data;
   
   // Broadcast to all windows
@@ -435,7 +436,7 @@ ipcMain.on('group-action', (_event, data) => {
 });
 
 ipcMain.on('update-group-properties', (_event, groupId, properties) => {
-  console.log('Updating group properties across all windows:', groupId, properties);
+  log.info('Updating group properties across all windows:', groupId, properties);
   
   // Broadcast to all windows
   windowManager.all.forEach(peerskyWindow => {
@@ -448,7 +449,7 @@ ipcMain.handle('check-built-in-engine', (event, template) => {
   try {
     return isBuiltInSearchEngine(template);
   } catch (error) {
-    console.error('Error in check-built-in-engine:', error);
+    log.error('Error in check-built-in-engine:', error);
     return false; // fallback if anything goes wrong
   }
 });

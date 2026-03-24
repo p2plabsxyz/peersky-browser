@@ -1,4 +1,6 @@
 import { Readable } from "stream";
+import { createLogger } from '../logger.js';
+const log = createLogger('protocols:ipfs');
 import mime from "mime-types";
 import path from "path";
 import { directoryListingHtml } from "./helia/directoryListingTemplate.js";
@@ -90,10 +92,10 @@ export async function createHandler(ipfsOptions, session) {
   let node, unixFileSystem, name, dnsLinkResolver;
 
   async function initializeIPFSNode() {
-    console.log("Initializing IPFS node...");
+    log.info("Initializing IPFS node...");
     const startTime = Date.now();
     node = await createNode(ipfsOptions);
-    console.log(`IPFS node initialized in ${Date.now() - startTime}ms`);
+    log.info(`IPFS node initialized in ${Date.now() - startTime}ms`);
     unixFileSystem = unixfs(node);
     name = ipns(node);
     dnsLinkResolver = dnsLink(node);
@@ -115,7 +117,7 @@ export async function createHandler(ipfsOptions, session) {
       let directoryName = null; // Set when uploading a directory directly
 
       for (const data of request.uploadData || []) {
-        console.log("Upload data entry:", JSON.stringify(Object.keys(data)), "type:", data.type);
+        log.info("Upload data entry:", JSON.stringify(Object.keys(data)), "type:", data.type);
         
         if (data.type === "file" && data.file) {
           const filePath = data.file;
@@ -144,20 +146,20 @@ export async function createHandler(ipfsOptions, session) {
           // This contains the FormData field name/filename metadata
           // Parse the rawData to extract the filename
           const rawDataString = Buffer.from(data.bytes).toString('utf-8');
-          console.log("Raw data string:", rawDataString);
+          log.info("Raw data string:", rawDataString);
           
           // Extract filename from Content-Disposition header in the rawData
           const filenameMatch = rawDataString.match(/filename="([^"]+)"/);
           if (filenameMatch) {
             currentFileName = filenameMatch[1];
-            console.log("Extracted filename from rawData:", currentFileName);
+            log.info("Extracted filename from rawData:", currentFileName);
           }
         } else if (data.type === "blob" && data.blobUUID) {
           // Handle blob data from FormData - use the filename from previous rawData entry
           const blobData = await session.getBlobData(data.blobUUID);
           const fileName = currentFileName || "index.html";
           uploadedFileNames.push(fileName);
-          console.log("Processing blob with filename:", fileName, "blobUUID:", data.blobUUID);
+          log.info("Processing blob with filename:", fileName, "blobUUID:", data.blobUUID);
           entries.push({ path: fileName, content: blobData });
           currentFileName = null; // Reset for next file
         }
@@ -172,14 +174,14 @@ export async function createHandler(ipfsOptions, session) {
       let rootCid;
   
       for await (const result of unixFileSystem.addAll(entries, options)) {
-        console.log("Added:", result.path, result.cid.toString());
+        log.info("Added:", result.path, result.cid.toString());
         rootCid = result.cid;
       }
-      console.log(`Added all files in ${Date.now() - startTime}ms`);
+      log.info(`Added all files in ${Date.now() - startTime}ms`);
   
       // Pin the root CID recursively
       await node.pins.add(rootCid, { recursive: true });
-      console.log(`Pinned in ${Date.now() - startTime}ms`);
+      log.info(`Pinned in ${Date.now() - startTime}ms`);
   
       const fileUrl = `ipfs://${rootCid.toString()}/`;
   
@@ -195,16 +197,16 @@ export async function createHandler(ipfsOptions, session) {
       });
 
       const peerCount = node.libp2p.getPeers().length;
-      console.log(`Providing ${rootCid} with ${peerCount} peers connected`);
+      log.info(`Providing ${rootCid} with ${peerCount} peers connected`);
   
       // Provide the root CID to the DHT in the background
       node.libp2p.contentRouting.provide(rootCid).then(() => {
-        console.log(`Provided ${rootCid} to DHT in ${Date.now() - startTime}ms`);
+        log.info(`Provided ${rootCid} to DHT in ${Date.now() - startTime}ms`);
       }).catch(err => {
-        console.log('Error providing to DHT (non-critical):', err.message);
+        log.info('Error providing to DHT (non-critical):', err.message);
       });
   
-      console.log("Files uploaded with root CID:", rootCid.toString());
+      log.info("Files uploaded with root CID:", rootCid.toString());
       // Log to IPFS cache
       try {
         const timestamp = Date.now();
@@ -269,7 +271,7 @@ export async function createHandler(ipfsOptions, session) {
             name: uploadName,
           });
           saveIpfsCache();
-          console.log(`Logged upload to IPFS cache: ${cidStr}`);
+          log.info(`Logged upload to IPFS cache: ${cidStr}`);
         } else {
           const existingName = String(existingEntry.name || "").trim().toLowerCase();
           const isGenericExistingName =
@@ -278,14 +280,14 @@ export async function createHandler(ipfsOptions, session) {
             existingEntry.name = uploadName;
             if (!existingEntry.url) existingEntry.url = fileUrl;
             saveIpfsCache();
-            console.log(`Updated IPFS cache label: ${cidStr} -> ${uploadName}`);
+            log.info(`Updated IPFS cache label: ${cidStr} -> ${uploadName}`);
           }
         }
       } catch (logErr) {
-        console.error("Error logging to IPFS cache:", logErr);
+        log.error("Error logging to IPFS cache:", logErr);
       }
     } catch (e) {
-      console.error("Error uploading file:", e);
+      log.error("Error uploading file:", e);
       sendResponse({
         statusCode: 500,
         headers: { "Access-Control-Allow-Origin": "*" },
@@ -304,12 +306,12 @@ export async function createHandler(ipfsOptions, session) {
       // Ensure the resolved PeerID has a proper toBytes() method
       if (typeof peerId.toBytes !== "function") {
         peerId.toBytes = () => peerId.multihash.bytes;
-        console.log("Patched peerId to include toBytes() method.");
+        log.info("Patched peerId to include toBytes() method.");
       }
       // Also ensure the PeerID has a 'bytes' property
       if (!peerId.bytes) {
         peerId.bytes = peerId.toBytes();
-        console.log("Patched peerId to include bytes property.");
+        log.info("Patched peerId to include bytes property.");
       }
       const resolutionResult = await name.resolve(peerId, {
         signal: AbortSignal.timeout(5000),
@@ -322,15 +324,15 @@ export async function createHandler(ipfsOptions, session) {
       }
       if (resolvedCID.version !== 1) {
         resolvedCID = resolvedCID.toV1();
-        console.log("Converted resolved CID to CIDv1:", resolvedCID.toString());
+        log.info("Converted resolved CID to CIDv1:", resolvedCID.toString());
       }
       return [resolvedCID, ...urlParts];
     } catch (e) {
-      console.log(`Failed to parse IPNS name as PeerId: ${e}`);
+      log.info(`Failed to parse IPNS name as PeerId: ${e}`);
       // If it's not a valid PeerId, it might be a DNS-based IPNS name.
       if (ipnsName.includes(".")) {
         // DNS-based IPNS: Use @helia/dnslink (separated from @helia/ipns in Helia v6)
-        console.log(
+        log.info(
           "Attempting DNS-based IPNS resolution via @helia/dnslink..."
         );
         try {
@@ -344,7 +346,7 @@ export async function createHandler(ipfsOptions, session) {
           }
           
           const result = results[0];
-          console.log(`DNSLink resolved: namespace=${result.namespace}, answer=${JSON.stringify(result.answer?.data)}`);
+          log.info(`DNSLink resolved: namespace=${result.namespace}, answer=${JSON.stringify(result.answer?.data)}`);
           
           if (result.namespace === "ipfs" && result.cid) {
             // Direct IPFS CID result
@@ -363,7 +365,7 @@ export async function createHandler(ipfsOptions, session) {
             }
           } else if (result.namespace === "ipns" && result.peerId) {
             // IPNS result - resolve the peerId further
-            console.log(`DNSLink points to IPNS peerId: ${result.peerId}`);
+            log.info(`DNSLink points to IPNS peerId: ${result.peerId}`);
             const ipnsResult = await name.resolve(result.peerId, {
               signal: AbortSignal.timeout(5000),
             });
@@ -393,7 +395,7 @@ export async function createHandler(ipfsOptions, session) {
             throw new Error(`Unsupported DNSLink namespace: ${result.namespace}`);
           }
         } catch (dnsErr) {
-          console.error(
+          log.error(
             `Failed to resolve DNSLink for IPNS name "${ipnsName}": ${dnsErr}`
           );
           throw new Error(
@@ -410,7 +412,7 @@ export async function createHandler(ipfsOptions, session) {
   return async function protocolHandler(request, sendResponse) {
     const { url, method, uploadData, headers } = request;
     if (!node) {
-      console.log("IPFS node is not ready yet");
+      log.info("IPFS node is not ready yet");
       return;
     }
 
@@ -420,7 +422,7 @@ export async function createHandler(ipfsOptions, session) {
       uploadData &&
       url.startsWith("ipfs://")
     ) {
-      console.log(`Handling file upload for URL: ${url}`);
+      log.info(`Handling file upload for URL: ${url}`);
       return handleFileUpload({ uploadData, headers, referrer: request.referrer, url: request.url }, sendResponse);
     }
 
@@ -467,7 +469,7 @@ export async function createHandler(ipfsOptions, session) {
         if (ensCache.has(ensName)) {
           const cachedEntry = ensCache.get(ensName);
           contentHashRaw = typeof cachedEntry === 'object' ? cachedEntry.hash : cachedEntry;
-          console.log(
+          log.info(
             `[${new Date().toISOString()}] ENS cache hit for ${ensName}`
           );
         } else {
@@ -480,10 +482,10 @@ export async function createHandler(ipfsOptions, session) {
             timestamp: Date.now()
           });
           saveEnsCache(); // Persist the updated cache
-          console.log(
+          log.info(
             `[${new Date().toISOString()}] ENS cache miss for ${ensName}, fetched contentHash.`
           );
-          console.log(
+          log.info(
             `[${new Date().toISOString()}] Current ENS cache size: ${
               ensCache.size
             }`
@@ -527,7 +529,7 @@ export async function createHandler(ipfsOptions, session) {
           throw new Error("Unsupported content hash codec: " + codec);
         }
       } catch (e) {
-        console.error("Error resolving ENS name:", e);
+        log.error("Error resolving ENS name:", e);
         statusCode = 500;
         data = Readable.from([
           Buffer.from("Failed to resolve ENS name: " + e.toString()),
@@ -550,7 +552,7 @@ export async function createHandler(ipfsOptions, session) {
       try {
         ipfsPath = await handleIPNSResolution(ipnsName, urlParts);
       } catch (e) {
-        console.log("Error resolving IPNS:", e);
+        log.info("Error resolving IPNS:", e);
         statusCode = 500;
         data = Readable.from([
           Buffer.from("Failed to resolve IPNS name: " + e.toString()),
@@ -568,7 +570,7 @@ export async function createHandler(ipfsOptions, session) {
           .map((part) => decodeURIComponent(part));
         ipfsPath = [cid, ...pathSegments];
       } catch (e) {
-        console.error("Error parsing IPFS CID:", e);
+        log.error("Error parsing IPFS CID:", e);
         statusCode = 400;
         data = Readable.from([Buffer.from("Invalid CID in URL.")]);
         sendResponse({ statusCode, headers: responseHeaders, data });
@@ -578,12 +580,12 @@ export async function createHandler(ipfsOptions, session) {
 
     // Debug log
     if (Array.isArray(ipfsPath)) {
-      console.log(
+      log.info(
         "Constructed ipfsPath:",
         ipfsPath.map((part) => (part instanceof CID ? part.toString() : part))
       );
     } else {
-      console.log("ipfsPath is not an array:", ipfsPath);
+      log.info("ipfsPath is not an array:", ipfsPath);
     }
 
     try {
@@ -654,7 +656,7 @@ export async function createHandler(ipfsOptions, session) {
         data = Readable.from(fileBuffer);
       }
     } catch (e) {
-      console.error("Error retrieving file:", e);
+      log.error("Error retrieving file:", e);
       if (e.message.includes("not a file")) {
         // Attempt to serve index.html or directory listing
         try {
@@ -670,13 +672,13 @@ export async function createHandler(ipfsOptions, session) {
           })) {
             indexStream.push(chunk);
           }
-          console.log(
+          log.info(
             `Serving index.html for path: ${cid.toString()}/${indexPathString}`
           );
           responseHeaders["Content-Type"] = "text/html";
           data = Readable.from(Buffer.concat(indexStream));
         } catch (indexErr) {
-          console.log("No index.html found. Attempting directory listing.");
+          log.info("No index.html found. Attempting directory listing.");
 
           const files = [];
           const [cid, ...pathSegments] = ipfsPath;
@@ -702,7 +704,7 @@ export async function createHandler(ipfsOptions, session) {
           }
 
           const html = directoryListingHtml(pathString, files.join(""));
-          console.log(
+          log.info(
             `Serving directory listing for path: ${ipfsPath.join("/")}`
           );
           responseHeaders["Content-Type"] = "text/html";

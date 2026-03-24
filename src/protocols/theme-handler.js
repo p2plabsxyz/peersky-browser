@@ -1,4 +1,6 @@
 import path from "path";
+import { createLogger } from '../logger.js';
+const log = createLogger('protocols:theme');
 import { fileURLToPath } from 'url';
 import mime from "mime-types";
 import ScopedFS from 'scoped-fs';
@@ -55,7 +57,7 @@ async function get404Response() {
       },
     });
   } catch (e) {
-    console.error('Failed to serve error.html:', e);
+    log.error('Failed to serve error.html:', e);
     return new Response('File not found', {
       status: 404,
       headers: {
@@ -86,7 +88,7 @@ export async function createHandler() {
             resolvedPath = await resolveFile('themes.css');
           } catch (themeError) {
             // Fallback to default vars.css if unified theme file not found
-            console.warn('Unified themes.css file not found, falling back to vars.css');
+            log.warn('Unified themes.css file not found, falling back to vars.css');
             resolvedPath = await resolveFile(fileName);
           }
         } else {
@@ -113,7 +115,7 @@ export async function createHandler() {
           headers,
         });
       } catch (e) {
-        console.log('File not found:', fileName);
+        log.info('File not found:', fileName);
         return get404Response();
       }
     } else {

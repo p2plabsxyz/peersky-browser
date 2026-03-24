@@ -1,4 +1,6 @@
 import fs from "fs-extra";
+import { createLogger } from '../logger.js';
+const log = createLogger('protocols:file');
 import path from "path";
 import mime from "mime-types";
 import { pathToFileURL } from "url";
@@ -139,11 +141,11 @@ function generateDirectoryListing(dirPath, entries) {
 
         if (protocol === 'hyper') {
           const hyperdriveUrl = await generateHyperdriveKey('directory-' + Date.now());
-          console.log('Hyper base URL:', hyperdriveUrl);
+          log.info('Hyper base URL:', hyperdriveUrl);
 
           for (const fileEntry of files) {
             const url = hyperdriveUrl + encodeURIComponent(fileEntry.relativePath);
-            console.log('Uploading', fileEntry.relativePath, 'to', url);
+            log.info('Uploading', fileEntry.relativePath, 'to', url);
 
             const fileResponse = await fetch(fileEntry.fileUrl);
             const blob = await fileResponse.blob();
@@ -172,7 +174,7 @@ function generateDirectoryListing(dirPath, entries) {
           const formData = new FormData();
 
           for (const fileEntry of files) {
-            console.log('Processing file:', fileEntry.relativePath);
+            log.info('Processing file:', fileEntry.relativePath);
 
             const response = await fetch(fileEntry.fileUrl);
             if (!response.ok) {
@@ -187,7 +189,7 @@ function generateDirectoryListing(dirPath, entries) {
           }
           
           const url = 'ipfs://bafyaabakaieac/';
-          console.log('Uploading to IPFS...');
+          log.info('Uploading to IPFS...');
           
           const response = await fetch(url, {
             method: 'PUT',
@@ -214,7 +216,7 @@ function generateDirectoryListing(dirPath, entries) {
         }
         
       } catch (error) {
-        console.error('Publish error:', error);
+        log.error('Publish error:', error);
         status.textContent = '❌ Error: ' + error.message;
       } finally {
         publishBtn.disabled = false;
@@ -261,7 +263,7 @@ export async function createHandler() {
     try {
       entries = await fs.readdir(dirPath, { withFileTypes: true });
     } catch (error) {
-    //   console.error(`Could not read directory: ${dirPath}`, error);
+    //   log.error(`Could not read directory: ${dirPath}`, error);
       return []; // Return empty if directory is unreadable
     }
 
@@ -283,7 +285,7 @@ export async function createHandler() {
             fileUrl: pathToFileURL(fullPath).href
           });
         } catch (err) {
-        //   console.error('Could not stat file:', fullPath, err);
+        //   log.error('Could not stat file:', fullPath, err);
         }
       }
     }
@@ -299,11 +301,11 @@ export async function createHandler() {
       filePath = filePath.substring(1);
     }
 
-    // console.log('File protocol request:', request.url, '-> decoded path:', filePath);
+    // log.info('File protocol request:', request.url, '-> decoded path:', filePath);
 
     try {
       const stats = await fs.stat(filePath);
-    //   console.log('Path stats:', filePath, 'isDirectory:', stats.isDirectory(), 'isFile:', stats.isFile());
+    //   log.info('Path stats:', filePath, 'isDirectory:', stats.isDirectory(), 'isFile:', stats.isFile());
 
       if (stats.isDirectory()) {
         // Handle manifest requests first (used for publishing)
@@ -409,7 +411,7 @@ export async function createHandler() {
         });
       }
     } catch (error) {
-    //   console.error('File protocol error:', error);
+    //   log.error('File protocol error:', error);
       const errorHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Error</title>
       <style>body{background-color:#18181C; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:40px;color:#333;}
       h1{font-size:24px;margin-bottom:10px;}p{color:#666;}</style></head><body>

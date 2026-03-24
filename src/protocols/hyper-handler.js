@@ -1,5 +1,7 @@
 import { create as createSDK } from "hyper-sdk";
 import makeHyperFetch from "hypercore-fetch";
+import { createLogger } from '../logger.js';
+const log = createLogger('protocols:hyper');
 import { initChat, handleChatRequest as handleChatRequestP2P } from "../pages/p2p/chat/p2p.js";
 import { hyperCache, saveHyperCache } from "./config.js";
 
@@ -9,14 +11,14 @@ let sdk, fetch;
 async function initializeHyperSDK(options) {
   if (sdk != null && fetch != null) return fetch;
 
-  console.log("Initializing Hyper SDK...");
+  log.info("Initializing Hyper SDK...");
 
   sdk = await createSDK(options);
   fetch = makeHyperFetch({ sdk, writable: true });
 
   initChat(sdk);
 
-  console.log("Hyper SDK initialized.");
+  log.info("Hyper SDK initialized.");
   return fetch;
 }
 
@@ -29,7 +31,7 @@ export async function createHandler(options) {
     const protocol = urlObj.protocol.replace(":", "");
     const pathname = urlObj.pathname;
 
-    console.log(`Handling request: ${method} ${url}`);
+    log.info(`Handling request: ${method} ${url}`);
 
     // Intercept Hyperdrive key generation/retrieval
     if (method === 'POST' && urlObj.searchParams.has('key')) {
@@ -45,7 +47,7 @@ export async function createHandler(options) {
         if (resp.status === 200) {
           const buffer = await resp.arrayBuffer();
           const driveKeyStr = Buffer.from(buffer).toString();
-          console.log("Extracted raw key response:", driveKeyStr);
+          log.info("Extracted raw key response:", driveKeyStr);
 
           const match = driveKeyStr.match(/([0-9a-zA-Z]{52,64})/);
           if (match) {
@@ -60,14 +62,14 @@ export async function createHandler(options) {
                 type: 'drive'
               });
               saveHyperCache();
-              console.log(`Logged Hyperdrive to cache: ${keyName} (${driveKey})`);
+              log.info(`Logged Hyperdrive to cache: ${keyName} (${driveKey})`);
             } else {
               existingEntry.timestamp = timestamp;
               if (keyName && (existingEntry.name === "Drive" || !existingEntry.name)) {
                 existingEntry.name = keyName;
               }
               saveHyperCache();
-              console.log(`Updated Hyperdrive in cache: ${keyName} (${driveKey})`);
+              log.info(`Updated Hyperdrive in cache: ${keyName} (${driveKey})`);
             }
           }
           return new Response(buffer, {
@@ -77,7 +79,7 @@ export async function createHandler(options) {
         }
         return resp;
       } catch (err) {
-        console.error("Error handling Hyperdrive key request:", err);
+        log.error("Error handling Hyperdrive key request:", err);
         return new Response(`Error handling Hyperdrive key request: ${err.message}`, {
           status: 500,
           headers: { "Content-Type": "text/plain" },
@@ -95,7 +97,7 @@ export async function createHandler(options) {
         return await handleHyperRequest(req);
       }
     } catch (err) {
-      console.error("Failed to handle Hyper request:", err);
+      log.error("Failed to handle Hyper request:", err);
       return new Response(`Error handling Hyper request: ${err.message}`, {
         status: 500,
         headers: { "Content-Type": "text/plain" },
@@ -113,7 +115,7 @@ async function handleHyperRequest(req) {
   const hasBody = upperMethod !== "GET" && upperMethod !== "HEAD";
 
   try {
-    console.log(`[handleHyperRequest] Fetching: ${method} ${url}`);
+    log.info(`[handleHyperRequest] Fetching: ${method} ${url}`);
     const resp = await fetchFn(url, {
       method,
       headers,
@@ -121,10 +123,10 @@ async function handleHyperRequest(req) {
       ...(hasBody ? { duplex: "half" } : {}),
     });
 
-    console.log("Response received:", resp.status);
+    log.info("Response received:", resp.status);
     return resp;
   } catch (err) {
-    console.error("Failed to fetch from Hyper SDK:", err);
+    log.error("Failed to fetch from Hyper SDK:", err);
     return new Response(`Error fetching data: ${err.message}`, {
       status: 500,
       headers: { "Content-Type": "text/plain" },

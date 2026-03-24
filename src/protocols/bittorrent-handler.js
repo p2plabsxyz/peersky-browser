@@ -1,5 +1,7 @@
 import { fork } from "child_process";
 import path from "path";
+import { createLogger } from '../logger.js';
+const log = createLogger('protocols:bt');
 import { fileURLToPath } from "url";
 import fs from "fs-extra";
 import { app } from "electron";
@@ -36,10 +38,10 @@ function loadTorrentStateCache() {
       for (const [hash, status] of Object.entries(data)) {
         statusCache.set(hash, status);
       }
-      console.log(`[BT] Loaded ${Object.keys(data).length} torrent(s) from state cache`);
+      log.info(`[BT] Loaded ${Object.keys(data).length} torrent(s) from state cache`);
     }
   } catch (err) {
-    console.error("[BT] Failed to load torrent state cache:", err.message);
+    log.error("[BT] Failed to load torrent state cache:", err.message);
   }
 }
 
@@ -50,7 +52,7 @@ function saveTorrentState(infoHash, status) {
     data[infoHash] = status;
     fs.writeJsonSync(cachePath, data, { spaces: 2 });
   } catch (err) {
-    console.error("[BT] Failed to save torrent state:", err.message);
+    log.error("[BT] Failed to save torrent state:", err.message);
   }
 }
 
@@ -63,7 +65,7 @@ function removeTorrentState(infoHash) {
       fs.writeJsonSync(cachePath, data, { spaces: 2 });
     }
   } catch (err) {
-    console.error("[BT] Failed to remove torrent state:", err.message);
+    log.error("[BT] Failed to remove torrent state:", err.message);
   }
 }
 
@@ -89,22 +91,22 @@ async function initializeWorker() {
   const downloadPath = path.join(app.getPath("downloads"), "PeerskyTorrents");
   await fs.ensureDir(downloadPath);
 
-  console.log("[BT] Forking WebTorrent worker process...");
+  log.info("[BT] Forking WebTorrent worker process...");
   worker = fork(path.join(__dirname, "bt", "worker.js"), [downloadPath], {
     stdio: ["pipe", "pipe", "pipe", "ipc"],
   });
 
   // Forward worker stdout/stderr to main process console
   worker.stdout.on("data", (data) => {
-    process.stdout.write(data);
+    log.info(`[Worker] ${data.toString().trimEnd()}`);
   });
   worker.stderr.on("data", (data) => {
-    process.stderr.write(data);
+    log.error(`[Worker] ${data.toString().trimEnd()}`);
   });
 
   worker.on("message", (msg) => {
     if (msg.type === "ready") {
-      console.log("[BT] Worker process ready");
+      log.info("[BT] Worker process ready");
       workerReady = true;
       return;
     }
@@ -153,11 +155,11 @@ async function initializeWorker() {
   });
 
   worker.on("error", (err) => {
-    console.error("[BT] Worker error:", err);
+    log.error("[BT] Worker error:", err);
   });
 
   worker.on("exit", (code) => {
-    console.log(`[BT] Worker exited with code ${code}`);
+    log.info(`[BT] Worker exited with code ${code}`);
     worker = null;
     workerReady = false;
     
@@ -172,9 +174,9 @@ async function initializeWorker() {
         }
       }
       fs.writeJsonSync(cachePath, data, { spaces: 2 });
-      console.log(`[BT] Saved ${Object.keys(data).length} torrent state(s) on worker exit`);
+      log.info(`[BT] Saved ${Object.keys(data).length} torrent state(s) on worker exit`);
     } catch (err) {
-      console.error("[BT] Failed to save torrent states on exit:", err.message);
+      log.error("[BT] Failed to save torrent states on exit:", err.message);
     }
     
     statusCache.clear();
@@ -197,7 +199,7 @@ async function initializeWorker() {
     }, 10000);
   });
 
-  console.log("[BT] Worker initialized. Download path:", downloadPath);
+  log.info("[BT] Worker initialized. Download path:", downloadPath);
 }
 
 function sendCommand(action, params = {}) {
@@ -224,7 +226,7 @@ export async function createHandler() {
 
   return async function protocolHandler(request) {
     const rawUrl = request.url;
-    console.log(`[BT] Handling request: ${request.method} ${rawUrl}`);
+    log.info(`[BT] Handling request: ${request.method} ${rawUrl}`);
 
     try {
       // Determine protocol from the raw URL
@@ -274,7 +276,7 @@ export async function createHandler() {
       });
 
     } catch (err) {
-      console.error("[BT] Failed to handle request:", err);
+      log.error("[BT] Failed to handle request:", err);
       return new Response(`Error: ${err.message}`, {
         status: 500,
         headers: { "Content-Type": "text/plain" },
@@ -313,7 +315,7 @@ export function setupBittorrentIpc() {
 
       return magnetUri;
     } catch (err) {
-      console.error('[BT] IPC Error resolving torrent:', err.message);
+      log.error('[BT] IPC Error resolving torrent:', err.message);
       return null;
     }
   });
@@ -322,7 +324,7 @@ export function setupBittorrentIpc() {
 
 async function handleAPI(api, queryParams, infoHash, request) {
   const hash = queryParams.get("hash") || infoHash;
-  console.log(`[BT] API call: ${api}, hash: ${hash}`);
+  log.info(`[BT] API call: ${api}, hash: ${hash}`);
 
   // Security: validate request is from BitTorrent protocol
   // Custom protocols don't send Origin/Referer headers in Electron, so check request.url
@@ -330,7 +332,7 @@ async function handleAPI(api, queryParams, infoHash, request) {
   const isBTRequest = requestUrl.startsWith('bt://') || requestUrl.startsWith('bittorrent://') || requestUrl.startsWith('magnet:');
   
   if (!isBTRequest) {
-    console.warn(`[BT] API blocked: request not from BitTorrent protocol - url: ${requestUrl}`);
+    log.warn(`[BT] API blocked: request not from BitTorrent protocol - url: ${requestUrl}`);
     return jsonResponse({ error: 'Forbidden: API only accessible from BitTorrent protocol' }, 403);
   }
 
@@ -357,7 +359,7 @@ async function handleAPI(api, queryParams, infoHash, request) {
       return jsonResponse({ error: "Unknown API action" }, 400);
     }
   } catch (err) {
-    console.error("[BT] API error:", err);
+    log.error("[BT] API error:", err);
     return jsonResponse({ error: err.message }, 500);
   }
 }
@@ -379,7 +381,7 @@ async function startTorrent(magnetUri) {
     // Decode the magnet URI
     const decoded = decodeURIComponent(magnetUri);
     const hash = extractInfoHash(decoded);
-    console.log(`[BT] startTorrent: hash=${hash}`);
+    log.info(`[BT] startTorrent: hash=${hash}`);
 
     // Merge all trackers from the magnet + defaults
     let allTrackers = [...DEFAULT_TRACKERS];
@@ -405,7 +407,7 @@ async function startTorrent(magnetUri) {
       magnetURI: decoded,
     });
   } catch (err) {
-    console.error("[BT] startTorrent error:", err);
+    log.error("[BT] startTorrent error:", err);
     return jsonResponse({ error: err.message }, 500);
   }
 }
@@ -438,7 +440,7 @@ async function pauseResumeTorrent(action, hash) {
       if (action === "resume") {
         const cached = statusCache.get(hash);
         if (cached && cached.magnetURI) {
-          console.log(`[BT] Torrent not in worker, re-starting from cache: ${hash}`);
+          log.info(`[BT] Torrent not in worker, re-starting from cache: ${hash}`);
           removeTorrentState(hash);
           statusCache.delete(hash);
           return await startTorrent(encodeURIComponent(cached.magnetURI));
@@ -495,7 +497,7 @@ function extractInfoHash(magnetUrl) {
     
     return null;
   } catch (err) {
-    console.warn('[BT] Failed to extract infoHash:', err.message);
+    log.warn('[BT] Failed to extract infoHash:', err.message);
     return null;
   }
 }

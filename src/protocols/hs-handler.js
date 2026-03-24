@@ -1,4 +1,6 @@
 import Holesail from "holesail";
+import { createLogger } from '../logger.js';
+const log = createLogger('protocols:hs');
 import http from "http";
 import { PassThrough } from "stream";
 import fs from "fs";
@@ -52,10 +54,10 @@ function loadPortsFromFile() {
           roomPorts.set(key, { port: value.port, seed: decryptedSeed });
         }
       });
-      console.log("[p2pmd] loaded ports from file", { count: roomPorts.size });
+      log.info("[p2pmd] loaded ports from file", { count: roomPorts.size });
     }
   } catch (err) {
-    console.error("[p2pmd] failed to load ports", err);
+    log.error("[p2pmd] failed to load ports", err);
   }
 }
 
@@ -71,7 +73,7 @@ function savePortsToFile() {
     }
     fs.writeFileSync(PORTS_FILE, JSON.stringify(obj, null, 2), "utf8");
   } catch (err) {
-    console.error("[p2pmd] failed to save ports", err);
+    log.error("[p2pmd] failed to save ports", err);
   }
 }
 
@@ -116,7 +118,7 @@ function encryptSeed(seed) {
       return encrypted.toString('base64');
     }
   } catch (err) {
-    console.error('[p2pmd] Failed to encrypt seed:', err.message);
+    log.error('[p2pmd] Failed to encrypt seed:', err.message);
   }
   return seed; // Fallback to plain text if encryption unavailable
 }
@@ -129,7 +131,7 @@ function decryptSeed(encryptedSeed) {
       return safeStorage.decryptString(buffer);
     }
   } catch (err) {
-    console.error('[p2pmd] Failed to decrypt seed:', err.message);
+    log.error('[p2pmd] Failed to decrypt seed:', err.message);
   }
   return encryptedSeed; // Fallback if decryption fails
 }
@@ -540,7 +542,7 @@ function handleDocRequest(req, res, session) {
     const peerId = ++peerSequence;
     session.sseClients.set(res, { res, id: peerId, role });
     const currentPeerCount = getPeerCount(session);
-    console.log(`[p2pmd] SSE connected: peerId=${peerId}, role=${role}, totalClients=${session.sseClients.size}, peerCount=${currentPeerCount}`);
+    log.info(`[p2pmd] SSE connected: peerId=${peerId}, role=${role}, totalClients=${session.sseClients.size}, peerCount=${currentPeerCount}`);
     
     res.write(`event: peers\ndata: ${currentPeerCount}\n\n`);
     res.write(`event: peerlist\ndata: ${JSON.stringify(getPeerList(session))}\n\n`);
@@ -626,7 +628,7 @@ async function ensureDocServer(session, host, port, secure) {
   const savedEntry = session.key ? roomPorts.get(session.key) : null;
   const savedPort = savedEntry?.port || null;
   const requestedPort = port || session.originalPort || savedPort || 0;
-  console.log("[p2pmd] ensureDocServer", { key: session.key, port, originalPort: session.originalPort, savedPort, requestedPort });
+  log.info("[p2pmd] ensureDocServer", { key: session.key, port, originalPort: session.originalPort, savedPort, requestedPort });
   session.server = http.createServer((req, res) => handleDocRequest(req, res, session));
   session.server.on("connection", (socket) => {
     session.sockets.add(socket);
@@ -657,7 +659,7 @@ async function ensureDocServer(session, host, port, secure) {
       if (session.key && !roomPorts.has(session.key)) {
         roomPorts.set(session.key, { port: session.port, seed: null });
         savePortsToFile();
-        console.log("[p2pmd] saved port for room", { key: session.key, port: session.port });
+        log.info("[p2pmd] saved port for room", { key: session.key, port: session.port });
       }
       return { host: session.host, port: session.port };
     } catch (err) {
@@ -769,7 +771,7 @@ export async function createHandler() {
       const host = normalizeHost(body.host);
       const port = normalizePort(body.port);
       if (DEBUG) {
-        console.log("[p2pmd] create request", { secure, udp, host, port });
+        log.info("[p2pmd] create request", { secure, udp, host, port });
       }
 
       const sessionState = createSession();
@@ -788,10 +790,10 @@ export async function createHandler() {
       await holesailServer.ready();
       const roomKey = holesailServer.info?.url || null;
       // SECURITY: Redact sensitive data in logs
-      console.log("[p2pmd] holesail server ready", { key: redactKey(roomKey), port: boundPort });
+      log.info("[p2pmd] holesail server ready", { key: redactKey(roomKey), port: boundPort });
       if (DEBUG) {
-        console.log("  Connection string:", roomKey);
-        console.log("  DHT key:", holesailServer.info?.key);
+        log.info("  Connection string:", roomKey);
+        log.info("  DHT key:", holesailServer.info?.key);
       }
       sessionState.key = roomKey;
       sessionState.holesailServer = holesailServer;
@@ -802,9 +804,9 @@ export async function createHandler() {
         // Save port + seed now that we have the key (seed will be encrypted)
         roomPorts.set(roomKey, { port: boundPort, seed: serverSeed });
         savePortsToFile();
-        console.log("[p2pmd] saved port+seed for room", { key: redactKey(roomKey), port: boundPort });
+        log.info("[p2pmd] saved port+seed for room", { key: redactKey(roomKey), port: boundPort });
       }
-      console.log("[p2pmd] create ready", { key: redactKey(roomKey), port: boundPort });
+      log.info("[p2pmd] create ready", { key: redactKey(roomKey), port: boundPort });
 
       const responseHost = getResponseHost(sessionState);
       return buildJsonResponse(200, {
@@ -834,7 +836,7 @@ export async function createHandler() {
       const host = normalizeHost(body.host);
       const port = normalizePort(body.port);
       const initialContent = typeof body.initialContent === "string" ? body.initialContent : "";
-      console.log("[p2pmd] rehost request", { key: redactKey(key), port, hasInitialContent: initialContent.length > 0 });
+      log.info("[p2pmd] rehost request", { key: redactKey(key), port, hasInitialContent: initialContent.length > 0 });
 
       let sessionState = getExistingSession(key);
       if (sessionState) {
@@ -865,7 +867,7 @@ export async function createHandler() {
       });
       await holesailServer.ready();
       const roomKey = holesailServer.info?.url || key;
-      console.log("[p2pmd] rehost server ready", { key: redactKey(roomKey), port: boundPort });
+      log.info("[p2pmd] rehost server ready", { key: redactKey(roomKey), port: boundPort });
       if (roomKey !== key) {
         roomSessions.delete(key);
       }
@@ -878,7 +880,7 @@ export async function createHandler() {
         roomPorts.set(roomKey, { port: boundPort, seed: serverSeed });
         savePortsToFile();
       }
-      console.log("[p2pmd] rehost ready", { key: redactKey(roomKey), port: boundPort });
+      log.info("[p2pmd] rehost ready", { key: redactKey(roomKey), port: boundPort });
 
       const responseHost = getResponseHost(sessionState);
       return buildJsonResponse( 200, {
@@ -925,7 +927,7 @@ export async function createHandler() {
       const host = hostValue ? normalizeHost(hostValue) : null;
       const keyPort = parsedKey?.port || null;
       const port = keyPort || extractedPort || portInput || null;
-      console.log("[p2pmd] join request", { key: redactKey(key), port });
+      log.info("[p2pmd] join request", { key: redactKey(key), port });
 
       // If this room already has a running holesail server, don't destroy it.
       // This happens when the page reloads after creating a room.
@@ -933,7 +935,7 @@ export async function createHandler() {
       if (sessionState?.holesailServer && sessionState.server) {
         const responseHost = getResponseHost(sessionState);
         const localUrl = `http://${responseHost}:${sessionState.port}`;
-        console.log("[p2pmd] join: server already running", { key: redactKey(key), port: sessionState.port });
+        log.info("[p2pmd] join: server already running", { key: redactKey(key), port: sessionState.port });
         return buildJsonResponse(200, {
           key,
           localHost: responseHost,
@@ -975,7 +977,7 @@ export async function createHandler() {
         sessionState.key = rehostedKey;
         sessionState.holesailServer = holesailServer;
         roomSessions.set(rehostedKey, sessionState);
-        console.log("[p2pmd] join: auto-rehosted existing room", { key: redactKey(rehostedKey), port: boundPort });
+        log.info("[p2pmd] join: auto-rehosted existing room", { key: redactKey(rehostedKey), port: boundPort });
         const responseHost = getResponseHost(sessionState);
         return buildJsonResponse(200, {
           key: sessionState.key,
@@ -1011,23 +1013,23 @@ export async function createHandler() {
       if (udp !== null) clientOptions.udp = udp;
       if (requestedPort) clientOptions.port = requestedPort;
       if (DEBUG) {
-        console.log("[p2pmd] join creating client", { port: requestedPort });
+        log.info("[p2pmd] join creating client", { port: requestedPort });
       }
       const holesailClient = new Holesail(clientOptions);
       sessionState.holesailClient = holesailClient;
       await holesailClient.ready();
       const boundPort = holesailClient.info?.port || requestedPort || 0;
       sessionState.port = boundPort;
-      console.log("[p2pmd] join client ready", { port: boundPort });
+      log.info("[p2pmd] join client ready", { port: boundPort });
       if (DEBUG) {
-        console.log("  Client info:", JSON.stringify(holesailClient.info, null, 2));
+        log.info("  Client info:", JSON.stringify(holesailClient.info, null, 2));
       }
 
       await new Promise(resolve => setTimeout(resolve, 500));
 
       const responseHost = getResponseHost(sessionState);
       const localUrl = `http://${responseHost}:${boundPort}`;
-      console.log("[p2pmd] join ready", { key: redactKey(key), port: boundPort });
+      log.info("[p2pmd] join ready", { key: redactKey(key), port: boundPort });
       
       return buildJsonResponse(200, {
         key,
