@@ -1060,7 +1060,8 @@ function buildPublishHtml(markdown) {
 }
 
 function buildSlidesHtml(markdown) {
-  const slideDelimiters = /^---$|^<!-- slide -->$/gm;
+  // Match slide delimiters: --- surrounded by blank lines OR <!-- slide --> comment
+  const slideDelimiters = /\n\n---\n\n|^---\n\n|\n\n---$|^<!-- slide -->$/gm;
   const slides = markdown.split(slideDelimiters)
     .map(slide => slide.trim())
     .filter(slide => slide.length > 0);
@@ -1238,7 +1239,8 @@ let isSlideMode = false;
 
 function autoRenderSlides() {
   const markdown = markdownInput.value;
-  const slideDelimiters = /^---$|^<!-- slide -->$/gm;
+  // Match slide delimiters: --- surrounded by blank lines OR <!-- slide --> comment
+  const slideDelimiters = /\n\n---\n\n|^---\n\n|\n\n---$|^<!-- slide -->$/gm;
   slidesData = markdown.split(slideDelimiters)
     .map(slide => slide.trim())
     .filter(slide => slide.length > 0);
@@ -1259,7 +1261,8 @@ function autoRenderSlides() {
 
 function viewAsSlides() {
   const markdown = markdownInput.value;
-  const slideDelimiters = /^---$|^<!-- slide -->$/gm;
+  // Match slide delimiters: --- surrounded by blank lines OR <!-- slide --> comment
+  const slideDelimiters = /\n\n---\n\n|^---\n\n|\n\n---$|^<!-- slide -->$/gm;
   const hasSlideDelimiters = slideDelimiters.test(markdown);
   
   if (!hasSlideDelimiters) {
@@ -1268,7 +1271,9 @@ function viewAsSlides() {
     return;
   }
   
-  slidesData = markdown.split(slideDelimiters)
+  // Re-create regex for split (test() consumed it)
+  const splitDelimiters = /\n\n---\n\n|^---\n\n|\n\n---$|^<!-- slide -->$/gm;
+  slidesData = markdown.split(splitDelimiters)
     .map(slide => slide.trim())
     .filter(slide => slide.length > 0);
   
