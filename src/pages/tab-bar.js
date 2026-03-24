@@ -2263,6 +2263,7 @@ restoreTabs(persistedData) {
   }
 
   animateTabReorder() {
+    const isVert = this.isVertical;
     const elements = [...this.tabContainer.querySelectorAll('.tab:not(.dragging), #add-tab')];
 
     const firstRects = new Map();
@@ -2279,23 +2280,32 @@ restoreTabs(persistedData) {
         if (!first) return;
 
         const dx = first.left - last.left;
+        const dy = first.top - last.top;
 
-        if (dx !== 0) {
+        if (isVert && dy !== 0) {
+          el.style.transform = `translateY(${dy}px)`;
+          requestAnimationFrame(() => {
+            el.style.transition = 'transform 0.15s cubic-bezier(0.25, 0.8, 0.25, 1)';
+            el.style.transform = '';
+          });
+          el.addEventListener('transitionend', () => { el.style.transition = ''; }, { once: true });
+        } else if (!isVert && dx !== 0) {
           el.style.transform = `translateX(${dx}px)`;
 
           requestAnimationFrame(() => {
             el.style.transition = 'transform 0.15s cubic-bezier(0.25, 0.8, 0.25, 1)';
             el.style.transform = '';
           });
-
-          el.addEventListener('transitionend', () => {
-            el.style.transition = '';
-          }, { once: true });
+          el.addEventListener('transitionend', () => { el.style.transition = ''; }, { once: true });
         } else {
           el.style.transition = ''; 
         }
       });
     });
+  }
+
+  get isVertical() {
+    return document.body.classList.contains('vertical-tabs-layout') || getComputedStyle(this.tabContainer).flexDirection === 'column';
   }
 
   // Drag and Drop Handlers
@@ -2308,109 +2318,184 @@ restoreTabs(persistedData) {
 
     this.draggedTab = tab;
     this.dragStartX = e.clientX;
+    this.dragStartY = e.clientY;
     this.isDragging = false;
+    this.isOutsideContainer = false;
 
     this.onPointerMove = this.handlePointerMove.bind(this);
     this.onPointerUp = this.handlePointerUp.bind(this);
+
     window.addEventListener('pointermove', this.onPointerMove);
     window.addEventListener('pointerup', this.onPointerUp);
+    window.addEventListener('pointercancel', this.onPointerUp); // Catch system interruptions
   }
 
   handlePointerMove(e) {
     if (!this.draggedTab) return;
 
+    const isVert = this.isVertical;
     const dx = e.clientX - this.dragStartX;
+    const dy = e.clientY - this.dragStartY;
 
-    if (!this.isDragging && Math.abs(dx) > 3) {
+    if (!this.isDragging && Math.hypot(dx, dy) > 3) {
       this.isDragging = true;
       this.destroyHoverCard();
 
       const rect = this.draggedTab.getBoundingClientRect();
-      this.initialTabLeft = this.draggedTab.offsetLeft;
+      
+      this.dragOffsetLeft = e.clientX - rect.left;
+      this.dragOffsetTop = e.clientY - rect.top;
 
       this.placeholder = document.createElement('div');
       this.placeholder.className = 'tab-placeholder';
+
       this.placeholder.style.width = `${rect.width}px`;
+      this.placeholder.style.height = `${rect.height}px`;
 
       this.draggedTab.parentNode.insertBefore(this.placeholder, this.draggedTab);
 
+      if (this.webviewContainer) {
+        this.webviewContainer.style.pointerEvents = 'none';
+      }
+
+      this.isMovingDOM = true;
+      document.body.appendChild(this.draggedTab);
+      this.isMovingDOM = false;
+
+      try { this.draggedTab.setPointerCapture(e.pointerId); } catch(err) {}
+
       this.draggedTab.classList.add('dragging');
-      this.draggedTab.style.left = `${this.initialTabLeft}px`;
-      this.draggedTab.style.width = `${rect.width}px`; 
+      this.draggedTab.style.setProperty('position', 'fixed', 'important');
+      this.draggedTab.style.zIndex = '9999';
+      this.draggedTab.style.width = `${rect.width}px`;
+      this.draggedTab.style.height = `${rect.height}px`;
     }
 
     if (this.isDragging) {
-      this.draggedTab.style.left = `${this.initialTabLeft + dx}px`;
-
-      const containerRect = this.tabContainer.getBoundingClientRect();
-      
-      // A small 20px vertical buffer so it doesn't cancel if you accidentally wiggle slightly up/down,
-      // combined with strict horizontal boundaries for the left/right edges of the window.
-      const isOutsideY = e.clientY < (containerRect.top - 20) || e.clientY > (containerRect.bottom + 20);
-      const isOutsideX = e.clientX < containerRect.left || e.clientX > containerRect.right;
-
-      if (isOutsideY || isOutsideX) {
-        this.handlePointerUp(e);
-        return;
+      if (isVert) {
+        this.isOutsideContainer = Math.abs(dx) > 40; 
+      } else {
+        this.isOutsideContainer = Math.abs(dy) > 30; 
       }
 
-      const draggedCenterRelative = this.initialTabLeft + dx + (this.draggedTab.offsetWidth / 2);
-      const tabs = Array.from(this.tabContainer.querySelectorAll('.tab:not(.dragging)'));
-      let insertBeforeTab = null;
+      const floatLeft = e.clientX - this.dragOffsetLeft;
+      const floatTop = e.clientY - this.dragOffsetTop;
 
-      for (let tab of tabs) {
-        const tabCenterRelative = tab.offsetLeft + (tab.offsetWidth / 2);
+      if (this.isOutsideContainer) {
+        this.draggedTab.style.left = `${floatLeft}px`;
+        this.draggedTab.style.top = `${floatTop}px`;
+        if (this.placeholder) this.placeholder.style.display = 'none';
+      } else {
+        const placeholderRect = this.placeholder.getBoundingClientRect();
         
-        if (draggedCenterRelative < tabCenterRelative) {
-          insertBeforeTab = tab;
-          break;
+        if (isVert) {
+          this.draggedTab.style.left = `${placeholderRect.left}px`;
+          this.draggedTab.style.top = `${floatTop}px`;
+        } else {
+          this.draggedTab.style.top = `${placeholderRect.top}px`;
+          this.draggedTab.style.left = `${floatLeft}px`;
         }
-      }
+        
+        if (this.placeholder) this.placeholder.style.display = '';
 
-      const targetNode = insertBeforeTab || this.tabContainer.querySelector('#add-tab');
-      if (this.placeholder.nextElementSibling !== targetNode) {
-        this.animateTabReorder(); 
-        this.tabContainer.insertBefore(this.placeholder, targetNode);
+        const draggedCenterRelative = isVert ? 
+              (floatTop + this.draggedTab.offsetHeight / 2) : 
+              (floatLeft + this.draggedTab.offsetWidth / 2);
+        
+        const tabs = Array.from(this.tabContainer.querySelectorAll('.tab:not(.dragging)'));
+        let insertBeforeTab = null;
+
+        for (let tab of tabs) {
+          const tabRect = tab.getBoundingClientRect();
+          const tabCenterRelative = isVert ? 
+                (tabRect.top + tabRect.height / 2) : 
+                (tabRect.left + tabRect.width / 2);
+          
+          if (draggedCenterRelative < tabCenterRelative) {
+            insertBeforeTab = tab;
+            break;
+          }
+        }
+
+        const targetNode = insertBeforeTab || this.tabContainer.querySelector('#add-tab');
+        if (this.placeholder.nextElementSibling !== targetNode) {
+          this.animateTabReorder(); 
+          this.tabContainer.insertBefore(this.placeholder, targetNode);
+        }
       }
     }
   }
 
   handlePointerUp(e) {
+    if (e.type === 'pointercancel' && this.isMovingDOM) return;
+
     window.removeEventListener('pointermove', this.onPointerMove);
     window.removeEventListener('pointerup', this.onPointerUp);
+    window.removeEventListener('pointercancel', this.onPointerUp); 
+
+    // Re-enable webview mouse events!
+    if (this.webviewContainer) {
+      this.webviewContainer.style.pointerEvents = '';
+    }
 
     if (!this.isDragging || !this.draggedTab) {
+      if (this.draggedTab) {
+        try { this.draggedTab.releasePointerCapture(e.pointerId); } catch(err) {}
+      }
       this.draggedTab = null;
       return;
     }
 
+    try { this.draggedTab.releasePointerCapture(e.pointerId); } catch(err) {}
     this.isDragging = false;
+    const tabIdToMove = this.draggedTab.id;
 
-    const finalLeft = this.placeholder.offsetLeft;
+    if (this.isOutsideContainer && this.tabs.length > 1) {
+      this.draggedTab.classList.remove('dragging');
+      
+      if (this.placeholder && this.placeholder.parentNode) {
+        this.placeholder.remove();
+      }
+      this.placeholder = null;
+      
+      this.draggedTab.remove(); 
+      this.draggedTab = null;
+      this.isOutsideContainer = false;
 
-    this.draggedTab.style.position = 'absolute';
-    this.draggedTab.style.zIndex = '1000';
-    
+      this.moveTabToNewWindow(tabIdToMove);
+      return;
+    }
+
+    if (this.placeholder) this.placeholder.style.display = '';
+    const placeholderRect = this.placeholder ? this.placeholder.getBoundingClientRect() : { left: 0, top: 0 };
+
     this.draggedTab.classList.remove('dragging');
-    this.draggedTab.style.transition = 'left 0.2s cubic-bezier(0.25, 0.8, 0.25, 1)';
-    this.draggedTab.style.left = `${finalLeft}px`;
+    this.draggedTab.style.transition = 'all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1)';
+    
+    if (this.placeholder) {
+      this.draggedTab.style.left = `${placeholderRect.left}px`;
+      this.draggedTab.style.top = `${placeholderRect.top}px`;
+    }
 
     setTimeout(() => {
       if (!this.draggedTab) return;
 
       this.draggedTab.style.position = '';
       this.draggedTab.style.left = '';
+      this.draggedTab.style.top = '';
       this.draggedTab.style.width = '';
+      this.draggedTab.style.height = '';
       this.draggedTab.style.transition = '';
       this.draggedTab.style.zIndex = '';
 
       if (this.placeholder && this.placeholder.parentNode) {
         this.tabContainer.insertBefore(this.draggedTab, this.placeholder);
         this.placeholder.remove();
+      } else {
+        this.tabContainer.appendChild(this.draggedTab);
       }
       this.placeholder = null;
 
-      // Sync the internal state array with the new DOM order
       const newTabOrderIds = Array.from(this.tabContainer.querySelectorAll('.tab')).map(el => el.id);
       this.tabs.sort((a, b) => newTabOrderIds.indexOf(a.id) - newTabOrderIds.indexOf(b.id));
 
