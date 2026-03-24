@@ -502,6 +502,7 @@ function persistRoomState(state) {
   if (!state?.key) return;
   const normalized = normalizeRoomState(state);
   if (!normalized) return;
+  if (!normalized.savedAt) normalized.savedAt = Date.now();
   const payload = JSON.stringify(normalized);
   const candidates = getRoomKeyCandidates(normalized.key);
   for (const candidate of candidates) {
@@ -2300,9 +2301,69 @@ updateSelectorURL();
 initMarkdown();
 initToolbar();
 
+async function loadRecentRooms() {
+  const historyList = document.getElementById('room-history-list');
+  if (!historyList) return;
+  
+  try {
+    // Read room states from localStorage, deduplicate by canonical key
+    const seen = new Map();
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(ROOM_STATE_PREFIX)) {
+        try {
+          const raw = localStorage.getItem(key);
+          const state = JSON.parse(raw);
+          if (state?.key && validateRoomKey(state.key)) {
+            const canonical = state.key;
+            const existing = seen.get(canonical);
+            if (!existing || (state.savedAt || 0) > (existing.savedAt || 0)) {
+              seen.set(canonical, { roomKey: canonical, savedAt: state.savedAt || 0 });
+            }
+          }
+        } catch {
+          // Skip invalid entries
+        }
+      }
+    }
+    
+    const rooms = Array.from(seen.values())
+      .sort((a, b) => b.savedAt - a.savedAt);
+    
+    if (rooms.length === 0) {
+      historyList.innerHTML = '<div class="no-rooms">No past rooms</div>';
+      return;
+    }
+    
+    // Show last 5 rooms
+    const recentRooms = rooms.slice(0, 5);
+    
+    historyList.innerHTML = recentRooms.map(({ roomKey }) => {
+      const displayKey = roomKey.replace('hs://', '').substring(0, 20) + '...';
+      return `<a href="#" data-room-key="${roomKey}" title="${roomKey}">${displayKey}</a>`;
+    }).join('');
+    
+    historyList.querySelectorAll('a').forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        const roomKey = link.getAttribute('data-room-key');
+        joinRoomKey.value = roomKey;
+        joinForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      });
+    });
+  } catch (error) {
+    console.error('[loadRecentRooms] Error:', error);
+    historyList.innerHTML = '<div class="no-rooms">No past rooms</div>';
+  }
+}
+
 (async () => {
   const viewParam = getViewParam();
   const stateFromUrl = readRoomStateFromUrl();
+  
+  if (viewParam === "setup" || !stateFromUrl?.key) {
+    await loadRecentRooms();
+  }
   
   const state = stateFromUrl;
   if (viewParam === "setup") {
