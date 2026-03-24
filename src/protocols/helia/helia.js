@@ -83,18 +83,16 @@ export async function createNode() {
       autoNAT: autoNAT(),
       autoTLS: autoTLS(),
       dcutr: dcutr(),
-      delegatedRouting: delegatedRoutingV1HttpApiClient({
-        url: 'https://delegated-ipfs.dev'
-      }),
+      delegatedRouting: delegatedRoutingV1HttpApiClient({ url: 'https://delegated-ipfs.dev' }),
       dht: kadDHT({
         validators: { ipns: ipnsValidator },
         selectors: { ipns: ipnsSelector },
+        clientMode: false,
       }),
       identify: identify(),
       identifyPush: identifyPush(),
       keychain: keychain(),
       ping: ping(),
-      relay: circuitRelayServer(),
       upnp: uPnPNAT(),
       http: http(),
     },

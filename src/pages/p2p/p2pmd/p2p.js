@@ -502,13 +502,12 @@ function persistRoomState(state) {
   if (!state?.key) return;
   const normalized = normalizeRoomState(state);
   if (!normalized) return;
+  if (!normalized.savedAt) normalized.savedAt = Date.now();
   const payload = JSON.stringify(normalized);
   const candidates = getRoomKeyCandidates(normalized.key);
   for (const candidate of candidates) {
     safeLocalStorageSet(`${ROOM_STATE_PREFIX}${candidate}`, payload);
   }
-  safeLocalStorageSet(LAST_ROOM_KEY, normalizeRoomKey(normalized.key));
-  safeLocalStorageSet(LAST_ROOM_STATE, payload);
 }
 
 export function scheduleSend() {
@@ -1062,7 +1061,8 @@ function buildPublishHtml(markdown) {
 }
 
 function buildSlidesHtml(markdown) {
-  const slideDelimiters = /^---$|^<!-- slide -->$/gm;
+  // Match slide delimiters: --- surrounded by blank lines OR <!-- slide --> comment
+  const slideDelimiters = /\n\n---\n\n|^---\n\n|\n\n---$|^<!-- slide -->$/gm;
   const slides = markdown.split(slideDelimiters)
     .map(slide => slide.trim())
     .filter(slide => slide.length > 0);
@@ -1240,7 +1240,8 @@ let isSlideMode = false;
 
 function autoRenderSlides() {
   const markdown = markdownInput.value;
-  const slideDelimiters = /^---$|^<!-- slide -->$/gm;
+  // Match slide delimiters: --- surrounded by blank lines OR <!-- slide --> comment
+  const slideDelimiters = /\n\n---\n\n|^---\n\n|\n\n---$|^<!-- slide -->$/gm;
   slidesData = markdown.split(slideDelimiters)
     .map(slide => slide.trim())
     .filter(slide => slide.length > 0);
@@ -1261,7 +1262,8 @@ function autoRenderSlides() {
 
 function viewAsSlides() {
   const markdown = markdownInput.value;
-  const slideDelimiters = /^---$|^<!-- slide -->$/gm;
+  // Match slide delimiters: --- surrounded by blank lines OR <!-- slide --> comment
+  const slideDelimiters = /\n\n---\n\n|^---\n\n|\n\n---$|^<!-- slide -->$/gm;
   const hasSlideDelimiters = slideDelimiters.test(markdown);
   
   if (!hasSlideDelimiters) {
@@ -1270,7 +1272,9 @@ function viewAsSlides() {
     return;
   }
   
-  slidesData = markdown.split(slideDelimiters)
+  // Re-create regex for split (test() consumed it)
+  const splitDelimiters = /\n\n---\n\n|^---\n\n|\n\n---$|^<!-- slide -->$/gm;
+  slidesData = markdown.split(splitDelimiters)
     .map(slide => slide.trim())
     .filter(slide => slide.length > 0);
   
@@ -2297,19 +2301,71 @@ updateSelectorURL();
 initMarkdown();
 initToolbar();
 
+async function loadRecentRooms() {
+  const historyList = document.getElementById('room-history-list');
+  if (!historyList) return;
+  
+  try {
+    // Read room states from localStorage, deduplicate by canonical key
+    const seen = new Map();
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(ROOM_STATE_PREFIX)) {
+        try {
+          const raw = localStorage.getItem(key);
+          const state = JSON.parse(raw);
+          if (state?.key && validateRoomKey(state.key)) {
+            const canonical = state.key;
+            const existing = seen.get(canonical);
+            if (!existing || (state.savedAt || 0) > (existing.savedAt || 0)) {
+              seen.set(canonical, { roomKey: canonical, savedAt: state.savedAt || 0 });
+            }
+          }
+        } catch {
+          // Skip invalid entries
+        }
+      }
+    }
+    
+    const rooms = Array.from(seen.values())
+      .sort((a, b) => b.savedAt - a.savedAt);
+    
+    if (rooms.length === 0) {
+      historyList.innerHTML = '<div class="no-rooms">No past rooms</div>';
+      return;
+    }
+    
+    // Show last 5 rooms
+    const recentRooms = rooms.slice(0, 5);
+    
+    historyList.innerHTML = recentRooms.map(({ roomKey }) => {
+      const displayKey = roomKey.replace('hs://', '').substring(0, 20) + '...';
+      return `<a href="#" data-room-key="${roomKey}" title="${roomKey}">${displayKey}</a>`;
+    }).join('');
+    
+    historyList.querySelectorAll('a').forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        const roomKey = link.getAttribute('data-room-key');
+        joinRoomKey.value = roomKey;
+        joinForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      });
+    });
+  } catch (error) {
+    console.error('[loadRecentRooms] Error:', error);
+    historyList.innerHTML = '<div class="no-rooms">No past rooms</div>';
+  }
+}
+
 (async () => {
   const viewParam = getViewParam();
   const stateFromUrl = readRoomStateFromUrl();
-  const lastKey = safeLocalStorageGet(LAST_ROOM_KEY);
   
-  let stateFromStorage = null;
-  if (stateFromUrl?.key) {
-    stateFromStorage = resolveRoomState(stateFromUrl.key);
-  } else if (lastKey) {
-    stateFromStorage = resolveRoomState(lastKey);
+  if (viewParam === "setup" || !stateFromUrl?.key) {
+    await loadRecentRooms();
   }
   
-  const state = stateFromUrl || stateFromStorage;
+  const state = stateFromUrl;
   if (viewParam === "setup") {
     setView("setup");
     return;
