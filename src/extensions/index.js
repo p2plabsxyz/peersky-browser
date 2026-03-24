@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Extension Manager - Core Extension System
  * 
  * This module provides the main extension management system for Peersky Browser.
@@ -45,6 +45,9 @@ import * as LoaderService from './services/loader.js';
 import * as BrowserActions from './services/browser-actions.js';
 import { installExtensionPopupGuards as installPopupGuards } from './services/popup-guards.js';
 import * as WebStoreService from './services/webstore.js';
+import { createLogger } from '../logger.js';
+
+const log = createLogger('extensions');
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -101,7 +104,7 @@ class ExtensionManager {
 
   async _doInitialize(options) {
     try {
-      console.log('ExtensionManager: Starting extension system initialization...');
+      log.info('ExtensionManager: Starting extension system initialization...');
 
       // Store references
       this.app = options.app;
@@ -115,7 +118,7 @@ class ExtensionManager {
       await ensureDir(this.extensionsBaseDir);
 
       // Initialize Chrome Web Store support
-      console.log('ExtensionManager: Initializing Chrome Web Store support...');
+      log.info('ExtensionManager: Initializing Chrome Web Store support...');
       try {
         await installChromeWebStore({
           session: this.session,
@@ -126,15 +129,15 @@ class ExtensionManager {
           denylist: [] // No restrictions for MVP
         });
         this.chromeWebStore = new ChromeWebStoreManager(this.session);
-        console.log('ExtensionManager: Chrome Web Store support initialized');
+        log.info('ExtensionManager: Chrome Web Store support initialized');
       } catch (error) {
-        console.warn('ExtensionManager: Chrome Web Store initialization failed:', error.message);
-        console.warn('ExtensionManager: Continuing without Chrome Web Store support');
+        log.warn('ExtensionManager: Chrome Web Store initialization failed:', error.message);
+        log.warn('ExtensionManager: Continuing without Chrome Web Store support');
         this.chromeWebStore = null;
       }
 
       // Initialize ElectronChromeExtensions for browser actions
-      console.log('ExtensionManager: Initializing ElectronChromeExtensions...');
+      log.info('ExtensionManager: Initializing ElectronChromeExtensions...');
       try {
         // Provide minimal impl so extensions can open tabs
         this.electronChromeExtensions = new ElectronChromeExtensions({
@@ -146,7 +149,7 @@ class ExtensionManager {
            */
           createTab: async (details = {}) => {
             try {
-              console.log("[ExtensionManager] createTab called with:", details);
+              log.info("[ExtensionManager] createTab called with:", details);
 
               const url = typeof details.url === "string" && details.url.length > 0 ? details.url : "peersky://home";
 
@@ -161,7 +164,7 @@ class ExtensionManager {
                 // Skip small windows (likely extension popups)
                 const bounds = w.getBounds();
                 if (bounds.width < 500 || bounds.height < 400) {
-                  console.log("[ExtensionManager] Skipping small window:", bounds);
+                  log.info("[ExtensionManager] Skipping small window:", bounds);
                   continue;
                 }
 
@@ -171,36 +174,36 @@ class ExtensionManager {
                   `, true);
                   if (hasTabBar) {
                     windowWithTabbar = w;
-                    console.log("[ExtensionManager] Found window with tabbar:", w.id);
+                    log.info("[ExtensionManager] Found window with tabbar:", w.id);
                     break;
                   }
                 } catch (e) {
-                  console.log("[ExtensionManager] Window check failed:", e.message);
+                  log.info("[ExtensionManager] Window check failed:", e.message);
                 }
               }
 
               if (!windowWithTabbar) {
-                console.error("[ExtensionManager] No window with tabbar found!");
+                log.error("[ExtensionManager] No window with tabbar found!");
                 throw new Error("No browser window with tabbar available for createTab");
               }
 
               // Use direct JavaScript call to tabBar.addTab - more reliable than IPC
-              console.log("[ExtensionManager] Creating tab via direct JS for URL:", url);
+              log.info("[ExtensionManager] Creating tab via direct JS for URL:", url);
               const addTabJs = `
                 (function() {
                   const tabBar = document.getElementById('tabbar');
                   if (!tabBar || typeof tabBar.addTab !== 'function') {
-                    console.error('No tabBar found for addTab');
+                    log.error('No tabBar found for addTab');
                     return null;
                   }
                   const tabId = tabBar.addTab(${JSON.stringify(url)}, "New Tab");
-                  console.log('[createTab] Added tab:', tabId);
+                  log.info('[createTab] Added tab:', tabId);
                   return tabId;
                 })();
               `;
 
               const tabId = await windowWithTabbar.webContents.executeJavaScript(addTabJs, true);
-              console.log("[ExtensionManager] Tab created with ID:", tabId);
+              log.info("[ExtensionManager] Tab created with ID:", tabId);
 
               // Brief delay to let the webview initialize
               await new Promise(r => setTimeout(r, 300));
@@ -231,7 +234,7 @@ class ExtensionManager {
               const retWc = tabWc && !tabWc.isDestroyed() ? tabWc : windowWithTabbar.webContents;
               return [retWc, windowWithTabbar];
             } catch (err) {
-              console.error("[ExtensionManager] createTab impl failed:", err);
+              log.error("[ExtensionManager] createTab impl failed:", err);
               throw err;
             }
           },
@@ -264,7 +267,7 @@ class ExtensionManager {
               `;
               await win.webContents.executeJavaScript(js, true);
             } catch (err) {
-              console.warn("[ExtensionManager] selectTab impl failed:", err);
+              log.warn("[ExtensionManager] selectTab impl failed:", err);
             }
           },
 
@@ -274,16 +277,16 @@ class ExtensionManager {
            */
           removeTab: async (tab, win) => {
             try {
-              console.log("[ExtensionManager] removeTab called for webContents:", tab?.id);
+              log.info("[ExtensionManager] removeTab called for webContents:", tab?.id);
               
               if (!tab || (typeof tab.isDestroyed === 'function' && tab.isDestroyed())) {
-                console.warn("[ExtensionManager] removeTab: tab already destroyed");
+                log.warn("[ExtensionManager] removeTab: tab already destroyed");
                 return;
               }
 
               const wcId = typeof tab.id === "number" ? tab.id : null;
               if (!wcId) {
-                console.warn("[ExtensionManager] removeTab: no valid webContents ID");
+                log.warn("[ExtensionManager] removeTab: no valid webContents ID");
                 return;
               }
 
@@ -311,7 +314,7 @@ class ExtensionManager {
               }
 
               if (!windowWithTabbar) {
-                console.warn("[ExtensionManager] removeTab: no window with tabbar found");
+                log.warn("[ExtensionManager] removeTab: no window with tabbar found");
                 return;
               }
 
@@ -320,7 +323,7 @@ class ExtensionManager {
                 (function() {
                   const tabBar = document.getElementById('tabbar');
                   if (!tabBar) {
-                    console.error('[removeTab] No tabBar found');
+                    log.error('[removeTab] No tabBar found');
                     return false;
                   }
                   
@@ -328,7 +331,7 @@ class ExtensionManager {
                   if (tabBar.webviews && typeof tabBar.webviews.entries === 'function') {
                     for (const [tabId, wv] of tabBar.webviews.entries()) {
                       if (wv && typeof wv.getWebContentsId === 'function' && wv.getWebContentsId() === ${wcId}) {
-                        console.log('[removeTab] Found tab to close:', tabId);
+                        log.info('[removeTab] Found tab to close:', tabId);
                         if (typeof tabBar.closeTab === 'function') {
                           tabBar.closeTab(tabId);
                           return true;
@@ -337,16 +340,16 @@ class ExtensionManager {
                     }
                   }
                   
-                  console.warn('[removeTab] Tab with webContentsId ${wcId} not found');
+                  log.warn('[removeTab] Tab with webContentsId ${wcId} not found');
                   return false;
                 })();
               `;
 
               const result = await windowWithTabbar.webContents.executeJavaScript(closeTabJs, true);
-              console.log("[ExtensionManager] removeTab result:", result);
+              log.info("[ExtensionManager] removeTab result:", result);
               
             } catch (err) {
-              console.error("[ExtensionManager] removeTab impl failed:", err);
+              log.error("[ExtensionManager] removeTab impl failed:", err);
             }
           },
 
@@ -357,7 +360,7 @@ class ExtensionManager {
            */
           createWindow: async (details = {}) => {
             try {
-              console.log("[ExtensionManager] createWindow called with:", details);
+              log.info("[ExtensionManager] createWindow called with:", details);
 
               const url = typeof details.url === "string" && details.url.length > 0 ? details.url : "about:blank";
               const type = details.type || "normal";
@@ -399,7 +402,7 @@ class ExtensionManager {
 
               const newWindow = new BrowserWindow(windowOptions);
               
-              console.log("[ExtensionManager] Created new window:", newWindow.id, "type:", type);
+              log.info("[ExtensionManager] Created new window:", newWindow.id, "type:", type);
 
               // Track this window for cleanup
               if (this.activePopups) {
@@ -413,7 +416,7 @@ class ExtensionManager {
                   this.electronChromeExtensions.addTab(newWindow.webContents, newWindow);
                 }
               } catch (regErr) {
-                console.warn("[ExtensionManager] Failed to register new window with extension system:", regErr);
+                log.warn("[ExtensionManager] Failed to register new window with extension system:", regErr);
               }
 
               // Load the URL
@@ -427,11 +430,11 @@ class ExtensionManager {
                 newWindow.showInactive();
               }
 
-              console.log("[ExtensionManager] Window created and loaded:", url);
+              log.info("[ExtensionManager] Window created and loaded:", url);
               return [newWindow.webContents, newWindow];
               
             } catch (err) {
-              console.error("[ExtensionManager] createWindow impl failed:", err);
+              log.error("[ExtensionManager] createWindow impl failed:", err);
               throw err;
             }
           },
@@ -441,23 +444,23 @@ class ExtensionManager {
            */
           removeWindow: async (win) => {
             try {
-              console.log("[ExtensionManager] removeWindow called for window:", win?.id);
+              log.info("[ExtensionManager] removeWindow called for window:", win?.id);
               
               if (!win || (typeof win.isDestroyed === 'function' && win.isDestroyed())) {
-                console.warn("[ExtensionManager] removeWindow: window already destroyed");
+                log.warn("[ExtensionManager] removeWindow: window already destroyed");
                 return;
               }
 
               // Close the window
               win.close();
-              console.log("[ExtensionManager] Window closed:", win.id);
+              log.info("[ExtensionManager] Window closed:", win.id);
               
             } catch (err) {
-              console.error("[ExtensionManager] removeWindow impl failed:", err);
+              log.error("[ExtensionManager] removeWindow impl failed:", err);
             }
           },
         });
-        console.log('ExtensionManager: ElectronChromeExtensions initialized');
+        log.info('ExtensionManager: ElectronChromeExtensions initialized');
         // this is a patch fix for the tabs.query to work properly
         try {
           const ece = this.electronChromeExtensions;
@@ -485,8 +488,8 @@ class ExtensionManager {
           }
         } catch (_) { }
       } catch (error) {
-        console.warn('ExtensionManager: ElectronChromeExtensions initialization failed:', error.message);
-        console.warn('ExtensionManager: Continuing without browser action support');
+        log.warn('ExtensionManager: ElectronChromeExtensions initialization failed:', error.message);
+        log.warn('ExtensionManager: Continuing without browser action support');
         this.electronChromeExtensions = null;
       }
 
@@ -505,20 +508,20 @@ class ExtensionManager {
       try {
         await this._installBundledPreinstalled();
       } catch (err) {
-        console.warn('ExtensionManager: Preinstalled import skipped:', err.message || err);
+        log.warn('ExtensionManager: Preinstalled import skipped:', err.message || err);
       }
 
       // Load enabled extensions
       await this._loadExtensionsIntoElectron();
 
       // Attach navigation guards for extension popups so external URLs open in tabs
-      try { installPopupGuards(this); } catch (guardErr) { console.warn('[ExtensionManager] Failed to install popup navigation guards:', guardErr); }
+      try { installPopupGuards(this); } catch (guardErr) { log.warn('[ExtensionManager] Failed to install popup navigation guards:', guardErr); }
 
       this.isInitialized = true;
-      console.log('ExtensionManager: Extension system initialized successfully');
+      log.info('ExtensionManager: Extension system initialized successfully');
 
     } catch (error) {
-      console.error('ExtensionManager: Failed to initialize:', error);
+      log.error('ExtensionManager: Failed to initialize:', error);
       throw error;
     }
   }
@@ -555,9 +558,9 @@ class ExtensionManager {
         await fs.rm(extPath, { recursive: true, force: true });
         this.loadedExtensions.delete(ext.id);
         await this._writeRegistry();
-        console.log('ExtensionManager: Pruned removed preinstalled extension:', ext.displayName || ext.name);
+        log.info('ExtensionManager: Pruned removed preinstalled extension:', ext.displayName || ext.name);
       } catch (err) {
-        console.warn('ExtensionManager: Failed to prune preinstalled extension', ext.id, err.message || err);
+        log.warn('ExtensionManager: Failed to prune preinstalled extension', ext.id, err.message || err);
       }
     }
 
@@ -567,7 +570,7 @@ class ExtensionManager {
         if (this.loadedExtensions.has(entry.id)) continue;
         const sourceRef = typeof entry.archive === 'string' && entry.archive.length ? entry.archive : entry.dir;
         if (!sourceRef) {
-          console.warn('ExtensionManager: Preinstalled entry missing source reference');
+          log.warn('ExtensionManager: Preinstalled entry missing source reference');
           continue;
         }
 
@@ -576,7 +579,7 @@ class ExtensionManager {
         try {
           stat = await fs.stat(sourcePath);
         } catch (statErr) {
-          console.warn('ExtensionManager: Preinstalled source missing:', sourceRef, statErr.message || statErr);
+          log.warn('ExtensionManager: Preinstalled source missing:', sourceRef, statErr.message || statErr);
           continue;
         }
 
@@ -600,15 +603,15 @@ class ExtensionManager {
             const electronExtension = await this.session.loadExtension(extData.installedPath, { allowFileAccess: false });
             extData.electronId = electronExtension.id;
           } catch (loadErr) {
-            console.warn('ExtensionManager: Failed to load preinstalled extension:', loadErr.message);
+            log.warn('ExtensionManager: Failed to load preinstalled extension:', loadErr.message);
           }
         }
         this.loadedExtensions.set(extData.id, extData);
         await this._writeRegistry();
-        console.log('ExtensionManager: Preinstalled extension imported:', extData.displayName || extData.name);
+        log.info('ExtensionManager: Preinstalled extension imported:', extData.displayName || extData.name);
       } catch (err) {
         const ref = entry && (entry.archive || entry.dir || entry.id || 'unknown');
-        console.warn('ExtensionManager: Skipped preinstalled entry:', ref, err.message || err);
+        log.warn('ExtensionManager: Skipped preinstalled entry:', ref, err.message || err);
       }
     }
   }
@@ -633,7 +636,7 @@ class ExtensionManager {
       await this.initialize();
 
       try {
-        console.log('ExtensionManager: Installing extension from:', sourcePath);
+        log.info('ExtensionManager: Installing extension from:', sourcePath);
 
         // Validate and prepare extension
         const extensionData = await this._prepareExtension(sourcePath);
@@ -665,7 +668,7 @@ class ExtensionManager {
         // Load extension into Electron's extension system with security restrictions
         if (this.session && extensionData.enabled) {
           try {
-            console.log(`ExtensionManager: Loading installed extension into Electron: ${extensionData.name}`);
+            log.info(`ExtensionManager: Loading installed extension into Electron: ${extensionData.name}`);
             let electronExtension = await this.session.loadExtension(extensionData.installedPath, {
               allowFileAccess: false  // Restrict file system access for security
             });
@@ -694,10 +697,10 @@ class ExtensionManager {
                   electronExtension = await this.session.loadExtension(newVersionPath, { allowFileAccess: false });
                   extensionData.electronId = electronExtension.id;
                 } catch (reErr) {
-                  console.warn(`ExtensionManager: Reload after relocate failed for ${extensionData.name}:`, reErr);
+                  log.warn(`ExtensionManager: Reload after relocate failed for ${extensionData.name}:`, reErr);
                 }
               } catch (mvErr) {
-                console.warn(`ExtensionManager: Could not relocate extension folder to new ID path:`, mvErr);
+                log.warn(`ExtensionManager: Could not relocate extension folder to new ID path:`, mvErr);
               }
             }
 
@@ -712,12 +715,12 @@ class ExtensionManager {
               }
             }
 
-            console.log(`ExtensionManager: Extension loaded in Electron: ${extensionData.name} (${electronExtension.id})`);
+            log.info(`ExtensionManager: Extension loaded in Electron: ${extensionData.name} (${electronExtension.id})`);
 
             // Detect conflicts with existing preinstalled/system extension by Chrome/Electron ID
             const conflict = Array.from(this.loadedExtensions.values()).find(ext => ext.electronId && ext.electronId === extensionData.electronId);
             if (conflict && (conflict.isSystem === true || conflict.source === 'preinstalled')) {
-              console.warn(`ExtensionManager: Detected conflict with system extension (${conflict.displayName || conflict.name}). Reverting install.`);
+              log.warn(`ExtensionManager: Detected conflict with system extension (${conflict.displayName || conflict.name}). Reverting install.`);
               try {
                 // Remove the newly loaded duplicate from Electron
                 await this.session.removeExtension(extensionData.electronId);
@@ -727,14 +730,14 @@ class ExtensionManager {
                 const ee = await this.session.loadExtension(conflict.installedPath, { allowFileAccess: false });
                 conflict.electronId = ee.id;
               } catch (reloadErr) {
-                console.warn('ExtensionManager: Failed to reload system extension after conflict:', reloadErr);
+                log.warn('ExtensionManager: Failed to reload system extension after conflict:', reloadErr);
               }
               // Remove the newly installed files and abort install
               try { await fs.rm(path.join(this.extensionsBaseDir, extensionData.id), { recursive: true, force: true }); } catch (_) { }
               throw Object.assign(new Error('Extension already installed as a system extension'), { code: ERR.E_ALREADY_EXISTS });
             }
           } catch (error) {
-            console.error(`ExtensionManager: Failed to load extension into Electron:`, error);
+            log.error(`ExtensionManager: Failed to load extension into Electron:`, error);
           }
         }
 
@@ -753,11 +756,11 @@ class ExtensionManager {
 
         // Persist final state
         await this._writeRegistry();
-        console.log('ExtensionManager: Extension installed successfully:', extensionData.name);
+        log.info('ExtensionManager: Extension installed successfully:', extensionData.name);
         return { success: true, extension: extensionData };
 
       } catch (error) {
-        console.error('ExtensionManager: Installation failed:', error);
+        log.error('ExtensionManager: Installation failed:', error);
         throw error;
       }
     });
@@ -806,7 +809,7 @@ class ExtensionManager {
         return true;
 
       } catch (error) {
-        console.error('ExtensionManager: Toggle failed:', error);
+        log.error('ExtensionManager: Toggle failed:', error);
         throw error;
       }
     });
@@ -823,7 +826,7 @@ class ExtensionManager {
     try {
       return Array.from(this.loadedExtensions.values());
     } catch (error) {
-      console.error('ExtensionManager: List failed:', error);
+      log.error('ExtensionManager: List failed:', error);
       throw error;
     }
   }
@@ -836,7 +839,7 @@ class ExtensionManager {
    */
   async listBrowserActions(window) {
     await this.initialize();
-    try { return await BrowserActions.listBrowserActions(this, window); } catch (error) { console.error('ExtensionManager: Failed to list browser actions:', error); return []; }
+    try { return await BrowserActions.listBrowserActions(this, window); } catch (error) { log.error('ExtensionManager: Failed to list browser actions:', error); return []; }
   }
 
   /**
@@ -851,7 +854,7 @@ class ExtensionManager {
     try {
       await BrowserActions.clickBrowserAction(this, actionId, window);
     } catch (error) {
-      console.error('ExtensionManager: Browser action click failed:', error);
+      log.error('ExtensionManager: Browser action click failed:', error);
     }
   }
 
@@ -889,12 +892,12 @@ class ExtensionManager {
           this._registeredTabs?.delete(wcId);
         });
         this.electronChromeExtensions.addTab(webContents, window);
-        console.log(`[ExtensionManager] Registered webContents ${webContents.id} with extension system`);
+        log.info(`[ExtensionManager] Registered webContents ${webContents.id} with extension system`);
       } catch (error) {
-        console.error(`[ExtensionManager] Failed to register window:`, error);
+        log.error(`[ExtensionManager] Failed to register window:`, error);
       }
     } else {
-      console.warn('[ExtensionManager] ElectronChromeExtensions not available');
+      log.warn('[ExtensionManager] ElectronChromeExtensions not available');
     }
   }
 
@@ -916,7 +919,7 @@ class ExtensionManager {
       }
 
       this.electronChromeExtensions.removeTab(webContents);
-      console.log(`[ExtensionManager] Unregistered webContents ${webContents.id} from extension system`);
+      log.info(`[ExtensionManager] Unregistered webContents ${webContents.id} from extension system`);
     } catch (error) {
       // During shutdown, this is expected and not an error
       console.debug(`[ExtensionManager] Extension system cleanup during shutdown:`, error.message);
@@ -948,10 +951,10 @@ class ExtensionManager {
         // Unload extension from Electron's system
         if (this.session && extension.electronId) {
           try {
-            console.log(`ExtensionManager: Unloading extension from Electron: ${extension.displayName || extension.name}`);
+            log.info(`ExtensionManager: Unloading extension from Electron: ${extension.displayName || extension.name}`);
             await this.session.removeExtension(extension.electronId);
           } catch (error) {
-            console.error(`ExtensionManager: Failed to unload extension from Electron:`, error);
+            log.error(`ExtensionManager: Failed to unload extension from Electron:`, error);
           }
         }
 
@@ -959,7 +962,7 @@ class ExtensionManager {
         if (this.session) {
           try {
             const extensionOrigin = `chrome-extension://${extensionId}`;
-            console.log(`ExtensionManager: Clearing storage data for: ${extensionOrigin}`);
+            log.info(`ExtensionManager: Clearing storage data for: ${extensionOrigin}`);
             await this.session.clearStorageData({
               origin: extensionOrigin,
               storages: [
@@ -978,9 +981,9 @@ class ExtensionManager {
             if (this.session.flushStorageData) {
               await this.session.flushStorageData();
             }
-            console.log(`ExtensionManager: Storage data cleared for: ${extensionId}`);
+            log.info(`ExtensionManager: Storage data cleared for: ${extensionId}`);
           } catch (error) {
-            console.error(`ExtensionManager: Failed to clear storage data for ${extensionId}:`, error);
+            log.error(`ExtensionManager: Failed to clear storage data for ${extensionId}:`, error);
             // Continue with uninstall regardless
           }
         }
@@ -1012,18 +1015,18 @@ class ExtensionManager {
               // Silently ignore non-existent paths
             }
           }
-          console.log(`ExtensionManager: Removed extension storage data for: ${extensionId}`);
+          log.info(`ExtensionManager: Removed extension storage data for: ${extensionId}`);
         } catch (error) {
-          console.warn(`ExtensionManager: Failed to remove extension storage data for ${extensionId}:`, error.message);
+          log.warn(`ExtensionManager: Failed to remove extension storage data for ${extensionId}:`, error.message);
         }
 
         // If installed from Chrome Web Store, uninstall there as well
         if (extension.source === 'webstore' && this.chromeWebStore) {
           try {
-            console.log(`ExtensionManager: Uninstalling from Chrome Web Store: ${extension.name} (${extensionId})`);
+            log.info(`ExtensionManager: Uninstalling from Chrome Web Store: ${extension.name} (${extensionId})`);
             await this.chromeWebStore.uninstallById(extensionId);
           } catch (error) {
-            console.error(`ExtensionManager: Chrome Web Store uninstall failed for ${extension.displayName || extension.name}:`, error);
+            log.error(`ExtensionManager: Chrome Web Store uninstall failed for ${extension.displayName || extension.name}:`, error);
             // Continue with local removal regardless
           }
         }
@@ -1048,11 +1051,11 @@ class ExtensionManager {
           }
         } catch (_) { }
 
-        console.log('ExtensionManager: Extension uninstalled:', extensionId);
+        log.info('ExtensionManager: Extension uninstalled:', extensionId);
         return true;
 
       } catch (error) {
-        console.error('ExtensionManager: Uninstall failed:', error);
+        log.error('ExtensionManager: Uninstall failed:', error);
         throw error;
       }
     });
@@ -1084,10 +1087,10 @@ class ExtensionManager {
    */
   updateConfig(newConfig) {
     try {
-      console.log('ExtensionManager: Updating configuration:', newConfig);
+      log.info('ExtensionManager: Updating configuration:', newConfig);
       this.config = { ...this.config, ...newConfig };
     } catch (error) {
-      console.error('ExtensionManager: Configuration update failed:', error);
+      log.error('ExtensionManager: Configuration update failed:', error);
       throw error;
     }
   }
@@ -1106,7 +1109,7 @@ class ExtensionManager {
         enabledCount: Array.from(this.loadedExtensions.values()).filter(ext => ext.enabled).length
       };
     } catch (error) {
-      console.error('ExtensionManager: Status check failed:', error);
+      log.error('ExtensionManager: Status check failed:', error);
       throw error;
     }
   }
@@ -1116,7 +1119,7 @@ class ExtensionManager {
    */
   async shutdown() {
     try {
-      console.log('ExtensionManager: Shutting down extension system...');
+      log.info('ExtensionManager: Shutting down extension system...');
 
       if (this.isInitialized) {
         // Save final registry
@@ -1125,28 +1128,28 @@ class ExtensionManager {
         // Unload all extensions from Electron's system
         if (this.session) {
           try {
-            console.log('ExtensionManager: Unloading all extensions from Electron...');
+            log.info('ExtensionManager: Unloading all extensions from Electron...');
             for (const extension of this.loadedExtensions.values()) {
               if (extension.electronId) {
                 try {
                   await this.session.removeExtension(extension.electronId);
-                  console.log(`ExtensionManager: Extension unloaded: ${extension.displayName || extension.name}`);
+                  log.info(`ExtensionManager: Extension unloaded: ${extension.displayName || extension.name}`);
                 } catch (error) {
-                  console.error(`ExtensionManager: Failed to unload extension ${extension.displayName || extension.name}:`, error);
+                  log.error(`ExtensionManager: Failed to unload extension ${extension.displayName || extension.name}:`, error);
                 }
               }
             }
           } catch (error) {
-            console.error('ExtensionManager: Failed to unload extensions from Electron:', error);
+            log.error('ExtensionManager: Failed to unload extensions from Electron:', error);
           }
         }
       }
 
       this.isInitialized = false;
-      console.log('ExtensionManager: Extension system shutdown complete');
+      log.info('ExtensionManager: Extension system shutdown complete');
 
     } catch (error) {
-      console.error('ExtensionManager: Shutdown failed:', error);
+      log.error('ExtensionManager: Shutdown failed:', error);
       throw error;
     }
   }
@@ -1190,7 +1193,7 @@ class ExtensionManager {
   _generateSecureExtensionId(manifest) {
     // Delegate to utils to keep a single source of truth
     try { return generateSecureExtensionId(manifest); } catch (e) {
-      console.error('ExtensionManager: Failed to generate secure extension ID:', e);
+      log.error('ExtensionManager: Failed to generate secure extension ID:', e);
       throw new Error('Failed to generate secure extension ID');
     }
   }
@@ -1240,20 +1243,20 @@ class ExtensionManager {
         // Atomic move from temp to final location
         await fs.rename(tempPath, resolvedTarget);
 
-        console.log(`ExtensionManager: Securely copied extension to: ${resolvedTarget}`);
+        log.info(`ExtensionManager: Securely copied extension to: ${resolvedTarget}`);
 
       } catch (error) {
         // Clean up temp directory on error
         try {
           await fs.rm(tempPath, { recursive: true, force: true });
         } catch (cleanupError) {
-          console.warn('ExtensionManager: Failed to cleanup temp directory:', cleanupError);
+          log.warn('ExtensionManager: Failed to cleanup temp directory:', cleanupError);
         }
         throw error;
       }
 
     } catch (error) {
-      console.error('ExtensionManager: Secure file copy failed:', error);
+      log.error('ExtensionManager: Secure file copy failed:', error);
       throw new Error(`Secure file copy failed: ${error.message}`);
     }
   }
@@ -1356,7 +1359,7 @@ class ExtensionManager {
    */
   closeAllPopups() {
     if (this.activePopups.size > 0) {
-      console.log(`[ExtensionManager] Closing ${this.activePopups.size} active popups`);
+      log.info(`[ExtensionManager] Closing ${this.activePopups.size} active popups`);
 
       for (const popup of this.activePopups) {
         try {
@@ -1364,7 +1367,7 @@ class ExtensionManager {
             popup.close();
           }
         } catch (error) {
-          console.warn('[ExtensionManager] Error closing popup:', error);
+          log.warn('[ExtensionManager] Error closing popup:', error);
         }
       }
 
@@ -1393,7 +1396,7 @@ class ExtensionManager {
       }
       return filtered;
     } catch (error) {
-      console.warn('[ExtensionManager] Error reading pinned extensions:', error);
+      log.warn('[ExtensionManager] Error reading pinned extensions:', error);
       return [];
     }
   }
@@ -1423,7 +1426,7 @@ class ExtensionManager {
 
       // Check if already pinned
       if (pinnedExtensions.includes(extensionId)) {
-        console.log(`[ExtensionManager] Extension ${extensionId} is already pinned`);
+        log.info(`[ExtensionManager] Extension ${extensionId} is already pinned`);
         return true;
       }
 
@@ -1438,12 +1441,12 @@ class ExtensionManager {
       // Save pinned extensions
       await RegistryService.setPinned(this.extensionsBaseDir, pinnedExtensions);
 
-      console.log(`[ExtensionManager] Extension ${extensionId} pinned successfully`);
+      log.info(`[ExtensionManager] Extension ${extensionId} pinned successfully`);
       this._broadcastBrowserActionChanged();
       return true;
 
     } catch (error) {
-      console.error('[ExtensionManager] Pin extension failed:', error);
+      log.error('[ExtensionManager] Pin extension failed:', error);
       throw error;
     }
   }
@@ -1464,7 +1467,7 @@ class ExtensionManager {
       // Check if extension is pinned
       const pinnedIndex = pinnedExtensions.indexOf(extensionId);
       if (pinnedIndex === -1) {
-        console.log(`[ExtensionManager] Extension ${extensionId} is not pinned`);
+        log.info(`[ExtensionManager] Extension ${extensionId} is not pinned`);
         return true;
       }
 
@@ -1474,12 +1477,12 @@ class ExtensionManager {
       // Save pinned extensions
       await RegistryService.setPinned(this.extensionsBaseDir, pinnedExtensions);
 
-      console.log(`[ExtensionManager] Extension ${extensionId} unpinned successfully`);
+      log.info(`[ExtensionManager] Extension ${extensionId} unpinned successfully`);
       this._broadcastBrowserActionChanged();
       return true;
 
     } catch (error) {
-      console.error('[ExtensionManager] Unpin extension failed:', error);
+      log.error('[ExtensionManager] Unpin extension failed:', error);
       throw error;
     }
   }
@@ -1498,3 +1501,4 @@ export default extensionManager;
 
 // Export manager instance with explicit name for clarity
 export { extensionManager };
+

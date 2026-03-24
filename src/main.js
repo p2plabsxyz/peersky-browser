@@ -77,6 +77,8 @@ const MAGNET_PROTOCOL = {
 
 const log = createLogger('main');
 
+let windowManager = null;
+
 globalProtocol.registerSchemesAsPrivileged([
   { scheme: "peersky", privileges: BROWSER_PROTOCOL },
   { scheme: "browser", privileges: BROWSER_PROTOCOL },

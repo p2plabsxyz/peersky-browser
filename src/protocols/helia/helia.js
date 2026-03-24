@@ -27,6 +27,9 @@ import { userAgent } from "libp2p/user-agent";
 import { ipfsOptions, getLibp2pPrivateKey } from "../config.js";
 import pkg from '../../../package.json' with { type: 'json' };
 const { version } = pkg;
+import { createLogger } from '../../logger.js';
+
+const log = createLogger('protocols:ipfs');
 
 // https://github.com/ipfs/helia/blob/main/packages/helia/src/utils/bootstrappers.ts
 const bootstrapConfig = {
@@ -114,8 +117,8 @@ export async function createNode() {
     blockstore: bs,
   });
 
-  console.log("Peer ID:", node.libp2p.peerId.toString());
-  console.log("Node userAgent:", agentVersion);
+  log.info("Peer ID:", node.libp2p.peerId.toString());
+  log.info("Node userAgent:", agentVersion);
 
   return node;
 }
