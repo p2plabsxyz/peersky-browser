@@ -44,6 +44,7 @@ import * as RegistryService from './services/registry.js';
 import * as LoaderService from './services/loader.js';
 import * as BrowserActions from './services/browser-actions.js';
 import { installExtensionPopupGuards as installPopupGuards } from './services/popup-guards.js';
+import { openUrlInPeerskyTab } from './services/open-url-in-browser-tab.js';
 import * as WebStoreService from './services/webstore.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -150,56 +151,12 @@ class ExtensionManager {
 
               const url = typeof details.url === "string" && details.url.length > 0 ? details.url : "peersky://home";
 
-              // Find the main Peersky window (the one with the tabbar)
-              // Important: Skip small popup windows - they're likely extension popups
-              const allWindows = BrowserWindow.getAllWindows();
-              let windowWithTabbar = null;
-
-              for (const w of allWindows) {
-                if (w.isDestroyed()) continue;
-
-                // Skip small windows (likely extension popups)
-                const bounds = w.getBounds();
-                if (bounds.width < 500 || bounds.height < 400) {
-                  console.log("[ExtensionManager] Skipping small window:", bounds);
-                  continue;
-                }
-
-                try {
-                  const hasTabBar = await w.webContents.executeJavaScript(`
-                    !!(document.getElementById('tabbar') && typeof document.getElementById('tabbar').addTab === 'function')
-                  `, true);
-                  if (hasTabBar) {
-                    windowWithTabbar = w;
-                    console.log("[ExtensionManager] Found window with tabbar:", w.id);
-                    break;
-                  }
-                } catch (e) {
-                  console.log("[ExtensionManager] Window check failed:", e.message);
-                }
-              }
-
-              if (!windowWithTabbar) {
+              const opened = await openUrlInPeerskyTab(url, "New Tab");
+              if (!opened) {
                 console.error("[ExtensionManager] No window with tabbar found!");
                 throw new Error("No browser window with tabbar available for createTab");
               }
-
-              // Use direct JavaScript call to tabBar.addTab - more reliable than IPC
-              console.log("[ExtensionManager] Creating tab via direct JS for URL:", url);
-              const addTabJs = `
-                (function() {
-                  const tabBar = document.getElementById('tabbar');
-                  if (!tabBar || typeof tabBar.addTab !== 'function') {
-                    console.error('No tabBar found for addTab');
-                    return null;
-                  }
-                  const tabId = tabBar.addTab(${JSON.stringify(url)}, "New Tab");
-                  console.log('[createTab] Added tab:', tabId);
-                  return tabId;
-                })();
-              `;
-
-              const tabId = await windowWithTabbar.webContents.executeJavaScript(addTabJs, true);
+              const { browserWindow: windowWithTabbar, tabId } = opened;
               console.log("[ExtensionManager] Tab created with ID:", tabId);
 
               // Brief delay to let the webview initialize

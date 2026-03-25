@@ -10,6 +10,7 @@
  */
 
 import { app, BrowserWindow } from 'electron';
+import { openUrlInPeerskyTab } from './open-url-in-browser-tab.js';
 
 // Popup stabilization period - prevent closing for this duration after creation
 const POPUP_STABILIZATION_MS = 2000;
@@ -48,33 +49,12 @@ function isExtensionUrl(url) {
   return url.startsWith('chrome-extension://');
 }
 
-/**
- * Open a chrome-extension:// URL in a proper browser tab instead of a popup.
- * Mirrors the createTab pattern used by ExtensionManager.
- */
 async function openExtensionUrlInTab(url) {
   try {
-    const allWindows = BrowserWindow.getAllWindows();
-    for (const w of allWindows) {
-      if (w.isDestroyed()) continue;
-      const bounds = w.getBounds();
-      if (bounds.width < 500 || bounds.height < 400) continue;
-      try {
-        const hasTabBar = await w.webContents.executeJavaScript(
-          `!!(document.getElementById('tabbar') && typeof document.getElementById('tabbar').addTab === 'function')`,
-          true,
-        );
-        if (hasTabBar) {
-          const escaped = JSON.stringify(url);
-          await w.webContents.executeJavaScript(
-            `(function(){var tb=document.getElementById('tabbar');if(tb&&typeof tb.addTab==='function'){tb.addTab(${escaped},"Extension Page")}})()`,
-            true,
-          );
-          return;
-        }
-      } catch (_) { /* skip window */ }
-    }
+    const opened = await openUrlInPeerskyTab(url, 'Extension Page');
+    if (!opened) {
     console.warn('[PopupGuards] No window with tabbar found for extension URL');
+    }
   } catch (e) {
     console.error('[PopupGuards] Failed to open extension URL in tab:', e);
   }
