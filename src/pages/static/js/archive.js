@@ -54,9 +54,14 @@ async function loadArchiveData() {
       });
     };
 
+    // Wait for the custom element to be defined before calling setup(),
+    // preventing a silent race where loadArchiveData() runs before
+    // customElements.define('pagination-control', ...) completes.
+    await customElements.whenDefined('pagination-control');
+
     // Render Hyper
     const hyperPagination = document.getElementById('hyper-pagination');
-    if (hyperPagination && typeof hyperPagination.setup === 'function') {
+    if (hyperPagination) {
       hyperPagination.setup({
         data: [...filteredHyper].reverse(),
         searchKeys: ['name', 'key'],
@@ -85,7 +90,7 @@ async function loadArchiveData() {
     
     // Render IPFS
     const ipfsPagination = document.getElementById('ipfs-pagination');
-    if (ipfsPagination && typeof ipfsPagination.setup === 'function') {
+    if (ipfsPagination) {
       ipfsPagination.setup({
         data: [...filteredIpfs].reverse(),
         searchKeys: ['name', 'cid'],
@@ -115,7 +120,7 @@ async function loadArchiveData() {
     
     // Render ENS
     const ensPagination = document.getElementById('ens-pagination');
-    if (ensPagination && typeof ensPagination.setup === 'function') {
+    if (ensPagination) {
       ensPagination.setup({
         data: filteredEns,
         searchKeys: ['name', 'hash'],

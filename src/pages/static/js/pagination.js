@@ -8,7 +8,7 @@ class PaginationControl extends HTMLElement {
     this.itemsPerPage = 10;
     this.renderWrapper = (html) => html;
     this.renderItem = () => '';
-    this.emptyMessage = '<p class="archive-empty">No items found.</p>';
+    this.emptyMessage = '<p class="archive-empty">Loading…</p>';
     this.onRendered = null;
     this.searchQuery = '';
     this.filteredData = [];
@@ -250,7 +250,9 @@ class PaginationControl extends HTMLElement {
     const searchInput = document.createElement('input');
     searchInput.type = 'text';
     searchInput.className = 'search-input';
-    searchInput.placeholder = this.getAttribute('search-placeholder') || 'Search...';
+    const searchPlaceholder = this.getAttribute('search-placeholder') || 'Search...';
+    searchInput.placeholder = searchPlaceholder;
+    searchInput.setAttribute('aria-label', searchPlaceholder);
     searchInput.addEventListener('input', (e) => {
       this.searchQuery = e.target.value.toLowerCase();
       this.currentPage = 1;
