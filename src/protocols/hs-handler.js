@@ -1,11 +1,12 @@
 import Holesail from "holesail";
 import { createLogger } from '../logger.js';
-const log = createLogger('protocols:hs');
 import http from "http";
 import { PassThrough } from "stream";
 import fs from "fs";
 import path from "path";
 import { app, safeStorage } from "electron";
+
+const log = createLogger('protocols:hs');
 
 const roomSessions = new Map();
 const roomPorts = new Map();

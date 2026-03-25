@@ -2,9 +2,10 @@ import { Readable } from "stream";
 import { create as createSDK } from "hyper-sdk";
 import makeHyperFetch from "hypercore-fetch";
 import { createLogger } from '../logger.js';
-const log = createLogger('protocols:hyper');
 import { initChat, handleChatRequest as handleChatRequestP2P } from "../pages/p2p/chat/p2p.js";
 import { hyperCache, saveHyperCache } from "./config.js";
+
+const log = createLogger('protocols:hyper');
 
 // Single SDK and swarm for the app lifecycle (hyper:// browsing + chat share the same swarm).
 let sdk, fetch;

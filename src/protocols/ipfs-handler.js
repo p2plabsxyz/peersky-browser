@@ -1,6 +1,5 @@
 import { ReadableStream } from "stream/web";
 import { createLogger } from '../logger.js';
-const log = createLogger('protocols:ipfs');
 import mime from "mime-types";
 import { directoryListingHtml } from "./helia/directoryListingTemplate.js";
 import { createNode } from "./helia/helia.js";
@@ -15,6 +14,8 @@ import { base58btc } from "multiformats/bases/base58";
 import { peerIdFromString, peerIdFromCID } from "@libp2p/peer-id";
 import { ensCache, saveEnsCache, RPC_URL, ipfsCache, saveIpfsCache } from "./config.js";
 import { JsonRpcProvider } from "ethers";
+
+const log = createLogger('protocols:ipfs');
 
 const P2P_APP_NAMES = {
   "editor": "P2P Editor",

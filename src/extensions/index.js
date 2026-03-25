@@ -329,7 +329,7 @@ class ExtensionManager {
                   if (tabBar.webviews && typeof tabBar.webviews.entries === 'function') {
                     for (const [tabId, wv] of tabBar.webviews.entries()) {
                       if (wv && typeof wv.getWebContentsId === 'function' && wv.getWebContentsId() === ${wcId}) {
-                        console.error('[removeTab] Found tab to close:', tabId);
+                        console.log('[removeTab] Found tab to close:', tabId);
                         if (typeof tabBar.closeTab === 'function') {
                           tabBar.closeTab(tabId);
                           return true;

@@ -1,6 +1,5 @@
 import { app, BrowserWindow, ipcMain, webContents, session } from "electron";
 import { createLogger } from './logger.js';
-const log = createLogger('window-manager');
 import path from "path";
 import fs from "fs-extra";
 import ScopedFS from 'scoped-fs';
@@ -9,6 +8,8 @@ import { attachContextMenus } from "./context-menu.js";
 import { randomUUID } from "crypto";
 import { getPartition } from "./session.js";
 import extensionManager from "./extensions/index.js";
+
+const log = createLogger('window-manager');
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 

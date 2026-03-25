@@ -1,6 +1,5 @@
 import path from "path";
 import { createLogger } from '../logger.js';
-const log = createLogger('protocols:peersky');
 import { fileURLToPath } from 'url';
 import mime from "mime-types";
 import ScopedFS from 'scoped-fs';
@@ -8,6 +7,8 @@ import { app } from 'electron';
 import { createReadStream, promises as fsPromises } from 'fs';
 import { Readable } from 'stream';
 import extensionManager from '../extensions/index.js';
+
+const log = createLogger('protocols:peersky');
 
 const __dirname = fileURLToPath(new URL('./', import.meta.url));
 const pagesPath = path.join(__dirname, '../pages');

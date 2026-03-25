@@ -1,7 +1,6 @@
 import { fork } from "child_process";
 import path from "path";
 import { createLogger } from '../logger.js';
-const log = createLogger('protocols:bt');
 import { fileURLToPath } from "url";
 import fs from "fs-extra";
 import { app } from "electron";
@@ -9,6 +8,8 @@ import { generateTorrentUI } from "./bt/torrentPage.js";
 import settingsManager from "../settings-manager.js";
 import { ipcMain } from "electron";
 import parseTorrent from "parse-torrent";
+
+const log = createLogger('protocols:bt');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

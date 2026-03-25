@@ -1,9 +1,10 @@
 import fs from "fs-extra";
 import { createLogger } from '../logger.js';
-const log = createLogger('protocols:file');
 import path from "path";
 import mime from "mime-types";
 import { pathToFileURL } from "url";
+
+const log = createLogger('protocols:file');
 
 function generateDirectoryListing(dirPath, entries) {
   const parentPath = path.dirname(dirPath);

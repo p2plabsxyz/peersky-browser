@@ -1,10 +1,11 @@
 import path from "path";
 import { createLogger } from '../logger.js';
-const log = createLogger('protocols:theme');
 import { fileURLToPath } from 'url';
 import mime from "mime-types";
 import ScopedFS from 'scoped-fs';
 import { Readable } from 'stream';
+
+const log = createLogger('protocols:theme');
 
 const __dirname = fileURLToPath(new URL('./', import.meta.url));
 const themePath = path.join(__dirname, '../pages/theme');
