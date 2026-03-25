@@ -165,6 +165,9 @@ class PaginationControl extends HTMLElement {
       }
       .pagination-btn {
         padding: 3px 9px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         background: var(--settings-card-bg);
         border: 1px solid var(--settings-border);
         border-radius: 4px;
@@ -173,7 +176,7 @@ class PaginationControl extends HTMLElement {
         font-size: 12px;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         transition: background 0.15s ease, border-color 0.15s ease;
-        line-height: 1.7;
+        line-height: 1;
       }
       .pagination-btn:hover:not(:disabled) {
         background: color-mix(in srgb, var(--settings-border) 35%, var(--settings-card-bg));
@@ -202,10 +205,7 @@ class PaginationControl extends HTMLElement {
       }
       /* Arrow Prev/Next buttons */
       .pagination-btn-arrow {
-        padding: 4px 7px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
+        padding: 3px 7px;
       }
       .arrow-icon {
         display: block;

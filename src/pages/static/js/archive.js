@@ -21,35 +21,34 @@ async function loadArchiveData() {
     
     const attachCopyListeners = (container) => {
       container.querySelectorAll('.copy-btn').forEach(btn => {
-        // Prevent duplicate listeners if this is called multiple times, though setup recreates the DOM
         if (btn.dataset.listenerAttached) return;
         btn.dataset.listenerAttached = 'true';
         btn.addEventListener('click', async () => {
           const text = btn.dataset.copy;
+          let success = false;
+          // Try modern Clipboard API first; fall back to execCommand on any failure
           try {
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-              await navigator.clipboard.writeText(text);
-            } else {
+            await navigator.clipboard.writeText(text);
+            success = true;
+          } catch {
+            try {
               const temp = document.createElement('textarea');
               temp.value = text;
+              temp.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
               document.body.appendChild(temp);
+              temp.focus();
               temp.select();
-              document.execCommand('copy');
+              success = document.execCommand('copy');
               document.body.removeChild(temp);
+            } catch {
+              success = false;
             }
-            const originalHTML = btn.innerHTML;
-            const w = btn.offsetWidth;
-            btn.style.width = w + 'px';
-            btn.textContent = 'Copied!';
-            setTimeout(() => { btn.innerHTML = originalHTML; btn.style.width = ''; }, 2000);
-          } catch (err) {
-            console.error('Failed to copy to clipboard:', err);
-            const originalHTML = btn.innerHTML;
-            const w = btn.offsetWidth;
-            btn.style.width = w + 'px';
-            btn.textContent = 'Failed';
-            setTimeout(() => { btn.innerHTML = originalHTML; btn.style.width = ''; }, 2000);
           }
+          const originalHTML = btn.innerHTML;
+          const w = btn.offsetWidth;
+          btn.style.width = w + 'px';
+          btn.textContent = success ? 'Copied!' : 'Failed';
+          setTimeout(() => { btn.innerHTML = originalHTML; btn.style.width = ''; }, 2000);
         });
       });
     };
@@ -59,11 +58,49 @@ async function loadArchiveData() {
     // customElements.define('pagination-control', ...) completes.
     await customElements.whenDefined('pagination-control');
 
-    // Render Hyper
+    // Known names used by built-in P2P apps for their internal draft storage
+    const P2P_APP_DRIVE_NAMES = new Set([
+      'p2p-editor-drafts',
+      'p2pmd-drafts',
+    ]);
+
+    const allHyper = [...filteredHyper].reverse();
+    const p2pDraftsRaw = allHyper.filter(item => P2P_APP_DRIVE_NAMES.has(item.name));
+    // Deduplicate by name — keep only the most recent key per drive name
+    const p2pDrafts = [...new Map(
+      [...p2pDraftsRaw].reverse().map(item => [item.name, item])
+    ).values()];
+    const individualDrives = allHyper.filter(item => !P2P_APP_DRIVE_NAMES.has(item.name));
+
+    // Render P2P Drafts via the same pagination-control component
+    const p2pDraftsPagination = document.getElementById('p2p-drafts-pagination');
+    if (p2pDraftsPagination) {
+      p2pDraftsPagination.setup({
+        data: p2pDrafts,
+        searchKeys: ['name', 'key'],
+        renderWrapper: (itemsHtml) => `<table class="archive-table"><colgroup><col style="width:30%"><col style="width:50%"><col style="width:20%"></colgroup><thead><tr><th>Name</th><th>Key</th><th>Action</th></tr></thead><tbody>${itemsHtml}</tbody></table>`,
+        renderItem: (item) => {
+          const safeName = escapeHtml(item.name || 'Unknown');
+          const safeKey = escapeHtml(item.key);
+          return `<tr>
+            <td>${safeName}</td>
+            <td class="archive-hash">${safeKey.substring(0, 20)}...</td>
+            <td>
+              <button class="archive-action-btn copy-btn" data-copy="${safeKey}" title="Copy Key">${COPY_ICON}</button>
+              <a href="hyper://${safeKey}/" target="_blank" rel="noopener noreferrer" class="archive-action-btn" title="Open">${OPEN_ICON}</a>
+            </td>
+          </tr>`;
+        },
+        emptyMessage: '<p class="archive-empty">No P2P app drives found.</p>',
+        onRendered: attachCopyListeners
+      });
+    }
+
+    // Render individual Hyperdrives (paginated)
     const hyperPagination = document.getElementById('hyper-pagination');
     if (hyperPagination) {
       hyperPagination.setup({
-        data: [...filteredHyper].reverse(),
+        data: individualDrives,
         searchKeys: ['name', 'key'],
         renderWrapper: (itemsHtml) => `<table class="archive-table"><colgroup><col style="width:25%"><col style="width:30%"><col style="width:25%"><col style="width:20%"></colgroup><thead><tr><th>Name</th><th>Key</th><th>Time</th><th>Action</th></tr></thead><tbody>${itemsHtml}</tbody></table>`,
         renderItem: (item) => {
@@ -83,10 +120,11 @@ async function loadArchiveData() {
             </td>
           </tr>`;
         },
-        emptyMessage: '<p class="archive-empty">No Hyperdrives found.</p>',
+        emptyMessage: '<p class="archive-empty">No individual files found.</p>',
         onRendered: attachCopyListeners
       });
     }
+
     
     // Render IPFS
     const ipfsPagination = document.getElementById('ipfs-pagination');
