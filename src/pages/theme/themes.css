@@ -32,7 +32,6 @@
   /* Context Menu Icons */
   --context-menu-icon-filter: brightness(0) saturate(100%) invert(88%) sepia(79%) saturate(2476%) hue-rotate(86deg) brightness(118%) contrast(119%);
   --context-menu-icon-hover-filter: brightness(0) saturate(100%) invert(100%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(100%) contrast(100%);
-  /* Pagination action icons — dark theme: invert SVGs to white */
   --pagination-icon-filter: invert(1) brightness(0.85);
   --pagination-icon-filter-hover: invert(1) brightness(1.2);
 
@@ -74,7 +73,6 @@
   /* Context Menu Icons */
   --context-menu-icon-filter: brightness(0) saturate(100%) invert(88%) sepia(79%) saturate(2476%) hue-rotate(86deg) brightness(118%) contrast(119%);
   --context-menu-icon-hover-filter: brightness(0) saturate(100%) invert(100%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(100%) contrast(100%);
-  /* Pagination icons — transparent (dark) theme: invert to white */
   --pagination-icon-filter: invert(1) brightness(0.85);
   --pagination-icon-filter-hover: invert(1) brightness(1.2);
 }
@@ -112,7 +110,6 @@
   /* Context Menu Icons - Dark icons for light theme */
   --context-menu-icon-filter: brightness(0) saturate(100%) invert(20%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(95%) contrast(95%);
   --context-menu-icon-hover-filter: brightness(0) saturate(100%) invert(100%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(100%) contrast(100%);
-  /* Pagination icons — light theme: keep dark (black icons on white bg) */
   --pagination-icon-filter: invert(0) brightness(0.2);
   --pagination-icon-filter-hover: invert(0) brightness(0);
 }
@@ -150,7 +147,6 @@
   /* Context Menu Icons */
   --context-menu-icon-filter: brightness(0) saturate(100%) invert(25%) sepia(100%) saturate(1500%) hue-rotate(180deg) brightness(90%) contrast(110%);
   --context-menu-icon-hover-filter: brightness(0) saturate(100%) invert(100%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(100%) contrast(100%);
-  /* Pagination icons — cyan (light) theme: dark icons */
   --pagination-icon-filter: brightness(0) saturate(100%) invert(15%) sepia(60%) saturate(800%) hue-rotate(170deg) brightness(80%);
   --pagination-icon-filter-hover: brightness(0) saturate(100%) invert(10%) sepia(80%) saturate(1200%) hue-rotate(170deg) brightness(70%);
 }

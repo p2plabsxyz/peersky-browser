@@ -17,8 +17,6 @@ class PaginationControl extends HTMLElement {
 
   renderContainer() {
     const style = document.createElement('style');
-    // CSS custom properties (--settings-*) DO inherit through shadow DOM boundaries,
-    // so we can use them here and the component will automatically match all themes.
     style.textContent = `
       :host {
         display: block;
