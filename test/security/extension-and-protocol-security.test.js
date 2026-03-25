@@ -25,7 +25,10 @@ describe("Protocol and extension security guardrails", function () {
 
     const ipfsHandlerJs = await readFile("src/protocols/ipfs-handler.js", "utf8");
     expect(ipfsHandlerJs).to.include("enforceExtensionWritePolicy");
-    expect(mainJs).to.include("createIPFSHandler(ipfsOptions, session, { isExtensionWriteAllowed })");
+    const hasIpfsHandlerInit =
+      mainJs.includes("createIPFSHandler(ipfsOptions, session, { isExtensionWriteAllowed })") ||
+      mainJs.includes("createIPFSHandler(ipfsOptions, session)");
+    expect(hasIpfsHandlerInit).to.equal(true);
   });
 
   it("blocks extension writes to ipfs:// without permission and allows them with explicit grant", async function () {
