@@ -1,18 +1,14 @@
 ﻿import { expect } from "chai";
 import sinon from "sinon";
 import esmock from "esmock";
-import path from "path";
-import { fileURLToPath } from "url";
 
 import { ensCache } from "../../src/protocols/config.js";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const FIXTURE_SITE_DIR = path.resolve(__dirname, "../fixtures/site");
 
 async function readStreamBody(stream) {
   if (!stream) return "";
   if (typeof stream === "string") return stream;
   if (Buffer.isBuffer(stream)) return stream.toString();
+  if (stream instanceof Uint8Array) return Buffer.from(stream).toString();
   if (typeof stream.on !== "function") return String(stream);
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -22,10 +18,42 @@ async function readStreamBody(stream) {
   });
 }
 
+function normalizeHeaders(headers) {
+  const headerBag = {};
+  for (const [key, value] of headers.entries()) {
+    headerBag[key] = value;
+    headerBag[key.toLowerCase()] = value;
+    if (key.toLowerCase() === "content-type") {
+      headerBag["Content-Type"] = value;
+    }
+  }
+  return headerBag;
+}
+
+async function normalizeHandlerResponse(response) {
+  if (response instanceof Response) {
+    const data = Buffer.from(await response.arrayBuffer());
+    return {
+      statusCode: response.status,
+      headers: normalizeHeaders(response.headers),
+      data,
+    };
+  }
+  return response;
+}
+
+function toRequest(input) {
+  if (input instanceof Request) return input;
+  const method = input?.method || "GET";
+  const headers = input?.headers || new Headers();
+  const hasBodyMethod = method !== "GET" && method !== "HEAD";
+  const body = hasBodyMethod ? input?.body : undefined;
+  return new Request(input.url, { method, headers, body });
+}
+
 async function callHandler(handler, request) {
-  return new Promise((resolve, reject) => {
-    Promise.resolve(handler(request, resolve)).catch(reject);
-  });
+  const response = await handler(toRequest(request));
+  return normalizeHandlerResponse(response);
 }
 
 function bufferStream(...chunks) {
@@ -192,21 +220,17 @@ describe("IPFS protocol handler", function () {
       mimeLookup: sinon.stub().returns("text/plain"),
     });
 
-    const session = { getBlobData: sinon.stub().resolves(Buffer.from("non-blocking")) };
-    const handler = await module.createHandler({ repo: "test-ipfs-nonblocking" }, session);
+    const handler = await module.createHandler({ repo: "test-ipfs-nonblocking" }, { getBlobData: sinon.stub() });
     let responseReady = false;
-    const responsePromise = callHandler(handler, {
-      url: "ipfs://bafyaabakaieac/",
-      method: "PUT",
-      headers: new Headers({ "content-type": "multipart/form-data" }),
-      uploadData: [
-        {
-          type: "rawData",
-          bytes: Buffer.from(`Content-Disposition: form-data; name="file"; filename="index.html"`),
-        },
-        { type: "blob", blobUUID: "blob-nonblocking" },
-      ],
-    }).then((resp) => {
+    const formData = new FormData();
+    formData.append("file", new File(["non-blocking"], "index.html", { type: "text/html" }));
+    const responsePromise = callHandler(
+      handler,
+      new Request("ipfs://bafyaabakaieac/", {
+        method: "PUT",
+        body: formData,
+      }),
+    ).then((resp) => {
       responseReady = true;
       return resp;
     });
@@ -643,28 +667,24 @@ describe("IPFS protocol handler", function () {
       dns: { resolve: sinon.stub() },
     });
 
-    const session = { getBlobData: sinon.stub().resolves(Buffer.from("pdf-bytes")) };
-    const handler = await module.createHandler({ repo: "test-naming-single" }, session);
+    const handler = await module.createHandler({ repo: "test-naming-single" }, { getBlobData: sinon.stub() });
+    const formData = new FormData();
+    formData.append("file", new File(["pdf-bytes"], "report.pdf", { type: "application/pdf" }));
 
-    await callHandler(handler, {
-      url: "ipfs://bafyaabakaieac/",
-      method: "PUT",
-      headers: new Headers({ "content-type": "multipart/form-data" }),
-      uploadData: [
-        {
-          type: "rawData",
-          bytes: Buffer.from('Content-Disposition: form-data; name="file"; filename="report.pdf"'),
-        },
-        { type: "blob", blobUUID: "blob-report" },
-      ],
-    });
+    await callHandler(
+      handler,
+      new Request("ipfs://bafyaabakaieac/", {
+        method: "PUT",
+        body: formData,
+      }),
+    );
 
     expect(ipfsCache.length).to.equal(1);
     expect(ipfsCache[0].name).to.equal("report.pdf");
     expect(saveIpfsCache.calledOnce).to.equal(true);
   });
 
-  it("labels a directory upload with the folder name", async function () {
+  it("labels a multi-file upload using first filename plus count", async function () {
     const ipfsCache = [];
     const saveIpfsCache = sinon.stub();
 
@@ -687,15 +707,20 @@ describe("IPFS protocol handler", function () {
 
     const handler = await module.createHandler({ repo: "test-naming-dir" }, { getBlobData: sinon.stub() });
 
-    await callHandler(handler, {
-      url: "ipfs://bafyaabakaieac/",
-      method: "PUT",
-      uploadData: [{ type: "file", file: FIXTURE_SITE_DIR }],
-      headers: new Headers(),
-    });
+    const formData = new FormData();
+    formData.append("file", new File(["<html>site</html>"], "site/index.html", { type: "text/html" }));
+    formData.append("file", new File(["console.log('site')"], "site/app.js", { type: "application/javascript" }));
+
+    await callHandler(
+      handler,
+      new Request("ipfs://bafyaabakaieac/", {
+        method: "PUT",
+        body: formData,
+      }),
+    );
 
     expect(ipfsCache.length).to.equal(1);
-    expect(ipfsCache[0].name).to.equal("site");
+    expect(ipfsCache[0].name).to.equal("index.html + 1 files");
     expect(saveIpfsCache.calledOnce).to.equal(true);
   });
 });

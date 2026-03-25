@@ -381,7 +381,7 @@ export async function createHandler(ipfsOptions, session, securityOptions = {}) 
     }
   }
 
-  return async function protocolHandler(request) {
+  const handler = async function protocolHandler(request) {
     const { url, method, headers } = request;
     if (!node) {
       console.log("IPFS node is not ready yet");
@@ -399,13 +399,7 @@ export async function createHandler(ipfsOptions, session, securityOptions = {}) 
       isExtensionWriteAllowed,
     });
     if (writeBlocked) {
-      const body = await writeBlocked.text();
-      sendResponse({
-        statusCode: writeBlocked.status,
-        headers: { "Content-Type": "text/plain", "Access-Control-Allow-Origin": "*" },
-        data: Readable.from(Buffer.from(body)),
-      });
-      return;
+      return writeBlocked;
     }
 
     if (
@@ -418,8 +412,6 @@ export async function createHandler(ipfsOptions, session, securityOptions = {}) 
     }
 
     let ipfsPath;
-    let data = null;
-    let statusCode = 200;
     let responseHeaders = {
       "Access-Control-Allow-Origin": "*",
       "Allow-CSP-From": "*",
