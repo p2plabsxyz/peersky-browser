@@ -26,7 +26,6 @@ async function loadArchiveData() {
         btn.addEventListener('click', async () => {
           const text = btn.dataset.copy;
           let success = false;
-          // Try modern Clipboard API first; fall back to execCommand on any failure
           try {
             await navigator.clipboard.writeText(text);
             success = true;
@@ -53,9 +52,7 @@ async function loadArchiveData() {
       });
     };
 
-    // Wait for the custom element to be defined before calling setup(),
-    // preventing a silent race where loadArchiveData() runs before
-    // customElements.define('pagination-control', ...) completes.
+
     await customElements.whenDefined('pagination-control');
 
     // Known names used by built-in P2P apps for their internal draft storage
@@ -66,13 +63,11 @@ async function loadArchiveData() {
 
     const allHyper = [...filteredHyper].reverse();
     const p2pDraftsRaw = allHyper.filter(item => P2P_APP_DRIVE_NAMES.has(item.name));
-    // Deduplicate by name — keep only the most recent key per drive name
     const p2pDrafts = [...new Map(
       [...p2pDraftsRaw].reverse().map(item => [item.name, item])
     ).values()];
     const individualDrives = allHyper.filter(item => !P2P_APP_DRIVE_NAMES.has(item.name));
 
-    // Render P2P Drafts via the same pagination-control component
     const p2pDraftsPagination = document.getElementById('p2p-drafts-pagination');
     if (p2pDraftsPagination) {
       p2pDraftsPagination.setup({
@@ -96,7 +91,6 @@ async function loadArchiveData() {
       });
     }
 
-    // Render individual Hyperdrives (paginated)
     const hyperPagination = document.getElementById('hyper-pagination');
     if (hyperPagination) {
       hyperPagination.setup({
@@ -186,7 +180,6 @@ async function loadArchiveData() {
     
   } catch (err) {
     console.error('Failed to load archive data:', err);
-    // On error, create simple elements or find existing generic wrappers
     ['hyper', 'ipfs', 'ens'].forEach(prefix => {
       const el = document.getElementById(`${prefix}-pagination`);
       if (el) {
