@@ -342,7 +342,7 @@ class PaginationControl extends HTMLElement {
     prev.className = 'pagination-btn pagination-btn-arrow';
     prev.title = 'Previous page';
     prev.disabled = this.currentPage === 1;
-    prev.innerHTML = '<img src="peersky://static/assets/svg/arrow-left.svg" width="13" height="13" alt="Prev" class="arrow-icon">';
+    prev.innerHTML = '<img src="peersky://static/assets/svg/chevron-left.svg" width="13" height="13" alt="Prev" class="arrow-icon">';
     prev.addEventListener('click', () => { this.currentPage--; this.renderPage(); });
     this.controlsArea.appendChild(prev);
 
@@ -364,7 +364,7 @@ class PaginationControl extends HTMLElement {
     next.className = 'pagination-btn pagination-btn-arrow';
     next.title = 'Next page';
     next.disabled = this.currentPage === totalPages;
-    next.innerHTML = '<img src="peersky://static/assets/svg/arrow-right.svg" width="13" height="13" alt="Next" class="arrow-icon">';
+    next.innerHTML = '<img src="peersky://static/assets/svg/chevron-right.svg" width="13" height="13" alt="Next" class="arrow-icon">';
     next.addEventListener('click', () => { this.currentPage++; this.renderPage(); });
     this.controlsArea.appendChild(next);
 
