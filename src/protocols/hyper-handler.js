@@ -2,6 +2,7 @@ import { Readable } from "stream";
 import { create as createSDK } from "hyper-sdk";
 import makeHyperFetch from "hypercore-fetch";
 import { initChat, handleChatRequest as handleChatRequestP2P } from "../pages/p2p/chat/p2p.js";
+import { enforceExtensionWritePolicy } from "./request-policy.js";
 import { hyperCache, saveHyperCache } from "./config.js";
 
 // Single SDK and swarm for the app lifecycle (hyper:// browsing + chat share the same swarm).
@@ -97,7 +98,8 @@ async function initializeHyperSDK(options) {
   return fetch;
 }
 
-export async function createHandler(options) {
+export async function createHandler(options, securityOptions = {}) {
+  const { isExtensionWriteAllowed } = securityOptions;
   await initializeHyperSDK(options);
 
   return async function protocolHandler(req) {
@@ -163,6 +165,13 @@ export async function createHandler(options) {
     }
 
     try {
+      const denied = await enforceExtensionWritePolicy({
+        request: req,
+        scheme: "hyper",
+        isExtensionWriteAllowed,
+      });
+      if (denied) return denied;
+
       if (
         protocol === "hyper" &&
         (urlObj.hostname === "chat" || pathname.startsWith("/chat"))
@@ -185,12 +194,10 @@ export async function createHandler(options) {
 async function handleHyperRequest(req) {
   const { url, method = "GET", headers } = req;
   const fetchFn = await initializeHyperSDK();
-
   const upperMethod = method.toUpperCase();
   const hasBody = upperMethod !== "GET" && upperMethod !== "HEAD";
 
   try {
-    console.log(`[handleHyperRequest] Fetching: ${method} ${url}`);
     const resp = await fetchFn(url, {
       method,
       headers,

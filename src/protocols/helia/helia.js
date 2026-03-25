@@ -41,8 +41,10 @@ const bootstrapConfig = {
   ]
 }
 
-export async function createNode() {
-  const options = await ipfsOptions();
+export async function createNode(options) {
+  if (!options || !options.datastore) {
+    options = await ipfsOptions();
+  }
 
   const privateKey = await getLibp2pPrivateKey();
   const agentVersion = `peersky-browser/${version} ${userAgent()}`;
@@ -104,6 +106,12 @@ export async function createNode() {
   const ds = options.datastore;
   /** @type {any} */
   const bs = options.blockstore;
+
+  // datastore-level and blockstore-level implement open()/close() but not the
+  // Startable interface (start()/stop()), so Helia's isStartable check skips them.
+  // We must open them explicitly before createHelia calls helia.start().
+  await ds.open();
+  await bs.open();
 
   const node = await createHelia({
     ...options,
