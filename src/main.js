@@ -102,7 +102,7 @@ app.whenReady().then(async () => {
   // Get consistent session for protocols and extensions
   const userSession = getBrowserSession();
   await setupProtocols(userSession);
-  installWebviewFileRedirect(userSession);
+  installExtensionWebRequestBridge(userSession);
   setupBittorrentIpc();
 
   // Global webview partition alignment and security hardening
@@ -281,14 +281,23 @@ async function setupProtocols(session) {
   sessionProtocol.handle("magnet", bittorrentProtocolHandler);
 }
 
-async function installWebviewFileRedirect(session) {
+function installExtensionWebRequestBridge(session) {
+  const shouldForwardToExtensions = (rawUrl) => {
+    const url = typeof rawUrl === "string" ? rawUrl : "";
+    if (!url) return false;
+    if (url.startsWith("file://")) return false;
+    if (url.startsWith("chrome-extension://")) return false;
+    try {
+      const proto = new URL(url).protocol;
+      return proto === "http:" || proto === "https:" || proto === "ws:" || proto === "wss:" || proto === "ftp:";
+    } catch (_) {
+      return false;
+    }
+  };
+
   session.webRequest.onBeforeRequest({ urls: ["<all_urls>"] }, async (details, callback) => {
     const url = details?.url || "";
-    if (url.startsWith("file://")) {
-      callback({});
-      return;
-    }
-    if (url.startsWith("chrome-extension://")) {
+    if (!shouldForwardToExtensions(url)) {
       callback({});
       return;
     }
@@ -308,11 +317,7 @@ async function installWebviewFileRedirect(session) {
     { urls: ["<all_urls>"] },
     async (details, callback) => {
       const url = details?.url || "";
-      if (url.startsWith("file://")) {
-        callback({});
-        return;
-      }
-      if (url.startsWith("chrome-extension://")) {
+      if (!shouldForwardToExtensions(url)) {
         callback({});
         return;
       }
@@ -336,7 +341,7 @@ async function installWebviewFileRedirect(session) {
 
   session.webRequest.onSendHeaders({ urls: ["<all_urls>"] }, async (details) => {
     const url = details?.url || "";
-    if (url.startsWith("file://") || url.startsWith("chrome-extension://")) {
+    if (!shouldForwardToExtensions(url)) {
       return;
     }
     try {
@@ -350,11 +355,7 @@ async function installWebviewFileRedirect(session) {
     { urls: ["<all_urls>"] },
     async (details, callback) => {
       const url = details?.url || "";
-      if (url.startsWith("file://")) {
-        callback({});
-        return;
-      }
-      if (url.startsWith("chrome-extension://")) {
+      if (!shouldForwardToExtensions(url)) {
         callback({});
         return;
       }
@@ -378,7 +379,7 @@ async function installWebviewFileRedirect(session) {
 
   session.webRequest.onResponseStarted({ urls: ["<all_urls>"] }, async (details) => {
     const url = details?.url || "";
-    if (url.startsWith("file://") || url.startsWith("chrome-extension://")) {
+    if (!shouldForwardToExtensions(url)) {
       return;
     }
     try {
@@ -395,7 +396,7 @@ async function installWebviewFileRedirect(session) {
 
   session.webRequest.onCompleted({ urls: ["<all_urls>"] }, async (details) => {
     const url = details?.url || "";
-    if (url.startsWith("file://") || url.startsWith("chrome-extension://")) {
+    if (!shouldForwardToExtensions(url)) {
       return;
     }
     try {
@@ -407,7 +408,7 @@ async function installWebviewFileRedirect(session) {
 
   session.webRequest.onErrorOccurred({ urls: ["<all_urls>"] }, async (details) => {
     const url = details?.url || "";
-    if (url.startsWith("file://") || url.startsWith("chrome-extension://")) {
+    if (!shouldForwardToExtensions(url)) {
       return;
     }
     try {

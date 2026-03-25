@@ -604,6 +604,7 @@ restoreTabs(persistedData) {
     // Page.reload).  Re-register when the ID changes so the extension system
     // (and chrome.debugger) can still reach the tab.
     let registeredWcId = null;
+    let pendingWcId = null;
     let registering = false;
     webview.addEventListener('dom-ready', () => {
       // Ensure this webview is visible if it's the active tab
@@ -620,18 +621,20 @@ restoreTabs(persistedData) {
       if (currentWcId === registeredWcId || registering) return;
 
       registering = true;
-      registeredWcId = currentWcId;
+      pendingWcId = currentWcId;
 
       setTimeout(() => {
         registering = false;
         try {
           const wcId = webview.getWebContentsId();
-          if (wcId !== registeredWcId) return; // changed again, skip
+          if (wcId !== pendingWcId) return; // changed again, skip
           const { ipcRenderer } = require('electron');
           ipcRenderer.invoke('extensions-register-webview', wcId).then(result => {
             if (!result.success) {
               console.warn(`[TabBar] Failed to register webview ${wcId}:`, result.error);
+              return;
             }
+            registeredWcId = wcId;
           }).catch(error => {
             console.error(`[TabBar] Error registering webview:`, error);
           });
