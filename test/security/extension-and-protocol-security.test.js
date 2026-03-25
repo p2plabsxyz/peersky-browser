@@ -12,7 +12,10 @@ describe("Protocol and extension security guardrails", function () {
 
     expect(mainJs).to.include('supportFetchAPI: true');
     expect(mainJs).to.include('sessionProtocol.handle("peersky"');
-    expect(mainJs).to.include('sessionProtocol.handle("ipfs"');
+    const hasIpfsRegistration =
+      mainJs.includes('sessionProtocol.handle("ipfs"') ||
+      mainJs.includes('sessionProtocol.registerStreamProtocol("ipfs"');
+    expect(hasIpfsRegistration).to.equal(true);
     expect(mainJs).to.include('sessionProtocol.handle("hyper"');
 
     expect(mainJs).to.include("will-attach-webview");
@@ -22,7 +25,7 @@ describe("Protocol and extension security guardrails", function () {
 
     const ipfsHandlerJs = await readFile("src/protocols/ipfs-handler.js", "utf8");
     expect(ipfsHandlerJs).to.include("enforceExtensionWritePolicy");
-    expect(mainJs).to.include("createIPFSHandler(ipfsOptions, session)");
+    expect(mainJs).to.include("createIPFSHandler(ipfsOptions, session, { isExtensionWriteAllowed })");
   });
 
   it("blocks extension writes to ipfs:// without permission and allows them with explicit grant", async function () {
