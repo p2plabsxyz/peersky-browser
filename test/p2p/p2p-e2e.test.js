@@ -28,8 +28,6 @@ after(function () {
   process.off("uncaughtException", _libdatachannelHandler);
 });
 
-const SITE_DIR = path.resolve(__dirname, "../fixtures/site");
-const FIXTURE_PATH = path.join(SITE_DIR, "index.html");
 const FIXTURE_TEXT = "Hello Peersky";
 const ABOUT_CONTENT = "<title>About</title>\n<h1>About Peersky</h1>\n";
 
@@ -42,8 +40,41 @@ let hyperHandler;
 let driveUrl;   // hyper:// URL of the newly created drive
 
 function callHandler(handler, request) {
-  return new Promise((resolve, reject) => {
-    Promise.resolve(handler(request, resolve)).catch(reject);
+  return Promise.resolve(handler(toRequest(request))).then(normalizeHandlerResponse);
+}
+
+function normalizeHeaders(headers) {
+  const headerBag = {};
+  for (const [key, value] of headers.entries()) {
+    const lower = key.toLowerCase();
+    headerBag[key] = value;
+    headerBag[lower] = value;
+    if (lower === "content-type") headerBag["Content-Type"] = value;
+    if (lower === "location") headerBag.Location = value;
+  }
+  return headerBag;
+}
+
+async function normalizeHandlerResponse(response) {
+  if (response instanceof Response) {
+    return {
+      statusCode: response.status,
+      headers: normalizeHeaders(response.headers),
+      data: Buffer.from(await response.arrayBuffer()),
+    };
+  }
+  return response;
+}
+
+function toRequest(input) {
+  if (input instanceof Request) return input;
+  const method = input?.method || "GET";
+  const headers = input?.headers || new Headers();
+  const hasBody = method !== "GET" && method !== "HEAD";
+  return new Request(input.url, {
+    method,
+    headers,
+    body: hasBody ? input?.body : undefined,
   });
 }
 
@@ -76,12 +107,14 @@ describe("ipfs: basic e2e sync", function () {
 
   it("uploads a file and returns an ipfs:// link", async function () {
     this.timeout(60000);
-    const response = await callHandler(ipfsHandler, {
-      url: "ipfs://bafyaabakaieac/",
-      method: "PUT",
-      uploadData: [{ type: "file", file: FIXTURE_PATH }],
-      headers: new Headers(),
-    });
+    const response = await callHandler(
+      ipfsHandler,
+      new Request("ipfs://bafyaabakaieac/index.html", {
+        method: "PUT",
+        headers: { "content-type": "text/html" },
+        body: FIXTURE_TEXT,
+      }),
+    );
 
     expect(response.statusCode).to.equal(200);
     expect(response.headers.Location).to.match(/^ipfs:\/\//);
@@ -103,12 +136,17 @@ describe("ipfs: basic e2e sync", function () {
 
   it("uploads a directory and returns an ipfs:// link", async function () {
     this.timeout(60000);
-    const response = await callHandler(ipfsHandler, {
-      url: "ipfs://bafyaabakaieac/",
-      method: "PUT",
-      uploadData: [{ type: "file", file: SITE_DIR }],
-      headers: new Headers(),
-    });
+    const formData = new FormData();
+    formData.append("file", new File([FIXTURE_TEXT], "site/index.html", { type: "text/html" }));
+    formData.append("file", new File([ABOUT_CONTENT], "site/about.html", { type: "text/html" }));
+
+    const response = await callHandler(
+      ipfsHandler,
+      new Request("ipfs://bafyaabakaieac/", {
+        method: "PUT",
+        body: formData,
+      }),
+    );
 
     expect(response.statusCode).to.equal(200);
     expect(response.headers.Location).to.match(/^ipfs:\/\//);

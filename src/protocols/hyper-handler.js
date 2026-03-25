@@ -11,6 +11,7 @@ import {
 import { createLogger } from '../logger.js';
 import { hyperCache, saveHyperCache } from "./config.js";
 import { enforceExtensionWritePolicy } from "./request-policy.js";
+import { hyperCache, saveHyperCache } from "./config.js";
 
 const log = createLogger('protocols:hyper');
 
