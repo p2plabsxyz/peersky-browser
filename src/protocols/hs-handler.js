@@ -181,15 +181,39 @@ function createSession(key = null) {
     ytext: null
   };
 }
-function initSessionCrdt(session, initialText = "") {
+
+function initSessionCrdt(session, initialText = "", initialYjsState = null, preserveExisting = false) {
+  // Preserve Y.Doc with peer edits when preserveExisting=true
+  if (preserveExisting && session.ydoc && session.ytext) {
+    const existingContent = session.ytext.toString();
+    if (existingContent.length > 0) {
+      session.docState.content = existingContent;
+      session.docState.updatedAt = Date.now();
+      return;
+    }
+  }
+
   if (session.ydoc) {
     try { session.ydoc.destroy(); } catch {}
   }
   session.ydoc = new Y.Doc();
   session.ytext = session.ydoc.getText("content");
-  if (initialText) {
+
+  let restoredFromYjsState = false;
+  if (typeof initialYjsState === "string" && initialYjsState.length > 0) {
+    try {
+      const updateBytes = new Uint8Array(Buffer.from(initialYjsState, "base64"));
+      Y.applyUpdate(session.ydoc, updateBytes, "initial-restore");
+      restoredFromYjsState = true;
+    } catch (err) {
+      console.warn("[p2pmd] Failed to restore initial Yjs state, falling back to text:", err.message);
+    }
+  }
+  if (!restoredFromYjsState && initialText) {
     session.ydoc.transact(() => session.ytext.insert(0, initialText));
   }
+  session.docState.content = session.ytext.toString();
+  session.docState.updatedAt = Date.now();
 }
 
 function getExistingSession(key) {
@@ -428,8 +452,11 @@ function handleDocRequest(req, res, session) {
     let prevText = '';
     let pendingUpdate = null;
     let sendUpdateTimer = null;
+    let flushRetryTimer = null;
     let isApplyingRemote = false;
     const MAX_PENDING_UPDATE_BYTES = 2 * 1024 * 1024;
+    const Y_ORIGIN_REMOTE = 'remote-sse';
+    const Y_ORIGIN_LOCAL_INPUT = 'local-input';
 
     function bytesToBase64(bytes) {
       let bin = '';
@@ -442,7 +469,7 @@ function handleDocRequest(req, res, session) {
       for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
       return u8;
     }
-    function applyTextDiff(ytextRef, oldText, newText) {
+    function applyTextDiff(ytextRef, oldText, newText, origin = null) {
       if (!ytextRef || oldText === newText) return;
       let pre = 0;
       const minLen = Math.min(oldText.length, newText.length);
@@ -454,7 +481,7 @@ function handleDocRequest(req, res, session) {
       ytextRef.doc.transact(() => {
         if (delLen > 0) ytextRef.delete(pre, delLen);
         if (ins)        ytextRef.insert(pre, ins);
-      });
+      }, origin);
     }
     async function flushUpdate() {
       if (!pendingUpdate) return;
@@ -466,6 +493,7 @@ function handleDocRequest(req, res, session) {
           body: JSON.stringify({ update: bytesToBase64(toSend) })
         });
         if (!res.ok) throw new Error('HTTP ' + res.status);
+        if (flushRetryTimer) { clearTimeout(flushRetryTimer); flushRetryTimer = null; }
       } catch {
         let merged = pendingUpdate
           ? window.Y.mergeUpdates([toSend, pendingUpdate])
@@ -478,6 +506,12 @@ function handleDocRequest(req, res, session) {
           console.warn('[p2pmd] inline editor: dropping oversized pending CRDT update buffer');
         } else {
           pendingUpdate = merged;
+        }
+        if (!flushRetryTimer && pendingUpdate) {
+          flushRetryTimer = setTimeout(() => {
+            flushRetryTimer = null;
+            flushUpdate();
+          }, 1200);
         }
       }
     }
@@ -522,7 +556,12 @@ function handleDocRequest(req, res, session) {
       if (!isPreviewMode) render();
       if (ydoc && ytext) {
         const newText = editor.value;
-        applyTextDiff(ytext, prevText, newText);
+        const oldText = ytext.toString();
+        if (newText === oldText) {
+          prevText = oldText;
+          return;
+        }
+        applyTextDiff(ytext, oldText, newText, Y_ORIGIN_LOCAL_INPUT);
         prevText = newText;
       } else {
         scheduleSend();
@@ -550,7 +589,7 @@ function handleDocRequest(req, res, session) {
         if (yjsRes.ok) {
           const yjsData = await yjsRes.json();
           if (typeof yjsData.yjsState === 'string') {
-            window.Y.applyUpdate(ydoc, base64ToBytes(yjsData.yjsState));
+            window.Y.applyUpdate(ydoc, base64ToBytes(yjsData.yjsState), Y_ORIGIN_REMOTE);
             const ytContent = ytext.toString();
             if (ytContent) { editor.value = ytContent; prevText = ytContent; lastContent = ytContent; }
           }
@@ -559,14 +598,17 @@ function handleDocRequest(req, res, session) {
       if (!prevText && editor.value) {
         ydoc.transact(() => ytext.insert(0, editor.value));
       }
-      ydoc.on('update', (upd) => {
+      ydoc.on('update', (upd, origin) => {
+        if (origin === Y_ORIGIN_REMOTE) return;
         if (isApplyingRemote) return;
         pendingUpdate = pendingUpdate ? window.Y.mergeUpdates([pendingUpdate, upd]) : upd;
         if (sendUpdateTimer) clearTimeout(sendUpdateTimer);
-        sendUpdateTimer = setTimeout(flushUpdate, 50);
+        sendUpdateTimer = setTimeout(flushUpdate, 100);
       });
       ytext.observe((event) => {
         const newContent = ytext.toString();
+        // Keep local diff baseline aligned with CRDT text.
+        prevText = newContent;
         if (newContent === editor.value) return;
         // Keep caret stable while applying remote inserts/deletes.
         let s = editor.selectionStart ?? 0, e = editor.selectionEnd ?? 0, pos = 0;
@@ -577,7 +619,6 @@ function handleDocRequest(req, res, session) {
         }
         editor.value = newContent;
         editor.setSelectionRange(Math.max(0,Math.min(s,newContent.length)), Math.max(0,Math.min(e,newContent.length)));
-        prevText = newContent;
         lastContent = newContent;
         render();
       });
@@ -587,12 +628,15 @@ function handleDocRequest(req, res, session) {
     let reconnectTimer = null;
     function connectSSE() {
       if (source) { try { source.close(); } catch {} }
-      source = new EventSource('/events');
+      source = new EventSource('/events?role=client');
+      source.onopen = () => {
+        if (pendingUpdate) flushUpdate();
+      };
       source.addEventListener('yjsupdate', (event) => {
         if (!ydoc) return;
         try {
           isApplyingRemote = true;
-          window.Y.applyUpdate(ydoc, base64ToBytes(event.data));
+          window.Y.applyUpdate(ydoc, base64ToBytes(event.data), Y_ORIGIN_REMOTE);
           prevText = ytext.toString();
           lastContent = prevText;
         } catch {} finally { isApplyingRemote = false; }
@@ -615,21 +659,8 @@ function handleDocRequest(req, res, session) {
       };
     }
     async function reconnect() {
-      try {
-        const res = await fetch('/doc');
-        if (res.ok) {
-          const data = await res.json();
-          if (data && typeof data.content === 'string') {
-            editor.value = data.content;
-            prevText = data.content;
-            lastContent = data.content;
-            render();
-          }
-          connectSSE();
-          return;
-        }
-      } catch {}
-      scheduleReconnect();
+      // Keep local state and let Yjs sync re-converge on reconnect
+      connectSSE();
     }
     function scheduleReconnect() {
       if (reconnectTimer) return;
@@ -699,6 +730,7 @@ function handleDocRequest(req, res, session) {
       try {
         const parsed = JSON.parse(body || "{}");
         const base64 = typeof parsed.update === "string" ? parsed.update : null;
+        const fullText = typeof parsed.fullText === "string" ? parsed.fullText : null;
         if (!base64) {
           res.writeHead(400, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
           res.end(JSON.stringify({ ok: false, error: "Missing update field" }));
@@ -712,18 +744,46 @@ function handleDocRequest(req, res, session) {
           res.end(JSON.stringify({ ok: false, error: "Invalid base64" }));
           return;
         }
-      
+
+        let beforeContent = session.ytext.toString();
+        let applied = false;
+        let usedTextFallback = false;
         try {
-          Y.applyUpdate(session.ydoc, updateBytes);
+          Y.applyUpdate(session.ydoc, updateBytes, "client-update");
+          applied = true;
         } catch (applyErr) {
           console.warn("[p2pmd] /doc/update: Y.applyUpdate rejected payload:", applyErr.message);
-          res.writeHead(400, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
-          res.end(JSON.stringify({ ok: false, error: "Invalid Yjs update payload" }));
-          return;
+          // Fallback path: if client sends full text, reconcile using text diff.
+          if (typeof fullText === "string") {
+            try {
+              applyTextDiffToYText(session.ytext, beforeContent, fullText);
+              usedTextFallback = true;
+              applied = true;
+            } catch (fallbackErr) {
+              console.warn("[p2pmd] /doc/update fallback failed:", fallbackErr.message);
+              res.writeHead(400, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+              res.end(JSON.stringify({ ok: false, error: "Invalid Yjs update payload" }));
+              return;
+            }
+          } else {
+            res.writeHead(400, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+            res.end(JSON.stringify({ ok: false, error: "Invalid Yjs update payload" }));
+            return;
+          }
         }
-        session.docState.content = session.ytext.toString();
+        let afterContent = session.ytext.toString();
+
+        const contentChanged = beforeContent !== afterContent;
+        session.docState.content = afterContent;
         session.docState.updatedAt = Date.now();
-        broadcastYjsUpdate(session, base64);
+
+        // Broadcast canonical server state after any content change so
+        // reconnecting/diverged clients can re-converge safely.
+        if (usedTextFallback || contentChanged) {
+          const stateBytes = Y.encodeStateAsUpdate(session.ydoc);
+          const stateBase64 = Buffer.from(stateBytes).toString("base64");
+          broadcastYjsUpdate(session, stateBase64);
+        }
         res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
         res.end(JSON.stringify({ ok: true }));
       } catch (err) {
@@ -755,7 +815,6 @@ function handleDocRequest(req, res, session) {
         const content = typeof parsed.content === "string" ? parsed.content : "";
         session.docState.content = content;
         session.docState.updatedAt = Date.now();
-        broadcastUpdate(session);
         if (session.ydoc && session.ytext) {
           const current = session.ytext.toString();
           if (current !== content) {
@@ -774,6 +833,8 @@ function handleDocRequest(req, res, session) {
               broadcastYjsUpdate(session, updateBase64);
             }
           }
+        } else {
+          broadcastUpdate(session);
         }
         res.writeHead(200, {
           "Content-Type": "application/json",
@@ -807,11 +868,12 @@ function handleDocRequest(req, res, session) {
     
     res.write(`event: peers\ndata: ${currentPeerCount}\n\n`);
     res.write(`event: peerlist\ndata: ${JSON.stringify(getPeerList(session))}\n\n`);
-    res.write(`event: update\ndata: ${JSON.stringify(session.docState)}\n\n`);
     if (session.ydoc) {
       const stateBytes = Y.encodeStateAsUpdate(session.ydoc);
       const stateBase64 = Buffer.from(stateBytes).toString("base64");
       res.write(`event: yjsupdate\ndata: ${stateBase64}\n\n`);
+    } else {
+      res.write(`event: update\ndata: ${JSON.stringify(session.docState)}\n\n`);
     }
     broadcastPeers(session);
     broadcastPeerList(session);
@@ -1103,7 +1165,7 @@ export async function createHandler() {
       const host = normalizeHost(body.host);
       const port = normalizePort(body.port);
       const initialContent = typeof body.initialContent === "string" ? body.initialContent : "";
-      console.log("[p2pmd] rehost request", { key: redactKey(key), port, hasInitialContent: initialContent.length > 0 });
+      const initialYjsState = typeof body.initialYjsState === "string" ? body.initialYjsState : null;
 
       let sessionState = getExistingSession(key);
       if (sessionState) {
@@ -1120,25 +1182,23 @@ export async function createHandler() {
         sessionState.docState.content = initialContent;
         sessionState.docState.updatedAt = Date.now();
       }
-      initSessionCrdt(sessionState, sessionState.docState.content);
+      // Keep Y.Doc with peer edits if it exists
+      initSessionCrdt(sessionState, sessionState.docState.content, initialYjsState, true);
       
-      // Pass 127.0.0.1 to holesail so clients connect to localhost
-      // Holesail forwards tunnel traffic to this address, and stores it on DHT for clients
-      // IMPORTANT: Do NOT pass `key` to Holesail - it derives seed=SHA256(key), producing a
-      // different DHT keypair/identity so clients can't find the rehostted server.
-      // Instead, restore the original seed so the same keypair (and thus same room URL) is used.
-      const savedReHostEntry = roomPorts.get(key);
+      // Use localhost for holesail and restore original seed for same room URL
+      const savedReHostEntry = roomPorts.get(key) || null;
+      const savedSeedBuffer = savedReHostEntry?.seed ? Buffer.from(savedReHostEntry.seed, 'hex') : null;
       const holesailServer = new Holesail({
         server: true,
         secure,
         udp,
         host: "127.0.0.1",
         port: boundPort,
-        ...(savedReHostEntry?.seed ? {} : { key }),
+        ...(savedSeedBuffer ? {} : { key }),
         log: 1
       });
-      if (savedReHostEntry?.seed) {
-        holesailServer.seed = Buffer.from(savedReHostEntry.seed, 'hex');
+      if (savedSeedBuffer) {
+        holesailServer.seed = savedSeedBuffer;
       }
       await holesailServer.ready();
       const roomKey = holesailServer.info?.url || key;
@@ -1223,7 +1283,8 @@ export async function createHandler() {
       const savedEntry = roomPorts.get(key) || null;
       const resolvedSecure = secure === null ? (parsedKey.secure === true) : secure;
       const resolvedUdp = udp === null ? parseBoolean(parsedKey.udp, false) : udp;
-      if (savedEntry?.seed && !sessionState?.holesailServer && !sessionState?.holesailClient) {
+      const savedSeedBuffer = savedEntry?.seed ? Buffer.from(savedEntry.seed, 'hex') : null;
+      if (savedSeedBuffer && !sessionState?.holesailServer && !sessionState?.holesailClient) {
         if (!sessionState) {
           sessionState = createSession(key);
           roomSessions.set(key, sessionState);
@@ -1243,8 +1304,7 @@ export async function createHandler() {
           port: boundPort,
           log: 1
         });
-        // Convert hex string seed to Buffer (seed is stored as hex after decryption)
-        holesailServer.seed = Buffer.from(savedEntry.seed, 'hex');
+        holesailServer.seed = savedSeedBuffer;
         await holesailServer.ready();
         const rehostedKey = holesailServer.info?.url || key;
         if (rehostedKey !== key) {
@@ -1253,8 +1313,8 @@ export async function createHandler() {
         sessionState.key = rehostedKey;
         sessionState.holesailServer = holesailServer;
         roomSessions.set(rehostedKey, sessionState);
-        initSessionCrdt(sessionState, sessionState.docState.content);
-        console.log("[p2pmd] join: auto-rehosted existing room", { key: redactKey(rehostedKey), port: boundPort });
+        // Keep Y.Doc with peer edits if it exists
+        initSessionCrdt(sessionState, sessionState.docState.content, null, true);
         const responseHost = getResponseHost(sessionState);
         return buildJsonResponse(200, {
           key: sessionState.key,
