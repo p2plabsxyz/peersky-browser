@@ -247,8 +247,8 @@ class PaginationControl extends HTMLElement {
     const wrapper = document.createElement('div');
 
     // ── Search header
-    const header = document.createElement('div');
-    header.className = 'pagination-header';
+    this.headerEl = document.createElement('div');
+    this.headerEl.className = 'pagination-header';
     const searchInput = document.createElement('input');
     searchInput.type = 'text';
     searchInput.className = 'search-input';
@@ -260,8 +260,8 @@ class PaginationControl extends HTMLElement {
       this.currentPage = 1;
       this.applyFilter();
     });
-    header.appendChild(searchInput);
-    wrapper.appendChild(header);
+    this.headerEl.appendChild(searchInput);
+    wrapper.appendChild(this.headerEl);
 
     // ── Content
     this.contentArea = document.createElement('div');
@@ -316,6 +316,10 @@ class PaginationControl extends HTMLElement {
     }
 
     this.renderControls(totalPages);
+
+    if (this.headerEl) {
+      this.headerEl.style.display = totalPages > 1 ? '' : 'none';
+    }
 
     if (this.onRendered) {
       setTimeout(() => this.onRendered(this.contentArea), 0);
