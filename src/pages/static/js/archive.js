@@ -55,23 +55,25 @@ async function loadArchiveData() {
 
     await customElements.whenDefined('pagination-control');
 
-    // Known names used by built-in P2P apps for their internal draft storage
+    // Known names used by built-in P2P apps for their internal draft and published storage
     const P2P_APP_DRIVE_NAMES = new Set([
       'p2p-editor-drafts',
       'p2pmd-drafts',
+      'p2p-editor',
+      'p2pmd',
     ]);
 
     const allHyper = [...filteredHyper].reverse();
-    const p2pDraftsRaw = allHyper.filter(item => P2P_APP_DRIVE_NAMES.has(item.name));
-    const p2pDrafts = [...new Map(
-      [...p2pDraftsRaw].reverse().map(item => [item.name, item])
+    const p2pDataRaw = allHyper.filter(item => P2P_APP_DRIVE_NAMES.has(item.name));
+    const p2pData = [...new Map(
+      [...p2pDataRaw].reverse().map(item => [item.name, item])
     ).values()];
     const individualDrives = allHyper.filter(item => !P2P_APP_DRIVE_NAMES.has(item.name));
 
-    const p2pDraftsPagination = document.getElementById('p2p-drafts-pagination');
-    if (p2pDraftsPagination) {
-      p2pDraftsPagination.setup({
-        data: p2pDrafts,
+    const p2pDataPagination = document.getElementById('p2p-data-pagination');
+    if (p2pDataPagination) {
+      p2pDataPagination.setup({
+        data: p2pData,
         searchKeys: ['name', 'key'],
         renderWrapper: (itemsHtml) => `<table class="archive-table"><colgroup><col style="width:30%"><col style="width:50%"><col style="width:20%"></colgroup><thead><tr><th>Name</th><th>Key</th><th>Action</th></tr></thead><tbody>${itemsHtml}</tbody></table>`,
         renderItem: (item) => {

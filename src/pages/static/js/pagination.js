@@ -318,7 +318,7 @@ class PaginationControl extends HTMLElement {
     this.renderControls(totalPages);
 
     if (this.headerEl) {
-      this.headerEl.style.display = totalPages > 1 ? '' : 'none';
+      this.headerEl.style.display = this.data.length > this.itemsPerPage ? '' : 'none';
     }
 
     if (this.onRendered) {
