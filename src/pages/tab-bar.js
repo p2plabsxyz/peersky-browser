@@ -17,6 +17,8 @@ class TabBar extends HTMLElement {
       'var(--peersky-nav-button-hover)',
       'var(--peersky-nav-button-inactive)',
     ];
+    this.memorySaverEnabled = false;
+    this.memorySaverExclusions = [];
     this.draggedTabId = null;
     const params = new URLSearchParams(window.location.search);
     this.windowId = params.get('windowId') || 'main';
@@ -33,6 +35,164 @@ class TabBar extends HTMLElement {
     
     // Force activation of the initial tab's webview after a delay
     setTimeout(() => this.forceActivateCurrentTab(), 300);
+
+    // Initialize memory saver
+    this.initMemorySaver();
+  }
+
+  disconnectedCallback() {
+    // Cleanup Memory Saver listeners and intervals
+    if (this._memorySaverInterval) {
+      clearInterval(this._memorySaverInterval);
+      this._memorySaverInterval = null;
+    }
+    if (this._memorySaverListener) {
+      const { ipcRenderer } = require('electron');
+      ipcRenderer.removeListener('memory-saver-changed', this._memorySaverListener);
+      this._memorySaverListener = null;
+    }
+  }
+
+  async initMemorySaver() {
+    try {
+      const { ipcRenderer } = require('electron');
+      
+      // Load initial settings
+      this.memorySaverEnabled = await ipcRenderer.invoke('settings-get', 'memorySaverEnabled');
+      this.memorySaverExclusions = await ipcRenderer.invoke('settings-get', 'memorySaverExclusions');
+      
+      // Listen for changes
+      this._memorySaverListener = (_, data) => {
+        this.memorySaverEnabled = data.enabled;
+        this.memorySaverExclusions = data.exclusions || [];
+      };
+      ipcRenderer.on('memory-saver-changed', this._memorySaverListener);
+      
+      // Start background check loop (every 1 minute)
+      this._memorySaverInterval = setInterval(() => this.checkMemorySaver(), 60000);
+    } catch (error) {
+      console.warn('Failed to initialize memory saver in TabBar:', error);
+    }
+  }
+
+  isUrlExcluded(url) {
+    if (!url || !this.memorySaverExclusions || !this.memorySaverExclusions.length) return false;
+    try {
+      const parsedUrl = new URL(url);
+      
+      for (const pattern of this.memorySaverExclusions) {
+        if (!pattern) continue;
+        
+        if (pattern.includes('*')) {
+          try {
+            const escapedPattern = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+            const regexPattern = escapedPattern.replace(/\*/g, '.*');
+            const regex = new RegExp(`^${regexPattern}$`, 'i');
+            if (regex.test(url) || regex.test(parsedUrl.host + parsedUrl.pathname)) {
+              return true;
+            }
+          } catch (err) {
+            console.warn(`[Memory Saver] Invalid pattern: ${pattern}`, err);
+          }
+        } else {
+          if (parsedUrl.host === pattern || parsedUrl.host.endsWith('.' + pattern) || url.startsWith(pattern)) {
+            return true;
+          }
+        }
+      }
+    } catch (e) {
+      return this.memorySaverExclusions.some(pattern => url.includes(pattern.replace(/\*/g, '')));
+    }
+    return false;
+  }
+
+  checkMemorySaver() {
+    if (!this.memorySaverEnabled) return;
+
+    // 30 minutes in ms
+    const IDLE_THRESHOLD =  30 * 60 * 1000;
+    const now = Date.now();
+
+    for (const tab of this.tabs) {
+      // Skip active tab
+      if (tab.id === this.activeTabId) continue;
+      
+      // Skip correctly already suspended ones
+      if (tab.isSuspended) continue;
+      
+      // Skip pinned tabs 
+      if (this.pinnedTabs.has(tab.id)) continue;
+      
+      // Check idle time
+      const idleTime = now - (tab.lastActiveTime || now);
+      if (idleTime > IDLE_THRESHOLD) {
+        
+        // Check exclusion list
+        if (this.isUrlExcluded(tab.url)) continue;
+        
+        // Check if audible (playing audio/video media)
+        const webview = this.webviews.get(tab.id);
+        if (webview) {
+          try {
+            const { ipcRenderer } = require("electron");
+            const webContentsId = typeof webview.getWebContentsId === 'function'
+              ? webview.getWebContentsId()
+              : null;
+            if (webContentsId != null) {
+              const isAudible = ipcRenderer.sendSync('is-webcontents-audible', webContentsId);
+              if (isAudible) continue;
+            }
+          } catch (e) {
+            console.warn("Failed to determine audibility for tab", e);
+          }
+        }
+        
+        this.suspendTab(tab.id);
+      }
+    }
+  }
+
+  async suspendTab(tabId) {
+    const tab = this.tabs.find(t => t.id === tabId);
+    const webview = this.webviews.get(tabId);
+    if (!tab || !webview) return;
+    
+    // Save history
+    try {
+      const { ipcRenderer } = require("electron");
+      const webContentsId = webview.getWebContentsId();
+      
+      const timeoutMs = 2000;
+      const navigationPromise = ipcRenderer.invoke('get-tab-navigation', webContentsId);
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('get-tab-navigation timed out')), timeoutMs);
+      });
+      tab.savedNavigation = await Promise.race([navigationPromise, timeoutPromise]);
+    } catch (e) {
+      console.warn("Failed to save nav history for sleeping tab", e);
+    }
+    
+    // Destroy webview
+    webview.remove();
+    this.webviews.delete(tabId);
+    
+    // Unregister extension cleanly
+    try {
+      const { ipcRenderer } = require("electron");
+      ipcRenderer.invoke('extensions-unregister-webview', webview.getWebContentsId()).catch(() => {});
+    } catch (e) {}
+    
+    // Mark as suspended
+    tab.isSuspended = true;
+    
+    // Update UI (add sleeping styling)
+    const tabElement = document.getElementById(tabId);
+    if (tabElement) {
+      // Add sleeping UI state
+      tabElement.classList.add('sleeping');
+    }
+    
+    console.log(`Memory Saver: Suspended inactive tab ${tabId} (${tab.url})`);
   }
 
   forceActivateCurrentTab() {
@@ -425,7 +585,14 @@ restoreTabs(persistedData) {
       });
     });
     const protocol = this._getProtocol(url);
-    this.tabs.push({id: tabId, url, title, protocol});
+    this.tabs.push({
+      id: tabId, 
+      url, 
+      title, 
+      protocol,
+      lastActiveTime: Date.now(),
+      isSuspended: false
+    });
     
     // Create webview for this tab if container exists
     if (this.webviewContainer) {
@@ -476,27 +643,6 @@ restoreTabs(persistedData) {
         
         // Get webview to check memory usage (if available)
         const webview = this.webviews.get(tabId);
-        let memoryInfo = 'Memory usage: Loading...';
-        
-        // Try to get memory usage (this is an approximation)
-        if (webview) {
-          try {
-            const processId = webview.getWebContentsId();
-            const { ipcRenderer } = require('electron');
-            const memoryUsage = await ipcRenderer.invoke('get-tab-memory-usage', processId);
-            
-            if (memoryUsage && memoryUsage.workingSetSize) {
-              // Convert bytes to MB
-              const memoryMB = Math.round(memoryUsage.workingSetSize / 1024 / 1024);
-              memoryInfo = `Memory usage: ${memoryMB} MB`;
-            } else {
-              memoryInfo = 'Memory usage: N/A';
-            }
-          } catch (e) {
-            console.error("Failed to get memory usage:", e);
-            memoryInfo = 'Memory usage: N/A';
-          }
-        }
         
         // Helper function to escape HTML
         function escapeHtml(text) {
@@ -509,7 +655,7 @@ restoreTabs(persistedData) {
           <div class="hover-card-title">${escapeHtml(tab.title)}</div>
           <div class="hover-card-url">${escapeHtml(tab.url)}</div>
           <div class="hover-card-separator"></div>
-          <div class="hover-card-memory">${escapeHtml(memoryInfo)}</div>
+          <div class="hover-card-memory" id="hover-memory-${tabId}">Memory usage: Loading...</div>
         `;
         
         // Position the card
@@ -528,7 +674,36 @@ restoreTabs(persistedData) {
         if (cardRect.bottom > window.innerHeight) {
           hoverCard.style.top = `${tabRect.top - cardRect.height - 8}px`;
         }
+        
+        // Async memory lookup
+        if (webview) {
+          try {
+            const processId = webview.getWebContentsId();
+            const { ipcRenderer } = require('electron');
+            ipcRenderer.invoke('get-tab-memory-usage', processId).then(memoryUsage => {
+              const memDiv = document.getElementById(`hover-memory-${tabId}`);
+              if (!memDiv) return;
+              if (memoryUsage && memoryUsage.workingSetSize) {
+                const memoryMB = Math.round(memoryUsage.workingSetSize / 1024 / 1024);
+                memDiv.textContent = `Memory usage: ${memoryMB} MB`;
+              } else {
+                memDiv.textContent = 'Memory usage: N/A';
+              }
+            }).catch(() => {
+              const memDiv = document.getElementById(`hover-memory-${tabId}`);
+              if (memDiv) memDiv.textContent = 'Memory usage: N/A';
+            });
+          } catch (e) {
+            const memDiv = document.getElementById(`hover-memory-${tabId}`);
+            if (memDiv) memDiv.textContent = 'Memory usage: N/A';
+          }
+        } else {
+          // Tab is sleeping — no webview
+          const memDiv = document.getElementById(`hover-memory-${tabId}`);
+          if (memDiv) memDiv.textContent = tab.isSuspended ? 'Tab is sleeping' : 'Memory usage: N/A';
+        }
       }, 800); // Show after 800ms hover
+
     };
     
     const hideHoverCard = () => {
@@ -641,6 +816,10 @@ restoreTabs(persistedData) {
   // Set up all event handlers for a webview
   setupWebviewEvents(webview, tabId) {
     webview.addEventListener("did-start-loading", () => {
+      // Update last active time on interaction/loading
+      const tab = this.tabs.find(t => t.id === tabId);
+      if (tab) tab.lastActiveTime = Date.now();
+      
       const tabElement = document.getElementById(tabId);
       if (tabElement) {
         tabElement.classList.add("loading");
@@ -875,6 +1054,51 @@ restoreTabs(persistedData) {
         console.warn('[TabBar] Error closing extension popups:', error);
       }
       
+      // WAKE UP TAB IF SLEEPING
+      const tab = this.tabs.find(t => t.id === tabId);
+      if (tab) {
+        if (tab.isSuspended) {
+          // Recreate webview
+          const newWebview = this.createWebviewForTab(tabId, tab.url);
+          
+          // Restore history
+          if (tab.savedNavigation && tab.savedNavigation.entries?.length) {
+            const { entries, activeIndex } = tab.savedNavigation;
+            setTimeout(() => {
+              try {
+                const { ipcRenderer } = require("electron");
+                const wcId = newWebview.getWebContentsId();
+                ipcRenderer.invoke('restore-navigation-history', { webContentsId: wcId, entries, activeIndex })
+                  .catch(err => console.warn("Failed to restore sleeping tab nav history:", err));
+              } catch(e) {}
+            }, 150);
+          }
+          
+          tab.isSuspended = false;
+          
+          if (newActive) {
+            newActive.classList.remove('sleeping');
+            newActive.style.opacity = '';
+            const sleepIndicator = newActive.querySelector('.sleeping-indicator');
+            if (sleepIndicator) sleepIndicator.remove();
+          }
+          console.log(`Memory Saver: Woke up tab ${tabId} (${tab.url})`);
+        }
+        
+        tab.lastActiveTime = Date.now();
+      }
+      
+      const now = Date.now();
+      for (const [id, webviewEl] of this.webviews.entries()) {
+        if (id !== tabId && webviewEl && webviewEl.style.display === "flex") {
+          const oldTab = this.tabs.find(t => t.id === id);
+          if (oldTab) {
+            oldTab.lastActiveTime = now;
+          }
+          break;
+        }
+      }
+      
       // Show ONLY the newly active webview
       const newWebview = this.webviews.get(tabId);
       if (newWebview) {
@@ -892,11 +1116,11 @@ restoreTabs(persistedData) {
       }
       
       // Find the URL for this tab
-      const tab = this.tabs.find(t => t.id === tabId);
-      if (tab) {
+      const selectedTab = this.tabs.find(t => t.id === tabId);
+      if (selectedTab) {
         // Dispatch event that tab was selected with the URL
         this.dispatchEvent(new CustomEvent("tab-selected", { 
-          detail: { tabId, url: tab.url } 
+          detail: { tabId, url: selectedTab.url } 
         }));
       }
     }

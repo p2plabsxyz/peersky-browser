@@ -415,8 +415,18 @@ ipcMain.handle('get-tab-memory-usage', async (event, webContentsId) => {
     return null;
   }
   catch (error) {
-    console.error(`Error getting memory usage for webContents ID ${webContentsId}:`, error);
     return null;
+  }
+});
+
+// IPC handler to check if a specific webContents is currently playing audio
+ipcMain.on('is-webcontents-audible', (event, webContentsId) => {
+  try {
+    const wc = webContents.fromId(webContentsId);
+    event.returnValue = wc ? wc.isCurrentlyAudible() : false;
+  } catch (error) {
+    console.error(`Error checking audibility for webContents ID ${webContentsId}:`, error);
+    event.returnValue = false;
   }
 });
 
