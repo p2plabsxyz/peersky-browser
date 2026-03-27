@@ -563,6 +563,9 @@ restoreTabs(persistedData) {
     setTimeout(() => {
       const urlInput = document.getElementById('url');
       if (urlInput) {
+        if (url === "peersky://home") {
+          urlInput.value = "";
+        }
         urlInput.focus();
         urlInput.select();
       }
