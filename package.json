@@ -184,7 +184,8 @@
     "scoped-fs": "^1.4.1",
     "unzipper": "^0.10.14",
     "web3protocol": "^0.6.3",
-    "webtorrent": "^2.8.5"
+    "webtorrent": "^2.8.5",
+    "yjs": "^13.6.27"
   },
   "devDependencies": {
     "chrome-extension-fetch": "^1.0.0",
