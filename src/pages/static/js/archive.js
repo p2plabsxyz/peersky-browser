@@ -19,19 +19,94 @@ async function loadArchiveData() {
       return item.timestamp >= cutoff;
     });
     
-    // Render Hyper
-    const hyperList = document.getElementById('hyper-archive-list');
-    if (hyperList) {
-      if (filteredHyper.length > 0) {
-        let html = '<table class="archive-table"><colgroup><col style="width:25%"><col style="width:30%"><col style="width:25%"><col style="width:20%"></colgroup><thead><tr><th>Name</th><th>Key</th><th>Time</th><th>Action</th></tr></thead><tbody>';
-        [...filteredHyper].reverse().forEach(item => {
+    const attachCopyListeners = (container) => {
+      container.querySelectorAll('.copy-btn').forEach(btn => {
+        if (btn.dataset.listenerAttached) return;
+        btn.dataset.listenerAttached = 'true';
+        btn.addEventListener('click', async () => {
+          const text = btn.dataset.copy;
+          let success = false;
+          try {
+            await navigator.clipboard.writeText(text);
+            success = true;
+          } catch {
+            try {
+              const temp = document.createElement('textarea');
+              temp.value = text;
+              temp.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
+              document.body.appendChild(temp);
+              temp.focus();
+              temp.select();
+              success = document.execCommand('copy');
+              document.body.removeChild(temp);
+            } catch {
+              success = false;
+            }
+          }
+          const originalHTML = btn.innerHTML;
+          const w = btn.offsetWidth;
+          btn.style.width = w + 'px';
+          btn.textContent = success ? 'Copied!' : 'Failed';
+          setTimeout(() => { btn.innerHTML = originalHTML; btn.style.width = ''; }, 2000);
+        });
+      });
+    };
+
+
+    await customElements.whenDefined('pagination-control');
+
+    // Known names used by built-in P2P apps for their internal draft and published storage
+    const P2P_APP_DRIVE_NAMES = new Set([
+      'p2p-editor-drafts',
+      'p2pmd-drafts',
+      'p2p-editor',
+      'p2pmd',
+    ]);
+
+    const allHyper = [...filteredHyper].reverse();
+    const p2pDataRaw = allHyper.filter(item => P2P_APP_DRIVE_NAMES.has(item.name));
+    const p2pData = [...new Map(
+      [...p2pDataRaw].reverse().map(item => [item.name, item])
+    ).values()];
+    const individualDrives = allHyper.filter(item => !P2P_APP_DRIVE_NAMES.has(item.name));
+
+    const p2pDataPagination = document.getElementById('p2p-data-pagination');
+    if (p2pDataPagination) {
+      p2pDataPagination.setup({
+        data: p2pData,
+        searchKeys: ['name', 'key'],
+        renderWrapper: (itemsHtml) => `<table class="archive-table"><colgroup><col style="width:30%"><col style="width:50%"><col style="width:20%"></colgroup><thead><tr><th>Name</th><th>Key</th><th>Action</th></tr></thead><tbody>${itemsHtml}</tbody></table>`,
+        renderItem: (item) => {
+          const safeName = escapeHtml(item.name || 'Unknown');
+          const safeKey = escapeHtml(item.key);
+          return `<tr>
+            <td>${safeName}</td>
+            <td class="archive-hash">${safeKey.substring(0, 20)}...</td>
+            <td>
+              <button class="archive-action-btn copy-btn" data-copy="${safeKey}" title="Copy Key">${COPY_ICON}</button>
+              <a href="hyper://${safeKey}/" target="_blank" rel="noopener noreferrer" class="archive-action-btn" title="Open">${OPEN_ICON}</a>
+            </td>
+          </tr>`;
+        },
+        emptyMessage: '<p class="archive-empty">No P2P app drives found.</p>',
+        onRendered: attachCopyListeners
+      });
+    }
+
+    const hyperPagination = document.getElementById('hyper-pagination');
+    if (hyperPagination) {
+      hyperPagination.setup({
+        data: individualDrives,
+        searchKeys: ['name', 'key'],
+        renderWrapper: (itemsHtml) => `<table class="archive-table"><colgroup><col style="width:25%"><col style="width:30%"><col style="width:25%"><col style="width:20%"></colgroup><thead><tr><th>Name</th><th>Key</th><th>Time</th><th>Action</th></tr></thead><tbody>${itemsHtml}</tbody></table>`,
+        renderItem: (item) => {
           const date = new Date(item.timestamp);
           const time = date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' }) + ', ' + 
                        date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
           const safeName = escapeHtml(item.name || 'Unknown');
           const safeKey = escapeHtml(item.key);
           const safeTime = escapeHtml(time);
-          html += `<tr>
+          return `<tr>
             <td>${safeName}</td>
             <td class="archive-hash">${safeKey.substring(0, 16)}...</td>
             <td>${safeTime}</td>
@@ -40,20 +115,21 @@ async function loadArchiveData() {
               <a href="hyper://${safeKey}/" target="_blank" rel="noopener noreferrer" class="archive-action-btn" title="Open">${OPEN_ICON}</a>
             </td>
           </tr>`;
-        });
-        html += '</tbody></table>';
-        hyperList.innerHTML = html;
-      } else {
-        hyperList.innerHTML = '<p class="archive-empty">No Hyperdrives found.</p>';
-      }
+        },
+        emptyMessage: '<p class="archive-empty">No individual files found.</p>',
+        onRendered: attachCopyListeners
+      });
     }
+
     
     // Render IPFS
-    const ipfsList = document.getElementById('ipfs-archive-list');
-    if (ipfsList) {
-      if (filteredIpfs.length > 0) {
-        let html = '<table class="archive-table"><colgroup><col style="width:30%"><col style="width:25%"><col style="width:25%"><col style="width:20%"></colgroup><thead><tr><th>Name</th><th>CID</th><th>Time</th><th>Action</th></tr></thead><tbody>';
-        [...filteredIpfs].reverse().forEach(item => {
+    const ipfsPagination = document.getElementById('ipfs-pagination');
+    if (ipfsPagination) {
+      ipfsPagination.setup({
+        data: [...filteredIpfs].reverse(),
+        searchKeys: ['name', 'cid'],
+        renderWrapper: (itemsHtml) => `<table class="archive-table"><colgroup><col style="width:30%"><col style="width:25%"><col style="width:25%"><col style="width:20%"></colgroup><thead><tr><th>Name</th><th>CID</th><th>Time</th><th>Action</th></tr></thead><tbody>${itemsHtml}</tbody></table>`,
+        renderItem: (item) => {
           const date = new Date(item.timestamp);
           const time = date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' }) + ', ' + 
                        date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
@@ -61,7 +137,7 @@ async function loadArchiveData() {
           const safeCid = escapeHtml(item.cid);
           const safeUrl = escapeHtml(item.url);
           const safeTime = escapeHtml(time);
-          html += `<tr>
+          return `<tr>
             <td>${safeName}</td>
             <td class="archive-hash">${safeCid.substring(0, 16)}...</td>
             <td>${safeTime}</td>
@@ -70,27 +146,27 @@ async function loadArchiveData() {
               <a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="archive-action-btn" title="Open">${OPEN_ICON}</a>
             </td>
           </tr>`;
-        });
-        html += '</tbody></table>';
-        ipfsList.innerHTML = html;
-      } else {
-        ipfsList.innerHTML = '<p class="archive-empty">No IPFS uploads found.</p>';
-      }
+        },
+        emptyMessage: '<p class="archive-empty">No IPFS uploads found.</p>',
+        onRendered: attachCopyListeners
+      });
     }
     
     // Render ENS
-    const ensList = document.getElementById('ens-archive-list');
-    if (ensList) {
-      if (filteredEns.length > 0) {
-        let html = '<table class="archive-table"><colgroup><col style="width:35%"><col style="width:40%"><col style="width:25%"></colgroup><thead><tr><th>Name</th><th>Content Hash</th><th>Action</th></tr></thead><tbody>';
-        filteredEns.forEach(item => {
+    const ensPagination = document.getElementById('ens-pagination');
+    if (ensPagination) {
+      ensPagination.setup({
+        data: filteredEns,
+        searchKeys: ['name', 'hash'],
+        renderWrapper: (itemsHtml) => `<table class="archive-table"><colgroup><col style="width:35%"><col style="width:40%"><col style="width:25%"></colgroup><thead><tr><th>Name</th><th>Content Hash</th><th>Action</th></tr></thead><tbody>${itemsHtml}</tbody></table>`,
+        renderItem: (item) => {
           const rawHash = item.hash || '';
           const safeName = escapeHtml(item.name);
           const safeHash = escapeHtml(rawHash);
           const openLinkHtml = isSupportedEnsOpenTarget(rawHash)
             ? `<a href="${safeHash}" target="_blank" rel="noopener noreferrer" class="archive-action-btn" title="Open">${OPEN_ICON}</a>`
             : '';
-          html += `<tr>
+          return `<tr>
             <td>${safeName}</td>
             <td class="archive-hash">${safeHash.substring(0, 20)}...</td>
             <td>
@@ -98,52 +174,24 @@ async function loadArchiveData() {
               ${openLinkHtml}
             </td>
           </tr>`;
-        });
-        html += '</tbody></table>';
-        ensList.innerHTML = html;
-      } else {
-        ensList.innerHTML = '<p class="archive-empty">No ENS records cached.</p>';
-      }
+        },
+        emptyMessage: '<p class="archive-empty">No ENS records cached.</p>',
+        onRendered: attachCopyListeners
+      });
     }
     
-    // Add copy functionality
-    document.querySelectorAll('.copy-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const text = btn.dataset.copy;
-        try {
-          if (navigator.clipboard && navigator.clipboard.writeText) {
-            await navigator.clipboard.writeText(text);
-          } else {
-            const temp = document.createElement('textarea');
-            temp.value = text;
-            document.body.appendChild(temp);
-            temp.select();
-            document.execCommand('copy');
-            document.body.removeChild(temp);
-          }
-          const originalHTML = btn.innerHTML;
-          const w = btn.offsetWidth;
-          btn.style.width = w + 'px';
-          btn.textContent = 'Copied!';
-          setTimeout(() => { btn.innerHTML = originalHTML; btn.style.width = ''; }, 2000);
-        } catch (err) {
-          console.error('Failed to copy to clipboard:', err);
-          const originalHTML = btn.innerHTML;
-          const w = btn.offsetWidth;
-          btn.style.width = w + 'px';
-          btn.textContent = 'Failed';
-          setTimeout(() => { btn.innerHTML = originalHTML; btn.style.width = ''; }, 2000);
-        }
-      });
-    });
   } catch (err) {
     console.error('Failed to load archive data:', err);
-    const hyperList = document.getElementById('hyper-archive-list');
-    if (hyperList) hyperList.innerHTML = `<p class="archive-empty error">Error: ${escapeHtml(err.message)}</p>`;
-    const ipfsList = document.getElementById('ipfs-archive-list');
-    if (ipfsList) ipfsList.innerHTML = `<p class="archive-empty error">Error: ${escapeHtml(err.message)}</p>`;
-    const ensList = document.getElementById('ens-archive-list');
-    if (ensList) ensList.innerHTML = `<p class="archive-empty error">Error: ${escapeHtml(err.message)}</p>`;
+    ['hyper', 'ipfs', 'ens'].forEach(prefix => {
+      const el = document.getElementById(`${prefix}-pagination`);
+      if (el) {
+        if (typeof el.setup === 'function') {
+          el.setup({ emptyMessage: `<p class="archive-empty error">Error: ${escapeHtml(err.message)}</p>` });
+        } else {
+          el.innerHTML = `<p class="archive-empty error">Error: ${escapeHtml(err.message)}</p>`;
+        }
+      }
+    });
   }
 }
 

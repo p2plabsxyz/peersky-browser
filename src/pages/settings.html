@@ -345,24 +345,23 @@
         <p class="archive-note">This page is for discoverability of your published P2P data. Archive only clears your history of Hyperdrives/IPFS uploads/ENS lookups. To clear the underlying P2P data (IPFS blocks, Hyperdrive storage, etc.), go to <a href="peersky://settings/search" class="archive-note-link">peersky://settings/search</a> and use Reset P2P Data.</p>
 
         <div class="archive-subsection">
+          <span class="archive-subsection-label">P2P Apps Data</span>
+          <pagination-control id="p2p-data-pagination" search-placeholder="Search by name or key..."></pagination-control>
+        </div>
+
+        <div class="archive-subsection">
           <span class="archive-subsection-label">Hyperdrives</span>
-          <div id="hyper-archive-list">
-            <p class="archive-empty">Loading...</p>
-          </div>
+          <pagination-control id="hyper-pagination" search-placeholder="Search by name or key..."></pagination-control>
         </div>
 
         <div class="archive-subsection">
           <span class="archive-subsection-label">IPFS Uploads</span>
-          <div id="ipfs-archive-list">
-            <p class="archive-empty">Loading...</p>
-          </div>
+          <pagination-control id="ipfs-pagination" search-placeholder="Search by name or CID..."></pagination-control>
         </div>
 
         <div class="archive-subsection">
           <span class="archive-subsection-label">ENS Cache</span>
-          <div id="ens-archive-list">
-            <p class="archive-empty">Loading...</p>
-          </div>
+          <pagination-control id="ens-pagination" search-placeholder="Search by name or hash..."></pagination-control>
         </div>
       </div>
     </main>
@@ -370,6 +369,7 @@
 </div>
 
 <script src="peersky://static/js/tabs.js" type="module"></script>
+<script src="peersky://static/js/pagination.js" type="module"></script>
 <script src="peersky://static/js/archive.js" defer></script>
 <script src="peersky://static/js/settings.js" defer></script>
 </body>
