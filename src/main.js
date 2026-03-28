@@ -98,11 +98,11 @@ app.whenReady().then(async () => {
 
   // Set the WindowManager instance in context-menu.js
   setWindowManager(windowManager);
-  
+
   // Get consistent session for protocols and extensions
   const userSession = getBrowserSession();
   await setupProtocols(userSession);
-  installWebviewFileRedirect(userSession);
+  installExtensionWebRequestBridge(userSession);
   setupBittorrentIpc();
 
   // Global webview partition alignment and security hardening
@@ -281,9 +281,146 @@ async function setupProtocols(session) {
   sessionProtocol.handle("magnet", bittorrentProtocolHandler);
 }
 
-function installWebviewFileRedirect(session) {
-  session.webRequest.onBeforeRequest({ urls: ["file://*/*"] }, (_details, callback) => {
-    callback({});
+function installExtensionWebRequestBridge(session) {
+  const shouldForwardToExtensions = (rawUrl) => {
+    const url = typeof rawUrl === "string" ? rawUrl : "";
+    if (!url) return false;
+    if (url.startsWith("file://")) return false;
+    if (url.startsWith("chrome-extension://")) return false;
+    try {
+      const proto = new URL(url).protocol;
+      return proto === "http:" || proto === "https:" || proto === "ws:" || proto === "wss:" || proto === "ftp:";
+    } catch (_) {
+      return false;
+    }
+  };
+
+  session.webRequest.onBeforeRequest({ urls: ["<all_urls>"] }, async (details, callback) => {
+    const url = details?.url || "";
+    if (!shouldForwardToExtensions(url)) {
+      callback({});
+      return;
+    }
+    let result = {};
+    try {
+      result =
+        (await extensionManager.electronChromeExtensions?.notifyWebRequestOnBeforeRequest(
+          details,
+        )) ?? {};
+    } catch (e) {
+      console.warn("[webRequest] onBeforeRequest extension dispatch failed:", e?.message);
+    }
+    callback(result);
+  });
+
+  session.webRequest.onBeforeSendHeaders(
+    { urls: ["<all_urls>"] },
+    async (details, callback) => {
+      const url = details?.url || "";
+      if (!shouldForwardToExtensions(url)) {
+        callback({});
+        return;
+      }
+
+      let result = {};
+      try {
+        result =
+          (await extensionManager.electronChromeExtensions?.notifyWebRequestOnBeforeSendHeaders(
+            details,
+          )) ?? {};
+      } catch (e) {
+        console.warn(
+          "[webRequest] onBeforeSendHeaders extension dispatch failed:",
+          e?.message,
+        );
+      }
+
+      callback(result);
+    },
+  );
+
+  session.webRequest.onSendHeaders({ urls: ["<all_urls>"] }, async (details) => {
+    const url = details?.url || "";
+    if (!shouldForwardToExtensions(url)) {
+      return;
+    }
+    try {
+      await extensionManager.electronChromeExtensions?.notifyWebRequestOnSendHeaders(details);
+    } catch (e) {
+      console.warn("[webRequest] onSendHeaders extension dispatch failed:", e?.message);
+    }
+  });
+
+  session.webRequest.onHeadersReceived(
+    { urls: ["<all_urls>"] },
+    async (details, callback) => {
+      const url = details?.url || "";
+      if (!shouldForwardToExtensions(url)) {
+        callback({});
+        return;
+      }
+
+      let result = {};
+      try {
+        result =
+          (await extensionManager.electronChromeExtensions?.notifyWebRequestOnHeadersReceived(
+            details,
+          )) ?? {};
+      } catch (e) {
+        console.warn(
+          "[webRequest] onHeadersReceived extension dispatch failed:",
+          e?.message,
+        );
+      }
+
+      callback(result);
+    },
+  );
+
+  session.webRequest.onResponseStarted({ urls: ["<all_urls>"] }, async (details) => {
+    const url = details?.url || "";
+    if (!shouldForwardToExtensions(url)) {
+      return;
+    }
+    try {
+      await extensionManager.electronChromeExtensions?.notifyWebRequestOnResponseStarted(
+        details,
+      );
+    } catch (e) {
+      console.warn(
+        "[webRequest] onResponseStarted extension dispatch failed:",
+        e?.message,
+      );
+    }
+  });
+
+  session.webRequest.onCompleted({ urls: ["<all_urls>"] }, async (details) => {
+    const url = details?.url || "";
+    if (!shouldForwardToExtensions(url)) {
+      return;
+    }
+    try {
+      await extensionManager.electronChromeExtensions?.notifyWebRequestOnCompleted(details);
+    } catch (e) {
+      console.warn("[webRequest] onCompleted extension dispatch failed:", e?.message);
+    }
+  });
+
+  session.webRequest.onErrorOccurred({ urls: ["<all_urls>"] }, async (details) => {
+    const url = details?.url || "";
+    if (!shouldForwardToExtensions(url)) {
+      return;
+    }
+    try {
+      await extensionManager.electronChromeExtensions?.notifyWebRequestOnErrorOccurred(
+        details,
+      );
+    } catch (e) {
+      console.warn(
+        "[webRequest] onErrorOccurred extension dispatch failed:",
+        e?.message,
+      );
+    }
   });
 }
 
