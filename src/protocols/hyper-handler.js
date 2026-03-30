@@ -1,7 +1,13 @@
 import { Readable } from "stream";
+import path from "path";
+import { app, safeStorage } from "electron";
 import { create as createSDK } from "hyper-sdk";
 import makeHyperFetch from "hypercore-fetch";
-import { initChat, handleChatRequest as handleChatRequestP2P } from "../pages/p2p/chat/p2p.js";
+import {
+  initChat,
+  handleChatRequest as handleChatRequestP2P,
+  CHAT_STORAGE,
+} from "../pages/p2p/peerchat/p2p.js";
 import { hyperCache, saveHyperCache } from "./config.js";
 
 // Single SDK and swarm for the app lifecycle (hyper:// browsing + chat share the same swarm).
@@ -91,7 +97,10 @@ async function initializeHyperSDK(options) {
   sdk = await createSDK(options);
   fetch = makeHyperFetch({ sdk, writable: true });
 
-  initChat(sdk);
+  initChat(sdk, {
+    safeStorage,
+    storagePath: path.join(app.getPath("userData"), CHAT_STORAGE),
+  });
 
   console.log("Hyper SDK initialized.");
   return fetch;

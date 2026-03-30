@@ -1,6 +1,6 @@
 const builtInP2PApps = [
   { id: "ai-chat", name: "AI Chat", icon: "robot.svg", url: "peersky://p2p/ai-chat/" },
-  { id: "chat", name: "Chat", icon: "chat.svg", url: "peersky://p2p/chat/" },
+  { id: "chat", name: "Chat", icon: "chat.svg", url: "peersky://p2p/peerchat/" },
   { id: "editor", name: "Editor", icon: "file-code.svg", url: "peersky://p2p/editor/" },
   { id: "p2pmd", name: "P2P Markdown", icon: "markdown.svg", url: "peersky://p2p/p2pmd/" },
   { id: "reader", name: "Social Reader", icon: "people.svg", url: "https://reader.distributed.press/" },

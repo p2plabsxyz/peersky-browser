@@ -73,7 +73,7 @@
 
 - [x] P2P Applications:
 
-  - [x] `peersky://p2p/chat/`
+  - [x] `peersky://p2p/peerchat/`
     - Peer-to-peer messaging over Hyper
   - [x] `peersky://p2p/upload/`
     - Decentralized file storage
