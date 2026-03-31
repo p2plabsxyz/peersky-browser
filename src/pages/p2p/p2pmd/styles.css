@@ -102,6 +102,11 @@ main {
   margin-bottom: 2rem;
 }
 
+#setup-page #display-name {
+  width: min(420px, 100%);
+  margin-left: 0;
+}
+
 .connection-options {
   display: flex;
   flex-wrap: wrap;
@@ -201,6 +206,33 @@ main {
   justify-content: space-between;
 }
 
+#room-status .role-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 4px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--browser-theme-primary-highlight);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+#room-status .role-badge.host {
+  color: #ffffff !important;
+  border-color: #1f9d62;
+  background: #1f9d62;
+  font-weight: 700;
+}
+
+#room-status .role-badge.client {
+  color: #ffffff !important;
+  border-color: #c28a1b;
+  background: #c28a1b;
+  font-weight: 700;
+}
+
 #room-status.hidden {
   display: none;
 }
@@ -243,6 +275,15 @@ main {
 #peers-toggle {
   cursor: pointer;
   white-space: nowrap;
+}
+
+#peers-link {
+  color: inherit;
+  text-decoration: underline;
+}
+
+#peers-link:hover {
+  text-decoration: none;
 }
 
 #peers-list {
