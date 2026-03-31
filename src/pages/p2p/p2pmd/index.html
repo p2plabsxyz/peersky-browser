@@ -17,6 +17,12 @@
       <section id="setup-page" class="page">
         <div id="room-panel">
           <div id="setup">
+            <input
+              id="display-name"
+              type="text"
+              placeholder="Your name (optional)"
+              maxlength="32"
+            />
             <button id="create-room" type="button">Create Room</button>
             <div class="connection-options"> 
               <label class="option">
@@ -56,8 +62,18 @@
       <section id="editor-page" class="page hidden">
         <section id="room-panel">
           <div id="room-status" class="hidden">
-            <div>Room: <span id="room-key"></span> <span id="copy-room-key" title="Copy room key">⊕</span></div>
-            <div>Peers: <span id="peers-count">0</span></div>
+            <div>
+              Room:
+              <span id="room-key"></span>
+              <span id="room-role-badge" class="role-badge hidden">client</span>
+              <span id="copy-room-key" title="Copy room key">⊕</span>
+            </div>
+            <div>
+              Peers:
+              <a id="peers-link" href="./peers.html" target="_blank" rel="noopener noreferrer">
+                <span id="peers-count">0</span>
+              </a>
+            </div>
             <div>Local URL: <a id="local-url" target="_blank" rel="noopener noreferrer"></a></div>
             <details id="export-menu">
               <summary>Export</summary>
