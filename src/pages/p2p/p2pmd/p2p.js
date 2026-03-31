@@ -7,6 +7,7 @@
   createRoomButton,
   joinForm,
   joinRoomKey,
+  displayNameInput,
   privateMode,
   udpMode,
   localHostInput,
@@ -15,8 +16,10 @@
   editorPage,
   roomStatus,
   roomKeyLabel,
+  roomRoleBadge,
   copyRoomKey,
   peersCount,
+  peersLink,
   localUrlLabel,
   exportMenu,
   exportHtmlButton,
@@ -65,13 +68,27 @@ const Y_ORIGIN_REMOTE = "remote-sse";
 
 const ROOM_STATE_PREFIX = "p2pmd-room-";
 const ROOM_CONTENT_PREFIX = "p2pmd-room-content-";
+const PEER_STATUS_PREFIX = "p2pmd-peer-status-";
+const PEER_ACTIVITY_PREFIX = "p2pmd-peer-activity-";
+const ACTIVE_ROOM_STATUS_KEY = "p2pmd-active-room";
 const LAST_ROOM_KEY = "p2pmd-last-room";
 const LAST_ROOM_STATE = "p2pmd-last-room-state";
+const DISPLAY_NAME_KEY = "p2pmd-display-name";
+const CLIENT_ID_KEY = "p2pmd-client-id";
 const DRAFT_DRIVE_NAME = "p2pmd-drafts";
+const MAX_ACTIVITY_ITEMS = 150;
+const PRESENCE_THROTTLE_MS = 220;
+const TYPING_IDLE_MS = 1200;
 const saveDelay = 2000;
 let hyperSaveInFlight = false;
 let draftSaveInFlight = false;
 const draftSnapshotCache = new Map();
+let currentPeerList = [];
+let peerActivityLog = [];
+let presenceSendTimer = null;
+let typingResetTimer = null;
+let isLocalTyping = false;
+let lastPresencePayload = "";
 
 const publishCSS = `
   @font-face {
@@ -161,12 +178,74 @@ function safeLocalStorageRemove(key) {
   } catch {}
 }
 
+function buildRandomClientId() {
+  try {
+    if (window.crypto?.randomUUID) {
+      return window.crypto.randomUUID();
+    }
+  } catch {}
+  return `client-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`;
+}
+
+function getOrCreateClientId() {
+  const existing = safeLocalStorageGet(CLIENT_ID_KEY);
+  if (existing && typeof existing === "string") return existing;
+  const next = buildRandomClientId();
+  safeLocalStorageSet(CLIENT_ID_KEY, next);
+  return next;
+}
+
+function normalizeDisplayName(value) {
+  if (typeof value !== "string") return "";
+  return value.trim().replace(/\s+/g, " ").slice(0, 32);
+}
+
+function getDisplayName() {
+  const fromInput = normalizeDisplayName(displayNameInput?.value || "");
+  if (fromInput) return fromInput;
+  return normalizeDisplayName(safeLocalStorageGet(DISPLAY_NAME_KEY) || "");
+}
+
+function saveDisplayName(value) {
+  const next = normalizeDisplayName(value);
+  if (displayNameInput && displayNameInput.value !== next) {
+    displayNameInput.value = next;
+  }
+  if (next) safeLocalStorageSet(DISPLAY_NAME_KEY, next);
+  else safeLocalStorageRemove(DISPLAY_NAME_KEY);
+}
+
+function truncateIdentifier(value, size = 10) {
+  if (!value || typeof value !== "string") return "";
+  const trimmed = value.trim();
+  if (trimmed.length <= size) return trimmed;
+  return `${trimmed.slice(0, size)}...`;
+}
+
+function getCursorDetails(text, offset) {
+  const safeText = typeof text === "string" ? text : "";
+  const safeOffset = Number.isFinite(offset) ? Math.max(0, Math.min(offset, safeText.length)) : 0;
+  const prefix = safeText.slice(0, safeOffset);
+  const lines = prefix.split("\n");
+  return {
+    offset: safeOffset,
+    line: lines.length,
+    column: (lines[lines.length - 1] || "").length + 1
+  };
+}
+
+const localClientId = getOrCreateClientId();
+
 const urlParams = new URLSearchParams(window.location.search);
 const paramProtocol = urlParams.get("protocol");
 const storedProtocol = safeLocalStorageGet("lastProtocol");
 const initialProtocol = paramProtocol || storedProtocol || "hyper";
 if (protocolSelect) {
   protocolSelect.value = initialProtocol;
+}
+if (displayNameInput) {
+  const storedName = normalizeDisplayName(safeLocalStorageGet(DISPLAY_NAME_KEY) || "");
+  if (storedName) displayNameInput.value = storedName;
 }
 
 function hasMeaningfulContent(value) {
@@ -553,8 +632,15 @@ export function scheduleSend() {
         await fetch(`${currentRoomUrl}/doc`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content })
+          body: JSON.stringify({
+            content,
+            clientId: localClientId,
+            role: currentRole || "client",
+            name: getDisplayName(),
+            ...getCurrentCursorPayload()
+          })
         });
+        schedulePresenceSend();
       } catch {
         updatePeers(0);
       } finally {
@@ -610,6 +696,61 @@ function applyTextDiff(ytextRef, oldText, newText, origin = null) {
   }, origin);
 }
 
+function getCurrentCursorPayload() {
+  const start = Number.isFinite(markdownInput.selectionStart) ? markdownInput.selectionStart : 0;
+  const end = Number.isFinite(markdownInput.selectionEnd) ? markdownInput.selectionEnd : start;
+  const startPos = getCursorDetails(markdownInput.value || "", start);
+  const endPos = getCursorDetails(markdownInput.value || "", end);
+  return {
+    selectionStart: startPos.offset,
+    selectionEnd: endPos.offset,
+    cursorLine: startPos.line,
+    cursorColumn: startPos.column
+  };
+}
+
+function buildPresencePayload() {
+  const cursor = getCurrentCursorPayload();
+  return {
+    clientId: localClientId,
+    role: currentRole || "client",
+    name: getDisplayName(),
+    ...cursor,
+    isTyping: isLocalTyping
+  };
+}
+
+function scheduleTypingReset() {
+  if (typingResetTimer) clearTimeout(typingResetTimer);
+  typingResetTimer = setTimeout(() => {
+    isLocalTyping = false;
+    sendPresenceNow();
+  }, TYPING_IDLE_MS);
+}
+
+async function sendPresenceNow(force = false) {
+  if (!currentRoomUrl) return;
+  const payload = buildPresencePayload();
+  const serialized = JSON.stringify(payload);
+  if (!force && serialized === lastPresencePayload) return;
+  lastPresencePayload = serialized;
+  try {
+    await fetch(`${currentRoomUrl}/presence`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: serialized
+    });
+  } catch {}
+}
+
+function schedulePresenceSend(force = false) {
+  if (presenceSendTimer) clearTimeout(presenceSendTimer);
+  presenceSendTimer = setTimeout(() => {
+    presenceSendTimer = null;
+    sendPresenceNow(force);
+  }, force ? 0 : PRESENCE_THROTTLE_MS);
+}
+
 async function flushYjsUpdate() {
   if (!pendingUpdate || !currentRoomUrl) return;
 
@@ -620,7 +761,13 @@ async function flushYjsUpdate() {
     const res = await fetch(`${currentRoomUrl}/doc/update`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ update: bytesToBase64(toSend) })
+      body: JSON.stringify({
+        update: bytesToBase64(toSend),
+        clientId: localClientId,
+        role: currentRole || "client",
+        name: getDisplayName(),
+        ...getCurrentCursorPayload()
+      })
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
@@ -671,6 +818,10 @@ function destroyYjs(skipSave = false) {
   if (sendTimer) { clearTimeout(sendTimer); sendTimer = null; }
   if (sendUpdateTimer) { clearTimeout(sendUpdateTimer); sendUpdateTimer = null; }
   if (flushRetryTimer) { clearTimeout(flushRetryTimer); flushRetryTimer = null; }
+  if (presenceSendTimer) { clearTimeout(presenceSendTimer); presenceSendTimer = null; }
+  if (typingResetTimer) { clearTimeout(typingResetTimer); typingResetTimer = null; }
+  isLocalTyping = false;
+  lastPresencePayload = "";
 
   // Save CRDT state before destroying for proper reconnect merge
   if (!skipSave && !savedYjsState && ydoc && window.Y) {
@@ -700,8 +851,15 @@ async function postContentNow() {
     await fetch(`${currentRoomUrl}/doc`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content })
+      body: JSON.stringify({
+        content,
+        clientId: localClientId,
+        role: currentRole || "client",
+        name: getDisplayName(),
+        ...getCurrentCursorPayload()
+      })
     });
+    schedulePresenceSend(true);
     scheduleDraftSave();
   } catch {
     updatePeers(0);
@@ -796,7 +954,143 @@ export function scheduleDraftSave() {
 }
 
 function updatePeers(count) {
-  peersCount.textContent = Number.isFinite(count) ? String(count) : "0";
+  const safeCount = Number.isFinite(count) ? Math.max(0, count) : 0;
+  peersCount.textContent = String(safeCount);
+  if (peersLink) {
+    const total = Array.isArray(currentPeerList) ? currentPeerList.length : 0;
+    peersLink.title = total > 0 ? `${safeCount} remote peers, ${total} total participants` : `${safeCount} remote peers`;
+  }
+}
+
+function normalizePeerRole(role) {
+  if (role === "host") return "host";
+  if (role === "client") return "client";
+  return "viewer";
+}
+
+function normalizePeerName(name, fallback) {
+  const normalized = normalizeDisplayName(name);
+  return normalized || fallback;
+}
+
+function normalizePeerList(peerList) {
+  if (!Array.isArray(peerList)) return [];
+  return peerList
+    .map((peer) => {
+      if (!peer || typeof peer !== "object") return null;
+      const role = normalizePeerRole(peer.role);
+      const id = Number.isFinite(Number(peer.id)) ? Number(peer.id) : null;
+      const clientId = typeof peer.clientId === "string" ? peer.clientId : "";
+      const fallbackName = id ? `Peer #${id}` : `Peer ${truncateIdentifier(clientId || "unknown", 8)}`;
+      return {
+        id,
+        role,
+        clientId,
+        color: typeof peer.color === "string" ? peer.color : "",
+        name: normalizePeerName(peer.name, fallbackName),
+        isTyping: peer.isTyping === true,
+        cursorLine: Number.isFinite(Number(peer.cursorLine)) ? Number(peer.cursorLine) : null,
+        cursorColumn: Number.isFinite(Number(peer.cursorColumn)) ? Number(peer.cursorColumn) : null,
+        updatedAt: Number.isFinite(Number(peer.updatedAt)) ? Number(peer.updatedAt) : Date.now(),
+        joinedAt: Number.isFinite(Number(peer.joinedAt)) ? Number(peer.joinedAt) : Date.now()
+      };
+    })
+    .filter(Boolean);
+}
+
+function buildPeersPageHref(key = currentRoomKey, localUrl = currentRoomUrl) {
+  const params = new URLSearchParams();
+  if (key) params.set("roomKey", key);
+  if (localUrl) params.set("localUrl", localUrl);
+  if (currentRole) params.set("role", currentRole);
+  params.set("clientId", localClientId);
+  const query = params.toString();
+  return query ? `./peers.html?${query}` : "./peers.html";
+}
+
+function updatePeersLink(key = currentRoomKey, localUrl = currentRoomUrl) {
+  if (!peersLink) return;
+  peersLink.href = buildPeersPageHref(key, localUrl);
+}
+
+function setRoleBadge(role = currentRole) {
+  if (!roomRoleBadge) return;
+  const normalizedRole = normalizePeerRole(role || "client");
+  roomRoleBadge.textContent = normalizedRole;
+  roomRoleBadge.classList.remove("host", "client", "viewer", "hidden");
+  roomRoleBadge.classList.add(normalizedRole);
+}
+
+function getPeerStatusStorageKey(roomKey) {
+  return `${PEER_STATUS_PREFIX}${roomKey}`;
+}
+
+function getPeerActivityStorageKey(roomKey) {
+  return `${PEER_ACTIVITY_PREFIX}${roomKey}`;
+}
+
+function persistPeerStatusSnapshot() {
+  if (!currentRoomKey) return;
+  const payload = {
+    roomKey: currentRoomKey,
+    localUrl: currentRoomUrl,
+    role: currentRole,
+    clientId: localClientId,
+    peers: currentPeerList,
+    updatedAt: Date.now()
+  };
+  const serialized = JSON.stringify(payload);
+  safeLocalStorageSet(getPeerStatusStorageKey(currentRoomKey), serialized);
+  safeLocalStorageSet(ACTIVE_ROOM_STATUS_KEY, serialized);
+}
+
+function persistPeerActivitySnapshot() {
+  if (!currentRoomKey) return;
+  const payload = {
+    roomKey: currentRoomKey,
+    localUrl: currentRoomUrl,
+    role: currentRole,
+    clientId: localClientId,
+    activity: peerActivityLog,
+    updatedAt: Date.now()
+  };
+  safeLocalStorageSet(getPeerActivityStorageKey(currentRoomKey), JSON.stringify(payload));
+}
+
+function setPeerList(peerList) {
+  currentPeerList = normalizePeerList(peerList);
+  persistPeerStatusSnapshot();
+  if (peersCount.textContent === "0") {
+    let estimatedRemote = currentPeerList.length;
+    if (currentPeerList.some((peer) => peer.clientId && peer.clientId === localClientId)) {
+      estimatedRemote -= 1;
+    }
+    if (estimatedRemote > 0) {
+      updatePeers(estimatedRemote);
+    }
+  }
+}
+
+function addPeerActivity(entry) {
+  if (!entry || typeof entry !== "object") return;
+  const item = {
+    id: Number.isFinite(Number(entry.id)) ? Number(entry.id) : Date.now(),
+    type: typeof entry.type === "string" ? entry.type : "event",
+    message: typeof entry.message === "string" ? entry.message : "",
+    role: normalizePeerRole(entry.role || "client"),
+    name: normalizePeerName(entry.name, "Peer"),
+    clientId: typeof entry.clientId === "string" ? entry.clientId : "",
+    timestamp: Number.isFinite(Number(entry.timestamp)) ? Number(entry.timestamp) : Date.now()
+  };
+  const dedupeKey = `${item.id}:${item.type}:${item.clientId}:${item.timestamp}`;
+  if (peerActivityLog.some((log) => `${log.id}:${log.type}:${log.clientId}:${log.timestamp}` === dedupeKey)) {
+    return;
+  }
+  peerActivityLog.unshift(item);
+  if (peerActivityLog.length > MAX_ACTIVITY_ITEMS) {
+    peerActivityLog.length = MAX_ACTIVITY_ITEMS;
+  }
+  persistPeerActivitySnapshot();
 }
 
 function updateRoomStatus({ key, localUrl }) {
@@ -807,6 +1101,15 @@ function updateRoomStatus({ key, localUrl }) {
   } else {
     localUrlLabel.removeAttribute("href");
   }
+  updatePeersLink(key, localUrl);
+  setRoleBadge(currentRole || "client");
+  safeLocalStorageSet(ACTIVE_ROOM_STATUS_KEY, JSON.stringify({
+    roomKey: key || null,
+    localUrl: localUrl || null,
+    role: currentRole || null,
+    clientId: localClientId,
+    updatedAt: Date.now()
+  }));
   roomStatus.classList.remove("hidden");
   setView("editor");
 }
@@ -845,7 +1148,12 @@ function connectSseChannel(localUrl, role) {
   }
 
   try {
-    eventSource = new EventSource(`${localUrl}/events?role=${encodeURIComponent(role)}`);
+    const sseParams = new URLSearchParams();
+    sseParams.set("role", normalizePeerRole(role || "client"));
+    sseParams.set("clientId", localClientId);
+    const displayName = getDisplayName();
+    if (displayName) sseParams.set("name", displayName);
+    eventSource = new EventSource(`${localUrl}/events?${sseParams.toString()}`);
 
     eventSource.addEventListener("yjsupdate", (event) => {
       if (!ydoc) return;
@@ -882,12 +1190,42 @@ function connectSseChannel(localUrl, role) {
       } catch {}
     });
 
+    eventSource.addEventListener("peerlist", (event) => {
+      try {
+        const nextPeerList = JSON.parse(event.data || "[]");
+        setPeerList(nextPeerList);
+      } catch {}
+    });
+
+    eventSource.addEventListener("activity", (event) => {
+      try {
+        const payload = JSON.parse(event.data || "{}");
+        if (Array.isArray(payload)) {
+          payload.slice().reverse().forEach((item) => addPeerActivity(item));
+          return;
+        }
+        addPeerActivity(payload);
+      } catch {}
+    });
+
     eventSource.addEventListener("peers", (event) => {
-      updatePeers(Number(event.data));
+      let nextCount = Number(event.data);
+      if (!Number.isFinite(nextCount)) {
+        try {
+          const payload = JSON.parse(event.data || "{}");
+          if (Number.isFinite(Number(payload?.count))) {
+            nextCount = Number(payload.count);
+          } else if (Number.isFinite(Number(payload?.peers))) {
+            nextCount = Number(payload.peers);
+          }
+        } catch {}
+      }
+      updatePeers(Number.isFinite(nextCount) ? nextCount : 0);
     });
 
     eventSource.onopen = () => {
       if (pendingUpdate) flushYjsUpdate();
+      sendPresenceNow(true);
       if (reconnectTimer) {
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
@@ -896,6 +1234,7 @@ function connectSseChannel(localUrl, role) {
 
     eventSource.onerror = () => {
       updatePeers(0);
+      setPeerList([]);
       if (eventSource) {
         try { eventSource.close(); } catch {}
         eventSource = null;
@@ -916,7 +1255,14 @@ function connectSseChannel(localUrl, role) {
 
 async function connectToRoom(localUrl, role = "client") {
   currentRoomUrl = localUrl;
-  currentRole = role;
+  currentRole = normalizePeerRole(role || "client");
+  currentPeerList = [];
+  peerActivityLog = [];
+  updatePeers(0);
+  updatePeersLink(currentRoomKey, localUrl);
+  setRoleBadge(currentRole);
+  persistPeerStatusSnapshot();
+  persistPeerActivitySnapshot();
 
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
@@ -939,6 +1285,31 @@ async function connectToRoom(localUrl, role = "client") {
   if (!serverReady) {
     console.warn("[p2pmd] Server not responding, continuing anyway...");
   }
+
+  try {
+    const statusRes = await fetchWithTimeout(`${localUrl}/status`, {}, 2000);
+    if (statusRes.ok) {
+      const statusData = await statusRes.json();
+      if (Array.isArray(statusData?.peerList)) {
+        setPeerList(statusData.peerList);
+      }
+      if (Number.isFinite(Number(statusData?.peers))) {
+        updatePeers(Number(statusData.peers));
+      }
+    }
+  } catch {}
+
+  try {
+    const activityRes = await fetchWithTimeout(`${localUrl}/activity`, {}, 2000);
+    if (activityRes.ok) {
+      const activityData = await activityRes.json();
+      if (Array.isArray(activityData?.activity)) {
+        for (const event of activityData.activity.slice().reverse()) {
+          addPeerActivity(event);
+        }
+      }
+    }
+  } catch {}
   
   let retries = 5;
   while (retries > 0) {
@@ -1370,6 +1741,10 @@ async function disconnectRoom() {
   if (sendTimer) { clearTimeout(sendTimer); sendTimer = null; }
   if (sendUpdateTimer) { clearTimeout(sendUpdateTimer); sendUpdateTimer = null; }
   if (flushRetryTimer) { clearTimeout(flushRetryTimer); flushRetryTimer = null; }
+  if (presenceSendTimer) { clearTimeout(presenceSendTimer); presenceSendTimer = null; }
+  if (typingResetTimer) { clearTimeout(typingResetTimer); typingResetTimer = null; }
+  isLocalTyping = false;
+  lastPresencePayload = "";
 
   if (pendingUpdate && currentRoomUrl) {
     try { await flushYjsUpdate(); } catch {}
@@ -1412,7 +1787,15 @@ async function disconnectRoom() {
   }
   currentRoomUrl = null;
   currentRoomKey = null;
+  currentPeerList = [];
+  peerActivityLog = [];
   updatePeers(0);
+  updatePeersLink();
+  safeLocalStorageRemove(ACTIVE_ROOM_STATUS_KEY);
+  if (roomRoleBadge) {
+    roomRoleBadge.classList.add("hidden");
+    roomRoleBadge.classList.remove("host", "client", "viewer");
+  }
   roomStatus.classList.add("hidden");
   updateRoomUrl(null);
   setView("setup");
@@ -2476,9 +2859,13 @@ function resetNetworkSettingsOnCreate() {
   localPortInput.value = "";
 }
 
-createRoomButton.addEventListener("click", createRoom);
+createRoomButton.addEventListener("click", () => {
+  saveDisplayName(displayNameInput?.value || "");
+  createRoom();
+});
 joinForm.addEventListener("submit", (event) => {
   event.preventDefault();
+  saveDisplayName(displayNameInput?.value || "");
   const key = normalizeRoomKey(joinRoomKey.value);
   if (!key) {
     alert("Please enter a valid hs:// key.");
@@ -2495,6 +2882,15 @@ joinForm.addEventListener("submit", (event) => {
   joinRoom(key, storedState);
 });
 disconnectButton.addEventListener("click", disconnectRoom);
+
+if (displayNameInput) {
+  displayNameInput.addEventListener("change", () => {
+    saveDisplayName(displayNameInput.value);
+  });
+  displayNameInput.addEventListener("blur", () => {
+    saveDisplayName(displayNameInput.value);
+  });
+}
 
 if (copyRoomKey) {
   copyRoomKey.style.cursor = "pointer";
@@ -2521,10 +2917,34 @@ if (copyRoomKey) {
 }
 
 markdownInput.addEventListener("input", () => {
+  isLocalTyping = true;
+  scheduleTypingReset();
   scheduleRender();
   scheduleSend();
   scheduleDraftSave();
-  });
+  schedulePresenceSend();
+});
+
+markdownInput.addEventListener("click", () => {
+  schedulePresenceSend();
+});
+
+markdownInput.addEventListener("keyup", () => {
+  schedulePresenceSend();
+});
+
+markdownInput.addEventListener("select", () => {
+  schedulePresenceSend();
+});
+
+markdownInput.addEventListener("focus", () => {
+  schedulePresenceSend(true);
+});
+
+markdownInput.addEventListener("blur", () => {
+  isLocalTyping = false;
+  schedulePresenceSend(true);
+});
 
 markdownInput.addEventListener("dragover", (e) => {
   const hasFiles = e.dataTransfer?.types?.includes("Files");
