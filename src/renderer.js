@@ -11,6 +11,7 @@ const chromiumNetErrors = require('chromium-net-errors');
 const { ipcRenderer } = require("electron");
 
 const DEFAULT_PAGE = "peersky://home";
+const isHomePage = (url) => url === "peersky://home" || url === "peersky://home/";
 let webviewContainer = null; // Will be set dynamically for tabs
 let tabBar; // Holds current tab bar component
 const nav = document.querySelector("#navbox");
@@ -417,14 +418,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       const activeTab = tabBar.getActiveTab();
       const urlInput = nav.querySelector("#url");
       if (activeTab && urlInput) {
-        if (activeTab.url === "peersky://home") {
+        if (isHomePage(activeTab.url)) {
           urlInput.value = "";
         } else {
           urlInput.value = activeTab.url;
         }
         
         // Also update the nav display
-        nav.setStyledUrl(activeTab.url === "peersky://home" ? "" : activeTab.url);
+        nav.setStyledUrl(isHomePage(activeTab.url) ? "" : activeTab.url);
       }
     }, 300);
     
@@ -442,7 +443,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const { tabId, url } = e.detail;
     
     // Hide peersky://home URL, show all others
-    if (url === "peersky://home") {
+    if (isHomePage(url)) {
       nav.setStyledUrl("");
     } else {
       nav.setStyledUrl(url);
@@ -466,7 +467,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     
     if (tabId === tabBar.activeTabId) {
       // Hide peersky://home URL, show all others
-      if (url === "peersky://home") {
+      if (isHomePage(url)) {
         nav.setStyledUrl("");
       } else {
         nav.setStyledUrl(url);
@@ -555,7 +556,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Update URL input with active tab's URL and bookmark icon
     const activeTab = tabBar.getActiveTab();
     if (activeTab && nav.querySelector("#url")) {
-      nav.querySelector("#url").value = activeTab.url;
+      // Hide peersky://home URL, show all others
+      nav.querySelector("#url").value = isHomePage(activeTab.url) ? "" : activeTab.url;
       // Update bookmark icon for initial tab
       if (activeTab.url) {
         updateBookmarkIcon(activeTab.url);
@@ -569,7 +571,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     nav.addEventListener("stop", () => tabBar.stopActiveTab());
     nav.addEventListener("home", async () => {
       await navigateTo("peersky://home");
-      nav.querySelector("#url").value = "peersky://home";
+      // Hide peersky://home URL in address bar
+      nav.querySelector("#url").value = "";
     });
     
     nav.addEventListener("navigate", async ({ detail }) => {
@@ -712,7 +715,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     webviewContainer.addEventListener("did-navigate", (e) => {
       if (nav) {
         // Hide peersky://home URL, show all others
-        if (e.detail.url === "peersky://home") {
+        if (isHomePage(e.detail.url)) {
           nav.setStyledUrl("");
         } else {
           nav.setStyledUrl(e.detail.url);
