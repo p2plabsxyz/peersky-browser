@@ -1,6 +1,16 @@
 const COPY_ICON = '<img src="peersky://static/assets/svg/copy.svg" width="16" height="16" alt="Copy">';
 const OPEN_ICON = '<img src="peersky://static/assets/svg/box-arrow-up-right.svg" width="16" height="16" alt="Open">';
 
+// Known names used by built-in P2P apps for their internal draft and published storage
+const P2P_APP_DRIVE_NAMES = new Set([
+  'p2p-editor-drafts',
+  'p2pmd-drafts',
+  'peerchat-rooms',
+  'p2p-editor',
+  'p2pmd',
+  'peerchat',
+]);
+
 // Load archive data for the Archive section
 async function loadArchiveData() {
   if (!settingsAPI?.settings?.getArchiveData) return;
@@ -54,14 +64,6 @@ async function loadArchiveData() {
 
 
     await customElements.whenDefined('pagination-control');
-
-    // Known names used by built-in P2P apps for their internal draft and published storage
-    const P2P_APP_DRIVE_NAMES = new Set([
-      'p2p-editor-drafts',
-      'p2pmd-drafts',
-      'p2p-editor',
-      'p2pmd',
-    ]);
 
     const allHyper = [...filteredHyper].reverse();
     const p2pDataRaw = allHyper.filter(item => P2P_APP_DRIVE_NAMES.has(item.name));
