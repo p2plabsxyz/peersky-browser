@@ -9,6 +9,7 @@ import * as Y from "yjs";
 const roomSessions = new Map();
 const roomPorts = new Map();
 let peerSequence = 0;
+const EDIT_ACTIVITY_DEBOUNCE_MS = 1200;
 
 // Rate limiting: track requests per IP/action
 const rateLimits = new Map(); // key -> { count, resetAt }
@@ -178,7 +179,13 @@ function createSession(key = null) {
     holesailServer: null,
     holesailClient: null,
     ydoc: null,
-    ytext: null
+    ytext: null,
+    activityLog: [],
+    activitySequence: 0,
+    editLogTimers: new Map(),
+    peerMetaByClientId: new Map(),
+    unknownPeerSequence: 0,
+    unknownPeerBySource: new Map()
   };
 }
 
@@ -221,6 +228,47 @@ function getExistingSession(key) {
   return roomSessions.get(key) || null;
 }
 
+const PEER_COLORS = [
+  "#0EA5E9",
+  "#A855F7",
+  "#22C55E",
+  "#F97316",
+  "#EF4444",
+  "#14B8A6",
+  "#EAB308",
+  "#6366F1"
+];
+
+function normalizePeerRole(role) {
+  if (role === "host") return "host";
+  if (role === "client") return "client";
+  return "viewer";
+}
+
+function sanitizePeerName(value) {
+  if (typeof value !== "string") return "";
+  return value.trim().replace(/\s+/g, " ").slice(0, 32);
+}
+
+function getPeerColor(seed) {
+  const source = String(seed || "peer");
+  let hash = 0;
+  for (let i = 0; i < source.length; i++) {
+    hash = ((hash << 5) - hash) + source.charCodeAt(i);
+    hash |= 0;
+  }
+  return PEER_COLORS[Math.abs(hash) % PEER_COLORS.length];
+}
+
+function getPeerDisplayName(client) {
+  if (!client) return "Peer";
+  const sanitized = sanitizePeerName(client.name || "");
+  if (sanitized) return sanitized;
+  if (client.id) return `Peer #${client.id}`;
+  if (client.clientId) return `Peer ${String(client.clientId).slice(0, 8)}`;
+  return "Peer";
+}
+
 function getPeerCount(session) {
   let count = 0;
   for (const client of session.sseClients.values()) {
@@ -231,11 +279,158 @@ function getPeerCount(session) {
 
 function getPeerList(session) {
   return Array.from(session.sseClients.values())
-    .filter((client) => client.role !== "host")
+    .sort((a, b) => {
+      if (a.role === "host" && b.role !== "host") return -1;
+      if (a.role !== "host" && b.role === "host") return 1;
+      return (a.joinedAt || 0) - (b.joinedAt || 0);
+    })
     .map((client) => ({
       id: client.id,
-      role: client.role
+      role: normalizePeerRole(client.role),
+      clientId: client.clientId || null,
+      name: getPeerDisplayName(client),
+      color: client.color || getPeerColor(client.clientId || client.id),
+      isTyping: client.isTyping === true,
+      cursorLine: Number.isFinite(Number(client.cursorLine)) ? Number(client.cursorLine) : null,
+      cursorColumn: Number.isFinite(Number(client.cursorColumn)) ? Number(client.cursorColumn) : null,
+      selectionStart: Number.isFinite(Number(client.selectionStart)) ? Number(client.selectionStart) : null,
+      selectionEnd: Number.isFinite(Number(client.selectionEnd)) ? Number(client.selectionEnd) : null,
+      joinedAt: Number.isFinite(Number(client.joinedAt)) ? Number(client.joinedAt) : Date.now(),
+      updatedAt: Number.isFinite(Number(client.updatedAt)) ? Number(client.updatedAt) : Date.now()
     }));
+}
+
+function findClientByClientId(session, clientId) {
+  if (!session || !clientId) return null;
+  for (const client of session.sseClients.values()) {
+    if (client.clientId === clientId) return client;
+  }
+  return null;
+}
+
+function addActivity(session, entry = {}) {
+  if (!session) return null;
+  session.activitySequence = (session.activitySequence || 0) + 1;
+  const id = session.activitySequence;
+  const fallbackPeerName = Number.isFinite(Number(entry.peerId)) ? `Peer #${Number(entry.peerId)}` : "Peer";
+  const event = {
+    id,
+    type: typeof entry.type === "string" ? entry.type : "event",
+    role: normalizePeerRole(entry.role || "client"),
+    name: sanitizePeerName(entry.name || "") || fallbackPeerName,
+    clientId: typeof entry.clientId === "string" ? entry.clientId : null,
+    message: typeof entry.message === "string" ? entry.message : "",
+    timestamp: Date.now()
+  };
+  session.activityLog.unshift(event);
+  if (session.activityLog.length > 200) {
+    session.activityLog.length = 200;
+  }
+  return event;
+}
+
+function getOrCreatePeerMeta(session, clientId, hints = {}) {
+  if (!session || !clientId) return null;
+  if (!session.peerMetaByClientId) session.peerMetaByClientId = new Map();
+  let meta = session.peerMetaByClientId.get(clientId) || null;
+  if (!meta) {
+    session.unknownPeerSequence = (session.unknownPeerSequence || 0) + 1;
+    meta = {
+      id: session.unknownPeerSequence,
+      clientId,
+      role: normalizePeerRole(hints.role || "client"),
+      name: "",
+      lastCursorLine: null,
+      updatedAt: Date.now()
+    };
+    session.peerMetaByClientId.set(clientId, meta);
+  }
+
+  if (Number.isFinite(Number(hints.id))) meta.id = Number(hints.id);
+  if (hints.role) meta.role = normalizePeerRole(hints.role);
+  const sanitizedName = sanitizePeerName(hints.name || "");
+  if (sanitizedName) meta.name = sanitizedName;
+  if (Number.isFinite(Number(hints.cursorLine))) meta.lastCursorLine = Number(hints.cursorLine);
+  meta.updatedAt = Date.now();
+  return meta;
+}
+
+function syncPeerMetaFromActor(session, actor) {
+  if (!session || !actor || !actor.clientId) return null;
+  return getOrCreatePeerMeta(session, actor.clientId, {
+    id: actor.id,
+    role: actor.role,
+    name: actor.name,
+    cursorLine: actor.cursorLine
+  });
+}
+
+function getOrCreateUnknownPeerId(session, sourceKey = "") {
+  if (!session) return null;
+  if (!session.unknownPeerBySource) session.unknownPeerBySource = new Map();
+  const normalizedSource = String(sourceKey || "unknown");
+  let peerId = session.unknownPeerBySource.get(normalizedSource) || null;
+  if (!Number.isFinite(Number(peerId))) {
+    session.unknownPeerSequence = (session.unknownPeerSequence || 0) + 1;
+    peerId = session.unknownPeerSequence;
+    session.unknownPeerBySource.set(normalizedSource, peerId);
+  }
+  return Number(peerId);
+}
+
+function scheduleEditActivity(session, entry = {}) {
+  if (!session) return;
+  const clientId = typeof entry.clientId === "string" ? entry.clientId : "";
+  const sourceKey = typeof entry.sourceKey === "string" ? entry.sourceKey : "";
+  let hintedPeerId = Number.isFinite(Number(entry.peerId)) ? Number(entry.peerId) : null;
+  if (!hintedPeerId && !clientId) {
+    hintedPeerId = getOrCreateUnknownPeerId(session, sourceKey || "unknown");
+  }
+  const hintedCursorLine = Number.isFinite(Number(entry.cursorLine)) ? Number(entry.cursorLine) : null;
+  const hintedRole = normalizePeerRole(entry.role || "client");
+  const hintedName = sanitizePeerName(entry.name || "");
+  const cachedMeta = clientId
+    ? getOrCreatePeerMeta(session, clientId, {
+        id: hintedPeerId,
+        role: hintedRole,
+        name: hintedName,
+        cursorLine: hintedCursorLine
+      })
+    : null;
+
+  const key = clientId || (hintedPeerId ? `peer-${hintedPeerId}` : `source-${sourceKey || "unknown"}`);
+  if (!key) return;
+  if (!session.editLogTimers) session.editLogTimers = new Map();
+  const existing = session.editLogTimers.get(key);
+  if (existing) clearTimeout(existing);
+
+  const timer = setTimeout(() => {
+    session.editLogTimers.delete(key);
+    const actor = clientId ? findClientByClientId(session, clientId) : null;
+    const meta = actor ? syncPeerMetaFromActor(session, actor) : (cachedMeta || (clientId ? getOrCreatePeerMeta(session, clientId) : null));
+    const resolvedPeerId = actor?.id || meta?.id || hintedPeerId || null;
+    const resolvedName = actor
+      ? getPeerDisplayName(actor)
+      : (sanitizePeerName(meta?.name || hintedName) || (resolvedPeerId ? `Peer #${resolvedPeerId}` : "Peer"));
+    const resolvedRole = actor?.role || meta?.role || hintedRole;
+    const lineNumber = Number.isFinite(Number(entry.cursorLine))
+      ? Number(entry.cursorLine)
+      : (Number.isFinite(Number(actor?.cursorLine))
+          ? Number(actor.cursorLine)
+          : (Number.isFinite(Number(meta?.lastCursorLine)) ? Number(meta.lastCursorLine) : null));
+    const lineHint = lineNumber ? ` (line ${lineNumber})` : "";
+    const activity = addActivity(session, {
+      type: "edit",
+      role: resolvedRole,
+      name: resolvedName,
+      peerId: resolvedPeerId,
+      clientId: clientId || actor?.clientId || null,
+      message: `${resolvedName} edited the document${lineHint}`
+    });
+    broadcastActivity(session, activity);
+  }, EDIT_ACTIVITY_DEBOUNCE_MS);
+
+  session.editLogTimers.set(key, timer);
 }
 
 function broadcastPeers(session) {
@@ -249,6 +444,14 @@ function broadcastPeerList(session) {
   const payload = JSON.stringify(getPeerList(session));
   for (const client of session.sseClients.values()) {
     client.res.write(`event: peerlist\ndata: ${payload}\n\n`);
+  }
+}
+
+function broadcastActivity(session, activity) {
+  if (!session || !activity) return;
+  const payload = JSON.stringify(activity);
+  for (const client of session.sseClients.values()) {
+    client.res.write(`event: activity\ndata: ${payload}\n\n`);
   }
 }
 
@@ -457,6 +660,9 @@ function handleDocRequest(req, res, session) {
     const MAX_PENDING_UPDATE_BYTES = 2 * 1024 * 1024;
     const Y_ORIGIN_REMOTE = 'remote-sse';
     const Y_ORIGIN_LOCAL_INPUT = 'local-input';
+    const localClientId = (window.crypto && typeof window.crypto.randomUUID === 'function')
+      ? window.crypto.randomUUID()
+      : ('inline-' + Math.random().toString(36).slice(2, 10));
 
     function bytesToBase64(bytes) {
       let bin = '';
@@ -490,7 +696,11 @@ function handleDocRequest(req, res, session) {
         const res = await fetch('/doc/update', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ update: bytesToBase64(toSend) })
+          body: JSON.stringify({
+            update: bytesToBase64(toSend),
+            clientId: localClientId,
+            cursorLine: (editor.value.slice(0, editor.selectionStart || 0).match(/\\n/g) || []).length + 1
+          })
         });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         if (flushRetryTimer) { clearTimeout(flushRetryTimer); flushRetryTimer = null; }
@@ -532,7 +742,11 @@ function handleDocRequest(req, res, session) {
           await fetch('/doc', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content })
+            body: JSON.stringify({
+              content,
+              clientId: localClientId,
+              cursorLine: (editor.value.slice(0, editor.selectionStart || 0).match(/\\n/g) || []).length + 1
+            })
           });
         } catch {}
       }, 200);
@@ -628,7 +842,7 @@ function handleDocRequest(req, res, session) {
     let reconnectTimer = null;
     function connectSSE() {
       if (source) { try { source.close(); } catch {} }
-      source = new EventSource('/events?role=client');
+      source = new EventSource('/events?role=client&clientId=' + encodeURIComponent(localClientId));
       source.onopen = () => {
         if (pendingUpdate) flushUpdate();
       };
@@ -728,9 +942,34 @@ function handleDocRequest(req, res, session) {
     req.on("end", () => {
       if (overflow) return;
       try {
+        const requestSourceKey = `${req.socket?.remoteAddress || "local"}|${req.headers["user-agent"] || "ua"}`;
         const parsed = JSON.parse(body || "{}");
         const base64 = typeof parsed.update === "string" ? parsed.update : null;
         const fullText = typeof parsed.fullText === "string" ? parsed.fullText : null;
+        const clientId = typeof parsed.clientId === "string" ? parsed.clientId : "";
+        const providedName = sanitizePeerName(parsed.name || "");
+        const cursorLine = Number.isFinite(Number(parsed.cursorLine)) ? Number(parsed.cursorLine) : null;
+        const cursorColumn = Number.isFinite(Number(parsed.cursorColumn)) ? Number(parsed.cursorColumn) : null;
+        const selectionStart = Number.isFinite(Number(parsed.selectionStart)) ? Number(parsed.selectionStart) : null;
+        const selectionEnd = Number.isFinite(Number(parsed.selectionEnd)) ? Number(parsed.selectionEnd) : null;
+        const actor = clientId ? findClientByClientId(session, clientId) : null;
+        if (actor) {
+          if (providedName) actor.name = providedName;
+          if (cursorLine !== null) actor.cursorLine = cursorLine;
+          if (cursorColumn !== null) actor.cursorColumn = cursorColumn;
+          if (selectionStart !== null) actor.selectionStart = selectionStart;
+          if (selectionEnd !== null) actor.selectionEnd = selectionEnd;
+          actor.isTyping = true;
+          actor.updatedAt = Date.now();
+          syncPeerMetaFromActor(session, actor);
+          broadcastPeerList(session);
+        } else if (clientId) {
+          getOrCreatePeerMeta(session, clientId, {
+            role: "client",
+            name: providedName,
+            cursorLine
+          });
+        }
         if (!base64) {
           res.writeHead(400, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
           res.end(JSON.stringify({ ok: false, error: "Missing update field" }));
@@ -783,6 +1022,14 @@ function handleDocRequest(req, res, session) {
           const stateBytes = Y.encodeStateAsUpdate(session.ydoc);
           const stateBase64 = Buffer.from(stateBytes).toString("base64");
           broadcastYjsUpdate(session, stateBase64);
+          scheduleEditActivity(session, {
+            clientId,
+            peerId: actor?.id || null,
+            role: actor?.role || "client",
+            name: actor ? getPeerDisplayName(actor) : providedName,
+            cursorLine: cursorLine !== null ? cursorLine : actor?.cursorLine,
+            sourceKey: requestSourceKey
+          });
         }
         res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
         res.end(JSON.stringify({ ok: true }));
@@ -811,8 +1058,34 @@ function handleDocRequest(req, res, session) {
     req.on("end", () => {
       if (overflow) return;
       try {
+        const requestSourceKey = `${req.socket?.remoteAddress || "local"}|${req.headers["user-agent"] || "ua"}`;
         const parsed = JSON.parse(body || "{}");
         const content = typeof parsed.content === "string" ? parsed.content : "";
+        const clientId = typeof parsed.clientId === "string" ? parsed.clientId : "";
+        const providedName = sanitizePeerName(parsed.name || "");
+        const cursorLine = Number.isFinite(Number(parsed.cursorLine)) ? Number(parsed.cursorLine) : null;
+        const cursorColumn = Number.isFinite(Number(parsed.cursorColumn)) ? Number(parsed.cursorColumn) : null;
+        const selectionStart = Number.isFinite(Number(parsed.selectionStart)) ? Number(parsed.selectionStart) : null;
+        const selectionEnd = Number.isFinite(Number(parsed.selectionEnd)) ? Number(parsed.selectionEnd) : null;
+        const actor = clientId ? findClientByClientId(session, clientId) : null;
+        if (actor) {
+          if (providedName) actor.name = providedName;
+          if (cursorLine !== null) actor.cursorLine = cursorLine;
+          if (cursorColumn !== null) actor.cursorColumn = cursorColumn;
+          if (selectionStart !== null) actor.selectionStart = selectionStart;
+          if (selectionEnd !== null) actor.selectionEnd = selectionEnd;
+          actor.isTyping = true;
+          actor.updatedAt = Date.now();
+          syncPeerMetaFromActor(session, actor);
+          broadcastPeerList(session);
+        } else if (clientId) {
+          getOrCreatePeerMeta(session, clientId, {
+            role: "client",
+            name: providedName,
+            cursorLine
+          });
+        }
+        const beforeContent = session.ydoc && session.ytext ? session.ytext.toString() : session.docState.content;
         session.docState.content = content;
         session.docState.updatedAt = Date.now();
         if (session.ydoc && session.ytext) {
@@ -835,6 +1108,16 @@ function handleDocRequest(req, res, session) {
           }
         } else {
           broadcastUpdate(session);
+        }
+        if (beforeContent !== content) {
+          scheduleEditActivity(session, {
+            clientId,
+            peerId: actor?.id || null,
+            role: actor?.role || "client",
+            name: actor ? getPeerDisplayName(actor) : providedName,
+            cursorLine: cursorLine !== null ? cursorLine : actor?.cursorLine,
+            sourceKey: requestSourceKey
+          });
         }
         res.writeHead(200, {
           "Content-Type": "application/json",
@@ -860,14 +1143,37 @@ function handleDocRequest(req, res, session) {
       "Connection": "keep-alive",
       "Access-Control-Allow-Origin": "*"
     });
-    const role = url.searchParams.get("role") || "client";
+    const role = normalizePeerRole(url.searchParams.get("role") || "client");
+    const name = sanitizePeerName(url.searchParams.get("name") || "");
+    const rawClientId = typeof url.searchParams.get("clientId") === "string" ? url.searchParams.get("clientId") : "";
+    const clientId = rawClientId ? rawClientId.slice(0, 128) : `peer-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const peerId = ++peerSequence;
-    session.sseClients.set(res, { res, id: peerId, role });
+    const peerState = {
+      res,
+      id: peerId,
+      role,
+      name,
+      clientId,
+      color: getPeerColor(clientId || peerId),
+      isTyping: false,
+      cursorLine: null,
+      cursorColumn: null,
+      selectionStart: null,
+      selectionEnd: null,
+      joinedAt: Date.now(),
+      updatedAt: Date.now(),
+      lastEditAt: 0
+    };
+    session.sseClients.set(res, peerState);
+    syncPeerMetaFromActor(session, peerState);
     const currentPeerCount = getPeerCount(session);
     console.log(`[p2pmd] SSE connected: peerId=${peerId}, role=${role}, totalClients=${session.sseClients.size}, peerCount=${currentPeerCount}`);
     
     res.write(`event: peers\ndata: ${currentPeerCount}\n\n`);
     res.write(`event: peerlist\ndata: ${JSON.stringify(getPeerList(session))}\n\n`);
+    if (Array.isArray(session.activityLog) && session.activityLog.length > 0) {
+      res.write(`event: activity\ndata: ${JSON.stringify(session.activityLog.slice(0, 100))}\n\n`);
+    }
     if (session.ydoc) {
       const stateBytes = Y.encodeStateAsUpdate(session.ydoc);
       const stateBase64 = Buffer.from(stateBytes).toString("base64");
@@ -875,8 +1181,16 @@ function handleDocRequest(req, res, session) {
     } else {
       res.write(`event: update\ndata: ${JSON.stringify(session.docState)}\n\n`);
     }
+    const joinActivity = addActivity(session, {
+      type: "join",
+      role,
+      name: getPeerDisplayName(peerState),
+      clientId,
+      message: `${getPeerDisplayName(peerState)} joined as ${role}`
+    });
     broadcastPeers(session);
     broadcastPeerList(session);
+    broadcastActivity(session, joinActivity);
     if (!session.keepaliveInterval) {
       session.keepaliveInterval = setInterval(() => {
         for (const client of session.sseClients.values()) {
@@ -885,10 +1199,21 @@ function handleDocRequest(req, res, session) {
       }, 20000);
     }
     req.on("close", () => {
+      const departingPeer = session.sseClients.get(res);
       session.sseClients.delete(res);
       if (session.sseClients.size === 0 && session.keepaliveInterval) {
         clearInterval(session.keepaliveInterval);
         session.keepaliveInterval = null;
+      }
+      if (departingPeer) {
+        const leaveActivity = addActivity(session, {
+          type: "leave",
+          role: departingPeer.role,
+          name: getPeerDisplayName(departingPeer),
+          clientId: departingPeer.clientId || null,
+          message: `${getPeerDisplayName(departingPeer)} left the room`
+        });
+        broadcastActivity(session, leaveActivity);
       }
       broadcastPeers(session);
       broadcastPeerList(session);
@@ -902,7 +1227,79 @@ function handleDocRequest(req, res, session) {
       "Access-Control-Allow-Origin": "*",
       "Cache-Control": "no-cache"
     });
-    res.end(JSON.stringify({ peers: getPeerCount(session), peerList: getPeerList(session) }));
+    res.end(JSON.stringify({
+      peers: getPeerCount(session),
+      peerList: getPeerList(session),
+      activityCount: Array.isArray(session.activityLog) ? session.activityLog.length : 0
+    }));
+    return;
+  }
+
+  if (url.pathname === "/activity" && req.method === "GET") {
+    res.writeHead(200, {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+      "Cache-Control": "no-cache"
+    });
+    res.end(JSON.stringify({
+      activity: Array.isArray(session.activityLog) ? session.activityLog.slice(0, 150) : []
+    }));
+    return;
+  }
+
+  if (url.pathname === "/presence" && req.method === "POST") {
+    let body = "";
+    let overflow = false;
+    const MAX_BODY_SIZE = 32 * 1024;
+    req.on("data", (chunk) => {
+      body += chunk.toString();
+      if (body.length > MAX_BODY_SIZE) {
+        overflow = true;
+        res.writeHead(413, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+        res.end(JSON.stringify({ ok: false, error: "Presence payload too large" }));
+        req.destroy();
+      }
+    });
+    req.on("end", () => {
+      if (overflow) return;
+      try {
+        const parsed = JSON.parse(body || "{}");
+        const clientId = typeof parsed.clientId === "string" ? parsed.clientId : "";
+        const nextName = sanitizePeerName(parsed.name || "");
+        const actor = findClientByClientId(session, clientId);
+        const peerMeta = clientId
+          ? getOrCreatePeerMeta(session, clientId, {
+              role: parsed.role || "client",
+              name: nextName,
+              cursorLine: parsed.cursorLine
+            })
+          : null;
+        if (!actor && !peerMeta) {
+          res.writeHead(404, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+          res.end(JSON.stringify({ ok: false, error: "Peer not found" }));
+          return;
+        }
+        if (actor && nextName) actor.name = nextName;
+        if (actor) actor.role = normalizePeerRole(parsed.role || actor.role || "client");
+        const nextTyping = parsed.isTyping === true;
+        if (actor) {
+          actor.isTyping = nextTyping;
+          actor.cursorLine = Number.isFinite(Number(parsed.cursorLine)) ? Number(parsed.cursorLine) : null;
+          actor.cursorColumn = Number.isFinite(Number(parsed.cursorColumn)) ? Number(parsed.cursorColumn) : null;
+          actor.selectionStart = Number.isFinite(Number(parsed.selectionStart)) ? Number(parsed.selectionStart) : null;
+          actor.selectionEnd = Number.isFinite(Number(parsed.selectionEnd)) ? Number(parsed.selectionEnd) : null;
+          actor.updatedAt = Date.now();
+          syncPeerMetaFromActor(session, actor);
+        }
+
+        broadcastPeerList(session);
+        res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+        res.end(JSON.stringify({ ok: true }));
+      } catch {
+        res.writeHead(400, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+        res.end(JSON.stringify({ ok: false, error: "Invalid payload" }));
+      }
+    });
     return;
   }
 
@@ -915,6 +1312,12 @@ function handleDocRequest(req, res, session) {
 
 async function stopDocServer(session) {
   if (!session?.server) return;
+  if (session.editLogTimers && session.editLogTimers.size > 0) {
+    for (const timer of session.editLogTimers.values()) {
+      clearTimeout(timer);
+    }
+    session.editLogTimers.clear();
+  }
   if (session.keepaliveInterval) {
     clearInterval(session.keepaliveInterval);
     session.keepaliveInterval = null;
