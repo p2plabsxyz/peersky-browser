@@ -726,6 +726,8 @@ export function initChat(sdk, options = {}) {
 
           if (msg.type === "sync-system") {
             if (!msg.id || !msg.roomKey || !roomFeeds[msg.roomKey]) continue;
+            const _sysRoom = savedData.rooms[msg.roomKey];
+            if (_sysRoom && !_sysRoom.isHost && _sysRoom.joinedAt && msg.ts && msg.ts < _sysRoom.joinedAt) continue;
             if (!trackId(msg.id)) continue;
             appendToFeed(msg.roomKey, { id: msg.id, type: "system", text: msg.text, ts: msg.ts || Date.now() }).catch(() => {});
             continue;
@@ -733,6 +735,8 @@ export function initChat(sdk, options = {}) {
 
           if (msg.type === "sync") {
             if (!msg.id || !msg.roomKey || !roomFeeds[msg.roomKey]) continue;
+            const _syncRoom = savedData.rooms[msg.roomKey];
+            if (_syncRoom && !_syncRoom.isHost && _syncRoom.joinedAt && msg.ts && msg.ts < _syncRoom.joinedAt) continue;
             if (!trackId(msg.id)) continue;
             appendToFeed(msg.roomKey, {
               id: msg.id, sender: clamp(msg.sender, MAX_SENDER_LEN), sn: clamp(msg.sn, 50),
@@ -1083,6 +1087,7 @@ export async function handleChatRequest(req, sdk) {
         if (room) {
           room.unreadCount = 0;
           room.unreadMentions = 0;
+          room.lastReadTs = Date.now();
           persistData();
         }
         return respond(200, { ok: true });
@@ -1130,6 +1135,7 @@ export async function handleChatRequest(req, sdk) {
             lastMessage: r.lastMessage || null,
             unreadCount: r.unreadCount || 0,
             unreadMentions: r.unreadMentions || 0,
+            lastReadTs: r.lastReadTs || 0,
             members: r.members || {},
           });
         }
@@ -1145,6 +1151,8 @@ export async function handleChatRequest(req, sdk) {
           if (savedData.rooms[roomKey]) return respond(200, { messages: [] });
           return respond(404, { error: "Room not found" });
         }
+        const room = savedData.rooms[roomKey];
+        const joinedAt = (room && !room.isHost && room.joinedAt) ? room.joinedAt : 0;
         const messages = [];
         const dedupIds = new Set();
         for (let i = 0; i < feed.length; i++) {
@@ -1152,9 +1160,11 @@ export async function handleChatRequest(req, sdk) {
             const msg = feedEntryToMsg(await feed.get(i), roomKey);
             if (msg.id && dedupIds.has(msg.id)) continue;
             if (msg.id) dedupIds.add(msg.id);
+            if (joinedAt && msg.timestamp && msg.timestamp < joinedAt) continue;
             messages.push(msg);
           } catch {}
         }
+        messages.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
         return respond(200, { messages });
       }
 
@@ -1165,8 +1175,14 @@ export async function handleChatRequest(req, sdk) {
 
         const stream = new PassThrough();
         stream.write(`event: identity\ndata: ${JSON.stringify({ id: localId })}\n\n`);
+        const _rcvRoom = savedData.rooms[roomKey];
+        const _rcvJoinedAt = (_rcvRoom && !_rcvRoom.isHost && _rcvRoom.joinedAt) ? _rcvRoom.joinedAt : 0;
         for (let i = 0; i < feed.length; i++) {
-          try { stream.write(`data: ${JSON.stringify(feedEntryToMsg(await feed.get(i), roomKey))}\n\n`); } catch {}
+          try {
+            const _entry = feedEntryToMsg(await feed.get(i), roomKey);
+            if (_rcvJoinedAt && _entry.timestamp && _entry.timestamp < _rcvJoinedAt) continue;
+            stream.write(`data: ${JSON.stringify(_entry)}\n\n`);
+          } catch {}
         }
         const hb = setInterval(() => { try { stream.write("event: heartbeat\ndata: {}\n\n"); } catch {} }, KEEPALIVE_MS);
         if (!roomSseClients[roomKey]) roomSseClients[roomKey] = [];

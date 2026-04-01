@@ -405,6 +405,16 @@ html, body {
 }
 .reply-cancel:hover { color: var(--text); }
 
+/* Unread messages divider */
+.unread-divider {
+  display: flex; align-items: center; gap: 12px;
+  margin: 16px 0; font-size: 0.72rem; color: var(--accent, #4a9eff);
+  font-weight: 600; user-select: none;
+}
+.unread-divider::before, .unread-divider::after {
+  content: ''; flex: 1; height: 1px; background: var(--accent, #4a9eff);
+}
+
 /* Date separator */
 .date-separator {
   display: flex; align-items: center; gap: 12px;

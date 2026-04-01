@@ -699,6 +699,10 @@ async function openRoom(roomKey) {
 
   resetMessageSearch();
 
+  // Capture unread state before clearing for "New Messages" divider
+  const hasUnread = (room.unreadCount || 0) > 0;
+  const lastReadTs = hasUnread ? (room.lastReadTs || 0) : 0;
+
   $("chat-empty").style.display = "none";
   $("chat-active").style.display = "flex";
   $("chat-room-avatar").src = avatar(room.name, 32, room.avatar);
@@ -721,7 +725,7 @@ async function openRoom(roomKey) {
     const { messages } = await api("get-history", { roomKey });
     const merged = mergeWithHistory(S.messages[roomKey], messages || []).filter(chatMessageRenders);
     S.messages[roomKey] = merged;
-    renderMessages(roomKey);
+    renderMessages(roomKey, true, lastReadTs);
 
     const _roomNow = S.rooms[roomKey];
     if (_roomNow?.name && _roomNow.name !== roomKey.slice(0, 8) + "...") {
@@ -757,7 +761,7 @@ async function openRoom(roomKey) {
         const domCount = msgContainer ? msgContainer.querySelectorAll(".message, .system-msg").length : 0;
         if (freshMsgs && (freshMsgs.length > bufLen || (bufLen > 0 && domCount < bufLen))) {
           S.messages[roomKey] = mergeWithHistory(S.messages[roomKey], freshMsgs).filter(chatMessageRenders);
-          renderMessages(roomKey);
+          renderMessages(roomKey, false);
         }
       } catch {}
     }, 3000);
@@ -773,8 +777,10 @@ function messageMatchesSearch(m, q) {
   return (m.message || "").toLowerCase().includes(q);
 }
 
-function renderMessages(roomKey) {
+function renderMessages(roomKey, scrollToBottom = true, lastReadTs = 0) {
   const container = $("messages");
+  const savedScroll = container.scrollTop;
+  const wasAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 80;
   container.innerHTML = "";
   const dz = document.createElement("div");
   dz.id = "dropzone";
@@ -786,6 +792,7 @@ function renderMessages(roomKey) {
   let msgs = S.messages[roomKey] || [];
   if (q) msgs = msgs.filter((m) => messageMatchesSearch(m, q));
   let lastDateLabel = "";
+  let unreadDividerInserted = false;
   for (const m of msgs) {
     if (m.type === "system") {
       if (!chatMessageRenders(m)) continue;
@@ -796,6 +803,14 @@ function renderMessages(roomKey) {
       continue;
     }
     if (!chatMessageRenders(m)) continue;
+    if (!unreadDividerInserted && lastReadTs && m.timestamp && m.timestamp > lastReadTs) {
+      const divider = document.createElement("div");
+      divider.className = "unread-divider";
+      divider.id = "unread-divider";
+      divider.textContent = "New Messages";
+      container.appendChild(divider);
+      unreadDividerInserted = true;
+    }
     const label = dateLabelFor(m.timestamp);
     if (label !== lastDateLabel) {
       lastDateLabel = label;
@@ -806,13 +821,23 @@ function renderMessages(roomKey) {
     }
     container.appendChild(makeMsgEl(m));
   }
-  requestAnimationFrame(() => { container.scrollTop = container.scrollHeight; });
+  if (scrollToBottom) {
+    const divider = document.getElementById("unread-divider");
+    if (divider) {
+      requestAnimationFrame(() => { divider.scrollIntoView({ block: "start" }); });
+    } else {
+      requestAnimationFrame(() => { container.scrollTop = container.scrollHeight; });
+    }
+  } else if (wasAtBottom) {
+    requestAnimationFrame(() => { container.scrollTop = container.scrollHeight; });
+  } else {
+    requestAnimationFrame(() => { container.scrollTop = savedScroll; });
+  }
 }
 
 function mergeWithHistory(existing, incoming) {
   const incomingIds = new Set((incoming || []).filter(m => m.id).map(m => m.id));
   const extra = (existing || []).filter(m => m.id && !incomingIds.has(m.id));
-  if (!extra.length) return incoming || [];
   const combined = [...(incoming || []), ...extra];
   combined.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
   return combined;
@@ -1030,7 +1055,7 @@ function refreshActiveChatForPeer(peerId, username, peerAvatar) {
   for (const m of msgs) {
     if (peerIdEq(m.sender, peerId)) { m.senderName = username; changed = true; }
   }
-  if (changed) renderMessages(S.activeRoom);
+  if (changed) renderMessages(S.activeRoom, false);
 }
 
 async function refreshActiveRoom() {
@@ -1047,7 +1072,7 @@ async function refreshActiveRoom() {
       const _existing = S.messages[S.activeRoom] || [];
       if (fresh && fresh.length > _existing.length) {
         S.messages[S.activeRoom] = mergeWithHistory(_existing, fresh).filter(chatMessageRenders);
-        renderMessages(S.activeRoom);
+        renderMessages(S.activeRoom, false);
       }
       updateRoomPeerCount(S.activeRoom);
     }
