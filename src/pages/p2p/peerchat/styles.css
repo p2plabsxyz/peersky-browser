@@ -599,7 +599,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .modal-content h4 { font-size: 0.9rem; margin-top: 0.5rem; }
 .modal-content hr { border: none; border-top: 1px solid var(--border); }
 .modal-note {
-  font-size: 0.75rem; color: var(--text-muted); margin: 0.25rem 0 0; font-style: italic;
+  font-size: 0.75rem; color: var(--text-muted); margin: 0.25rem 0 0;
 }
 .join-modal-hint {
   line-height: 1.45;
