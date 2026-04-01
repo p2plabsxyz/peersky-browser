@@ -12,7 +12,7 @@ Small teams or group of friends who already trust each other and want something 
 
 ## What it does
 
-- Rooms with a name, bio, and optional picture; profiles with username and bio
+- Rooms with name, bio, optional link, and optional picture
 - Messages stored in a **Hypercore** per room (append-only log), synced across peers
 - Live delivery over **Hyperswarm** (Noise-encrypted transport) plus **SSE** (`receive-all`) so the web UI updates without polling every room
 - Join / leave, @mentions, replies, **file attachments** via a dedicated Hyperdrive (`peerchat` shows up in Settings → Archive like other apps). **No file upload limits** in PeerChat.

@@ -14,6 +14,7 @@ const MAX_SENDER_LEN = 200;
 const MAX_MSG_LEN = 64 * 1024;
 const MAX_NAME_LEN = 80;
 const MAX_BIO_LEN = 300;
+const MAX_LINK_LEN = 512;
 const MAX_AVATAR_B64 = 1_400_000;
 const MAX_FILE_NAME_LEN = 200;
 const RATE_WINDOW_MS = 60_000;
@@ -339,7 +340,7 @@ function sendRoomMeta(conn, rk) {
   try {
     conn.write(JSON.stringify({
       type: "room-meta", roomKey: rk,
-      name: room.name || "", bio: room.bio || "",
+      name: room.name || "", bio: room.bio || "", link: room.link || "",
       avatar: room.avatar || null,
       createdBy: room.createdBy || (room.isHost ? localId : ""),
       createdByName: room.createdByName || (room.isHost ? (savedData.profile?.username || localId) : ""),
@@ -670,6 +671,7 @@ export function initChat(sdk, options = {}) {
             if (currentIsPlaceholder || (incomingName && incomingName !== room.name)) {
               if (incomingName) room.name = incomingName;
               if (msg.bio) room.bio = clamp(msg.bio, MAX_BIO_LEN);
+              if (msg.link !== undefined) room.link = clamp(msg.link, MAX_LINK_LEN) || "";
               if (msg.avatar !== undefined && !room.avatar) room.avatar = sanitizeAvatar(msg.avatar);
               if (msg.createdBy && !room.createdBy) room.createdBy = clamp(msg.createdBy, MAX_SENDER_LEN);
               if (msg.createdByName && !room.createdByName) room.createdByName = clamp(msg.createdByName, 50);
@@ -808,6 +810,7 @@ export async function handleChatRequest(req, sdk) {
           roomKey: key, isHost: true,
           name: clamp(body.name, MAX_NAME_LEN) || "New Room",
           bio: clamp(body.bio, MAX_BIO_LEN),
+          link: clamp(body.link, MAX_LINK_LEN) || "",
           avatar: sanitizeAvatar(body.avatar),
           createdAt: Date.now(),
           createdBy: localId,
@@ -1122,6 +1125,7 @@ export async function handleChatRequest(req, sdk) {
             roomKey: k,
             name: r.name || k.slice(0, 8) + "...",
             bio: r.bio || "",
+            link: r.link || "",
             avatar: r.avatar || null,
             isHost: !!r.isHost,
             isDM: !!r.isDM,

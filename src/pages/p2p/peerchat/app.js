@@ -1349,10 +1349,11 @@ function isMentioned(message) {
 }
 
 $('create-room-btn')?.addEventListener('click', () => {
-  $('new-room-avatar-preview').src = avatar('?', 64);
+  $("new-room-avatar-preview").src = avatar('?', 64);
   pendingRoomAvatar = null;
+  $("new-room-link").value = "";
   openModal('create-room-modal');
-  queueMicrotask(() => $('new-room-name')?.focus());
+  queueMicrotask(() => $("new-room-name")?.focus());
 });
 $("create-room-form")?.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -1363,7 +1364,7 @@ $("create-room-form")?.addEventListener("submit", async (e) => {
   creatingRoom = true;
   if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = "Creating…"; }
   try {
-    const body = { name, bio: $("new-room-bio").value.trim() };
+    const body = { name, bio: $("new-room-bio").value.trim(), link: $("new-room-link").value.trim() };
     if (pendingRoomAvatar) body.avatar = pendingRoomAvatar;
     const { roomKey } = await api("create-key", { body });
     await api("join", { roomKey, post: true });
@@ -1373,6 +1374,7 @@ $("create-room-form")?.addEventListener("submit", async (e) => {
     openRoom(roomKey);
     $("new-room-name").value = "";
     $("new-room-bio").value = "";
+    $("new-room-link").value = "";
     pendingRoomAvatar = null;
     saveDrafts().catch(() => {});
   } catch (err) { alert(err.message); }
@@ -1535,6 +1537,16 @@ $("chat-header-main")?.addEventListener("click", () => {
   $("ri-avatar").src = avatar(room.name, 64, room.avatar);
   $("ri-name").textContent = room.name;
   $("ri-bio").textContent = room.bio || "No description";
+  const linkRow = $("ri-link-row");
+  const linkEl = $("ri-link");
+  const roomLink = room.link || "";
+  if (!room.isDM && roomLink) {
+    linkEl.href = roomLink;
+    linkEl.textContent = roomLink;
+    linkRow.style.display = "";
+  } else {
+    linkRow.style.display = "none";
+  }
   $("ri-creator").textContent = room.createdByName || room.createdBy || "Unknown";
   $("ri-date").textContent = formatDate(room.createdAt);
 

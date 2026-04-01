@@ -118,6 +118,7 @@
           </div>
           <input type="text" id="new-room-name" placeholder="Room name" maxlength="80" required />
           <textarea id="new-room-bio" placeholder="Description (optional)" maxlength="300" rows="2"></textarea>
+          <input type="url" id="new-room-link" placeholder="Link (optional, e.g. https://…)" maxlength="512" />
           <p class="modal-note">❗️Room name, picture, and description cannot be edited after creation.</p>
           <div class="modal-actions">
             <button type="button" class="btn-secondary" data-close>Cancel</button>
@@ -151,6 +152,7 @@
         <img id="ri-avatar" class="avatar-lg" />
         <h3 id="ri-name"></h3>
         <p id="ri-bio" class="muted"></p>
+        <div id="ri-link-row" class="info-row" style="display:none"><span class="label">Link</span><a id="ri-link" href="#" target="_blank" rel="noopener noreferrer"></a></div>
         <div class="info-row"><span class="label">Created by</span><span id="ri-creator"></span></div>
         <div class="info-row"><span class="label">Created</span><span id="ri-date"></span></div>
         <div class="info-row"><span class="label">Recovery Key</span><button id="ri-copy-key" class="btn-sm">Copy</button></div>
