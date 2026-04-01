@@ -10,6 +10,7 @@ const roomSessions = new Map();
 const roomPorts = new Map();
 let peerSequence = 0;
 const EDIT_ACTIVITY_DEBOUNCE_MS = 1200;
+const TYPING_STALE_MS = 2500;
 
 // Rate limiting: track requests per IP/action
 const rateLimits = new Map(); // key -> { count, resetAt }
@@ -278,26 +279,35 @@ function getPeerCount(session) {
 }
 
 function getPeerList(session) {
+  const now = Date.now();
   return Array.from(session.sseClients.values())
     .sort((a, b) => {
       if (a.role === "host" && b.role !== "host") return -1;
       if (a.role !== "host" && b.role === "host") return 1;
       return (a.joinedAt || 0) - (b.joinedAt || 0);
     })
-    .map((client) => ({
-      id: client.id,
-      role: normalizePeerRole(client.role),
-      clientId: client.clientId || null,
-      name: getPeerDisplayName(client),
-      color: client.color || getPeerColor(client.clientId || client.id),
-      isTyping: client.isTyping === true,
-      cursorLine: Number.isFinite(Number(client.cursorLine)) ? Number(client.cursorLine) : null,
-      cursorColumn: Number.isFinite(Number(client.cursorColumn)) ? Number(client.cursorColumn) : null,
-      selectionStart: Number.isFinite(Number(client.selectionStart)) ? Number(client.selectionStart) : null,
-      selectionEnd: Number.isFinite(Number(client.selectionEnd)) ? Number(client.selectionEnd) : null,
-      joinedAt: Number.isFinite(Number(client.joinedAt)) ? Number(client.joinedAt) : Date.now(),
-      updatedAt: Number.isFinite(Number(client.updatedAt)) ? Number(client.updatedAt) : Date.now()
-    }));
+    .map((client) => {
+      const isFreshTyping = client.isTyping === true &&
+        Number.isFinite(Number(client.lastTypingAt)) &&
+        (now - Number(client.lastTypingAt) <= TYPING_STALE_MS);
+      if (client.isTyping && !isFreshTyping) {
+        client.isTyping = false;
+      }
+      return {
+        id: client.id,
+        role: normalizePeerRole(client.role),
+        clientId: client.clientId || null,
+        name: getPeerDisplayName(client),
+        color: client.color || getPeerColor(client.clientId || client.id),
+        isTyping: isFreshTyping,
+        cursorLine: Number.isFinite(Number(client.cursorLine)) ? Number(client.cursorLine) : null,
+        cursorColumn: Number.isFinite(Number(client.cursorColumn)) ? Number(client.cursorColumn) : null,
+        selectionStart: Number.isFinite(Number(client.selectionStart)) ? Number(client.selectionStart) : null,
+        selectionEnd: Number.isFinite(Number(client.selectionEnd)) ? Number(client.selectionEnd) : null,
+        joinedAt: Number.isFinite(Number(client.joinedAt)) ? Number(client.joinedAt) : Date.now(),
+        updatedAt: Number.isFinite(Number(client.updatedAt)) ? Number(client.updatedAt) : Date.now()
+      };
+    });
 }
 
 function findClientByClientId(session, clientId) {
@@ -341,6 +351,7 @@ function getOrCreatePeerMeta(session, clientId, hints = {}) {
       role: normalizePeerRole(hints.role || "client"),
       name: "",
       lastCursorLine: null,
+      lastCursorColumn: null,
       updatedAt: Date.now()
     };
     session.peerMetaByClientId.set(clientId, meta);
@@ -351,6 +362,7 @@ function getOrCreatePeerMeta(session, clientId, hints = {}) {
   const sanitizedName = sanitizePeerName(hints.name || "");
   if (sanitizedName) meta.name = sanitizedName;
   if (Number.isFinite(Number(hints.cursorLine))) meta.lastCursorLine = Number(hints.cursorLine);
+  if (Number.isFinite(Number(hints.cursorColumn))) meta.lastCursorColumn = Number(hints.cursorColumn);
   meta.updatedAt = Date.now();
   return meta;
 }
@@ -361,7 +373,8 @@ function syncPeerMetaFromActor(session, actor) {
     id: actor.id,
     role: actor.role,
     name: actor.name,
-    cursorLine: actor.cursorLine
+    cursorLine: actor.cursorLine,
+    cursorColumn: actor.cursorColumn
   });
 }
 
@@ -387,6 +400,7 @@ function scheduleEditActivity(session, entry = {}) {
     hintedPeerId = getOrCreateUnknownPeerId(session, sourceKey || "unknown");
   }
   const hintedCursorLine = Number.isFinite(Number(entry.cursorLine)) ? Number(entry.cursorLine) : null;
+  const hintedCursorColumn = Number.isFinite(Number(entry.cursorColumn)) ? Number(entry.cursorColumn) : null;
   const hintedRole = normalizePeerRole(entry.role || "client");
   const hintedName = sanitizePeerName(entry.name || "");
   const cachedMeta = clientId
@@ -394,7 +408,8 @@ function scheduleEditActivity(session, entry = {}) {
         id: hintedPeerId,
         role: hintedRole,
         name: hintedName,
-        cursorLine: hintedCursorLine
+        cursorLine: hintedCursorLine,
+        cursorColumn: hintedCursorColumn
       })
     : null;
 
@@ -418,14 +433,21 @@ function scheduleEditActivity(session, entry = {}) {
       : (Number.isFinite(Number(actor?.cursorLine))
           ? Number(actor.cursorLine)
           : (Number.isFinite(Number(meta?.lastCursorLine)) ? Number(meta.lastCursorLine) : null));
-    const lineHint = lineNumber ? ` (line ${lineNumber})` : "";
+    const columnNumber = Number.isFinite(Number(entry.cursorColumn))
+      ? Number(entry.cursorColumn)
+      : (Number.isFinite(Number(actor?.cursorColumn))
+          ? Number(actor.cursorColumn)
+          : (Number.isFinite(Number(meta?.lastCursorColumn)) ? Number(meta.lastCursorColumn) : null));
+    const positionHint = (lineNumber && columnNumber)
+      ? ` (line ${lineNumber}, col ${columnNumber})`
+      : (lineNumber ? ` (line ${lineNumber})` : "");
     const activity = addActivity(session, {
       type: "edit",
       role: resolvedRole,
       name: resolvedName,
       peerId: resolvedPeerId,
       clientId: clientId || actor?.clientId || null,
-      message: `${resolvedName} edited the document${lineHint}`
+      message: `${resolvedName} edited the document${positionHint}`
     });
     broadcastActivity(session, activity);
   }, EDIT_ACTIVITY_DEBOUNCE_MS);
@@ -689,17 +711,29 @@ function handleDocRequest(req, res, session) {
         if (ins)        ytextRef.insert(pre, ins);
       }, origin);
     }
+    function getCursorMeta() {
+      const start = Number.isFinite(editor.selectionStart) ? editor.selectionStart : 0;
+      const safeStart = Math.max(0, Math.min(start, (editor.value || '').length));
+      const before = (editor.value || '').slice(0, safeStart);
+      const lines = before.split('\\n');
+      return {
+        cursorLine: lines.length,
+        cursorColumn: (lines[lines.length - 1] || '').length + 1
+      };
+    }
     async function flushUpdate() {
       if (!pendingUpdate) return;
       const toSend = pendingUpdate; pendingUpdate = null;
       try {
+        const cursor = getCursorMeta();
         const res = await fetch('/doc/update', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             update: bytesToBase64(toSend),
             clientId: localClientId,
-            cursorLine: (editor.value.slice(0, editor.selectionStart || 0).match(/\\n/g) || []).length + 1
+            cursorLine: cursor.cursorLine,
+            cursorColumn: cursor.cursorColumn
           })
         });
         if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -739,13 +773,15 @@ function handleDocRequest(req, res, session) {
         if (content === lastContent) return;
         lastContent = content;
         try {
+          const cursor = getCursorMeta();
           await fetch('/doc', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               content,
               clientId: localClientId,
-              cursorLine: (editor.value.slice(0, editor.selectionStart || 0).match(/\\n/g) || []).length + 1
+              cursorLine: cursor.cursorLine,
+              cursorColumn: cursor.cursorColumn
             })
           });
         } catch {}
@@ -960,14 +996,16 @@ function handleDocRequest(req, res, session) {
           if (selectionStart !== null) actor.selectionStart = selectionStart;
           if (selectionEnd !== null) actor.selectionEnd = selectionEnd;
           actor.isTyping = true;
-          actor.updatedAt = Date.now();
+          actor.lastTypingAt = Date.now();
+          actor.updatedAt = actor.lastTypingAt;
           syncPeerMetaFromActor(session, actor);
           broadcastPeerList(session);
         } else if (clientId) {
           getOrCreatePeerMeta(session, clientId, {
             role: "client",
             name: providedName,
-            cursorLine
+            cursorLine,
+            cursorColumn
           });
         }
         if (!base64) {
@@ -1028,6 +1066,7 @@ function handleDocRequest(req, res, session) {
             role: actor?.role || "client",
             name: actor ? getPeerDisplayName(actor) : providedName,
             cursorLine: cursorLine !== null ? cursorLine : actor?.cursorLine,
+            cursorColumn: cursorColumn !== null ? cursorColumn : actor?.cursorColumn,
             sourceKey: requestSourceKey
           });
         }
@@ -1075,14 +1114,16 @@ function handleDocRequest(req, res, session) {
           if (selectionStart !== null) actor.selectionStart = selectionStart;
           if (selectionEnd !== null) actor.selectionEnd = selectionEnd;
           actor.isTyping = true;
-          actor.updatedAt = Date.now();
+          actor.lastTypingAt = Date.now();
+          actor.updatedAt = actor.lastTypingAt;
           syncPeerMetaFromActor(session, actor);
           broadcastPeerList(session);
         } else if (clientId) {
           getOrCreatePeerMeta(session, clientId, {
             role: "client",
             name: providedName,
-            cursorLine
+            cursorLine,
+            cursorColumn
           });
         }
         const beforeContent = session.ydoc && session.ytext ? session.ytext.toString() : session.docState.content;
@@ -1116,6 +1157,7 @@ function handleDocRequest(req, res, session) {
             role: actor?.role || "client",
             name: actor ? getPeerDisplayName(actor) : providedName,
             cursorLine: cursorLine !== null ? cursorLine : actor?.cursorLine,
+            cursorColumn: cursorColumn !== null ? cursorColumn : actor?.cursorColumn,
             sourceKey: requestSourceKey
           });
         }
@@ -1162,6 +1204,7 @@ function handleDocRequest(req, res, session) {
       selectionEnd: null,
       joinedAt: Date.now(),
       updatedAt: Date.now(),
+      lastTypingAt: 0,
       lastEditAt: 0
     };
     session.sseClients.set(res, peerState);
@@ -1271,7 +1314,8 @@ function handleDocRequest(req, res, session) {
           ? getOrCreatePeerMeta(session, clientId, {
               role: parsed.role || "client",
               name: nextName,
-              cursorLine: parsed.cursorLine
+              cursorLine: parsed.cursorLine,
+              cursorColumn: parsed.cursorColumn
             })
           : null;
         if (!actor && !peerMeta) {
@@ -1284,6 +1328,9 @@ function handleDocRequest(req, res, session) {
         const nextTyping = parsed.isTyping === true;
         if (actor) {
           actor.isTyping = nextTyping;
+          if (nextTyping) {
+            actor.lastTypingAt = Date.now();
+          }
           actor.cursorLine = Number.isFinite(Number(parsed.cursorLine)) ? Number(parsed.cursorLine) : null;
           actor.cursorColumn = Number.isFinite(Number(parsed.cursorColumn)) ? Number(parsed.cursorColumn) : null;
           actor.selectionStart = Number.isFinite(Number(parsed.selectionStart)) ? Number(parsed.selectionStart) : null;
