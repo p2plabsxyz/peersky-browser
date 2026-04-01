@@ -144,6 +144,42 @@ function fileAttachHtml(url, fileNameOpt, fileSizeOpt) {
 }
 
 let emojiKeywordsJsonPromise = null;
+const RECENT_EMOJI_KEY = "peerchat-recent-emojis";
+const RECENT_EMOJI_MAX = 24;
+function getRecentEmojis() {
+  try { return JSON.parse(localStorage.getItem(RECENT_EMOJI_KEY) || "[]"); } catch { return []; }
+}
+function saveRecentEmojis(arr) {
+  try { localStorage.setItem(RECENT_EMOJI_KEY, JSON.stringify(arr)); } catch {}
+}
+let _recentSectionEl = null;
+let _recentGridEl = null;
+function renderRecentSection() {
+  if (!_recentSectionEl || !_recentGridEl) return;
+  const recents = getRecentEmojis();
+  _recentSectionEl.style.display = recents.length ? "" : "none";
+  _recentGridEl.replaceChildren();
+  const frag = document.createDocumentFragment();
+  for (const ch of recents) {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "emoji-cell"; b.textContent = ch;
+    b.addEventListener("click", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      trackRecentEmoji(ch);
+      insertAtCaret($("message-input"), ch);
+      closeEmojiPanel();
+    });
+    frag.appendChild(b);
+  }
+  _recentGridEl.appendChild(frag);
+}
+function trackRecentEmoji(ch) {
+  let arr = getRecentEmojis().filter((e) => e !== ch);
+  arr.unshift(ch);
+  if (arr.length > RECENT_EMOJI_MAX) arr = arr.slice(0, RECENT_EMOJI_MAX);
+  saveRecentEmojis(arr);
+  renderRecentSection();
+}
 
 function insertAtCaret(textarea, text) {
   if (!textarea) return;
@@ -192,6 +228,21 @@ async function initEmojiPanel() {
   search.autocomplete = "off";
   search.spellcheck = false;
 
+  const recentSection = document.createElement("div");
+  const recentLabel = document.createElement("div");
+  recentLabel.className = "emoji-section-label";
+  recentLabel.textContent = "Recent";
+  const recentGrid = document.createElement("div");
+  recentGrid.className = "emoji-grid";
+  recentSection.appendChild(recentLabel);
+  recentSection.appendChild(recentGrid);
+  _recentSectionEl = recentSection;
+  _recentGridEl = recentGrid;
+
+  const allLabel = document.createElement("div");
+  allLabel.className = "emoji-section-label";
+  allLabel.textContent = "Emoji";
+
   const grid = document.createElement("div");
   grid.className = "emoji-grid";
 
@@ -209,6 +260,8 @@ async function initEmojiPanel() {
 
   function render() {
     const q = search.value.trim().toLowerCase();
+    recentSection.style.display = q ? "none" : "";
+    allLabel.style.display = q ? "none" : "";
     const list = pickMatches(q);
     grid.replaceChildren();
     const frag = document.createDocumentFragment();
@@ -221,6 +274,7 @@ async function initEmojiPanel() {
       b.addEventListener("click", (e) => {
         e.preventDefault();
         e.stopPropagation();
+        trackRecentEmoji(ch);
         insertAtCaret($("message-input"), ch);
         closeEmojiPanel();
       });
@@ -232,7 +286,10 @@ async function initEmojiPanel() {
   search.addEventListener("input", render);
   search.addEventListener("click", (e) => e.stopPropagation());
   panel.appendChild(search);
+  panel.appendChild(recentSection);
+  panel.appendChild(allLabel);
   panel.appendChild(grid);
+  renderRecentSection();
   render();
   panel.dataset.ready = "1";
 }
@@ -291,7 +348,7 @@ function linkify(text, msg) {
   }
   if (last < text.length) parts.push(esc(text.slice(last)));
   let html = parts.join("");
-  html = html.replace(/@(\w+)/g, '<span class="mention">@$1</span>');
+  html = html.replace(/@(\w+)/g, '<span class="mention" data-mention="$1">@$1</span>');
   return html.replace(/\n/g, "<br>");
 }
 
@@ -2046,6 +2103,17 @@ $("media-viewer-dl")?.addEventListener("click", async () => {
 });
 
 document.addEventListener("click", (e) => {
+  const mentionEl = e.target.closest(".mention[data-mention]");
+  if (mentionEl) {
+    e.stopPropagation();
+    const uname = mentionEl.dataset.mention;
+    const peerId = Object.entries(S.peerProfiles).find(([, p]) => p.username === uname)?.[0];
+    if (peerId) { showUserInfo(peerId, uname); return; }
+    const room = S.rooms[S.activeRoom];
+    const memberId = room && Object.entries(room.members || {}).find(([, m]) => m.username === uname)?.[0];
+    if (memberId) { showUserInfo(memberId, uname); return; }
+    return;
+  }
   const img = e.target.closest(".msg-file-img");
   if (img) {
     e.preventDefault();

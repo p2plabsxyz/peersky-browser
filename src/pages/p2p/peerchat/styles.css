@@ -375,7 +375,7 @@ html, body {
   font-size: 0.65rem; color: var(--muted); margin-top: 3px;
 }
 
-.mention { background: var(--mention-bg); border-radius: 3px; padding: 0 3px; color: var(--accent); font-weight: 500; }
+.mention { background: var(--mention-bg); border-radius: 3px; padding: 0 3px; color: var(--accent); font-weight: 500; cursor: pointer; }
 
 /* Reply quote inside bubble */
 .msg-reply-quote {
@@ -471,6 +471,12 @@ html, body {
 }
 .emoji-panel.open { display: block; }
 .emoji-load-msg { padding: 8px 4px; margin: 0; text-align: center; }
+.emoji-section-label {
+  font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--text-muted);
+  padding: 2px 2px 4px; margin-top: 4px;
+}
+.emoji-section-label:first-child { margin-top: 0; }
 .emoji-search {
   width: 100%;
   margin-bottom: 6px;
