@@ -1,3 +1,5 @@
+import { PRE_JOINED_ROOM_KEY } from "./rooms.js";
+
 const API = "hyper://chat";
 
 const S = {
@@ -537,6 +539,9 @@ $("onboard-submit")?.addEventListener("click", async () => {
     S.profile = profile;
     S.settings.sounds = true;
     S.settings.notifications = profile.notifications ?? true;
+    if (PRE_JOINED_ROOM_KEY && !/^0+$/.test(PRE_JOINED_ROOM_KEY)) {
+      await api("join", { roomKey: PRE_JOINED_ROOM_KEY, post: true }).catch(() => {});
+    }
     await loadRooms();
     showApp();
     connectGlobalSSE();
@@ -1563,7 +1568,9 @@ $("chat-header-main")?.addEventListener("click", () => {
   }
 
   const keyRow = $("ri-copy-key").parentElement;
-  if (room.isDM) {
+  if (PRE_JOINED_ROOM_KEY && S.activeRoom === PRE_JOINED_ROOM_KEY) {
+    keyRow.style.display = "none";
+  } else if (room.isDM) {
     const dmPeerOnline = room.dmWith && S.onlinePeers.has(room.dmWith);
     keyRow.style.display = dmPeerOnline ? "none" : "";
   } else {
@@ -1729,7 +1736,8 @@ function showCtxMenu(e, roomKey) {
   const copyBtn = menu.querySelector('[data-action="copy"]');
   if (copyBtn) {
     const dmOnline = room?.isDM && room.dmWith && S.onlinePeers.has(room.dmWith);
-    copyBtn.style.display = dmOnline ? "none" : "";
+    const isPreJoined = PRE_JOINED_ROOM_KEY && roomKey === PRE_JOINED_ROOM_KEY;
+    copyBtn.style.display = (dmOnline || isPreJoined) ? "none" : "";
   }
   menu.style.top = e.clientY + "px";
   menu.style.left = e.clientX + "px";
