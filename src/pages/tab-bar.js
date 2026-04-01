@@ -898,6 +898,22 @@ restoreTabs(persistedData) {
       const newWebview = this.webviews.get(tabId);
       if (newWebview) {
         newWebview.style.display = "flex";
+
+        // Keep extension system in sync with tab switches so popup UIs
+        // can resolve the active tab reliably.
+        try {
+          const wcId = newWebview.getWebContentsId?.();
+          if (wcId) {
+            const { ipcRenderer } = require('electron');
+            ipcRenderer.invoke('extensions-pin-active-webview', wcId).then((res) => {
+              if (res && res.success === false) {
+                console.warn('[TabBar] Failed to pin active webview for extensions:', res.error || res.code || res);
+              }
+            }).catch((e) => {
+              console.warn('[TabBar] Error pinning active webview for extensions:', e?.message || e);
+            });
+          }
+        } catch (_) {}
         
         // Focus the webview after a short delay to ensure it's visible
         // Skip webview focus for new tabs to allow address bar focus

@@ -415,14 +415,23 @@ class ExtensionManager {
           },
         });
         console.log('ExtensionManager: ElectronChromeExtensions initialized');
-        // this is a patch fix for the tabs.query to work properly
+        // Patch tabs.query so extension popups resolve the correct "current window".
+        // In Chrome, popup scripts calling tabs.query({active:true,currentWindow:true})
+        // refer to the last focused browser window, not the popup window itself.
         try {
           const ece = this.electronChromeExtensions;
           if (ece?.ctx?.router && ece?.api?.tabs) {
             const originalQuery = ece.api.tabs.query.bind(ece.api.tabs);
             ece.ctx.router.handle("tabs.query", (event, info = {}) => {
               if (info.currentWindow || info.lastFocusedWindow) {
-                info.windowId = -2; // Maps to ece.api.tabs.WINDOW_ID_CURRENT
+                // Prefer the ECE tracked last-focused browser window id (set via our focus pinning),
+                // and fall back to WINDOW_ID_CURRENT.
+                const lastFocusedWindowId = ece?.ctx?.store?.lastFocusedWindowId;
+                if (typeof lastFocusedWindowId === 'number' && lastFocusedWindowId > 0) {
+                  info.windowId = lastFocusedWindowId;
+                } else {
+                  info.windowId = -2; // Maps to ece.api.tabs.WINDOW_ID_CURRENT
+                }
               }
               return originalQuery(event, info);
             });
