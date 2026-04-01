@@ -315,15 +315,32 @@ function chatMessageRenders(m) {
   return !!(t && /^hyper:\/\//i.test(t) && isHyperFileUrl(t));
 }
 
+const _blobUrlCache = new Map();
+const _blobToDataCache = new Map();
+function dataToBlobUrl(dataUrl) {
+  if (_blobUrlCache.has(dataUrl)) return _blobUrlCache.get(dataUrl);
+  try {
+    const [hdr, b64] = dataUrl.split(",");
+    const mime = hdr.match(/:(.*?);/)?.[1] || "image/jpeg";
+    const bin = atob(b64);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    const url = URL.createObjectURL(new Blob([arr], { type: mime }));
+    _blobUrlCache.set(dataUrl, url);
+    _blobToDataCache.set(url, dataUrl);
+    return url;
+  } catch { return dataUrl; }
+}
+
 function avatar(name, sz, customUrl) {
   const safe = safeAvatarUrl(customUrl);
-  if (safe) return safe;
+  if (safe) return dataToBlobUrl(safe);
   return typeof LetterAvatar !== "undefined"
     ? LetterAvatar.generate(name || "?", sz || 40)
     : "";
 }
 
-function resizeImage(file, maxPx = 128) {
+function resizeImage(file, maxPx = 369) {
   return new Promise((resolve, reject) => {
     if (file.size > 1024 * 1024) { reject(new Error("Image must be under 1 MB")); return; }
     const reader = new FileReader();
@@ -1540,9 +1557,10 @@ $("chat-header-main")?.addEventListener("click", () => {
   const linkRow = $("ri-link-row");
   const linkEl = $("ri-link");
   const roomLink = room.link || "";
-  if (!room.isDM && roomLink) {
-    linkEl.href = roomLink;
-    linkEl.textContent = roomLink;
+  const safeLink = /^https?:\/\//i.test(roomLink) ? roomLink : "";
+  if (!room.isDM && safeLink) {
+    linkEl.href = safeLink;
+    linkEl.textContent = safeLink;
     linkRow.style.display = "";
   } else {
     linkRow.style.display = "none";
@@ -1969,9 +1987,12 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
-function openMediaViewer(src, type) {
+function openMediaViewer(src, type, hint) {
   const overlay = $("media-viewer");
   if (!overlay) return;
+  overlay.dataset.mediaSrc = src;
+  overlay.dataset.mediaType = type || "image";
+  overlay.dataset.mediaFilename = hint || "";
   const body = $("media-viewer-body");
   body.innerHTML = "";
   if (type === "video") {
@@ -1995,19 +2016,53 @@ $("media-viewer")?.addEventListener("click", (e) => {
   }
 });
 
+$("media-viewer-dl")?.addEventListener("click", async () => {
+  const overlay = $("media-viewer");
+  const src = overlay?.dataset.mediaSrc;
+  if (!src) return;
+  try {
+    const resp = await fetch(src);
+    const blob = await resp.blob();
+    const ext = blob.type.split("/")[1]?.split("+")[0] || "jpg";
+    const rawHint = (overlay?.dataset.mediaFilename || "").trim().replace(/[/\\?%*:|"<>]/g, "_").slice(0, 60);
+    const fname = rawHint ? `peerchat-${rawHint}.${ext}` : `peerchat-image.${ext}`;
+    if (typeof window.showSaveFilePicker === "function") {
+      try {
+        const handle = await window.showSaveFilePicker({ suggestedName: fname });
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        return;
+      } catch (pickErr) {
+        if (pickErr?.name === "AbortError") return;
+      }
+    }
+    const obj = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = obj; a.download = fname;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(obj), 2500);
+  } catch (err) { alert("Could not save image: " + err.message); }
+});
+
 document.addEventListener("click", (e) => {
   const img = e.target.closest(".msg-file-img");
   if (img) {
     e.preventDefault();
     e.stopPropagation();
     const tag = img.tagName.toLowerCase();
-    openMediaViewer(img.src, tag === "video" ? "video" : "image");
+    const imgHint = S.activeRoom ? (S.rooms[S.activeRoom]?.name || "") : "";
+    openMediaViewer(img.src, tag === "video" ? "video" : "image", imgHint);
     return;
   }
   const av = e.target.closest(".modal.open img.avatar-lg");
-  if (av && av.src && av.src.startsWith("data:image/jpeg")) {
+  if (av && av.src && (av.src.startsWith("data:image/") || av.src.startsWith("blob:"))) {
     e.stopPropagation();
-    openMediaViewer(av.src, "image");
+    let avHint = "";
+    if (e.target.closest("#room-info-modal")) avHint = $("ri-name")?.textContent || "";
+    else if (e.target.closest("#user-info-modal")) avHint = $("ui-name")?.textContent || "";
+    else if (e.target.closest("#settings-modal")) avHint = S.profile?.username || "";
+    openMediaViewer(_blobToDataCache.get(av.src) || av.src, "image", avHint);
   }
 });
 

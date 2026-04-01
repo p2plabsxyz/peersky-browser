@@ -843,17 +843,19 @@ a:hover { text-decoration: none; }
   align-items: center; justify-content: center;
 }
 .media-viewer.open { display: flex; }
+.media-viewer-dl,
 .media-viewer-close {
-  position: absolute; top: 16px; right: 20px;
-  background: none; border: none;
-  color: var(--base07, var(--browser-theme-text-color));
-  font-size: 2.2rem; cursor: pointer; z-index: 501;
-  line-height: 1; padding: 4px 10px; border-radius: 6px;
+  background: none; border: none; cursor: pointer; z-index: 501;
+  display: flex; align-items: center; justify-content: center;
+  padding: 8px; border-radius: 6px;
   transition: background 0.15s;
 }
-.media-viewer-close:hover {
-  background: color-mix(in srgb, var(--base07, #ffffff) 16%, var(--browser-theme-text-color));
-}
+.media-viewer-dl { position: absolute; top: 14px; left: 16px; }
+.media-viewer-close { position: absolute; top: 14px; right: 16px; }
+.media-viewer-dl:hover,
+.media-viewer-close:hover { background: rgba(255,255,255,0.15); }
+.media-viewer-dl img,
+.media-viewer-close img { filter: brightness(0) invert(1); display: block; }
 .media-viewer-body {
   display: flex; align-items: center; justify-content: center;
   max-width: 92vw; max-height: 90vh;
