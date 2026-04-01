@@ -108,3 +108,7 @@ export async function createHandler(options) {
 ## Theming
 
 `styles.css` imports [`browser://theme/vars.css`](https://github.com/p2plabsxyz/peersky-browser/blob/main/docs/Theme.md) and maps layout colors from **`--browser-theme-background`**, **`--browser-theme-text-color`**, **`--browser-theme-primary-highlight`**, **`--browser-theme-secondary-highlight`**, and **`--browser-theme-font-family`**, with Peersky extras (`--peersky-nav-background`, `--base02`, etc.) when present. The UI should follow PeerSky’s selected theme and stay compatible with other browsers that implement the same protocol.
+
+## Credits
+
+All sound effects used in PeerChat are royalty-free and sourced from [Pixabay](https://pixabay.com/).
