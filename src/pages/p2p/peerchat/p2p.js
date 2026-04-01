@@ -578,6 +578,7 @@ export function initChat(sdk, options = {}) {
             if (!msg.roomKey || !msg.peerId) continue;
             const joinName = clamp(msg.username, 50) || msg.peerId;
             const room = savedData.rooms[msg.roomKey];
+            const alreadyKnownMember = !!(room?.members?.[msg.peerId]?.joinedAt);
             if (room) {
               if (!room.members) room.members = {};
               room.members[msg.peerId] = {
@@ -592,7 +593,7 @@ export function initChat(sdk, options = {}) {
             }
 
             const sysId = msg.id || `${msg.roomKey}-${msg.peerId}-join-${msg.ts || Date.now()}`;
-            if (roomFeeds[msg.roomKey] && trackId(sysId)) {
+            if (roomFeeds[msg.roomKey] && !alreadyKnownMember && trackId(sysId)) {
               appendToFeed(msg.roomKey, { id: sysId, type: "system", text: `${joinName} joined`, ts: msg.ts || Date.now() }).catch(() => {});
             }
 
@@ -1025,6 +1026,11 @@ export async function handleChatRequest(req, sdk) {
           avatar: savedData.profile.avatar || null,
           updatedAt: Date.now(),
         };
+        for (const room of Object.values(savedData.rooms)) {
+          if (room.isHost && room.createdBy === localId) {
+            room.createdByName = savedData.profile.username || localId;
+          }
+        }
         persistData();
 
         const profileMsg = JSON.stringify({
