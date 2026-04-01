@@ -266,6 +266,9 @@ function feedEntryToMsg(entry, roomKey) {
   if (entry.type === "system") {
     return { id: entry.id, type: "system", text: entry.text, timestamp: entry.ts };
   }
+  if (entry.type === "reaction") {
+    return { id: entry.id, type: "reaction", msgId: entry.msgId, emoji: entry.emoji, sender: entry.sender, senderName: entry.sn || entry.sender, timestamp: entry.ts };
+  }
   if (entry.ct && entry.iv && entry.tag) {
     const out = {
       id: entry.id,
@@ -297,7 +300,7 @@ async function syncRoomHistoryTo(conn, rk) {
     try {
       if (conn.destroyed) return;
       const e = await feed.get(i);
-      const syncType = e.type === "system" ? "sync-system" : "sync";
+      const syncType = e.type === "system" ? "sync-system" : e.type === "reaction" ? "sync-reaction" : "sync";
       const ok = conn.write(JSON.stringify({ type: syncType, roomKey: rk, ...e }) + "\n");
       if (!ok) {
         const drained = await Promise.race([
@@ -427,14 +430,15 @@ async function joinRoom(sdk, roomKey) {
         const room = savedData.rooms[roomKey];
         if (room) {
           const isSystem = msg.type === "system";
-          if (!isSystem && room.isDM && room.pendingAcceptance && room.dmWith && msg.sender &&
+          const isReaction = msg.type === "reaction";
+          if (!isSystem && !isReaction && room.isDM && room.pendingAcceptance && room.dmWith && msg.sender &&
               normPeerId(msg.sender) === normPeerId(room.dmWith)) {
             room.pendingAcceptance = false;
             debouncePersist();
             emitRoomUpdate(roomKey);
           }
           const msgText = typeof msg.message === "string" ? msg.message : "";
-          if (!isSystem && msgText) {
+          if (!isSystem && !isReaction && msgText) {
             room.lastMessage = {
               sender: msg.sender,
               senderName: msg.senderName,
@@ -442,13 +446,24 @@ async function joinRoom(sdk, roomKey) {
               timestamp: msg.timestamp,
             };
           }
+          if (isReaction && msg.emoji) {
+            room.lastMessage = {
+              sender: msg.sender,
+              senderName: msg.senderName,
+              message: `reacted ${msg.emoji}`,
+              timestamp: msg.timestamp,
+            };
+          }
 
-          if (!isSystem && roomKey !== activeRoom && msg.sender !== localId) {
+          if (!isSystem && !isReaction && roomKey !== activeRoom && msg.sender !== localId) {
             room.unreadCount = (room.unreadCount || 0) + 1;
             const uname = savedData.profile?.username;
             if (uname && msgText.includes("@" + uname)) {
               room.unreadMentions = (room.unreadMentions || 0) + 1;
             }
+          }
+          if (isReaction && roomKey !== activeRoom && msg.sender !== localId) {
+            room.unreadCount = (room.unreadCount || 0) + 1;
           }
           emitRoomUpdate(roomKey);
           debouncePersist();
@@ -727,6 +742,19 @@ export function initChat(sdk, options = {}) {
             continue;
           }
 
+          if (msg.type === "sync-reaction") {
+            if (!msg.id || !msg.roomKey || !msg.msgId || !roomFeeds[msg.roomKey]) continue;
+            const _srRoom = savedData.rooms[msg.roomKey];
+            if (_srRoom && !_srRoom.isHost && _srRoom.joinedAt && msg.ts && msg.ts < _srRoom.joinedAt) continue;
+            if (!trackId(msg.id)) continue;
+            appendToFeed(msg.roomKey, {
+              type: "reaction", id: msg.id, msgId: clamp(msg.msgId, 64),
+              emoji: clamp(msg.emoji, 10), sender: clamp(msg.sender, MAX_SENDER_LEN),
+              sn: clamp(msg.sn, 50), ts: msg.ts || Date.now(),
+            }).catch(() => {});
+            continue;
+          }
+
           if (msg.type === "sync-system") {
             if (!msg.id || !msg.roomKey || !roomFeeds[msg.roomKey]) continue;
             const _sysRoom = savedData.rooms[msg.roomKey];
@@ -747,6 +775,17 @@ export function initChat(sdk, options = {}) {
               ...(msg.replyTo && { replyTo: msg.replyTo }),
               ...(msg.fileName && { fileName: clamp(msg.fileName, MAX_FILE_NAME_LEN) }),
               ...(msg.fileSize != null && { fileSize: msg.fileSize }),
+            }).catch(() => {});
+            continue;
+          }
+
+          if (msg.type === "reaction") {
+            if (!msg.id || !msg.roomKey || !msg.msgId || !roomFeeds[msg.roomKey]) continue;
+            if (!trackId(msg.id)) continue;
+            appendToFeed(msg.roomKey, {
+              type: "reaction", id: msg.id, msgId: clamp(msg.msgId, 64),
+              emoji: clamp(msg.emoji, 10), sender: remoteId,
+              sn: clamp(msg.sn, 50) || remoteId, ts: msg.ts || Date.now(),
             }).catch(() => {});
             continue;
           }
@@ -955,6 +994,23 @@ export async function handleChatRequest(req, sdk) {
         }
 
         return respond(200, { message: "Joined", identity: localId, room });
+      }
+
+      if (action === "react") {
+        if (!roomKey || !isValidRoomKey(roomKey)) return respond(400, { error: "Invalid room key" });
+        if (!roomFeeds[roomKey]) return respond(404, { error: "Room not found" });
+        const body = await req.json();
+        if (!body.msgId) return respond(400, { error: "Missing msgId" });
+        const id = randomBytes(16).toString("hex");
+        if (!trackId(id)) return respond(200, { ok: true });
+        const emoji = clamp(body.emoji || "", 10);
+        const entry = {
+          type: "reaction", id, msgId: clamp(body.msgId, 64), emoji,
+          sender: localId, sn: savedData.profile?.username || localId, ts: Date.now(),
+        };
+        await appendToFeed(roomKey, entry);
+        relayToPeers(JSON.stringify({ ...entry, roomKey }) + "\n");
+        return respond(200, { ok: true });
       }
 
       if (action === "send") {

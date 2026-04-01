@@ -375,6 +375,52 @@ html, body {
   font-size: 0.65rem; color: var(--muted); margin-top: 3px;
 }
 
+/* Reaction trigger (smile icon on hover, just outside bubble) */
+.msg-bubble { position: relative; overflow: visible; }
+.msg-react-trigger {
+  all: unset; position: absolute; top: 50%; transform: translateY(-50%);
+  width: 24px; height: 24px; display: none; align-items: center; justify-content: center;
+  cursor: pointer; border-radius: 50%; background: var(--popup-bg);
+  border: 1px solid var(--border); box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+  z-index: 2; transition: background 0.15s;
+}
+.msg-right .msg-bubble .msg-react-trigger { left: -28px; right: auto; }
+.msg-left .msg-bubble .msg-react-trigger  { right: -28px; left: auto; }
+.msg-react-trigger img { display: block; width: 16px; height: 16px; filter: invert(50%); transition: filter 0.15s; }
+.message:hover .msg-react-trigger { display: flex; }
+.msg-react-trigger:hover { display: flex; background: var(--hover); }
+.msg-react-trigger:hover img { filter: invert(70%); }
+
+/* Reaction picker popup */
+.react-picker {
+  position: fixed; z-index: 600;
+  display: flex; gap: 2px; padding: 4px 6px;
+  background: var(--popup-bg); border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+}
+.react-picker-btn {
+  all: unset; cursor: pointer; font-size: 1.2rem;
+  width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; transition: background 0.12s, transform 0.12s;
+}
+.react-picker-btn:hover { background: var(--hover); transform: scale(1.25); }
+
+/* Reaction bubbles row */
+.msg-reactions {
+  display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px;
+  padding-left: 4px;
+}
+.reaction-bubble {
+  all: unset; cursor: pointer;
+  font-size: 0.75rem; padding: 1px 6px; border-radius: 10px;
+  background: var(--embed-surface); border: 1px solid var(--border);
+  display: inline-flex; align-items: center; gap: 3px;
+  transition: background 0.12s;
+}
+.reaction-bubble:hover { background: var(--hover); }
+.reaction-mine { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--embed-surface)); }
+
 .mention { background: var(--mention-bg); border-radius: 3px; padding: 0 3px; color: var(--accent); font-weight: 500; cursor: pointer; }
 
 /* Reply quote inside bubble */

@@ -9,9 +9,12 @@ const S = {
   onlinePeers: new Set(),
   activeRoom: null,
   messages: {},
+  reactions: {},
   settings: { sounds: true, notifications: true },
   pendingDMs: {},
 };
+
+const REACT_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🔥"];
 
 let globalES = null;
 let reconnectTimer = null;
@@ -362,6 +365,7 @@ function safeAvatarUrl(u) {
 
 function chatMessageRenders(m) {
   if (!m) return false;
+  if (m.type === "reaction") return false;
   if (m.type === "system") {
     return typeof m.text === "string" && m.text.trim().length > 0;
   }
@@ -370,6 +374,113 @@ function chatMessageRenders(m) {
   if (m.fileName) return true;
   const t = text.trim();
   return !!(t && /^hyper:\/\//i.test(t) && isHyperFileUrl(t));
+}
+
+function processReactionEntry(roomKey, msg) {
+  if (!msg.msgId || !msg.sender) return;
+  if (!S.reactions[roomKey]) S.reactions[roomKey] = {};
+  if (!S.reactions[roomKey][msg.msgId]) S.reactions[roomKey][msg.msgId] = {};
+  const byUser = S.reactions[roomKey][msg.msgId];
+  if (byUser[msg.sender] && byUser[msg.sender].ts > (msg.timestamp || 0)) return;
+  if (!msg.emoji) { delete byUser[msg.sender]; } else {
+    byUser[msg.sender] = { emoji: msg.emoji, username: msg.senderName || msg.sender, ts: msg.timestamp || 0 };
+  }
+}
+
+function extractReactions(roomKey, rawMsgs) {
+  S.reactions[roomKey] = {};
+  const chat = [];
+  for (const m of rawMsgs) {
+    if (m.type === "reaction") processReactionEntry(roomKey, m);
+    else if (chatMessageRenders(m)) chat.push(m);
+  }
+  return chat;
+}
+
+function getReactionSummary(roomKey, msgId) {
+  const byUser = S.reactions[roomKey]?.[msgId];
+  if (!byUser) return [];
+  const grouped = {};
+  for (const [peerId, { emoji, username }] of Object.entries(byUser)) {
+    if (!emoji) continue;
+    if (!grouped[emoji]) grouped[emoji] = [];
+    grouped[emoji].push({ peerId, username });
+  }
+  return Object.entries(grouped).map(([emoji, users]) => ({ emoji, users, count: users.length }));
+}
+
+function renderReactionBubbles(roomKey, msgId) {
+  const summary = getReactionSummary(roomKey, msgId);
+  const frag = document.createDocumentFragment();
+  for (const { emoji, users, count } of summary) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "reaction-bubble";
+    const isMine = users.some(u => u.peerId === S.profile?.id);
+    if (isMine) b.classList.add("reaction-mine");
+    b.textContent = `${emoji} ${count}`;
+    b.title = users.map(u => u.username).join(", ");
+    b.addEventListener("click", (e) => { e.stopPropagation(); sendReaction(roomKey, msgId, emoji); });
+    frag.appendChild(b);
+  }
+  return frag;
+}
+
+function updateReactionBubblesFor(msgId) {
+  const rk = S.activeRoom;
+  if (!rk) return;
+  const el = document.querySelector(`[data-msg-id="${CSS.escape(String(msgId))}"]`);
+  if (!el) return;
+  let row = el.querySelector(".msg-reactions");
+  if (!row) {
+    row = document.createElement("div");
+    row.className = "msg-reactions";
+    const timeEl = el.querySelector(".msg-time");
+    if (timeEl) el.insertBefore(row, timeEl);
+    else el.appendChild(row);
+  }
+  row.replaceChildren(renderReactionBubbles(rk, msgId));
+  row.style.display = row.childNodes.length ? "" : "none";
+}
+
+async function sendReaction(roomKey, msgId, emoji) {
+  const existing = S.reactions[roomKey]?.[msgId]?.[S.profile?.id];
+  const finalEmoji = (existing?.emoji === emoji) ? "" : emoji;
+  try {
+    await api("react", { roomKey, body: { msgId, emoji: finalEmoji } });
+    if (finalEmoji) playSound("pop");
+  } catch (err) { console.error("[chat] react:", err); }
+}
+
+let _activeReactPicker = null;
+function closeReactPicker() {
+  if (_activeReactPicker) { _activeReactPicker.remove(); _activeReactPicker = null; }
+}
+function showReactPicker(anchor, roomKey, msgId) {
+  closeReactPicker();
+  const picker = document.createElement("div");
+  picker.className = "react-picker";
+  for (const em of REACT_EMOJIS) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "react-picker-btn";
+    b.textContent = em;
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      closeReactPicker();
+      sendReaction(roomKey, msgId, em);
+    });
+    picker.appendChild(b);
+  }
+  document.body.appendChild(picker);
+  _activeReactPicker = picker;
+  const rect = anchor.getBoundingClientRect();
+  picker.style.top = (rect.top - picker.offsetHeight - 4) + "px";
+  picker.style.left = Math.max(4, Math.min(rect.left, window.innerWidth - picker.offsetWidth - 4)) + "px";
+  const dismiss = (ev) => {
+    if (!picker.contains(ev.target)) { closeReactPicker(); document.removeEventListener("click", dismiss, true); }
+  };
+  setTimeout(() => document.addEventListener("click", dismiss, true), 0);
 }
 
 const _blobUrlCache = new Map();
@@ -504,7 +615,7 @@ const _audioBuffers = {};
 
 function initAudio() {
   if (_audioCtx.state === "suspended") _audioCtx.resume();
-  ["send", "receive", "notification"].forEach(file => {
+  ["send", "receive", "notification", "pop"].forEach(file => {
     if (_audioBuffers[file]) return;
     fetch(`./assets/sound/${file}.mp3`)
       .then(r => r.arrayBuffer())
@@ -515,14 +626,14 @@ function initAudio() {
 }
 
 function playSound(type) {
-  if (type === "send" || type === "receive") {
+  if (type === "send" || type === "receive" || type === "pop") {
     if (!S.settings.sounds) return;
   } else {
     if (!S.settings.notifications) return;
   }
   const room = S.rooms[S.activeRoom];
   if (room?.isMuted && type !== "mention" && type !== "send") return;
-  const fileMap = { send: "send", receive: "receive", message: "notification", mention: "notification" };
+  const fileMap = { send: "send", receive: "receive", message: "notification", mention: "notification", pop: "pop" };
   const file = fileMap[type] || "receive";
   if (_audioCtx.state === "suspended") _audioCtx.resume();
   const play = (buf) => {
@@ -802,8 +913,8 @@ async function openRoom(roomKey) {
 
   try {
     const { messages } = await api("get-history", { roomKey });
-    const merged = mergeWithHistory(S.messages[roomKey], messages || []).filter(chatMessageRenders);
-    S.messages[roomKey] = merged;
+    const merged = mergeWithHistory(S.messages[roomKey], messages || []);
+    S.messages[roomKey] = extractReactions(roomKey, merged);
     renderMessages(roomKey, true, lastReadTs);
 
     const _roomNow = S.rooms[roomKey];
@@ -839,14 +950,14 @@ async function openRoom(roomKey) {
         const msgContainer = $("messages");
         const domCount = msgContainer ? msgContainer.querySelectorAll(".message, .system-msg").length : 0;
         if (freshMsgs && (freshMsgs.length > bufLen || (bufLen > 0 && domCount < bufLen))) {
-          S.messages[roomKey] = mergeWithHistory(S.messages[roomKey], freshMsgs).filter(chatMessageRenders);
+          S.messages[roomKey] = extractReactions(roomKey, mergeWithHistory(S.messages[roomKey], freshMsgs));
           renderMessages(roomKey, false);
         }
       } catch {}
     }, 3000);
   } catch (err) {
     console.error("History load error:", err);
-    S.messages[roomKey] = mergeWithHistory(S.messages[roomKey], []).filter(chatMessageRenders);
+    S.messages[roomKey] = extractReactions(roomKey, mergeWithHistory(S.messages[roomKey], []));
   }
 }
 
@@ -967,7 +1078,26 @@ function makeMsgEl(msg) {
   textNode.className = "msg-bubble-body";
   textNode.innerHTML = linkify(msg.message, msg);
   bubble.appendChild(textNode);
+
+  const reactTrigger = document.createElement("button");
+  reactTrigger.type = "button";
+  reactTrigger.className = "msg-react-trigger";
+  reactTrigger.innerHTML = `<img src="./assets/svg/smile.svg" alt="" width="16" height="16" />`;
+  reactTrigger.addEventListener("click", (e) => {
+    e.stopPropagation();
+    showReactPicker(reactTrigger, S.activeRoom, msg.id);
+  });
+  bubble.appendChild(reactTrigger);
   el.appendChild(bubble);
+
+  const rk = S.activeRoom;
+  const summary = getReactionSummary(rk, msg.id);
+  if (summary.length) {
+    const row = document.createElement("div");
+    row.className = "msg-reactions";
+    row.appendChild(renderReactionBubbles(rk, msg.id));
+    el.appendChild(row);
+  }
 
   const time = document.createElement("div");
   time.className = "msg-time";
@@ -980,7 +1110,7 @@ function makeMsgEl(msg) {
   });
 
   el.addEventListener("dblclick", (e) => {
-    if (e.target.closest("a, .msg-file-attach-open, .msg-file-attach-dl-btn, .msg-reply-quote, img, video, button")) return;
+    if (e.target.closest("a, .msg-file-attach-open, .msg-file-attach-dl-btn, .msg-reply-quote, img, video, button, .msg-react-trigger, .reaction-bubble")) return;
     setReply(msg);
   });
 
@@ -1150,7 +1280,7 @@ async function refreshActiveRoom() {
       const { messages: fresh } = await api("get-history", { roomKey: S.activeRoom });
       const _existing = S.messages[S.activeRoom] || [];
       if (fresh && fresh.length > _existing.length) {
-        S.messages[S.activeRoom] = mergeWithHistory(_existing, fresh).filter(chatMessageRenders);
+        S.messages[S.activeRoom] = extractReactions(S.activeRoom, mergeWithHistory(_existing, fresh));
         renderMessages(S.activeRoom, false);
       }
       updateRoomPeerCount(S.activeRoom);
@@ -1185,6 +1315,35 @@ function connectGlobalSSE() {
       const msg = JSON.parse(ev.data);
       const rk = msg.roomKey;
       if (!rk) return;
+      if (msg.type === "reaction") {
+        processReactionEntry(rk, msg);
+        if (rk === S.activeRoom) updateReactionBubblesFor(msg.msgId);
+        const room = S.rooms[rk];
+        if (room && msg.sender !== S.profile?.id) {
+          const reactName = S.peerProfiles[msg.sender]?.username || msg.senderName || msg.sender;
+          if (msg.emoji) {
+            room.lastMessage = {
+              sender: msg.sender, senderName: reactName,
+              message: `reacted ${msg.emoji}`, timestamp: msg.timestamp,
+            };
+          }
+          if (rk !== S.activeRoom) {
+            room.unreadCount = (room.unreadCount || 0) + 1;
+            if (!room.isMuted) playSound("message");
+          } else {
+            if (!room.isMuted) playSound("pop");
+          }
+          renderRoomList();
+          updateTabTitle();
+        } else if (room && msg.sender === S.profile?.id && msg.emoji) {
+          room.lastMessage = {
+            sender: msg.sender, senderName: "You",
+            message: `reacted ${msg.emoji}`, timestamp: msg.timestamp,
+          };
+          renderRoomList();
+        }
+        return;
+      }
       if (!appendMessage(rk, msg)) return;
 
       const room = S.rooms[rk];
