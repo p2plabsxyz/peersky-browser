@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, webContents, session } from "electron";
+import { createLogger } from './logger.js';
 import path from "path";
 import fs from "fs-extra";
 import ScopedFS from 'scoped-fs';
@@ -7,6 +8,8 @@ import { attachContextMenus } from "./context-menu.js";
 import { randomUUID } from "crypto";
 import { getPartition } from "./session.js";
 import extensionManager from "./extensions/index.js";
+
+const log = createLogger('window-manager');
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
@@ -32,7 +35,7 @@ ipcMain.handle("peersky-read-css", async (_event, name) => {
     });
     return data;
   } catch (err) {
-    console.error(`Failed to read CSS ${name}:`, err);
+    log.error(`Failed to read CSS ${name}:`, err);
     return "";
   }
 });
@@ -53,7 +56,7 @@ class WindowManager {
     if (!app.isPackaged) {
       const handleSignal = (signal) => {
         if (this.shutdownInProgress) {
-          console.log(`${signal} received while shutdown already in progress – ignoring.`);
+          log.info(`${signal} received while shutdown already in progress – ignoring.`);
           return;
         }
       
@@ -61,13 +64,13 @@ class WindowManager {
         this.shutdownInProgress = true;
         this.stopSaver();
       
-        console.log(`${signal} received – saving session state WITHOUT clearing it, then exiting.`);
+        log.info(`${signal} received – saving session state WITHOUT clearing it, then exiting.`);
       
         (async () => {
           try {
             await this.saveCompleteState();
           } catch (error) {
-            console.error(`Error during ${signal} shutdown save:`, error);
+            log.error(`Error during ${signal} shutdown save:`, error);
           } finally {
             this.finalSaveCompleted = true;
             app.exit(0);
@@ -82,11 +85,11 @@ class WindowManager {
     app.on('before-quit', (event) => {
       // Avoid re-entering if something calls app.quit() again
       if (this.shutdownInProgress) {
-        console.log('before-quit: shutdown already in progress, ignoring.');
+        log.info('before-quit: shutdown already in progress, ignoring.');
         return;
       }
     
-      console.log('before-quit: performing final session save (without clearing).');
+      log.info('before-quit: performing final session save (without clearing).');
       this.isQuitting = true;
       this.shutdownInProgress = true;
       this.stopSaver();
@@ -98,7 +101,7 @@ class WindowManager {
         try {
           await this.saveCompleteState();
         } catch (error) {
-          console.error('Error during final save in before-quit:', error);
+          log.error('Error during final save in before-quit:', error);
         } finally {
           this.finalSaveCompleted = true;
           // Important: app.exit() does not re-emit 'before-quit'
@@ -116,7 +119,7 @@ class WindowManager {
     // Explicit quit from UI (custom Quit button, etc.).
     // We just call app.quit(); app.on('before-quit') will save session files.
     ipcMain.on("quit-app", () => {
-      console.log("Quit app requested from UI");
+      log.info("Quit app requested from UI");
       this.isQuitting = true;
       app.quit();
     });
@@ -148,7 +151,7 @@ class WindowManager {
         const activeIndex = history.getActiveIndex();
         event.returnValue = { entries, activeIndex };
       } catch (err) {
-        console.warn('get-tab-navigation failed:', err);
+        log.warn('get-tab-navigation failed:', err);
         event.returnValue = null;
       }
     });
@@ -162,7 +165,7 @@ class WindowManager {
           index: activeIndex
         });
       } catch (err) {
-        console.warn('restore-navigation-history failed:', err);
+        log.warn('restore-navigation-history failed:', err);
       }
     });
 
@@ -184,7 +187,7 @@ class WindowManager {
     });
 
     ipcMain.handle("activate-tab", async (_event, id) => {
-      console.log('Activating tab:', id);
+      log.info('Activating tab:', id);
 
       // Find which window contains this tab
       let targetWindow = null;
@@ -201,7 +204,7 @@ class WindowManager {
                   }
                   return false;
                 } catch (error) {
-                  console.error('Error checking for tab:', error);
+                  log.error('Error checking for tab:', error);
                   return false;
                 }
               })()
@@ -212,7 +215,7 @@ class WindowManager {
               break;
             }
           } catch (error) {
-            console.log('Error checking tab in window:', error);
+            log.info('Error checking tab in window:', error);
             // Continue to next window
           }
         }
@@ -232,7 +235,7 @@ class WindowManager {
         return { success: true, windowId: targetWindow.windowId };
       } else {
         // Fallback to main window if tab not found
-        console.warn(`Tab ${id} not found in any window, falling back to main window`);
+        log.warn(`Tab ${id} not found in any window, falling back to main window`);
         this.sendToMainWindow('activate-tab', id);
         return { success: false, message: 'Tab not found, sent to main window' };
       }
@@ -270,7 +273,7 @@ class WindowManager {
           this.sendToSpecificWindow(senderWindow, 'group-action', data);
         } else {
           // Fallback to main window if sender not found
-          console.warn('Could not find sender window for group action, falling back to main window');
+          log.warn('Could not find sender window for group action, falling back to main window');
           this.sendToMainWindow('group-action', data);
         }
         this.saveOpened(true);
@@ -317,7 +320,7 @@ class WindowManager {
 
   addBookmark(newBookmark) {
     if (!newBookmark || !newBookmark.url) {
-      console.error("Invalid bookmark data provided.");
+      log.error("Invalid bookmark data provided.");
       return;
     }
     try {
@@ -331,37 +334,37 @@ class WindowManager {
           ...bookmarks[existingIndex],
           ...newBookmark,
         };
-        console.log(`Bookmark updated: ${newBookmark.url}`);
+        log.info(`Bookmark updated: ${newBookmark.url}`);
       } else {
         bookmarks.push({ ...newBookmark, dateAdded: new Date().toISOString() });
-        console.log(`Bookmark added: ${newBookmark.url}`);
+        log.info(`Bookmark added: ${newBookmark.url}`);
       }
 
       fs.writeJsonSync(BOOKMARKS_FILE, bookmarks, { spaces: 2 });
     } catch (error) {
-      console.error("Error adding bookmark:", error);
+      log.error("Error adding bookmark:", error);
     }
   }
 
   deleteBookmark(urlToDelete) {
     if (!urlToDelete) return false;
     try {
-      console.log(`Attempting to delete bookmark: ${urlToDelete}`);
+      log.info(`Attempting to delete bookmark: ${urlToDelete}`);
       const bookmarks = this.loadBookmarks();
       const updatedBookmarks = bookmarks.filter((b) => b.url !== urlToDelete);
 
       if (bookmarks.length === updatedBookmarks.length) {
-        console.warn(
+        log.warn(
           `Attempted to delete a non-existent bookmark: ${urlToDelete}`
         );
         return false;
       }
 
       fs.writeJsonSync(BOOKMARKS_FILE, updatedBookmarks, { spaces: 2 });
-      console.log(`Bookmark deleted: ${urlToDelete}`);
+      log.info(`Bookmark deleted: ${urlToDelete}`);
       return true;
     } catch (error) {
-      console.error(`Error deleting bookmark: ${urlToDelete}`, error);
+      log.error(`Error deleting bookmark: ${urlToDelete}`, error);
       return false;
     }
   }
@@ -369,19 +372,19 @@ class WindowManager {
   loadBookmarks() {
     try {
       if (!fs.existsSync(BOOKMARKS_FILE)) {
-        console.log("Bookmarks file does not exist, creating a new one.");
+        log.info("Bookmarks file does not exist, creating a new one.");
         fs.writeJsonSync(BOOKMARKS_FILE, [], { spaces: 2 });
       }
       const bookmarks = fs.readJsonSync(BOOKMARKS_FILE);
       if (!Array.isArray(bookmarks)) {
-        console.error(
+        log.error(
           "Bookmarks file is not an array, resetting to empty array."
         );
         return [];
       }
       return bookmarks;
     } catch (error) {
-      console.error("Error loading bookmarks:", error);
+      log.error("Error loading bookmarks:", error);
       return [];
     }
   }
@@ -422,7 +425,7 @@ class WindowManager {
       w.window && !w.window.isDestroyed() && !w.window.webContents.isDestroyed()
     );
 
-    console.log(`Getting tabs from ${validWindows.length} windows`);
+    log.info(`Getting tabs from ${validWindows.length} windows`);
 
     for (const peerskyWin of validWindows) {
       const win = peerskyWin.window;
@@ -451,10 +454,10 @@ class WindowManager {
 
         if (tabsData && tabsData.tabs) {
           results[windowId] = tabsData;
-          console.log(`Got ${tabsData.tabs.length} tabs from window ${windowId}`);
+          log.info(`Got ${tabsData.tabs.length} tabs from window ${windowId}`);
         }
       } catch (e) {
-        console.error(`Failed to read tabs from window ${peerskyWin.windowId}:`, e.message);
+        log.error(`Failed to read tabs from window ${peerskyWin.windowId}:`, e.message);
       }
     }
 
@@ -481,7 +484,7 @@ class WindowManager {
 
     window.window.on("close", (event) => {
       if (this.shutdownInProgress && !this.finalSaveCompleted) {
-        console.log(`Preventing window ${window.id} from closing until save completes`);
+        log.info(`Preventing window ${window.id} from closing until save completes`);
         event.preventDefault();
         return;
       }
@@ -519,7 +522,7 @@ class WindowManager {
   }
   async clearSavedState() {
     try {
-      console.log("Clearing saved session state (files and browser data)...");
+      log.info("Clearing saved session state (files and browser data)...");
       const TABS_FILE = path.join(USER_DATA_PATH, "tabs.json");
 
       // Promise to clear session storage (localStorage, etc.)
@@ -533,9 +536,9 @@ class WindowManager {
 
       await Promise.all([clearSessionPromise, clearFilesPromise]);
 
-      console.log("Session state has been cleared successfully.");
+      log.info("Session state has been cleared successfully.");
     } catch (error) {
-      console.error("Error clearing saved session state:", error);
+      log.error("Error clearing saved session state:", error);
     }
   }
 
@@ -550,7 +553,7 @@ class WindowManager {
   }
 
   async saveWindowStates() {
-    console.log(`Starting saveWindowStates with ${this.windows.size} windows`);
+    log.info(`Starting saveWindowStates with ${this.windows.size} windows`);
 
     // Filter out destroyed windows BEFORE starting async operations
     const validWindows = Array.from(this.windows).filter(window => {
@@ -558,32 +561,32 @@ class WindowManager {
         return !window.window.isDestroyed() &&
           !window.window.webContents.isDestroyed();
       } catch (e) {
-        console.error(`Error checking window ${window.id}:`, e);
+        log.error(`Error checking window ${window.id}:`, e);
         return false;
       }
     });
 
-    console.log(`Found ${validWindows.length} valid windows to save`);
+    log.info(`Found ${validWindows.length} valid windows to save`);
 
     // If there are no live windows…
     if (validWindows.length === 0) {
       // When the app is quitting (Cmd+Q, menu Quit, SIGINT, etc.), we MUST NOT clear
       // the session files. We just leave whatever was last saved on disk.
       if (this.isQuitting || this.shutdownInProgress) {
-        console.warn('No valid windows to save during quit – leaving window state file untouched.');
+        log.warn('No valid windows to save during quit – leaving window state file untouched.');
         return;
       }
     
       // But if the app is still running and the user has closed the last window,
       // we DO clear the file so the next launch starts fresh
-      console.warn('No valid windows to save – clearing window state file so session does not restore.');
+      log.warn('No valid windows to save – clearing window state file so session does not restore.');
       try {
         const tempPath = PERSIST_FILE + ".tmp";
         await fs.outputJson(tempPath, [], { spaces: 2 });
         await fs.move(tempPath, PERSIST_FILE, { overwrite: true });
-        console.log(`Wrote empty window state to ${PERSIST_FILE}`);
+        log.info(`Wrote empty window state to ${PERSIST_FILE}`);
       } catch (error) {
-        console.error("Error clearing window state file:", error);
+        log.error("Error clearing window state file:", error);
       }
       return;
     }
@@ -595,7 +598,7 @@ class WindowManager {
       try {
         // Double-check window is still valid
         if (window.window.isDestroyed() || window.window.webContents.isDestroyed()) {
-          console.log(`Window ${window.id} was destroyed during save, skipping`);
+          log.info(`Window ${window.id} was destroyed during save, skipping`);
           continue;
         }
 
@@ -613,10 +616,10 @@ class WindowManager {
         const url = await Promise.race([urlPromise, timeoutPromise]);
 
         windowStates.push({ windowId, url, position, size });
-        console.log(`Saved state for window ${windowId}: ${url}`);
+        log.info(`Saved state for window ${windowId}: ${url}`);
 
       } catch (error) {
-        console.error(`Error saving window ${window.id}:`, error.message);
+        log.error(`Error saving window ${window.id}:`, error.message);
         // Continue with other windows
       }
     }
@@ -625,14 +628,14 @@ class WindowManager {
     // TODO: If this happens during app quit/shutdown, we probably should NOT clear
     // the existing file. Match the earlier logic where (isQuitting || shutdownInProgress). keeps the last good snapshot instead of wiping it.
     if (windowStates.length === 0) {
-      console.warn('No window states collected during save – clearing window state file.');
+      log.warn('No window states collected during save – clearing window state file.');
       try {
         const tempPath = PERSIST_FILE + ".tmp";
         await fs.outputJson(tempPath, [], { spaces: 2 });
         await fs.move(tempPath, PERSIST_FILE, { overwrite: true });
-        console.log(`Wrote empty window state to ${PERSIST_FILE}`);
+        log.info(`Wrote empty window state to ${PERSIST_FILE}`);
       } catch (error) {
-        console.error("Error clearing window state file:", error);
+        log.error("Error clearing window state file:", error);
       }
       return;
     }
@@ -641,15 +644,15 @@ class WindowManager {
       const tempPath = PERSIST_FILE + ".tmp";
       await fs.outputJson(tempPath, windowStates, { spaces: 2 });
       await fs.move(tempPath, PERSIST_FILE, { overwrite: true });
-      console.log(`Successfully saved ${windowStates.length} window states to ${PERSIST_FILE}`);
+      log.info(`Successfully saved ${windowStates.length} window states to ${PERSIST_FILE}`);
     } catch (error) {
-      console.error("Error writing window states to file:", error);
+      log.error("Error writing window states to file:", error);
       throw error;
     }
   }
 
   async saveAllTabsData() {
-    console.log("Starting saveAllTabsData...");
+    log.info("Starting saveAllTabsData...");
 
     try {
       const allTabsData = await this.getTabs();
@@ -659,33 +662,33 @@ class WindowManager {
       if (!allTabsData || Object.keys(allTabsData).length === 0) {
         // Same logic as window states: if we're quitting, do NOT clear the file.
         if (this.isQuitting || this.shutdownInProgress) {
-          console.warn("No tabs data to save during quit – leaving tabs file untouched.");
+          log.warn("No tabs data to save during quit – leaving tabs file untouched.");
           return;
         }
       
-        console.warn("No tabs data to save – clearing tabs file so session does not restore.");
+        log.warn("No tabs data to save – clearing tabs file so session does not restore.");
         try {
           const tempPath = TABS_FILE + ".tmp";
           await fs.outputJson(tempPath, {}, { spaces: 2 });
           await fs.move(tempPath, TABS_FILE, { overwrite: true });
-          console.log(`Wrote empty tabs data to ${TABS_FILE}`);
+          log.info(`Wrote empty tabs data to ${TABS_FILE}`);
         } catch (error) {
-          console.error("Error clearing tabs data file:", error);
+          log.error("Error clearing tabs data file:", error);
         }
         return;
       }
 
       const windowCount = Object.keys(allTabsData).length;
 
-      console.log(`Saving tabs for ${windowCount} windows...`);
+      log.info(`Saving tabs for ${windowCount} windows...`);
 
       const tempPath = TABS_FILE + ".tmp";
       await fs.outputJson(tempPath, allTabsData, { spaces: 2 });
       await fs.move(tempPath, TABS_FILE, { overwrite: true });
 
-      console.log(`Successfully saved tabs data to ${TABS_FILE} (${windowCount} windows)`);
+      log.info(`Successfully saved tabs data to ${TABS_FILE} (${windowCount} windows)`);
     } catch (error) {
-      console.error("Error writing tabs data to file:", error);
+      log.error("Error writing tabs data to file:", error);
       throw error;
     }
   }
@@ -699,19 +702,19 @@ class WindowManager {
     ) {
       const onlyWindow = [...this.windows][0];
       if (onlyWindow && onlyWindow.savedTabs === null) {
-        console.log("Preventing save: last window has no tabs (closing last tab).");
+        log.info("Preventing save: last window has no tabs (closing last tab).");
         return;
       }
     }
 
     //Never save(periodic saves) during shutdown
     if (this.shutdownInProgress) {
-      console.log("Shutdown in progress - saveOpened blocked");
+      log.info("Shutdown in progress - saveOpened blocked");
       return;
     }
 
     if (this.finalSaveCompleted) {
-      console.log("Final save completed - saveOpened blocked");
+      log.info("Final save completed - saveOpened blocked");
       return;
     }
 
@@ -723,7 +726,7 @@ class WindowManager {
       }
 
       if (this.isSaving && !forceSave) {
-        console.warn("Save already in progress");
+        log.warn("Save already in progress");
         return;
       }
 
@@ -733,7 +736,7 @@ class WindowManager {
         await this.saveCompleteState();
         return true;
       } catch (error) {
-        console.error("Error in saveOpened:", error);
+        log.error("Error in saveOpened:", error);
         return false;
       } finally {
         this.isSaving = false;
@@ -748,13 +751,13 @@ class WindowManager {
     try {
       const exists = await fs.pathExists(PERSIST_FILE);
       if (!exists) {
-        console.log("Persist file does not exist.");
+        log.info("Persist file does not exist.");
         return [];
       }
 
       const data = await fs.readFile(PERSIST_FILE, "utf8");
       if (!data.trim()) {
-        console.log("Persist file is empty.");
+        log.info("Persist file is empty.");
         return [];
       }
 
@@ -762,22 +765,22 @@ class WindowManager {
       try {
         windowStates = JSON.parse(data);
       } catch (parseError) {
-        console.error("Error parsing JSON from lastOpened.json:", parseError);
+        log.error("Error parsing JSON from lastOpened.json:", parseError);
         const backupPath = PERSIST_FILE + ".backup";
         await fs.move(PERSIST_FILE, backupPath, { overwrite: true });
-        console.warn(`Corrupted lastOpened.json backed up to ${backupPath}. Starting fresh.`);
+        log.warn(`Corrupted lastOpened.json backed up to ${backupPath}. Starting fresh.`);
         windowStates = [];
       }
 
       if (!Array.isArray(windowStates)) {
-        console.error("Invalid format for window states. Expected an array.");
+        log.error("Invalid format for window states. Expected an array.");
         return [];
       }
 
-      console.log(`Loaded ${windowStates.length} window state(s) from persist file.`);
+      log.info(`Loaded ${windowStates.length} window state(s) from persist file.`);
       return windowStates;
     } catch (e) {
-      console.error("Error loading saved windows", e);
+      log.error("Error loading saved windows", e);
       return [];
     }
   }
@@ -788,13 +791,13 @@ class WindowManager {
     try {
       const exists = await fs.pathExists(TABS_FILE);
       if (!exists) {
-        console.log("Tabs file does not exist.");
+        log.info("Tabs file does not exist.");
         return {};
       }
 
       const data = await fs.readFile(TABS_FILE, "utf8");
       if (!data.trim()) {
-        console.log("Tabs file is empty.");
+        log.info("Tabs file is empty.");
         return {};
       }
 
@@ -802,16 +805,16 @@ class WindowManager {
       try {
         tabsData = JSON.parse(data);
       } catch (parseError) {
-        console.error("Error parsing JSON from tabs.json:", parseError);
+        log.error("Error parsing JSON from tabs.json:", parseError);
         const backupPath = TABS_FILE + ".backup";
         await fs.move(TABS_FILE, backupPath, { overwrite: true });
-        console.warn(`Corrupted tabs.json backed up to ${backupPath}. Starting fresh.`);
+        log.warn(`Corrupted tabs.json backed up to ${backupPath}. Starting fresh.`);
         tabsData = {};
       }
 
       return tabsData;
     } catch (e) {
-      console.error("Error loading saved tabs", e);
+      log.error("Error loading saved tabs", e);
       return {};
     }
   }
@@ -823,13 +826,13 @@ class WindowManager {
     ]);
 
     if (windowStates.length === 0) {
-      console.log("No windows to restore, creating default window.");
+      log.info("No windows to restore, creating default window.");
       this.open(); // Create default window
       return;
     }
 
     for (const [index, state] of windowStates.entries()) {
-      console.log(`Opening saved window ${index + 1}:`, state);
+      log.info(`Opening saved window ${index + 1}:`, state);
       const options = {
         windowId: state.windowId,
         savedTabs: savedTabs[state.windowId] || null
@@ -856,14 +859,14 @@ class WindowManager {
       this.open(options);
     }
 
-    console.log(`${windowStates.length} window(s) restored.`);
+    log.info(`${windowStates.length} window(s) restored.`);
   }
 
   startSaver() {
     this.saverTimer = setInterval(() => {
       this.saveOpened();
     }, this.saverInterval);
-    console.log(
+    log.info(
       `Window state saver started with interval ${this.saverInterval}ms.`
     );
   }
@@ -872,7 +875,7 @@ class WindowManager {
     if (this.saverTimer) {
       clearInterval(this.saverTimer);
       this.saverTimer = null;
-      console.log("Window state saver stopped.");
+      log.info("Window state saver stopped.");
     }
   }
 }
@@ -932,7 +935,7 @@ class PeerskyWindow {
     try {
       extensionManager.addWindow(this.window);
     } catch (error) {
-      console.warn('Failed to register window with extension system:', error);
+      log.warn('Failed to register window with extension system:', error);
     }
 
     // Register webviews with the extension system as soon as they attach
@@ -944,11 +947,11 @@ class PeerskyWindow {
             extensionManager.addWindow(this.window, webviewWebContents);
           }
         } catch (e) {
-          console.warn("Failed to register attached webview with extension system:", e);
+          log.warn("Failed to register attached webview with extension system:", e);
         }
       });
     } catch (e) {
-      console.warn("Unable to observe did-attach-webview for extension registration:", e);
+      log.warn("Unable to observe did-attach-webview for extension registration:", e);
     }
 
     // Reference to windowManager for saving state
@@ -957,7 +960,7 @@ class PeerskyWindow {
     // Define the listener function
     this.navigateListener = (_event, url) => {
       this.currentURL = url;
-      console.log(`Navigation detected in window ${this.id}: ${url}`);
+      log.info(`Navigation detected in window ${this.id}: ${url}`);
       windowManager.saveOpened();
     };
 
@@ -979,7 +982,7 @@ class PeerskyWindow {
               try {
                 allTabsData = JSON.parse(existingData);
               } catch (e) {
-                console.error('Failed to parse existing tabs data:', e);
+                log.error('Failed to parse existing tabs data:', e);
               }
             }
             
@@ -989,18 +992,18 @@ class PeerskyWindow {
             // Save merged data
             localStorage.setItem('peersky-browser-tabs', JSON.stringify(allTabsData));
             
-            console.log('Restored tabs for window ${this.windowId}');
+            log.info('Restored tabs for window ${this.windowId}');
             
             // Trigger tab restoration
             window.dispatchEvent(new CustomEvent('restore-tabs', { 
               detail: { windowId: '${this.windowId}' }
             }));
           } catch (error) {
-            console.error('Error restoring tabs:', error);
+            log.error('Error restoring tabs:', error);
           }
         })();
       `).catch(error => {
-            console.error("Error restoring tabs:", error);
+            log.error("Error restoring tabs:", error);
           });
         }
 
@@ -1018,7 +1021,7 @@ class PeerskyWindow {
         ipcRenderer.send('set-window-id', ${this.id});
       })();
     `).catch((error) => {
-          console.error("Error injecting script into webContents:", error);
+          log.error("Error injecting script into webContents:", error);
         });
       }
     });
@@ -1088,7 +1091,7 @@ class PeerskyWindow {
     } catch (error) {
       // Don't log timeout errors during shutdown
       if (!this.windowManager || !this.windowManager.shutdownInProgress) {
-        console.error("Error getting URL:", error);
+        log.error("Error getting URL:", error);
       }
       return "peersky://home";
     }
