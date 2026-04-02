@@ -189,7 +189,7 @@
   },
   "devDependencies": {
     "chrome-extension-fetch": "^1.0.0",
-    "electron": "^37.2.2",
+    "electron": "^39.8.6",
     "electron-builder": "^26.0.12"
   }
 }
