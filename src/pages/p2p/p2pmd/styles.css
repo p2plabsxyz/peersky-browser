@@ -129,6 +129,70 @@ main {
   width: 100%;
 }
 
+#room-history {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--peersky-nav-border-color, #3c3c41);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+#room-history-title {
+  font-size: 0.85rem;
+  color: var(--peersky-nav-border-color, #888);
+  text-align: center;
+  opacity: 0.7;
+}
+
+#room-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  align-items: flex-start;
+  margin: 0 auto;
+  max-width: fit-content;
+}
+
+#room-history-list a {
+  color: var(--peersky-nav-border-color, #888);
+  text-decoration: underline;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: color 0.2s, text-decoration 0.2s;
+}
+
+#room-history-list a:hover {
+  color: var(--browser-theme-text-color);
+  text-decoration: none;
+}
+
+#room-history-list .no-rooms {
+  color: var(--peersky-nav-border-color, #666);
+  font-size: 0.85rem;
+  font-style: italic;
+  opacity: 0.6;
+}
+
+#room-history-footer {
+  color: var(--peersky-nav-border-color, #888);
+  text-align: center;
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+}
+
+#room-history-footer a {
+  text-decoration: underline;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+#room-history-footer a:hover {
+  opacity: 1;
+  text-decoration: none;
+}
+
 #room-status {
   display: flex;
   flex-wrap: wrap;

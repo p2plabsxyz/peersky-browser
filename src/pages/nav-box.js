@@ -1096,10 +1096,12 @@ class NavBox extends HTMLElement {
         this._selectAutocompleteItem(result);
       });
 
-      // Hover handler
-      item.addEventListener('mouseenter', () => {
-        this._autocompleteSelectedIndex = index;
-        this._updateAutocompleteSelection();
+      // Hover handler - use mousemove so stationary cursor doesn't auto-select
+      item.addEventListener('mousemove', () => {
+        if (this._autocompleteSelectedIndex !== index) {
+          this._autocompleteSelectedIndex = index;
+          this._updateAutocompleteSelection();
+        }
       });
 
       dropdown.appendChild(item);

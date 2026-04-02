@@ -295,7 +295,8 @@ find-menu {
   align-items: center;
   background-color: var(--peersky-nav-background);
   width: 100%;
-  height: 36px;
+  height: 44px;
+  padding: 0 6px;
   overflow: visible;
   white-space: nowrap;
 }
@@ -311,6 +312,7 @@ find-menu {
   min-width: 0;
   scrollbar-width: none;
   -ms-overflow-style: none;
+  position: relative;
 }
 
 .tab {
@@ -320,41 +322,134 @@ find-menu {
   max-width: 240px;
   width: 0;
   flex: 1 1 auto;
-  height: 30px;
+  height: 32px;
   padding: 0 8px;
-  margin: 3px 3px 0 0;
-  background-color: var(--peersky-background-url-input);
+  margin: 4px 2px;
+  background-color: transparent;
   color: var(--browser-theme-text-color);
-  border-radius: 10px;
-  border: var(--peersky-nav-button-inactive) 0.5px solid;
+  border-radius: 6px;
+  border: none;
   font-size: 14px;
   cursor: pointer;
-  overflow: hidden;
+  overflow: visible;
   white-space: nowrap;
   text-overflow: ellipsis;
   user-select: none;
   position: relative;
   -webkit-app-region: no-drag;
   box-sizing: border-box;
-  transition: all 0.2s ease-in-out;
+
+  transition: 
+    min-width 0.45s cubic-bezier(0.25, 0.8, 0.25, 1),
+    max-width 0.45s cubic-bezier(0.25, 0.8, 0.25, 1),
+    margin 0.45s cubic-bezier(0.25, 0.8, 0.25, 1),
+    padding 0.45s cubic-bezier(0.25, 0.8, 0.25, 1),
+    transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
+    opacity 0.25s ease,
+    background-color 0.2s ease,
+    box-shadow 0.25s ease;
+
+  transform-origin: left center;
+  will-change: transform, width, opacity;
 }
-.tab.dragging {
-  opacity: 0.5;
-  background: #555;
+
+.tab.opening {
+  min-width: 0 !important;
+  max-width: 0 !important;
+  padding-left: 0;
+  padding-right: 0;
+  margin-left: 0;
+  margin-right: 0;
+  opacity: 0;
+  flex: 0 0 0;
+  transform: translateX(-28px) scale(0.9);
+  filter: blur(6px);
 }
-.tab-container::-webkit-scrollbar {
-  width: 0;
-  height: 0;
+
+.tab:not(.opening) {
+  filter: blur(0);
+}
+
+.tab.closing {
+  min-width: 0 !important;
+  max-width: 0 !important;
+  padding-left: 0;
+  padding-right: 0;
+  margin-left: 0;
+  margin-right: 0;
+  opacity: 0;
+  flex: 0 0 0;
+  transform: translateX(-40px) scale(0.85);
+  filter: blur(8px);
+  transition: all 0.25s cubic-bezier(0.4, 0, 1, 1);
+}
+
+.tab:hover:not(.active):not(.dragging) {
+  background: 
+    radial-gradient(
+      circle 80px at var(--mouse-x, 50%) var(--mouse-y, 50%), 
+      rgba(255, 255, 255, 0.05),
+      transparent
+    ), 
+    var(--peersky-background-url-input, #ffffff);
 }
 
 .tab.active {
-  background-color: var(--peersky-nav-background);
-  border-radius: 15px 15px 0 0;
-  border: var(--peersky-nav-button-inactive) 0.5px solid;
-  border-bottom: none;
-  height: 32px;
-  margin-bottom: 0;
-  border-bottom: none;
+  background-color: var(--peersky-background-url-input, #ffffff);
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1px var(--settings-border);
+}
+
+.tab:not(.active) + .tab:not(.active)::before {
+  content: '';
+  position: absolute;
+  left: -2px;
+  top: 25%;
+  height: 50%;
+  width: 1px;
+  background-color: var(--settings-border); 
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  opacity: 0.3;
+}
+.tab:not(.active):not(:has(+ .tab))::after {
+  content: '';
+  position: absolute;
+  right: -2px;
+  top: 25%;
+  height: 50%;
+  width: 1px;
+  background-color: var(--settings-border); 
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  opacity: 0.3;
+}
+
+.tab-container:not(:has(.tab.dragging)) .tab:not(.active):not(:has(+ .tab)):hover::after {
+  opacity: 0;
+}
+
+.tab-container:not(:has(.tab.dragging)) .tab:not(.active):hover + .tab:not(.active)::before,
+.tab-container:not(:has(.tab.dragging)) .tab:not(.active) + .tab:not(.active):hover::before {
+  opacity: 0;
+}
+
+.tab.dragging {
+  opacity: 0.9;
+  background-color: var(--peersky-background-url-input, #ffffff) !important;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2), 0 4px 8px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  border-radius: 8px; 
+  
+  position: absolute !important;
+  pointer-events: none;
+  transition: none !important;
+  transform: scale(1.05) translateY(-2px) !important;
+}
+
+.tab-container::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .tab-title {
@@ -389,14 +484,20 @@ find-menu {
   -webkit-app-region: no-drag;
   margin-left: 6px;
   order: 3;
-  transition: background-color 0.2s ease, opacity 0.3s ease;
+  transition: 
+    background-color 0.2s ease,
+    opacity 0.2s ease,
+    transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
   opacity: 0;
+  transform: scale(0.8);
 }
 
 .tab:hover .close-tab,
 .tab.active .close-tab {
   opacity: 1;
+  transform: scale(1);
 }
+
 .close-tab:hover {
   background-color: rgba(255, 255, 255, 0.1);
   color: var(--peersky-nav-button-hover);
@@ -419,7 +520,6 @@ find-menu {
   cursor: pointer;
   color: var(--peersky-nav-button-color);
   -webkit-app-region: no-drag;
-  order: 2;
 }
 
 .add-tab-button:hover {
@@ -1170,4 +1270,14 @@ body {
 
 .webview-container {
   transition: left 0.3s ease, width 0.3s ease !important;
+}
+
+.tab-placeholder {
+  flex: 0 0 auto;
+  height: 32px;
+  margin: 4px 2px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  transition: width 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), height 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
 }

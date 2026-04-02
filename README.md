@@ -165,6 +165,7 @@
 
 ## Development
 
+
 ### Node.js and npm Setup
 
 Please refer to the [Node.js official documentation](https://nodejs.org/) to install Node.js. Once installed, npm (Node Package Manager) will be available, allowing you to run commands like `npx` and `npm`.
@@ -201,6 +202,11 @@ npm run build-all
 ```
 
 Now, the `dist` folder will appear in the root directory.
+
+### Logging
+
+For details on the Peersky logging system, see the [Logging Documentation](./docs/Logging.md). 
+
 
 ## Contribute
 
