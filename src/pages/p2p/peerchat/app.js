@@ -1,6 +1,6 @@
 import { PRE_JOINED_ROOM_KEY } from "./rooms.js";
 
-const API = "hyper://chat";
+import { chat } from "./chat-api.js";
 
 const S = {
   profile: null,
@@ -447,7 +447,7 @@ async function sendReaction(roomKey, msgId, emoji) {
   const existing = S.reactions[roomKey]?.[msgId]?.[S.profile?.id];
   const finalEmoji = (existing?.emoji === emoji) ? "" : emoji;
   try {
-    await api("react", { roomKey, body: { msgId, emoji: finalEmoji } });
+    await chat.react(roomKey, { msgId, emoji: finalEmoji });
     if (finalEmoji) playSound("pop");
   } catch (err) { console.error("[chat] react:", err); }
 }
@@ -663,28 +663,13 @@ function playSound(type) {
   }
 }
 
-async function api(action, opts = {}) {
-  const qs = opts.roomKey ? `?action=${action}&roomKey=${opts.roomKey}` : `?action=${action}`;
-  const init = {};
-  if (opts.body) {
-    init.method = "POST";
-    init.headers = { "Content-Type": "application/json" };
-    init.body = JSON.stringify(opts.body);
-  } else if (opts.post) {
-    init.method = "POST";
-  }
-  const res = await fetch(`${API}${qs}`, init);
-  if (!res.ok) throw new Error(`${action}: ${res.statusText}`);
-  return res.json();
-}
-
 function hideBoot() {
   $("boot-screen")?.setAttribute("hidden", "");
 }
 
 async function init() {
   try {
-    const profile = await api("get-profile");
+    const profile = await chat.getProfile();
     hideBoot();
     if (!profile.username) { showOnboarding(); return; }
     S.profile = profile;
@@ -702,7 +687,7 @@ async function init() {
 }
 
 async function loadRooms() {
-  const data = await api("get-rooms");
+  const data = await chat.getRooms();
   S.rooms = {};
   S.peerProfiles = data.peerProfiles || {};
   S.onlinePeers = new Set(data.onlinePeers || []);
@@ -720,12 +705,12 @@ $("onboard-submit")?.addEventListener("click", async () => {
   const username = $("onboard-username").value.trim();
   if (!username) { alert("Username required."); return; }
   try {
-    const { profile } = await api("save-profile", { body: { username, bio: $("onboard-bio").value.trim() } });
+    const { profile } = await chat.saveProfile({ username, bio: $("onboard-bio").value.trim() });
     S.profile = profile;
     S.settings.sounds = true;
     S.settings.notifications = profile.notifications ?? true;
     if (PRE_JOINED_ROOM_KEY && !/^0+$/.test(PRE_JOINED_ROOM_KEY)) {
-      await api("join", { roomKey: PRE_JOINED_ROOM_KEY, post: true }).catch(() => {});
+      await chat.joinRoom(PRE_JOINED_ROOM_KEY).catch(() => {});
     }
     await loadRooms();
     showApp();
@@ -908,11 +893,11 @@ async function openRoom(roomKey) {
   renderRoomList();
   updateTabTitle();
 
-  await api("set-active", { roomKey, post: true });
-  await api("mark-read", { roomKey, post: true });
+  await chat.setActive(roomKey);
+  await chat.markRead(roomKey);
 
   try {
-    const { messages } = await api("get-history", { roomKey });
+    const { messages } = await chat.getHistory(roomKey);
     const merged = mergeWithHistory(S.messages[roomKey], messages || []);
     S.messages[roomKey] = extractReactions(roomKey, merged);
     renderMessages(roomKey, true, lastReadTs);
@@ -932,7 +917,7 @@ async function openRoom(roomKey) {
         const headerName = $("chat-room-name")?.textContent || "";
         const isPlaceholder = !_r?.name || _r.name === roomKey.slice(0, 8) + "...";
         if (isPlaceholder || headerName === roomKey.slice(0, 8) + "...") {
-          const { rooms } = await api("get-rooms");
+          const { rooms } = await chat.getRooms();
           const fresh = rooms.find(r => r.roomKey === roomKey);
           if (fresh?.name && fresh.name !== roomKey.slice(0, 8) + "...") {
             Object.assign(S.rooms[roomKey], fresh);
@@ -945,7 +930,7 @@ async function openRoom(roomKey) {
           $("chat-room-name").textContent = _r.name;
           $("chat-room-avatar").src = avatar(_r.name, 32, _r.avatar);
         }
-        const { messages: freshMsgs } = await api("get-history", { roomKey });
+        const { messages: freshMsgs } = await chat.getHistory(roomKey);
         const bufLen = (S.messages[roomKey] || []).length;
         const msgContainer = $("messages");
         const domCount = msgContainer ? msgContainer.querySelectorAll(".message, .system-msg").length : 0;
@@ -1277,7 +1262,7 @@ async function refreshActiveRoom() {
         $("chat-room-name").textContent = room.name || S.activeRoom.slice(0, 8) + "...";
         $("chat-room-avatar").src = avatar(room.name, 32, room.avatar);
       }
-      const { messages: fresh } = await api("get-history", { roomKey: S.activeRoom });
+      const { messages: fresh } = await chat.getHistory(S.activeRoom);
       const _existing = S.messages[S.activeRoom] || [];
       if (fresh && fresh.length > _existing.length) {
         S.messages[S.activeRoom] = extractReactions(S.activeRoom, mergeWithHistory(_existing, fresh));
@@ -1294,7 +1279,7 @@ function connectGlobalSSE() {
   reconnectDelay = 1000;
   lastSseTime = Date.now();
 
-  const es = new EventSource(`${API}?action=receive-all`);
+  const es = new EventSource(chat.receiveAllUrl());
   globalES = es;
 
   const touch = () => { lastSseTime = Date.now(); };
@@ -1599,8 +1584,8 @@ $("create-room-form")?.addEventListener("submit", async (e) => {
   try {
     const body = { name, bio: $("new-room-bio").value.trim(), link: $("new-room-link").value.trim() };
     if (pendingRoomAvatar) body.avatar = pendingRoomAvatar;
-    const { roomKey } = await api("create-key", { body });
-    await api("join", { roomKey, post: true });
+    const { roomKey } = await chat.createRoom(body);
+    await chat.joinRoom(roomKey);
     await loadRooms();
     renderRoomList();
     closeAllModals();
@@ -1623,7 +1608,7 @@ $("join-room-form")?.addEventListener("submit", async (e) => {
   const key = $("join-room-key").value.trim();
   if (!/^[a-f0-9]{64}$/i.test(key)) { alert("Invalid room key."); return; }
   try {
-    await api("join", { roomKey: key, post: true });
+    await chat.joinRoom(key);
     await loadRooms();
     renderRoomList();
     closeAllModals();
@@ -1646,7 +1631,7 @@ $("message-form")?.addEventListener("submit", async (e) => {
   const body = { message: msg };
   if (replyTarget) { body.replyTo = replyTarget; replyTarget = null; $("reply-bar").style.display = "none"; }
   try {
-    const resp = await api("send", { roomKey: S.activeRoom, body });
+    const resp = await chat.sendMessage(S.activeRoom, body);
     if (resp.sent) appendMessage(S.activeRoom, resp.sent);
     playSound("send");
   } catch (err) { console.error("Send failed:", err); }
@@ -1885,11 +1870,9 @@ async function openDM(peerId, peerUsername) {
     $("messages").innerHTML = `<div class="dm-loading-state"><span class="muted small">Sending message request to ${esc(peerUsername || peerId)}…</span></div>`;
     $("message-input").disabled = true;
     $("send-btn").disabled = true;
-    const result = await api("join-dm", {
-      body: {
-        roomKey, toId: peerId, toUsername: peerUsername,
-        toAvatar: peerAv, toBio: peer?.bio || "",
-      },
+    const result = await chat.joinDM({
+      roomKey, toId: peerId, toUsername: peerUsername,
+      toAvatar: peerAv, toBio: peer?.bio || "",
     });
     if (result.roomKey) {
       delete S.pendingDMs?.[result.roomKey];
@@ -1908,7 +1891,7 @@ async function openDM(peerId, peerUsername) {
 async function acceptDM(roomKey) {
   try {
     closeAllModals();
-    const result = await api("accept-dm", { body: { roomKey } });
+    const result = await chat.acceptDM({ roomKey });
     if (result.roomKey) {
       delete S.pendingDMs?.[result.roomKey];
       await loadRooms();
@@ -1923,7 +1906,7 @@ async function acceptDM(roomKey) {
 
 async function rejectDM(roomKey) {
   try {
-    await api("reject-dm", { body: { roomKey } });
+    await chat.rejectDM({ roomKey });
     closeAllModals();
     delete S.pendingDMs?.[roomKey];
   } catch (err) {
@@ -1962,7 +1945,7 @@ $("settings-form")?.addEventListener("submit", async (e) => {
     const notifications = $("set-notifications").checked;
     const body = { username, bio: $("set-bio").value.trim(), notifications };
     if (pendingAvatar) body.avatar = pendingAvatar;
-    const { profile } = await api("save-profile", { body });
+    const { profile } = await chat.saveProfile(body);
     S.profile = profile;
     S.settings.sounds = sounds;
     S.settings.notifications = notifications;
@@ -2002,18 +1985,18 @@ $("room-menu")?.addEventListener("click", async (e) => {
   if (!room) return;
 
   if (action === "pin") {
-    await api("update-room", { roomKey: ctxTarget, body: { isPinned: !room.isPinned } });
+    await chat.updateRoom(ctxTarget, { isPinned: !room.isPinned });
     room.isPinned = !room.isPinned;
     renderRoomList();
   } else if (action === "mute") {
-    await api("update-room", { roomKey: ctxTarget, body: { isMuted: !room.isMuted } });
+    await chat.updateRoom(ctxTarget, { isMuted: !room.isMuted });
     room.isMuted = !room.isMuted;
     renderRoomList();
   } else if (action === "copy") {
     copyText(ctxTarget);
   } else if (action === "delete") {
     if (!confirm("Leave this room? You can rejoin with the room key.")) return;
-    await api("delete-room", { roomKey: ctxTarget, post: true });
+    await chat.deleteRoom(ctxTarget);
     delete S.rooms[ctxTarget];
     if (S.activeRoom === ctxTarget) {
       S.activeRoom = null;
@@ -2141,10 +2124,7 @@ async function uploadAndSendFile(file) {
     const uploadResp = await fetch(base + path, { method: "PUT", body: new Uint8Array(buf) });
     if (!uploadResp.ok) throw new Error("Upload failed");
     const fileUrl = base + path;
-    const resp = await api("send", {
-      roomKey: S.activeRoom,
-      body: { message: fileUrl, fileName: file.name, fileSize: file.size },
-    });
+    const resp = await chat.sendMessage(S.activeRoom, { message: fileUrl, fileName: file.name, fileSize: file.size });
     if (resp.sent) appendMessage(S.activeRoom, resp.sent);
     playSound("send");
   } catch (err) { alert("Upload failed: " + err.message); }

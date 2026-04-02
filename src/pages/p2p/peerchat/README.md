@@ -54,11 +54,58 @@ These apps solve different problems; the table is to set expectations, not to pi
 - Rate limits and a max **message text** length cut spam in the feed; file uploads have **no size limit** in the app. The UI escapes text before rendering to limit XSS.
 - **Not** Matrix/Signal-class identity, device verification, or perfect forward secrecy.
 
-## Porting to another Hyper browser
+## Development
+
+### Chat API 
+
+PeerChat provides a clean JavaScript API in `chat-api.js` that wraps the protocol handler. Import and use it in your app:
+
+```js
+import { chat } from "./path/to/peerchat/chat-api.js";
+
+// Get user profile
+const profile = await chat.getProfile();
+
+// Get all rooms
+const { rooms, peerProfiles, onlinePeers } = await chat.getRooms();
+
+// Send a message
+await chat.sendMessage(roomKey, { message: "Hello!" });
+
+// React to a message
+await chat.react(roomKey, { msgId, emoji: "👍" });
+
+// Subscribe to live updates
+const es = new EventSource(chat.receiveAllUrl());
+es.addEventListener("message", (ev) => {
+  const msg = JSON.parse(ev.data);
+  // Handle incoming message
+});
+```
+
+**Available methods:**
+- `chat.getProfile()` — Get current user profile
+- `chat.getRooms()` — Get all rooms, peer profiles, online status
+- `chat.saveProfile(body)` — Update username, bio, avatar, notifications
+- `chat.createRoom(body)` — Create new room with name, bio, link, avatar
+- `chat.joinRoom(roomKey)` — Join room by key
+- `chat.getHistory(roomKey)` — Get message history for room
+- `chat.setActive(roomKey)` — Mark room as active
+- `chat.markRead(roomKey)` — Mark room as read
+- `chat.sendMessage(roomKey, body)` — Send message with optional reply, file
+- `chat.react(roomKey, body)` — React to message with emoji
+- `chat.joinDM(body)` — Initiate DM with peer
+- `chat.acceptDM(body)` — Accept incoming DM request
+- `chat.rejectDM(body)` — Reject incoming DM request
+- `chat.updateRoom(roomKey, body)` — Update room settings (pin, mute)
+- `chat.deleteRoom(roomKey)` — Leave room
+- `chat.receiveAllUrl()` — Get SSE endpoint URL for live updates
+
+### Porting to another Hyper browser
 
 Copy the `chat/` folder. Your browser already needs a **single shared Hyper SDK** instance (same pattern as PeerSky: one swarm for browsing + apps).
 
-### 1. Import and initialize after `createSDK`
+#### 1. Import and initialize after `createSDK`
 
 Use your own path to `p2p.js`. On Electron you can pass `safeStorage` and a file under `userData`; elsewhere omit `safeStorage` or stub it.
 
@@ -80,7 +127,7 @@ initChat(sdk, {
 
 `CHAT_STORAGE` is the JSON filename (`peersky-chat-rooms.json`); change the export in `p2p.js` if you want a different name for your software.
 
-### 2. Route `hyper://chat` to the handler
+#### 2. Route `hyper://chat` to the handler
 
 PeerSky branches **before** generic `hypercore-fetch` handling so chat never hits the default Hyper resolver. Match your URL shape; PeerSky uses hostname `chat` or path `/chat`:
 
@@ -105,10 +152,8 @@ export async function createHandler(options) {
 }
 ```
 
-## Theming
+### Theming
 
 `styles.css` imports [`browser://theme/vars.css`](https://github.com/p2plabsxyz/peersky-browser/blob/main/docs/Theme.md) and maps layout colors from **`--browser-theme-background`**, **`--browser-theme-text-color`**, **`--browser-theme-primary-highlight`**, **`--browser-theme-secondary-highlight`**, and **`--browser-theme-font-family`**, with Peersky extras (`--peersky-nav-background`, `--base02`, etc.) when present. The UI should follow PeerSky’s selected theme and stay compatible with other browsers that implement the same protocol.
 
-## Credits
-
-All sound effects used in PeerChat are royalty-free and sourced from [Pixabay](https://pixabay.com/).
+> All sound effects used in PeerChat are royalty-free and sourced from [Pixabay](https://pixabay.com/).
