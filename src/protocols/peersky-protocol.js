@@ -1,4 +1,5 @@
 import path from "path";
+import { createLogger } from '../logger.js';
 import { fileURLToPath } from 'url';
 import mime from "mime-types";
 import ScopedFS from 'scoped-fs';
@@ -6,6 +7,8 @@ import { app } from 'electron';
 import { createReadStream, promises as fsPromises } from 'fs';
 import { Readable } from 'stream';
 import extensionManager from '../extensions/index.js';
+
+const log = createLogger('protocols:peersky');
 
 const __dirname = fileURLToPath(new URL('./', import.meta.url));
 const pagesPath = path.join(__dirname, '../pages');
@@ -195,7 +198,7 @@ async function handleExtensionIcon(extensionId, size) {
       headers: { 'Content-Type': contentType, 'Cache-Control': 'public, max-age=3600' },
     });
   } catch (error) {
-    console.log(`Extension icon not found: ${extensionId}/${size} - ${error.message}`);
+    log.info(`Extension icon not found: ${extensionId}/${size} - ${error.message}`);
     try {
       const defaultIconPath = path.join(pagesPath, 'static/assets/svg/default-extension-icon.svg');
       const data = Readable.toWeb(createReadStream(defaultIconPath));
@@ -309,6 +312,7 @@ export async function createHandler() {
     } catch (e) {
 
       if (filePath !== 'error' && filePath !== 'error.html') {
+        log.error(`Error handling protocol request for ${filePath}: ${e.message}`);
         return Response.error();
       }
 
