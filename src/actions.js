@@ -1,5 +1,7 @@
 import { app, BrowserWindow } from "electron";
 import WindowManager from './window-manager.js';
+import { createLogger } from './logger.js';
+const log = createLogger('actions');
 
 export function createActions(windowManager) {
   const actions = {
@@ -141,7 +143,7 @@ export function createActions(windowManager) {
             const tabBar = document.querySelector('#tabbar');
             if (tabBar && typeof tabBar.reloadActiveTab === 'function' && tabBar.activeTabId) {
               // Only use tab-based reload if we have an active tab
-              console.log('Reloading active tab:', tabBar.activeTabId);
+              log.info('Reloading active tab:', tabBar.activeTabId);
               tabBar.reloadActiveTab();
             } else {
               // Fallback: find the currently visible webview only
@@ -157,13 +159,13 @@ export function createActions(windowManager) {
               }
               
               if (activeWebview) {
-                console.log('Reloading visible webview:', activeWebview.src);
+                log.info('Reloading visible webview:', activeWebview.src);
                 activeWebview.reload();
               } else {
                 // Last resort: reload the first webview
                 const firstWebview = document.querySelector('webview');
                 if (firstWebview) {
-                  console.log('Reloading first webview as fallback');
+                  log.info('Reloading first webview as fallback');
                   firstWebview.reload();
                 }
               }
@@ -198,7 +200,7 @@ export function createActions(windowManager) {
               }
               return false;
             })()
-          `).catch(err => console.error('Print action failed:', err));
+          `).catch(err => log.error('Print action failed:', err));
         }
       },
     },
@@ -230,11 +232,11 @@ export function createActions(windowManager) {
                 window.close();
               }
             } catch (error) {
-              console.error('Error in Close action:', error);
+              log.error('Error in Close action:', error);
               window.close();
             }
           `).catch(error => {
-            console.error('Script execution failed in Close action:', error);
+            log.error('Script execution failed in Close action:', error);
           });
         }
       },
@@ -286,10 +288,10 @@ export function createActions(windowManager) {
                 }
               }
             } catch (error) {
-              console.error('Error closing tab:', error);
+              log.error('Error closing tab:', error);
             }
           `).catch(error => {
-            console.error('Script execution failed:', error);
+            log.error('Script execution failed:', error);
           });
         }
       },
@@ -313,10 +315,10 @@ export function createActions(windowManager) {
                 }
               }
             } catch (error) {
-              console.error('Error switching to next tab:', error);
+              log.error('Error switching to next tab:', error);
             }
           `).catch(error => {
-            console.error('Script execution failed:', error);
+            log.error('Script execution failed:', error);
           });
         }
       },
@@ -340,10 +342,10 @@ export function createActions(windowManager) {
                 }
               }
             } catch (error) {
-              console.error('Error switching to previous tab:', error);
+              log.error('Error switching to previous tab:', error);
             }
           `).catch(error => {
-            console.error('Script execution failed:', error);
+            log.error('Script execution failed:', error);
           });
         }
       },

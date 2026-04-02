@@ -2,6 +2,9 @@
 // Generates a deterministic 32-char ID from manifest metadata
 
 import { createHash } from 'crypto';
+import { createLogger } from '../../logger.js';
+
+const log = createLogger('extensions');
 
 /**
  * Generate secure extension ID using cryptographic hashing
@@ -22,7 +25,7 @@ export function generateSecureExtensionId(manifest) {
   try {
     if (manifest?.name) {
       // Keep a similar log behavior to original implementation
-      console.log(`ExtensionManager: Generated secure ID for "${manifest.name}": ${id}`);
+      log.info(`ExtensionManager: Generated secure ID for "${manifest.name}": ${id}`);
     }
   } catch (_) {}
   return id;
