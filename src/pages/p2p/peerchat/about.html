@@ -54,6 +54,7 @@
         <li>Rooms with name, bio, optional link, and optional picture; local profile.</li>
         <li>One Hypercore feed per room; Hyperswarm for transport; live UI via SSE (<code>receive-all</code>).</li>
         <li>Messages encrypted with AES-256-GCM derived from the room key before they’re stored in the feed.</li>
+        <li><strong>Reactions:</strong> emoji reactions on messages are stored in the same Hypercore (as reaction events) and sync across peers.</li>
         <li>Attachments go through a Hyperdrive (<code>peerchat</code>), listed in Settings → Archive like other PeerSky apps. <strong>No app-enforced upload size limit</strong>—only disk, memory while uploading, and the network.</li>
         <li><strong>Direct Messages (DMs):</strong> click a peer's avatar to send a private message; the recipient gets an accept/decline popup, and the room key is derived from both peer IDs so only those two people share it.</li>
         <li>Optional Electron <code>safeStorage</code> for the local JSON that holds rooms and keys.</li>

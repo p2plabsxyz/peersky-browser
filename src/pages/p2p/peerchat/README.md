@@ -15,7 +15,7 @@ Small teams or group of friends who already trust each other and want something 
 - Rooms with name, bio, optional link, and optional picture
 - Messages stored in a **Hypercore** per room (append-only log), synced across peers
 - Live delivery over **Hyperswarm** (Noise-encrypted transport) plus **SSE** (`receive-all`) so the web UI updates without polling every room
-- Join / leave, @mentions, replies, **file attachments** via a dedicated Hyperdrive (`peerchat` shows up in Settings → Archive like other apps). **No file upload limits** in PeerChat.
+- Join / leave, @mentions, replies, **emoji reactions** on messages (stored in the room feed and synced like other events), **file attachments** via a dedicated Hyperdrive (`peerchat` shows up in Settings → Archive like other apps). **No file upload limits** in PeerChat.
 - **Direct Messages (DMs):** click a peer's avatar to send a private message; the recipient gets an accept/decline popup, and the room key is derived deterministically from both peer IDs so only those two people share it
 - Room list, unread counts, and local settings persist on disk
 - **Emoji picker** in the message composer: type keywords to filter characters; data comes from [emojilib](https://github.com/muan/emojilib), vendored as `lib/emojilib-emoji-en-US.json`.
