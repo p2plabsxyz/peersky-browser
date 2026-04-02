@@ -10,6 +10,7 @@ const S = {
   activeRoom: null,
   messages: {},
   reactions: {},
+  reactionNotified: {},
   settings: { sounds: true, notifications: true },
   pendingDMs: {},
 };
@@ -1022,7 +1023,7 @@ function roomOnlineCount(roomKey) {
   const room = S.rooms[roomKey];
   if (!room) return 0;
   if (room.isDM) return (room.dmWith && S.onlinePeers.has(room.dmWith)) ? 1 : 0;
-  return Object.keys(room.members || {}).filter(id => S.onlinePeers.has(id)).length;
+  return Object.keys(room.members || {}).filter(id => (id === S.profile?.id) || S.onlinePeers.has(id)).length;
 }
 
 function updateRoomPeerCount(roomKey) {
@@ -1312,11 +1313,17 @@ function connectGlobalSSE() {
               message: `reacted ${msg.emoji}`, timestamp: msg.timestamp,
             };
           }
-          if (rk !== S.activeRoom) {
-            room.unreadCount = (room.unreadCount || 0) + 1;
-            if (!room.isMuted) playSound("message");
-          } else {
-            if (!room.isMuted) playSound("pop");
+          if (!S.reactionNotified[rk]) S.reactionNotified[rk] = {};
+          if (!S.reactionNotified[rk][msg.msgId]) S.reactionNotified[rk][msg.msgId] = new Set();
+          const alreadyNotified = S.reactionNotified[rk][msg.msgId].has(msg.sender);
+          if (!alreadyNotified && msg.emoji) {
+            S.reactionNotified[rk][msg.msgId].add(msg.sender);
+            if (rk !== S.activeRoom) {
+              room.unreadCount = (room.unreadCount || 0) + 1;
+              if (!room.isMuted) playSound("message");
+            } else {
+              if (!room.isMuted) playSound("pop");
+            }
           }
           renderRoomList();
           updateTabTitle();
@@ -1666,7 +1673,7 @@ function buildMentionPopup() {
     const m = popup._candidates[i];
     const item = document.createElement("div");
     item.className = "mention-item" + (i === 0 ? " active" : "");
-    const isOn = S.onlinePeers.has(m.id);
+    const isOn = (m.id === S.profile?.id) || S.onlinePeers.has(m.id);
     const mentionAvatar = S.peerProfiles[m.id]?.avatar || null;
     item.innerHTML = `<img src="${esc(avatar(m.username, 20, mentionAvatar))}" /><span>${esc(m.username)}</span><span class="online-dot ${isOn ? "online" : "offline"}"></span>`;
     item.addEventListener("mousedown", (e) => {
@@ -1788,7 +1795,7 @@ $("chat-header-main")?.addEventListener("click", () => {
     for (const [id, m] of Object.entries(members)) {
       const row = document.createElement("div");
       row.className = "member-row";
-      const isOn = S.onlinePeers.has(id);
+      const isOn = (id === S.profile?.id) || S.onlinePeers.has(id);
       const memberAvatar = S.peerProfiles[id]?.avatar || m.avatar || null;
       const memberName = S.peerProfiles[id]?.username || m.username || id;
       row.innerHTML = `<img src="${esc(avatar(memberName, 22, memberAvatar))}" /><span>${esc(memberName)}</span><span class="online-dot ${isOn ? "online" : "offline"}"></span>`;
