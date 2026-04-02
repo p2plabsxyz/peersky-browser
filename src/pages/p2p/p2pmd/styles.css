@@ -322,12 +322,116 @@ main {
   flex-direction: column;
 }
 
-#editor-left-column > #markdownInput {
+/* textarea wrapper */
+#editor-textarea-wrapper {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#editor-textarea-wrapper > #markdownInput {
   flex: 1;
   padding: var(--gap);
+  padding-left: calc(var(--gap) + 12px);
   border-radius: 0 0 8px 8px;
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+#author-gutter {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 4px;
+  overflow: hidden;
+  z-index: 1;
+}
+
+.author-gutter-mark {
+  position: absolute;
+  left: 0;
+  width: 4px;
+  border-radius: 2px;
+  opacity: 0.7;
+  pointer-events: auto;
+  cursor: default;
+  transition: opacity 0.2s;
+}
+
+.author-gutter-mark:hover { opacity: 1; }
+
+#peer-gutter {
+  position: absolute;
+  left: 4px; top: 0; bottom: 0;
+  width: 4px;
+  pointer-events: auto;
+  overflow: hidden;
+  z-index: 2;
+}
+
+.peer-gutter-mark {
+  position: absolute;
+  left: 0;
+  width: 4px;
+  border-radius: 2px;
+  opacity: 0.85;
+  transition: top 0.08s linear, opacity 0.3s;
+  pointer-events: auto;
+}
+
+#peer-cursor-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 3;
+}
+
+.peer-cursor-chip {
+  position: absolute;
+  pointer-events: auto;
+  width: 8px;
+  opacity: 0.9;
+  transition: opacity 0.35s ease, top 0.08s linear;
+  cursor: default;
+  user-select: none;
+  background: transparent;
+}
+
+.peer-cursor-chip.idle { opacity: 0.25; }
+
+.peer-cursor-chip::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--peer-color, #8b5cf6);
+}
+
+.peer-cursor-chip::after {
+  content: attr(data-peer-name);
+  position: absolute;
+  left: 10px;
+  top: -1px;
+  font-size: 0.68rem;
+  line-height: 1.2;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--peer-color, #8b5cf6);
+  color: #ffffff;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateY(-100%);
+  transition: opacity 0.12s ease;
+  pointer-events: none;
+}
+
+.peer-cursor-chip:hover::after {
+  opacity: 1;
 }
 
 #preview-container {

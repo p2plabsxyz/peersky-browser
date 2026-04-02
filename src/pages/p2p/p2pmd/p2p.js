@@ -37,6 +37,13 @@
 } from "./common.js";
 import { initMarkdown, renderPreview, scheduleRender, showSpinner, renderMarkdown } from "./noteEditor.js";
 import { initToolbar } from "./toolbar.js";
+import { initCursorOverlay, updateCursorOverlay, destroyCursorOverlay,
+         setLocalColor, updateLineAuthors } from "./cursorOverlay.js";
+
+
+
+
+
 
 let sendTimer = null;
 let saveTimer = null;
@@ -79,6 +86,8 @@ const DRAFT_DRIVE_NAME = "p2pmd-drafts";
 const MAX_ACTIVITY_ITEMS = 150;
 const PRESENCE_THROTTLE_MS = 220;
 const TYPING_IDLE_MS = 1200;
+const PEER_COLOR_SATURATION = 70;
+const PEER_FALLBACK_NAME_LEN = 8;
 const saveDelay = 2000;
 let hyperSaveInFlight = false;
 let draftSaveInFlight = false;
@@ -622,6 +631,12 @@ function persistRoomState(state) {
 
 export function scheduleSend() {
   if (!currentRoomUrl) return;
+
+  // Track line authorship using the current cursor line before sending updates.
+  _attributeCurrentLine();
+  // Render local marks immediately without waiting for SSE.
+  updateLineAuthors(_roomLineAttributions);
+
   if (!ydoc || !ytext) {
     if (sendTimer) clearTimeout(sendTimer);
     sendTimer = setTimeout(async () => {
@@ -637,7 +652,8 @@ export function scheduleSend() {
             clientId: localClientId,
             role: currentRole || "client",
             name: getDisplayName(),
-            ...getCurrentCursorPayload()
+            ...getCurrentCursorPayload(),
+            lineAttributions: getLineAttributionsPayload()
           })
         });
         schedulePresenceSend();
@@ -662,6 +678,56 @@ export function scheduleSend() {
   applyTextDiff(ytext, oldText, newText);
   prevText = newText;
 }
+
+
+function _attributeCurrentLine() {
+  try {
+    const text = markdownInput.value || "";
+    const offset = markdownInput.selectionStart ?? 0;
+    const before = text.slice(0, Math.min(offset, text.length));
+    let line = 1;
+    for (const ch of before) if (ch === "\n") line++;
+
+    const name  = getDisplayName() || truncateIdentifier(localClientId, PEER_FALLBACK_NAME_LEN);
+    const color = currentPeerList.find((p) => p.clientId === localClientId)?.color || _localFallbackColor();
+    if (!color) return;
+    _localLineAttributions[String(line)] = { name, color };
+    _roomLineAttributions[String(line)] = { name, color };
+  } catch {}
+}
+
+// Local peer's accumulated line attributions, sent via /presence.
+let _localLineAttributions = {};
+// Room-level accumulated line attributions, preserved even after peers disconnect.
+let _roomLineAttributions = {};
+
+function _localFallbackColor() {
+  if (!localClientId) return "#888";
+  let h = 0;
+  for (let i = 0; i < localClientId.length; i++)
+    h = (h * 31 + localClientId.charCodeAt(i)) & 0xffff;
+  return `hsl(${h % 360},${PEER_COLOR_SATURATION}%,55%)`;
+}
+
+function mergeLineAttributionsIntoRoom(value) {
+  if (!value || typeof value !== "object") return;
+  for (const [line, info] of Object.entries(value)) {
+    const lineNum = Number(line);
+    if (!Number.isFinite(lineNum) || lineNum < 1) continue;
+    if (!info || typeof info !== "object" || typeof info.color !== "string") continue;
+    _roomLineAttributions[String(Math.floor(lineNum))] = {
+      name: typeof info.name === "string" ? info.name : "",
+      color: info.color
+    };
+  }
+}
+
+function refreshLocalLineAttribution() {
+  _attributeCurrentLine();
+  updateLineAuthors(_roomLineAttributions);
+}
+
+
 
 function bytesToBase64(bytes) {
   let binary = "";
@@ -720,6 +786,18 @@ function buildPresencePayload() {
   };
 }
 
+function getLineAttributionsPayload() {
+  const cursor = getCurrentCursorPayload();
+  const line = Number(cursor.cursorLine);
+  if (!Number.isFinite(line) || line < 1) return undefined;
+  const name = getDisplayName() || truncateIdentifier(localClientId, PEER_FALLBACK_NAME_LEN);
+  const color = currentPeerList.find((p) => p.clientId === localClientId)?.color || _localFallbackColor();
+  if (!color) return undefined;
+  return {
+    [String(Math.floor(line))]: { name, color }
+  };
+}
+
 function scheduleTypingReset() {
   if (typingResetTimer) clearTimeout(typingResetTimer);
   typingResetTimer = setTimeout(() => {
@@ -766,7 +844,8 @@ async function flushYjsUpdate() {
         clientId: localClientId,
         role: currentRole || "client",
         name: getDisplayName(),
-        ...getCurrentCursorPayload()
+        ...getCurrentCursorPayload(),
+        lineAttributions: getLineAttributionsPayload()
       })
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -841,7 +920,14 @@ function destroyYjs(skipSave = false) {
   ytext = null;
   prevText = "";
   isApplyingRemote = false;
+  _localLineAttributions = {};
+  _roomLineAttributions = {};
+  destroyCursorOverlay();
 }
+
+
+
+
 
 async function postContentNow() {
   if (!currentRoomUrl) return;
@@ -856,7 +942,8 @@ async function postContentNow() {
         clientId: localClientId,
         role: currentRole || "client",
         name: getDisplayName(),
-        ...getCurrentCursorPayload()
+        ...getCurrentCursorPayload(),
+        lineAttributions: getLineAttributionsPayload()
       })
     });
     schedulePresenceSend(true);
@@ -981,7 +1068,7 @@ function normalizePeerList(peerList) {
       const role = normalizePeerRole(peer.role);
       const id = Number.isFinite(Number(peer.id)) ? Number(peer.id) : null;
       const clientId = typeof peer.clientId === "string" ? peer.clientId : "";
-      const fallbackName = id ? `Peer #${id}` : `Peer ${truncateIdentifier(clientId || "unknown", 8)}`;
+      const fallbackName = id ? `Peer #${id}` : `Peer ${truncateIdentifier(clientId || "unknown", PEER_FALLBACK_NAME_LEN)}`;
       return {
         id,
         role,
@@ -991,11 +1078,27 @@ function normalizePeerList(peerList) {
         isTyping: peer.isTyping === true,
         cursorLine: Number.isFinite(Number(peer.cursorLine)) ? Number(peer.cursorLine) : null,
         cursorColumn: Number.isFinite(Number(peer.cursorColumn)) ? Number(peer.cursorColumn) : null,
+        lineAttributions: normalizeLineAttributions(peer.lineAttributions),
         updatedAt: Number.isFinite(Number(peer.updatedAt)) ? Number(peer.updatedAt) : Date.now(),
         joinedAt: Number.isFinite(Number(peer.joinedAt)) ? Number(peer.joinedAt) : Date.now()
       };
     })
     .filter(Boolean);
+}
+
+function normalizeLineAttributions(value) {
+  if (!value || typeof value !== "object") return null;
+  const normalized = {};
+  for (const [line, info] of Object.entries(value)) {
+    const lineNum = Number(line);
+    if (!Number.isFinite(lineNum) || lineNum < 1) continue;
+    if (!info || typeof info !== "object" || typeof info.color !== "string") continue;
+    normalized[String(Math.floor(lineNum))] = {
+      name: typeof info.name === "string" ? info.name : "",
+      color: info.color
+    };
+  }
+  return Object.keys(normalized).length > 0 ? normalized : null;
 }
 
 function buildPeersPageHref(key = currentRoomKey, localUrl = currentRoomUrl) {
@@ -1059,6 +1162,9 @@ function persistPeerActivitySnapshot() {
 
 function setPeerList(peerList) {
   currentPeerList = normalizePeerList(peerList);
+  for (const peer of currentPeerList) {
+    mergeLineAttributionsIntoRoom(peer.lineAttributions);
+  }
   persistPeerStatusSnapshot();
   if (peersCount.textContent === "0") {
     let estimatedRemote = currentPeerList.length;
@@ -1069,7 +1175,14 @@ function setPeerList(peerList) {
       updatePeers(estimatedRemote);
     }
   }
+  updateCursorOverlay(currentPeerList);
+  updateLineAuthors(_roomLineAttributions);
+
+  const self = currentPeerList.find((p) => p.clientId === localClientId);
+  if (self?.color) setLocalColor(self.color);
 }
+
+
 
 function addPeerActivity(entry) {
   if (!entry || typeof entry !== "object") return;
@@ -1477,7 +1590,14 @@ async function connectToRoom(localUrl, role = "client") {
   }
 
   connectSseChannel(localUrl, role);
+  initCursorOverlay(markdownInput, localClientId);
+
 }
+
+
+
+
+
 
 async function createRoom() {
   const host = normalizeHost(localHostInput.value);
@@ -1932,8 +2052,8 @@ function buildSlidesHtml(markdown) {
   <div id="slides-footer">
     Made by <a href="https://github.com/p2plabsxyz/p2pmd" target="_blank" rel="noopener noreferrer">p2pmd</a> in <a href="https://peersky.p2plabs.xyz/" target="_blank" rel="noopener noreferrer">PeerSky</a>
   </div>
-  <button id="prev-arrow" class="nav-arrow" aria-label="Previous slide">‹</button>
-  <button id="next-arrow" class="nav-arrow" aria-label="Next slide">›</button>
+  <button id="prev-arrow" class="nav-arrow" aria-label="Previous slide">â€¹</button>
+  <button id="next-arrow" class="nav-arrow" aria-label="Next slide">â€º</button>
   <div id="progress-bar"></div>
   <div id="slide-counter"></div>
   <script>
@@ -2114,8 +2234,8 @@ function renderInlineSlides() {
   slidesPreview.innerHTML = `
     <div class="slides-content">
       ${slidesHtml}
-      <button id="slides-prev" class="slides-nav" aria-label="Previous slide">‹</button>
-      <button id="slides-next" class="slides-nav" aria-label="Next slide">›</button>
+      <button id="slides-prev" class="slides-nav" aria-label="Previous slide">â€¹</button>
+      <button id="slides-next" class="slides-nav" aria-label="Next slide">â€º</button>
       <div id="slides-progress"></div>
       <div id="slides-counter"></div>
     </div>
@@ -2333,7 +2453,7 @@ function addPublishUrl(url) {
   link.rel = "noopener noreferrer";
 
   const copyContainer = document.createElement("span");
-  copyContainer.textContent = "⊕";
+  copyContainer.textContent = "âŠ•";
   copyContainer.onclick = async function () {
     let success = false;
     try {
@@ -2362,7 +2482,7 @@ function addPublishUrl(url) {
     if (success) {
       copyContainer.textContent = " Copied!";
       setTimeout(() => {
-        copyContainer.textContent = "⊕";
+        copyContainer.textContent = "âŠ•";
       }, 1000);
     }
   };
@@ -2900,7 +3020,7 @@ if (copyRoomKey) {
     try {
       await navigator.clipboard.writeText(key);
       copyRoomKey.textContent = "Copied!";
-      setTimeout(() => { copyRoomKey.textContent = "⊕"; }, 1000);
+      setTimeout(() => { copyRoomKey.textContent = "âŠ•"; }, 1000);
     } catch {
       const ta = document.createElement("textarea");
       ta.value = key;
@@ -2911,7 +3031,7 @@ if (copyRoomKey) {
       document.execCommand("copy");
       document.body.removeChild(ta);
       copyRoomKey.textContent = "Copied!";
-      setTimeout(() => { copyRoomKey.textContent = "⊕"; }, 1000);
+      setTimeout(() => { copyRoomKey.textContent = "âŠ•"; }, 1000);
     }
   });
 }
@@ -2926,18 +3046,22 @@ markdownInput.addEventListener("input", () => {
 });
 
 markdownInput.addEventListener("click", () => {
+  refreshLocalLineAttribution();
   schedulePresenceSend();
 });
 
 markdownInput.addEventListener("keyup", () => {
+  refreshLocalLineAttribution();
   schedulePresenceSend();
 });
 
 markdownInput.addEventListener("select", () => {
+  refreshLocalLineAttribution();
   schedulePresenceSend();
 });
 
 markdownInput.addEventListener("focus", () => {
+  refreshLocalLineAttribution();
   schedulePresenceSend(true);
 });
 

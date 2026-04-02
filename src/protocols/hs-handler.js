@@ -305,7 +305,8 @@ function getPeerList(session) {
         selectionStart: Number.isFinite(Number(client.selectionStart)) ? Number(client.selectionStart) : null,
         selectionEnd: Number.isFinite(Number(client.selectionEnd)) ? Number(client.selectionEnd) : null,
         joinedAt: Number.isFinite(Number(client.joinedAt)) ? Number(client.joinedAt) : Date.now(),
-        updatedAt: Number.isFinite(Number(client.updatedAt)) ? Number(client.updatedAt) : Date.now()
+        updatedAt: Number.isFinite(Number(client.updatedAt)) ? Number(client.updatedAt) : Date.now(),
+        lineAttributions: client.lineAttributions || null
       };
     });
 }
@@ -376,6 +377,39 @@ function syncPeerMetaFromActor(session, actor) {
     cursorLine: actor.cursorLine,
     cursorColumn: actor.cursorColumn
   });
+}
+
+function mergeLineAttributions(target, lineAttributions) {
+  if (!target || !lineAttributions || typeof lineAttributions !== "object") return;
+  if (!target.lineAttributions) target.lineAttributions = {};
+  for (const [line, info] of Object.entries(lineAttributions)) {
+    const lineNum = Number(line);
+    if (!Number.isFinite(lineNum) || lineNum < 1) continue;
+    if (!info || typeof info !== "object" || typeof info.color !== "string") continue;
+    target.lineAttributions[String(Math.floor(lineNum))] = {
+      name: typeof info.name === "string" ? info.name : "",
+      color: info.color
+    };
+  }
+}
+
+function markEditedLineAttribution(session, actor, cursorLine) {
+  if (!session || !actor) return;
+  const lineNum = Number(cursorLine);
+  if (!Number.isFinite(lineNum) || lineNum < 1) return;
+  const lineKey = String(Math.floor(lineNum));
+  // Enforce one owner per line: when someone edits a line, clear that line from others.
+  for (const client of session.sseClients.values()) {
+    if (!client || client === actor || !client.lineAttributions) continue;
+    if (Object.prototype.hasOwnProperty.call(client.lineAttributions, lineKey)) {
+      delete client.lineAttributions[lineKey];
+    }
+  }
+  if (!actor.lineAttributions) actor.lineAttributions = {};
+  actor.lineAttributions[lineKey] = {
+    name: getPeerDisplayName(actor),
+    color: actor.color || getPeerColor(actor.clientId || actor.id)
+  };
 }
 
 function getOrCreateUnknownPeerId(session, sourceKey = "") {
@@ -995,6 +1029,8 @@ function handleDocRequest(req, res, session) {
           if (cursorColumn !== null) actor.cursorColumn = cursorColumn;
           if (selectionStart !== null) actor.selectionStart = selectionStart;
           if (selectionEnd !== null) actor.selectionEnd = selectionEnd;
+          mergeLineAttributions(actor, parsed.lineAttributions);
+          markEditedLineAttribution(session, actor, cursorLine !== null ? cursorLine : actor.cursorLine);
           actor.isTyping = true;
           actor.lastTypingAt = Date.now();
           actor.updatedAt = actor.lastTypingAt;
@@ -1113,6 +1149,8 @@ function handleDocRequest(req, res, session) {
           if (cursorColumn !== null) actor.cursorColumn = cursorColumn;
           if (selectionStart !== null) actor.selectionStart = selectionStart;
           if (selectionEnd !== null) actor.selectionEnd = selectionEnd;
+          mergeLineAttributions(actor, parsed.lineAttributions);
+          markEditedLineAttribution(session, actor, cursorLine !== null ? cursorLine : actor.cursorLine);
           actor.isTyping = true;
           actor.lastTypingAt = Date.now();
           actor.updatedAt = actor.lastTypingAt;

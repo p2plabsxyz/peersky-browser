@@ -44,15 +44,13 @@ function parseJson(raw, fallback) {
   }
 }
 
-function normalizeRole(role) {
-  if (role === "host") return "host";
-  if (role === "client") return "client";
-  return "viewer";
+function sanitizeRole(role) {
+  return role === "host" ? "host" : "client";
 }
 
 function normalizePeer(peer) {
   if (!peer || typeof peer !== "object") return null;
-  const role = normalizeRole(peer.role);
+  const role = sanitizeRole(peer.role);
   const clientId = typeof peer.clientId === "string" ? peer.clientId : "";
   const id = Number.isFinite(Number(peer.id)) ? Number(peer.id) : null;
   const baseName = typeof peer.name === "string" && peer.name.trim() ? peer.name.trim() : (id ? `Peer #${id}` : "Peer");
@@ -74,7 +72,7 @@ function normalizeActivity(activity) {
   return {
     id: Number.isFinite(Number(activity.id)) ? Number(activity.id) : Date.now(),
     type: typeof activity.type === "string" ? activity.type : "event",
-    role: normalizeRole(activity.role),
+    role: sanitizeRole(activity.role),
     name: typeof activity.name === "string" && activity.name.trim() ? activity.name.trim() : "Peer",
     clientId: typeof activity.clientId === "string" ? activity.clientId : "",
     message: typeof activity.message === "string" && activity.message.trim() ? activity.message.trim() : "Activity updated",
@@ -149,8 +147,8 @@ function appendEmpty(container, text) {
 
 function createRoleBadge(role) {
   const badge = document.createElement("span");
-  badge.className = `role-badge ${normalizeRole(role)}`;
-  badge.textContent = normalizeRole(role);
+  badge.className = `role-badge ${sanitizeRole(role)}`;
+  badge.textContent = sanitizeRole(role);
   return badge;
 }
 
@@ -260,9 +258,9 @@ function renderActivity() {
 
 function renderMeta() {
   roomKeyLabel.textContent = state.roomKey || "-";
-  localRoleLabel.textContent = normalizeRole(state.role || "client");
+  localRoleLabel.textContent = sanitizeRole(state.role || "client");
   localRoleLabel.classList.remove("host", "client", "viewer");
-  localRoleLabel.classList.add(normalizeRole(state.role || "client"));
+  localRoleLabel.classList.add(sanitizeRole(state.role || "client"));
   if (state.localUrl) {
     localUrlLabel.textContent = state.localUrl;
     localUrlLabel.href = state.localUrl;
