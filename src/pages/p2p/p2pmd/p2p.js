@@ -1,4 +1,4 @@
-import {
+﻿import {
   markdownInput,
   markdownPreview,
   slidesPreview,
@@ -45,8 +45,23 @@ let currentRoomKey = null;
 let hyperdriveUrl = null;
 let draftDriveUrl = null;
 let lastDraftPayload = null;
-let didSeedContent = false;
 let justCreatedRoom = false;
+
+let ydoc = null;
+let ytext = null;
+let pendingUpdate = null;
+let sendUpdateTimer = null;
+let flushRetryTimer = null;
+let flushRetryCount = 0;
+const MAX_FLUSH_RETRIES = 10;
+let prevText = "";
+let isApplyingRemote = false;
+let savedYjsState = null; // Save Yjs CRDT state (not just text) for proper merge on reconnect
+let currentRole = null;
+let reconnectTimer = null;
+let isRecoveringYjsState = false;
+const MAX_PENDING_UPDATE_BYTES = 2 * 1024 * 1024;
+const Y_ORIGIN_REMOTE = "remote-sse";
 
 const ROOM_STATE_PREFIX = "p2pmd-room-";
 const ROOM_CONTENT_PREFIX = "p2pmd-room-content-";
@@ -56,6 +71,7 @@ const DRAFT_DRIVE_NAME = "p2pmd-drafts";
 const saveDelay = 2000;
 let hyperSaveInFlight = false;
 let draftSaveInFlight = false;
+const draftSnapshotCache = new Map();
 
 const publishCSS = `
   @font-face {
@@ -201,6 +217,11 @@ function buildDraftPayload(content) {
     updatedAt: Date.now(),
     roomKey: currentRoomKey || null
   };
+  if (ydoc && window.Y) {
+    try {
+      payload.yjsState = bytesToBase64(window.Y.encodeStateAsUpdate(ydoc));
+    } catch {}
+  }
   if (titleInput) payload.title = titleInput.value;
   if (protocolSelect) payload.protocol = protocolSelect.value;
   return payload;
@@ -255,6 +276,7 @@ async function loadDraftFromHyperdrive(roomKey) {
       const response = await fetchWithTimeout(url, {}, 3000);
       if (!response.ok) {
         if (response.status === 404) {
+          draftSnapshotCache.delete(roomKey);
           return "";
         }
         retries--;
@@ -265,7 +287,10 @@ async function loadDraftFromHyperdrive(roomKey) {
         return "";
       }
       const data = await response.json();
-      if (!data || data.isCleared) return "";
+      if (!data || data.isCleared) {
+        draftSnapshotCache.delete(roomKey);
+        return "";
+      }
       if (typeof data.title === "string" && titleInput) {
         titleInput.value = data.title;
       }
@@ -276,9 +301,15 @@ async function loadDraftFromHyperdrive(roomKey) {
         updateSelectorURL();
       }
       if (typeof data.content === "string") {
+        draftSnapshotCache.set(roomKey, {
+          content: data.content,
+          updatedAt: Number.isFinite(Number(data.updatedAt)) ? Number(data.updatedAt) : 0,
+          yjsState: typeof data.yjsState === "string" ? data.yjsState : null
+        });
         lastDraftPayload = JSON.stringify(data);
         return data.content;
       }
+      draftSnapshotCache.delete(roomKey);
       return "";
     } catch (error) {
       console.error("[loadDraft] Error loading draft:", error);
@@ -502,34 +533,163 @@ function persistRoomState(state) {
   if (!state?.key) return;
   const normalized = normalizeRoomState(state);
   if (!normalized) return;
+  if (!normalized.savedAt) normalized.savedAt = Date.now();
   const payload = JSON.stringify(normalized);
   const candidates = getRoomKeyCandidates(normalized.key);
   for (const candidate of candidates) {
     safeLocalStorageSet(`${ROOM_STATE_PREFIX}${candidate}`, payload);
   }
-  safeLocalStorageSet(LAST_ROOM_KEY, normalizeRoomKey(normalized.key));
-  safeLocalStorageSet(LAST_ROOM_STATE, payload);
 }
 
 export function scheduleSend() {
   if (!currentRoomUrl) return;
-  if (sendTimer) clearTimeout(sendTimer);
-  sendTimer = setTimeout(async () => {
-    const content = markdownInput.value;
-    if (content === lastSentContent) return;
-    lastSentContent = content;
-    try {
-      await fetch(`${currentRoomUrl}/doc`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content })
-      });
-    } catch {
-      updatePeers(0);
-    } finally {
-      scheduleDraftSave();
+  if (!ydoc || !ytext) {
+    if (sendTimer) clearTimeout(sendTimer);
+    sendTimer = setTimeout(async () => {
+      const content = markdownInput.value;
+      if (content === lastSentContent) return;
+      lastSentContent = content;
+      try {
+        await fetch(`${currentRoomUrl}/doc`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content })
+        });
+      } catch {
+        updatePeers(0);
+      } finally {
+        scheduleDraftSave();
+      }
+    }, 200);
+    return;
+  }
+  if (sendTimer) {
+    clearTimeout(sendTimer);
+    sendTimer = null;
+  }
+  const newText = markdownInput.value;
+  const oldText = ytext ? ytext.toString() : prevText;
+  if (newText === oldText) {
+    prevText = oldText;
+    return;
+  }
+  applyTextDiff(ytext, oldText, newText);
+  prevText = newText;
+}
+
+function bytesToBase64(bytes) {
+  let binary = "";
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+function base64ToBytes(b64) {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+function applyTextDiff(ytextRef, oldText, newText, origin = null) {
+  if (!ytextRef || oldText === newText) return;
+  // Trim unchanged edges so we emit one minimal delete/insert change.
+  let prefixLen = 0;
+  const minLen = Math.min(oldText.length, newText.length);
+  while (prefixLen < minLen && oldText[prefixLen] === newText[prefixLen]) prefixLen++;
+  let oldSuffix = oldText.length;
+  let newSuffix = newText.length;
+  while (oldSuffix > prefixLen && newSuffix > prefixLen &&
+         oldText[oldSuffix - 1] === newText[newSuffix - 1]) {
+    oldSuffix--;
+    newSuffix--;
+  }
+  const deleteLen = oldSuffix - prefixLen;
+  const insertStr = newText.slice(prefixLen, newSuffix);
+  ytextRef.doc.transact(() => {
+    if (deleteLen > 0) ytextRef.delete(prefixLen, deleteLen);
+    if (insertStr)     ytextRef.insert(prefixLen, insertStr);
+  }, origin);
+}
+
+async function flushYjsUpdate() {
+  if (!pendingUpdate || !currentRoomUrl) return;
+
+  const toSend = pendingUpdate;
+  pendingUpdate = null;
+
+  try {
+    const res = await fetch(`${currentRoomUrl}/doc/update`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ update: bytesToBase64(toSend) })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    // Success - reset retry counter
+    flushRetryCount = 0;
+    if (flushRetryTimer) {
+      clearTimeout(flushRetryTimer);
+      flushRetryTimer = null;
     }
-  }, 200);
+  } catch (err) {
+    console.warn("[p2pmd] Failed to send Yjs update:", err);
+
+    // Keep unsent changes across transient failures; cap memory growth.
+    let merged = pendingUpdate
+      ? window.Y.mergeUpdates([toSend, pendingUpdate])
+      : toSend;
+    if (merged.byteLength > MAX_PENDING_UPDATE_BYTES && ydoc) {
+      try {
+        merged = window.Y.encodeStateAsUpdate(ydoc);
+      } catch {}
+    }
+    if (merged.byteLength > MAX_PENDING_UPDATE_BYTES) {
+      console.warn("[p2pmd] Dropping oversized pending CRDT update buffer");
+      pendingUpdate = null;
+      flushRetryCount = 0;
+    } else {
+      pendingUpdate = merged;
+    }
+
+    // Retry with exponential backoff, up to MAX_FLUSH_RETRIES
+    if (!flushRetryTimer && pendingUpdate && flushRetryCount < MAX_FLUSH_RETRIES) {
+      flushRetryCount++;
+      const delay = Math.min(1200 * Math.pow(1.5, flushRetryCount - 1), 10000);
+      flushRetryTimer = setTimeout(() => {
+        flushRetryTimer = null;
+        flushYjsUpdate();
+      }, delay);
+    } else if (flushRetryCount >= MAX_FLUSH_RETRIES) {
+      console.error("[p2pmd] Max flush retries reached, dropping pending update");
+      pendingUpdate = null;
+      flushRetryCount = 0;
+    }
+    updatePeers(0);
+  }
+}
+
+function destroyYjs(skipSave = false) {
+  if (sendTimer) { clearTimeout(sendTimer); sendTimer = null; }
+  if (sendUpdateTimer) { clearTimeout(sendUpdateTimer); sendUpdateTimer = null; }
+  if (flushRetryTimer) { clearTimeout(flushRetryTimer); flushRetryTimer = null; }
+
+  // Save CRDT state before destroying for proper reconnect merge
+  if (!skipSave && !savedYjsState && ydoc && window.Y) {
+    try {
+      const stateUpdate = window.Y.encodeStateAsUpdate(ydoc);
+      // Limit saved state size to prevent memory issues
+      if (stateUpdate.byteLength < MAX_PENDING_UPDATE_BYTES) {
+        savedYjsState = bytesToBase64(stateUpdate);
+      }
+    } catch (e) {
+      console.warn("[p2pmd] Failed to save Yjs state:", e);
+    }
+  }
+
+  pendingUpdate = null;
+  if (ydoc) { try { ydoc.destroy(); } catch {} ydoc = null; }
+  ytext = null;
+  prevText = "";
+  isApplyingRemote = false;
 }
 
 async function postContentNow() {
@@ -578,13 +738,23 @@ async function getRoomStorageUrl(roomKey) {
 
 async function loadRoomFromHyperdrive(roomKey) {
   try {
-    const url = await getRoomStorageUrl(roomKey);
-    if (!url) return "";
-    const response = await fetchWithTimeout(url, {}, 2000);
-    if (!response.ok) return "";
-    return await response.text();
+    const snapshot = await loadRoomSnapshotFromHyperdrive(roomKey);
+    return snapshot.found ? snapshot.content : "";
   } catch {
     return "";
+  }
+}
+
+async function loadRoomSnapshotFromHyperdrive(roomKey) {
+  try {
+    const url = await getRoomStorageUrl(roomKey);
+    if (!url) return { found: false, content: "" };
+    const response = await fetchWithTimeout(url, {}, 2000);
+    if (!response.ok) return { found: false, content: "" };
+    const content = await response.text();
+    return { found: true, content: typeof content === "string" ? content : "" };
+  } catch {
+    return { found: false, content: "" };
   }
 }
 
@@ -641,18 +811,129 @@ function updateRoomStatus({ key, localUrl }) {
   setView("editor");
 }
 
+async function recoverYjsStateFromServer() {
+  if (isRecoveringYjsState || !currentRoomUrl || !ydoc || !window.Y) return;
+  isRecoveringYjsState = true;
+  try {
+    const response = await fetchWithTimeout(`${currentRoomUrl}/doc/yjsstate`, {}, 3000);
+    if (!response.ok) return;
+    const data = await response.json();
+    if (typeof data.yjsState !== "string") return;
+    try {
+      isApplyingRemote = true;
+      window.Y.applyUpdate(ydoc, base64ToBytes(data.yjsState), Y_ORIGIN_REMOTE);
+      const recovered = ytext ? ytext.toString() : "";
+      prevText = recovered;
+      if (recovered !== markdownInput.value) {
+        markdownInput.value = recovered;
+        renderPreview();
+        scheduleDraftSave();
+      }
+    } finally {
+      isApplyingRemote = false;
+    }
+  } catch {} finally {
+    isRecoveringYjsState = false;
+  }
+}
+
+function connectSseChannel(localUrl, role) {
+  if (!localUrl) return;
+  if (eventSource) {
+    try { eventSource.close(); } catch {}
+    eventSource = null;
+  }
+
+  try {
+    eventSource = new EventSource(`${localUrl}/events?role=${encodeURIComponent(role)}`);
+
+    eventSource.addEventListener("yjsupdate", (event) => {
+      if (!ydoc) return;
+      try {
+        isApplyingRemote = true;
+        window.Y.applyUpdate(ydoc, base64ToBytes(event.data), Y_ORIGIN_REMOTE);
+        prevText = ytext.toString();
+      } catch (e) {
+        console.warn("[p2pmd] Failed to apply yjsupdate:", e);
+        recoverYjsStateFromServer();
+      } finally {
+        isApplyingRemote = false;
+      }
+    });
+
+    eventSource.addEventListener("update", (event) => {
+      if (ydoc) return;
+      try {
+        const data = JSON.parse(event.data || "{}");
+        const incoming = typeof data.content === "string" ? data.content : "";
+        if (incoming === markdownInput.value) return;
+        const isFocused = document.activeElement === markdownInput;
+        const start = markdownInput.selectionStart;
+        const end = markdownInput.selectionEnd;
+        markdownInput.value = incoming;
+        lastSentContent = incoming;
+        if (isFocused && start !== null && end !== null) {
+          const newStart = Math.min(start, incoming.length);
+          const newEnd = Math.min(end, incoming.length);
+          markdownInput.setSelectionRange(newStart, newEnd);
+        }
+        renderPreview();
+        scheduleDraftSave();
+      } catch {}
+    });
+
+    eventSource.addEventListener("peers", (event) => {
+      updatePeers(Number(event.data));
+    });
+
+    eventSource.onopen = () => {
+      if (pendingUpdate) flushYjsUpdate();
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+    };
+
+    eventSource.onerror = () => {
+      updatePeers(0);
+      if (eventSource) {
+        try { eventSource.close(); } catch {}
+        eventSource = null;
+      }
+      // Reconnect SSE without destroying Y.Doc (preserves local state)
+      if (reconnectTimer) return;
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        if (!currentRoomUrl) return;
+        connectSseChannel(currentRoomUrl, currentRole || role || "client");
+        if (pendingUpdate) flushYjsUpdate();
+      }, 2000);
+    };
+  } catch {
+    updatePeers(0);
+  }
+}
+
 async function connectToRoom(localUrl, role = "client") {
   currentRoomUrl = localUrl;
+  currentRole = role;
+
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+
   if (eventSource) {
     eventSource.close();
     eventSource = null;
   }
 
+  destroyYjs();
+
   let hasRoomSnapshot = false;
   let snapshotContent = "";
   let serverHadMeaningful = false;
-  let usedFallback = false;
-  didSeedContent = false;
+  let yjsStateBase64 = null;
   
   const serverReady = await pingServerStatus(localUrl, 5);
   if (!serverReady) {
@@ -682,20 +963,40 @@ async function connectToRoom(localUrl, role = "client") {
     }
   }
 
-  if (!hasRoomSnapshot && currentRoomKey) {
+  try {
+    const yjsRes = await fetchWithTimeout(`${localUrl}/doc/yjsstate`, {}, 3000);
+    if (yjsRes.ok) {
+      const yjsData = await yjsRes.json();
+      if (typeof yjsData.yjsState === "string") {
+        yjsStateBase64 = yjsData.yjsState;
+      }
+    }
+  } catch (e) {
+    console.warn("[p2pmd] Failed to fetch /doc/yjsstate:", e);
+  }
+
+  if (!hasRoomSnapshot && !yjsStateBase64 && currentRoomKey) {
     const roomKey = currentRoomKey;
-    const draftContent = await loadDraftFromHyperdrive(roomKey);
-    let fallbackContent = draftContent;
-    if (!hasMeaningfulContent(fallbackContent)) {
-      fallbackContent = await loadRoomFromHyperdrive(roomKey);
+    let draftSnapshot = null;
+    // Prefer shared room storage first (cross-device), then personal draft.
+    const roomSnapshot = await loadRoomSnapshotFromHyperdrive(roomKey);
+    let fallbackContent = roomSnapshot.content;
+    let fallbackSource = "room";
+    if (!roomSnapshot.found) {
+      fallbackContent = await loadDraftFromHyperdrive(roomKey);
+      fallbackSource = "draft";
+      draftSnapshot = draftSnapshotCache.get(roomKey) || null;
     }
-    if (!hasMeaningfulContent(fallbackContent)) {
+    if (!roomSnapshot.found && !hasMeaningfulContent(fallbackContent)) {
       fallbackContent = loadRoomDraft(roomKey);
+      fallbackSource = "local-draft";
     }
-    if (hasMeaningfulContent(fallbackContent)) {
+    if (roomSnapshot.found || hasMeaningfulContent(fallbackContent)) {
       snapshotContent = fallbackContent;
       hasRoomSnapshot = true;
-      usedFallback = true;
+      if (!yjsStateBase64 && fallbackSource === "draft" && draftSnapshot?.yjsState) {
+        yjsStateBase64 = draftSnapshot.yjsState;
+      }
     }
   }
 
@@ -704,46 +1005,107 @@ async function connectToRoom(localUrl, role = "client") {
     renderPreview();
     if (hasRoomSnapshot && (!serverHadMeaningful || role === "host")) {
       await postContentNow();
-      didSeedContent = true;
     }
   }
 
-  try {
-    eventSource = new EventSource(`${localUrl}/events?role=${encodeURIComponent(role)}`);
-    eventSource.addEventListener("update", (event) => {
+  if (window.Y) {
+    ydoc = new window.Y.Doc();
+    ytext = ydoc.getText("content");
+
+    if (yjsStateBase64) {
       try {
-        const data = JSON.parse(event.data || "{}");
-        const incoming = typeof data.content === "string" ? data.content : "";
-        const incomingMeaningful = hasMeaningfulContent(incoming);
-        const localMeaningful = hasMeaningfulContent(markdownInput.value);
-        if (incomingMeaningful && incoming !== markdownInput.value) {
-          const isFocused = document.activeElement === markdownInput;
-          const start = markdownInput.selectionStart;
-          const end = markdownInput.selectionEnd;
-          markdownInput.value = incoming;
-          if (isFocused && start !== null && end !== null) {
-            const newStart = Math.min(start, incoming.length);
-            const newEnd = Math.min(end, incoming.length);
-            markdownInput.setSelectionRange(newStart, newEnd);
-          }
+        window.Y.applyUpdate(ydoc, base64ToBytes(yjsStateBase64), Y_ORIGIN_REMOTE);
+      } catch (e) {
+        console.warn("[p2pmd] Failed to apply Yjs state:", e);
+      }
+      const ytextContent = ytext.toString();
+      if (ytextContent && ytextContent !== markdownInput.value) {
+        markdownInput.value = ytextContent;
+        renderPreview();
+      }
+    } else if (snapshotContent) {
+      ydoc.transact(() => ytext.insert(0, snapshotContent));
+    }
+
+    prevText = ytext.toString();
+
+    // Set up update listener before local modifications
+    ydoc.on("update", (update, origin) => {
+      if (origin === Y_ORIGIN_REMOTE) return;
+      if (isApplyingRemote) return;
+      if (pendingUpdate) {
+        pendingUpdate = window.Y.mergeUpdates([pendingUpdate, update]);
+      } else {
+        pendingUpdate = update;
+      }
+      if (sendUpdateTimer) clearTimeout(sendUpdateTimer);
+      sendUpdateTimer = setTimeout(flushYjsUpdate, 100);
+    });
+
+    // Apply saved state, then server state - Yjs auto-merges
+    if (savedYjsState) {
+      try {
+        window.Y.applyUpdate(ydoc, base64ToBytes(savedYjsState), Y_ORIGIN_REMOTE);
+      } catch (e) {
+        console.warn("[p2pmd] Failed to apply saved Yjs state:", e);
+      }
+    }
+
+    // If server has state, apply it - Yjs auto-merges with our saved state
+    if (yjsStateBase64) {
+      try {
+        window.Y.applyUpdate(ydoc, base64ToBytes(yjsStateBase64), Y_ORIGIN_REMOTE);
+        const mergedContent = ytext.toString();
+        if (mergedContent !== markdownInput.value) {
+          markdownInput.value = mergedContent;
           renderPreview();
-          scheduleDraftSave();
-        } else if (!incomingMeaningful && usedFallback && localMeaningful && !didSeedContent) {
-          postContentNow().then(() => {
-            didSeedContent = true;
-          });
         }
-      } catch {}
+        prevText = mergedContent;
+      } catch (e) {
+        console.warn("[p2pmd] Failed to apply server Yjs state:", e);
+      }
+    }
+
+    savedYjsState = null;
+
+    ytext.observe((event) => {
+      const newContent = ytext.toString();
+      // Keep baseline aligned to authoritative CRDT text
+      prevText = newContent;
+      if (newContent === markdownInput.value) return;
+
+      // Rebase local selection against Yjs delta so remote edits don't jump cursor.
+      let s = markdownInput.selectionStart ?? 0;
+      let e = markdownInput.selectionEnd ?? 0;
+      let pos = 0;
+      for (const d of event.changes.delta) {
+        if (d.retain) {
+          pos += d.retain;
+        } else if (d.insert) {
+          const len = typeof d.insert === "string" ? d.insert.length : 0;
+          if (pos < s) s += len;
+          if (pos < e) e += len;
+          pos += len;
+        } else if (d.delete) {
+          const len = d.delete;
+          if (pos < s) s -= Math.min(len, s - pos);
+          if (pos < e) e -= Math.min(len, e - pos);
+        }
+      }
+
+      markdownInput.value = newContent;
+      markdownInput.setSelectionRange(
+        Math.max(0, Math.min(s, newContent.length)),
+        Math.max(0, Math.min(e, newContent.length))
+      );
+      renderPreview();
+      scheduleDraftSave();
     });
-    eventSource.addEventListener("peers", (event) => {
-      updatePeers(Number(event.data));
-    });
-    eventSource.onerror = () => {
-      updatePeers(0);
-    };
-  } catch {
-    updatePeers(0);
+  } else {
+    console.error("[p2pmd] Yjs failed to load; collaborative sync is unavailable.");
   }
+
+  connectSseChannel(localUrl, role);
 }
 
 async function createRoom() {
@@ -819,13 +1181,31 @@ async function joinRoomWithOptions(key, options) {
 
 async function rehostRoom(key, state) {
   let initialContent = "";
+  let initialYjsState = null;
+  let initialSource = "none";
   try {
-    initialContent = await loadDraftFromHyperdrive(key);
-    if (!hasMeaningfulContent(initialContent)) {
-      initialContent = await loadRoomFromHyperdrive(key);
-    }
-    if (!hasMeaningfulContent(initialContent)) {
-      initialContent = loadRoomDraft(key);
+    const roomSnapshot = await loadRoomSnapshotFromHyperdrive(key);
+    // Prefer draft snapshot with Yjs state to preserve CRDT history across rehost.
+    const draftContent = await loadDraftFromHyperdrive(key);
+    const draftSnapshot = draftSnapshotCache.get(key) || null;
+    if (draftSnapshot?.yjsState) {
+      initialContent = draftSnapshot.content ?? draftContent ?? "";
+      initialYjsState = draftSnapshot.yjsState;
+      initialSource = "draft-yjs";
+    } else if (roomSnapshot.found) {
+      // Shared room file exists (even if empty) and should be treated as authoritative.
+      initialContent = roomSnapshot.content;
+      initialSource = "room";
+    } else {
+      // Fallback to personal draft only if shared room snapshot does not exist.
+      if (hasMeaningfulContent(draftContent)) {
+        initialContent = draftContent;
+        initialSource = "draft";
+      }
+      if (!hasMeaningfulContent(initialContent)) {
+        initialContent = loadRoomDraft(key);
+        initialSource = "local-draft";
+      }
     }
   } catch {}
 
@@ -835,6 +1215,9 @@ async function rehostRoom(key, state) {
     udp: state.udp,
     initialContent
   };
+  if (initialYjsState) {
+    payload.initialYjsState = initialYjsState;
+  }
   
   // Only include host if it's not empty
   const normalizedHost = state.host ? normalizeHost(state.host) : "";
@@ -976,10 +1359,47 @@ async function joinRoom(key, state = {}) {
 }
 
 async function disconnectRoom() {
+  const disconnectKey = currentRoomKey;
+  const disconnectContent = markdownInput.value || "";
+
+  if (disconnectKey) {
+    saveRoomDraft(disconnectKey, disconnectContent);
+  }
+
+  if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+  if (sendTimer) { clearTimeout(sendTimer); sendTimer = null; }
+  if (sendUpdateTimer) { clearTimeout(sendUpdateTimer); sendUpdateTimer = null; }
+  if (flushRetryTimer) { clearTimeout(flushRetryTimer); flushRetryTimer = null; }
+
+  if (pendingUpdate && currentRoomUrl) {
+    try { await flushYjsUpdate(); } catch {}
+  }
+  if (currentRoomUrl) {
+    try { await postContentNow(); } catch {}
+  }
+  if (disconnectKey) {
+    await Promise.allSettled([
+      saveRoomToHyperdrive(disconnectKey, disconnectContent),
+      saveDraft({ force: true })
+    ]);
+  }
+
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  currentRole = null;
+
   if (eventSource) {
     eventSource.close();
     eventSource = null;
   }
+
+  destroyYjs();
+
+  // Clear saved state since user explicitly disconnected
+  savedYjsState = null;
+
   const key = currentRoomKey;
   if (key) {
     try {
@@ -1062,7 +1482,8 @@ function buildPublishHtml(markdown) {
 }
 
 function buildSlidesHtml(markdown) {
-  const slideDelimiters = /^---$|^<!-- slide -->$/gm;
+  // Match slide delimiters: --- surrounded by blank lines OR <!-- slide --> comment
+  const slideDelimiters = /\n\n---\n\n|^---\n\n|\n\n---$|^<!-- slide -->$/gm;
   const slides = markdown.split(slideDelimiters)
     .map(slide => slide.trim())
     .filter(slide => slide.length > 0);
@@ -1240,7 +1661,8 @@ let isSlideMode = false;
 
 function autoRenderSlides() {
   const markdown = markdownInput.value;
-  const slideDelimiters = /^---$|^<!-- slide -->$/gm;
+  // Match slide delimiters: --- surrounded by blank lines OR <!-- slide --> comment
+  const slideDelimiters = /\n\n---\n\n|^---\n\n|\n\n---$|^<!-- slide -->$/gm;
   slidesData = markdown.split(slideDelimiters)
     .map(slide => slide.trim())
     .filter(slide => slide.length > 0);
@@ -1261,7 +1683,8 @@ function autoRenderSlides() {
 
 function viewAsSlides() {
   const markdown = markdownInput.value;
-  const slideDelimiters = /^---$|^<!-- slide -->$/gm;
+  // Match slide delimiters: --- surrounded by blank lines OR <!-- slide --> comment
+  const slideDelimiters = /\n\n---\n\n|^---\n\n|\n\n---$|^<!-- slide -->$/gm;
   const hasSlideDelimiters = slideDelimiters.test(markdown);
   
   if (!hasSlideDelimiters) {
@@ -1270,7 +1693,9 @@ function viewAsSlides() {
     return;
   }
   
-  slidesData = markdown.split(slideDelimiters)
+  // Re-create regex for split (test() consumed it)
+  const splitDelimiters = /\n\n---\n\n|^---\n\n|\n\n---$|^<!-- slide -->$/gm;
+  slidesData = markdown.split(splitDelimiters)
     .map(slide => slide.trim())
     .filter(slide => slide.length > 0);
   
@@ -2099,7 +2524,7 @@ markdownInput.addEventListener("input", () => {
   scheduleRender();
   scheduleSend();
   scheduleDraftSave();
-});
+  });
 
 markdownInput.addEventListener("dragover", (e) => {
   const hasFiles = e.dataTransfer?.types?.includes("Files");
@@ -2297,19 +2722,71 @@ updateSelectorURL();
 initMarkdown();
 initToolbar();
 
+async function loadRecentRooms() {
+  const historyList = document.getElementById('room-history-list');
+  if (!historyList) return;
+  
+  try {
+    // Read room states from localStorage, deduplicate by canonical key
+    const seen = new Map();
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(ROOM_STATE_PREFIX)) {
+        try {
+          const raw = localStorage.getItem(key);
+          const state = JSON.parse(raw);
+          if (state?.key && validateRoomKey(state.key)) {
+            const canonical = state.key;
+            const existing = seen.get(canonical);
+            if (!existing || (state.savedAt || 0) > (existing.savedAt || 0)) {
+              seen.set(canonical, { roomKey: canonical, savedAt: state.savedAt || 0 });
+            }
+          }
+        } catch {
+          // Skip invalid entries
+        }
+      }
+    }
+    
+    const rooms = Array.from(seen.values())
+      .sort((a, b) => b.savedAt - a.savedAt);
+    
+    if (rooms.length === 0) {
+      historyList.innerHTML = '<div class="no-rooms">No past rooms</div>';
+      return;
+    }
+    
+    // Show last 5 rooms
+    const recentRooms = rooms.slice(0, 5);
+    
+    historyList.innerHTML = recentRooms.map(({ roomKey }) => {
+      const displayKey = roomKey.replace('hs://', '').substring(0, 20) + '...';
+      return `<a href="#" data-room-key="${roomKey}" title="${roomKey}">${displayKey}</a>`;
+    }).join('');
+    
+    historyList.querySelectorAll('a').forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        const roomKey = link.getAttribute('data-room-key');
+        joinRoomKey.value = roomKey;
+        joinForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      });
+    });
+  } catch (error) {
+    console.error('[loadRecentRooms] Error:', error);
+    historyList.innerHTML = '<div class="no-rooms">No past rooms</div>';
+  }
+}
+
 (async () => {
   const viewParam = getViewParam();
   const stateFromUrl = readRoomStateFromUrl();
-  const lastKey = safeLocalStorageGet(LAST_ROOM_KEY);
   
-  let stateFromStorage = null;
-  if (stateFromUrl?.key) {
-    stateFromStorage = resolveRoomState(stateFromUrl.key);
-  } else if (lastKey) {
-    stateFromStorage = resolveRoomState(lastKey);
+  if (viewParam === "setup" || !stateFromUrl?.key) {
+    await loadRecentRooms();
   }
   
-  const state = stateFromUrl || stateFromStorage;
+  const state = stateFromUrl;
   if (viewParam === "setup") {
     setView("setup");
     return;
@@ -2325,14 +2802,12 @@ initToolbar();
   
   // If we just created this room, don't rejoin - server is already running
   if (justCreatedRoom && currentRoomKey === state.key) {
-    console.log("[p2pmd] Just created room, skipping auto-join");
     setView("editor");
     return;
   }
   
   // If we're already connected to this room, don't rejoin - just restore the UI state
   if (currentRoomKey === state.key && currentRoomUrl) {
-    console.log("[p2pmd] Already connected to room, skipping auto-join");
     setView("editor");
     joinRoomKey.value = state.key;
     if (state.host) localHostInput.value = state.host;

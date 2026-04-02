@@ -12,7 +12,10 @@
  */
 
 import electron from 'electron';
+import { createLogger } from './logger.js';
+
 const { session } = electron;
+const log = createLogger('session');
 
 /**
  * Check if persist session mode is enabled
@@ -39,10 +42,10 @@ export function getPartition() {
  */
 export function getBrowserSession() {
   if (usePersist()) {
-    console.log('[Session] Using persist:peersky session');
+    log.info('[Session] Using persist:peersky session');
     return session.fromPartition('persist:peersky');
   } else {
-    console.log('[Session] Using defaultSession (feature flag disabled)');
+    log.info('[Session] Using defaultSession (feature flag disabled)');
     return session.defaultSession;
   }
 }
@@ -64,7 +67,7 @@ export function assertSessionConsistency(actualSession) {
     }
   }
   
-  console.log('[Session] Consistency check passed');
+  log.info('[Session] Consistency check passed');
 }
 
 /**

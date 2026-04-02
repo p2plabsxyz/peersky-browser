@@ -32,6 +32,8 @@
   /* Context Menu Icons */
   --context-menu-icon-filter: brightness(0) saturate(100%) invert(88%) sepia(79%) saturate(2476%) hue-rotate(86deg) brightness(118%) contrast(119%);
   --context-menu-icon-hover-filter: brightness(0) saturate(100%) invert(100%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(100%) contrast(100%);
+  --pagination-icon-filter: invert(1) brightness(0.85);
+  --pagination-icon-filter-hover: invert(1) brightness(1.2);
 
   .nav-icon {
     filter: brightness(0) invert(1) drop-shadow(0.25px 0.25px 0 white);
@@ -71,6 +73,8 @@
   /* Context Menu Icons */
   --context-menu-icon-filter: brightness(0) saturate(100%) invert(88%) sepia(79%) saturate(2476%) hue-rotate(86deg) brightness(118%) contrast(119%);
   --context-menu-icon-hover-filter: brightness(0) saturate(100%) invert(100%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(100%) contrast(100%);
+  --pagination-icon-filter: invert(1) brightness(0.85);
+  --pagination-icon-filter-hover: invert(1) brightness(1.2);
 }
 
 /* Light Theme */
@@ -106,6 +110,8 @@
   /* Context Menu Icons - Dark icons for light theme */
   --context-menu-icon-filter: brightness(0) saturate(100%) invert(20%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(95%) contrast(95%);
   --context-menu-icon-hover-filter: brightness(0) saturate(100%) invert(100%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(100%) contrast(100%);
+  --pagination-icon-filter: invert(0) brightness(0.2);
+  --pagination-icon-filter-hover: invert(0) brightness(0);
 }
 
 /* Cyan Theme */
@@ -141,6 +147,8 @@
   /* Context Menu Icons */
   --context-menu-icon-filter: brightness(0) saturate(100%) invert(25%) sepia(100%) saturate(1500%) hue-rotate(180deg) brightness(90%) contrast(110%);
   --context-menu-icon-hover-filter: brightness(0) saturate(100%) invert(100%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(100%) contrast(100%);
+  --pagination-icon-filter: brightness(0) saturate(100%) invert(15%) sepia(60%) saturate(800%) hue-rotate(170deg) brightness(80%);
+  --pagination-icon-filter-hover: brightness(0) saturate(100%) invert(10%) sepia(80%) saturate(1200%) hue-rotate(170deg) brightness(70%);
 }
 
 /* Green Theme */
@@ -176,6 +184,9 @@
   /* Context Menu Icons */
   --context-menu-icon-filter: brightness(0) saturate(100%) invert(25%) sepia(100%) saturate(1200%) hue-rotate(90deg) brightness(85%) contrast(120%);
   --context-menu-icon-hover-filter: brightness(0) saturate(100%) invert(100%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(100%) contrast(100%);
+  /* Pagination icons — green (light) theme: dark green icons */
+  --pagination-icon-filter: brightness(0) saturate(100%) invert(25%) sepia(100%) saturate(800%) hue-rotate(90deg) brightness(70%);
+  --pagination-icon-filter-hover: brightness(0) saturate(100%) invert(15%) sepia(100%) saturate(1200%) hue-rotate(90deg) brightness(60%);
 }
 
 /* Yellow Theme */
@@ -211,6 +222,9 @@
   /* Context Menu Icons */
   --context-menu-icon-filter: brightness(0) saturate(100%) invert(25%) sepia(100%) saturate(1500%) hue-rotate(30deg) brightness(80%) contrast(130%);
   --context-menu-icon-hover-filter: brightness(0) saturate(100%) invert(100%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(100%) contrast(100%);
+  /* Pagination icons — yellow (light) theme: dark amber icons */
+  --pagination-icon-filter: brightness(0) saturate(100%) invert(20%) sepia(80%) saturate(1200%) hue-rotate(25deg) brightness(70%);
+  --pagination-icon-filter-hover: brightness(0) saturate(100%) invert(15%) sepia(100%) saturate(1800%) hue-rotate(25deg) brightness(60%);
 }
 
 /* Violet Theme */
@@ -246,6 +260,9 @@
   /* Context Menu Icons */
   --context-menu-icon-filter: brightness(0) saturate(100%) invert(25%) sepia(100%) saturate(1300%) hue-rotate(270deg) brightness(85%) contrast(115%);
   --context-menu-icon-hover-filter: brightness(0) saturate(100%) invert(100%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(100%) contrast(100%);
+  /* Pagination icons — violet (light) theme: dark purple icons */
+  --pagination-icon-filter: brightness(0) saturate(100%) invert(15%) sepia(60%) saturate(1000%) hue-rotate(260deg) brightness(70%);
+  --pagination-icon-filter-hover: brightness(0) saturate(100%) invert(10%) sepia(80%) saturate(1500%) hue-rotate(260deg) brightness(60%);
 }
 
 /* Disable transitions temporarily during page load */

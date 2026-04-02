@@ -5,6 +5,9 @@ import path from "path";
 import fs from "fs-extra";
 import { getDefaultChainList } from "web3protocol/chains";
 import { generateKeyPair, privateKeyFromProtobuf, privateKeyToProtobuf } from "@libp2p/crypto/keys";
+import { createLogger } from '../logger.js';
+
+const log = createLogger('protocols:config');
 
 const USER_DATA = app.getPath("userData");
 const DEFAULT_IPFS_DIR = path.join(USER_DATA, "ipfs");
@@ -20,11 +23,11 @@ const LIBP2P_KEY_PATH = path.join(DEFAULT_IPFS_DIR, "libp2p-key");
 export async function loadLibp2pKey() {
   try {
     const raw = await fs.promises.readFile(LIBP2P_KEY_PATH);
-    console.log(`Loaded libp2p key from ${LIBP2P_KEY_PATH}`);
+    log.info(`Loaded libp2p key from ${LIBP2P_KEY_PATH}`);
     return privateKeyFromProtobuf(new Uint8Array(raw));
   } catch (err) {
     if (err.code === "ENOENT") {
-      console.log(`No libp2p key found at ${LIBP2P_KEY_PATH}, will generate a new one`);
+      log.info(`No libp2p key found at ${LIBP2P_KEY_PATH}, will generate a new one`);
       return null;
     }
     throw err;
@@ -37,9 +40,9 @@ export async function saveLibp2pKey(privateKey) {
     await fs.promises.mkdir(path.dirname(LIBP2P_KEY_PATH), { recursive: true });
     const pb = privateKeyToProtobuf(privateKey);
     await fs.promises.writeFile(LIBP2P_KEY_PATH, Buffer.from(pb));
-    console.log(`Saved libp2p key to ${LIBP2P_KEY_PATH}`);
+    log.info(`Saved libp2p key to ${LIBP2P_KEY_PATH}`);
   } catch (err) {
-    console.error(`Error saving libp2p key: ${err.message}`);
+    log.error(`Error saving libp2p key: ${err.message}`);
     throw err;
   }
 }
@@ -76,7 +79,7 @@ const targetChain = chainList.find((chain) => chain.id === targetChainId);
 export const RPC_URL =
   targetChain && targetChain.rpcUrls?.length > 0
     ? targetChain.rpcUrls[0]
-    : (console.error(`Could not find RPC URL for chain ${targetChainId}`), null);
+    : (log.error(`Could not find RPC URL for chain ${targetChainId}`), null);
 
 // Initialize or load ENS cache
 let ensCache = new Map();
@@ -86,12 +89,10 @@ if (fs.existsSync(ENS_CACHE)) {
     const parsedData = JSON.parse(data);
     ensCache = new Map(parsedData);
   } catch (error) {
-    console.error("Failed to load ENS cache from file:", error);
+    log.error("Failed to load ENS cache from file:", error);
   }
 } else {
-  console.log(
-    "No existing ENS cache file found. Starting with an empty cache."
-  );
+  log.info("No existing ENS cache file found. Starting with an empty cache.");
 }
 
 // Initialize or load IPFS cache
@@ -103,17 +104,15 @@ if (fs.existsSync(IPFS_CACHE)) {
     if (Array.isArray(parsed)) {
       ipfsCache = parsed;
     } else {
-      console.warn("IPFS cache file is not an array. Falling back to empty cache.");
+      log.warn("IPFS cache file is not an array. Falling back to empty cache.");
       ipfsCache = [];
     }
   } catch (error) {
-    console.error("Failed to load IPFS cache from file:", error);
+    log.error("Failed to load IPFS cache from file:", error);
     ipfsCache = [];
   }
 } else {
-  console.log(
-    "No existing IPFS cache file found. Starting with an empty cache."
-  );
+  log.info("No existing IPFS cache file found. Starting with an empty cache.");
 }
 
 // Initialize or load Hyper cache
@@ -125,17 +124,15 @@ if (fs.existsSync(HYPER_CACHE)) {
     if (Array.isArray(parsed)) {
       hyperCache = parsed;
     } else {
-      console.warn("Hyper cache file is not an array. Falling back to empty cache.");
+      log.warn("Hyper cache file is not an array. Falling back to empty cache.");
       hyperCache = [];
     }
   } catch (error) {
-    console.error("Failed to load Hyper cache from file:", error);
+    log.error("Failed to load Hyper cache from file:", error);
     hyperCache = [];
   }
 } else {
-  console.log(
-    "No existing Hyper cache file found. Starting with an empty cache."
-  );
+  log.info("No existing Hyper cache file found. Starting with an empty cache.");
 }
 
 // Function to save cache to file
@@ -143,9 +140,9 @@ export function saveEnsCache() {
   try {
     const data = JSON.stringify(Array.from(ensCache.entries()), null, 2);
     fs.writeFileSync(ENS_CACHE, data, "utf-8");
-    console.log("ENS cache saved to file.");
+    log.info("ENS cache saved to file.");
   } catch (error) {
-    console.error("Failed to save ENS cache to file:", error);
+    log.error("Failed to save ENS cache to file:", error);
   }
 }
 
@@ -153,9 +150,9 @@ export function saveIpfsCache() {
   try {
     const data = JSON.stringify(ipfsCache, null, 2);
     fs.writeFileSync(IPFS_CACHE, data, "utf-8");
-    console.log("IPFS cache saved to file.");
+    log.info("IPFS cache saved to file.");
   } catch (error) {
-    console.error("Failed to save IPFS cache to file:", error);
+    log.error("Failed to save IPFS cache to file:", error);
   }
 }
 
@@ -163,9 +160,9 @@ export function saveHyperCache() {
   try {
     const data = JSON.stringify(hyperCache, null, 2);
     fs.writeFileSync(HYPER_CACHE, data, "utf-8");
-    console.log("Hyper cache saved to file.");
+    log.info("Hyper cache saved to file.");
   } catch (error) {
-    console.error("Failed to save Hyper cache to file:", error);
+    log.error("Failed to save Hyper cache to file:", error);
   }
 }
 
