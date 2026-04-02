@@ -907,6 +907,16 @@ body {
 .archive-subsection {
   margin-bottom: 1.5rem;
 }
+
+pagination-control {
+  display: block;
+  outline: none !important;
+}
+pagination-control:focus-within {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
 .archive-subsection-label {
   display: block;
   font-size: 0.95rem;
@@ -922,6 +932,13 @@ body {
   border-radius: 8px;
   overflow: hidden;
   table-layout: fixed;
+  font-size: 0.9rem;
+}
+.archive-table tbody tr {
+  transition: background 0.12s ease;
+}
+.archive-table tbody tr:hover {
+  background: color-mix(in srgb, var(--settings-border) 18%, transparent);
 }
 .archive-table th,
 .archive-table td {
