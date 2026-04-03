@@ -1227,12 +1227,24 @@ function handleDocRequest(req, res, session) {
     const name = sanitizePeerName(url.searchParams.get("name") || "");
     const rawClientId = typeof url.searchParams.get("clientId") === "string" ? url.searchParams.get("clientId") : "";
     const clientId = rawClientId ? rawClientId.slice(0, 128) : `peer-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-    const peerId = ++peerSequence;
+    const existing = clientId ? findClientByClientId(session, clientId) : null;
+    if (existing?.res && existing.res !== res) {
+      try { existing.res.end(); } catch {}
+      session.sseClients.delete(existing.res);
+    }
+    const peerMeta = clientId
+      ? getOrCreatePeerMeta(session, clientId, { role, name })
+      : null;
+    const peerId = Number.isFinite(Number(peerMeta?.id))
+      ? Number(peerMeta.id)
+      : ++peerSequence;
+    const resolvedRole = normalizePeerRole(peerMeta?.role || role || "client");
+    const resolvedName = sanitizePeerName(peerMeta?.name || name || "");
     const peerState = {
       res,
       id: peerId,
-      role,
-      name,
+      role: resolvedRole,
+      name: resolvedName,
       clientId,
       color: getPeerColor(clientId || peerId),
       isTyping: false,
@@ -1248,7 +1260,7 @@ function handleDocRequest(req, res, session) {
     session.sseClients.set(res, peerState);
     syncPeerMetaFromActor(session, peerState);
     const currentPeerCount = getPeerCount(session);
-    console.log(`[p2pmd] SSE connected: peerId=${peerId}, role=${role}, totalClients=${session.sseClients.size}, peerCount=${currentPeerCount}`);
+    console.log(`[p2pmd] SSE connected: peerId=${peerId}, role=${resolvedRole}, totalClients=${session.sseClients.size}, peerCount=${currentPeerCount}`);
     
     res.write(`event: peers\ndata: ${currentPeerCount}\n\n`);
     res.write(`event: peerlist\ndata: ${JSON.stringify(getPeerList(session))}\n\n`);
@@ -1264,10 +1276,10 @@ function handleDocRequest(req, res, session) {
     }
     const joinActivity = addActivity(session, {
       type: "join",
-      role,
+      role: resolvedRole,
       name: getPeerDisplayName(peerState),
       clientId,
-      message: `${getPeerDisplayName(peerState)} joined as ${role}`
+      message: `${getPeerDisplayName(peerState)} joined as ${resolvedRole}`
     });
     broadcastPeers(session);
     broadcastPeerList(session);

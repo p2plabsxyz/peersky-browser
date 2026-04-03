@@ -75,6 +75,7 @@ const Y_ORIGIN_REMOTE = "remote-sse";
 
 const ROOM_STATE_PREFIX = "p2pmd-room-";
 const ROOM_CONTENT_PREFIX = "p2pmd-room-content-";
+const ROOM_LINE_ATTR_PREFIX = "p2pmd-room-line-attributions-";
 const PEER_STATUS_PREFIX = "p2pmd-peer-status-";
 const PEER_ACTIVITY_PREFIX = "p2pmd-peer-activity-";
 const ACTIVE_ROOM_STATUS_KEY = "p2pmd-active-room";
@@ -96,6 +97,7 @@ let currentPeerList = [];
 let peerActivityLog = [];
 let presenceSendTimer = null;
 let typingResetTimer = null;
+let lineAttributionPersistTimer = null;
 let isLocalTyping = false;
 let lastPresencePayload = "";
 
@@ -185,6 +187,51 @@ function safeLocalStorageRemove(key) {
   try {
     localStorage.removeItem(key);
   } catch {}
+}
+
+function getRoomLineAttributionStorageKey(roomKey) {
+  return `${ROOM_LINE_ATTR_PREFIX}${roomKey}`;
+}
+
+function readRoomLineAttributions(roomKey) {
+  const candidates = getRoomKeyCandidates(roomKey);
+  if (candidates.length === 0) return {};
+  for (const candidate of candidates) {
+    const raw = safeLocalStorageGet(getRoomLineAttributionStorageKey(candidate));
+    if (!raw) continue;
+    try {
+      const parsed = JSON.parse(raw);
+      const normalized = normalizeLineAttributions(parsed?.lineAttributions || parsed);
+      if (normalized) return normalized;
+    } catch {}
+  }
+  return {};
+}
+
+function persistRoomLineAttributionsNow() {
+  if (!currentRoomKey) return;
+  const normalized = normalizeLineAttributions(_roomLineAttributions);
+  const candidates = getRoomKeyCandidates(currentRoomKey);
+  for (const candidate of candidates) {
+    const storageKey = getRoomLineAttributionStorageKey(candidate);
+    if (!normalized) {
+      safeLocalStorageRemove(storageKey);
+      continue;
+    }
+    safeLocalStorageSet(storageKey, JSON.stringify({
+      roomKey: currentRoomKey,
+      lineAttributions: normalized,
+      updatedAt: Date.now()
+    }));
+  }
+}
+
+function scheduleRoomLineAttributionsPersist() {
+  if (lineAttributionPersistTimer) clearTimeout(lineAttributionPersistTimer);
+  lineAttributionPersistTimer = setTimeout(() => {
+    lineAttributionPersistTimer = null;
+    persistRoomLineAttributionsNow();
+  }, 250);
 }
 
 function buildRandomClientId() {
@@ -693,6 +740,7 @@ function _attributeCurrentLine() {
     if (!color) return;
     _localLineAttributions[String(line)] = { name, color };
     _roomLineAttributions[String(line)] = { name, color };
+    scheduleRoomLineAttributionsPersist();
   } catch {}
 }
 
@@ -711,15 +759,23 @@ function _localFallbackColor() {
 
 function mergeLineAttributionsIntoRoom(value) {
   if (!value || typeof value !== "object") return;
+  let changed = false;
   for (const [line, info] of Object.entries(value)) {
     const lineNum = Number(line);
     if (!Number.isFinite(lineNum) || lineNum < 1) continue;
     if (!info || typeof info !== "object" || typeof info.color !== "string") continue;
-    _roomLineAttributions[String(Math.floor(lineNum))] = {
+    const lineKey = String(Math.floor(lineNum));
+    const nextValue = {
       name: typeof info.name === "string" ? info.name : "",
       color: info.color
     };
+    const prevValue = _roomLineAttributions[lineKey];
+    if (!prevValue || prevValue.name !== nextValue.name || prevValue.color !== nextValue.color) {
+      _roomLineAttributions[lineKey] = nextValue;
+      changed = true;
+    }
   }
+  if (changed) scheduleRoomLineAttributionsPersist();
 }
 
 function refreshLocalLineAttribution() {
@@ -893,12 +949,13 @@ async function flushYjsUpdate() {
   }
 }
 
-function destroyYjs(skipSave = false) {
+function destroyYjs(skipSave = false, clearLineAttributions = true) {
   if (sendTimer) { clearTimeout(sendTimer); sendTimer = null; }
   if (sendUpdateTimer) { clearTimeout(sendUpdateTimer); sendUpdateTimer = null; }
   if (flushRetryTimer) { clearTimeout(flushRetryTimer); flushRetryTimer = null; }
   if (presenceSendTimer) { clearTimeout(presenceSendTimer); presenceSendTimer = null; }
   if (typingResetTimer) { clearTimeout(typingResetTimer); typingResetTimer = null; }
+  if (lineAttributionPersistTimer) { clearTimeout(lineAttributionPersistTimer); lineAttributionPersistTimer = null; }
   isLocalTyping = false;
   lastPresencePayload = "";
 
@@ -921,7 +978,9 @@ function destroyYjs(skipSave = false) {
   prevText = "";
   isApplyingRemote = false;
   _localLineAttributions = {};
-  _roomLineAttributions = {};
+  if (clearLineAttributions) {
+    _roomLineAttributions = {};
+  }
   destroyCursorOverlay();
 }
 
@@ -1369,6 +1428,8 @@ function connectSseChannel(localUrl, role) {
 async function connectToRoom(localUrl, role = "client") {
   currentRoomUrl = localUrl;
   currentRole = normalizePeerRole(role || "client");
+  _roomLineAttributions = readRoomLineAttributions(currentRoomKey);
+  updateLineAuthors(_roomLineAttributions);
   currentPeerList = [];
   peerActivityLog = [];
   updatePeers(0);
@@ -1387,7 +1448,7 @@ async function connectToRoom(localUrl, role = "client") {
     eventSource = null;
   }
 
-  destroyYjs();
+  destroyYjs(false, false);
 
   let hasRoomSnapshot = false;
   let snapshotContent = "";
@@ -1591,6 +1652,7 @@ async function connectToRoom(localUrl, role = "client") {
 
   connectSseChannel(localUrl, role);
   initCursorOverlay(markdownInput, localClientId);
+  updateLineAuthors(_roomLineAttributions);
 
 }
 
@@ -1855,6 +1917,7 @@ async function disconnectRoom() {
 
   if (disconnectKey) {
     saveRoomDraft(disconnectKey, disconnectContent);
+    persistRoomLineAttributionsNow();
   }
 
   if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
@@ -1890,7 +1953,7 @@ async function disconnectRoom() {
     eventSource = null;
   }
 
-  destroyYjs();
+  destroyYjs(false, false);
 
   // Clear saved state since user explicitly disconnected
   savedYjsState = null;
