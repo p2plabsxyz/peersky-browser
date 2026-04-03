@@ -337,10 +337,7 @@ function shareProfile(conn) {
 
 function sendRoomMeta(conn, rk) {
   const room = savedData.rooms[rk];
-  // if (!room || !roomFeeds[rk]) return;
-
-  // const isPlaceholder = !room.name || room.name === rk.slice(0, 8) + "...";
-  // if (isPlaceholder && !room.isHost) return; 
+  if (!room) return;
 
   try {
     conn.write(JSON.stringify({
