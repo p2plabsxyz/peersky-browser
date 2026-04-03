@@ -36,4 +36,5 @@ export const chat = {
   rejectDM: (body) => apiRequest("reject-dm", { body }),
   updateRoom: (roomKey, body) => apiRequest("update-room", { roomKey, body }),
   deleteRoom: (roomKey) => apiRequest("delete-room", { roomKey, post: true }),
+  requestMeta: (roomKey) => apiRequest("request-meta", { roomKey, post: true }),
 };

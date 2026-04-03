@@ -917,7 +917,10 @@ async function openRoom(roomKey) {
         const _r = S.rooms[roomKey];
         const headerName = $("chat-room-name")?.textContent || "";
         const isPlaceholder = !_r?.name || _r.name === roomKey.slice(0, 8) + "...";
+        
+        // If the UI is currently showing the hash, try to fetch the latest from the backend JSON
         if (isPlaceholder || headerName === roomKey.slice(0, 8) + "...") {
+          await chat.requestMeta(roomKey).catch(() => {});
           const { rooms } = await chat.getRooms();
           const fresh = rooms.find(r => r.roomKey === roomKey);
           if (fresh?.name && fresh.name !== roomKey.slice(0, 8) + "...") {
@@ -940,7 +943,7 @@ async function openRoom(roomKey) {
           renderMessages(roomKey, false);
         }
       } catch {}
-    }, 3000);
+    }, 2000); // Reduced from 3000 to 2000 for faster recovery
   } catch (err) {
     console.error("History load error:", err);
     S.messages[roomKey] = extractReactions(roomKey, mergeWithHistory(S.messages[roomKey], []));
@@ -1419,9 +1422,18 @@ function connectGlobalSSE() {
       if (data.unreadMentions !== undefined && data.roomKey !== S.activeRoom) room.unreadMentions = data.unreadMentions;
       renderRoomList();
       if (data.roomKey === S.activeRoom) {
-        $("chat-room-name").textContent = room.name;
-        $("chat-room-avatar").src = avatar(room.name, 32, room.avatar);
-        applyDMComposerGate(data.roomKey);
+      $("chat-room-name").textContent = room.name || data.roomKey.slice(0, 8) + "...";
+      $("chat-room-avatar").src = avatar(room.name, 32, room.avatar);
+      
+      // Update the Info Modal if it happens to be open
+      if ($("room-info-modal").classList.contains("open")) {
+        $("ri-name").textContent = room.name;
+        $("ri-bio").textContent = room.bio || "No description";
+        $("ri-creator").textContent = room.createdByName || room.createdBy || "Unknown";
+        $("ri-avatar").src = avatar(room.name, 64, room.avatar);
+      }
+        // This ensures the "Wait for DM" message disappears if it was a DM
+        applyDMComposerGate(data.roomKey); 
       }
     } catch {}
   });
