@@ -1427,14 +1427,12 @@ function connectGlobalSSE() {
         room = S.rooms[data.roomKey];
       }
 
-      // Preserve unread counts if this is the active room
+      // Preserve unread counts for the active room (managed locally)
       const prevUnread = room.unreadCount;
       const prevMentions = room.unreadMentions;
 
-      // Merge ALL incoming fields cleanly
       Object.assign(room, data);
 
-      // Don't overwrite unread counts for the active room (they're managed locally)
       if (data.roomKey === S.activeRoom) {
         room.unreadCount = prevUnread;
         room.unreadMentions = prevMentions;
@@ -1443,24 +1441,25 @@ function connectGlobalSSE() {
       renderRoomList();
 
       if (data.roomKey === S.activeRoom) {
-        const nameEl = $("chat-room-name");
-        const avEl = $("chat-room-avatar");
-        if (nameEl) nameEl.textContent = room.name || data.roomKey.slice(0, 8) + "...";
-        if (avEl) avEl.src = avatar(room.name, 32, room.avatar);
+        // Single display name for consistency across all UI elements
+        const roomDisplayName = room.name || data.roomKey.slice(0, 8) + "...";
+
+        $("chat-room-name").textContent = roomDisplayName;
+        $("chat-room-avatar").src = avatar(roomDisplayName, 32, room.avatar);
 
         // Live-update the Room Info Modal if it's open
         if ($("room-info-modal")?.classList.contains("open")) {
-          $("ri-name").textContent = room.name;
+          $("ri-name").textContent = roomDisplayName;
           $("ri-bio").textContent = room.bio || "No description";
-          $("ri-avatar").src = avatar(room.name, 64, room.avatar);
           $("ri-creator").textContent = room.createdByName || room.createdBy || "Unknown";
+          $("ri-avatar").src = avatar(roomDisplayName, 64, room.avatar);
+
           const linkEl = $("ri-link");
           const linkRow = $("ri-link-row");
           if (linkEl && linkRow) {
-            const safeLink = /^https?:\/\//i.test(room.link || "") ? room.link : "";
-            if (!room.isDM && safeLink) {
-              linkEl.href = safeLink;
-              linkEl.textContent = safeLink;
+            if (!room.isDM && room.link && /^https?:\/\//i.test(room.link)) {
+              linkEl.href = room.link;
+              linkEl.textContent = room.link;
               linkRow.style.display = "";
             } else {
               linkRow.style.display = "none";

@@ -347,18 +347,27 @@ function shareProfile(conn) {
 
 function sendRoomMeta(conn, rk) {
   const room = savedData.rooms[rk];
-  if (!room) return;
+  if (!room || !roomFeeds[rk]) return;
+
+  // Don't send if it's just a placeholder and we aren't the host
+  const hasRealName = room.name && room.name !== rk.slice(0, 8) + "...";
+  if (!hasRealName && !room.isHost) return;
 
   try {
     conn.write(JSON.stringify({
-      type: "room-meta", roomKey: rk,
-      name: room.name || "", bio: room.bio || "", link: room.link || "",
+      type: "room-meta",
+      roomKey: rk,
+      name: room.name || "",
+      bio: room.bio || "",
+      link: room.link || "",
       avatar: room.avatar || null,
-      createdBy: room.createdBy || "",
-      createdByName: room.createdByName || "",
+      // Host fallbacks for creator fields
+      createdBy: room.createdBy || (room.isHost ? localId : ""),
+      createdByName: room.createdByName || (room.isHost ? (savedData.profile?.username || localId) : ""),
     }) + "\n");
   } catch {}
 }
+
 
 function shareRoomMeta(conn) {
   for (const rk of Object.keys(savedData.rooms)) {
@@ -691,35 +700,24 @@ export function initChat(sdk, options = {}) {
             if (room.isDM) { emitRoomUpdate(msg.roomKey); continue; }
 
             const incomingName = clamp(msg.name, MAX_NAME_LEN);
-            const isIncomingPlaceholder = !incomingName || incomingName.endsWith("...");
+            const currentIsPlaceholder = !room.name || room.name === msg.roomKey?.slice(0, 8) + "...";
+            const incomingIsPlaceholder = !incomingName || incomingName === msg.roomKey?.slice(0, 8) + "...";
 
             let updated = false;
 
-            // 1. Update Name if we have a placeholder and they have a real name
-            const currentIsPlaceholder = !room.name || room.name.endsWith("...");
-            if (currentIsPlaceholder && !isIncomingPlaceholder) {
-              room.name = incomingName;
-              updated = true;
-            } else if (!isIncomingPlaceholder && incomingName !== room.name) {
+            // Only accept name if ours is a placeholder AND incoming is real
+            if (currentIsPlaceholder && !incomingIsPlaceholder) {
               room.name = incomingName;
               updated = true;
             }
 
-            // 2. Aggressively update Bio, Link, and Avatar if our current ones are empty
-            if (msg.bio && (!room.bio || room.bio === "")) {
-              room.bio = clamp(msg.bio, MAX_BIO_LEN);
-              updated = true;
-            }
-            if (msg.link && (!room.link || room.link === "")) {
-              room.link = clamp(msg.link, MAX_LINK_LEN);
-              updated = true;
-            }
+            // Only fill bio/link/avatar/creator if currently missing — prevents spoofing
+            if (msg.bio && !room.bio) { room.bio = clamp(msg.bio, MAX_BIO_LEN); updated = true; }
+            if (msg.link && !room.link) { room.link = clamp(msg.link, MAX_LINK_LEN) || ""; updated = true; }
             if (msg.avatar && !room.avatar) {
               room.avatar = sanitizeAvatar(msg.avatar);
               if (room.avatar) updated = true;
             }
-
-            // 3. Sync creator info if missing
             if (msg.createdBy && !room.createdBy) { room.createdBy = clamp(msg.createdBy, MAX_SENDER_LEN); updated = true; }
             if (msg.createdByName && !room.createdByName) { room.createdByName = clamp(msg.createdByName, 50); updated = true; }
 
@@ -1210,6 +1208,10 @@ export async function handleChatRequest(req, sdk) {
 
       if (action === "request-meta") {
         if (!roomKey || !isValidRoomKey(roomKey)) return respond(400, { error: "Invalid room key" });
+
+        // Ensure the room exists locally before broadcasting (prevents spam amplification)
+        if (!savedData.rooms[roomKey]) return respond(403, { error: "Not a member of this room" });
+
         const requestMsg = JSON.stringify({
           type: "request-room-meta", roomKey
         }) + "\n";
