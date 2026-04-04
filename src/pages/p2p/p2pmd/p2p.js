@@ -869,7 +869,7 @@ function mergeLineAttributionsIntoRoom(value) {
     const prevValue = _roomLineAttributions[lineKey];
     const incomingName = typeof info.name === "string" ? info.name.trim() : "";
     const colorMatchedPeer = currentPeerList.find((peer) => peer?.color === info.color && peer?.name);
-    const resolvedName = incomingName || prevValue?.name || colorMatchedPeer?.name || "";
+    const resolvedName = incomingName || colorMatchedPeer?.name || prevValue?.name || "";
     const nextValue = {
       name: resolvedName,
       color: info.color
@@ -880,6 +880,36 @@ function mergeLineAttributionsIntoRoom(value) {
     }
   }
   if (changed) scheduleRoomLineAttributionsPersist();
+}
+
+function refreshRoomAttributionNamesFromPeerList() {
+  if (!_roomLineAttributions || typeof _roomLineAttributions !== "object") return;
+  const colorToNames = new Map();
+  for (const peer of currentPeerList || []) {
+    if (!peer || typeof peer.color !== "string") continue;
+    const name = typeof peer.name === "string" ? peer.name.trim() : "";
+    if (!name) continue;
+    if (!colorToNames.has(peer.color)) colorToNames.set(peer.color, new Set());
+    colorToNames.get(peer.color).add(name);
+  }
+  let changed = false;
+  for (const [lineKey, info] of Object.entries(_roomLineAttributions)) {
+    if (!info || typeof info !== "object" || typeof info.color !== "string") continue;
+    const names = colorToNames.get(info.color);
+    if (!names || names.size !== 1) continue;
+    const [resolvedName] = Array.from(names);
+    if (resolvedName && info.name !== resolvedName) {
+      _roomLineAttributions[lineKey] = {
+        name: resolvedName,
+        color: info.color
+      };
+      changed = true;
+    }
+  }
+  if (changed) {
+    updateLineAuthors(_roomLineAttributions);
+    scheduleRoomLineAttributionsPersist();
+  }
 }
 
 function refreshLocalLineAttribution() {
@@ -1386,6 +1416,7 @@ function setPeerList(peerList) {
     }
     mergeLineAttributionsIntoRoom(peer.lineAttributions);
   }
+  refreshRoomAttributionNamesFromPeerList();
   persistPeerStatusSnapshot();
   if (peersCount.textContent === "0") {
     let estimatedRemote = currentPeerList.length;
@@ -2683,7 +2714,7 @@ function addPublishUrl(url) {
   link.rel = "noopener noreferrer";
 
   const copyContainer = document.createElement("span");
-  copyContainer.textContent = "âŠ•";
+  copyContainer.textContent = "⊕";
   copyContainer.onclick = async function () {
     let success = false;
     try {
@@ -2712,7 +2743,7 @@ function addPublishUrl(url) {
     if (success) {
       copyContainer.textContent = " Copied!";
       setTimeout(() => {
-        copyContainer.textContent = "âŠ•";
+        copyContainer.textContent = "⊕";
       }, 1000);
     }
   };
@@ -3270,7 +3301,7 @@ if (copyRoomKey) {
     try {
       await navigator.clipboard.writeText(key);
       copyRoomKey.textContent = "Copied!";
-      setTimeout(() => { copyRoomKey.textContent = "âŠ•"; }, 1000);
+      setTimeout(() => { copyRoomKey.textContent = "⊕"; }, 1000);
     } catch {
       const ta = document.createElement("textarea");
       ta.value = key;
@@ -3281,7 +3312,7 @@ if (copyRoomKey) {
       document.execCommand("copy");
       document.body.removeChild(ta);
       copyRoomKey.textContent = "Copied!";
-      setTimeout(() => { copyRoomKey.textContent = "âŠ•"; }, 1000);
+      setTimeout(() => { copyRoomKey.textContent = "⊕"; }, 1000);
     }
   });
 }

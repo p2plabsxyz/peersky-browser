@@ -229,17 +229,6 @@ function getExistingSession(key) {
   return roomSessions.get(key) || null;
 }
 
-const PEER_COLORS = [
-  "#0EA5E9",
-  "#A855F7",
-  "#22C55E",
-  "#F97316",
-  "#EF4444",
-  "#14B8A6",
-  "#EAB308",
-  "#6366F1"
-];
-
 function normalizePeerRole(role) {
   if (role === "host") return "host";
   if (role === "client") return "client";
@@ -251,6 +240,12 @@ function sanitizePeerName(value) {
   return value.trim().replace(/\s+/g, " ").slice(0, 32);
 }
 
+function sanitizePeerColor(value) {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  return /^#[0-9a-fA-F]{6}$/.test(trimmed) ? trimmed.toUpperCase() : "";
+}
+
 function getPeerColor(seed) {
   const source = String(seed || "peer");
   let hash = 0;
@@ -258,7 +253,8 @@ function getPeerColor(seed) {
     hash = ((hash << 5) - hash) + source.charCodeAt(i);
     hash |= 0;
   }
-  return PEER_COLORS[Math.abs(hash) % PEER_COLORS.length];
+  const hue = Math.abs(hash) % 360;
+  return `hsl(${hue} 72% 44%)`;
 }
 
 function getPeerDisplayName(client) {
@@ -351,6 +347,7 @@ function getOrCreatePeerMeta(session, clientId, hints = {}) {
       clientId,
       role: normalizePeerRole(hints.role || "client"),
       name: "",
+      color: "",
       lastCursorLine: null,
       lastCursorColumn: null,
       updatedAt: Date.now()
@@ -362,7 +359,12 @@ function getOrCreatePeerMeta(session, clientId, hints = {}) {
   if (Number.isInteger(hintedId) && hintedId > 0) meta.id = hintedId;
   if (hints.role) meta.role = normalizePeerRole(hints.role);
   const sanitizedName = sanitizePeerName(hints.name || "");
-  if (sanitizedName) meta.name = sanitizedName;
+  if (sanitizedName) {
+    meta.name = sanitizedName;
+    renameLineAttributionOwner(meta, sanitizedName);
+  }
+  const sanitizedColor = sanitizePeerColor(hints.color || "");
+  if (sanitizedColor) meta.color = sanitizedColor;
   if (Number.isFinite(Number(hints.cursorLine))) meta.lastCursorLine = Number(hints.cursorLine);
   if (Number.isFinite(Number(hints.cursorColumn))) meta.lastCursorColumn = Number(hints.cursorColumn);
   if (hints.lineAttributions && typeof hints.lineAttributions === "object") {
@@ -378,6 +380,7 @@ function syncPeerMetaFromActor(session, actor) {
     id: actor.id,
     role: actor.role,
     name: actor.name,
+    color: actor.color,
     cursorLine: actor.cursorLine,
     cursorColumn: actor.cursorColumn,
     lineAttributions: actor.lineAttributions
@@ -395,6 +398,19 @@ function mergeLineAttributions(target, lineAttributions, fallbackName = "") {
     const incomingName = sanitizePeerName(typeof info.name === "string" ? info.name : "");
     target.lineAttributions[String(Math.floor(lineNum))] = {
       name: incomingName || fallback,
+      color: info.color
+    };
+  }
+}
+
+function renameLineAttributionOwner(target, nextName) {
+  if (!target || !target.lineAttributions || typeof target.lineAttributions !== "object") return;
+  const sanitized = sanitizePeerName(nextName || "");
+  if (!sanitized) return;
+  for (const [line, info] of Object.entries(target.lineAttributions)) {
+    if (!info || typeof info !== "object" || typeof info.color !== "string") continue;
+    target.lineAttributions[line] = {
+      name: sanitized,
       color: info.color
     };
   }
@@ -727,7 +743,6 @@ function handleDocRequest(req, res, session) {
       ? window.crypto.randomUUID()
       : ('inline-' + Math.random().toString(36).slice(2, 10));
     const localLineAttributions = {};
-    const PEER_COLORS = ['#0EA5E9', '#A855F7', '#22C55E', '#F97316', '#EF4444', '#14B8A6', '#EAB308', '#6366F1'];
 
     function bytesToBase64(bytes) {
       let bin = '';
@@ -771,7 +786,7 @@ function handleDocRequest(req, res, session) {
         hash = ((hash << 5) - hash) + source.charCodeAt(i);
         hash |= 0;
       }
-      return PEER_COLORS[Math.abs(hash) % PEER_COLORS.length];
+      return 'hsl(' + (Math.abs(hash) % 360) + ' 72% 44%)';
     }
     function noteCurrentLineAttribution() {
       const cursor = getCursorMeta();
@@ -1067,13 +1082,18 @@ function handleDocRequest(req, res, session) {
         const fullText = typeof parsed.fullText === "string" ? parsed.fullText : null;
         const clientId = typeof parsed.clientId === "string" ? parsed.clientId : "";
         const providedName = sanitizePeerName(parsed.name || "");
+        const providedColor = sanitizePeerColor(parsed.color || "");
         const cursorLine = Number.isFinite(Number(parsed.cursorLine)) ? Number(parsed.cursorLine) : null;
         const cursorColumn = Number.isFinite(Number(parsed.cursorColumn)) ? Number(parsed.cursorColumn) : null;
         const selectionStart = Number.isFinite(Number(parsed.selectionStart)) ? Number(parsed.selectionStart) : null;
         const selectionEnd = Number.isFinite(Number(parsed.selectionEnd)) ? Number(parsed.selectionEnd) : null;
         const actor = clientId ? findClientByClientId(session, clientId) : null;
         if (actor) {
-          if (providedName) actor.name = providedName;
+          if (providedName) {
+            actor.name = providedName;
+            renameLineAttributionOwner(actor, providedName);
+          }
+          if (providedColor) actor.color = providedColor;
           if (cursorLine !== null) actor.cursorLine = cursorLine;
           if (cursorColumn !== null) actor.cursorColumn = cursorColumn;
           if (selectionStart !== null) actor.selectionStart = selectionStart;
@@ -1089,6 +1109,7 @@ function handleDocRequest(req, res, session) {
           const peerMeta = getOrCreatePeerMeta(session, clientId, {
             role: "client",
             name: providedName,
+            color: providedColor,
             cursorLine,
             cursorColumn
           });
@@ -1192,13 +1213,18 @@ function handleDocRequest(req, res, session) {
         const content = typeof parsed.content === "string" ? parsed.content : "";
         const clientId = typeof parsed.clientId === "string" ? parsed.clientId : "";
         const providedName = sanitizePeerName(parsed.name || "");
+        const providedColor = sanitizePeerColor(parsed.color || "");
         const cursorLine = Number.isFinite(Number(parsed.cursorLine)) ? Number(parsed.cursorLine) : null;
         const cursorColumn = Number.isFinite(Number(parsed.cursorColumn)) ? Number(parsed.cursorColumn) : null;
         const selectionStart = Number.isFinite(Number(parsed.selectionStart)) ? Number(parsed.selectionStart) : null;
         const selectionEnd = Number.isFinite(Number(parsed.selectionEnd)) ? Number(parsed.selectionEnd) : null;
         const actor = clientId ? findClientByClientId(session, clientId) : null;
         if (actor) {
-          if (providedName) actor.name = providedName;
+          if (providedName) {
+            actor.name = providedName;
+            renameLineAttributionOwner(actor, providedName);
+          }
+          if (providedColor) actor.color = providedColor;
           if (cursorLine !== null) actor.cursorLine = cursorLine;
           if (cursorColumn !== null) actor.cursorColumn = cursorColumn;
           if (selectionStart !== null) actor.selectionStart = selectionStart;
@@ -1214,6 +1240,7 @@ function handleDocRequest(req, res, session) {
           const peerMeta = getOrCreatePeerMeta(session, clientId, {
             role: "client",
             name: providedName,
+            color: providedColor,
             cursorLine,
             cursorColumn
           });
@@ -1284,6 +1311,7 @@ function handleDocRequest(req, res, session) {
     });
     const role = normalizePeerRole(url.searchParams.get("role") || "client");
     const name = sanitizePeerName(url.searchParams.get("name") || "");
+    const requestedColor = sanitizePeerColor(url.searchParams.get("color") || "");
     const rawClientId = typeof url.searchParams.get("clientId") === "string" ? url.searchParams.get("clientId") : "";
     const clientId = rawClientId ? rawClientId.slice(0, 128) : `peer-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const existing = clientId ? findClientByClientId(session, clientId) : null;
@@ -1292,7 +1320,7 @@ function handleDocRequest(req, res, session) {
       session.sseClients.delete(existing.res);
     }
     const peerMeta = clientId
-      ? getOrCreatePeerMeta(session, clientId, { role, name })
+      ? getOrCreatePeerMeta(session, clientId, { role, name, color: requestedColor })
       : null;
     const peerId = Number.isFinite(Number(peerMeta?.id))
       ? Number(peerMeta.id)
@@ -1305,7 +1333,7 @@ function handleDocRequest(req, res, session) {
       role: resolvedRole,
       name: resolvedName,
       clientId,
-      color: getPeerColor(clientId || peerId),
+      color: requestedColor || sanitizePeerColor(peerMeta?.color || "") || getPeerColor(clientId || peerId),
       isTyping: false,
       cursorLine: null,
       cursorColumn: null,
@@ -1420,11 +1448,13 @@ function handleDocRequest(req, res, session) {
         const parsed = JSON.parse(body || "{}");
         const clientId = typeof parsed.clientId === "string" ? parsed.clientId : "";
         const nextName = sanitizePeerName(parsed.name || "");
+        const nextColor = sanitizePeerColor(parsed.color || "");
         const actor = findClientByClientId(session, clientId);
         const peerMeta = clientId
           ? getOrCreatePeerMeta(session, clientId, {
               role: parsed.role || "client",
               name: nextName,
+              color: nextColor,
               cursorLine: parsed.cursorLine,
               cursorColumn: parsed.cursorColumn,
               lineAttributions: parsed.lineAttributions
@@ -1435,7 +1465,11 @@ function handleDocRequest(req, res, session) {
           res.end(JSON.stringify({ ok: false, error: "Peer not found" }));
           return;
         }
-        if (actor && nextName) actor.name = nextName;
+        if (actor && nextName) {
+          actor.name = nextName;
+          renameLineAttributionOwner(actor, nextName);
+        }
+        if (actor && nextColor) actor.color = nextColor;
         if (actor) actor.role = normalizePeerRole(parsed.role || actor.role || "client");
         const nextTyping = parsed.isTyping === true;
         if (actor) {
