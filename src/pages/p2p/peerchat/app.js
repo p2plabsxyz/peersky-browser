@@ -37,6 +37,35 @@ let messageSearchQuery = "";
 const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 function esc(s) { return s.replace(/[&<>"']/g, (c) => ESC[c]); }
 
+const USERNAME_ALLOWED_RE = /^[A-Za-z0-9]+(?: [A-Za-z0-9]+)*$/;
+const MENTION_IN_ESCAPED_TEXT_RE = /@([A-Za-z0-9]+(?: [A-Za-z0-9]+)*)/g;
+
+function normalizeUsernameInput(s) {
+  return String(s ?? "").trim().replace(/\s+/g, " ");
+}
+
+function validateUsernameOrAlert(username) {
+  const u = normalizeUsernameInput(username);
+  if (!u) {
+    alert("Username required.");
+    return null;
+  }
+  if (u.length > 50) {
+    alert("Username must be at most 50 characters.");
+    return null;
+  }
+  if (!USERNAME_ALLOWED_RE.test(u)) {
+    alert("Username may only contain letters, numbers, and spaces.");
+    return null;
+  }
+  return u;
+}
+
+function mentionizeEscapedPlain(escapedPlain) {
+  return escapedPlain.replace(MENTION_IN_ESCAPED_TEXT_RE, (_, name) =>
+    `<span class="mention" data-mention="${esc(name)}">@${esc(name)}</span>`);
+}
+
 function peerIdEq(a, b) {
   return String(a || "").toLowerCase() === String(b || "").toLowerCase();
 }
@@ -337,7 +366,7 @@ function linkify(text, msg) {
   const parts = [];
   let last = 0, m;
   while ((m = re.exec(text)) !== null) {
-    if (m.index > last) parts.push(esc(text.slice(last, m.index)));
+    if (m.index > last) parts.push(mentionizeEscapedPlain(esc(text.slice(last, m.index))));
     const url = m[0];
     if (isImageFile(url)) {
       parts.push(`<img class="msg-file-img" src="${esc(url)}" alt="image" loading="lazy" />`);
@@ -350,9 +379,8 @@ function linkify(text, msg) {
     }
     last = re.lastIndex;
   }
-  if (last < text.length) parts.push(esc(text.slice(last)));
-  let html = parts.join("");
-  html = html.replace(/@(\w+)/g, '<span class="mention" data-mention="$1">@$1</span>');
+  if (last < text.length) parts.push(mentionizeEscapedPlain(esc(text.slice(last))));
+  const html = parts.join("");
   return html.replace(/\n/g, "<br>");
 }
 
@@ -703,8 +731,8 @@ function showOnboarding() {
 
 $("onboard-submit")?.addEventListener("click", async () => {
   initAudio();
-  const username = $("onboard-username").value.trim();
-  if (!username) { alert("Username required."); return; }
+  const username = validateUsernameOrAlert($("onboard-username").value);
+  if (!username) return;
   try {
     const { profile } = await chat.saveProfile({ username, bio: $("onboard-bio").value.trim() });
     S.profile = profile;
@@ -1957,8 +1985,8 @@ $("settings-btn")?.addEventListener("click", () => {
 
 $("settings-form")?.addEventListener("submit", async (e) => {
   e.preventDefault();
-  const username = $("set-username").value.trim();
-  if (!username) { alert("Username required."); return; }
+  const username = validateUsernameOrAlert($("set-username").value);
+  if (!username) return;
   try {
     const sounds = $("set-sounds").checked;
     const notifications = $("set-notifications").checked;

@@ -50,6 +50,16 @@ function clamp(s, max) {
   return (typeof s === "string" ? s : "").slice(0, max);
 }
 
+const USERNAME_ALLOWED_RE = /^[A-Za-z0-9]+(?: [A-Za-z0-9]+)*$/;
+
+function parseProfileUsername(raw) {
+  if (typeof raw !== "string") return "";
+  const t = raw.trim().replace(/\s+/g, " ");
+  if (!t) return "";
+  if (t.length > 50 || !USERNAME_ALLOWED_RE.test(t)) return null;
+  return t;
+}
+
 function normPeerId(id) {
   return clamp(String(id ?? ""), MAX_SENDER_LEN).toLowerCase();
 }
@@ -1074,11 +1084,19 @@ export async function handleChatRequest(req, sdk) {
         if (body.avatar != null && body.avatar !== "" && sanitizeAvatar(body.avatar) === null) {
           return respond(400, { error: "Invalid profile image" });
         }
+        const parsedName = parseProfileUsername(body.username ?? "");
+        if (parsedName === null) {
+          return respond(400, { error: "Username may only contain letters, numbers, and spaces (max 50 characters)." });
+        }
+        const nextUsername = parsedName || savedData.profile?.username || "";
+        if (!nextUsername) {
+          return respond(400, { error: "Username required." });
+        }
         const nextAvatar = body.avatar !== undefined
           ? sanitizeAvatar(body.avatar)
           : savedData.profile?.avatar || null;
         savedData.profile = {
-          username: clamp(body.username, 50) || savedData.profile?.username || "",
+          username: nextUsername,
           bio: clamp(body.bio, MAX_BIO_LEN),
           avatar: nextAvatar,
           createdAt: savedData.profile?.createdAt || Date.now(),
