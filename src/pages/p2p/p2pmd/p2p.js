@@ -76,6 +76,7 @@ const Y_ORIGIN_REMOTE = "remote-sse";
 const ROOM_STATE_PREFIX = "p2pmd-room-";
 const ROOM_CONTENT_PREFIX = "p2pmd-room-content-";
 const ROOM_LINE_ATTR_PREFIX = "p2pmd-room-line-attributions-";
+const ROOM_LOCAL_LINE_ATTR_PREFIX = "p2pmd-room-local-line-attributions-";
 const PEER_STATUS_PREFIX = "p2pmd-peer-status-";
 const PEER_ACTIVITY_PREFIX = "p2pmd-peer-activity-";
 const ACTIVE_ROOM_STATUS_KEY = "p2pmd-active-room";
@@ -87,8 +88,17 @@ const DRAFT_DRIVE_NAME = "p2pmd-drafts";
 const MAX_ACTIVITY_ITEMS = 150;
 const PRESENCE_THROTTLE_MS = 220;
 const TYPING_IDLE_MS = 1200;
-const PEER_COLOR_SATURATION = 70;
 const PEER_FALLBACK_NAME_LEN = 8;
+const PEER_COLORS = [
+  "#0EA5E9",
+  "#A855F7",
+  "#22C55E",
+  "#F97316",
+  "#EF4444",
+  "#14B8A6",
+  "#EAB308",
+  "#6366F1"
+];
 const saveDelay = 2000;
 let hyperSaveInFlight = false;
 let draftSaveInFlight = false;
@@ -193,6 +203,10 @@ function getRoomLineAttributionStorageKey(roomKey) {
   return `${ROOM_LINE_ATTR_PREFIX}${roomKey}`;
 }
 
+function getLocalLineAttributionStorageKey(roomKey) {
+  return `${ROOM_LOCAL_LINE_ATTR_PREFIX}${roomKey}`;
+}
+
 function readRoomLineAttributions(roomKey) {
   const candidates = getRoomKeyCandidates(roomKey);
   if (candidates.length === 0) return {};
@@ -208,19 +222,39 @@ function readRoomLineAttributions(roomKey) {
   return {};
 }
 
+function clearLocalLineAttributions(roomKey) {
+  const candidates = getRoomKeyCandidates(roomKey);
+  if (candidates.length === 0) return;
+  for (const candidate of candidates) {
+    safeLocalStorageRemove(getLocalLineAttributionStorageKey(candidate));
+  }
+}
+
 function persistRoomLineAttributionsNow() {
   if (!currentRoomKey) return;
-  const normalized = normalizeLineAttributions(_roomLineAttributions);
+  const normalizedRoom = normalizeLineAttributions(_roomLineAttributions);
+  const normalizedLocal = normalizeLineAttributions(_localLineAttributions);
   const candidates = getRoomKeyCandidates(currentRoomKey);
   for (const candidate of candidates) {
-    const storageKey = getRoomLineAttributionStorageKey(candidate);
-    if (!normalized) {
-      safeLocalStorageRemove(storageKey);
+    const roomStorageKey = getRoomLineAttributionStorageKey(candidate);
+    if (!normalizedRoom) {
+      safeLocalStorageRemove(roomStorageKey);
+    } else {
+      safeLocalStorageSet(roomStorageKey, JSON.stringify({
+        roomKey: currentRoomKey,
+        lineAttributions: normalizedRoom,
+        updatedAt: Date.now()
+      }));
+    }
+
+    const localStorageKey = getLocalLineAttributionStorageKey(candidate);
+    if (!normalizedLocal) {
+      safeLocalStorageRemove(localStorageKey);
       continue;
     }
-    safeLocalStorageSet(storageKey, JSON.stringify({
+    safeLocalStorageSet(localStorageKey, JSON.stringify({
       roomKey: currentRoomKey,
-      lineAttributions: normalized,
+      lineAttributions: normalizedLocal,
       updatedAt: Date.now()
     }));
   }
@@ -679,16 +713,13 @@ function persistRoomState(state) {
 export function scheduleSend() {
   if (!currentRoomUrl) return;
 
-  // Track line authorship using the current cursor line before sending updates.
-  _attributeCurrentLine();
-  // Render local marks immediately without waiting for SSE.
-  updateLineAuthors(_roomLineAttributions);
-
   if (!ydoc || !ytext) {
     if (sendTimer) clearTimeout(sendTimer);
     sendTimer = setTimeout(async () => {
       const content = markdownInput.value;
       if (content === lastSentContent) return;
+      _attributeCurrentLine();
+      updateLineAuthors(_roomLineAttributions);
       lastSentContent = content;
       try {
         await fetch(`${currentRoomUrl}/doc`, {
@@ -722,6 +753,8 @@ export function scheduleSend() {
     prevText = oldText;
     return;
   }
+  _attributeCurrentLine();
+  updateLineAuthors(_roomLineAttributions);
   applyTextDiff(ytext, oldText, newText);
   prevText = newText;
 }
@@ -751,10 +784,13 @@ let _roomLineAttributions = {};
 
 function _localFallbackColor() {
   if (!localClientId) return "#888";
-  let h = 0;
-  for (let i = 0; i < localClientId.length; i++)
-    h = (h * 31 + localClientId.charCodeAt(i)) & 0xffff;
-  return `hsl(${h % 360},${PEER_COLOR_SATURATION}%,55%)`;
+  const source = String(localClientId || "peer");
+  let hash = 0;
+  for (let i = 0; i < source.length; i++) {
+    hash = ((hash << 5) - hash) + source.charCodeAt(i);
+    hash |= 0;
+  }
+  return PEER_COLORS[Math.abs(hash) % PEER_COLORS.length];
 }
 
 function mergeLineAttributionsIntoRoom(value) {
@@ -765,11 +801,14 @@ function mergeLineAttributionsIntoRoom(value) {
     if (!Number.isFinite(lineNum) || lineNum < 1) continue;
     if (!info || typeof info !== "object" || typeof info.color !== "string") continue;
     const lineKey = String(Math.floor(lineNum));
+    const prevValue = _roomLineAttributions[lineKey];
+    const incomingName = typeof info.name === "string" ? info.name.trim() : "";
+    const colorMatchedPeer = currentPeerList.find((peer) => peer?.color === info.color && peer?.name);
+    const resolvedName = incomingName || prevValue?.name || colorMatchedPeer?.name || "";
     const nextValue = {
-      name: typeof info.name === "string" ? info.name : "",
+      name: resolvedName,
       color: info.color
     };
-    const prevValue = _roomLineAttributions[lineKey];
     if (!prevValue || prevValue.name !== nextValue.name || prevValue.color !== nextValue.color) {
       _roomLineAttributions[lineKey] = nextValue;
       changed = true;
@@ -779,7 +818,6 @@ function mergeLineAttributionsIntoRoom(value) {
 }
 
 function refreshLocalLineAttribution() {
-  _attributeCurrentLine();
   updateLineAuthors(_roomLineAttributions);
 }
 
@@ -833,25 +871,21 @@ function getCurrentCursorPayload() {
 
 function buildPresencePayload() {
   const cursor = getCurrentCursorPayload();
+  const lineAttributions = getLineAttributionsPayload();
   return {
     clientId: localClientId,
     role: currentRole || "client",
     name: getDisplayName(),
     ...cursor,
-    isTyping: isLocalTyping
+    isTyping: isLocalTyping,
+    lineAttributions
   };
 }
 
 function getLineAttributionsPayload() {
-  const cursor = getCurrentCursorPayload();
-  const line = Number(cursor.cursorLine);
-  if (!Number.isFinite(line) || line < 1) return undefined;
-  const name = getDisplayName() || truncateIdentifier(localClientId, PEER_FALLBACK_NAME_LEN);
-  const color = currentPeerList.find((p) => p.clientId === localClientId)?.color || _localFallbackColor();
-  if (!color) return undefined;
-  return {
-    [String(Math.floor(line))]: { name, color }
-  };
+  // Only send lines the local peer actually edited.
+  if (!_localLineAttributions || Object.keys(_localLineAttributions).length === 0) return undefined;
+  return normalizeLineAttributions(_localLineAttributions) || undefined;
 }
 
 function scheduleTypingReset() {
@@ -890,6 +924,7 @@ async function flushYjsUpdate() {
 
   const toSend = pendingUpdate;
   pendingUpdate = null;
+  const outgoingLineAttributions = getLineAttributionsPayload();
 
   try {
     const res = await fetch(`${currentRoomUrl}/doc/update`, {
@@ -901,7 +936,7 @@ async function flushYjsUpdate() {
         role: currentRole || "client",
         name: getDisplayName(),
         ...getCurrentCursorPayload(),
-        lineAttributions: getLineAttributionsPayload()
+        lineAttributions: outgoingLineAttributions
       })
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -977,8 +1012,8 @@ function destroyYjs(skipSave = false, clearLineAttributions = true) {
   ytext = null;
   prevText = "";
   isApplyingRemote = false;
-  _localLineAttributions = {};
   if (clearLineAttributions) {
+    _localLineAttributions = {};
     _roomLineAttributions = {};
   }
   destroyCursorOverlay();
@@ -991,6 +1026,7 @@ function destroyYjs(skipSave = false, clearLineAttributions = true) {
 async function postContentNow() {
   if (!currentRoomUrl) return;
   const content = markdownInput.value;
+  const outgoingLineAttributions = getLineAttributionsPayload();
   lastSentContent = content;
   try {
     await fetch(`${currentRoomUrl}/doc`, {
@@ -1002,7 +1038,7 @@ async function postContentNow() {
         role: currentRole || "client",
         name: getDisplayName(),
         ...getCurrentCursorPayload(),
-        lineAttributions: getLineAttributionsPayload()
+        lineAttributions: outgoingLineAttributions
       })
     });
     schedulePresenceSend(true);
@@ -1222,6 +1258,19 @@ function persistPeerActivitySnapshot() {
 function setPeerList(peerList) {
   currentPeerList = normalizePeerList(peerList);
   for (const peer of currentPeerList) {
+    if (peer?.clientId === localClientId && peer.lineAttributions && typeof peer.lineAttributions === "object") {
+      // Do not let self peerlist payload overwrite already-attributed room lines.
+      const selfSafeAttributions = {};
+      for (const [line, info] of Object.entries(peer.lineAttributions)) {
+        const lineNum = Number(line);
+        if (!Number.isFinite(lineNum) || lineNum < 1) continue;
+        const lineKey = String(Math.floor(lineNum));
+        if (_roomLineAttributions[lineKey]) continue;
+        selfSafeAttributions[lineKey] = info;
+      }
+      mergeLineAttributionsIntoRoom(selfSafeAttributions);
+      continue;
+    }
     mergeLineAttributionsIntoRoom(peer.lineAttributions);
   }
   persistPeerStatusSnapshot();
@@ -1428,6 +1477,10 @@ function connectSseChannel(localUrl, role) {
 async function connectToRoom(localUrl, role = "client") {
   currentRoomUrl = localUrl;
   currentRole = normalizePeerRole(role || "client");
+  // Keep local ownership map in-memory only for the active session.
+  // Reloading stale line-number ownership from storage can overwrite peer traces after reconnect.
+  _localLineAttributions = {};
+  clearLocalLineAttributions(currentRoomKey);
   _roomLineAttributions = readRoomLineAttributions(currentRoomKey);
   updateLineAuthors(_roomLineAttributions);
   currentPeerList = [];

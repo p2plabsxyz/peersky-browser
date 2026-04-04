@@ -12,7 +12,16 @@ let _peers = [];
 let _resizeObserver = null;
 let _lineAuthors = {};
 const PEER_NAME_TRUNCATE_LEN = 8;
-const PEER_COLOR_SATURATION = 70;
+const PEER_COLORS = [
+  "#0EA5E9",
+  "#A855F7",
+  "#22C55E",
+  "#F97316",
+  "#EF4444",
+  "#14B8A6",
+  "#EAB308",
+  "#6366F1"
+];
 
 function _onScroll() { _scheduleUpdate(); }
 function _onInput() { _scheduleUpdate(); }
@@ -110,10 +119,12 @@ function _renderAuthorshipGutter() {
     const top = coords.top - scrollTop;
     if (top < -coords.lh || top > _textarea.clientHeight + coords.lh) continue;
 
+    const name = _resolveAuthorName(info);
     const mark = document.createElement("div");
     mark.className = "author-gutter-mark";
-    mark.style.cssText = `top:${top}px;height:${coords.lh}px;background:${info.color};`;
-    mark.title = info.name || "";
+    mark.style.cssText = `top:${top}px;height:${coords.lh}px;background:${info.color};--peer-color:${info.color};`;
+    mark.dataset.peerName = name;
+    mark.title = name;
     _authorGutterEl.appendChild(mark);
   }
 }
@@ -216,9 +227,13 @@ function _trunc(s, n) {
 
 function _hsl(id) {
   if (!id) return "#888";
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) & 0xffff;
-  return `hsl(${h % 360},${PEER_COLOR_SATURATION}%,55%)`;
+  const source = String(id || "peer");
+  let hash = 0;
+  for (let i = 0; i < source.length; i++) {
+    hash = ((hash << 5) - hash) + source.charCodeAt(i);
+    hash |= 0;
+  }
+  return PEER_COLORS[Math.abs(hash) % PEER_COLORS.length];
 }
 
 function _el(tag, id, parent) {
@@ -226,4 +241,13 @@ function _el(tag, id, parent) {
   el.id = id;
   parent.appendChild(el);
   return el;
+}
+
+function _resolveAuthorName(info) {
+  if (info?.name && String(info.name).trim()) return String(info.name).trim();
+  if (info?.color) {
+    const matched = _peers.find((p) => p && p.color === info.color && p.name);
+    if (matched?.name) return String(matched.name).trim();
+  }
+  return "Peer";
 }

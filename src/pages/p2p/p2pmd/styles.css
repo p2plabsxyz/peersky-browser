@@ -361,6 +361,29 @@ main {
 
 .author-gutter-mark:hover { opacity: 1; }
 
+.author-gutter-mark::after {
+  content: attr(data-peer-name);
+  position: absolute;
+  left: 8px;
+  top: -1px;
+  font-size: 0.68rem;
+  line-height: 1.2;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--peer-color, #4b5563);
+  color: #ffffff;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateY(-100%);
+  transition: opacity 0.12s ease;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.author-gutter-mark:hover::after {
+  opacity: 1;
+}
+
 #peer-gutter {
   position: absolute;
   left: 4px; top: 0; bottom: 0;

@@ -358,12 +358,16 @@ function getOrCreatePeerMeta(session, clientId, hints = {}) {
     session.peerMetaByClientId.set(clientId, meta);
   }
 
-  if (Number.isFinite(Number(hints.id))) meta.id = Number(hints.id);
+  const hintedId = Number(hints.id);
+  if (Number.isInteger(hintedId) && hintedId > 0) meta.id = hintedId;
   if (hints.role) meta.role = normalizePeerRole(hints.role);
   const sanitizedName = sanitizePeerName(hints.name || "");
   if (sanitizedName) meta.name = sanitizedName;
   if (Number.isFinite(Number(hints.cursorLine))) meta.lastCursorLine = Number(hints.cursorLine);
   if (Number.isFinite(Number(hints.cursorColumn))) meta.lastCursorColumn = Number(hints.cursorColumn);
+  if (hints.lineAttributions && typeof hints.lineAttributions === "object") {
+    mergeLineAttributions(meta, hints.lineAttributions, getPeerDisplayName(meta));
+  }
   meta.updatedAt = Date.now();
   return meta;
 }
@@ -375,19 +379,22 @@ function syncPeerMetaFromActor(session, actor) {
     role: actor.role,
     name: actor.name,
     cursorLine: actor.cursorLine,
-    cursorColumn: actor.cursorColumn
+    cursorColumn: actor.cursorColumn,
+    lineAttributions: actor.lineAttributions
   });
 }
 
-function mergeLineAttributions(target, lineAttributions) {
+function mergeLineAttributions(target, lineAttributions, fallbackName = "") {
   if (!target || !lineAttributions || typeof lineAttributions !== "object") return;
   if (!target.lineAttributions) target.lineAttributions = {};
+  const fallback = sanitizePeerName(fallbackName || "");
   for (const [line, info] of Object.entries(lineAttributions)) {
     const lineNum = Number(line);
     if (!Number.isFinite(lineNum) || lineNum < 1) continue;
     if (!info || typeof info !== "object" || typeof info.color !== "string") continue;
+    const incomingName = sanitizePeerName(typeof info.name === "string" ? info.name : "");
     target.lineAttributions[String(Math.floor(lineNum))] = {
-      name: typeof info.name === "string" ? info.name : "",
+      name: incomingName || fallback,
       color: info.color
     };
   }
@@ -719,6 +726,8 @@ function handleDocRequest(req, res, session) {
     const localClientId = (window.crypto && typeof window.crypto.randomUUID === 'function')
       ? window.crypto.randomUUID()
       : ('inline-' + Math.random().toString(36).slice(2, 10));
+    const localLineAttributions = {};
+    const PEER_COLORS = ['#0EA5E9', '#A855F7', '#22C55E', '#F97316', '#EF4444', '#14B8A6', '#EAB308', '#6366F1'];
 
     function bytesToBase64(bytes) {
       let bin = '';
@@ -755,11 +764,47 @@ function handleDocRequest(req, res, session) {
         cursorColumn: (lines[lines.length - 1] || '').length + 1
       };
     }
+    function getLocalColor() {
+      const source = String(localClientId || 'peer');
+      let hash = 0;
+      for (let i = 0; i < source.length; i++) {
+        hash = ((hash << 5) - hash) + source.charCodeAt(i);
+        hash |= 0;
+      }
+      return PEER_COLORS[Math.abs(hash) % PEER_COLORS.length];
+    }
+    function noteCurrentLineAttribution() {
+      const cursor = getCursorMeta();
+      const line = Number(cursor.cursorLine);
+      if (!Number.isFinite(line) || line < 1) return;
+      localLineAttributions[String(Math.floor(line))] = {
+        name: '',
+        color: getLocalColor()
+      };
+    }
+    function getLineAttributionsPayload(cursor) {
+      const entries = Object.entries(localLineAttributions);
+      if (entries.length > 0) {
+        const normalized = {};
+        for (const [line, info] of entries) {
+          const lineNum = Number(line);
+          if (!Number.isFinite(lineNum) || lineNum < 1) continue;
+          if (!info || typeof info !== 'object' || typeof info.color !== 'string') continue;
+          normalized[String(Math.floor(lineNum))] = {
+            name: typeof info.name === 'string' ? info.name : '',
+            color: info.color
+          };
+        }
+        if (Object.keys(normalized).length > 0) return normalized;
+      }
+      return undefined;
+    }
     async function flushUpdate() {
       if (!pendingUpdate) return;
       const toSend = pendingUpdate; pendingUpdate = null;
       try {
         const cursor = getCursorMeta();
+        const lineAttributions = getLineAttributionsPayload(cursor);
         const res = await fetch('/doc/update', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -767,7 +812,8 @@ function handleDocRequest(req, res, session) {
             update: bytesToBase64(toSend),
             clientId: localClientId,
             cursorLine: cursor.cursorLine,
-            cursorColumn: cursor.cursorColumn
+            cursorColumn: cursor.cursorColumn,
+            lineAttributions
           })
         });
         if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -808,6 +854,7 @@ function handleDocRequest(req, res, session) {
         lastContent = content;
         try {
           const cursor = getCursorMeta();
+          const lineAttributions = getLineAttributionsPayload(cursor);
           await fetch('/doc', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -815,7 +862,8 @@ function handleDocRequest(req, res, session) {
               content,
               clientId: localClientId,
               cursorLine: cursor.cursorLine,
-              cursorColumn: cursor.cursorColumn
+              cursorColumn: cursor.cursorColumn,
+              lineAttributions
             })
           });
         } catch {}
@@ -837,6 +885,7 @@ function handleDocRequest(req, res, session) {
     }
 
     editor.addEventListener('input', () => {
+      noteCurrentLineAttribution();
       if (!isPreviewMode) render();
       if (ydoc && ytext) {
         const newText = editor.value;
@@ -1029,7 +1078,7 @@ function handleDocRequest(req, res, session) {
           if (cursorColumn !== null) actor.cursorColumn = cursorColumn;
           if (selectionStart !== null) actor.selectionStart = selectionStart;
           if (selectionEnd !== null) actor.selectionEnd = selectionEnd;
-          mergeLineAttributions(actor, parsed.lineAttributions);
+          mergeLineAttributions(actor, parsed.lineAttributions, getPeerDisplayName(actor));
           markEditedLineAttribution(session, actor, cursorLine !== null ? cursorLine : actor.cursorLine);
           actor.isTyping = true;
           actor.lastTypingAt = Date.now();
@@ -1037,12 +1086,17 @@ function handleDocRequest(req, res, session) {
           syncPeerMetaFromActor(session, actor);
           broadcastPeerList(session);
         } else if (clientId) {
-          getOrCreatePeerMeta(session, clientId, {
+          const peerMeta = getOrCreatePeerMeta(session, clientId, {
             role: "client",
             name: providedName,
             cursorLine,
             cursorColumn
           });
+          // Merge line attributions even for peers without SSE connection yet
+          if (peerMeta && parsed.lineAttributions) {
+            if (!peerMeta.lineAttributions) peerMeta.lineAttributions = {};
+            mergeLineAttributions(peerMeta, parsed.lineAttributions, getPeerDisplayName(peerMeta));
+          }
         }
         if (!base64) {
           res.writeHead(400, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
@@ -1149,7 +1203,7 @@ function handleDocRequest(req, res, session) {
           if (cursorColumn !== null) actor.cursorColumn = cursorColumn;
           if (selectionStart !== null) actor.selectionStart = selectionStart;
           if (selectionEnd !== null) actor.selectionEnd = selectionEnd;
-          mergeLineAttributions(actor, parsed.lineAttributions);
+          mergeLineAttributions(actor, parsed.lineAttributions, getPeerDisplayName(actor));
           markEditedLineAttribution(session, actor, cursorLine !== null ? cursorLine : actor.cursorLine);
           actor.isTyping = true;
           actor.lastTypingAt = Date.now();
@@ -1157,12 +1211,17 @@ function handleDocRequest(req, res, session) {
           syncPeerMetaFromActor(session, actor);
           broadcastPeerList(session);
         } else if (clientId) {
-          getOrCreatePeerMeta(session, clientId, {
+          const peerMeta = getOrCreatePeerMeta(session, clientId, {
             role: "client",
             name: providedName,
             cursorLine,
             cursorColumn
           });
+          // Merge line attributions even for peers without SSE connection yet
+          if (peerMeta && parsed.lineAttributions) {
+            if (!peerMeta.lineAttributions) peerMeta.lineAttributions = {};
+            mergeLineAttributions(peerMeta, parsed.lineAttributions, getPeerDisplayName(peerMeta));
+          }
         }
         const beforeContent = session.ydoc && session.ytext ? session.ytext.toString() : session.docState.content;
         session.docState.content = content;
@@ -1255,7 +1314,9 @@ function handleDocRequest(req, res, session) {
       joinedAt: Date.now(),
       updatedAt: Date.now(),
       lastTypingAt: 0,
-      lastEditAt: 0
+      lastEditAt: 0,
+      // Preserve lineAttributions from peerMeta if available (fixes host reconnection bug)
+      lineAttributions: peerMeta?.lineAttributions || {}
     };
     session.sseClients.set(res, peerState);
     syncPeerMetaFromActor(session, peerState);
@@ -1365,7 +1426,8 @@ function handleDocRequest(req, res, session) {
               role: parsed.role || "client",
               name: nextName,
               cursorLine: parsed.cursorLine,
-              cursorColumn: parsed.cursorColumn
+              cursorColumn: parsed.cursorColumn,
+              lineAttributions: parsed.lineAttributions
             })
           : null;
         if (!actor && !peerMeta) {
@@ -1377,6 +1439,7 @@ function handleDocRequest(req, res, session) {
         if (actor) actor.role = normalizePeerRole(parsed.role || actor.role || "client");
         const nextTyping = parsed.isTyping === true;
         if (actor) {
+          mergeLineAttributions(actor, parsed.lineAttributions, getPeerDisplayName(actor));
           actor.isTyping = nextTyping;
           if (nextTyping) {
             actor.lastTypingAt = Date.now();
@@ -1902,3 +1965,4 @@ export async function createHandler() {
     return buildJsonResponse(404, { error: "Unknown action" });
   };
 }
+
