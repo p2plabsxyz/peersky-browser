@@ -2,6 +2,8 @@ const PEER_STATUS_PREFIX = "p2pmd-peer-status-";
 const PEER_ACTIVITY_PREFIX = "p2pmd-peer-activity-";
 const ACTIVE_ROOM_STATUS_KEY = "p2pmd-active-room";
 const CLIENT_ID_KEY = "p2pmd-client-id";
+const DISPLAY_NAME_KEY = "p2pmd-display-name";
+const USER_COLOR_KEY = "p2pmd-user-color";
 
 const roomKeyLabel = document.getElementById("roomKey");
 const localUrlLabel = document.getElementById("localUrl");
@@ -10,6 +12,9 @@ const statsEl = document.getElementById("stats");
 const peerListEl = document.getElementById("peerList");
 const editingListEl = document.getElementById("editingList");
 const activityListEl = document.getElementById("activityList");
+const displayNameEditor = document.getElementById("displayNameEditor");
+const saveDisplayNameButton = document.getElementById("saveDisplayName");
+const profileHint = document.getElementById("profileHint");
 
 const query = new URLSearchParams(window.location.search);
 const state = {
@@ -46,6 +51,25 @@ function parseJson(raw, fallback) {
 
 function sanitizeRole(role) {
   return role === "host" ? "host" : "client";
+}
+
+function normalizeDisplayName(value) {
+  if (typeof value !== "string") return "";
+  return value.trim().replace(/\s+/g, " ").slice(0, 32);
+}
+
+function normalizeHexColor(value) {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  return /^#[0-9a-fA-F]{6}$/.test(trimmed) ? trimmed.toUpperCase() : "";
+}
+
+function getStoredDisplayName() {
+  return normalizeDisplayName(safeGet(DISPLAY_NAME_KEY) || "");
+}
+
+function getStoredColor() {
+  return normalizeHexColor(safeGet(USER_COLOR_KEY) || "");
 }
 
 function normalizePeer(peer) {
@@ -238,18 +262,42 @@ function renderActivity() {
     appendEmpty(activityListEl, "No activity yet.");
     return;
   }
+  const peerNameByClientId = new Map(
+    state.peers
+      .filter((peer) => peer && typeof peer.clientId === "string" && peer.clientId)
+      .map((peer) => [peer.clientId, peer.name])
+  );
+
+  const resolveActivityName = (entry) => {
+    const mapped = entry.clientId ? peerNameByClientId.get(entry.clientId) : "";
+    return normalizeDisplayName(mapped || entry.name || "Peer") || "Peer";
+  };
+
+  const formatActivityMessage = (entry, resolvedName) => {
+    const message = typeof entry.message === "string" ? entry.message.trim() : "";
+    if (!message) return `${resolvedName} (${entry.type})`;
+    const oldName = normalizeDisplayName(entry.name || "");
+    if (!oldName || oldName === resolvedName) return message;
+    if (message === oldName) return resolvedName;
+    if (message.startsWith(`${oldName} `)) {
+      return `${resolvedName}${message.slice(oldName.length)}`;
+    }
+    return message;
+  };
+
   state.activity
     .slice()
     .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
     .slice(0, 120)
     .forEach((entry) => {
+      const resolvedName = resolveActivityName(entry);
       const row = document.createElement("li");
       row.className = "activity-item";
       const title = document.createElement("div");
-      title.textContent = entry.message || `${entry.name} (${entry.type})`;
+      title.textContent = formatActivityMessage(entry, resolvedName);
       const meta = document.createElement("div");
       meta.className = "muted";
-      meta.textContent = `${entry.name} • ${entry.type} • ${formatTime(entry.timestamp)}`;
+      meta.textContent = `${resolvedName}  •  ${entry.type}  •  ${formatTime(entry.timestamp)}`;
       row.appendChild(title);
       row.appendChild(meta);
       activityListEl.appendChild(row);
@@ -268,6 +316,44 @@ function renderMeta() {
     localUrlLabel.textContent = "(not connected)";
     localUrlLabel.removeAttribute("href");
   }
+}
+
+async function broadcastLocalProfileName() {
+  if (!state.localUrl || !state.clientId) return;
+  try {
+    const payload = {
+      clientId: state.clientId,
+      role: sanitizeRole(state.role || "client"),
+      name: getStoredDisplayName(),
+      color: getStoredColor()
+    };
+    await fetch(`${state.localUrl}/presence`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+  } catch {}
+}
+
+function syncProfileEditor() {
+  if (displayNameEditor) displayNameEditor.value = getStoredDisplayName();
+}
+
+async function updateDisplayName() {
+  const next = normalizeDisplayName(displayNameEditor?.value || "");
+  if (!next) {
+    if (profileHint) profileHint.textContent = "Username cannot be empty.";
+    return;
+  }
+  safeSet(DISPLAY_NAME_KEY, next);
+  if (profileHint) profileHint.textContent = "Saved";
+  for (const peer of state.peers) {
+    if (peer.clientId && peer.clientId === state.clientId) {
+      peer.name = next;
+    }
+  }
+  await broadcastLocalProfileName();
+  await tick();
 }
 
 function renderAll() {
@@ -325,3 +411,16 @@ window.addEventListener("focus", tick);
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) tick();
 });
+
+syncProfileEditor();
+if (saveDisplayNameButton) {
+  saveDisplayNameButton.addEventListener("click", updateDisplayName);
+}
+if (displayNameEditor) {
+  displayNameEditor.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    updateDisplayName();
+  });
+}
+

@@ -38,6 +38,23 @@ main {
   display: none;
 }
 
+#boot-screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--browser-theme-background);
+  color: var(--browser-theme-text-color);
+  z-index: 50;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+}
+
+#boot-screen[hidden] {
+  display: none !important;
+}
+
 #setup-page {
   justify-content: center;
   align-items: center;
@@ -102,9 +119,33 @@ main {
   margin-bottom: 2rem;
 }
 
-#setup-page #display-name {
+#setup-page #onboarding-name {
   width: min(420px, 100%);
   margin-left: 0;
+}
+
+#onboarding {
+  width: min(460px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+#onboarding h2 {
+  font-size: 1.35rem;
+}
+
+#onboarding p {
+  opacity: 0.8;
+}
+
+#setup-controls {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
 }
 
 .connection-options {
@@ -414,7 +455,7 @@ main {
 .peer-cursor-chip {
   position: absolute;
   pointer-events: auto;
-  width: 8px;
+  width: 14px;
   opacity: 0.9;
   transition: opacity 0.35s ease, top 0.08s linear;
   cursor: default;
@@ -427,18 +468,18 @@ main {
 .peer-cursor-chip::before {
   content: "";
   position: absolute;
-  left: 3px;
+  left: 5px;
   top: 0;
   bottom: 0;
-  width: 2px;
-  border-radius: 1px;
+  width: 3px;
+  border-radius: 2px;
   background: var(--peer-color, #8b5cf6);
 }
 
 .peer-cursor-chip::after {
   content: attr(data-peer-name);
   position: absolute;
-  left: 10px;
+  left: 12px;
   top: -1px;
   font-size: 0.68rem;
   line-height: 1.2;
@@ -447,14 +488,14 @@ main {
   background: var(--peer-color, #8b5cf6);
   color: #ffffff;
   white-space: nowrap;
-  opacity: 0;
-  transform: translateY(-100%);
-  transition: opacity 0.12s ease;
+  opacity: 1;
+  transform: translateY(calc(-100% - 2px));
+  transition: opacity 0.12s ease, transform 0.12s ease;
   pointer-events: none;
 }
 
-.peer-cursor-chip:hover::after {
-  opacity: 1;
+.peer-cursor-chip.idle::after {
+  opacity: 0.75;
 }
 
 #preview-container {

@@ -7,7 +7,6 @@
   createRoomButton,
   joinForm,
   joinRoomKey,
-  displayNameInput,
   privateMode,
   udpMode,
   localHostInput,
@@ -83,22 +82,13 @@ const ACTIVE_ROOM_STATUS_KEY = "p2pmd-active-room";
 const LAST_ROOM_KEY = "p2pmd-last-room";
 const LAST_ROOM_STATE = "p2pmd-last-room-state";
 const DISPLAY_NAME_KEY = "p2pmd-display-name";
+const USER_COLOR_KEY = "p2pmd-user-color";
 const CLIENT_ID_KEY = "p2pmd-client-id";
 const DRAFT_DRIVE_NAME = "p2pmd-drafts";
 const MAX_ACTIVITY_ITEMS = 150;
 const PRESENCE_THROTTLE_MS = 220;
 const TYPING_IDLE_MS = 1200;
 const PEER_FALLBACK_NAME_LEN = 8;
-const PEER_COLORS = [
-  "#0EA5E9",
-  "#A855F7",
-  "#22C55E",
-  "#F97316",
-  "#EF4444",
-  "#14B8A6",
-  "#EAB308",
-  "#6366F1"
-];
 const saveDelay = 2000;
 let hyperSaveInFlight = false;
 let draftSaveInFlight = false;
@@ -110,6 +100,11 @@ let typingResetTimer = null;
 let lineAttributionPersistTimer = null;
 let isLocalTyping = false;
 let lastPresencePayload = "";
+const bootScreen = document.getElementById("boot-screen");
+const onboardingView = document.getElementById("onboarding");
+const onboardingNameInput = document.getElementById("onboarding-name");
+const onboardingSubmitButton = document.getElementById("onboard-submit");
+const setupControls = document.getElementById("setup-controls");
 
 const publishCSS = `
   @font-face {
@@ -291,18 +286,98 @@ function normalizeDisplayName(value) {
 }
 
 function getDisplayName() {
-  const fromInput = normalizeDisplayName(displayNameInput?.value || "");
-  if (fromInput) return fromInput;
   return normalizeDisplayName(safeLocalStorageGet(DISPLAY_NAME_KEY) || "");
 }
 
 function saveDisplayName(value) {
   const next = normalizeDisplayName(value);
-  if (displayNameInput && displayNameInput.value !== next) {
-    displayNameInput.value = next;
+  if (!next) {
+    safeLocalStorageRemove(DISPLAY_NAME_KEY);
+    return "";
   }
-  if (next) safeLocalStorageSet(DISPLAY_NAME_KEY, next);
-  else safeLocalStorageRemove(DISPLAY_NAME_KEY);
+  safeLocalStorageSet(DISPLAY_NAME_KEY, next);
+  getOrCreateLocalPeerColor();
+  return next;
+}
+
+function hasDisplayName() {
+  return !!getDisplayName();
+}
+
+function normalizeHexColor(value) {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  return /^#[0-9a-fA-F]{6}$/.test(trimmed) ? trimmed.toUpperCase() : "";
+}
+
+function hslToHex(h, s, l) {
+  const hue = ((Number(h) % 360) + 360) % 360;
+  const sat = Math.max(0, Math.min(100, Number(s))) / 100;
+  const lig = Math.max(0, Math.min(100, Number(l))) / 100;
+  const c = (1 - Math.abs(2 * lig - 1)) * sat;
+  const x = c * (1 - Math.abs((hue / 60) % 2 - 1));
+  const m = lig - c / 2;
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  if (hue < 60) [r, g, b] = [c, x, 0];
+  else if (hue < 120) [r, g, b] = [x, c, 0];
+  else if (hue < 180) [r, g, b] = [0, c, x];
+  else if (hue < 240) [r, g, b] = [0, x, c];
+  else if (hue < 300) [r, g, b] = [x, 0, c];
+  else [r, g, b] = [c, 0, x];
+  const toHex = (v) => Math.round((v + m) * 255).toString(16).padStart(2, "0").toUpperCase();
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+function createReadablePeerColor() {
+  let hue = Math.floor(Math.random() * 360);
+  try {
+    if (window.crypto?.getRandomValues) {
+      const bytes = new Uint8Array(1);
+      window.crypto.getRandomValues(bytes);
+      hue = bytes[0] / 255 * 360;
+    }
+  } catch {}
+  return hslToHex(hue, 72, 44);
+}
+
+function getOrCreateLocalPeerColor() {
+  const existing = normalizeHexColor(safeLocalStorageGet(USER_COLOR_KEY) || "");
+  if (existing) return existing;
+  const next = createReadablePeerColor();
+  safeLocalStorageSet(USER_COLOR_KEY, next);
+  return next;
+}
+
+function getLocalPeerColor() {
+  return normalizeHexColor(safeLocalStorageGet(USER_COLOR_KEY) || "") || getOrCreateLocalPeerColor();
+}
+
+function showSetupBootScreen() {
+  if (bootScreen) bootScreen.hidden = false;
+}
+
+function hideSetupBootScreen() {
+  if (bootScreen) bootScreen.hidden = true;
+}
+
+function refreshSetupOnboardingState() {
+  const needsProfile = !hasDisplayName();
+  if (onboardingView) onboardingView.hidden = !needsProfile;
+  if (setupControls) setupControls.hidden = needsProfile;
+  if (onboardingNameInput) {
+    onboardingNameInput.value = needsProfile ? "" : getDisplayName();
+  }
+  return !needsProfile;
+}
+
+function ensureProfileBeforeRoomAction() {
+  if (hasDisplayName()) return true;
+  setView("setup");
+  refreshSetupOnboardingState();
+  if (onboardingNameInput) onboardingNameInput.focus();
+  return false;
 }
 
 function truncateIdentifier(value, size = 10) {
@@ -333,10 +408,7 @@ const initialProtocol = paramProtocol || storedProtocol || "hyper";
 if (protocolSelect) {
   protocolSelect.value = initialProtocol;
 }
-if (displayNameInput) {
-  const storedName = normalizeDisplayName(safeLocalStorageGet(DISPLAY_NAME_KEY) || "");
-  if (storedName) displayNameInput.value = storedName;
-}
+getOrCreateLocalPeerColor();
 
 function hasMeaningfulContent(value) {
   return typeof value === "string" && value.trim().length > 0;
@@ -783,14 +855,7 @@ let _localLineAttributions = {};
 let _roomLineAttributions = {};
 
 function _localFallbackColor() {
-  if (!localClientId) return "#888";
-  const source = String(localClientId || "peer");
-  let hash = 0;
-  for (let i = 0; i < source.length; i++) {
-    hash = ((hash << 5) - hash) + source.charCodeAt(i);
-    hash |= 0;
-  }
-  return PEER_COLORS[Math.abs(hash) % PEER_COLORS.length];
+  return getLocalPeerColor();
 }
 
 function mergeLineAttributionsIntoRoom(value) {
@@ -819,6 +884,34 @@ function mergeLineAttributionsIntoRoom(value) {
 
 function refreshLocalLineAttribution() {
   updateLineAuthors(_roomLineAttributions);
+}
+
+function syncLocalLineAttributionNames() {
+  const currentName = getDisplayName() || truncateIdentifier(localClientId, PEER_FALLBACK_NAME_LEN);
+  if (!currentName) return;
+  let changed = false;
+  for (const lineKey of Object.keys(_localLineAttributions || {})) {
+    const localInfo = _localLineAttributions[lineKey];
+    if (localInfo && localInfo.name !== currentName) {
+      _localLineAttributions[lineKey] = {
+        ...localInfo,
+        name: currentName
+      };
+      changed = true;
+    }
+    const roomInfo = _roomLineAttributions[lineKey];
+    if (roomInfo && roomInfo.name !== currentName) {
+      _roomLineAttributions[lineKey] = {
+        ...roomInfo,
+        name: currentName
+      };
+      changed = true;
+    }
+  }
+  if (changed) {
+    updateLineAuthors(_roomLineAttributions);
+    scheduleRoomLineAttributionsPersist();
+  }
 }
 
 
@@ -870,12 +963,14 @@ function getCurrentCursorPayload() {
 }
 
 function buildPresencePayload() {
+  syncLocalLineAttributionNames();
   const cursor = getCurrentCursorPayload();
   const lineAttributions = getLineAttributionsPayload();
   return {
     clientId: localClientId,
     role: currentRole || "client",
     name: getDisplayName(),
+    color: getLocalPeerColor(),
     ...cursor,
     isTyping: isLocalTyping,
     lineAttributions
@@ -883,6 +978,7 @@ function buildPresencePayload() {
 }
 
 function getLineAttributionsPayload() {
+  syncLocalLineAttributionNames();
   // Only send lines the local peer actually edited.
   if (!_localLineAttributions || Object.keys(_localLineAttributions).length === 0) return undefined;
   return normalizeLineAttributions(_localLineAttributions) || undefined;
@@ -935,6 +1031,7 @@ async function flushYjsUpdate() {
         clientId: localClientId,
         role: currentRole || "client",
         name: getDisplayName(),
+        color: getLocalPeerColor(),
         ...getCurrentCursorPayload(),
         lineAttributions: outgoingLineAttributions
       })
@@ -1037,6 +1134,7 @@ async function postContentNow() {
         clientId: localClientId,
         role: currentRole || "client",
         name: getDisplayName(),
+        color: getLocalPeerColor(),
         ...getCurrentCursorPayload(),
         lineAttributions: outgoingLineAttributions
       })
@@ -1260,15 +1358,30 @@ function setPeerList(peerList) {
   for (const peer of currentPeerList) {
     if (peer?.clientId === localClientId && peer.lineAttributions && typeof peer.lineAttributions === "object") {
       // Do not let self peerlist payload overwrite already-attributed room lines.
+      // But do allow safe name refresh on existing self-owned lines.
       const selfSafeAttributions = {};
+      let renamedExisting = false;
       for (const [line, info] of Object.entries(peer.lineAttributions)) {
         const lineNum = Number(line);
         if (!Number.isFinite(lineNum) || lineNum < 1) continue;
         const lineKey = String(Math.floor(lineNum));
-        if (_roomLineAttributions[lineKey]) continue;
+        const existing = _roomLineAttributions[lineKey];
+        if (existing) {
+          const incomingName = typeof info?.name === "string" ? info.name.trim() : "";
+          const incomingColor = typeof info?.color === "string" ? info.color : "";
+          if (incomingName && incomingColor && existing.color === incomingColor && existing.name !== incomingName) {
+            _roomLineAttributions[lineKey] = {
+              name: incomingName,
+              color: existing.color
+            };
+            renamedExisting = true;
+          }
+          continue;
+        }
         selfSafeAttributions[lineKey] = info;
       }
       mergeLineAttributionsIntoRoom(selfSafeAttributions);
+      if (renamedExisting) scheduleRoomLineAttributionsPersist();
       continue;
     }
     mergeLineAttributionsIntoRoom(peer.lineAttributions);
@@ -1372,6 +1485,7 @@ function connectSseChannel(localUrl, role) {
     const sseParams = new URLSearchParams();
     sseParams.set("role", normalizePeerRole(role || "client"));
     sseParams.set("clientId", localClientId);
+    sseParams.set("color", getLocalPeerColor());
     const displayName = getDisplayName();
     if (displayName) sseParams.set("name", displayName);
     eventSource = new EventSource(`${localUrl}/events?${sseParams.toString()}`);
@@ -3086,6 +3200,9 @@ function setView(view) {
   history.replaceState(null, "", nextUrl);
   if (setupPage) setupPage.classList.toggle("hidden", view !== "setup");
   if (editorPage) editorPage.classList.toggle("hidden", view === "setup");
+  if (view === "setup") {
+    refreshSetupOnboardingState();
+  }
 }
 
 function resetNetworkSettingsOnCreate() {
@@ -3096,12 +3213,12 @@ function resetNetworkSettingsOnCreate() {
 }
 
 createRoomButton.addEventListener("click", () => {
-  saveDisplayName(displayNameInput?.value || "");
+  if (!ensureProfileBeforeRoomAction()) return;
   createRoom();
 });
 joinForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  saveDisplayName(displayNameInput?.value || "");
+  if (!ensureProfileBeforeRoomAction()) return;
   const key = normalizeRoomKey(joinRoomKey.value);
   if (!key) {
     alert("Please enter a valid hs:// key.");
@@ -3119,14 +3236,31 @@ joinForm.addEventListener("submit", (event) => {
 });
 disconnectButton.addEventListener("click", disconnectRoom);
 
-if (displayNameInput) {
-  displayNameInput.addEventListener("change", () => {
-    saveDisplayName(displayNameInput.value);
-  });
-  displayNameInput.addEventListener("blur", () => {
-    saveDisplayName(displayNameInput.value);
+if (onboardingSubmitButton) {
+  onboardingSubmitButton.addEventListener("click", () => {
+    const nextName = saveDisplayName(onboardingNameInput?.value || "");
+    if (!nextName) {
+      alert("Please enter your username to continue.");
+      if (onboardingNameInput) onboardingNameInput.focus();
+      return;
+    }
+    refreshSetupOnboardingState();
   });
 }
+
+if (onboardingNameInput) {
+  onboardingNameInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    onboardingSubmitButton?.click();
+  });
+}
+
+window.addEventListener("storage", (event) => {
+  if (event?.key !== DISPLAY_NAME_KEY) return;
+  syncLocalLineAttributionNames();
+  schedulePresenceSend(true);
+});
 
 if (copyRoomKey) {
   copyRoomKey.style.cursor = "pointer";
@@ -3439,50 +3573,64 @@ async function loadRecentRooms() {
 }
 
 (async () => {
-  const viewParam = getViewParam();
-  const stateFromUrl = readRoomStateFromUrl();
-  
-  if (viewParam === "setup" || !stateFromUrl?.key) {
-    await loadRecentRooms();
-  }
-  
-  const state = stateFromUrl;
-  if (viewParam === "setup") {
-    setView("setup");
-    return;
-  }
-  if (!state?.key) {
-    setView("setup");
-    return;
-  }
-  if (!validateRoomKey(state.key)) {
-    setView("setup");
-    return;
-  }
-  
-  // If we just created this room, don't rejoin - server is already running
-  if (justCreatedRoom && currentRoomKey === state.key) {
-    setView("editor");
-    return;
-  }
-  
-  // If we're already connected to this room, don't rejoin - just restore the UI state
-  if (currentRoomKey === state.key && currentRoomUrl) {
+  showSetupBootScreen();
+  refreshSetupOnboardingState();
+  try {
+    const viewParam = getViewParam();
+    const stateFromUrl = readRoomStateFromUrl();
+    
+    if (viewParam === "setup" || !stateFromUrl?.key || !hasDisplayName()) {
+      await loadRecentRooms();
+    }
+    
+    const state = stateFromUrl;
+    if (!hasDisplayName()) {
+      setView("setup");
+      refreshSetupOnboardingState();
+      return;
+    }
+    if (viewParam === "setup") {
+      setView("setup");
+      refreshSetupOnboardingState();
+      return;
+    }
+    if (!state?.key) {
+      setView("setup");
+      refreshSetupOnboardingState();
+      return;
+    }
+    if (!validateRoomKey(state.key)) {
+      setView("setup");
+      refreshSetupOnboardingState();
+      return;
+    }
+    
+    // If we just created this room, don't rejoin - server is already running
+    if (justCreatedRoom && currentRoomKey === state.key) {
+      setView("editor");
+      return;
+    }
+    
+    // If we're already connected to this room, don't rejoin - just restore the UI state
+    if (currentRoomKey === state.key && currentRoomUrl) {
+      setView("editor");
+      joinRoomKey.value = state.key;
+      if (state.host) localHostInput.value = state.host;
+      if (state.port) localPortInput.value = state.port;
+      if (typeof state.secure === "boolean") privateMode.checked = state.secure;
+      if (typeof state.udp === "boolean") udpMode.checked = state.udp;
+      updateRoomStatus({ key: state.key, localUrl: state.localUrl });
+      return;
+    }
+    
     setView("editor");
     joinRoomKey.value = state.key;
     if (state.host) localHostInput.value = state.host;
     if (state.port) localPortInput.value = state.port;
     if (typeof state.secure === "boolean") privateMode.checked = state.secure;
     if (typeof state.udp === "boolean") udpMode.checked = state.udp;
-    updateRoomStatus({ key: state.key, localUrl: state.localUrl });
-    return;
+    await joinRoom(state.key, state);
+  } finally {
+    hideSetupBootScreen();
   }
-  
-  setView("editor");
-  joinRoomKey.value = state.key;
-  if (state.host) localHostInput.value = state.host;
-  if (state.port) localPortInput.value = state.port;
-  if (typeof state.secure === "boolean") privateMode.checked = state.secure;
-  if (typeof state.udp === "boolean") udpMode.checked = state.udp;
-  await joinRoom(state.key, state);
 })();

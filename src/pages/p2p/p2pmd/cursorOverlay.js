@@ -12,16 +12,6 @@ let _peers = [];
 let _resizeObserver = null;
 let _lineAuthors = {};
 const PEER_NAME_TRUNCATE_LEN = 8;
-const PEER_COLORS = [
-  "#0EA5E9",
-  "#A855F7",
-  "#22C55E",
-  "#F97316",
-  "#EF4444",
-  "#14B8A6",
-  "#EAB308",
-  "#6366F1"
-];
 
 function _onScroll() { _scheduleUpdate(); }
 function _onInput() { _scheduleUpdate(); }
@@ -233,7 +223,8 @@ function _hsl(id) {
     hash = ((hash << 5) - hash) + source.charCodeAt(i);
     hash |= 0;
   }
-  return PEER_COLORS[Math.abs(hash) % PEER_COLORS.length];
+  const hue = Math.abs(hash) % 360;
+  return `hsl(${hue} 72% 44%)`;
 }
 
 function _el(tag, id, parent) {

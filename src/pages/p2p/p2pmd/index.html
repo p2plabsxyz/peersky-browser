@@ -13,47 +13,55 @@
       <div id="loadingSpinner">
         <div class="emoji-loader">↻</div>
       </div>
+      <div id="boot-screen" class="boot-screen" aria-live="polite">Loading...</div>
 
       <section id="setup-page" class="page">
         <div id="room-panel">
           <div id="setup">
-            <input
-              id="display-name"
-              type="text"
-              placeholder="Your name (optional)"
-              maxlength="32"
-            />
-            <button id="create-room" type="button">Create Room</button>
-            <div class="connection-options"> 
-              <label class="option">
-                <input id="privateMode" type="checkbox" />
-                <span>Private</span>
-              </label>
-              <label class="option">
-                <input id="udpMode" type="checkbox" />
-                <span>UDP</span>
-              </label>
-              <input id="localHost" type="text" placeholder="Local host (127.0.0.1)" />
-              <input id="localPort" type="number" placeholder="Local port (8989)" />
+            <div id="onboarding" hidden>
+              <p>Set your username to continue.</p>
+              <input
+                id="onboarding-name"
+                type="text"
+                placeholder="Your username"
+                maxlength="32"
+              />
+              <button id="onboard-submit" type="button">Save Username</button>
             </div>
 
-            <div class="divider">- or -</div>
-            <form id="join-form">
-              <input
-                id="join-room-key"
-                type="text"
-                placeholder="Enter hs:// key"
-                required
-              />
-              <button id="join-room" type="submit">Join Room</button>
-            </form>
-            
-            <div id="room-history">
-              <div id="room-history-title">Recent Rooms</div>
-              <div id="room-history-list"></div>
-              <span id="room-history-footer">
-                View p2pmd-draft archives in hyperdrive, <a href="peersky://settings/archive" target="_blank">Settings -> Archive</a> for more details
-              </span>
+            <div id="setup-controls">
+              <button id="create-room" type="button">Create Room</button>
+              <div class="connection-options"> 
+                <label class="option">
+                  <input id="privateMode" type="checkbox" />
+                  <span>Private</span>
+                </label>
+                <label class="option">
+                  <input id="udpMode" type="checkbox" />
+                  <span>UDP</span>
+                </label>
+                <input id="localHost" type="text" placeholder="Local host (127.0.0.1)" />
+                <input id="localPort" type="number" placeholder="Local port (8989)" />
+              </div>
+
+              <div class="divider">- or -</div>
+              <form id="join-form">
+                <input
+                  id="join-room-key"
+                  type="text"
+                  placeholder="Enter hs:// key"
+                  required
+                />
+                <button id="join-room" type="submit">Join Room</button>
+              </form>
+              
+              <div id="room-history">
+                <div id="room-history-title">Recent Rooms</div>
+                <div id="room-history-list"></div>
+                <span id="room-history-footer">
+                  View p2pmd-draft archives in hyperdrive, <a href="peersky://settings/archive" target="_blank">Settings -> Archive</a> for more details
+                </span>
+              </div>
             </div>
           </div>
         </div>

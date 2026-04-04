@@ -10,7 +10,6 @@ export const fullPreviewButton = $("#fullPreviewButton");
 export const createRoomButton = $("#create-room");
 export const joinForm = $("#join-form");
 export const joinRoomKey = $("#join-room-key");
-export const displayNameInput = $("#display-name");
 export const privateMode = $("#privateMode");
 export const udpMode = $("#udpMode");
 export const localHostInput = $("#localHost");

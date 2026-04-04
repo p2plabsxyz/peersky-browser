@@ -16,12 +16,15 @@
         box-sizing: border-box;
       }
 
+      html,
       body {
+        height: 100%;
         margin: 0;
         padding: 12px;
         background: var(--browser-theme-background);
         color: var(--browser-theme-text-color);
         font-family: var(--browser-theme-font-family);
+        overflow-y: auto;
       }
 
       #app {
@@ -54,6 +57,32 @@
         flex-wrap: wrap;
         gap: 12px;
         font-size: 0.92rem;
+      }
+
+      .profile-editor {
+        margin-top: 8px;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .profile-editor input {
+        border: 1px solid var(--panel-border);
+        border-radius: 8px;
+        background: var(--peersky-background-url-input, #1f2937);
+        color: var(--browser-theme-text-color);
+        padding: 6px 10px;
+        min-width: 220px;
+      }
+
+      .profile-editor button {
+        border: 1px solid var(--panel-border);
+        border-radius: 8px;
+        background: var(--peersky-nav-background, #111827);
+        color: var(--browser-theme-text-color);
+        padding: 6px 10px;
+        cursor: pointer;
       }
 
       .role-badge {
@@ -129,7 +158,7 @@
         display: flex;
         flex-direction: column;
         gap: 6px;
-        max-height: 320px;
+        max-height: 42vh;
         overflow: auto;
       }
 
@@ -157,6 +186,12 @@
           <strong>Local URL:</strong>
           <a id="localUrl" target="_blank" rel="noopener noreferrer"></a>
         </div>
+        <div class="profile-editor">
+          <label for="displayNameEditor"><strong>Username:</strong></label>
+          <input id="displayNameEditor" type="text" maxlength="32" placeholder="Enter username" />
+          <button id="saveDisplayName" type="button">Update</button>
+          <span id="profileHint" class="muted"></span>
+        </div>
         <div id="stats" class="stats"></div>
       </section>
 
@@ -171,7 +206,7 @@
       </section>
 
       <section class="panel">
-        <h3>Recent Activity</h3>
+        <h3>Edit History</h3>
         <ul id="activityList" class="activity-list"></ul>
       </section>
     </main>
