@@ -945,15 +945,15 @@ async function openRoom(roomKey) {
         const _r = S.rooms[roomKey];
         const headerName = $("chat-room-name")?.textContent || "";
         const isPlaceholder = !_r?.name || _r.name === roomKey.slice(0, 8) + "...";
-        
-        // If the UI is currently showing the hash, try to fetch the latest from the backend JSON
-        if (isPlaceholder || headerName === roomKey.slice(0, 8) + "...") {
+        const isMissingInfo = !_r?.bio && !_r?.avatar;
+
+        if (isPlaceholder || isMissingInfo || headerName === roomKey.slice(0, 8) + "...") {
           await chat.requestMeta(roomKey).catch(() => {});
           const { rooms } = await chat.getRooms();
           const fresh = rooms.find(r => r.roomKey === roomKey);
-          if (fresh?.name && fresh.name !== roomKey.slice(0, 8) + "...") {
+          if (fresh) {
             Object.assign(S.rooms[roomKey], fresh);
-            $("chat-room-name").textContent = fresh.name;
+            $("chat-room-name").textContent = fresh.name || roomKey.slice(0, 8) + "...";
             $("chat-room-avatar").src = avatar(fresh.name, 32, fresh.avatar);
             renderRoomList();
             applyDMComposerGate(roomKey);
@@ -1420,48 +1420,55 @@ function connectGlobalSSE() {
     touch();
     try {
       const data = JSON.parse(ev.data);
-      if (!S.rooms[data.roomKey]) {
-        S.rooms[data.roomKey] = {
-          roomKey: data.roomKey, members: {},
-          name: data.name || data.roomKey.slice(0, 8) + "...",
-          bio: data.bio ?? "",
-          avatar: data.avatar ?? null,
-          isDM: !!data.isDM,
-          dmWith: data.dmWith ?? null,
-          pendingAcceptance: !!data.pendingAcceptance,
-          isPinned: !!data.isPinned,
-          isMuted: !!data.isMuted,
-          unreadCount: data.unreadCount ?? 0, unreadMentions: data.unreadMentions ?? 0,
-        };
+      let room = S.rooms[data.roomKey];
+
+      if (!room) {
+        S.rooms[data.roomKey] = { roomKey: data.roomKey, members: {} };
+        room = S.rooms[data.roomKey];
       }
-      const room = S.rooms[data.roomKey];
-      if (data.name) room.name = data.name;
-      if (data.bio !== undefined) room.bio = data.bio;
-      if (data.avatar !== undefined) room.avatar = data.avatar;
-      if (data.isDM !== undefined) room.isDM = data.isDM;
-      if (data.dmWith !== undefined) room.dmWith = data.dmWith;
-      if (data.pendingAcceptance !== undefined) room.pendingAcceptance = !!data.pendingAcceptance;
-      if (data.isPinned !== undefined) room.isPinned = !!data.isPinned;
-      if (data.isMuted !== undefined) room.isMuted = !!data.isMuted;
-      if (data.createdBy) room.createdBy = data.createdBy;
-      if (data.createdByName) room.createdByName = data.createdByName;
-      if (data.lastMessage) room.lastMessage = data.lastMessage;
-      if (data.unreadCount !== undefined && data.roomKey !== S.activeRoom) room.unreadCount = data.unreadCount;
-      if (data.unreadMentions !== undefined && data.roomKey !== S.activeRoom) room.unreadMentions = data.unreadMentions;
-      renderRoomList();
+
+      // Preserve unread counts if this is the active room
+      const prevUnread = room.unreadCount;
+      const prevMentions = room.unreadMentions;
+
+      // Merge ALL incoming fields cleanly
+      Object.assign(room, data);
+
+      // Don't overwrite unread counts for the active room (they're managed locally)
       if (data.roomKey === S.activeRoom) {
-      $("chat-room-name").textContent = room.name || data.roomKey.slice(0, 8) + "...";
-      $("chat-room-avatar").src = avatar(room.name, 32, room.avatar);
-      
-      // Update the Info Modal if it happens to be open
-      if ($("room-info-modal").classList.contains("open")) {
-        $("ri-name").textContent = room.name;
-        $("ri-bio").textContent = room.bio || "No description";
-        $("ri-creator").textContent = room.createdByName || room.createdBy || "Unknown";
-        $("ri-avatar").src = avatar(room.name, 64, room.avatar);
+        room.unreadCount = prevUnread;
+        room.unreadMentions = prevMentions;
       }
-        // This ensures the "Wait for DM" message disappears if it was a DM
-        applyDMComposerGate(data.roomKey); 
+
+      renderRoomList();
+
+      if (data.roomKey === S.activeRoom) {
+        const nameEl = $("chat-room-name");
+        const avEl = $("chat-room-avatar");
+        if (nameEl) nameEl.textContent = room.name || data.roomKey.slice(0, 8) + "...";
+        if (avEl) avEl.src = avatar(room.name, 32, room.avatar);
+
+        // Live-update the Room Info Modal if it's open
+        if ($("room-info-modal")?.classList.contains("open")) {
+          $("ri-name").textContent = room.name;
+          $("ri-bio").textContent = room.bio || "No description";
+          $("ri-avatar").src = avatar(room.name, 64, room.avatar);
+          $("ri-creator").textContent = room.createdByName || room.createdBy || "Unknown";
+          const linkEl = $("ri-link");
+          const linkRow = $("ri-link-row");
+          if (linkEl && linkRow) {
+            const safeLink = /^https?:\/\//i.test(room.link || "") ? room.link : "";
+            if (!room.isDM && safeLink) {
+              linkEl.href = safeLink;
+              linkEl.textContent = safeLink;
+              linkRow.style.display = "";
+            } else {
+              linkRow.style.display = "none";
+            }
+          }
+        }
+
+        applyDMComposerGate(data.roomKey);
       }
     } catch {}
   });

@@ -691,26 +691,41 @@ export function initChat(sdk, options = {}) {
             if (room.isDM) { emitRoomUpdate(msg.roomKey); continue; }
 
             const incomingName = clamp(msg.name, MAX_NAME_LEN);
-            const isIncomingPlaceholder = !incomingName || incomingName === msg.roomKey?.slice(0, 8) + "...";
-            
+            const isIncomingPlaceholder = !incomingName || incomingName.endsWith("...");
+
             let updated = false;
 
-            // Only accept the incoming name if it's NOT a placeholder, AND it differs
-            if (!isIncomingPlaceholder && incomingName !== room.name) {
+            // 1. Update Name if we have a placeholder and they have a real name
+            const currentIsPlaceholder = !room.name || room.name.endsWith("...");
+            if (currentIsPlaceholder && !isIncomingPlaceholder) {
+              room.name = incomingName;
+              updated = true;
+            } else if (!isIncomingPlaceholder && incomingName !== room.name) {
               room.name = incomingName;
               updated = true;
             }
 
-            if (msg.bio !== undefined && msg.bio !== room.bio) { room.bio = clamp(msg.bio, MAX_BIO_LEN); updated = true; }
-            if (msg.link !== undefined && msg.link !== room.link) { room.link = clamp(msg.link, MAX_LINK_LEN) || ""; updated = true; }
-            if (msg.avatar !== undefined && msg.avatar !== room.avatar) { room.avatar = sanitizeAvatar(msg.avatar); updated = true; }
+            // 2. Aggressively update Bio, Link, and Avatar if our current ones are empty
+            if (msg.bio && (!room.bio || room.bio === "")) {
+              room.bio = clamp(msg.bio, MAX_BIO_LEN);
+              updated = true;
+            }
+            if (msg.link && (!room.link || room.link === "")) {
+              room.link = clamp(msg.link, MAX_LINK_LEN);
+              updated = true;
+            }
+            if (msg.avatar && !room.avatar) {
+              room.avatar = sanitizeAvatar(msg.avatar);
+              if (room.avatar) updated = true;
+            }
 
-            if (msg.createdBy && msg.createdBy !== room.createdBy) { room.createdBy = clamp(msg.createdBy, MAX_SENDER_LEN); updated = true; }
-            if (msg.createdByName && msg.createdByName !== room.createdByName) { room.createdByName = clamp(msg.createdByName, 50); updated = true; }
+            // 3. Sync creator info if missing
+            if (msg.createdBy && !room.createdBy) { room.createdBy = clamp(msg.createdBy, MAX_SENDER_LEN); updated = true; }
+            if (msg.createdByName && !room.createdByName) { room.createdByName = clamp(msg.createdByName, 50); updated = true; }
 
             if (updated) {
               debouncePersist();
-              emitRoomUpdate(msg.roomKey); // Push to frontend
+              emitRoomUpdate(msg.roomKey);
             }
             continue;
           }
