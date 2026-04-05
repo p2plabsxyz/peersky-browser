@@ -38,28 +38,6 @@ main {
   display: none;
 }
 
-#boot-screen {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--browser-theme-background);
-  color: var(--browser-theme-text-color);
-  z-index: 50;
-  font-size: 0.95rem;
-  letter-spacing: 0.02em;
-}
-
-#boot-screen[hidden] {
-  display: none !important;
-}
-
-.boot-screen-text {
-  color: var(--peersky-nav-border-color, #888);
-  font-size: 0.9rem;
-}
-
 #setup-page,
 #onboarding-page {
   justify-content: center;

@@ -100,7 +100,6 @@ let typingResetTimer = null;
 let lineAttributionPersistTimer = null;
 let isLocalTyping = false;
 let lastPresencePayload = "";
-const bootScreen = document.getElementById("boot-screen");
 const onboardingPage = document.getElementById("onboarding-page");
 const onboardingNameInput = document.getElementById("onboarding-name");
 const onboardingSubmitButton = document.getElementById("onboard-submit");
@@ -354,11 +353,11 @@ function getLocalPeerColor() {
 }
 
 function showSetupBootScreen() {
-  if (bootScreen) bootScreen.hidden = false;
+  showSpinner(true);
 }
 
 function hideSetupBootScreen() {
-  if (bootScreen) bootScreen.hidden = true;
+  showSpinner(false);
 }
 
 function syncOnboardingInput() {
@@ -2330,8 +2329,8 @@ function buildSlidesHtml(markdown) {
   <div id="slides-footer">
     Made by <a href="https://github.com/p2plabsxyz/p2pmd" target="_blank" rel="noopener noreferrer">p2pmd</a> in <a href="https://peersky.p2plabs.xyz/" target="_blank" rel="noopener noreferrer">PeerSky</a>
   </div>
-  <button id="prev-arrow" class="nav-arrow" aria-label="Previous slide">â€¹</button>
-  <button id="next-arrow" class="nav-arrow" aria-label="Next slide">â€º</button>
+  <button id="prev-arrow" class="nav-arrow" aria-label="Previous slide">‹</button>
+  <button id="next-arrow" class="nav-arrow" aria-label="Next slide">›</button>
   <div id="progress-bar"></div>
   <div id="slide-counter"></div>
   <script>
@@ -2512,8 +2511,8 @@ function renderInlineSlides() {
   slidesPreview.innerHTML = `
     <div class="slides-content">
       ${slidesHtml}
-      <button id="slides-prev" class="slides-nav" aria-label="Previous slide">â€¹</button>
-      <button id="slides-next" class="slides-nav" aria-label="Next slide">â€º</button>
+      <button id="slides-prev" class="slides-nav" aria-label="Previous slide">‹</button>
+      <button id="slides-next" class="slides-nav" aria-label="Next slide">›</button>
       <div id="slides-progress"></div>
       <div id="slides-counter"></div>
     </div>
