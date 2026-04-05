@@ -348,18 +348,26 @@ function shareProfile(conn) {
 function sendRoomMeta(conn, rk) {
   const room = savedData.rooms[rk];
   if (!room || !roomFeeds[rk]) return;
-  const hasName = room.name && room.name !== rk.slice(0, 8) + "...";
-  if (!hasName && !room.isHost) return;
+
+  // Don't send if it's just a placeholder and we aren't the host
+  const hasRealName = room.name && room.name !== rk.slice(0, 8) + "...";
+  if (!hasRealName && !room.isHost) return;
+
   try {
     conn.write(JSON.stringify({
-      type: "room-meta", roomKey: rk,
-      name: room.name || "", bio: room.bio || "", link: room.link || "",
+      type: "room-meta",
+      roomKey: rk,
+      name: room.name || "",
+      bio: room.bio || "",
+      link: room.link || "",
       avatar: room.avatar || null,
+      // Host fallbacks for creator fields
       createdBy: room.createdBy || (room.isHost ? localId : ""),
       createdByName: room.createdByName || (room.isHost ? (savedData.profile?.username || localId) : ""),
     }) + "\n");
   } catch {}
 }
+
 
 function shareRoomMeta(conn) {
   for (const rk of Object.keys(savedData.rooms)) {
@@ -622,7 +630,8 @@ export function initChat(sdk, options = {}) {
               appendToFeed(msg.roomKey, { id: sysId, type: "system", text: `${joinName} joined`, ts: msg.ts || Date.now() }).catch(() => {});
             }
 
-            sendRoomMeta(conn, msg.roomKey);
+            // Explicitly send the meta back to the peer who just joined
+            sendRoomMeta(conn, msg.roomKey); 
             syncRoomHistoryTo(conn, msg.roomKey).then(() => {
               if (!conn.destroyed) {
                 try { conn.write(JSON.stringify({ type: "sync-done" }) + "\n"); } catch {}
@@ -688,22 +697,41 @@ export function initChat(sdk, options = {}) {
           if (msg.type === "room-meta") {
             const room = savedData.rooms[msg.roomKey];
             if (!room) continue;
-            if (room.isDM) {
-              emitRoomUpdate(msg.roomKey);
-              continue;
-            }
+            if (room.isDM) { emitRoomUpdate(msg.roomKey); continue; }
+
             const incomingName = clamp(msg.name, MAX_NAME_LEN);
             const currentIsPlaceholder = !room.name || room.name === msg.roomKey?.slice(0, 8) + "...";
-            if (currentIsPlaceholder || (incomingName && incomingName !== room.name)) {
-              if (incomingName) room.name = incomingName;
-              if (msg.bio) room.bio = clamp(msg.bio, MAX_BIO_LEN);
-              if (msg.link !== undefined) room.link = clamp(msg.link, MAX_LINK_LEN) || "";
-              if (msg.avatar !== undefined && !room.avatar) room.avatar = sanitizeAvatar(msg.avatar);
-              if (msg.createdBy && !room.createdBy) room.createdBy = clamp(msg.createdBy, MAX_SENDER_LEN);
-              if (msg.createdByName && !room.createdByName) room.createdByName = clamp(msg.createdByName, 50);
-              debouncePersist();
+            const incomingIsPlaceholder = !incomingName || incomingName === msg.roomKey?.slice(0, 8) + "...";
+
+            let updated = false;
+
+            // Only accept name if ours is a placeholder AND incoming is real
+            if (currentIsPlaceholder && !incomingIsPlaceholder) {
+              room.name = incomingName;
+              updated = true;
             }
-            emitRoomUpdate(msg.roomKey);
+
+            // Only fill bio/link/avatar/creator if currently missing — prevents spoofing
+            if (msg.bio && !room.bio) { room.bio = clamp(msg.bio, MAX_BIO_LEN); updated = true; }
+            if (msg.link && !room.link) { room.link = clamp(msg.link, MAX_LINK_LEN) || ""; updated = true; }
+            if (msg.avatar && !room.avatar) {
+              room.avatar = sanitizeAvatar(msg.avatar);
+              if (room.avatar) updated = true;
+            }
+            if (msg.createdBy && !room.createdBy) { room.createdBy = clamp(msg.createdBy, MAX_SENDER_LEN); updated = true; }
+            if (msg.createdByName && !room.createdByName) { room.createdByName = clamp(msg.createdByName, 50); updated = true; }
+
+            if (updated) {
+              debouncePersist();
+              emitRoomUpdate(msg.roomKey);
+            }
+            continue;
+          }
+
+          if (msg.type === "request-room-meta") {
+            if (msg.roomKey && savedData.rooms[msg.roomKey]) {
+              sendRoomMeta(conn, msg.roomKey);
+            }
             continue;
           }
 
@@ -732,14 +760,7 @@ export function initChat(sdk, options = {}) {
             const room = savedData.rooms[msg.roomKey];
             if (!room.members) room.members = {};
             const incoming = msg.members || {};
-            for (const [peerId, m] of Object.entries(room.members)) {
-              if (peerId === localId) continue;
-              if (!incoming[peerId]) {
-                const username = m?.username || peerId;
-                delete room.members[peerId];
-                broadcastGlobal("member-leave", { roomKey: msg.roomKey, peerId, username });
-              }
-            }
+            // Only merge new member profiles, never blindly delete based on incomplete lists
             for (const [peerId, m] of Object.entries(incoming)) {
               if (!room.members[peerId]) room.members[peerId] = m;
             }
@@ -1181,6 +1202,21 @@ export async function handleChatRequest(req, sdk) {
         if (activeRoom) {
           const room = savedData.rooms[activeRoom];
           if (room) { room.unreadCount = 0; room.unreadMentions = 0; persistData(); }
+        }
+        return respond(200, { ok: true });
+      }
+
+      if (action === "request-meta") {
+        if (!roomKey || !isValidRoomKey(roomKey)) return respond(400, { error: "Invalid room key" });
+
+        // Ensure the room exists locally before broadcasting (prevents spam amplification)
+        if (!savedData.rooms[roomKey]) return respond(403, { error: "Not a member of this room" });
+
+        const requestMsg = JSON.stringify({
+          type: "request-room-meta", roomKey
+        }) + "\n";
+        for (const p of peers) {
+          if (!p.conn.destroyed) { try { p.conn.write(requestMsg); } catch {} }
         }
         return respond(200, { ok: true });
       }

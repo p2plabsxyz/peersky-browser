@@ -945,12 +945,15 @@ async function openRoom(roomKey) {
         const _r = S.rooms[roomKey];
         const headerName = $("chat-room-name")?.textContent || "";
         const isPlaceholder = !_r?.name || _r.name === roomKey.slice(0, 8) + "...";
-        if (isPlaceholder || headerName === roomKey.slice(0, 8) + "...") {
+        const isMissingInfo = !_r?.bio && !_r?.avatar;
+
+        if (isPlaceholder || isMissingInfo || headerName === roomKey.slice(0, 8) + "...") {
+          await chat.requestMeta(roomKey).catch(() => {});
           const { rooms } = await chat.getRooms();
           const fresh = rooms.find(r => r.roomKey === roomKey);
-          if (fresh?.name && fresh.name !== roomKey.slice(0, 8) + "...") {
+          if (fresh) {
             Object.assign(S.rooms[roomKey], fresh);
-            $("chat-room-name").textContent = fresh.name;
+            $("chat-room-name").textContent = fresh.name || roomKey.slice(0, 8) + "...";
             $("chat-room-avatar").src = avatar(fresh.name, 32, fresh.avatar);
             renderRoomList();
             applyDMComposerGate(roomKey);
@@ -968,7 +971,7 @@ async function openRoom(roomKey) {
           renderMessages(roomKey, false);
         }
       } catch {}
-    }, 3000);
+    }, 2000); // Reduced from 3000 to 2000 for faster recovery
   } catch (err) {
     console.error("History load error:", err);
     S.messages[roomKey] = extractReactions(roomKey, mergeWithHistory(S.messages[roomKey], []));
@@ -1417,38 +1420,53 @@ function connectGlobalSSE() {
     touch();
     try {
       const data = JSON.parse(ev.data);
-      if (!S.rooms[data.roomKey]) {
-        S.rooms[data.roomKey] = {
-          roomKey: data.roomKey, members: {},
-          name: data.name || data.roomKey.slice(0, 8) + "...",
-          bio: data.bio ?? "",
-          avatar: data.avatar ?? null,
-          isDM: !!data.isDM,
-          dmWith: data.dmWith ?? null,
-          pendingAcceptance: !!data.pendingAcceptance,
-          isPinned: !!data.isPinned,
-          isMuted: !!data.isMuted,
-          unreadCount: data.unreadCount ?? 0, unreadMentions: data.unreadMentions ?? 0,
-        };
+      let room = S.rooms[data.roomKey];
+
+      if (!room) {
+        S.rooms[data.roomKey] = { roomKey: data.roomKey, members: {} };
+        room = S.rooms[data.roomKey];
       }
-      const room = S.rooms[data.roomKey];
-      if (data.name) room.name = data.name;
-      if (data.bio !== undefined) room.bio = data.bio;
-      if (data.avatar !== undefined) room.avatar = data.avatar;
-      if (data.isDM !== undefined) room.isDM = data.isDM;
-      if (data.dmWith !== undefined) room.dmWith = data.dmWith;
-      if (data.pendingAcceptance !== undefined) room.pendingAcceptance = !!data.pendingAcceptance;
-      if (data.isPinned !== undefined) room.isPinned = !!data.isPinned;
-      if (data.isMuted !== undefined) room.isMuted = !!data.isMuted;
-      if (data.createdBy) room.createdBy = data.createdBy;
-      if (data.createdByName) room.createdByName = data.createdByName;
-      if (data.lastMessage) room.lastMessage = data.lastMessage;
-      if (data.unreadCount !== undefined && data.roomKey !== S.activeRoom) room.unreadCount = data.unreadCount;
-      if (data.unreadMentions !== undefined && data.roomKey !== S.activeRoom) room.unreadMentions = data.unreadMentions;
-      renderRoomList();
+
+      // Preserve unread counts for the active room (managed locally)
+      const prevUnread = room.unreadCount;
+      const prevMentions = room.unreadMentions;
+
+      Object.assign(room, data);
+
       if (data.roomKey === S.activeRoom) {
-        $("chat-room-name").textContent = room.name;
-        $("chat-room-avatar").src = avatar(room.name, 32, room.avatar);
+        room.unreadCount = prevUnread;
+        room.unreadMentions = prevMentions;
+      }
+
+      renderRoomList();
+
+      if (data.roomKey === S.activeRoom) {
+        // Single display name for consistency across all UI elements
+        const roomDisplayName = room.name || data.roomKey.slice(0, 8) + "...";
+
+        $("chat-room-name").textContent = roomDisplayName;
+        $("chat-room-avatar").src = avatar(roomDisplayName, 32, room.avatar);
+
+        // Live-update the Room Info Modal if it's open
+        if ($("room-info-modal")?.classList.contains("open")) {
+          $("ri-name").textContent = roomDisplayName;
+          $("ri-bio").textContent = room.bio || "No description";
+          $("ri-creator").textContent = room.createdByName || room.createdBy || "Unknown";
+          $("ri-avatar").src = avatar(roomDisplayName, 64, room.avatar);
+
+          const linkEl = $("ri-link");
+          const linkRow = $("ri-link-row");
+          if (linkEl && linkRow) {
+            if (!room.isDM && room.link && /^https?:\/\//i.test(room.link)) {
+              linkEl.href = room.link;
+              linkEl.textContent = room.link;
+              linkRow.style.display = "";
+            } else {
+              linkRow.style.display = "none";
+            }
+          }
+        }
+
         applyDMComposerGate(data.roomKey);
       }
     } catch {}
