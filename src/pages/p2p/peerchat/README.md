@@ -99,6 +99,7 @@ es.addEventListener("message", (ev) => {
 - `chat.rejectDM(body)` — Reject incoming DM request
 - `chat.updateRoom(roomKey, body)` — Update room settings (pin, mute)
 - `chat.deleteRoom(roomKey)` — Leave room
+- `chat.requestMeta(roomKey)` — Broadcast a request to connected peers to re-send room metadata (name, bio, avatar, creator)
 - `chat.receiveAllUrl()` — Get SSE endpoint URL for live updates
 
 ### Porting to another Hyper browser
