@@ -852,6 +852,29 @@ function _localFallbackColor() {
   return getLocalPeerColor();
 }
 
+function attributeLocalLineRange(startLine, endLine, { reset = false } = {}) {
+  const start = Math.max(1, Number(startLine) || 1);
+  const end = Math.max(start, Number(endLine) || start);
+  const name = getDisplayName() || truncateIdentifier(localClientId, PEER_FALLBACK_NAME_LEN);
+  const color = currentPeerList.find((p) => p.clientId === localClientId)?.color || _localFallbackColor();
+  if (!color) return;
+
+  if (reset) {
+    _localLineAttributions = {};
+    _roomLineAttributions = {};
+  }
+
+  for (let line = start; line <= end; line += 1) {
+    const lineKey = String(line);
+    const entry = { name, color };
+    _localLineAttributions[lineKey] = entry;
+    _roomLineAttributions[lineKey] = entry;
+  }
+
+  updateLineAuthors(_roomLineAttributions);
+  scheduleRoomLineAttributionsPersist();
+}
+
 function mergeLineAttributionsIntoRoom(value) {
   if (!value || typeof value !== "object") return;
   let changed = false;
@@ -2599,6 +2622,8 @@ Any questions?
   }
   
   markdownInput.value = template;
+  const templateLineCount = (template.match(/\n/g) || []).length + 1;
+  attributeLocalLineRange(1, templateLineCount, { reset: true });
   renderPreview();
   
   setTimeout(() => {
@@ -3319,6 +3344,25 @@ markdownInput.addEventListener("input", () => {
   scheduleSend();
   scheduleDraftSave();
   schedulePresenceSend();
+});
+
+markdownInput.addEventListener("paste", (event) => {
+  const pastedText = event?.clipboardData?.getData("text/plain") || "";
+  if (!pastedText) return;
+
+  const text = markdownInput.value || "";
+  const offset = Number.isFinite(markdownInput.selectionStart) ? markdownInput.selectionStart : 0;
+  const before = text.slice(0, Math.min(offset, text.length));
+  let startLine = 1;
+  for (const ch of before) if (ch === "\n") startLine += 1;
+
+  const pastedLineCount = (pastedText.match(/\n/g) || []).length + 1;
+  const endLine = startLine + pastedLineCount - 1;
+
+  setTimeout(() => {
+    attributeLocalLineRange(startLine, endLine);
+    schedulePresenceSend(true);
+  }, 0);
 });
 
 markdownInput.addEventListener("click", () => {
