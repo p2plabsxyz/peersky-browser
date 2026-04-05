@@ -55,7 +55,13 @@ main {
   display: none !important;
 }
 
-#setup-page {
+.boot-screen-text {
+  color: var(--peersky-nav-border-color, #888);
+  font-size: 0.9rem;
+}
+
+#setup-page,
+#onboarding-page {
   justify-content: center;
   align-items: center;
 }
@@ -64,7 +70,8 @@ main {
   padding-bottom: 55px;
 }
 
-#setup-page #room-panel {
+#setup-page #room-panel,
+#onboarding-page #room-panel {
   width: min(780px, 100%);
 }
 
@@ -78,30 +85,39 @@ main {
 
 #setup-page button,
 #setup-page input[type="text"],
-#setup-page input[type="number"] {
-  border: 1px solid var(--peersky-nav-border-color, #3c3c41);
+#setup-page input[type="number"],
+#onboarding-page button,
+#onboarding-page input[type="text"],
+#onboarding-page input[type="number"] {
+  border: none;
   outline: none;
   margin-left: 8px;
   border-radius: 6px;
   font-family: var(--browser-theme-font-family);
   font-size: 1rem;
   color: var(--browser-theme-text-color);
-  padding: 0.5rem 1rem;
+  padding: 0.6rem 1rem;
   transition: background-color 0.2s, color 0.2s;
   box-sizing: border-box;
 }
 
 #setup-page input[type="text"],
-#setup-page input[type="number"] {
+#setup-page input[type="number"],
+#onboarding-page input[type="text"],
+#onboarding-page input[type="number"] {
   background-color: var(--peersky-background-url-input);
+  border: 1px solid #444;
 }
 
 #setup-page input[type="text"]::placeholder,
-#setup-page input[type="number"]::placeholder {
+#setup-page input[type="number"]::placeholder,
+#onboarding-page input[type="text"]::placeholder,
+#onboarding-page input[type="number"]::placeholder {
   color: #888;
 }
 
-#setup-page button {
+#setup-page button,
+#onboarding-page button {
   background-color: var(--peersky-nav-background);
   cursor: pointer;
 }
@@ -119,25 +135,100 @@ main {
   margin-bottom: 2rem;
 }
 
-#setup-page #onboarding-name {
-  width: min(420px, 100%);
+#onboarding-page {
+  background: radial-gradient(120% 100% at 50% 0%, #171a22 0%, #12141b 56%, #101117 100%);
+  border-radius: 10px;
+}
+
+#onboarding-page #room-panel {
+  width: min(380px, 100%);
+}
+
+#onboarding input,
+#onboarding button {
   margin-left: 0;
 }
 
 #onboarding {
-  width: min(460px, 100%);
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+}
+
+.onboard-card {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 0.6rem;
+  gap: 8px;
+  background: #242730;
+  border: 1px solid #ffffff2b;
+  border-radius: 8px;
+  padding: 25px;
+  max-width: 350px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.28);
 }
 
-#onboarding h2 {
-  font-size: 1.35rem;
+
+
+.onboard-card p {
+  margin: 0 0 8px;
+  color: #a8afbd;
+  font-size: 14px;
 }
 
-#onboarding p {
-  opacity: 0.8;
+#onboarding-page #onboarding-name {
+  width: 100%;
+  margin-left: 0;
+  border: 1px solid #3b3f4b;
+  background: #1a1d25;
+  color: #e9edf8;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+#onboarding-page #onboarding-name::placeholder {
+  color: #8d95a7;
+}
+
+#onboarding-page #onboard-submit {
+  width: 100%;
+  margin-top: 4px;
+  border: 0;
+  border-radius: 6px;
+  background: #3b82f6;
+  color: #000000;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 9px 12px;
+}
+
+#onboarding-page #onboard-submit:hover {
+  background: #4b8cf7;
+}
+
+.onboard-footer {
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid #3b3f4b;
+  font-size: 13px;
+}
+
+.onboard-footer a {
+  color: #4a8bff;
+  text-decoration: none;
+}
+
+.onboard-footer a:hover {
+  text-decoration: underline;
+}
+
+.onboard-footer-sep {
+  color: #7d8699;
+  margin: 0 6px;
 }
 
 #setup-controls {

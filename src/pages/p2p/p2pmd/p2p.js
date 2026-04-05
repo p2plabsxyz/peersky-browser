@@ -101,10 +101,9 @@ let lineAttributionPersistTimer = null;
 let isLocalTyping = false;
 let lastPresencePayload = "";
 const bootScreen = document.getElementById("boot-screen");
-const onboardingView = document.getElementById("onboarding");
+const onboardingPage = document.getElementById("onboarding-page");
 const onboardingNameInput = document.getElementById("onboarding-name");
 const onboardingSubmitButton = document.getElementById("onboard-submit");
-const setupControls = document.getElementById("setup-controls");
 
 const publishCSS = `
   @font-face {
@@ -362,20 +361,15 @@ function hideSetupBootScreen() {
   if (bootScreen) bootScreen.hidden = true;
 }
 
-function refreshSetupOnboardingState() {
-  const needsProfile = !hasDisplayName();
-  if (onboardingView) onboardingView.hidden = !needsProfile;
-  if (setupControls) setupControls.hidden = needsProfile;
-  if (onboardingNameInput) {
-    onboardingNameInput.value = needsProfile ? "" : getDisplayName();
-  }
-  return !needsProfile;
+function syncOnboardingInput() {
+  if (!onboardingNameInput) return;
+  onboardingNameInput.value = getDisplayName();
 }
 
 function ensureProfileBeforeRoomAction() {
   if (hasDisplayName()) return true;
-  setView("setup");
-  refreshSetupOnboardingState();
+  setView("onboarding");
+  syncOnboardingInput();
   if (onboardingNameInput) onboardingNameInput.focus();
   return false;
 }
@@ -3216,8 +3210,8 @@ function getViewParam() {
 
 function setView(view) {
   const params = new URLSearchParams(window.location.search);
-  if (view === "setup") {
-    params.set("view", "setup");
+  if (view === "setup" || view === "onboarding") {
+    params.set("view", view);
     params.delete("protocol");
   } else {
     params.delete("view");
@@ -3229,11 +3223,10 @@ function setView(view) {
   const query = params.toString();
   const nextUrl = query ? `${base}?${query}` : base;
   history.replaceState(null, "", nextUrl);
+  if (onboardingPage) onboardingPage.classList.toggle("hidden", view !== "onboarding");
   if (setupPage) setupPage.classList.toggle("hidden", view !== "setup");
-  if (editorPage) editorPage.classList.toggle("hidden", view === "setup");
-  if (view === "setup") {
-    refreshSetupOnboardingState();
-  }
+  if (editorPage) editorPage.classList.toggle("hidden", view !== "editor");
+  if (view === "onboarding") syncOnboardingInput();
 }
 
 function resetNetworkSettingsOnCreate() {
@@ -3268,14 +3261,16 @@ joinForm.addEventListener("submit", (event) => {
 disconnectButton.addEventListener("click", disconnectRoom);
 
 if (onboardingSubmitButton) {
-  onboardingSubmitButton.addEventListener("click", () => {
+  onboardingSubmitButton.addEventListener("click", async () => {
     const nextName = saveDisplayName(onboardingNameInput?.value || "");
     if (!nextName) {
       alert("Please enter your username to continue.");
       if (onboardingNameInput) onboardingNameInput.focus();
       return;
     }
-    refreshSetupOnboardingState();
+    syncOnboardingInput();
+    setView("setup");
+    await loadRecentRooms();
   });
 }
 
@@ -3605,34 +3600,35 @@ async function loadRecentRooms() {
 
 (async () => {
   showSetupBootScreen();
-  refreshSetupOnboardingState();
+  syncOnboardingInput();
   try {
     const viewParam = getViewParam();
     const stateFromUrl = readRoomStateFromUrl();
     
-    if (viewParam === "setup" || !stateFromUrl?.key || !hasDisplayName()) {
+    if (viewParam === "setup" || viewParam === "onboarding" || !stateFromUrl?.key || !hasDisplayName()) {
       await loadRecentRooms();
     }
     
     const state = stateFromUrl;
     if (!hasDisplayName()) {
+      setView("onboarding");
+      if (onboardingNameInput) onboardingNameInput.focus();
+      return;
+    }
+    if (viewParam === "onboarding") {
       setView("setup");
-      refreshSetupOnboardingState();
       return;
     }
     if (viewParam === "setup") {
       setView("setup");
-      refreshSetupOnboardingState();
       return;
     }
     if (!state?.key) {
       setView("setup");
-      refreshSetupOnboardingState();
       return;
     }
     if (!validateRoomKey(state.key)) {
       setView("setup");
-      refreshSetupOnboardingState();
       return;
     }
     

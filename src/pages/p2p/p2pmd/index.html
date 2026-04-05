@@ -13,22 +13,38 @@
       <div id="loadingSpinner">
         <div class="emoji-loader">↻</div>
       </div>
-      <div id="boot-screen" class="boot-screen" aria-live="polite">Loading...</div>
+      <div id="boot-screen" class="boot-screen" aria-live="polite">
+        <span class="boot-screen-text">Loading...</span>
+      </div>
 
-      <section id="setup-page" class="page">
+      <section id="onboarding-page" class="page hidden">
         <div id="room-panel">
-          <div id="setup">
-            <div id="onboarding" hidden>
-              <p>Set your username to continue.</p>
+          <div id="onboarding">
+            <div class="onboard-card">
+              <h3>Welcome to P2PMD</h3>
+              <p>Choose a username to get started</p>
               <input
                 id="onboarding-name"
                 type="text"
-                placeholder="Your username"
+                placeholder="Username"
                 maxlength="32"
               />
-              <button id="onboard-submit" type="button">Save Username</button>
+              <button id="onboard-submit" type="button">Get Started</button>
+              <div class="onboard-footer">
+                <a href="https://github.com/p2plabsxyz/p2pmd#readme" target="_blank" rel="noopener noreferrer">About</a>
+                <span class="onboard-footer-sep" aria-hidden="true">&middot;</span>
+                <a href="https://github.com/p2plabsxyz/p2pmd" target="_blank" rel="noopener noreferrer">Source</a>
+                <span class="onboard-footer-sep" aria-hidden="true">&middot;</span>
+                <a href="https://github.com/p2plabsxyz/p2pmd/issues/new" target="_blank" rel="noopener noreferrer">Issue</a>
+              </div>
             </div>
+          </div>
+        </div>
+      </section>
 
+      <section id="setup-page" class="page hidden">
+        <div id="room-panel">
+          <div id="setup">
             <div id="setup-controls">
               <button id="create-room" type="button">Create Room</button>
               <div class="connection-options"> 
