@@ -733,6 +733,12 @@ $("onboard-submit")?.addEventListener("click", async () => {
   initAudio();
   const username = validateUsernameOrAlert($("onboard-username").value);
   if (!username) return;
+  const btn = $("onboard-submit");
+  const prevLabel = btn?.textContent ?? "Get Started";
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Loading…";
+  }
   try {
     const { profile } = await chat.saveProfile({ username, bio: $("onboard-bio").value.trim() });
     S.profile = profile;
@@ -744,7 +750,14 @@ $("onboard-submit")?.addEventListener("click", async () => {
     await loadRooms();
     showApp();
     connectGlobalSSE();
-  } catch (err) { alert(err.message); }
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = prevLabel;
+    }
+  }
 });
 
 function showApp() {
