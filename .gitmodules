@@ -1,0 +1,18 @@
+[submodule "src/pages/p2p/peerchat"]
+	path = src/pages/p2p/peerchat
+	url = https://github.com/p2plabsxyz/peerchat
+[submodule "src/pages/p2p/peerpad"]
+	path = src/pages/p2p/peerpad
+	url = https://github.com/p2plabsxyz/peerpad
+[submodule "src/pages/p2p/upload"]
+	path = src/pages/p2p/upload
+	url = https://github.com/p2plabsxyz/upload
+[submodule "src/pages/p2p/p2pmd"]
+	path = src/pages/p2p/p2pmd
+	url = https://github.com/p2plabsxyz/p2pmd
+[submodule "src/pages/p2p/ai-chat"]
+	path = src/pages/p2p/ai-chat
+	url = https://github.com/p2plabsxyz/ai-chat
+[submodule "src/pages/p2p/wiki"]
+	path = src/pages/p2p/wiki
+	url = https://github.com/p2plabsxyz/wiki
