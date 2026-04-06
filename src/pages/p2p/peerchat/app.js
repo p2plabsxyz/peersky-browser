@@ -905,7 +905,9 @@ function applyDMComposerGate(roomKey) {
     messageInput.disabled = false;
     messageInput.placeholder = "Type a message…";
     sendBtn.disabled = false;
-    queueMicrotask(() => messageInput?.focus());
+    queueMicrotask(() => {
+      if (!document.querySelector(".modal.open")) messageInput?.focus();
+    });
   }
 }
 
