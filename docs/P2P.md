@@ -104,7 +104,7 @@ More: https://docs.holesail.io/
 
 ### 3) Sync realtime state
 
-Use HTTP endpoints (GET/POST) plus SSE/WebSocket for live updates. In PeerSky, a custom [hs-handler](https://github.com/p2plabsxyz/peersky-browser/blob/main/src/protocols/hs-handler.js) can expose these endpoints while keeping the transport peer-to-peer.
+Use HTTP endpoints (GET/POST) plus SSE/WebSocket for live updates. In PeerSky, a custom [hs-handler](https://github.com/p2plabsxyz/peersky-browser/blob/main/src/protocols/hs-handler.js) can expose these endpoints while keeping the transport peer-to-peer. Incremental Yjs CRDT updates are exchanged over HTTP/SSE, while peer presence metadata is sent through presence endpoints.
 
 **Example:** See [p2pmd](https://github.com/p2plabsxyz/peersky-browser/tree/main/src/pages/p2p/p2pmd) for a complete real-time collaborative markdown editor implementation.
 

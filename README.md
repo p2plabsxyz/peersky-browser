@@ -84,6 +84,7 @@
     - Presentation slides mode with speaker notes
     - AI-powered content generation
     - Publish to IPFS/Hypercore
+    - Peers dashboard with roles, live editing status, and edit history
   - [x] `peersky://p2p/wiki/`
     - Browse Wikipedia over IPFS
   - [x] [reader.p2plabs.xyz](https://reader.distributed.press/)
