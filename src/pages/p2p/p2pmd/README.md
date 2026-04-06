@@ -8,6 +8,7 @@ P2P Markdown is a real-time, peer-to-peer collaborative markdown editor built in
 
 ## What it does
 - Real-time P2P collaboration over Holesail (direct, encrypted connections)
+- Incremental CRDT document sync with Yjs (plus safe fallback sync path)
 - Join or host rooms using `hs://` keys
 - Local publishing to `hyper://` or `ipfs://`
 - Presentation slides mode with speaker notes and navigation
@@ -16,6 +17,8 @@ P2P Markdown is a real-time, peer-to-peer collaborative markdown editor built in
 - Content generation via local LLMs (with slides format support)
 - Export to HTML, PDF, or Slides (check [export examples](./examples))
 - SSE keepalive + auto-reconnect for mobile/idle clients
+- Peer visibility dashboard for connected peers, roles, live editing state, and edit history
+- Colored cursor and line traces with hover name chips for collaborative context
 
 ## Features
 
@@ -62,6 +65,25 @@ Quick formatting buttons with keyboard shortcuts:
 - **Quote**: `> text`
 - **Slides Mode**: Toggle presentation view
 
+### Peers Dashboard
+
+<img src="./peers-dashboard.png" width="500" alt="p2pmd peers dashboard showing connected peers and edit history">
+
+- Peer count opens `./peers.html` with room context.
+- Connected peers list with role badges (`host` / `client`) and live cursor status.
+- "Currently Editing" panel for active typers.
+- "Edit History" panel for join/leave/edit activity.
+
+### In-Editor Visibility
+
+<img src="./peers-visibility.png" width="500" alt="p2pmd editor showing host badge, peer count, and colored collaborative line traces">
+
+- Host/client role badge next to the room key.
+- Peer count with quick navigation to the peers dashboard.
+- Colored cursor indicators for active collaborators.
+- Persistent colored line traces with hover labels showing editor names.
+- Fallback naming (`Peer #N`) for unnamed peers.
+
 ### Themes
 
 <img src="./themes.png" width="639" alt="Different themes available in p2pmd">
@@ -75,7 +97,9 @@ P2PMD implements production-grade security measures:
 - **Modern API**: Uses Electron's `protocol.handle()` with native Request/Response objects
 
 ## How it works (high level)
-- The editor hosts a local HTTP session for the document and syncs changes over SSE.
+- The editor hosts a local HTTP session and syncs content using incremental Yjs CRDT updates (with a full-state fallback path when needed).
+- On reconnect, CRDT state is merged so edits made during temporary disconnects are preserved.
+- Peer metadata (role, cursor, typing, and line hints) is shared via SSE + presence endpoints to power the peers page.
 - Holesail creates a direct peer connection using a shared key.
 - Publishing writes to Hyper/IPFS, making content shareable via P2P URLs.
 - Drag an image onto the editor to upload it to IPFS. Images are compressed (resized to max 1920px, re-encoded at 0.8 quality) before upload. GIFs are uploaded as-is to preserve animation. The resulting markdown link uses a `dweb.link` gateway URL.
@@ -125,7 +149,7 @@ console.log("Connected:", client.info);
 More: https://docs.holesail.io/
 
 ### 3) Sync realtime state
-Use HTTP endpoints (GET/POST) plus SSE/WebSocket for live updates. In PeerSky, a custom [hs-handler](https://github.com/p2plabsxyz/peersky-browser/blob/main/src/protocols/hs-handler.js) can expose these endpoints while keeping the transport peer-to-peer.
+Use HTTP endpoints (GET/POST) plus SSE/WebSocket for live updates. In PeerSky, a custom [hs-handler](https://github.com/p2plabsxyz/peersky-browser/blob/main/src/protocols/hs-handler.js) can expose these endpoints while keeping the transport peer-to-peer. Incremental Yjs CRDT updates are exchanged over HTTP/SSE, while peer presence metadata is sent through presence endpoints.
 
 ### 4) Publish to Hyper
 ```js
@@ -171,3 +195,4 @@ async function publishToIPFS(files) {
 ```
 
 These examples show the core patterns used in p2pmd. You can adapt them to build your own P2P apps in PeerSky.
+
