@@ -66,7 +66,6 @@ function setupWebviewErrorHandling(webview) {
 
   const state = {
     isShowingError: false,
-    abortTimeout: null,
     lastFailedUrl: null,
     retryCounts: new Map()
   };
@@ -85,24 +84,10 @@ function setupWebviewErrorHandling(webview) {
     
     if (state.isShowingError && state.lastFailedUrl === validatedURL) return;
 
-    if (state.abortTimeout) {
-      clearTimeout(state.abortTimeout);
-      state.abortTimeout = null;
-    }
-
-    // Handle ERR_ABORTED - wait for real error
+    // ERR_ABORTED: navigation was cancelled, usually because another navigation
+    // replaced it (redirect chains, OAuth). Not a terminal failure—do not show
+    // an error page; the active navigation will emit its own result.
     if (errorCode === -3) {
-      state.lastFailedUrl = validatedURL;
-      state.abortTimeout = setTimeout(() => {
-        if (!state.isShowingError) {
-          showErrorPage({
-            code: '-3',
-            name: 'Request Aborted',
-            msg: 'The connection was aborted',
-            url: validatedURL || ''
-          });
-        }
-      }, 300);
       return;
     }
 
@@ -163,10 +148,6 @@ function setupWebviewErrorHandling(webview) {
       if (url) {
         state.retryCounts.delete(url);
       }
-      if (state.abortTimeout) {
-        clearTimeout(state.abortTimeout);
-        state.abortTimeout = null;
-      }
     }
   };
 
@@ -175,10 +156,6 @@ function setupWebviewErrorHandling(webview) {
     if (currentSrc && !currentSrc.includes('error.html') &&
         currentSrc !== state.lastFailedUrl) {
       state.isShowingError = false;
-      if (state.abortTimeout) {
-        clearTimeout(state.abortTimeout);
-        state.abortTimeout = null;
-      }
     }
   };
 
