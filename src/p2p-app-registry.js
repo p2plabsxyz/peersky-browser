@@ -366,7 +366,7 @@ class P2PAppRegistry {
   async updateSubmodules() {
     try {
       // Get the project root directory (where .git is located)
-      const projectRoot = path.dirname(path.dirname(__dirname));
+      const projectRoot = app.getAppPath();
       
       // Update all submodules to their latest commits
       const { stdout, stderr } = await execAsync(
