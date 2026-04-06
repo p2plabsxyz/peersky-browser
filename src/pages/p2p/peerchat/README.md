@@ -1,5 +1,9 @@
 # PeerChat
 
+<div align="center">
+    <img src="./demo.png" width="639" alt="Screenshot of PeerChat in light mode: browser tab with peersky://p2p/peerchat URL, sidebar with rooms and a selected chat with “Capt Jack Sparrow,” conversation bubbles, an embedded video, and the emoji picker above the input field.">
+</div>
+
 Small-group chat inside [PeerSky Browser](https://github.com/p2plabsxyz/peersky-browser). You create a room, share a key, and everyone who has that key joins the same swarm and sees the same history—no chat server in the middle.
 
 **No account.** **Everything stays local** on your machine (room list, profile, keys file)—except what you explicitly sync over the peer network. **You own your chats:** there’s no company holding logs or resetting your password; the room key is the shared secret.
