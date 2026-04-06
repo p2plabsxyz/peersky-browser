@@ -14,40 +14,67 @@
         <div class="emoji-loader">↻</div>
       </div>
 
-      <section id="setup-page" class="page">
+      <section id="onboarding-page" class="page hidden">
+        <div id="room-panel">
+          <div id="onboarding">
+            <div class="onboard-card">
+              <h3>Welcome to P2PMD</h3>
+              <p>Choose a username to get started</p>
+              <input
+                id="onboarding-name"
+                type="text"
+                placeholder="Username"
+                maxlength="32"
+              />
+              <button id="onboard-submit" type="button">Get Started</button>
+              <div class="onboard-footer">
+                <a href="https://github.com/p2plabsxyz/p2pmd#readme" target="_blank" rel="noopener noreferrer">About</a>
+                <span class="onboard-footer-sep" aria-hidden="true">&middot;</span>
+                <a href="https://github.com/p2plabsxyz/p2pmd" target="_blank" rel="noopener noreferrer">Source</a>
+                <span class="onboard-footer-sep" aria-hidden="true">&middot;</span>
+                <a href="https://github.com/p2plabsxyz/p2pmd/issues/new" target="_blank" rel="noopener noreferrer">Issue</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="setup-page" class="page hidden">
         <div id="room-panel">
           <div id="setup">
-            <button id="create-room" type="button">Create Room</button>
-            <div class="connection-options"> 
-              <label class="option">
-                <input id="privateMode" type="checkbox" />
-                <span>Private</span>
-              </label>
-              <label class="option">
-                <input id="udpMode" type="checkbox" />
-                <span>UDP</span>
-              </label>
-              <input id="localHost" type="text" placeholder="Local host (127.0.0.1)" />
-              <input id="localPort" type="number" placeholder="Local port (8989)" />
-            </div>
+            <div id="setup-controls">
+              <button id="create-room" type="button">Create Room</button>
+              <div class="connection-options"> 
+                <label class="option">
+                  <input id="privateMode" type="checkbox" />
+                  <span>Private</span>
+                </label>
+                <label class="option">
+                  <input id="udpMode" type="checkbox" />
+                  <span>UDP</span>
+                </label>
+                <input id="localHost" type="text" placeholder="Local host (127.0.0.1)" />
+                <input id="localPort" type="number" placeholder="Local port (8989)" />
+              </div>
 
-            <div class="divider">- or -</div>
-            <form id="join-form">
-              <input
-                id="join-room-key"
-                type="text"
-                placeholder="Enter hs:// key"
-                required
-              />
-              <button id="join-room" type="submit">Join Room</button>
-            </form>
-            
-            <div id="room-history">
-              <div id="room-history-title">Recent Rooms</div>
-              <div id="room-history-list"></div>
-              <span id="room-history-footer">
-                View p2pmd-draft archives in hyperdrive, <a href="peersky://settings/archive" target="_blank">Settings -> Archive</a> for more details
-              </span>
+              <div class="divider">- or -</div>
+              <form id="join-form">
+                <input
+                  id="join-room-key"
+                  type="text"
+                  placeholder="Enter hs:// key"
+                  required
+                />
+                <button id="join-room" type="submit">Join Room</button>
+              </form>
+              
+              <div id="room-history">
+                <div id="room-history-title">Recent Rooms</div>
+                <div id="room-history-list"></div>
+                <span id="room-history-footer">
+                  View p2pmd-draft archives in hyperdrive, <a href="peersky://settings/archive" target="_blank">Settings -> Archive</a> for more details
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -56,8 +83,18 @@
       <section id="editor-page" class="page hidden">
         <section id="room-panel">
           <div id="room-status" class="hidden">
-            <div>Room: <span id="room-key"></span> <span id="copy-room-key" title="Copy room key">⊕</span></div>
-            <div>Peers: <span id="peers-count">0</span></div>
+            <div>
+              Room:
+              <span id="room-key"></span>
+              <span id="room-role-badge" class="role-badge hidden">client</span>
+              <span id="copy-room-key" title="Copy room key">⊕</span>
+            </div>
+            <div>
+              Peers:
+              <a id="peers-link" href="./peers.html" target="_blank" rel="noopener noreferrer">
+                <span id="peers-count">0</span>
+              </a>
+            </div>
             <div>Local URL: <a id="local-url" target="_blank" rel="noopener noreferrer"></a></div>
             <details id="export-menu">
               <summary>Export</summary>
@@ -119,11 +156,14 @@
                 <span class="toolbar-icon icon-fullscreen"></span>
               </button>
             </div>
-            <textarea
-              id="markdownInput"
-              spellcheck="false"
-              placeholder="Write Markdown here"
-            ></textarea>
+            <div id="editor-textarea-wrapper">
+              <textarea
+                id="markdownInput"
+                spellcheck="false"
+                placeholder="Write Markdown here"
+              ></textarea>
+            </div>
+
           </div>
           <div id="preview-container">
             <div id="markdownPreview"></div>

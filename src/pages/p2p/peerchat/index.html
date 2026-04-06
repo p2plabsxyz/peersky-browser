@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/png" href="peersky://static/assets/favicon.ico" />
+    <link rel="stylesheet" href="./styles.css" />
+    <title>PeerChat</title>
+  </head>
+  <body>
+    <div id="boot-screen" class="boot-screen" aria-live="polite">
+      <span class="boot-screen-text">Loading…</span>
+    </div>
+
+    <div id="onboarding" hidden>
+      <div class="onboard-card">
+        <h2>Welcome to PeerChat</h2>
+        <p>Choose a username to get started</p>
+        <input type="text" id="onboard-username" placeholder="Username" maxlength="50" required />
+        <textarea id="onboard-bio" placeholder="Bio (optional)" maxlength="300" rows="2"></textarea>
+        <button id="onboard-submit">Get Started</button>
+        <div class="onboard-footer">
+          <a href="./about.html">About</a>
+          <span class="onboard-footer-sep" aria-hidden="true">·</span>
+          <a href="https://github.com/p2plabsxyz/peerchat" target="_blank" rel="noopener noreferrer">Source</a>
+          <span class="onboard-footer-sep" aria-hidden="true">·</span>
+          <a href="https://github.com/p2plabsxyz/p2pmd/issues/new" target="_blank" rel="noopener noreferrer">Issue</a>
+        </div>
+      </div>
+    </div>
+
+    <div id="app" hidden>
+      <!-- Sidebar -->
+      <aside id="sidebar">
+        <div id="sidebar-header">
+          <div id="sidebar-profile">
+            <img id="sidebar-avatar" class="avatar" />
+            <span id="sidebar-username"></span>
+          </div>
+          <button id="settings-btn" title="Settings"><img src="./assets/svg/settings.svg" alt="Settings" /></button>
+        </div>
+        <div id="sidebar-actions">
+          <button id="create-room-btn">+ New Room</button>
+          <button id="join-room-btn">Join Room</button>
+        </div>
+        <div id="sidebar-body">
+          <input type="text" id="room-search" placeholder="Search rooms…" autocomplete="off" spellcheck="false" />
+          <div id="room-list"></div>
+          <footer class="chat-footer">
+            <a href="./about.html">About</a>
+            <span class="chat-footer-sep" aria-hidden="true">·</span>
+            <a href="https://github.com/p2plabsxyz/peerchat" target="_blank" rel="noopener noreferrer">Source</a>
+            <span class="chat-footer-sep" aria-hidden="true">·</span>
+            <a href="https://github.com/p2plabsxyz/p2pmd/issues/new" target="_blank" rel="noopener noreferrer">Issue</a>
+          </footer>
+        </div>
+      </aside>
+
+      <!-- Chat Panel -->
+      <section id="chat-panel">
+        <div id="chat-empty">
+          <p>Select or create a room to start chatting</p>
+        </div>
+        <div id="chat-active" style="display: none">
+          <div id="chat-header">
+            <div id="chat-header-main" class="chat-header-main">
+              <img id="chat-room-avatar" class="avatar" />
+              <div id="chat-header-info">
+                <span id="chat-room-name"></span>
+                <span id="chat-room-peers">0 peers</span>
+              </div>
+            </div>
+            <button type="button" id="chat-search-btn" class="chat-search-btn" title="Search messages" aria-label="Search messages">
+              <img src="./assets/svg/search.svg" alt="" width="18" height="18" />
+            </button>
+          </div>
+          <div id="chat-message-search-panel" class="chat-message-search-panel" hidden>
+            <input type="text" id="message-search" placeholder="Search messages…" autocomplete="off" spellcheck="false" />
+          </div>
+          <div id="messages">
+            <div id="dropzone" class="dropzone" style="display:none">Drop file here</div>
+          </div>
+          <form id="message-form">
+            <div id="mention-popup" class="mention-popup"></div>
+            <div id="emoji-panel" class="emoji-panel" aria-hidden="true"></div>
+            <div id="reply-bar" class="reply-bar" style="display:none">
+              <div id="reply-preview"></div>
+              <button type="button" id="reply-cancel" class="reply-cancel">&times;</button>
+            </div>
+            <button type="button" id="attach-btn" class="attach-btn" title="Attach file">+</button>
+            <button type="button" id="emoji-btn" class="attach-btn emoji-btn" title="Emoji picker (emojilib keywords)" aria-label="Emoji picker">
+              <img src="./assets/svg/smile.svg" alt="" width="20" height="20" />
+            </button>
+            <input id="file-input" type="file" style="display:none" />
+            <textarea id="message-input" rows="1" placeholder="Type a message…" maxlength="65536" required autocomplete="off"></textarea>
+            <button type="submit" id="send-btn"><img src="./assets/svg/send.svg" alt="Send" /></button>
+          </form>
+
+          <!-- Message right-click menu -->
+          <div id="msg-menu" class="ctx-menu">
+            <button data-action="reply">Reply</button>
+            <button data-action="copy-msg">Copy Text</button>
+            <button data-action="info">Info</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Create Room Modal -->
+    <div id="create-room-modal" class="modal">
+      <div class="modal-content">
+        <h3>Create Room</h3>
+        <form id="create-room-form">
+          <div class="avatar-upload-row">
+            <img id="new-room-avatar-preview" class="avatar-lg avatar-upload-preview" />
+            <label class="btn-secondary btn-sm avatar-upload-label" for="new-room-avatar-input">Upload Picture</label>
+            <input type="file" id="new-room-avatar-input" accept="image/*" style="display:none" />
+          </div>
+          <input type="text" id="new-room-name" placeholder="Room name" maxlength="80" required />
+          <textarea id="new-room-bio" placeholder="Description (optional)" maxlength="300" rows="2"></textarea>
+          <input type="url" id="new-room-link" placeholder="Link (optional)" maxlength="512" />
+          <p class="modal-note">❗️ Room name, picture, description, and link cannot be edited after creation.</p>
+          <div class="modal-actions">
+            <button type="button" class="btn-secondary" data-close>Cancel</button>
+            <button type="submit" id="create-room-confirm">Create</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Join Room Modal -->
+    <div id="join-room-modal" class="modal">
+      <div class="modal-content">
+        <h3>Join Room</h3>
+        <form id="join-room-form">
+          <input type="text" id="join-room-key" placeholder="Paste room key (64 hex chars)" maxlength="64" required />
+          <p class="muted small join-modal-hint">
+            For room details or to find keys from your archive, see <strong>peerchat-rooms</strong> under Hyperdrives in
+            <a href="peersky://settings/archive">Settings → Archive</a>.
+          </p>
+          <div class="modal-actions">
+            <button type="button" class="btn-secondary" data-close>Cancel</button>
+            <button type="submit" id="join-room-confirm">Join</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Room Info Modal -->
+    <div id="room-info-modal" class="modal">
+      <div class="modal-content room-info">
+        <img id="ri-avatar" class="avatar-lg" />
+        <h3 id="ri-name"></h3>
+        <p id="ri-bio" class="muted"></p>
+        <div id="ri-link-row" class="info-row" style="display:none"><span class="label">Link</span><a id="ri-link" href="#" target="_blank" rel="noopener noreferrer"></a></div>
+        <div class="info-row"><span class="label">Created by</span><span id="ri-creator"></span></div>
+        <div class="info-row"><span class="label">Created</span><span id="ri-date"></span></div>
+        <div class="info-row"><span class="label">Recovery Key</span><button id="ri-copy-key" class="btn-sm">Copy</button></div>
+        <div id="ri-members"><span class="label">Members</span><div id="ri-member-list"></div></div>
+        <div class="modal-actions"><button type="button" class="btn-secondary" data-close>Close</button></div>
+      </div>
+    </div>
+
+    <!-- User Info Popup -->
+    <div id="user-info-modal" class="modal">
+      <div class="modal-content user-info">
+        <img id="ui-avatar" class="avatar-lg" />
+        <h3 id="ui-name"></h3>
+        <p id="ui-status" class="muted small"></p>
+        <p id="ui-bio" class="muted"></p>
+        <p id="ui-joined" class="muted small"></p>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" data-close>Close</button>
+          <button type="button" id="ui-message-btn">Message</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- DM Invite Modal -->
+    <div id="dm-invite-modal" class="modal">
+      <div class="modal-content user-info">
+        <img id="dmi-avatar" class="avatar-lg" />
+        <h3 id="dmi-name"></h3>
+        <p id="dmi-bio" class="muted"></p>
+        <p class="muted small">wants to send you a direct message</p>
+        <div class="modal-actions">
+          <button type="button" id="dmi-reject" class="btn-secondary">Decline</button>
+          <button type="button" id="dmi-accept">Accept</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal">
+      <div class="modal-content">
+        <h3>Settings</h3>
+        <form id="settings-form">
+          <div class="avatar-upload-row">
+            <img id="set-avatar-preview" class="avatar-lg avatar-upload-preview" />
+            <label class="btn-secondary btn-sm avatar-upload-label" for="set-avatar-input">Change Picture</label>
+            <input type="file" id="set-avatar-input" accept="image/*" style="display:none" />
+          </div>
+          <div class="field"><label>Username</label><input type="text" id="set-username" maxlength="50" /></div>
+          <div class="field"><label>Bio</label><textarea id="set-bio" maxlength="300" rows="2"></textarea></div>
+          <div class="field toggle-row">
+            <label>Sounds</label>
+            <label class="toggle"><input type="checkbox" id="set-sounds" checked /><span class="slider"></span></label>
+          </div>
+          <div class="field toggle-row">
+            <label>Notifications</label>
+            <label class="toggle"><input type="checkbox" id="set-notifications" checked /><span class="slider"></span></label>
+          </div>
+          <div class="modal-actions">
+            <button type="submit" id="settings-save">Save</button>
+            <button type="button" class="btn-secondary" data-close>Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Room Context Menu -->
+    <div id="room-menu" class="ctx-menu">
+      <button data-action="pin">Pin</button>
+      <button data-action="mute">Mute</button>
+      <button data-action="copy">Copy Key</button>
+      <button data-action="delete">Leave Room</button>
+    </div>
+
+    <!-- Media Viewer -->
+    <div id="media-viewer" class="media-viewer">
+      <button id="media-viewer-close" class="media-viewer-close" title="Close"><img src="./assets/svg/x.svg" alt="Close" width="24" height="24" /></button>
+      <button id="media-viewer-dl" class="media-viewer-dl" title="Save image"><img src="./assets/svg/download.svg" alt="Save" width="24" height="24" /></button>
+      <div id="media-viewer-body" class="media-viewer-body"></div>
+    </div>
+
+    <script src="./lib/avatar.min.js"></script>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

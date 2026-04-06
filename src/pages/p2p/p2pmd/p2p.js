@@ -15,8 +15,10 @@
   editorPage,
   roomStatus,
   roomKeyLabel,
+  roomRoleBadge,
   copyRoomKey,
   peersCount,
+  peersLink,
   localUrlLabel,
   exportMenu,
   exportHtmlButton,
@@ -34,6 +36,13 @@
 } from "./common.js";
 import { initMarkdown, renderPreview, scheduleRender, showSpinner, renderMarkdown } from "./noteEditor.js";
 import { initToolbar } from "./toolbar.js";
+import { initCursorOverlay, updateCursorOverlay, destroyCursorOverlay,
+         setLocalColor, updateLineAuthors } from "./cursorOverlay.js";
+
+
+
+
+
 
 let sendTimer = null;
 let saveTimer = null;
@@ -65,13 +74,35 @@ const Y_ORIGIN_REMOTE = "remote-sse";
 
 const ROOM_STATE_PREFIX = "p2pmd-room-";
 const ROOM_CONTENT_PREFIX = "p2pmd-room-content-";
+const ROOM_LINE_ATTR_PREFIX = "p2pmd-room-line-attributions-";
+const ROOM_LOCAL_LINE_ATTR_PREFIX = "p2pmd-room-local-line-attributions-";
+const PEER_STATUS_PREFIX = "p2pmd-peer-status-";
+const PEER_ACTIVITY_PREFIX = "p2pmd-peer-activity-";
+const ACTIVE_ROOM_STATUS_KEY = "p2pmd-active-room";
 const LAST_ROOM_KEY = "p2pmd-last-room";
 const LAST_ROOM_STATE = "p2pmd-last-room-state";
+const DISPLAY_NAME_KEY = "p2pmd-display-name";
+const USER_COLOR_KEY = "p2pmd-user-color";
+const CLIENT_ID_KEY = "p2pmd-client-id";
 const DRAFT_DRIVE_NAME = "p2pmd-drafts";
+const MAX_ACTIVITY_ITEMS = 150;
+const PRESENCE_THROTTLE_MS = 220;
+const TYPING_IDLE_MS = 1200;
+const PEER_FALLBACK_NAME_LEN = 8;
 const saveDelay = 2000;
 let hyperSaveInFlight = false;
 let draftSaveInFlight = false;
 const draftSnapshotCache = new Map();
+let currentPeerList = [];
+let peerActivityLog = [];
+let presenceSendTimer = null;
+let typingResetTimer = null;
+let lineAttributionPersistTimer = null;
+let isLocalTyping = false;
+let lastPresencePayload = "";
+const onboardingPage = document.getElementById("onboarding-page");
+const onboardingNameInput = document.getElementById("onboarding-name");
+const onboardingSubmitButton = document.getElementById("onboard-submit");
 
 const publishCSS = `
   @font-face {
@@ -161,6 +192,208 @@ function safeLocalStorageRemove(key) {
   } catch {}
 }
 
+function getRoomLineAttributionStorageKey(roomKey) {
+  return `${ROOM_LINE_ATTR_PREFIX}${roomKey}`;
+}
+
+function getLocalLineAttributionStorageKey(roomKey) {
+  return `${ROOM_LOCAL_LINE_ATTR_PREFIX}${roomKey}`;
+}
+
+function readRoomLineAttributions(roomKey) {
+  const candidates = getRoomKeyCandidates(roomKey);
+  if (candidates.length === 0) return {};
+  for (const candidate of candidates) {
+    const raw = safeLocalStorageGet(getRoomLineAttributionStorageKey(candidate));
+    if (!raw) continue;
+    try {
+      const parsed = JSON.parse(raw);
+      const normalized = normalizeLineAttributions(parsed?.lineAttributions || parsed);
+      if (normalized) return normalized;
+    } catch {}
+  }
+  return {};
+}
+
+function clearLocalLineAttributions(roomKey) {
+  const candidates = getRoomKeyCandidates(roomKey);
+  if (candidates.length === 0) return;
+  for (const candidate of candidates) {
+    safeLocalStorageRemove(getLocalLineAttributionStorageKey(candidate));
+  }
+}
+
+function persistRoomLineAttributionsNow() {
+  if (!currentRoomKey) return;
+  const normalizedRoom = normalizeLineAttributions(_roomLineAttributions);
+  const normalizedLocal = normalizeLineAttributions(_localLineAttributions);
+  const candidates = getRoomKeyCandidates(currentRoomKey);
+  for (const candidate of candidates) {
+    const roomStorageKey = getRoomLineAttributionStorageKey(candidate);
+    if (!normalizedRoom) {
+      safeLocalStorageRemove(roomStorageKey);
+    } else {
+      safeLocalStorageSet(roomStorageKey, JSON.stringify({
+        roomKey: currentRoomKey,
+        lineAttributions: normalizedRoom,
+        updatedAt: Date.now()
+      }));
+    }
+
+    const localStorageKey = getLocalLineAttributionStorageKey(candidate);
+    if (!normalizedLocal) {
+      safeLocalStorageRemove(localStorageKey);
+      continue;
+    }
+    safeLocalStorageSet(localStorageKey, JSON.stringify({
+      roomKey: currentRoomKey,
+      lineAttributions: normalizedLocal,
+      updatedAt: Date.now()
+    }));
+  }
+}
+
+function scheduleRoomLineAttributionsPersist() {
+  if (lineAttributionPersistTimer) clearTimeout(lineAttributionPersistTimer);
+  lineAttributionPersistTimer = setTimeout(() => {
+    lineAttributionPersistTimer = null;
+    persistRoomLineAttributionsNow();
+  }, 250);
+}
+
+function buildRandomClientId() {
+  try {
+    if (window.crypto?.randomUUID) {
+      return window.crypto.randomUUID();
+    }
+  } catch {}
+  return `client-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`;
+}
+
+function getOrCreateClientId() {
+  const existing = safeLocalStorageGet(CLIENT_ID_KEY);
+  if (existing && typeof existing === "string") return existing;
+  const next = buildRandomClientId();
+  safeLocalStorageSet(CLIENT_ID_KEY, next);
+  return next;
+}
+
+function normalizeDisplayName(value) {
+  if (typeof value !== "string") return "";
+  return value.trim().replace(/\s+/g, " ").slice(0, 32);
+}
+
+function getDisplayName() {
+  return normalizeDisplayName(safeLocalStorageGet(DISPLAY_NAME_KEY) || "");
+}
+
+function saveDisplayName(value) {
+  const next = normalizeDisplayName(value);
+  if (!next) {
+    safeLocalStorageRemove(DISPLAY_NAME_KEY);
+    return "";
+  }
+  safeLocalStorageSet(DISPLAY_NAME_KEY, next);
+  getOrCreateLocalPeerColor();
+  return next;
+}
+
+function hasDisplayName() {
+  return !!getDisplayName();
+}
+
+function normalizeHexColor(value) {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  return /^#[0-9a-fA-F]{6}$/.test(trimmed) ? trimmed.toUpperCase() : "";
+}
+
+function hslToHex(h, s, l) {
+  const hue = ((Number(h) % 360) + 360) % 360;
+  const sat = Math.max(0, Math.min(100, Number(s))) / 100;
+  const lig = Math.max(0, Math.min(100, Number(l))) / 100;
+  const c = (1 - Math.abs(2 * lig - 1)) * sat;
+  const x = c * (1 - Math.abs((hue / 60) % 2 - 1));
+  const m = lig - c / 2;
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  if (hue < 60) [r, g, b] = [c, x, 0];
+  else if (hue < 120) [r, g, b] = [x, c, 0];
+  else if (hue < 180) [r, g, b] = [0, c, x];
+  else if (hue < 240) [r, g, b] = [0, x, c];
+  else if (hue < 300) [r, g, b] = [x, 0, c];
+  else [r, g, b] = [c, 0, x];
+  const toHex = (v) => Math.round((v + m) * 255).toString(16).padStart(2, "0").toUpperCase();
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+function createReadablePeerColor() {
+  let hue = Math.floor(Math.random() * 360);
+  try {
+    if (window.crypto?.getRandomValues) {
+      const bytes = new Uint8Array(1);
+      window.crypto.getRandomValues(bytes);
+      hue = bytes[0] / 255 * 360;
+    }
+  } catch {}
+  return hslToHex(hue, 72, 44);
+}
+
+function getOrCreateLocalPeerColor() {
+  const existing = normalizeHexColor(safeLocalStorageGet(USER_COLOR_KEY) || "");
+  if (existing) return existing;
+  const next = createReadablePeerColor();
+  safeLocalStorageSet(USER_COLOR_KEY, next);
+  return next;
+}
+
+function getLocalPeerColor() {
+  return normalizeHexColor(safeLocalStorageGet(USER_COLOR_KEY) || "") || getOrCreateLocalPeerColor();
+}
+
+function showSetupBootScreen() {
+  showSpinner(true);
+}
+
+function hideSetupBootScreen() {
+  showSpinner(false);
+}
+
+function syncOnboardingInput() {
+  if (!onboardingNameInput) return;
+  onboardingNameInput.value = getDisplayName();
+}
+
+function ensureProfileBeforeRoomAction() {
+  if (hasDisplayName()) return true;
+  setView("onboarding");
+  syncOnboardingInput();
+  if (onboardingNameInput) onboardingNameInput.focus();
+  return false;
+}
+
+function truncateIdentifier(value, size = 10) {
+  if (!value || typeof value !== "string") return "";
+  const trimmed = value.trim();
+  if (trimmed.length <= size) return trimmed;
+  return `${trimmed.slice(0, size)}...`;
+}
+
+function getCursorDetails(text, offset) {
+  const safeText = typeof text === "string" ? text : "";
+  const safeOffset = Number.isFinite(offset) ? Math.max(0, Math.min(offset, safeText.length)) : 0;
+  const prefix = safeText.slice(0, safeOffset);
+  const lines = prefix.split("\n");
+  return {
+    offset: safeOffset,
+    line: lines.length,
+    column: (lines[lines.length - 1] || "").length + 1
+  };
+}
+
+const localClientId = getOrCreateClientId();
+
 const urlParams = new URLSearchParams(window.location.search);
 const paramProtocol = urlParams.get("protocol");
 const storedProtocol = safeLocalStorageGet("lastProtocol");
@@ -168,6 +401,7 @@ const initialProtocol = paramProtocol || storedProtocol || "hyper";
 if (protocolSelect) {
   protocolSelect.value = initialProtocol;
 }
+getOrCreateLocalPeerColor();
 
 function hasMeaningfulContent(value) {
   return typeof value === "string" && value.trim().length > 0;
@@ -543,18 +777,29 @@ function persistRoomState(state) {
 
 export function scheduleSend() {
   if (!currentRoomUrl) return;
+
   if (!ydoc || !ytext) {
     if (sendTimer) clearTimeout(sendTimer);
     sendTimer = setTimeout(async () => {
       const content = markdownInput.value;
       if (content === lastSentContent) return;
+      _attributeCurrentLine();
+      updateLineAuthors(_roomLineAttributions);
       lastSentContent = content;
       try {
         await fetch(`${currentRoomUrl}/doc`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content })
+          body: JSON.stringify({
+            content,
+            clientId: localClientId,
+            role: currentRole || "client",
+            name: getDisplayName(),
+            ...getCurrentCursorPayload(),
+            lineAttributions: getLineAttributionsPayload()
+          })
         });
+        schedulePresenceSend();
       } catch {
         updatePeers(0);
       } finally {
@@ -573,9 +818,149 @@ export function scheduleSend() {
     prevText = oldText;
     return;
   }
+  _attributeCurrentLine();
+  updateLineAuthors(_roomLineAttributions);
   applyTextDiff(ytext, oldText, newText);
   prevText = newText;
 }
+
+
+function _attributeCurrentLine() {
+  try {
+    const text = markdownInput.value || "";
+    const offset = markdownInput.selectionStart ?? 0;
+    const before = text.slice(0, Math.min(offset, text.length));
+    let line = 1;
+    for (const ch of before) if (ch === "\n") line++;
+
+    const name  = getDisplayName() || truncateIdentifier(localClientId, PEER_FALLBACK_NAME_LEN);
+    const color = currentPeerList.find((p) => p.clientId === localClientId)?.color || _localFallbackColor();
+    if (!color) return;
+    _localLineAttributions[String(line)] = { name, color };
+    _roomLineAttributions[String(line)] = { name, color };
+    scheduleRoomLineAttributionsPersist();
+  } catch {}
+}
+
+// Local peer's accumulated line attributions, sent via /presence.
+let _localLineAttributions = {};
+// Room-level accumulated line attributions, preserved even after peers disconnect.
+let _roomLineAttributions = {};
+
+function _localFallbackColor() {
+  return getLocalPeerColor();
+}
+
+function attributeLocalLineRange(startLine, endLine, { reset = false } = {}) {
+  const start = Math.max(1, Number(startLine) || 1);
+  const end = Math.max(start, Number(endLine) || start);
+  const name = getDisplayName() || truncateIdentifier(localClientId, PEER_FALLBACK_NAME_LEN);
+  const color = currentPeerList.find((p) => p.clientId === localClientId)?.color || _localFallbackColor();
+  if (!color) return;
+
+  if (reset) {
+    _localLineAttributions = {};
+    _roomLineAttributions = {};
+  }
+
+  for (let line = start; line <= end; line += 1) {
+    const lineKey = String(line);
+    const entry = { name, color };
+    _localLineAttributions[lineKey] = entry;
+    _roomLineAttributions[lineKey] = entry;
+  }
+
+  updateLineAuthors(_roomLineAttributions);
+  scheduleRoomLineAttributionsPersist();
+}
+
+function mergeLineAttributionsIntoRoom(value) {
+  if (!value || typeof value !== "object") return;
+  let changed = false;
+  for (const [line, info] of Object.entries(value)) {
+    const lineNum = Number(line);
+    if (!Number.isFinite(lineNum) || lineNum < 1) continue;
+    if (!info || typeof info !== "object" || typeof info.color !== "string") continue;
+    const lineKey = String(Math.floor(lineNum));
+    const prevValue = _roomLineAttributions[lineKey];
+    const incomingName = typeof info.name === "string" ? info.name.trim() : "";
+    const colorMatchedPeer = currentPeerList.find((peer) => peer?.color === info.color && peer?.name);
+    const resolvedName = incomingName || colorMatchedPeer?.name || prevValue?.name || "";
+    const nextValue = {
+      name: resolvedName,
+      color: info.color
+    };
+    if (!prevValue || prevValue.name !== nextValue.name || prevValue.color !== nextValue.color) {
+      _roomLineAttributions[lineKey] = nextValue;
+      changed = true;
+    }
+  }
+  if (changed) scheduleRoomLineAttributionsPersist();
+}
+
+function refreshRoomAttributionNamesFromPeerList() {
+  if (!_roomLineAttributions || typeof _roomLineAttributions !== "object") return;
+  const colorToNames = new Map();
+  for (const peer of currentPeerList || []) {
+    if (!peer || typeof peer.color !== "string") continue;
+    const name = typeof peer.name === "string" ? peer.name.trim() : "";
+    if (!name) continue;
+    if (!colorToNames.has(peer.color)) colorToNames.set(peer.color, new Set());
+    colorToNames.get(peer.color).add(name);
+  }
+  let changed = false;
+  for (const [lineKey, info] of Object.entries(_roomLineAttributions)) {
+    if (!info || typeof info !== "object" || typeof info.color !== "string") continue;
+    const names = colorToNames.get(info.color);
+    if (!names || names.size !== 1) continue;
+    const [resolvedName] = Array.from(names);
+    if (resolvedName && info.name !== resolvedName) {
+      _roomLineAttributions[lineKey] = {
+        name: resolvedName,
+        color: info.color
+      };
+      changed = true;
+    }
+  }
+  if (changed) {
+    updateLineAuthors(_roomLineAttributions);
+    scheduleRoomLineAttributionsPersist();
+  }
+}
+
+function refreshLocalLineAttribution() {
+  updateLineAuthors(_roomLineAttributions);
+}
+
+function syncLocalLineAttributionNames() {
+  const currentName = getDisplayName() || truncateIdentifier(localClientId, PEER_FALLBACK_NAME_LEN);
+  if (!currentName) return;
+  let changed = false;
+  for (const lineKey of Object.keys(_localLineAttributions || {})) {
+    const localInfo = _localLineAttributions[lineKey];
+    if (localInfo && localInfo.name !== currentName) {
+      _localLineAttributions[lineKey] = {
+        ...localInfo,
+        name: currentName
+      };
+      changed = true;
+    }
+    const roomInfo = _roomLineAttributions[lineKey];
+    if (roomInfo && roomInfo.name !== currentName) {
+      _roomLineAttributions[lineKey] = {
+        ...roomInfo,
+        name: currentName
+      };
+      changed = true;
+    }
+  }
+  if (changed) {
+    updateLineAuthors(_roomLineAttributions);
+    scheduleRoomLineAttributionsPersist();
+  }
+}
+
+
 
 function bytesToBase64(bytes) {
   let binary = "";
@@ -610,17 +995,92 @@ function applyTextDiff(ytextRef, oldText, newText, origin = null) {
   }, origin);
 }
 
+function getCurrentCursorPayload() {
+  const start = Number.isFinite(markdownInput.selectionStart) ? markdownInput.selectionStart : 0;
+  const end = Number.isFinite(markdownInput.selectionEnd) ? markdownInput.selectionEnd : start;
+  const startPos = getCursorDetails(markdownInput.value || "", start);
+  const endPos = getCursorDetails(markdownInput.value || "", end);
+  return {
+    selectionStart: startPos.offset,
+    selectionEnd: endPos.offset,
+    cursorLine: startPos.line,
+    cursorColumn: startPos.column
+  };
+}
+
+function buildPresencePayload() {
+  syncLocalLineAttributionNames();
+  const cursor = getCurrentCursorPayload();
+  const lineAttributions = getLineAttributionsPayload();
+  return {
+    clientId: localClientId,
+    role: currentRole || "client",
+    name: getDisplayName(),
+    color: getLocalPeerColor(),
+    ...cursor,
+    isTyping: isLocalTyping,
+    lineAttributions
+  };
+}
+
+function getLineAttributionsPayload() {
+  syncLocalLineAttributionNames();
+  // Only send lines the local peer actually edited.
+  if (!_localLineAttributions || Object.keys(_localLineAttributions).length === 0) return undefined;
+  return normalizeLineAttributions(_localLineAttributions) || undefined;
+}
+
+function scheduleTypingReset() {
+  if (typingResetTimer) clearTimeout(typingResetTimer);
+  typingResetTimer = setTimeout(() => {
+    isLocalTyping = false;
+    sendPresenceNow();
+  }, TYPING_IDLE_MS);
+}
+
+async function sendPresenceNow(force = false) {
+  if (!currentRoomUrl) return;
+  const payload = buildPresencePayload();
+  const serialized = JSON.stringify(payload);
+  if (!force && serialized === lastPresencePayload) return;
+  lastPresencePayload = serialized;
+  try {
+    await fetch(`${currentRoomUrl}/presence`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: serialized
+    });
+  } catch {}
+}
+
+function schedulePresenceSend(force = false) {
+  if (presenceSendTimer) clearTimeout(presenceSendTimer);
+  presenceSendTimer = setTimeout(() => {
+    presenceSendTimer = null;
+    sendPresenceNow(force);
+  }, force ? 0 : PRESENCE_THROTTLE_MS);
+}
+
 async function flushYjsUpdate() {
   if (!pendingUpdate || !currentRoomUrl) return;
 
   const toSend = pendingUpdate;
   pendingUpdate = null;
+  const outgoingLineAttributions = getLineAttributionsPayload();
 
   try {
     const res = await fetch(`${currentRoomUrl}/doc/update`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ update: bytesToBase64(toSend) })
+      body: JSON.stringify({
+        update: bytesToBase64(toSend),
+        clientId: localClientId,
+        role: currentRole || "client",
+        name: getDisplayName(),
+        color: getLocalPeerColor(),
+        ...getCurrentCursorPayload(),
+        lineAttributions: outgoingLineAttributions
+      })
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
@@ -667,10 +1127,15 @@ async function flushYjsUpdate() {
   }
 }
 
-function destroyYjs(skipSave = false) {
+function destroyYjs(skipSave = false, clearLineAttributions = true) {
   if (sendTimer) { clearTimeout(sendTimer); sendTimer = null; }
   if (sendUpdateTimer) { clearTimeout(sendUpdateTimer); sendUpdateTimer = null; }
   if (flushRetryTimer) { clearTimeout(flushRetryTimer); flushRetryTimer = null; }
+  if (presenceSendTimer) { clearTimeout(presenceSendTimer); presenceSendTimer = null; }
+  if (typingResetTimer) { clearTimeout(typingResetTimer); typingResetTimer = null; }
+  if (lineAttributionPersistTimer) { clearTimeout(lineAttributionPersistTimer); lineAttributionPersistTimer = null; }
+  isLocalTyping = false;
+  lastPresencePayload = "";
 
   // Save CRDT state before destroying for proper reconnect merge
   if (!skipSave && !savedYjsState && ydoc && window.Y) {
@@ -690,18 +1155,37 @@ function destroyYjs(skipSave = false) {
   ytext = null;
   prevText = "";
   isApplyingRemote = false;
+  if (clearLineAttributions) {
+    _localLineAttributions = {};
+    _roomLineAttributions = {};
+  }
+  destroyCursorOverlay();
 }
+
+
+
+
 
 async function postContentNow() {
   if (!currentRoomUrl) return;
   const content = markdownInput.value;
+  const outgoingLineAttributions = getLineAttributionsPayload();
   lastSentContent = content;
   try {
     await fetch(`${currentRoomUrl}/doc`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content })
+      body: JSON.stringify({
+        content,
+        clientId: localClientId,
+        role: currentRole || "client",
+        name: getDisplayName(),
+        color: getLocalPeerColor(),
+        ...getCurrentCursorPayload(),
+        lineAttributions: outgoingLineAttributions
+      })
     });
+    schedulePresenceSend(true);
     scheduleDraftSave();
   } catch {
     updatePeers(0);
@@ -796,7 +1280,198 @@ export function scheduleDraftSave() {
 }
 
 function updatePeers(count) {
-  peersCount.textContent = Number.isFinite(count) ? String(count) : "0";
+  const safeCount = Number.isFinite(count) ? Math.max(0, count) : 0;
+  peersCount.textContent = String(safeCount);
+  if (peersLink) {
+    const total = Array.isArray(currentPeerList) ? currentPeerList.length : 0;
+    peersLink.title = total > 0 ? `${safeCount} remote peers, ${total} total participants` : `${safeCount} remote peers`;
+  }
+}
+
+function normalizePeerRole(role) {
+  if (role === "host") return "host";
+  if (role === "client") return "client";
+  return "viewer";
+}
+
+function normalizePeerName(name, fallback) {
+  const normalized = normalizeDisplayName(name);
+  return normalized || fallback;
+}
+
+function normalizePeerList(peerList) {
+  if (!Array.isArray(peerList)) return [];
+  return peerList
+    .map((peer) => {
+      if (!peer || typeof peer !== "object") return null;
+      const role = normalizePeerRole(peer.role);
+      const id = Number.isFinite(Number(peer.id)) ? Number(peer.id) : null;
+      const clientId = typeof peer.clientId === "string" ? peer.clientId : "";
+      const fallbackName = id ? `Peer #${id}` : `Peer ${truncateIdentifier(clientId || "unknown", PEER_FALLBACK_NAME_LEN)}`;
+      return {
+        id,
+        role,
+        clientId,
+        color: typeof peer.color === "string" ? peer.color : "",
+        name: normalizePeerName(peer.name, fallbackName),
+        isTyping: peer.isTyping === true,
+        cursorLine: Number.isFinite(Number(peer.cursorLine)) ? Number(peer.cursorLine) : null,
+        cursorColumn: Number.isFinite(Number(peer.cursorColumn)) ? Number(peer.cursorColumn) : null,
+        lineAttributions: normalizeLineAttributions(peer.lineAttributions),
+        updatedAt: Number.isFinite(Number(peer.updatedAt)) ? Number(peer.updatedAt) : Date.now(),
+        joinedAt: Number.isFinite(Number(peer.joinedAt)) ? Number(peer.joinedAt) : Date.now()
+      };
+    })
+    .filter(Boolean);
+}
+
+function normalizeLineAttributions(value) {
+  if (!value || typeof value !== "object") return null;
+  const normalized = {};
+  for (const [line, info] of Object.entries(value)) {
+    const lineNum = Number(line);
+    if (!Number.isFinite(lineNum) || lineNum < 1) continue;
+    if (!info || typeof info !== "object" || typeof info.color !== "string") continue;
+    normalized[String(Math.floor(lineNum))] = {
+      name: typeof info.name === "string" ? info.name : "",
+      color: info.color
+    };
+  }
+  return Object.keys(normalized).length > 0 ? normalized : null;
+}
+
+function buildPeersPageHref(key = currentRoomKey, localUrl = currentRoomUrl) {
+  const params = new URLSearchParams();
+  if (key) params.set("roomKey", key);
+  if (localUrl) params.set("localUrl", localUrl);
+  if (currentRole) params.set("role", currentRole);
+  params.set("clientId", localClientId);
+  const query = params.toString();
+  return query ? `./peers.html?${query}` : "./peers.html";
+}
+
+function updatePeersLink(key = currentRoomKey, localUrl = currentRoomUrl) {
+  if (!peersLink) return;
+  peersLink.href = buildPeersPageHref(key, localUrl);
+}
+
+function setRoleBadge(role = currentRole) {
+  if (!roomRoleBadge) return;
+  const normalizedRole = normalizePeerRole(role || "client");
+  roomRoleBadge.textContent = normalizedRole;
+  roomRoleBadge.classList.remove("host", "client", "viewer", "hidden");
+  roomRoleBadge.classList.add(normalizedRole);
+}
+
+function getPeerStatusStorageKey(roomKey) {
+  return `${PEER_STATUS_PREFIX}${roomKey}`;
+}
+
+function getPeerActivityStorageKey(roomKey) {
+  return `${PEER_ACTIVITY_PREFIX}${roomKey}`;
+}
+
+function persistPeerStatusSnapshot() {
+  if (!currentRoomKey) return;
+  const payload = {
+    roomKey: currentRoomKey,
+    localUrl: currentRoomUrl,
+    role: currentRole,
+    clientId: localClientId,
+    peers: currentPeerList,
+    updatedAt: Date.now()
+  };
+  const serialized = JSON.stringify(payload);
+  safeLocalStorageSet(getPeerStatusStorageKey(currentRoomKey), serialized);
+  safeLocalStorageSet(ACTIVE_ROOM_STATUS_KEY, serialized);
+}
+
+function persistPeerActivitySnapshot() {
+  if (!currentRoomKey) return;
+  const payload = {
+    roomKey: currentRoomKey,
+    localUrl: currentRoomUrl,
+    role: currentRole,
+    clientId: localClientId,
+    activity: peerActivityLog,
+    updatedAt: Date.now()
+  };
+  safeLocalStorageSet(getPeerActivityStorageKey(currentRoomKey), JSON.stringify(payload));
+}
+
+function setPeerList(peerList) {
+  currentPeerList = normalizePeerList(peerList);
+  for (const peer of currentPeerList) {
+    if (peer?.clientId === localClientId && peer.lineAttributions && typeof peer.lineAttributions === "object") {
+      // Do not let self peerlist payload overwrite already-attributed room lines.
+      // But do allow safe name refresh on existing self-owned lines.
+      const selfSafeAttributions = {};
+      let renamedExisting = false;
+      for (const [line, info] of Object.entries(peer.lineAttributions)) {
+        const lineNum = Number(line);
+        if (!Number.isFinite(lineNum) || lineNum < 1) continue;
+        const lineKey = String(Math.floor(lineNum));
+        const existing = _roomLineAttributions[lineKey];
+        if (existing) {
+          const incomingName = typeof info?.name === "string" ? info.name.trim() : "";
+          const incomingColor = typeof info?.color === "string" ? info.color : "";
+          if (incomingName && incomingColor && existing.color === incomingColor && existing.name !== incomingName) {
+            _roomLineAttributions[lineKey] = {
+              name: incomingName,
+              color: existing.color
+            };
+            renamedExisting = true;
+          }
+          continue;
+        }
+        selfSafeAttributions[lineKey] = info;
+      }
+      mergeLineAttributionsIntoRoom(selfSafeAttributions);
+      if (renamedExisting) scheduleRoomLineAttributionsPersist();
+      continue;
+    }
+    mergeLineAttributionsIntoRoom(peer.lineAttributions);
+  }
+  refreshRoomAttributionNamesFromPeerList();
+  persistPeerStatusSnapshot();
+  if (peersCount.textContent === "0") {
+    let estimatedRemote = currentPeerList.length;
+    if (currentPeerList.some((peer) => peer.clientId && peer.clientId === localClientId)) {
+      estimatedRemote -= 1;
+    }
+    if (estimatedRemote > 0) {
+      updatePeers(estimatedRemote);
+    }
+  }
+  updateCursorOverlay(currentPeerList);
+  updateLineAuthors(_roomLineAttributions);
+
+  const self = currentPeerList.find((p) => p.clientId === localClientId);
+  if (self?.color) setLocalColor(self.color);
+}
+
+
+
+function addPeerActivity(entry) {
+  if (!entry || typeof entry !== "object") return;
+  const item = {
+    id: Number.isFinite(Number(entry.id)) ? Number(entry.id) : Date.now(),
+    type: typeof entry.type === "string" ? entry.type : "event",
+    message: typeof entry.message === "string" ? entry.message : "",
+    role: normalizePeerRole(entry.role || "client"),
+    name: normalizePeerName(entry.name, "Peer"),
+    clientId: typeof entry.clientId === "string" ? entry.clientId : "",
+    timestamp: Number.isFinite(Number(entry.timestamp)) ? Number(entry.timestamp) : Date.now()
+  };
+  const dedupeKey = `${item.id}:${item.type}:${item.clientId}:${item.timestamp}`;
+  if (peerActivityLog.some((log) => `${log.id}:${log.type}:${log.clientId}:${log.timestamp}` === dedupeKey)) {
+    return;
+  }
+  peerActivityLog.unshift(item);
+  if (peerActivityLog.length > MAX_ACTIVITY_ITEMS) {
+    peerActivityLog.length = MAX_ACTIVITY_ITEMS;
+  }
+  persistPeerActivitySnapshot();
 }
 
 function updateRoomStatus({ key, localUrl }) {
@@ -807,6 +1482,15 @@ function updateRoomStatus({ key, localUrl }) {
   } else {
     localUrlLabel.removeAttribute("href");
   }
+  updatePeersLink(key, localUrl);
+  setRoleBadge(currentRole || "client");
+  safeLocalStorageSet(ACTIVE_ROOM_STATUS_KEY, JSON.stringify({
+    roomKey: key || null,
+    localUrl: localUrl || null,
+    role: currentRole || null,
+    clientId: localClientId,
+    updatedAt: Date.now()
+  }));
   roomStatus.classList.remove("hidden");
   setView("editor");
 }
@@ -845,7 +1529,13 @@ function connectSseChannel(localUrl, role) {
   }
 
   try {
-    eventSource = new EventSource(`${localUrl}/events?role=${encodeURIComponent(role)}`);
+    const sseParams = new URLSearchParams();
+    sseParams.set("role", normalizePeerRole(role || "client"));
+    sseParams.set("clientId", localClientId);
+    sseParams.set("color", getLocalPeerColor());
+    const displayName = getDisplayName();
+    if (displayName) sseParams.set("name", displayName);
+    eventSource = new EventSource(`${localUrl}/events?${sseParams.toString()}`);
 
     eventSource.addEventListener("yjsupdate", (event) => {
       if (!ydoc) return;
@@ -882,12 +1572,42 @@ function connectSseChannel(localUrl, role) {
       } catch {}
     });
 
+    eventSource.addEventListener("peerlist", (event) => {
+      try {
+        const nextPeerList = JSON.parse(event.data || "[]");
+        setPeerList(nextPeerList);
+      } catch {}
+    });
+
+    eventSource.addEventListener("activity", (event) => {
+      try {
+        const payload = JSON.parse(event.data || "{}");
+        if (Array.isArray(payload)) {
+          payload.slice().reverse().forEach((item) => addPeerActivity(item));
+          return;
+        }
+        addPeerActivity(payload);
+      } catch {}
+    });
+
     eventSource.addEventListener("peers", (event) => {
-      updatePeers(Number(event.data));
+      let nextCount = Number(event.data);
+      if (!Number.isFinite(nextCount)) {
+        try {
+          const payload = JSON.parse(event.data || "{}");
+          if (Number.isFinite(Number(payload?.count))) {
+            nextCount = Number(payload.count);
+          } else if (Number.isFinite(Number(payload?.peers))) {
+            nextCount = Number(payload.peers);
+          }
+        } catch {}
+      }
+      updatePeers(Number.isFinite(nextCount) ? nextCount : 0);
     });
 
     eventSource.onopen = () => {
       if (pendingUpdate) flushYjsUpdate();
+      sendPresenceNow(true);
       if (reconnectTimer) {
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
@@ -896,6 +1616,7 @@ function connectSseChannel(localUrl, role) {
 
     eventSource.onerror = () => {
       updatePeers(0);
+      setPeerList([]);
       if (eventSource) {
         try { eventSource.close(); } catch {}
         eventSource = null;
@@ -916,7 +1637,20 @@ function connectSseChannel(localUrl, role) {
 
 async function connectToRoom(localUrl, role = "client") {
   currentRoomUrl = localUrl;
-  currentRole = role;
+  currentRole = normalizePeerRole(role || "client");
+  // Keep local ownership map in-memory only for the active session.
+  // Reloading stale line-number ownership from storage can overwrite peer traces after reconnect.
+  _localLineAttributions = {};
+  clearLocalLineAttributions(currentRoomKey);
+  _roomLineAttributions = readRoomLineAttributions(currentRoomKey);
+  updateLineAuthors(_roomLineAttributions);
+  currentPeerList = [];
+  peerActivityLog = [];
+  updatePeers(0);
+  updatePeersLink(currentRoomKey, localUrl);
+  setRoleBadge(currentRole);
+  persistPeerStatusSnapshot();
+  persistPeerActivitySnapshot();
 
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
@@ -928,7 +1662,7 @@ async function connectToRoom(localUrl, role = "client") {
     eventSource = null;
   }
 
-  destroyYjs();
+  destroyYjs(false, false);
 
   let hasRoomSnapshot = false;
   let snapshotContent = "";
@@ -939,6 +1673,31 @@ async function connectToRoom(localUrl, role = "client") {
   if (!serverReady) {
     console.warn("[p2pmd] Server not responding, continuing anyway...");
   }
+
+  try {
+    const statusRes = await fetchWithTimeout(`${localUrl}/status`, {}, 2000);
+    if (statusRes.ok) {
+      const statusData = await statusRes.json();
+      if (Array.isArray(statusData?.peerList)) {
+        setPeerList(statusData.peerList);
+      }
+      if (Number.isFinite(Number(statusData?.peers))) {
+        updatePeers(Number(statusData.peers));
+      }
+    }
+  } catch {}
+
+  try {
+    const activityRes = await fetchWithTimeout(`${localUrl}/activity`, {}, 2000);
+    if (activityRes.ok) {
+      const activityData = await activityRes.json();
+      if (Array.isArray(activityData?.activity)) {
+        for (const event of activityData.activity.slice().reverse()) {
+          addPeerActivity(event);
+        }
+      }
+    }
+  } catch {}
   
   let retries = 5;
   while (retries > 0) {
@@ -1106,7 +1865,15 @@ async function connectToRoom(localUrl, role = "client") {
   }
 
   connectSseChannel(localUrl, role);
+  initCursorOverlay(markdownInput, localClientId);
+  updateLineAuthors(_roomLineAttributions);
+
 }
+
+
+
+
+
 
 async function createRoom() {
   const host = normalizeHost(localHostInput.value);
@@ -1364,12 +2131,17 @@ async function disconnectRoom() {
 
   if (disconnectKey) {
     saveRoomDraft(disconnectKey, disconnectContent);
+    persistRoomLineAttributionsNow();
   }
 
   if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
   if (sendTimer) { clearTimeout(sendTimer); sendTimer = null; }
   if (sendUpdateTimer) { clearTimeout(sendUpdateTimer); sendUpdateTimer = null; }
   if (flushRetryTimer) { clearTimeout(flushRetryTimer); flushRetryTimer = null; }
+  if (presenceSendTimer) { clearTimeout(presenceSendTimer); presenceSendTimer = null; }
+  if (typingResetTimer) { clearTimeout(typingResetTimer); typingResetTimer = null; }
+  isLocalTyping = false;
+  lastPresencePayload = "";
 
   if (pendingUpdate && currentRoomUrl) {
     try { await flushYjsUpdate(); } catch {}
@@ -1395,7 +2167,7 @@ async function disconnectRoom() {
     eventSource = null;
   }
 
-  destroyYjs();
+  destroyYjs(false, false);
 
   // Clear saved state since user explicitly disconnected
   savedYjsState = null;
@@ -1412,7 +2184,15 @@ async function disconnectRoom() {
   }
   currentRoomUrl = null;
   currentRoomKey = null;
+  currentPeerList = [];
+  peerActivityLog = [];
   updatePeers(0);
+  updatePeersLink();
+  safeLocalStorageRemove(ACTIVE_ROOM_STATUS_KEY);
+  if (roomRoleBadge) {
+    roomRoleBadge.classList.add("hidden");
+    roomRoleBadge.classList.remove("host", "client", "viewer");
+  }
   roomStatus.classList.add("hidden");
   updateRoomUrl(null);
   setView("setup");
@@ -1841,6 +2621,8 @@ Any questions?
   }
   
   markdownInput.value = template;
+  const templateLineCount = (template.match(/\n/g) || []).length + 1;
+  attributeLocalLineRange(1, templateLineCount, { reset: true });
   renderPreview();
   
   setTimeout(() => {
@@ -2452,8 +3234,8 @@ function getViewParam() {
 
 function setView(view) {
   const params = new URLSearchParams(window.location.search);
-  if (view === "setup") {
-    params.set("view", "setup");
+  if (view === "setup" || view === "onboarding") {
+    params.set("view", view);
     params.delete("protocol");
   } else {
     params.delete("view");
@@ -2465,8 +3247,10 @@ function setView(view) {
   const query = params.toString();
   const nextUrl = query ? `${base}?${query}` : base;
   history.replaceState(null, "", nextUrl);
+  if (onboardingPage) onboardingPage.classList.toggle("hidden", view !== "onboarding");
   if (setupPage) setupPage.classList.toggle("hidden", view !== "setup");
-  if (editorPage) editorPage.classList.toggle("hidden", view === "setup");
+  if (editorPage) editorPage.classList.toggle("hidden", view !== "editor");
+  if (view === "onboarding") syncOnboardingInput();
 }
 
 function resetNetworkSettingsOnCreate() {
@@ -2476,9 +3260,13 @@ function resetNetworkSettingsOnCreate() {
   localPortInput.value = "";
 }
 
-createRoomButton.addEventListener("click", createRoom);
+createRoomButton.addEventListener("click", () => {
+  if (!ensureProfileBeforeRoomAction()) return;
+  createRoom();
+});
 joinForm.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (!ensureProfileBeforeRoomAction()) return;
   const key = normalizeRoomKey(joinRoomKey.value);
   if (!key) {
     alert("Please enter a valid hs:// key.");
@@ -2495,6 +3283,34 @@ joinForm.addEventListener("submit", (event) => {
   joinRoom(key, storedState);
 });
 disconnectButton.addEventListener("click", disconnectRoom);
+
+if (onboardingSubmitButton) {
+  onboardingSubmitButton.addEventListener("click", async () => {
+    const nextName = saveDisplayName(onboardingNameInput?.value || "");
+    if (!nextName) {
+      alert("Please enter your username to continue.");
+      if (onboardingNameInput) onboardingNameInput.focus();
+      return;
+    }
+    syncOnboardingInput();
+    setView("setup");
+    await loadRecentRooms();
+  });
+}
+
+if (onboardingNameInput) {
+  onboardingNameInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    onboardingSubmitButton?.click();
+  });
+}
+
+window.addEventListener("storage", (event) => {
+  if (event?.key !== DISPLAY_NAME_KEY) return;
+  syncLocalLineAttributionNames();
+  schedulePresenceSend(true);
+});
 
 if (copyRoomKey) {
   copyRoomKey.style.cursor = "pointer";
@@ -2521,10 +3337,57 @@ if (copyRoomKey) {
 }
 
 markdownInput.addEventListener("input", () => {
+  isLocalTyping = true;
+  scheduleTypingReset();
   scheduleRender();
   scheduleSend();
   scheduleDraftSave();
-  });
+  schedulePresenceSend();
+});
+
+markdownInput.addEventListener("paste", (event) => {
+  const pastedText = event?.clipboardData?.getData("text/plain") || "";
+  if (!pastedText) return;
+
+  const text = markdownInput.value || "";
+  const offset = Number.isFinite(markdownInput.selectionStart) ? markdownInput.selectionStart : 0;
+  const before = text.slice(0, Math.min(offset, text.length));
+  let startLine = 1;
+  for (const ch of before) if (ch === "\n") startLine += 1;
+
+  const pastedLineCount = (pastedText.match(/\n/g) || []).length + 1;
+  const endLine = startLine + pastedLineCount - 1;
+
+  setTimeout(() => {
+    attributeLocalLineRange(startLine, endLine);
+    schedulePresenceSend(true);
+  }, 0);
+});
+
+markdownInput.addEventListener("click", () => {
+  refreshLocalLineAttribution();
+  schedulePresenceSend();
+});
+
+markdownInput.addEventListener("keyup", () => {
+  refreshLocalLineAttribution();
+  schedulePresenceSend();
+});
+
+markdownInput.addEventListener("select", () => {
+  refreshLocalLineAttribution();
+  schedulePresenceSend();
+});
+
+markdownInput.addEventListener("focus", () => {
+  refreshLocalLineAttribution();
+  schedulePresenceSend(true);
+});
+
+markdownInput.addEventListener("blur", () => {
+  isLocalTyping = false;
+  schedulePresenceSend(true);
+});
 
 markdownInput.addEventListener("dragover", (e) => {
   const hasFiles = e.dataTransfer?.types?.includes("Files");
@@ -2779,50 +3642,65 @@ async function loadRecentRooms() {
 }
 
 (async () => {
-  const viewParam = getViewParam();
-  const stateFromUrl = readRoomStateFromUrl();
-  
-  if (viewParam === "setup" || !stateFromUrl?.key) {
-    await loadRecentRooms();
-  }
-  
-  const state = stateFromUrl;
-  if (viewParam === "setup") {
-    setView("setup");
-    return;
-  }
-  if (!state?.key) {
-    setView("setup");
-    return;
-  }
-  if (!validateRoomKey(state.key)) {
-    setView("setup");
-    return;
-  }
-  
-  // If we just created this room, don't rejoin - server is already running
-  if (justCreatedRoom && currentRoomKey === state.key) {
-    setView("editor");
-    return;
-  }
-  
-  // If we're already connected to this room, don't rejoin - just restore the UI state
-  if (currentRoomKey === state.key && currentRoomUrl) {
+  showSetupBootScreen();
+  syncOnboardingInput();
+  try {
+    const viewParam = getViewParam();
+    const stateFromUrl = readRoomStateFromUrl();
+    
+    if (viewParam === "setup" || viewParam === "onboarding" || !stateFromUrl?.key || !hasDisplayName()) {
+      await loadRecentRooms();
+    }
+    
+    const state = stateFromUrl;
+    if (!hasDisplayName()) {
+      setView("onboarding");
+      if (onboardingNameInput) onboardingNameInput.focus();
+      return;
+    }
+    if (viewParam === "onboarding") {
+      setView("setup");
+      return;
+    }
+    if (viewParam === "setup") {
+      setView("setup");
+      return;
+    }
+    if (!state?.key) {
+      setView("setup");
+      return;
+    }
+    if (!validateRoomKey(state.key)) {
+      setView("setup");
+      return;
+    }
+    
+    // If we just created this room, don't rejoin - server is already running
+    if (justCreatedRoom && currentRoomKey === state.key) {
+      setView("editor");
+      return;
+    }
+    
+    // If we're already connected to this room, don't rejoin - just restore the UI state
+    if (currentRoomKey === state.key && currentRoomUrl) {
+      setView("editor");
+      joinRoomKey.value = state.key;
+      if (state.host) localHostInput.value = state.host;
+      if (state.port) localPortInput.value = state.port;
+      if (typeof state.secure === "boolean") privateMode.checked = state.secure;
+      if (typeof state.udp === "boolean") udpMode.checked = state.udp;
+      updateRoomStatus({ key: state.key, localUrl: state.localUrl });
+      return;
+    }
+    
     setView("editor");
     joinRoomKey.value = state.key;
     if (state.host) localHostInput.value = state.host;
     if (state.port) localPortInput.value = state.port;
     if (typeof state.secure === "boolean") privateMode.checked = state.secure;
     if (typeof state.udp === "boolean") udpMode.checked = state.udp;
-    updateRoomStatus({ key: state.key, localUrl: state.localUrl });
-    return;
+    await joinRoom(state.key, state);
+  } finally {
+    hideSetupBootScreen();
   }
-  
-  setView("editor");
-  joinRoomKey.value = state.key;
-  if (state.host) localHostInput.value = state.host;
-  if (state.port) localPortInput.value = state.port;
-  if (typeof state.secure === "boolean") privateMode.checked = state.secure;
-  if (typeof state.udp === "boolean") udpMode.checked = state.udp;
-  await joinRoom(state.key, state);
 })();
