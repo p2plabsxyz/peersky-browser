@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/png" href="peersky://static/assets/favicon.ico" />
+    <title>P2P Peers</title>
+    <style>
+      @import url("browser://theme/index.css");
+
+      :root {
+        --panel-border: var(--browser-theme-primary-highlight, #3c3c41);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        padding: 12px;
+        background: var(--browser-theme-background);
+        color: var(--browser-theme-text-color);
+        font-family: var(--browser-theme-font-family);
+        overflow-y: auto;
+      }
+
+      #app {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        max-width: 980px;
+        margin: 0 auto;
+      }
+
+      .panel {
+        border: 1px solid var(--panel-border);
+        border-radius: 10px;
+        padding: 10px;
+      }
+
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .muted {
+        opacity: 0.75;
+      }
+
+      .stats {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        font-size: 0.92rem;
+        margin-top: 10px;
+      }
+
+      .profile-editor {
+        margin-top: 8px;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .profile-editor button {
+        cursor: pointer;
+      }
+
+      .role-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 1px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--panel-border);
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+
+      .role-badge.host {
+        color: #ffffff;
+        border-color: #1f9d62;
+        background: #1f9d62;
+        font-weight: 700;
+      }
+
+      .role-badge.client {
+        color: #ffffff;
+        border-color: #c28a1b;
+        background: #c28a1b;
+        font-weight: 700;
+      }
+
+      .role-badge.viewer {
+        color: #ffffff;
+        border-color: #4b5563;
+        background: #4b5563;
+        font-weight: 700;
+      }
+
+      .peer-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 8px;
+      }
+
+      .peer-card {
+        border: 1px solid var(--panel-border);
+        border-radius: 10px;
+        padding: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+
+      .peer-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .avatar {
+        width: 24px;
+        height: 24px;
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: #ffffff;
+        font-size: 0.78rem;
+        font-weight: 600;
+        flex: 0 0 auto;
+      }
+
+      .activity-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        max-height: 42vh;
+        overflow: auto;
+      }
+
+      .activity-item {
+        border: 1px solid var(--panel-border);
+        border-radius: 8px;
+        padding: 6px 8px;
+      }
+
+      .empty {
+        opacity: 0.7;
+        font-style: italic;
+      }
+    </style>
+  </head>
+  <body>
+    <main id="app">
+      <section class="panel">
+        <div class="row">
+          <strong>Room:</strong>
+          <code id="roomKey">-</code>
+          <span id="localRole" class="role-badge">client</span>
+        </div>
+        <div class="row muted">
+          <strong>Local URL:</strong>
+          <a id="localUrl" target="_blank" rel="noopener noreferrer"></a>
+        </div>
+        <div class="profile-editor">
+          <label for="displayNameEditor"><strong>Username:</strong></label>
+          <input id="displayNameEditor" type="text" maxlength="32" placeholder="Enter username" />
+          <button id="saveDisplayName" type="button">Update</button>
+          <span id="profileHint" class="muted"></span>
+        </div>
+        <div id="stats" class="stats"></div>
+      </section>
+
+      <section class="panel">
+        <h3>Connected Peers</h3>
+        <div id="peerList" class="peer-list"></div>
+      </section>
+
+      <section class="panel">
+        <h3>Currently Editing</h3>
+        <div id="editingList" class="peer-list"></div>
+      </section>
+
+      <section class="panel">
+        <h3>Edit History</h3>
+        <ul id="activityList" class="activity-list"></ul>
+      </section>
+    </main>
+
+    <script type="module" src="./peers.js"></script>
+  </body>
+</html>
