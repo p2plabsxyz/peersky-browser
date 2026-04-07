@@ -43,7 +43,7 @@ class P2PAppManager extends HTMLElement {
           table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 12px;
+            margin: 12px 0 0 0;
           }
           th, td {
             padding: 5px 8px;
@@ -122,6 +122,13 @@ class P2PAppManager extends HTMLElement {
             width: 20px;
             height: 20px;
             display: block;
+            filter: brightness(0) saturate(100%) invert(48%) sepia(9%) saturate(543%) hue-rotate(169deg) brightness(92%) contrast(87%);
+            opacity: 1;
+          }
+          @supports (filter: drop-shadow(0 0 0 var(--settings-border))) {
+            .icon-cell img {
+              filter: invert(48%) sepia(9%) saturate(543%) hue-rotate(169deg) brightness(92%) contrast(87%);
+            }
           }
           .icon-upload-btn {
             background: transparent;
@@ -155,6 +162,35 @@ class P2PAppManager extends HTMLElement {
           }
           .delete-btn:hover {
             background: rgba(248, 113, 113, 0.1);
+          }
+          .update-section {
+            margin-top: 0;
+            padding: 0;
+            border-top: 1px solid var(--browser-theme-border, #333);
+            padding-top: 16px;
+          }
+          .update-btn {
+            background: var(--browser-theme-primary-highlight, #00ffff);
+            color: var(--browser-theme-background, #18181b);
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: opacity 0.2s;
+          }
+          .update-btn:hover {
+            opacity: 0.8;
+          }
+          .update-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+          }
+          .update-info {
+            margin-top: 8px;
+            font-size: 0.85rem;
+            opacity: 0.8;
           }
         </style>
       `;
@@ -214,6 +250,10 @@ class P2PAppManager extends HTMLElement {
       tableHtml += `
           </tbody>
         </table>
+        <div class="update-section">
+          <button class="update-btn" id="update-apps-btn">Update All</button>
+          <div class="update-info">Click to update all built-in P2P apps to their latest versions from GitHub</div>
+        </div>
         <div style="margin-top: 15px; font-size: 0.9em; color: var(--text-secondary);">
           To delete myapps, go to <a href="peersky://settings/search">Settings -&gt; Search</a> -&gt; Reset P2P Data.
         </div>
@@ -236,9 +276,44 @@ class P2PAppManager extends HTMLElement {
       this.setupIconUpload();
       this.setupFolderUpload();
       this.setupDelete();
+      this.setupUpdateButton();
     } finally {
       this._rendering = false;
     }
+  }
+
+  setupUpdateButton() {
+    const updateBtn = this.shadowRoot.getElementById("update-apps-btn");
+    if (!updateBtn) return;
+
+    updateBtn.addEventListener("click", async () => {
+      const updateFn = window.electronAPI?.p2pApps?.updateSubmodules;
+      if (!updateFn) {
+        this.setStatus("Update API is unavailable on this page.", "error");
+        this.render();
+        return;
+      }
+
+      updateBtn.disabled = true;
+      updateBtn.textContent = "Updating...";
+      this.setStatus("Updating P2P apps to latest versions...", "info");
+      this.render();
+
+      const result = await updateFn();
+      
+      if (!result?.success) {
+        this.setStatus(result?.error || "Failed to update P2P apps.", "error");
+        updateBtn.disabled = false;
+        updateBtn.textContent = "Update All P2P Apps";
+        this.render();
+        return;
+      }
+
+      this.setStatus(result.message || "P2P apps updated successfully! Please restart the browser to see changes.", "info");
+      updateBtn.disabled = false;
+      updateBtn.textContent = "Update All P2P Apps";
+      this.render();
+    });
   }
 
   setupDragAndDrop() {

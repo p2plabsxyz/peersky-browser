@@ -494,7 +494,8 @@ const p2pAppsAPI = {
   importFolder: (name, files) => ipcRenderer.invoke('p2p-user-apps-import-folder', { name, files }),
   selectAndImportFolder: () => ipcRenderer.invoke('p2p-user-apps-select-folder'),
   removeApp: (appId) => ipcRenderer.invoke('p2p-user-apps-remove', appId),
-  importFromDrop: (folderPath) => ipcRenderer.invoke('p2p-user-apps-import-drop', folderPath)
+  importFromDrop: (folderPath) => ipcRenderer.invoke('p2p-user-apps-import-drop', folderPath),
+  updateSubmodules: () => ipcRenderer.invoke('p2p-apps-update-submodules')
 };
 
 // Create context-appropriate APIs

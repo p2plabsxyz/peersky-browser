@@ -1,5 +1,7 @@
 import { app, BrowserWindow } from "electron";
 import WindowManager from './window-manager.js';
+import { createLogger } from './logger.js';
+const log = createLogger('actions');
 
 export function createActions(windowManager) {
   const actions = {
@@ -162,13 +164,11 @@ export function createActions(windowManager) {
               } else {
                 // Last resort: reload the first webview
                 const firstWebview = document.querySelector('webview');
-                if (firstWebview) {
-                  console.log('Reloading first webview as fallback');
-                  firstWebview.reload();
-                }
+                if (firstWebview) firstWebview.reload();
               }
             }
-          }`);
+          }`)
+            .catch((err) => log.error("Reload action script failed:", err));
         }
       },
     },
@@ -198,7 +198,7 @@ export function createActions(windowManager) {
               }
               return false;
             })()
-          `).catch(err => console.error('Print action failed:', err));
+          `).catch(err => log.error('Print action failed:', err));
         }
       },
     },
@@ -234,7 +234,7 @@ export function createActions(windowManager) {
               window.close();
             }
           `).catch(error => {
-            console.error('Script execution failed in Close action:', error);
+            log.error('Script execution failed in Close action:', error);
           });
         }
       },
@@ -289,7 +289,7 @@ export function createActions(windowManager) {
               console.error('Error closing tab:', error);
             }
           `).catch(error => {
-            console.error('Script execution failed:', error);
+            log.error('Script execution failed:', error);
           });
         }
       },
@@ -316,7 +316,7 @@ export function createActions(windowManager) {
               console.error('Error switching to next tab:', error);
             }
           `).catch(error => {
-            console.error('Script execution failed:', error);
+            log.error('Script execution failed:', error);
           });
         }
       },
@@ -343,7 +343,7 @@ export function createActions(windowManager) {
               console.error('Error switching to previous tab:', error);
             }
           `).catch(error => {
-            console.error('Script execution failed:', error);
+            log.error('Script execution failed:', error);
           });
         }
       },

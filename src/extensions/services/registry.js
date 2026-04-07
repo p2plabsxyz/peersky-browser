@@ -4,6 +4,9 @@ import path from 'path';
 import { promises as fs } from 'fs';
 import { readJsonSafe, writeJsonAtomic } from '../util.js';
 import { resolveManifestStrings } from '../utils/strings.js';
+import { createLogger } from '../../logger.js';
+
+const log = createLogger('extensions');
 
 /**
  * Load registry from disk and populate manager.loadedExtensions
@@ -50,11 +53,11 @@ export async function loadRegistry(manager) {
         manager.loadedExtensions.set(extensionData.id, extensionData);
         validExtensions.push(extensionData);
       } catch (_) {
-        console.log(`ExtensionManager: Removing stale registry entry for ${extensionData.name} (${extensionData.id}) - directory not found`);
+        log.info(`ExtensionManager: Removing stale registry entry for ${extensionData.name} (${extensionData.id}) - directory not found`);
       }
     }
 
-    console.log(`ExtensionManager: Loaded ${manager.loadedExtensions.size} extensions from registry`);
+    log.info(`ExtensionManager: Loaded ${manager.loadedExtensions.size} extensions from registry`);
 
     // Deduplicate by Chrome/Electron ID: prefer system/preinstalled entries
     try {
@@ -89,20 +92,20 @@ export async function loadRegistry(manager) {
             }
           } catch (_) {}
         }
-        console.log(`ExtensionManager: Removed ${toRemove.length} duplicate extension entr${toRemove.length===1?'y':'ies'} by electronId (kept system/preinstalled)`);
+        log.info(`ExtensionManager: Removed ${toRemove.length} duplicate extension entr${toRemove.length===1?'y':'ies'} by electronId (kept system/preinstalled)`);
         await writeRegistry(manager);
       }
     } catch (dedupeErr) {
-      console.warn('ExtensionManager: Registry dedupe by electronId failed:', dedupeErr);
+      log.warn('ExtensionManager: Registry dedupe by electronId failed:', dedupeErr);
     }
 
     const originalCount = (registry.extensions || []).length;
     if (validExtensions.length !== originalCount) {
-      console.log(`ExtensionManager: Cleaned ${originalCount - validExtensions.length} stale entries from registry`);
+      log.info(`ExtensionManager: Cleaned ${originalCount - validExtensions.length} stale entries from registry`);
       await writeRegistry(manager);
     }
   } catch (error) {
-    console.error('ExtensionManager: Failed to read registry:', error);
+    log.error('ExtensionManager: Failed to read registry:', error);
   }
 }
 
@@ -127,7 +130,7 @@ export async function validateAndClean(manager) {
       try {
         if (ext.installedPath) await fs.access(ext.installedPath);
       } catch (_) {
-        console.log(`ExtensionManager: Removing stale entry: ${ext.name} (${id})`);
+        log.info(`ExtensionManager: Removing stale entry: ${ext.name} (${id})`);
         removedExtensions.push({ id, name: ext.name, reason: 'Directory not found' });
         manager.loadedExtensions.delete(id);
       }
@@ -142,7 +145,7 @@ export async function validateAndClean(manager) {
       removedExtensions
     };
   } catch (error) {
-    console.error('ExtensionManager: Failed to validate registry:', error);
+    log.error('ExtensionManager: Failed to validate registry:', error);
     throw error;
   }
 }
@@ -157,7 +160,7 @@ export async function getPinned(extensionsBaseDir) {
     const pinnedData = await readJsonSafe(path.join(extensionsBaseDir, 'pinned.json'));
     return pinnedData?.pinnedExtensions || [];
   } catch (err) {
-    console.warn('[Registry] Error reading pinned extensions:', err);
+    log.warn('[Registry] Error reading pinned extensions:', err);
     return [];
   }
 }

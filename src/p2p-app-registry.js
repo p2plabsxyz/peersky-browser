@@ -1,6 +1,13 @@
 import path from "path";
+import { fileURLToPath } from "url";
 import { app, ipcMain, dialog } from "electron";
 import { promises as fs } from "fs";
+import { exec } from "child_process";
+import { promisify } from "util";
+
+const execAsync = promisify(exec);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const MAX_ICON_BYTES = 512 * 1024;
 const MAX_BUNDLE_BYTES = 25 * 1024 * 1024;
@@ -356,6 +363,31 @@ class P2PAppRegistry {
     await this.saveRegistry();
   }
 
+  async updateSubmodules() {
+    try {
+      // Get the project root directory (where .git is located)
+      const projectRoot = app.getAppPath();
+      
+      // Update all submodules to their latest commits
+      const { stdout, stderr } = await execAsync(
+        'git submodule update --remote --merge',
+        { cwd: projectRoot, timeout: 60000 }
+      );
+      
+      return {
+        success: true,
+        message: 'P2P apps updated to latest versions',
+        output: stdout || stderr
+      };
+    } catch (error) {
+      console.error('Failed to update submodules:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to update P2P apps'
+      };
+    }
+  }
+
   setupIpc() {
     ipcMain.handle("p2p-user-apps-list", async () => {
       try {
@@ -420,6 +452,14 @@ class P2PAppRegistry {
     ipcMain.handle("p2p-user-apps-remove", async (_event, appId) => {
       try {
         return await this.removeApp(appId);
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    });
+
+    ipcMain.handle("p2p-apps-update-submodules", async () => {
+      try {
+        return await this.updateSubmodules();
       } catch (error) {
         return { success: false, error: error.message };
       }
