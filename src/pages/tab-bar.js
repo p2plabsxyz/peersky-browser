@@ -627,7 +627,6 @@ restoreTabs(persistedData) {
       pendingWcId = currentWcId;
 
       setTimeout(() => {
-        registering = false;
         try {
           const wcId = webview.getWebContentsId();
           if (wcId !== pendingWcId) return; // changed again, skip
@@ -637,12 +636,18 @@ restoreTabs(persistedData) {
               console.warn(`[TabBar] Failed to register webview ${wcId}:`, result.error);
               return;
             }
+            if (wcId !== pendingWcId) return; // changed again while registering, skip
             registeredWcId = wcId;
           }).catch(error => {
             console.error(`[TabBar] Error registering webview:`, error);
+          }).finally(() => {
+            // Keep the "in-flight" guard until the async registration settles.
+            // This avoids concurrent registrations and potential reload/registration loops.
+            registering = false;
           });
         } catch (error) {
           console.warn(`[TabBar] Could not register webview with extension system:`, error);
+          registering = false;
         }
       }, 100); // Small delay to ensure webview is fully ready
     });
