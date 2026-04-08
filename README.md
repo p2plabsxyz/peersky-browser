@@ -77,7 +77,7 @@
     - Peer-to-peer messaging over Hyper
   - [x] `peersky://p2p/upload/`
     - Decentralized file storage
-  - [x] `peersky://p2p/editor/`
+  - [x] `peersky://p2p/peerpad/`
     - Build and publish websites
   - [x] `peersky://p2p/p2pmd/`
     - Real-time collaborative markdown editor
@@ -136,7 +136,7 @@
   - [x] Trusted-domain exposure (PeerSky-native + allowlist)
   - [x] AI Chat app (peersky://p2p/ai-chat/)
     - [x] Ported from [Agregore examples](https://github.com/AgregoreWeb/website/blob/main/docs/examples/llm-chat.html) with PeerSky updates
-  - [x] P2P Editor integration (peersky://p2p/editor/)
+  - [x] P2P Editor integration (peersky://p2p/peerpad/)
     - [x] New AI generator (`ai-generator.js`) to generate code with AI
 
   - [ ] 🚧 [LLM Memory](https://github.com/p2plabsxyz/peersky-browser/issues/97)

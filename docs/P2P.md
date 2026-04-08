@@ -137,4 +137,24 @@ Pin/unpin changes are persisted via the main-process settings system (`pinnedP2P
 1. **(Users)** Easily drag-and-drop any standard HTML/CSS/JS web folder directly onto the dropzone via the UI. The application gets locally wrapped and assigned a `peersky://myapps/...` protocol URL.
 2. **(Core Developers)** Add the folder for native components in `./src/pages/p2p/`, and explicitly register it into the `p2pApps` list located in `p2p-list.js`.
 
-<!-- TODO: Add section about Git submodules for P2P apps -->
+## Git Submodules for Built-in P2P Apps
+
+Built-in P2P apps (peerchat, peerpad, upload, p2pmd, ai-chat, wiki) are maintained as independent Git repositories and included as submodules. This allows each app to be developed and versioned separately.
+
+**Automatic initialization:**
+```bash
+npm install  # Automatically runs: git submodule update --init --recursive
+```
+
+**Updating apps to latest versions:**
+- **Via UI**: Navigate to `peersky://p2p/` and click the "Update All" button at the bottom
+- **Via CLI**: `git submodule update --remote --merge`
+
+The update pulls the latest commit from each submodule's default branch. After updating, commit the new submodule pointers:
+```bash
+git add src/pages/p2p/
+git commit -m "Update P2P apps to latest versions"
+```
+
+**Submodule configuration:**
+Submodules are defined in `.gitmodules` (auto-managed by Git) and point to repositories under [github.com/p2plabsxyz](https://github.com/p2plabsxyz).
