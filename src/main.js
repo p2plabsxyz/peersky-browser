@@ -481,9 +481,11 @@ app.on("activate", () => {
 ipcMain.on('remove-all-tempIcon', () => {
   try {
     const windows = BrowserWindow.getAllWindows();
-    const mainWindow = windows.find(w => w && !w.isDestroyed());
-    if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
-      mainWindow.webContents.send('remove-all-tempIcon');
+    for (const win of windows) {
+      if (!win || win.isDestroyed()) continue;
+      const wc = win.webContents;
+      if (!wc || wc.isDestroyed()) continue;
+      wc.send('remove-all-tempIcon');
     }
   } catch (error) {
     log.error('Error sending remove-all-tempIcon:', error);
