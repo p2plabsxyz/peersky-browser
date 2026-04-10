@@ -7,6 +7,7 @@ import { createHandler as createBrowserHandler } from "./protocols/peersky-proto
 import { createHandler as createBrowserThemeHandler } from "./protocols/theme-handler.js";
 import { createHandler as createIPFSHandler } from "./protocols/ipfs-handler.js";
 import { createHandler as createHyperHandler } from "./protocols/hyper-handler.js";
+import { createHandler as createHSHandler } from "./protocols/hs-handler.js";
 import { createHandler as createWeb3Handler } from "./protocols/web3-handler.js";
 import { createHandler as createFileHandler } from "./protocols/file-handler.js";
 import { createHandler as createBittorrentHandler, setupBittorrentIpc } from "./protocols/bittorrent-handler.js";
@@ -30,6 +31,16 @@ import { setupP2pmdPdfExportIpc } from "./pages/p2p/p2pmd/pdf-export-ipc.js";
 
 const P2P_PROTOCOL = {
   standard: true,
+  secure: true,
+  allowServiceWorkers: true,
+  supportFetchAPI: true,
+  bypassCSP: false,
+  corsEnabled: true,
+  stream: true,
+};
+
+const WEB3_PROTOCOL = {
+  standard: false,
   secure: true,
   allowServiceWorkers: true,
   supportFetchAPI: true,
@@ -138,7 +149,8 @@ globalProtocol.registerSchemesAsPrivileged([
   { scheme: "ipns", privileges: P2P_PROTOCOL },
   { scheme: "pubsub", privileges: P2P_PROTOCOL },
   { scheme: "hyper", privileges: P2P_PROTOCOL },
-  { scheme: "web3", privileges: P2P_PROTOCOL },
+  { scheme: "hs", privileges: P2P_PROTOCOL },
+  { scheme: "web3", privileges: WEB3_PROTOCOL },
   { scheme: "file", privileges: FILE_PROTOCOL },
   { scheme: "bittorrent", privileges: P2P_PROTOCOL },
   { scheme: "bt", privileges: P2P_PROTOCOL },
@@ -360,6 +372,7 @@ async function setupProtocols(session) {
   app.setAsDefaultProtocolClient("ipfs");
   app.setAsDefaultProtocolClient("ipns");
   app.setAsDefaultProtocolClient("hyper");
+  app.setAsDefaultProtocolClient("hs");
   app.setAsDefaultProtocolClient("web3");
   app.setAsDefaultProtocolClient("bittorrent");
   app.setAsDefaultProtocolClient("bt");
@@ -371,13 +384,16 @@ async function setupProtocols(session) {
   const browserThemeHandler = await createBrowserThemeHandler();
   sessionProtocol.handle("browser", browserThemeHandler);
 
-  const ipfsProtocolHandler = await createIPFSHandler(ipfsOptions, session);
+  const ipfsProtocolHandler = await createIPFSHandler(ipfsOptions, session, { isExtensionWriteAllowed });
   sessionProtocol.handle("ipfs", ipfsProtocolHandler);
   sessionProtocol.handle("ipns", ipfsProtocolHandler);
   sessionProtocol.handle("pubsub", ipfsProtocolHandler);
 
   const hyperProtocolHandler = await createHyperHandler(hyperOptions, { isExtensionWriteAllowed });
   sessionProtocol.handle("hyper", hyperProtocolHandler);
+
+  const hsProtocolHandler = await createHSHandler();
+  sessionProtocol.handle("hs", hsProtocolHandler);
 
   const web3ProtocolHandler = await createWeb3Handler();
   sessionProtocol.handle("web3", web3ProtocolHandler);

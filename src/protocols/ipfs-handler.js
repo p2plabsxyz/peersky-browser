@@ -14,7 +14,7 @@ import { base58btc } from "multiformats/bases/base58";
 import { peerIdFromString, peerIdFromCID } from "@libp2p/peer-id";
 import { ensCache, saveEnsCache, RPC_URL, ipfsCache, saveIpfsCache } from "./config.js";
 import { JsonRpcProvider } from "ethers";
-import { enforceExtensionWritePolicy } from "./request-policy.js";
+import { enforceExtensionWritePolicy } from "../extensions/request-policy.js";
 
 const log = createLogger('protocols:ipfs');
 

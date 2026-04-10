@@ -10,8 +10,7 @@ import {
 } from "../pages/p2p/peerchat/p2p.js";
 import { createLogger } from '../logger.js';
 import { hyperCache, saveHyperCache } from "./config.js";
-import { enforceExtensionWritePolicy } from "./request-policy.js";
-import { hyperCache, saveHyperCache } from "./config.js";
+import { enforceExtensionWritePolicy } from "../extensions/request-policy.js";
 
 const log = createLogger('protocols:hyper');
 

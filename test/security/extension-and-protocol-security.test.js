@@ -4,7 +4,7 @@ import { readFile } from "fs/promises";
 import ManifestValidator from "../../src/extensions/manifest-validator.js";
 import DEFAULT_POLICY from "../../src/extensions/policy.js";
 import { ERR, validateInstallSource } from "../../src/extensions/util.js";
-import { enforceExtensionWritePolicy } from "../../src/protocols/request-policy.js";
+import { enforceExtensionWritePolicy } from "../../src/extensions/request-policy.js";
 
 describe("Protocol and extension security guardrails", function () {
   it("keeps P2P and peersky schemes fetch-enabled and webviews sandboxed", async function () {
