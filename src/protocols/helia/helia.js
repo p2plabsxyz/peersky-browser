@@ -44,10 +44,8 @@ const bootstrapConfig = {
   ]
 }
 
-export async function createNode(options) {
-  if (!options || !options.datastore) {
-    options = await ipfsOptions();
-  }
+export async function createNode() {
+  const options = await ipfsOptions();
 
   const privateKey = await getLibp2pPrivateKey();
   const agentVersion = `peersky-browser/${version} ${userAgent()}`;

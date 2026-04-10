@@ -33,15 +33,22 @@ describe("Hyper protocol handler", function () {
     const hyperFetchFactory = sinon.stub().returns(fetchStub);
 
     const module = await esmock("../../src/protocols/hyper-handler.js", {
+      electron: {
+        app: {
+          getPath: () => "test-userdata",
+        },
+        safeStorage: {},
+      },
       "hyper-sdk": {
         create: createSDK,
       },
       "hypercore-fetch": {
         default: hyperFetchFactory,
       },
-      "../../src/pages/p2p/chat/p2p.js": {
+      "../../src/pages/p2p/peerchat/p2p.js": {
         initChat,
         handleChatRequest,
+        CHAT_STORAGE: "test-chat-store",
       },
     });
 

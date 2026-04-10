@@ -79,6 +79,8 @@ class ExtensionManager {
 
     // Track active popups for auto-close on tab switch
     this.activePopups = new Set();
+    this.popupToOpener = new Map();
+    this.popupToExtensionId = new Map();
 
     // Paths (set in initialize)
     this.extensionsBaseDir = null;
@@ -875,7 +877,18 @@ class ExtensionManager {
    */
   addWindow(window, webContents) {
     if (this.electronChromeExtensions) {
+      if (!webContents) return; // avoid registering shell UI or popups as tabs
       try {
+        // Skip if this webContents is already registered to avoid duplicate
+        // addTab() calls which can trigger spurious navigations/reloads
+        if (!this._registeredTabs) this._registeredTabs = new Set();
+        const wcId = webContents.id;
+        if (this._registeredTabs.has(wcId)) return;
+        this._registeredTabs.add(wcId);
+        // Clean up when the webContents is destroyed
+        webContents.once('destroyed', () => {
+          this._registeredTabs?.delete(wcId);
+        });
         this.electronChromeExtensions.addTab(webContents, window);
         log.info(`[ExtensionManager] Registered webContents ${webContents.id} with extension system`);
       } catch (error) {
