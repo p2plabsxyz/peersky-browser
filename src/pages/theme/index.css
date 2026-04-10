@@ -657,12 +657,33 @@ find-menu {
 .tab-favicon {
   width: 20px;
   height: 20px;
-  background-size: contain;
+  background-size: 14px 14px;
   background-repeat: no-repeat;
   background-position: center;
   margin-right: 8px;
   flex-shrink: 0;
   order: 1;
+  border-radius: 50%;
+  transition: box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.tab.sleeping .tab-favicon {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.15), 0 0 0 3px currentColor;
+  outline: 2px dashed var(--peersky-nav-button-inactive);
+  outline-offset: 2px;
+  opacity: 0.55;
+}
+
+.tab.sleeping .tab-title {
+  opacity: 0.55;
+}
+
+.tab.sleeping {
+  opacity: 1 !important; 
+}
+
+.sleeping-indicator {
+  display: none;
 }
 
 .p2p-indicator {

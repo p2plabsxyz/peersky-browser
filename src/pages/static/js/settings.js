@@ -10,6 +10,51 @@ let settingsAPI;
 let eventCleanupFunctions = [];
 let navigationInProgress = false;
 
+// Memory Saver State
+let memoryExclusionsList = [];
+function renderExclusionList() {
+  const container = document.getElementById('exclusion-list-container');
+  if (!container) return;
+  container.innerHTML = '';
+  
+  if (memoryExclusionsList.length === 0) {
+    container.innerHTML = '<div style="color: var(--peersky-text-muted); font-style: italic; padding: 4px;">No sites added</div>';
+    return;
+  }
+
+  memoryExclusionsList.forEach((site, index) => {
+    const item = document.createElement('div');
+    item.style.display = 'flex';
+    item.style.justifyContent = 'space-between';
+    item.style.alignItems = 'center';
+    item.style.padding = '6px 4px';
+    item.style.borderBottom = '1px solid var(--peersky-border)';
+    if (index === memoryExclusionsList.length - 1) item.style.borderBottom = 'none';
+    
+    const text = document.createElement('span');
+    text.textContent = site;
+    text.style.wordBreak = 'break-all';
+    text.style.paddingRight = '12px';
+    
+    const removeBtn = document.createElement('button');
+    removeBtn.textContent = 'Remove';
+    removeBtn.className = 'btn btn-secondary';
+    removeBtn.style.padding = '4px 8px';
+    removeBtn.style.fontSize = '12px';
+    removeBtn.style.minWidth = 'fit-content';
+    
+    removeBtn.onclick = async () => {
+      memoryExclusionsList.splice(index, 1);
+      renderExclusionList();
+      await saveSettingToBackend('memorySaverExclusions', memoryExclusionsList);
+    };
+
+    item.appendChild(text);
+    item.appendChild(removeBtn);
+    container.appendChild(item);
+  });
+}
+
 function validateSearchTemplate(tpl) {
   if (typeof tpl !== "string")
     return { valid: false, reason: "Template must be a string." };
@@ -355,6 +400,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   const wallpaperPreview = document.getElementById('wallpaper-preview');
   const clearBrowserCacheBtn = document.getElementById('clear-browser-cache');
   const resetP2PBtn = document.getElementById('reset-p2p');
+  
+  const memorySaverEnabled = document.getElementById('memory-saver-enabled');
+  const memoryExclusionInput = document.getElementById('memory-exclusion-input');
+  const addExclusionBtn = document.getElementById('add-exclusion-btn');
   // Handle built-in wallpaper selector change
   wallpaperSelector?.addEventListener('change', async (e) => {
     const selectedValue = e.target.value;
@@ -585,6 +634,37 @@ document.addEventListener('DOMContentLoaded', async () => {
     await saveSettingToBackend('keepTabsExpanded', keepExpanded);
   });
 
+  addExclusionBtn?.addEventListener('click', async () => {
+    const val = memoryExclusionInput?.value.trim();
+    if (!val) return;
+    
+    let processedVal = val;
+    try {
+      if (val.startsWith('http')) {
+        const url = new URL(val);
+        processedVal = url.host;
+      }
+    } catch (e) {}
+    
+    if (!memoryExclusionsList.includes(processedVal)) {
+      memoryExclusionsList.push(processedVal);
+      renderExclusionList();
+      await saveSettingToBackend('memorySaverExclusions', memoryExclusionsList);
+    }
+    if (memoryExclusionInput) memoryExclusionInput.value = '';
+  });
+
+  memoryExclusionInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && addExclusionBtn) {
+      addExclusionBtn.click();
+    }
+  });
+
+  memorySaverEnabled?.addEventListener('change', async (e) => {
+    const enabled = e.target.checked;
+    await saveSettingToBackend('memorySaverEnabled', enabled);
+  });
+
   // Initialize custom wallpaper UI state
   updateCustomWallpaperUI(false);
   
@@ -645,6 +725,7 @@ function populateFormFields(settings) {
   const verticalTabs = document.getElementById('vertical-tabs');
   const keepTabsExpanded = document.getElementById('keep-tabs-expanded');
   const wallpaperSelector = document.getElementById('wallpaper-selector');
+  const memorySaverEnabled = document.getElementById('memory-saver-enabled');
   
   if (searchEngine && settings.searchEngine) {
     searchEngine.value = settings.searchEngine;
@@ -700,6 +781,16 @@ function populateFormFields(settings) {
   if (keepTabsExpanded && typeof settings.keepTabsExpanded === 'boolean') {
     keepTabsExpanded.checked = settings.keepTabsExpanded;
   }
+  
+  if (memorySaverEnabled && typeof settings.memorySaverEnabled === 'boolean') {
+    memorySaverEnabled.checked = settings.memorySaverEnabled;
+  }
+  
+  if (settings.memorySaverExclusions && Array.isArray(settings.memorySaverExclusions)) {
+    memoryExclusionsList = [...settings.memorySaverExclusions];
+    renderExclusionList();
+  }
+
   if (wallpaperSelector && settings.wallpaper) {
     // Only set built-in wallpaper values, ignore custom
     if (settings.wallpaper !== 'custom') {
@@ -875,7 +966,7 @@ function initializeSidebarNavigation() {
   // Check for hash-based navigation (backward compatibility)
   else if (currentPath.includes('#')) {
     const hashSection = currentPath.replace('#', '');
-    if (hashSection && ['appearance', 'search','tabs', 'extensions', 'archive'].includes(hashSection)) {
+    if (hashSection && ['appearance', 'search', 'tabs', 'extensions', 'archive'].includes(hashSection)) {
       targetSection = hashSection;
     }
   }
