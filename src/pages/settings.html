@@ -56,10 +56,6 @@
           <img src="peersky://static/assets/svg/clock-history.svg" class="nav-icon" alt="Clock History Icon">
           <span>History</span>
         </a>
-        <a href="#performance" class="nav-item" data-section="performance">
-          <img src="peersky://static/assets/svg/speedometer2.svg" class="nav-icon" alt="Performance Icon">
-          <span>Performance</span>
-        </a>
       </div>
     </nav>
 
@@ -263,41 +259,6 @@
         </div>
       </div>
 
-      <!-- Performance Section -->
-      <div id="performance-section" class="settings-page">
-        <h1 class="section-title">Performance</h1>
-        
-        <section class="settings-section">
-          <!-- Memory Saver Toggle Row -->
-          <div class="setting-row">
-            <div class="setting-label">
-              <div style="font-weight: 500;">Memory Saver</div>
-              <div class="setting-hint" style="margin-top: 4px; max-width: 400px;">Inactive tabs are suspended after <strong>30 minutes</strong> to free up RAM. Pinned tabs are never suspended.</div>
-            </div>
-            <div class="setting-control">
-              <label class="toggle-label">
-                <input type="checkbox" id="memory-saver-enabled" class="toggle-input">
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-          </div>
-        </section>
-
-        <!-- Exclusion list — conditionally visible -->
-        <section class="settings-section" id="memory-exclusions-section">
-          <div style="margin-bottom: 10px;">
-            <div style="font-weight: 500; margin-bottom: 4px;">Always keep these sites active</div>
-            <div class="setting-hint">Sites matching these domains will never be suspended (e.g. <code>youtube.com</code>, <code>*.google.com</code>).</div>
-          </div>
-          <div style="display: flex; gap: 8px; margin-bottom: 10px;">
-            <input type="text" id="memory-exclusion-input" class="text-input input-fill" placeholder="Add a site (e.g. youtube.com)" autocomplete="off" style="flex: 1; min-height: 36px;">
-            <button type="button" id="add-exclusion-btn" class="btn btn-secondary">Add</button>
-          </div>
-          <div id="exclusion-list-container" style="border: 1px solid var(--settings-border); border-radius: 8px; padding: 6px 8px; min-height: 44px; max-height: 180px; overflow-y: auto; background: var(--settings-bg-secondary);">
-          </div>
-        </section>
-      </div>
-
       <!-- Extensions Section -->
       <div id="extensions-section" class="settings-page">
         <h1 class="section-title">Extensions</h1>
@@ -359,6 +320,37 @@
             </div>
           </div>
         </section>
+        
+        <section class="settings-section">
+          <!-- Memory Saver Toggle Row -->
+          <div class="setting-row">
+            <div class="setting-label">
+              <div style="font-weight: 500;">Memory Saver</div>
+              <div class="setting-hint" style="margin-top: 4px; max-width: 400px;">Inactive tabs are suspended after <strong>30 minutes</strong> to free up RAM. Pinned tabs are never suspended.</div>
+            </div>
+            <div class="setting-control">
+              <label class="toggle-label">
+                <input type="checkbox" id="memory-saver-enabled" class="toggle-input">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <!-- Exclusion list — conditionally visible -->
+        <section class="settings-section" id="memory-exclusions-section">
+          <div style="margin-bottom: 10px;">
+            <div style="font-weight: 500; margin-bottom: 4px;">Always keep these sites active</div>
+            <div class="setting-hint">Sites matching these domains will never be suspended (e.g. <code>youtube.com</code>, <code>*.google.com</code>).</div>
+          </div>
+          <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+            <input type="text" id="memory-exclusion-input" class="text-input input-fill" placeholder="Add a site (e.g. youtube.com)" autocomplete="off" style="flex: 1; min-height: 36px;">
+            <button type="button" id="add-exclusion-btn" class="btn btn-secondary">Add</button>
+          </div>
+          <div id="exclusion-list-container" style="border: 1px solid var(--settings-border); border-radius: 8px; padding: 6px 8px; min-height: 44px; max-height: 180px; overflow-y: auto; background: var(--settings-bg-secondary);">
+          </div>
+        </section>
+
         <tabs-box style="width:100%;"></tabs-box>
       </div>
       <!-- Archive Section -->
