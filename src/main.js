@@ -434,6 +434,37 @@ ipcMain.on('is-webcontents-audible', (event, webContentsId) => {
   }
 });
 
+ipcMain.on('get-tab-navigation', (event, webContentsId) => {
+  try {
+    const wc = webContents.fromId(webContentsId);
+    if (!wc || !wc.navigationHistory) {
+      event.returnValue = null;
+      return;
+    }
+
+    const entries = [];
+    const length = wc.navigationHistory.length();
+    for (let i = 0; i < length; i++) {
+      const entry = wc.navigationHistory.getEntryAtIndex(i);
+      entries.push({ url: entry.url, title: entry.title });
+    }
+
+    event.returnValue = {
+      entries,
+      activeIndex: wc.navigationHistory.getActiveIndex()
+    };
+  } catch (error) {
+    log.error(`Error getting navigation history for webContents ID ${webContentsId}:`, error);
+    event.returnValue = null;
+  }
+});
+
+// Electron cannot natively overwrite a WebContents history stack after recreation,
+// so the fallback is handled in the UI layer (savedNavigation on the tab object).
+ipcMain.handle('restore-navigation-history', async (_event, _data) => {
+  return { success: true, note: 'Native history rewrite not supported; relying on UI fallback.' };
+});
+
 ipcMain.on('group-action', (_event, data) => {
   log.info('Group action received:', data);
   const { action, groupId } = data;

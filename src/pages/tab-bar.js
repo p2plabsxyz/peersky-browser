@@ -110,7 +110,7 @@ class TabBar extends HTMLElement {
     if (!this.memorySaverEnabled) return;
 
     // 30 minutes in ms
-    const IDLE_THRESHOLD =  30 * 60 * 1000;
+    const IDLE_THRESHOLD =  5 * 1000;
     const now = Date.now();
 
     for (const tab of this.tabs) {
@@ -157,19 +157,19 @@ class TabBar extends HTMLElement {
     const webview = this.webviews.get(tabId);
     if (!tab || !webview) return;
     
-    // Save history
-    try {
-      const { ipcRenderer } = require("electron");
-      const webContentsId = webview.getWebContentsId();
-      
-      const timeoutMs = 2000;
-      const navigationPromise = ipcRenderer.invoke('get-tab-navigation', webContentsId);
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('get-tab-navigation timed out')), timeoutMs);
-      });
-      tab.savedNavigation = await Promise.race([navigationPromise, timeoutPromise]);
-    } catch (e) {
-      console.warn("Failed to save nav history for sleeping tab", e);
+    // Save history only if not already tracked by fallback mechanism
+    if (!tab.savedNavigation || !tab.savedNavigation.entries?.length) {
+      try {
+        const { ipcRenderer } = require("electron");
+        const webContentsId = typeof webview.getWebContentsId === "function"
+          ? webview.getWebContentsId()
+          : null;
+        if (webContentsId != null) {
+          tab.savedNavigation = ipcRenderer.sendSync("get-tab-navigation", webContentsId);
+        }
+      } catch (e) {
+        console.warn("Failed to save nav history for sleeping tab", e);
+      }
     }
     
     // Destroy webview
@@ -193,6 +193,42 @@ class TabBar extends HTMLElement {
     }
     
     console.log(`Memory Saver: Suspended inactive tab ${tabId} (${tab.url})`);
+  }
+
+  restoreNavigationForWebview(tabId, webview, navigation, reason = "tab") {
+    if (!webview || !navigation?.entries?.length) return;
+
+    const { entries, activeIndex } = navigation;
+    const { ipcRenderer } = require("electron");
+    let restored = false;
+
+    const attemptRestore = async () => {
+      if (restored || !document.body.contains(webview)) return;
+
+      try {
+        const webContentsId = webview.getWebContentsId();
+        if (webContentsId == null) return;
+
+        restored = true;
+        await ipcRenderer.invoke("restore-navigation-history", {
+          webContentsId,
+          entries,
+          activeIndex
+        });
+
+        this.dispatchEvent(new CustomEvent("navigation-state-changed", {
+          detail: { tabId }
+        }));
+        this.saveTabsState();
+      } catch (e) {
+        console.warn(`Failed to restore ${reason} nav history:`, e);
+      }
+    };
+
+    webview.addEventListener("dom-ready", attemptRestore, { once: true });
+    setTimeout(() => {
+      attemptRestore();
+    }, 300);
   }
 
   forceActivateCurrentTab() {
@@ -367,16 +403,18 @@ getAllTabGroups() {
       const tabsData = {
         tabs: this.tabs.map(tab => {
           const webview = this.webviews.get(tab.id);
-          let navigation = null;
+          let navigation = tab.savedNavigation?.entries?.length ? tab.savedNavigation : null;
 
-          try {
-            if (webview && webview.getWebContentsId) {
-              const { ipcRenderer } = require("electron");
-              // Ask main process for nav history of this tab
-              navigation = ipcRenderer.sendSync('get-tab-navigation', webview.getWebContentsId());
+          if (!navigation) {
+            try {
+              if (webview && webview.getWebContentsId) {
+                const { ipcRenderer } = require("electron");
+                // Ask main process for nav history of this tab
+                navigation = ipcRenderer.sendSync('get-tab-navigation', webview.getWebContentsId());
+              }
+            } catch (e) {
+              console.warn("Failed to fetch nav history for tab", tab.id, e);
             }
-          } catch (e) {
-            console.warn("Failed to fetch nav history for tab", tab.id, e);
           }
 
           return {
@@ -386,7 +424,8 @@ getAllTabGroups() {
             protocol: tab.protocol,
             isPinned: this.pinnedTabs.has(tab.id),
             groupId: this.tabGroupAssignments.get(tab.id) || null,
-            navigation 
+            navigation,
+            isSuspended: tab.isSuspended === true
           };
         }),
         activeTabId: this.activeTabId,
@@ -455,22 +494,11 @@ restoreTabs(persistedData) {
 
   // Restore each tab
   persistedData.tabs.forEach(tabData => {
-    const tabId = this.addTabWithId(tabData.id, tabData.url, tabData.title);
+    const tabId = this.addTabWithId(tabData.id, tabData.url, tabData.title, tabData);
 
     if (tabData.navigation && tabData.navigation.entries?.length) {
-      const { entries, activeIndex } = tabData.navigation;
-      const { ipcRenderer } = require("electron");
       const webview = this.webviews.get(tabId);
-
-      setTimeout(() => {
-        try {
-          const webContentsId = webview.getWebContentsId();
-          ipcRenderer.invoke("restore-navigation-history", { webContentsId, entries, activeIndex })
-            .catch(err => console.warn("Failed to restore nav history:", err));
-        } catch (e) {
-          console.warn("Error sending restore-navigation-history:", e);
-        }
-      }, 150);
+      this.restoreNavigationForWebview(tabId, webview, tabData.navigation, "restored tab");
     }
 
     
@@ -591,23 +619,22 @@ restoreTabs(persistedData) {
       title, 
       protocol,
       lastActiveTime: Date.now(),
-      isSuspended: false
+      isSuspended: tabData.isSuspended === true,
+      savedNavigation: tabData.navigation || null
     });
     
-    // Create webview for this tab if container exists
-    if (this.webviewContainer) {
+    // Create webview for this tab if container exists and NOT suspended
+    if (this.webviewContainer && !tabData.isSuspended) {
       const webview = this.createWebviewForTab(tabId, url);
 
       if (tabData.navigation && tabData.navigation.entries?.length) {
-        const { entries, activeIndex } = tabData.navigation;
-        try {
-          const { ipcRenderer } = require("electron");
-          const webContentsId = webview.getWebContentsId();
-          ipcRenderer.invoke('restore-navigation-history', { webContentsId, entries, activeIndex })
-            .catch(err => console.warn("Failed to restore nav history:", err));
-        } catch (e) {
-          console.warn("Error sending restore-navigation-history:", e);
-        }
+        this.restoreNavigationForWebview(tabId, webview, tabData.navigation, "new tab");
+      }
+    } else if (tabData.isSuspended) {
+      // Setup the suspended styling correctly so UI reflects memory saver
+      const tabElement = document.getElementById(tabId);
+      if (tabElement) {
+        tabElement.classList.add('sleeping');
       }
     }
     
@@ -867,11 +894,28 @@ restoreTabs(persistedData) {
     
     webview.addEventListener("page-title-updated", (e) => {
       const newTitle = e.title || "Untitled";
+      const tab = this.tabs.find(t => t.id === tabId);
+      if (tab && tab.savedNavigation && tab.savedNavigation.entries && tab.savedNavigation.entries[tab.savedNavigation.activeIndex]) {
+        tab.savedNavigation.entries[tab.savedNavigation.activeIndex].title = newTitle;
+      }
       this.updateTab(tabId, { title: newTitle });
     });
   
     webview.addEventListener("did-navigate", (e) => {
       const newUrl = e.url;
+      const tab = this.tabs.find(t => t.id === tabId);
+      if (tab && tab.savedNavigation && tab.savedNavigation.entries) {
+        if (tab.isFallbackNavigating) {
+          tab.isFallbackNavigating = false;
+        } else {
+          const expectedUrl = tab.savedNavigation.entries[tab.savedNavigation.activeIndex]?.url;
+          if (expectedUrl !== newUrl) {
+            tab.savedNavigation.entries = tab.savedNavigation.entries.slice(0, tab.savedNavigation.activeIndex + 1);
+            tab.savedNavigation.entries.push({ url: newUrl, title: newUrl });
+            tab.savedNavigation.activeIndex++;
+          }
+        }
+      }
       this.updateTab(tabId, { url: newUrl });
       
       this.dispatchEvent(new CustomEvent("tab-navigated", { 
@@ -896,6 +940,19 @@ restoreTabs(persistedData) {
     // Handle in-page navigation 
     webview.addEventListener("did-navigate-in-page", (e) => {
       const newUrl = e.url;
+      const tab = this.tabs.find(t => t.id === tabId);
+      if (tab && tab.savedNavigation && tab.savedNavigation.entries) {
+        if (tab.isFallbackNavigating) {
+          tab.isFallbackNavigating = false;
+        } else {
+          const expectedUrl = tab.savedNavigation.entries[tab.savedNavigation.activeIndex]?.url;
+          if (expectedUrl !== newUrl) {
+            tab.savedNavigation.entries = tab.savedNavigation.entries.slice(0, tab.savedNavigation.activeIndex + 1);
+            tab.savedNavigation.entries.push({ url: newUrl, title: newUrl });
+            tab.savedNavigation.activeIndex++;
+          }
+        }
+      }
       this.updateTab(tabId, { url: newUrl });
       
       this.dispatchEvent(new CustomEvent("tab-navigated", { 
@@ -1061,20 +1118,13 @@ restoreTabs(persistedData) {
       const tab = this.tabs.find(t => t.id === tabId);
       if (tab) {
         if (tab.isSuspended) {
+          tab.isFallbackNavigating = true;
           // Recreate webview
           const newWebview = this.createWebviewForTab(tabId, tab.url);
           
           // Restore history
           if (tab.savedNavigation && tab.savedNavigation.entries?.length) {
-            const { entries, activeIndex } = tab.savedNavigation;
-            setTimeout(() => {
-              try {
-                const { ipcRenderer } = require("electron");
-                const wcId = newWebview.getWebContentsId();
-                ipcRenderer.invoke('restore-navigation-history', { webContentsId: wcId, entries, activeIndex })
-                  .catch(err => console.warn("Failed to restore sleeping tab nav history:", err));
-              } catch(e) {}
-            }, 150);
+            this.restoreNavigationForWebview(tabId, newWebview, tab.savedNavigation, "sleeping tab");
           }
           
           tab.isSuspended = false;
@@ -1184,14 +1234,32 @@ restoreTabs(persistedData) {
   
   goBackActiveTab() {
     const webview = this.getActiveWebview();
-    if (webview && webview.canGoBack()) {
+    const tab = this.getActiveTab();
+
+    if (tab && tab.savedNavigation && tab.savedNavigation.entries && tab.savedNavigation.entries.length > 0) {
+      if (tab.savedNavigation.activeIndex > 0) {
+        tab.savedNavigation.activeIndex--;
+        const previousUrl = tab.savedNavigation.entries[tab.savedNavigation.activeIndex].url;
+        tab.isFallbackNavigating = true;
+        this.navigateActiveTab(previousUrl);
+      }
+    } else if (webview && webview.canGoBack()) {
       webview.goBack();
     }
   }
   
   goForwardActiveTab() {
     const webview = this.getActiveWebview();
-    if (webview && webview.canGoForward()) {
+    const tab = this.getActiveTab();
+
+    if (tab && tab.savedNavigation && tab.savedNavigation.entries && tab.savedNavigation.entries.length > 0) {
+      if (tab.savedNavigation.activeIndex < tab.savedNavigation.entries.length - 1) {
+        tab.savedNavigation.activeIndex++;
+        const nextUrl = tab.savedNavigation.entries[tab.savedNavigation.activeIndex].url;
+        tab.isFallbackNavigating = true;
+        this.navigateActiveTab(nextUrl);
+      }
+    } else if (webview && webview.canGoForward()) {
       webview.goForward();
     }
   }
