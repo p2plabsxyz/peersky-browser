@@ -79,6 +79,44 @@ const log = createLogger('main');
 
 let windowManager = null;
 
+const webviewTabShortcutNavAttached = new WeakSet();
+
+function attachWebviewTabShortcutNav(wc) {
+  if (!wc || wc.isDestroyed()) return;
+  if (typeof wc.getType !== "function" || wc.getType() !== "webview") return;
+  if (webviewTabShortcutNavAttached.has(wc)) return;
+  webviewTabShortcutNavAttached.add(wc);
+
+  const runOnShell = (next) => {
+    const win = BrowserWindow.fromWebContents(wc);
+    if (!win || win.isDestroyed()) return;
+    const shellWc = win.webContents;
+    if (shellWc.isDestroyed()) return;
+    const script = next
+      ? `(()=>{try{const t=document.querySelector('#tabbar');if(!t||!t.tabs||t.tabs.length<2)return;const i=t.tabs.findIndex(x=>x.id===t.activeTabId);if(i<0)return;t.selectTab(t.tabs[(i+1)%t.tabs.length].id);}catch(e){console.error(e);}})()`
+      : `(()=>{try{const t=document.querySelector('#tabbar');if(!t||!t.tabs||t.tabs.length<2)return;const i=t.tabs.findIndex(x=>x.id===t.activeTabId);if(i<0)return;t.selectTab(t.tabs[(i-1+t.tabs.length)%t.tabs.length].id);}catch(e){console.error(e);}})()`;
+    shellWc.executeJavaScript(script).catch(() => {});
+  };
+
+  wc.on("before-input-event", (event, input) => {
+    if (input.type !== "keyDown") return;
+
+    const isMac = process.platform === "darwin";
+    let goNext = null;
+    if (isMac) {
+      if (input.meta && input.alt && (input.key === "ArrowRight" || input.key === "ArrowLeft")) {
+        goNext = input.key === "ArrowRight";
+      }
+    } else if (input.control && input.key === "Tab") {
+      goNext = !input.shift;
+    }
+
+    if (goNext === null) return;
+    event.preventDefault();
+    runOnShell(goNext);
+  });
+}
+
 globalProtocol.registerSchemesAsPrivileged([
   { scheme: "peersky", privileges: BROWSER_PROTOCOL },
   { scheme: "browser", privileges: BROWSER_PROTOCOL },
@@ -110,6 +148,7 @@ app.whenReady().then(async () => {
 
   // Global webview partition alignment and security hardening
   app.on('web-contents-created', (_e, wc) => {
+    attachWebviewTabShortcutNav(wc);
     wc.on('will-attach-webview', (_event, webPreferences, params) => {
       // Force consistent partition when using persist mode
       if (usePersist()) params.partition = 'persist:peersky';

@@ -11,7 +11,17 @@ import extensionManager from '../extensions/index.js';
 const log = createLogger('protocols:peersky');
 
 const __dirname = fileURLToPath(new URL('./', import.meta.url));
-const pagesPath = path.join(__dirname, '../pages');
+
+// In packaged builds, serve from app.asar.unpacked so we can read updated P2P apps
+let pagesPath;
+if (app.isPackaged) {
+  const appPath = app.getAppPath();
+  const unpackedPath = appPath.replace(/\.asar$/, '.asar.unpacked');
+  pagesPath = path.join(unpackedPath, 'src', 'pages');
+} else {
+  pagesPath = path.join(__dirname, '../pages');
+}
+
 const fs = new ScopedFS(pagesPath);
 
 const CHECK_PATHS = [
@@ -291,7 +301,7 @@ export async function createHandler() {
       const resolvedPath = await resolveFile(filePath);
       const format = path.extname(resolvedPath);
       
-      if (!['', '.html', '.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.woff2', '.woff', '.ttf'].includes(format)) {
+      if (!['', '.html', '.js', '.css', '.json', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.woff2', '.woff', '.ttf', '.mp3', '.mp4', '.webm', '.ogg'].includes(format)) {
         throw new Error('Unsupported file type');
       }
 

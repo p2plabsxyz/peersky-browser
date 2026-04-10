@@ -73,17 +73,18 @@
 
 - [x] P2P Applications:
 
-  - [x] `peersky://p2p/chat/`
+  - [x] `peersky://p2p/peerchat/`
     - Peer-to-peer messaging over Hyper
   - [x] `peersky://p2p/upload/`
     - Decentralized file storage
-  - [x] `peersky://p2p/editor/`
+  - [x] `peersky://p2p/peerpad/`
     - Build and publish websites
   - [x] `peersky://p2p/p2pmd/`
     - Real-time collaborative markdown editor
     - Presentation slides mode with speaker notes
     - AI-powered content generation
     - Publish to IPFS/Hypercore
+    - Peers dashboard with roles, live editing status, and edit history
   - [x] `peersky://p2p/wiki/`
     - Browse Wikipedia over IPFS
   - [x] [reader.p2plabs.xyz](https://reader.distributed.press/)
@@ -135,7 +136,7 @@
   - [x] Trusted-domain exposure (PeerSky-native + allowlist)
   - [x] AI Chat app (peersky://p2p/ai-chat/)
     - [x] Ported from [Agregore examples](https://github.com/AgregoreWeb/website/blob/main/docs/examples/llm-chat.html) with PeerSky updates
-  - [x] P2P Editor integration (peersky://p2p/editor/)
+  - [x] P2P Editor integration (peersky://p2p/peerpad/)
     - [x] New AI generator (`ai-generator.js`) to generate code with AI
 
   - [ ] 🚧 [LLM Memory](https://github.com/p2plabsxyz/peersky-browser/issues/97)

@@ -1,6 +1,14 @@
 import path from "path";
+import { fileURLToPath } from "url";
 import { app, ipcMain, dialog } from "electron";
 import { promises as fs } from "fs";
+import { exec } from "child_process";
+import { promisify } from "util";
+import unzipper from "unzipper";
+
+const execAsync = promisify(exec);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const MAX_ICON_BYTES = 512 * 1024;
 const MAX_BUNDLE_BYTES = 25 * 1024 * 1024;
@@ -356,6 +364,146 @@ class P2PAppRegistry {
     await this.saveRegistry();
   }
 
+  parseGitModules(content) {
+    const submodules = [];
+    let current = null;
+    for (const line of content.split('\n')) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('[submodule')) {
+        current = {};
+        submodules.push(current);
+      } else if (current && trimmed.startsWith('path =')) {
+        current.subPath = trimmed.slice('path ='.length).trim();
+      } else if (current && trimmed.startsWith('url =')) {
+        current.url = trimmed.slice('url ='.length).trim();
+      }
+    }
+    return submodules
+      .filter(s => s.subPath && s.url && s.url.includes('github.com'))
+      .map(s => ({
+        repo: s.url.replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, ''),
+        dir: path.basename(s.subPath)
+      }));
+  }
+
+  async updateSubmodulesFromGitHub() {
+    let SUBMODULE_APPS;
+    try {
+      const gitmodulesPath = path.join(app.getAppPath(), '.gitmodules');
+      const content = await fs.readFile(gitmodulesPath, 'utf8');
+      SUBMODULE_APPS = this.parseGitModules(content);
+      if (!SUBMODULE_APPS.length) throw new Error('No GitHub submodules found in .gitmodules');
+    } catch (err) {
+      console.error('Could not parse .gitmodules:', err.message);
+      return { success: false, error: `Could not read .gitmodules: ${err.message}` };
+    }
+
+    // In packaged builds, __dirname points inside app.asar (read-only)
+    // We need to write to app.asar.unpacked instead
+    let p2pDir;
+    if (app.isPackaged) {
+      const appPath = app.getAppPath();
+      const unpackedPath = appPath.replace(/\.asar$/, '.asar.unpacked');
+      p2pDir = path.join(unpackedPath, 'src', 'pages', 'p2p');
+    } else {
+      p2pDir = path.join(__dirname, 'pages', 'p2p');
+    }
+    const errors = [];
+
+    for (const mod of SUBMODULE_APPS) {
+      try {
+        const zipUrl = `https://github.com/${mod.repo}/archive/HEAD.zip`;
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 60000);
+
+        let response;
+        try {
+          response = await fetch(zipUrl, { signal: controller.signal });
+        } finally {
+          clearTimeout(timer);
+        }
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const buffer = Buffer.from(await response.arrayBuffer());
+        const directory = await unzipper.Open.buffer(buffer);
+        const targetDir = path.join(p2pDir, mod.dir);
+
+        // Clear existing contents before extracting fresh copy
+        try {
+          const existing = await fs.readdir(targetDir);
+          await Promise.all(
+            existing.map(e => fs.rm(path.join(targetDir, e), { recursive: true, force: true }))
+          );
+        } catch {
+          await fs.mkdir(targetDir, { recursive: true });
+        }
+
+        // Extract all files, stripping the top-level GitHub zip folder (e.g. "peerchat-main/")
+        for (const file of directory.files) {
+          const relativePath = file.path.replace(/^[^/]+\//, '');
+          if (!relativePath) continue;
+
+          const destPath = path.join(targetDir, relativePath);
+          if (file.type === 'Directory' || relativePath.endsWith('/')) {
+            await fs.mkdir(destPath, { recursive: true });
+          } else {
+            await fs.mkdir(path.dirname(destPath), { recursive: true });
+            const content = await file.buffer();
+            await fs.writeFile(destPath, content);
+          }
+        }
+      } catch (error) {
+        console.error(`Failed to update ${mod.dir}:`, error);
+        errors.push(`${mod.dir}: ${error.message}`);
+      }
+    }
+
+    if (errors.length > 0) {
+      return {
+        success: false,
+        error: `Failed to update some apps: ${errors.join('; ')}`
+      };
+    }
+
+    return {
+      success: true,
+      message: 'P2P apps updated to latest versions. Refresh to see changes.'
+    };
+  }
+
+  async updateSubmodules() {
+    // Packaged builds have no .git and no git binary — use GitHub zip downloads instead
+    if (app.isPackaged) {
+      return await this.updateSubmodulesFromGitHub();
+    }
+
+    // Development: use git submodule update
+    try {
+      const projectRoot = app.getAppPath();
+      
+      // Update all submodules to their latest commits
+      const { stdout, stderr } = await execAsync(
+        'git submodule update --remote --merge',
+        { cwd: projectRoot, timeout: 60000 }
+      );
+      
+      return {
+        success: true,
+        message: 'P2P apps updated to latest versions',
+        output: stdout || stderr
+      };
+    } catch (error) {
+      console.error('Failed to update submodules:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to update P2P apps'
+      };
+    }
+  }
+
   setupIpc() {
     ipcMain.handle("p2p-user-apps-list", async () => {
       try {
@@ -420,6 +568,14 @@ class P2PAppRegistry {
     ipcMain.handle("p2p-user-apps-remove", async (_event, appId) => {
       try {
         return await this.removeApp(appId);
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    });
+
+    ipcMain.handle("p2p-apps-update-submodules", async () => {
+      try {
+        return await this.updateSubmodules();
       } catch (error) {
         return { success: false, error: error.message };
       }

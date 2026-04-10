@@ -174,7 +174,7 @@ class WindowManager {
                   }
                   return false;
                 } catch (error) {
-                  log.error('Error checking for tab:', error);
+                  console.error('Error checking for tab:', error);
                   return false;
                 }
               })()
@@ -952,7 +952,7 @@ class PeerskyWindow {
               try {
                 allTabsData = JSON.parse(existingData);
               } catch (e) {
-                log.error('Failed to parse existing tabs data:', e);
+                console.error('Failed to parse existing tabs data:', e);
               }
             }
             
@@ -962,14 +962,14 @@ class PeerskyWindow {
             // Save merged data
             localStorage.setItem('peersky-browser-tabs', JSON.stringify(allTabsData));
             
-            log.info('Restored tabs for window ${this.windowId}');
+            console.log('Restored tabs for window ${this.windowId}');
             
             // Trigger tab restoration
             window.dispatchEvent(new CustomEvent('restore-tabs', { 
               detail: { windowId: '${this.windowId}' }
             }));
           } catch (error) {
-            log.error('Error restoring tabs:', error);
+            console.error('Error restoring tabs:', error);
           }
         })();
       `).catch(error => {
