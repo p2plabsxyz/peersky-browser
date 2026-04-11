@@ -601,8 +601,14 @@ restoreTabs(persistedData) {
     // Add to container first, then set up events
     this.webviewContainer.appendChild(webview);
     
-    // Add a load event to ensure webview is properly initialized
-    let extensionRegistered = false;
+    // Track the currently-registered webContents ID so we can detect
+    // guest-process replacements (Electron may create a new guest webContents
+    // after a crash, site-isolation swap, or certain CDP commands like
+    // Page.reload).  Re-register when the ID changes so the extension system
+    // (and chrome.debugger) can still reach the tab.
+    let registeredWcId = null;
+    let pendingWcId = null;
+    let registering = false;
     webview.addEventListener('dom-ready', () => {
       // Ensure this webview is visible if it's the active tab
       if (this.activeTabId === tabId) {
@@ -610,24 +616,38 @@ restoreTabs(persistedData) {
         webview.focus();
       }
       
-      // Register webview with extension system only once.
-      // electron-chrome-extensions.addTab() can trigger a navigation/reload on the
-      // webContents, which fires dom-ready again — causing an infinite reload loop.
-      if (extensionRegistered) return;
-      extensionRegistered = true;
+      let currentWcId;
+      try { currentWcId = webview.getWebContentsId(); } catch (_) { return; }
+
+      // Same webContents — nothing to do (avoids the infinite reload loop
+      // that addTab() can cause when it triggers a navigation/dom-ready).
+      if (currentWcId === registeredWcId || registering) return;
+
+      registering = true;
+      pendingWcId = currentWcId;
+
       setTimeout(() => {
         try {
-          const webContentsId = webview.getWebContentsId();
+          const wcId = webview.getWebContentsId();
+          if (wcId !== pendingWcId) return; // changed again, skip
           const { ipcRenderer } = require('electron');
-          ipcRenderer.invoke('extensions-register-webview', webContentsId).then(result => {
+          ipcRenderer.invoke('extensions-register-webview', wcId).then(result => {
             if (!result.success) {
-              console.warn(`[TabBar] Failed to register webview ${webContentsId}:`, result.error);
+              console.warn(`[TabBar] Failed to register webview ${wcId}:`, result.error);
+              return;
             }
+            if (wcId !== pendingWcId) return; // changed again while registering, skip
+            registeredWcId = wcId;
           }).catch(error => {
             console.error(`[TabBar] Error registering webview:`, error);
+          }).finally(() => {
+            // Keep the "in-flight" guard until the async registration settles.
+            // This avoids concurrent registrations and potential reload/registration loops.
+            registering = false;
           });
         } catch (error) {
           console.warn(`[TabBar] Could not register webview with extension system:`, error);
+          registering = false;
         }
       }, 100); // Small delay to ensure webview is fully ready
     });
@@ -868,7 +888,10 @@ restoreTabs(persistedData) {
       newActive.classList.add("active");
       this.activeTabId = tabId;
       
-      // Close all extension popups when switching tabs
+      // Close extension popups only on user-initiated tab switches.
+      // If an extension creates/navigates a tab while its popup is open (eg ArchiveWeb.page "View Web Archives"),
+      // closing popups here causes the popup to disappear immediately.
+      if (!isNewTab) {
       try {
         const { ipcRenderer } = require('electron');
         ipcRenderer.invoke('extensions-close-all-popups').catch(error => {
@@ -877,11 +900,28 @@ restoreTabs(persistedData) {
       } catch (error) {
         console.warn('[TabBar] Error closing extension popups:', error);
       }
+      }
       
       // Show ONLY the newly active webview
       const newWebview = this.webviews.get(tabId);
       if (newWebview) {
         newWebview.style.display = "flex";
+
+        // Keep extension system in sync with tab switches so popup UIs
+        // can resolve the active tab reliably.
+        try {
+          const wcId = newWebview.getWebContentsId?.();
+          if (wcId) {
+            const { ipcRenderer } = require('electron');
+            ipcRenderer.invoke('extensions-pin-active-webview', wcId).then((res) => {
+              if (res && res.success === false) {
+                console.warn('[TabBar] Failed to pin active webview for extensions:', res.error || res.code || res);
+              }
+            }).catch((e) => {
+              console.warn('[TabBar] Error pinning active webview for extensions:', e?.message || e);
+            });
+          }
+        } catch (_) {}
         
         // Focus the webview after a short delay to ensure it's visible
         // Skip webview focus for new tabs to allow address bar focus
