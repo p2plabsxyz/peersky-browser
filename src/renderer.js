@@ -91,6 +91,25 @@ function setupWebviewErrorHandling(webview) {
       return;
     }
 
+    // Extension OAuth redirect host: Chrome resolves *.chromiumapp.org internally;
+    // Electron performs a real DNS lookup → ERR_NAME_NOT_RESOLVED. Do not replace
+    // the tab with peersky://error; return to the prior page (session is often already established).
+    if (errorCode === -105 && validatedURL) {
+      try {
+        const { hostname } = new URL(validatedURL);
+        if (hostname.endsWith('.chromiumapp.org')) {
+          setTimeout(() => {
+            try {
+              if (typeof webview.canGoBack === 'function' && webview.canGoBack()) {
+                webview.goBack();
+              }
+            } catch (_) { /* ignore */ }
+          }, 0);
+          return;
+        }
+      } catch (_) { /* ignore invalid URL */ }
+    }
+
     if (errorCode === -102 && validatedURL && isLocalUrl(validatedURL)) {
       const count = state.retryCounts.get(validatedURL) || 0;
       if (count < 1) {
