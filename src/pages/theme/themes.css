@@ -321,3 +321,56 @@ pre,
 code {
   transition: background-color 0.12s ease-in-out, color 0.12s ease-in-out, border-color 0.12s ease-in-out;
 }
+
+.tab.split-left, 
+.tab.split-right, 
+.tab.split-pending {
+  flex: 0.5 !important;
+  max-width: 140px !important; 
+  min-width: 80px !important;
+  background-color: var(--settings-bg-secondary) !important; 
+  border: 1px solid var(--settings-border) !important;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.tab.split-left {
+  border-top-right-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+  border-right: none !important;
+  margin-right: 0 !important;
+}
+
+.tab.split-right {
+  border-top-left-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+  margin-left: 0 !important;
+  border-left: 1px solid var(--settings-border) !important;
+}
+
+.tab.split-left.active, 
+.tab.split-right.active, 
+.tab.split-pending.active {
+  background-color: var(--browser-theme-secondary-highlight) !important;
+  border-color: var(--browser-theme-secondary-highlight) !important;
+  color: #ffffff !important;
+  z-index: 2;
+}
+
+.tab.split-left.active .tab-title,
+.tab.split-right.active .tab-title,
+.tab.split-pending.active .tab-title {
+  color: #ffffff !important;
+}
+
+.tab.split-left.active .close-tab,
+.tab.split-right.active .close-tab,
+.tab.split-pending.active .close-tab {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.tab.split-left.active .close-tab:hover,
+.tab.split-right.active .close-tab:hover,
+.tab.split-pending.active .close-tab:hover {
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.2);
+}

@@ -23,6 +23,11 @@ class TabBar extends HTMLElement {
     this.buildTabBar();
     this.setupBrowserCloseHandler();
     this.setupTabContextMenu();
+    this.splitPairs = [];
+    this.pendingSplit = {
+      isActive: false,
+      leftTabId: null
+    };
   }
 
   // Connect to the webview container where all webviews will live
@@ -776,12 +781,19 @@ restoreTabs(persistedData) {
         faviconElement.style.display = 'block';
       }
     });
+
+    webview.addEventListener("focus", () => {
+      if (this.activeTabId !== tabId) {
+        this.selectTab(tabId);
+      }
+    });
   }
 
   closeTab(tabId) {
     this.destroyHoverCard(); // remove lingering hover card
     const tabElement = document.getElementById(tabId);
     if (!tabElement) return;
+    this.breakSplitView(tabId);
 
     // Get index of tab to close
     const tabIndex = this.tabs.findIndex(tab => tab.id === tabId);
@@ -846,23 +858,89 @@ restoreTabs(persistedData) {
     this.dispatchEvent(new CustomEvent("tab-closed", { detail: { tabId } }));
   }
 
+  getSplitForTab(tabId) {
+    return this.splitPairs.find(split => split.leftTabId === tabId || split.rightTabId === tabId);
+  }
+
+  initiateSplitView(tabId) {
+    // Prevent splitting a tab that is already in a split
+    if (this.getSplitForTab(tabId)) return;
+
+    this.pendingSplit = {
+      isActive: true,
+      leftTabId: tabId
+    };
+
+    const leftTab = document.getElementById(tabId);
+    if (leftTab) leftTab.classList.add('split-pending');
+
+    if (this.webviewContainer) {
+      this.webviewContainer.style.display = 'flex';
+      this.webviewContainer.style.flexDirection = 'row';
+    }
+
+    this.selectTab(tabId);
+  }
+
+  assignRightSplitTab(tabId) {
+    if (!this.pendingSplit.isActive) return;
+
+    const leftId = this.pendingSplit.leftTabId;
+    const rightId = tabId;
+
+    this.splitPairs.push({ leftTabId: leftId, rightTabId: rightId });
+
+    this.pendingSplit = { isActive: false, leftTabId: null };
+
+    const leftTab = document.getElementById(leftId);
+    const rightTab = document.getElementById(rightId);
+
+    if (leftTab && rightTab && leftTab.parentNode) {
+      leftTab.classList.remove('split-pending');
+      leftTab.classList.add('split-left');
+
+      rightTab.classList.add('split-right');
+
+      leftTab.parentNode.insertBefore(rightTab, leftTab.nextSibling);
+    }
+
+    this.selectTab(rightId); 
+  }
+
+  breakSplitView(tabId) {
+    const splitIndex = this.splitPairs.findIndex(s => s.leftTabId === tabId || s.rightTabId === tabId);
+
+    if (splitIndex !== -1) {
+      const split = this.splitPairs[splitIndex];
+      const leftTab = document.getElementById(split.leftTabId);
+      const rightTab = document.getElementById(split.rightTabId);
+
+      if (leftTab) leftTab.classList.remove('split-left');
+      if (rightTab) rightTab.classList.remove('split-right');
+
+      this.splitPairs.splice(splitIndex, 1);
+
+      const survivingTabId = split.leftTabId === tabId ? split.rightTabId : split.leftTabId;
+      this.selectTab(survivingTabId);
+      return;
+    }
+
+    if (this.pendingSplit.isActive && this.pendingSplit.leftTabId === tabId) {
+      const leftTab = document.getElementById(this.pendingSplit.leftTabId);
+      if (leftTab) leftTab.classList.remove('split-pending');
+
+      this.pendingSplit = { isActive: false, leftTabId: null };
+      this.renderWebviews();
+    }
+  }
+
   // Update the selectTab method to handle display properly
   selectTab(tabId, isNewTab = false) {
-    
-    // First, hide ALL webviews to ensure clean state
-    this.webviews.forEach((webview) => {
-      webview.style.display = "none";
-    });
-    
-    // Remove active class from current active tab
     if (this.activeTabId) {
       const currentActive = document.getElementById(this.activeTabId);
-      if (currentActive) {
-        currentActive.classList.remove("active");
-      }
+      if (currentActive) currentActive.classList.remove("active");
     }
-    
-    // Add active class to new active tab
+
     const newActive = document.getElementById(tabId);
     if (newActive) {
       newActive.classList.add("active");
@@ -871,41 +949,154 @@ restoreTabs(persistedData) {
       // Close all extension popups when switching tabs
       try {
         const { ipcRenderer } = require('electron');
-        ipcRenderer.invoke('extensions-close-all-popups').catch(error => {
-          console.warn('[TabBar] Failed to close extension popups on tab switch:', error);
-        });
-      } catch (error) {
-        console.warn('[TabBar] Error closing extension popups:', error);
-      }
-      
-      // Show ONLY the newly active webview
-      const newWebview = this.webviews.get(tabId);
-      if (newWebview) {
-        newWebview.style.display = "flex";
-        
-        // Focus the webview after a short delay to ensure it's visible
-        // Skip webview focus for new tabs to allow address bar focus
-        if (!isNewTab) {
-          setTimeout(() => {
-            if (newWebview && document.body.contains(newWebview)) {
-              newWebview.focus();
-            }
-          }, 10);
-        }
-      }
-      
-      // Find the URL for this tab
+        ipcRenderer.invoke('extensions-close-all-popups').catch(e => {});
+      } catch (error) {}
+
       const tab = this.tabs.find(t => t.id === tabId);
       if (tab) {
-        // Dispatch event that tab was selected with the URL
-        this.dispatchEvent(new CustomEvent("tab-selected", { 
-          detail: { tabId, url: tab.url } 
-        }));
+        this.dispatchEvent(new CustomEvent("tab-selected", { detail: { tabId, url: tab.url } }));
       }
     }
-    
-    // Save state when tab is selected
+
+    this.renderWebviews();
+
+    if (!isNewTab) {
+      setTimeout(() => {
+        const activeWv = this.webviews.get(tabId);
+        if (activeWv && document.body.contains(activeWv)) activeWv.focus();
+      }, 10);
+    }
+
     this.saveTabsState();
+  }
+
+  renderWebviews() {
+    if (!this.webviewContainer) return;
+
+    // Reset all webviews
+    this.webviews.forEach((webview) => {
+      webview.style.display = "none";
+      webview.style.flex = "none";
+      webview.style.width = "100%";
+      webview.style.borderRight = "none";
+    });
+
+    const existingOverlay = document.getElementById('split-view-selector-overlay');
+    if (existingOverlay) existingOverlay.style.display = 'none';
+
+    const activeSplit = this.getSplitForTab(this.activeTabId);
+
+    if (activeSplit) {
+      const leftWv = this.webviews.get(activeSplit.leftTabId);
+      const rightWv = this.webviews.get(activeSplit.rightTabId);
+
+      if (leftWv) {
+        leftWv.style.display = "flex";
+        leftWv.style.flex = "0 0 50%";
+        leftWv.style.borderRight = "1px solid var(--settings-border)";
+      }
+      if (rightWv) {
+        rightWv.style.display = "flex";
+        rightWv.style.flex = "0 0 50%";
+      }
+    } 
+    else if (this.pendingSplit.isActive && this.activeTabId === this.pendingSplit.leftTabId) {
+      const leftWv = this.webviews.get(this.pendingSplit.leftTabId);
+      if (leftWv) {
+        leftWv.style.display = "flex";
+        leftWv.style.flex = "0 0 50%";
+        leftWv.style.borderRight = "1px solid var(--settings-border)";
+      }
+      this.drawSplitSelectorOverlay();
+    } 
+    else {
+      const activeWv = this.webviews.get(this.activeTabId);
+      if (activeWv) {
+        activeWv.style.display = "flex";
+        activeWv.style.flex = "1";
+      }
+    }
+  }
+
+  drawSplitSelectorOverlay() {
+    let selector = document.getElementById('split-view-selector-overlay');
+
+    if (!selector) {
+      selector = document.createElement('div');
+      selector.id = 'split-view-selector-overlay';
+      this.webviewContainer.appendChild(selector);
+    }
+
+    selector.style.display = 'flex';
+    Object.assign(selector.style, {
+      flex: '0 0 50%',
+      backgroundColor: 'var(--browser-theme-background)',
+      display: 'flex',
+      flexDirection: 'column',
+      padding: '30px',
+      boxSizing: 'border-box',
+      overflowY: 'auto',
+      color: 'var(--browser-theme-text-color)'
+    });
+
+    selector.innerHTML = `
+      <h2 style="margin-top: 0; font-weight: normal; font-size: 1.5rem;">Select a tab to split</h2>
+      <p style="color: var(--settings-text-secondary); margin-bottom: 20px;">Choose a tab to open in the right panel.</p>
+    `;
+
+    const newTabBtn = document.createElement('button');
+    Object.assign(newTabBtn.style, {
+      padding: '12px 16px',
+      marginBottom: '16px',
+      backgroundColor: 'var(--browser-theme-primary-highlight)',
+      color: '#fff',
+      border: 'none',
+      borderRadius: '8px',
+      cursor: 'pointer',
+      fontSize: '14px',
+      fontWeight: 'bold',
+      textAlign: 'left',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px'
+    });
+    newTabBtn.innerHTML = `<span style="font-size:18px;">+</span> Open New Tab`;
+    newTabBtn.onclick = () => {
+      const newTabId = this.addTab();
+      this.assignRightSplitTab(newTabId);
+    };
+    selector.appendChild(newTabBtn);
+
+    const tabsList = document.createElement('div');
+    tabsList.style.display = 'flex';
+    tabsList.style.flexDirection = 'column';
+    tabsList.style.gap = '8px';
+
+    this.tabs.forEach(tab => {
+      // Don't show tabs that are already in ANY split view, or the currently pending tab
+      if (tab.id !== this.pendingSplit.leftTabId && !this.getSplitForTab(tab.id)) {
+        const tabBtn = document.createElement('button');
+        Object.assign(tabBtn.style, {
+          padding: '12px 16px',
+          backgroundColor: 'var(--settings-card-bg)',
+          color: 'var(--browser-theme-text-color)',
+          border: '1px solid var(--settings-border)',
+          borderRadius: '8px',
+          cursor: 'pointer',
+          textAlign: 'left',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          fontSize: '14px'
+        });
+
+        tabBtn.innerHTML = `<img src="peersky://static/assets/icon16.png" style="width:16px; height:16px;"> ${tab.title}`;
+        tabBtn.onclick = () => this.assignRightSplitTab(tab.id);
+        tabsList.appendChild(tabBtn);
+      }
+    });
+
+    selector.appendChild(tabsList);
   }
 
   updateTab(tabId, { url, title }) {
@@ -1032,6 +1223,7 @@ restoreTabs(persistedData) {
     const webview = this.webviews.get(tabId);
     const isPinned = this.pinnedTabs.has(tabId);
     const isMuted = webview?.isAudioMuted() || false;
+    const isSplit = this.getSplitForTab(tabId) || (this.pendingSplit.isActive && this.pendingSplit.leftTabId === tabId);
 
     const iconPath = 'peersky://static/assets/svg';
 
@@ -1044,6 +1236,17 @@ restoreTabs(persistedData) {
         <img class="menu-icon" src="${iconPath}/copy.svg" />
         Duplicate tab
       </div>
+      ${isSplit ? `
+        <div class="context-menu-item" data-action="separate-split">
+          <img class="menu-icon" src="${iconPath}/layout-split.svg" style="transform: rotate(90deg);" />
+          Separate split view
+        </div>
+        ` : `
+        <div class="context-menu-item" data-action="split-view">
+          <img class="menu-icon" src="${iconPath}/layout-split.svg" />
+          Split view
+        </div>
+      `}
       <div class="context-menu-item" data-action="mute">
         <img class="menu-icon" src="${iconPath}/${isMuted ? 'volume-up.svg' : 'volume-mute.svg'}" />
         ${isMuted ? 'Unmute site' : 'Mute site'}
@@ -1157,6 +1360,14 @@ restoreTabs(persistedData) {
         this.duplicateTab(tabId);
         break;
         
+      case 'split-view':
+        this.initiateSplitView(tabId);
+        break;
+
+      case 'separate-split':
+        this.breakSplitView(tabId);
+        break;
+
       case 'mute':
         if (webview) {
           if (webview.isAudioMuted()) {
