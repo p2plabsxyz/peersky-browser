@@ -19,11 +19,11 @@
     "test": "npm run test:all",
     "test:all": "npm run test:p2p && npm run test:p2p:e2e && npm run test:extensions && npm run test:security && npm run test:integration",
     "test:integration": "mocha \"test/integration/**/*.test.js\" --timeout 300000",
-    "test:p2p": "mocha \"test/p2p/ipfs-handler.test.js\" \"test/p2p/hyper-handler.test.js\" --timeout 20000",
+    "test:p2p": "mocha \"test/p2p/ipfs-handler.test.js\" \"test/p2p/hyper-handler.test.js\" \"test/p2p/hs-handler.test.js\" --timeout 20000",
     "test:p2p:e2e": "rimraf .test-e2e-data && cross-env PEERSKY_TEST_USERDATA=.test-e2e-data mocha --file ./test/setup.js \"test/p2p/p2p-e2e.test.js\" --timeout 120000 --exit",
     "test:extensions": "mocha \"test/extensions/**/*.test.js\" --timeout 20000",
     "test:security": "mocha \"test/security/**/*.test.js\" --timeout 20000",
-    "coverage": "cross-env NODE_OPTIONS=--experimental-loader=@istanbuljs/esm-loader-hook nyc mocha \"test/p2p/ipfs-handler.test.js\" \"test/p2p/hyper-handler.test.js\" \"test/extensions/**/*.test.js\" \"test/security/**/*.test.js\" --timeout 20000",
+    "coverage": "cross-env NODE_OPTIONS=--experimental-loader=@istanbuljs/esm-loader-hook nyc mocha \"test/p2p/ipfs-handler.test.js\" \"test/p2p/hyper-handler.test.js\" \"test/p2p/hs-handler.test.js\" \"test/extensions/**/*.test.js\" \"test/security/**/*.test.js\" --timeout 20000",
     "coverage:report": "nyc report --reporter=text-summary --reporter=html --reporter=lcov",
     "start": "electron .",
     "postinstall": "git submodule update --init --recursive --remote --merge && node scripts/postinstall.js",
@@ -217,7 +217,8 @@
     ],
     "include": [
       "src/protocols/hyper-handler.js",
-      "src/protocols/ipfs-handler.js"
+      "src/protocols/ipfs-handler.js",
+      "src/protocols/hs-handler.js"
     ],
     "exclude": [
       "test/**",
