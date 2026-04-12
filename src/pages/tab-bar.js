@@ -888,8 +888,7 @@ restoreTabs(persistedData) {
     const leftId = this.pendingSplit.leftTabId;
     const rightId = tabId;
 
-    this.splitPairs.push({ leftTabId: leftId, rightTabId: rightId });
-
+    this.splitPairs.push({ leftTabId: leftId, rightTabId: rightId, splitRatio: 50 });
     this.pendingSplit = { isActive: false, leftTabId: null };
 
     const leftTab = document.getElementById(leftId);
@@ -973,12 +972,22 @@ restoreTabs(persistedData) {
   renderWebviews() {
     if (!this.webviewContainer) return;
 
-    // Reset all webviews
+    let divider = document.getElementById('split-view-divider');
+    if (!divider) {
+      divider = document.createElement('div');
+      divider.id = 'split-view-divider';
+      divider.className = 'split-view-divider';
+      divider.addEventListener('pointerdown', this.handleDividerPointerDown.bind(this));
+      this.webviewContainer.appendChild(divider);
+    }
+
+    divider.style.display = 'none';
     this.webviews.forEach((webview) => {
       webview.style.display = "none";
       webview.style.flex = "none";
       webview.style.width = "100%";
       webview.style.borderRight = "none";
+      webview.style.order = "";
     });
 
     const existingOverlay = document.getElementById('split-view-selector-overlay');
@@ -990,17 +999,19 @@ restoreTabs(persistedData) {
       const leftWv = this.webviews.get(activeSplit.leftTabId);
       const rightWv = this.webviews.get(activeSplit.rightTabId);
 
-      if (leftWv) {
+      if (leftWv && rightWv) {
         leftWv.style.display = "flex";
-        leftWv.style.flex = "0 0 50%";
-        leftWv.style.borderRight = "1px solid var(--settings-border)";
-      }
-      if (rightWv) {
+        leftWv.style.flex = `0 0 ${activeSplit.splitRatio || 50}%`;
+        leftWv.style.order = "1";
+        
+        divider.style.display = "block";
+        divider.style.order = "2";
+
         rightWv.style.display = "flex";
-        rightWv.style.flex = "0 0 50%";
+        rightWv.style.flex = `0 0 ${100 - (activeSplit.splitRatio || 50)}%`;
+        rightWv.style.order = "3";
       }
-    } 
-    else if (this.pendingSplit.isActive && this.activeTabId === this.pendingSplit.leftTabId) {
+    } else if (this.pendingSplit.isActive && this.activeTabId === this.pendingSplit.leftTabId) {
       const leftWv = this.webviews.get(this.pendingSplit.leftTabId);
       if (leftWv) {
         leftWv.style.display = "flex";
@@ -1008,8 +1019,7 @@ restoreTabs(persistedData) {
         leftWv.style.borderRight = "1px solid var(--settings-border)";
       }
       this.drawSplitSelectorOverlay();
-    } 
-    else {
+    } else {
       const activeWv = this.webviews.get(this.activeTabId);
       if (activeWv) {
         activeWv.style.display = "flex";
@@ -2718,6 +2728,68 @@ restoreTabs(persistedData) {
 
       this.draggedTab = null;
     }, 200);
+  }
+
+  // Split View Divider Drag Handlers
+
+  handleDividerPointerDown(e) {
+    e.preventDefault();
+
+    this.activeDividerSplit = this.getSplitForTab(this.activeTabId);
+    if (!this.activeDividerSplit) return;
+
+    this.isDraggingDivider = true;
+
+    if (this.webviewContainer) {
+      this.webviewContainer.style.pointerEvents = 'none';
+    }
+
+    const divider = document.getElementById('split-view-divider');
+    if (divider) divider.classList.add('dragging');
+
+    this.onDividerMove = this.handleDividerPointerMove.bind(this);
+    this.onDividerUp = this.handleDividerPointerUp.bind(this);
+
+    window.addEventListener('pointermove', this.onDividerMove);
+    window.addEventListener('pointerup', this.onDividerUp);
+  }
+
+  handleDividerPointerMove(e) {
+    if (!this.isDraggingDivider || !this.activeDividerSplit) return;
+
+    const containerRect = this.webviewContainer.getBoundingClientRect();
+
+    let newRatio = ((e.clientX - containerRect.left) / containerRect.width) * 100;
+
+    newRatio = Math.max(10, Math.min(newRatio, 90));
+
+    // Update the state
+    this.activeDividerSplit.splitRatio = newRatio;
+
+    const leftWv = this.webviews.get(this.activeDividerSplit.leftTabId);
+    const rightWv = this.webviews.get(this.activeDividerSplit.rightTabId);
+
+    if (leftWv && rightWv) {
+      leftWv.style.flex = `0 0 ${newRatio}%`;
+      rightWv.style.flex = `0 0 ${100 - newRatio}%`;
+    }
+  }
+
+  handleDividerPointerUp(e) {
+    if (!this.isDraggingDivider) return;
+    this.isDraggingDivider = false;
+
+    const divider = document.getElementById('split-view-divider');
+    if (divider) divider.classList.remove('dragging');
+
+    if (this.webviewContainer) {
+      this.webviewContainer.style.pointerEvents = '';
+    }
+
+    window.removeEventListener('pointermove', this.onDividerMove);
+    window.removeEventListener('pointerup', this.onDividerUp);
+
+    this.saveTabsState(); 
   }
 
   // --- P2P Protocol Helpers ---

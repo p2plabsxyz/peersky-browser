@@ -374,3 +374,34 @@ code {
   color: #ffffff;
   background-color: rgba(255, 255, 255, 0.2);
 }
+
+.split-view-divider {
+  width: 6px;
+  background-color: transparent;
+  cursor: col-resize;
+  z-index: 10;
+  position: relative;
+  transition: background-color 0.2s;
+  margin-left: -3px; 
+  margin-right: -3px;
+}
+
+.split-view-divider::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 2px;
+  background-color: var(--settings-border);
+  transition: background-color 0.2s;
+}
+
+.split-view-divider:hover::after,
+.split-view-divider.dragging::after {
+  background-color: var(--browser-theme-primary-highlight);
+}
+
+.split-view-divider.dragging {
+  cursor: col-resize !important;
+}
