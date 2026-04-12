@@ -948,8 +948,12 @@ restoreTabs(persistedData) {
       // Close all extension popups when switching tabs
       try {
         const { ipcRenderer } = require('electron');
-        ipcRenderer.invoke('extensions-close-all-popups').catch(e => {});
-      } catch (error) {}
+        ipcRenderer.invoke('extensions-close-all-popups').catch(error => {
+          console.warn('[TabBar] Failed to close extension popups on tab switch:', error);
+        });
+      } catch (error) {
+        console.warn('[TabBar] Error closing extension popups:', error);
+      }
 
       const tab = this.tabs.find(t => t.id === tabId);
       if (tab) {
