@@ -1302,7 +1302,7 @@ restoreTabs(persistedData) {
       </div>
       ${isSplit ? `
         <div class="context-menu-item" data-action="separate-split">
-          <img class="menu-icon" src="${iconPath}/layout-split.svg" style="transform: rotate(90deg);" />
+          <img class="menu-icon" src="${iconPath}/layout-split.svg" />
           Separate split view
         </div>
         ` : `
