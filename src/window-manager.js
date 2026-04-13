@@ -116,6 +116,31 @@ class WindowManager {
       this.open();
     });
 
+    // Handles tearing off a single tab into a new window
+    ipcMain.on('new-window-with-tab', (event, data) => {
+      log.info("Creating new window for torn off tab:", data.url);
+      this.open({
+        isolate: true,
+        singleTab: {
+          url: data.url,
+          title: data.title
+        }
+      });
+    });
+
+    // Handles tearing off a split tab pair into a new window
+    ipcMain.on('new-window-with-split-tabs', (event, data) => {
+      log.info("Creating new window for torn off split pair");
+      this.open({
+        isolate: true,
+        splitLeftUrl: data.leftUrl,
+        splitLeftTitle: data.leftTitle,
+        splitRightUrl: data.rightUrl,
+        splitRightTitle: data.rightTitle,
+        splitRatio: data.splitRatio
+      });
+    });
+
     // Explicit quit from UI (custom Quit button, etc.).
     // We just call app.quit(); app.on('before-quit') will save session files.
     ipcMain.on("quit-app", () => {
@@ -915,6 +940,13 @@ class PeerskyWindow {
         ...(singleTab && {
           singleTabUrl: singleTab.url,
           singleTabTitle: singleTab.title
+        }),
+        ...(options.splitLeftUrl && {
+          splitLeftUrl: options.splitLeftUrl,
+          splitLeftTitle: options.splitLeftTitle,
+          splitRightUrl: options.splitRightUrl,
+          splitRightTitle: options.splitRightTitle,
+          splitRatio: options.splitRatio
         })
       }
     };
