@@ -53,7 +53,7 @@ async function openExtensionUrlInTab(url) {
   try {
     const opened = await openUrlInPeerskyTab(url, 'Extension Page');
     if (!opened) {
-    console.warn('[PopupGuards] No window with tabbar found for extension URL');
+      console.warn('[PopupGuards] No window with tabbar found for extension URL');
     }
   } catch (e) {
     console.error('[PopupGuards] Failed to open extension URL in tab:', e);
