@@ -9,7 +9,7 @@
  * @module popup-guards
  */
 
-import { app, BrowserWindow } from 'electron';
+import { app } from 'electron';
 import { openUrlInPeerskyTab } from './open-url-in-browser-tab.js';
 
 // Popup stabilization period - prevent closing for this duration after creation
