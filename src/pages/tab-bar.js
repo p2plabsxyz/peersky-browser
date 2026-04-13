@@ -236,6 +236,7 @@ getAllTabGroups() {
         }),
         activeTabId: this.activeTabId,
         tabCounter: this.tabCounter,
+        splitPairs: this.splitPairs,
         tabGroups: Array.from(this.tabGroups.entries()).map(([id, group]) => ({
           id,
           name: group.name,
@@ -345,6 +346,26 @@ restoreTabs(persistedData) {
       }
     }
   });
+
+  if (persistedData.splitPairs && persistedData.splitPairs.length > 0) {
+    this.splitPairs = persistedData.splitPairs;
+    
+    setTimeout(() => {
+      this.splitPairs.forEach(split => {
+        const leftTab = document.getElementById(split.leftTabId);
+        const rightTab = document.getElementById(split.rightTabId);
+
+        if (leftTab && rightTab) {
+          leftTab.classList.add('split-left');
+          rightTab.classList.add('split-right');
+          
+          if (leftTab.nextSibling !== rightTab) {
+            leftTab.parentNode.insertBefore(rightTab, leftTab.nextSibling);
+          }
+        }
+      });
+    }, 0);
+  }
 
   // Render all group headers
   for (const groupId of this.tabGroups.keys()) {
