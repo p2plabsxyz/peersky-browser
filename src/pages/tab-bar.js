@@ -110,7 +110,7 @@ class TabBar extends HTMLElement {
     if (!this.memorySaverEnabled) return;
 
     // 30 minutes in ms
-    const IDLE_THRESHOLD =  30 * 60 * 1000;
+    const IDLE_THRESHOLD =  1 * 1000;
     const now = Date.now();
 
     for (const tab of this.tabs) {
@@ -156,42 +156,57 @@ class TabBar extends HTMLElement {
     const tab = this.tabs.find(t => t.id === tabId);
     const webview = this.webviews.get(tabId);
     if (!tab || !webview) return;
-    
+
+    // Capture webContentsId once while the webview is still alive,
+    // so both the navigation save and the extension unregister can reuse it
+    // safely after webview.remove() is called.
+    let webContentsId = null;
+    try {
+      webContentsId = typeof webview.getWebContentsId === "function"
+        ? webview.getWebContentsId()
+        : null;
+    } catch (e) {
+      console.warn("Failed to get webContentsId for sleeping tab", e);
+    }
+
     // Save history only if not already tracked by fallback mechanism
     if (!tab.savedNavigation || !tab.savedNavigation.entries?.length) {
-      try {
-        const { ipcRenderer } = require("electron");
-        const webContentsId = typeof webview.getWebContentsId === "function"
-          ? webview.getWebContentsId()
-          : null;
-        if (webContentsId != null) {
+      if (webContentsId != null) {
+        try {
+          const { ipcRenderer } = require("electron");
           tab.savedNavigation = ipcRenderer.sendSync("get-tab-navigation", webContentsId);
+        } catch (e) {
+          console.warn("Failed to save nav history for sleeping tab", e);
         }
-      } catch (e) {
-        console.warn("Failed to save nav history for sleeping tab", e);
       }
     }
-    
+
     // Destroy webview
     webview.remove();
     this.webviews.delete(tabId);
-    
-    // Unregister extension cleanly
-    try {
-      const { ipcRenderer } = require("electron");
-      ipcRenderer.invoke('extensions-unregister-webview', webview.getWebContentsId()).catch(() => {});
-    } catch (e) {}
-    
+
+    // Unregister extension cleanly (reuse the already-captured id)
+    if (webContentsId != null) {
+      try {
+        const { ipcRenderer } = require("electron");
+        ipcRenderer.invoke('extensions-unregister-webview', webContentsId).catch(err => {
+          console.warn("Failed to unregister webview extensions for sleeping tab", err);
+        });
+      } catch (e) {
+        console.warn("Error while requesting webview extension unregister for sleeping tab", e);
+      }
+    }
+
     // Mark as suspended
     tab.isSuspended = true;
-    
+
     // Update UI (add sleeping styling)
     const tabElement = document.getElementById(tabId);
     if (tabElement) {
       // Add sleeping UI state
       tabElement.classList.add('sleeping');
     }
-    
+
     console.log(`Memory Saver: Suspended inactive tab ${tabId} (${tab.url})`);
   }
 
