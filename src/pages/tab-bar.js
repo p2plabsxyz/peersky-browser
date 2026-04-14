@@ -110,7 +110,7 @@ class TabBar extends HTMLElement {
     if (!this.memorySaverEnabled) return;
 
     // 30 minutes in ms
-    const IDLE_THRESHOLD =  1 * 1000;
+    const IDLE_THRESHOLD = 30 * 60 * 1000;
     const now = Date.now();
 
     for (const tab of this.tabs) {
