@@ -139,6 +139,8 @@ Changes are applied immediately via the `memory-saver-changed` IPC event.
 
 ### Benchmark
 
+<img src="./images/peersky-memory-saver-benchmarks.png" width="800" alt="Memory Saver benchmark chart" />
+
 > 10 tabs opened, measured via Windows Task Manager.
 >
 > | Condition | RAM usage | Savings |
