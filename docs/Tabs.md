@@ -19,6 +19,8 @@ Tabs can be displayed in two modes, configurable from **Settings → Tabs**:
 
 The **"Keep tabs expanded"** toggle keeps each tab full-width in vertical mode, rather than collapsing to just a favicon.
 
+<img src="./images/peersky-verticle-tabs.png" width="800" alt="Vertical Tabs" />
+
 ---
 
 ## 3. Tab Lifecycle
@@ -26,12 +28,18 @@ The **"Keep tabs expanded"** toggle keeps each tab full-width in vertical mode, 
 ### Creating Tabs
 
 - **New tab button** (`+`): opens `peersky://home`
-- **Keyboard shortcut** / context menus: open a URL directly in a new tab
+- **Keyboard shortcut** (`CommandOrControl+T`) / context menus: open a URL directly in a new tab
+
+### Switching Tabs
+
+- **Next Tab**: `CommandOrControl+Tab` (Windows/Linux) / `CommandOrControl+Option+Right` (macOS)
+- **Previous Tab**: `CommandOrControl+Shift+Tab` (Windows/Linux) / `CommandOrControl+Option+Left` (macOS)
 
 ### Closing Tabs
 
 - Close button (`×`) on the tab
 - Context menu → **Close tab**
+- **Keyboard shortcut**: `CommandOrControl+Shift+W`
 - Closing the last tab creates a fresh home tab
 
 ### Restoring Tabs on Restart
@@ -47,6 +55,8 @@ Active tab, tab counter, and tab group definitions are also restored.
 ---
 
 ## 4. Tab Groups
+
+<img src="./images/peersky-tab-groups.png" width="800" alt="Tab Groups" />
 
 Tab groups allow you to visually organize related tabs with a shared color border and an optional label.
 
@@ -69,6 +79,8 @@ Tab group definitions (id, name, color, expanded state) and each tab's `groupId`
 
 ## 5. Pinned Tabs
 
+<img src="./images/peersky-tab-pin.png" width="800" alt="Pinned Tabs" />
+
 - Right-click a tab → **Pin tab** to pin it.
 - Pinned tabs:
   - Show only a favicon (no close button, no title in horizontal mode).
@@ -78,6 +90,8 @@ Tab group definitions (id, name, color, expanded state) and each tab's `groupId`
 ---
 
 ## 6. Memory Saver
+
+<img src="./images/peersky-memory-saver.png" width="800" alt="Memory Saver" />
 
 Memory Saver automatically **suspends** (puts to sleep) inactive background tabs to free RAM. It is configured under **Settings → Tabs → Memory Saver**.
 
@@ -103,23 +117,24 @@ When a tab is suspended:
 
 When a user clicks a suspended tab:
 - A new webview is created for the tab's URL.
-- `restore-navigation-history` is invoked to replay the saved back/forward stack.
+- Electron cannot natively rebuild a WebContents history stack after the webview is recreated. The `restore-navigation-history` IPC handler in `main.js` is intentionally a **no-op** — it returns `{ success: true }` but performs no action on the main process side.
+- Back/forward navigation is instead managed entirely in the UI layer: `tab.savedNavigation` (an array of visited URLs and the current active index) is used to intercept and replay navigation requests within the tab.
 - The `sleeping` class is removed.
 
 ### Persistence Across Restarts
 
 `isSuspended` and `savedNavigation` are both included in the `localStorage` snapshot saved by `getTabsStateForSaving()`. On restart, `restoreTabs()` detects `tabData.isSuspended === true` and:
 - Immediately destroys the webview created by `addTabWithId()` (avoids a wasted page load).
-- Sets `tab.isSuspended = true` and `tab.savedNavigation` from the snapshot.
+- Restores `tab.isSuspended = true` and `tab.savedNavigation` from the snapshot.
 - Re-applies the `sleeping` CSS class.
 
-This means **back/forward history is fully preserved across browser restarts** for suspended tabs.
+The visited URL list and active position are preserved across restarts. Note that this is **not** a native browser history — Electron does not rebuild the real WebContents history stack. Back/forward navigation for woken tabs relies on the UI-layer `savedNavigation` fallback described above.
 
 ### Exclusion List
 
 Users can add domain patterns to an exclusion list so those sites are never suspended:
-- Plain domain: `youtube.com` — matches `youtube.com` and all subdomains
-- Wildcard: `*.google.com` — matches any subdomain of `google.com`
+- Plain domain: `getdweb.net` — matches `getdweb.net` and all subdomains
+- Wildcard: `*.p2plabs.xyz` — matches any subdomain of `p2plabs.xyz`
 - Full URL prefix: `https://app.example.com/dashboard`
 
 Exclusions are stored in settings under `memorySaverExclusions` and applied synchronously on each Memory Saver check cycle.
@@ -136,6 +151,8 @@ Changes are applied immediately via an `ipcRenderer` listener on the `memory-sav
 ---
 
 ## 7. Tab Context Menu
+
+<img src="./images/peersky-tab-context-menu.png" width="800" alt="Tab Context Menu" />
 
 Right-clicking any tab opens a context menu with:
 
