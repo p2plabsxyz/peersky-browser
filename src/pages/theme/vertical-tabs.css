@@ -435,6 +435,7 @@ body:has(.titlebar.titlebar-collapsed-darwin) .tabbar.vertical-tabs {
   border-top-right-radius: 8px !important;
   border-bottom-left-radius: 0 !important;
   border-bottom-right-radius: 0 !important;
+  border: var(--peersky-nav-button-inactive) 0.5px solid !important;
   border-bottom: 1px solid rgba(128, 128, 128, 0.2) !important;
 }
 
@@ -444,6 +445,7 @@ body:has(.titlebar.titlebar-collapsed-darwin) .tabbar.vertical-tabs {
   border-top-right-radius: 0 !important;
   border-bottom-left-radius: 8px !important;
   border-bottom-right-radius: 8px !important;
+  border: var(--peersky-nav-button-inactive) 0.5px solid !important;
   border-top: none !important;
 }
 
@@ -518,4 +520,43 @@ body:has(.tabbar.vertical-tabs:not(.expanded):not(.keep-expanded)) > .tab.split-
   min-width: 40px !important;
   max-width: 40px !important;
   padding: 4px !important;
+}
+
+.tabbar.vertical-tabs .tab.split-left.pinned,
+.tabbar.vertical-tabs .tab.split-right.pinned,
+.tabbar.vertical-tabs .tab.split-pending.pinned {
+  background-color: var(--browser-theme-primary-highlight) !important;
+  color: var(--browser-theme-background) !important;
+}
+
+.tabbar.vertical-tabs .tab.split-left.pinned .tab-title,
+.tabbar.vertical-tabs .tab.split-right.pinned .tab-title,
+.tabbar.vertical-tabs .tab.split-left.pinned .close-tab,
+.tabbar.vertical-tabs .tab.split-right.pinned .close-tab,
+.tabbar.vertical-tabs .tab.split-left.pinned .p2p-indicator,
+.tabbar.vertical-tabs .tab.split-right.pinned .p2p-indicator {
+  color: var(--browser-theme-background) !important;
+}
+
+.tabbar.vertical-tabs .tab.split-left.pinned {
+  border-top: 3px solid var(--browser-theme-secondary-highlight) !important;
+  border-left: 3px solid var(--browser-theme-secondary-highlight) !important;
+  border-right: 3px solid var(--browser-theme-secondary-highlight) !important;
+  border-bottom: none !important; /* Keep the seam clean to connect to partner */
+}
+
+.tabbar.vertical-tabs .tab.split-right.pinned {
+  border-bottom: 3px solid var(--browser-theme-secondary-highlight) !important;
+  border-left: 3px solid var(--browser-theme-secondary-highlight) !important;
+  border-right: 3px solid var(--browser-theme-secondary-highlight) !important;
+  border-top: 1px solid rgba(0, 0, 0, 0.2) !important; 
+}
+
+.tabbar.vertical-tabs .tab.split-right.pinned::before {
+  display: none !important;
+}
+
+.tabbar.vertical-tabs .tab.split-left.pinned .close-tab:hover,
+.tabbar.vertical-tabs .tab.split-right.pinned .close-tab:hover {
+  background-color: rgba(0, 0, 0, 0.15) !important;
 }

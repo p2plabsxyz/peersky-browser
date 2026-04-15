@@ -1154,7 +1154,29 @@ restoreTabs(persistedData) {
           fontSize: '14px'
         });
 
-        tabBtn.innerHTML = `<img src="peersky://static/assets/icon16.png" style="width:16px; height:16px;"> ${tab.title}`;
+        let currentIconUrl = 'peersky://static/assets/svg/globe.svg';
+
+        const liveTabElement = document.getElementById(tab.id);
+        if (liveTabElement) {
+          const faviconDiv = liveTabElement.querySelector('.tab-favicon');
+          if (faviconDiv && faviconDiv.style.backgroundImage && faviconDiv.style.backgroundImage !== 'none') {
+            const match = faviconDiv.style.backgroundImage.match(/^url\(['"]?([^'"]+)['"]?\)/);
+            if (match && match[1]) {
+              currentIconUrl = match[1];
+            }
+          }
+        }
+
+        const iconImg = document.createElement('img');
+        iconImg.src = currentIconUrl;
+        iconImg.style.width = '16px';
+        iconImg.style.height = '16px';
+
+        const titleText = document.createTextNode(` ${tab.title}`);
+
+        tabBtn.appendChild(iconImg);
+        tabBtn.appendChild(titleText);
+
         tabBtn.onclick = () => this.assignRightSplitTab(tab.id);
         tabsList.appendChild(tabBtn);
       }
@@ -1634,20 +1656,33 @@ restoreTabs(persistedData) {
 
   // Toggle pin state of a tab
   togglePinTab(tabId) {
-    const tabElement = document.getElementById(tabId);
-    if (!tabElement) return;
+    const split = this.getSplitForTab(tabId);
 
-    if (this.pinnedTabs.has(tabId)) {
-      // Unpin tab
-      this.pinnedTabs.delete(tabId);
-      tabElement.classList.remove('pinned');
+    const tabsToProcess = split ? [split.leftTabId, split.rightTabId] : [tabId];
+
+    const isCurrentlyPinned = this.pinnedTabs.has(tabId);
+
+    if (isCurrentlyPinned) {
+      tabsToProcess.forEach(id => {
+        this.pinnedTabs.delete(id);
+        const el = document.getElementById(id);
+        if (el) el.classList.remove('pinned');
+      });
     } else {
-      // Pin tab
-      this.pinnedTabs.add(tabId);
-      tabElement.classList.add('pinned');
-      
-      // Move to leftmost position
-      this.moveTabToPosition(tabId, 0);
+      tabsToProcess.forEach(id => {
+        this.pinnedTabs.add(id);
+        const el = document.getElementById(id);
+        if (el) el.classList.add('pinned');
+      });
+
+      // Move to leftmost position while preserving split order
+      if (split) {
+        this.moveTabToPosition(split.leftTabId, 0);
+        this.moveTabToPosition(split.rightTabId, 1);
+      } else {
+        // Normal single tab move
+        this.moveTabToPosition(tabId, 0);
+      }
     }
     
     this.saveTabsState();
