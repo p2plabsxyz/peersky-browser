@@ -338,14 +338,14 @@
         </section>
 
         <!-- Exclusion list — conditionally visible -->
-        <section class="settings-section" id="memory-exclusions-section">
+        <section class="settings-section" id="memory-exclusions-section" style="display: none;">
           <div style="margin-bottom: 10px;">
             <div style="font-weight: 500; margin-bottom: 4px;">Always keep these sites active</div>
             <div class="setting-hint">Sites matching these domains will never be suspended (e.g. <code>getdweb.net</code>, <code>*.p2plabs.xyz</code>).</div>
           </div>
           <div style="display: flex; gap: 8px; margin-bottom: 10px;">
             <input type="text" id="memory-exclusion-input" class="text-input input-fill" placeholder="Add a site (e.g. getdweb.net)" autocomplete="off" style="flex: 1; min-height: 36px;">
-            <button type="button" id="add-exclusion-btn" class="btn btn-secondary">Add</button>
+            <button type="button" id="add-exclusion-btn" class="btn btn-secondary" style="height: 36px;">Add</button>
           </div>
           <div id="exclusion-list-container" style="border: 1px solid var(--settings-border); border-radius: 8px; padding: 6px 8px; min-height: 44px; max-height: 180px; overflow-y: auto; background: var(--settings-bg-secondary);">
           </div>

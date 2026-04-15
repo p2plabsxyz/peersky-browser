@@ -69,7 +69,7 @@ const DEFAULT_SETTINGS = {
   extensionP2PEnabled: false,
   extensionAutoUpdate: true,
   memorySaverEnabled: false,
-  memorySaverExclusions: [],
+  memorySaverExclusions: ['peersky://p2p/*'],
   llm: {
     enabled: false,
     baseURL: 'http://127.0.0.1:11434/',

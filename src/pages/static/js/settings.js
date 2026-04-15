@@ -642,7 +642,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       if (val.startsWith('http')) {
         const url = new URL(val);
-        processedVal = url.host;
+        processedVal = url.origin + url.pathname;
       }
     } catch (e) {}
     
@@ -663,6 +663,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   memorySaverEnabled?.addEventListener('change', async (e) => {
     const enabled = e.target.checked;
     await saveSettingToBackend('memorySaverEnabled', enabled);
+    const exclusionsSection = document.getElementById('memory-exclusions-section');
+    if (exclusionsSection) {
+      exclusionsSection.style.display = enabled ? '' : 'none';
+    }
   });
 
   // Initialize custom wallpaper UI state
@@ -689,6 +693,11 @@ function loadDefaultSettings() {
   if (verticalTabs) verticalTabs.checked = false;
   if (keepTabsExpanded) keepTabsExpanded.checked = false;
   if (wallpaperSelector) wallpaperSelector.value = 'ten_lakes';
+  
+  const memorySaverEnabled = document.getElementById('memory-saver-enabled');
+  if (memorySaverEnabled) memorySaverEnabled.checked = false;
+  const exclusionsSection = document.getElementById('memory-exclusions-section');
+  if (exclusionsSection) exclusionsSection.style.display = 'none';
 }
 
 // Load settings from backend
@@ -784,6 +793,12 @@ function populateFormFields(settings) {
   
   if (memorySaverEnabled && typeof settings.memorySaverEnabled === 'boolean') {
     memorySaverEnabled.checked = settings.memorySaverEnabled;
+  }
+  if (memorySaverEnabled) {
+    const exclusionsSection = document.getElementById('memory-exclusions-section');
+    if (exclusionsSection) {
+      exclusionsSection.style.display = memorySaverEnabled.checked ? '' : 'none';
+    }
   }
   
   if (settings.memorySaverExclusions && Array.isArray(settings.memorySaverExclusions)) {

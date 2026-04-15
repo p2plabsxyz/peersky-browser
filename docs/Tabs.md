@@ -127,13 +127,14 @@ Memory Saver automatically **suspends** inactive background tabs to free RAM. Co
 | `getdweb.net` | That domain and all subdomains |
 | `*.p2plabs.xyz` | Any subdomain of `p2plabs.xyz` |
 | `https://app.example.com/dashboard` | That exact URL prefix |
+| `peersky://p2p/*` | Any internal peersky P2P app |
 
 ### Settings
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `memorySaverEnabled` | `boolean` | `false` | Enable/disable globally |
-| `memorySaverExclusions` | `string[]` | `[]` | Patterns exempt from suspension |
+| `memorySaverExclusions` | `string[]` | `['peersky://p2p/*']` | Patterns exempt from suspension |
 
 Changes are applied immediately via the `memory-saver-changed` IPC event.
 
@@ -153,7 +154,7 @@ Changes are applied immediately via the `memory-saver-changed` IPC event.
 
 ## 7. Tab Context Menu
 
-<img src="./images/peersky-tab-context-menu.png" width="800" alt="Tab Context Menu" />
+<img src="./images/peersky-tab-context-menu.png" alt="Tab Context Menu" />
 
 Right-clicking any tab opens a context menu with:
 

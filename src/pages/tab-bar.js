@@ -88,7 +88,7 @@ class TabBar extends HTMLElement {
             const escapedPattern = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
             const regexPattern = escapedPattern.replace(/\*/g, '.*');
             const regex = new RegExp(`^${regexPattern}$`, 'i');
-            if (regex.test(url) || regex.test(parsedUrl.host + parsedUrl.pathname)) {
+            if (regex.test(url) || regex.test(parsedUrl.host + parsedUrl.pathname) || regex.test(parsedUrl.hostname)) {
               return true;
             }
           } catch (err) {
