@@ -2,8 +2,8 @@
 import path from "path";
 import { fileURLToPath } from "url";
 import { CID } from "multiformats/cid";
+import esmock from "esmock";
 import { createHandler as createIpfsHandler } from "../../src/protocols/ipfs-handler.js";
-import { createHandler as createHyperHandler } from "../../src/protocols/hyper-handler.js";
 import { ipfsOptions, hyperOptions } from "../../src/protocols/config.js";
 
 
@@ -96,7 +96,7 @@ describe("ipfs: basic e2e sync", function () {
 
   before(async function () {
     this.timeout(60000);
-    ipfsHandler = await createIpfsHandler(await ipfsOptions(), null);
+    ipfsHandler = await createIpfsHandler(ipfsOptions, null);
   });
 
   after(function () {});
@@ -170,7 +170,15 @@ describe("hyper: basic e2e sync", function () {
 
   before(async function () {
     this.timeout(120000);
-    hyperHandler = await createHyperHandler(hyperOptions);
+    const hyperModule = await esmock("../../src/protocols/hyper-handler.js", {
+      electron: {
+        app: {
+          getPath: () => process.env.PEERSKY_TEST_USERDATA || ".test-e2e-data",
+        },
+        safeStorage: {},
+      },
+    });
+    hyperHandler = await hyperModule.createHandler(hyperOptions);
   });
 
   after(function () {});
