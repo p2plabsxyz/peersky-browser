@@ -282,6 +282,8 @@ app.on("before-quit", async (event) => {
 
 async function setupProtocols(session) {
   const { protocol: sessionProtocol } = session;
+  const isExtensionWriteAllowed = ({ extensionId, scheme }) =>
+    extensionManager.isP2PWriteAllowed(extensionId, scheme);
 
   app.setAsDefaultProtocolClient("peersky");
   app.setAsDefaultProtocolClient("file");
@@ -301,12 +303,12 @@ async function setupProtocols(session) {
   const browserThemeHandler = await createBrowserThemeHandler();
   sessionProtocol.handle("browser", browserThemeHandler);
 
-  const ipfsProtocolHandler = await createIPFSHandler(ipfsOptions, session);
+  const ipfsProtocolHandler = await createIPFSHandler(ipfsOptions, session, { isExtensionWriteAllowed });
   sessionProtocol.handle("ipfs", ipfsProtocolHandler);
   sessionProtocol.handle("ipns", ipfsProtocolHandler);
   sessionProtocol.handle("pubsub", ipfsProtocolHandler);
 
-  const hyperProtocolHandler = await createHyperHandler(hyperOptions);
+  const hyperProtocolHandler = await createHyperHandler(hyperOptions, { isExtensionWriteAllowed });
   sessionProtocol.handle("hyper", hyperProtocolHandler);
 
   const hsProtocolHandler = await createHSHandler();
@@ -514,5 +516,4 @@ ipcMain.handle('p2pmd-print-to-pdf', async (event, { html, fileName } = {}) => {
     }
   }
 });
-
 export { windowManager };

@@ -108,6 +108,12 @@ export async function createNode() {
   /** @type {any} */
   const bs = options.blockstore;
 
+  // datastore-level and blockstore-level implement open()/close() but not the
+  // Startable interface (start()/stop()), so Helia's isStartable check skips them.
+  // We must open them explicitly before createHelia calls helia.start().
+  await ds.open();
+  await bs.open();
+
   const node = await createHelia({
     ...options,
     libp2p,
