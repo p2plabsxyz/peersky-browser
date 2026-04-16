@@ -743,6 +743,11 @@ function populateFormFields(settings) {
     if (ollamaModel && settings.llm.model) {
       ollamaModel.value = settings.llm.model;
     }
+
+    const llmMemoryEnabled = document.getElementById('llm-memory-enabled');
+    if (llmMemoryEnabled) {
+      llmMemoryEnabled.checked = settings.llm.memoryEnabled || false;
+    }
   }
   
   // Update custom dropdown displays after loading settings
@@ -1259,6 +1264,12 @@ function initializeLLMSettings() {
     // Save the complete LLM settings with the new enabled state
     await saveLLMSettings();
   });
+
+  // Memory toggle – save immediately when changed
+  const llmMemoryToggle = document.getElementById('llm-memory-enabled');
+  llmMemoryToggle?.addEventListener('change', async () => {
+    await saveLLMSettings();
+  });
   
   // Listen for download progress updates
   if (window.electronAPI) {
@@ -1388,12 +1399,15 @@ function initializeLLMSettings() {
       return;
     }
     
+    const llmMemoryEnabledInput = document.getElementById('llm-memory-enabled');
+
     // Simple settings structure config
     const settings = {
       enabled: llmEnabled?.checked || false,
       baseURL: baseURLValue,
       apiKey: apiKeyValue,
-      model: ollamaModelValue
+      model: ollamaModelValue,
+      memoryEnabled: llmMemoryEnabledInput?.checked || false
     };
     
     console.log('Saving LLM settings with model:', settings.model);

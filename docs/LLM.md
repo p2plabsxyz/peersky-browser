@@ -109,6 +109,92 @@ const tagline = await window.llm.complete('PeerSky is a browser that', {
 });
 ```
 
+## LLM Memory API
+
+PeerSky includes opt-in local memory so apps can remember prompts and responses across sessions. Memory is **off by default** and never leaves the device unless you explicitly publish it.
+
+### Enable memory
+
+Go to `peersky://settings/llm` and toggle **Enable LLM Memory**. All reads and writes are gated by this flag.
+
+Clearing P2P data (`Settings → Search → Reset P2P Data`) also wipes `llm.json`.
+
+### `window.llmMemory`
+
+Available in the same trusted contexts as `window.llm`.
+
+#### Check if enabled
+
+```js
+const on = await window.llmMemory?.isEnabled();
+```
+
+#### Save an entry
+
+```js
+await window.llmMemory.add({
+  appId:     'my-app',
+  sessionId: 'abc123',
+  role:      'user',
+  content:   'Hello!',
+  model:     'qwen2.5-coder:3b',
+  ts:        new Date().toISOString()
+});
+```
+
+#### List entries
+
+```js
+const entries = await window.llmMemory.list({ appId: 'my-app', limit: 50 });
+const thread = await window.llmMemory.list({ sessionId: 'abc123' });
+const hits = await window.llmMemory.list({ search: 'stardust' });
+```
+
+#### List sessions (for sidebar / history UI)
+
+Returns one metadata object per unique `sessionId`, sorted newest first.
+
+```js
+const sessions = await window.llmMemory.listSessions({ appId: 'my-app', limit: 100 });
+// Each session: { sessionId, appId, title, ts, model, messageCount }
+```
+
+The `title` is automatically derived from the first user message in that session.
+
+#### Clear memory
+
+```js
+await window.llmMemory.clear();
+await window.llmMemory.clear({ appId: 'my-app' });
+await window.llmMemory.clear({ sessionId: 'abc123' });
+```
+
+### Storage limits
+
+| Setting | Value |
+|---------|-------|
+| Location | `<userData>/llm.json` |
+| Max entries | 2,000 (oldest pruned) |
+| Max file size | 20 MB (oldest pruned) |
+| Content truncation | 100,000 chars per entry |
+
+### Reusable history component
+
+Import the `<llm-history>` web component for a ready-made sidebar:
+
+```html
+<script type="module" src="peersky://p2p/components/llm-history.js"></script>
+<llm-history app-id="my-app" limit="50"></llm-history>
+```
+
+Listen for selection events:
+
+```js
+document.querySelector('llm-history').addEventListener('select-session', (e) => {
+  const { sessionId, entries } = e.detail;
+});
+```
+
 ## Security and trusted domains
 
 - `window.llm` is exposed to PeerSky-native pages (`peersky://*`) and P2P protocols (`hyper://`, `ipfs://`, `ipns://`).
@@ -119,7 +205,10 @@ const tagline = await window.llm.complete('PeerSky is a browser that', {
 | File | Purpose |
 |------|---------|
 | [src/llm.js](../src/llm.js) | Electron main-process bridge to Ollama/OpenRouter with dialogs & downloads |
-| [src/pages/unified-preload.js](../src/pages/unified-preload.js) | Exposes `window.llm` to trusted pages via contextBridge |
-| [src/pages/settings.html](../src/pages/settings.html) | UI for LLM config |
+| [src/llm-memory.js](../src/llm-memory.js) | Electron main-process IPC handlers for `llm.json` read/write/prune |
+| [src/pages/unified-preload.js](../src/pages/unified-preload.js) | Exposes `window.llm` and `window.llmMemory` to trusted pages via contextBridge |
+| [src/pages/settings.html](../src/pages/settings.html) | UI for LLM config and memory opt-in toggle |
 | [src/pages/static/js/settings.js](../src/pages/static/js/settings.js) | Renderer logic for saving LLM settings and tracking downloads |
-| [src/pages/p2p/](../src/pages/p2p/) | Examples of LLM API usage in the P2P apps like editor and ai chat |
+| [src/pages/p2p/ai-chat/index.html](../src/pages/p2p/ai-chat/index.html) | AI Chat with ChatGPT-style session sidebar |
+| [src/pages/p2p/p2pmd/ai-generator.js](../src/pages/p2p/p2pmd/ai-generator.js) | P2PMD AI generator with History button |
+| [src/pages/p2p/components/llm-history.js](../src/pages/p2p/components/llm-history.js) | Reusable `<llm-history>` web component |
