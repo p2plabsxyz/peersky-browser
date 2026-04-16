@@ -18,6 +18,7 @@ import p2pAppRegistry from "./p2p-app-registry.js";
 import { setWindowManager } from "./context-menu.js";
 import { isBuiltInSearchEngine } from "./search-engine.js";
 import "./llm.js";
+import "./llm-memory.js";
 // import { setupAutoUpdater } from "./auto-updater.js";
 
 // Import and initialize extension system

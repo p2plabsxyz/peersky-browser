@@ -45,7 +45,7 @@ if (isBitTorrent) {
   });
 }
 
-// Expose LLM API for internal pages, remote P2P apps, Agregore examples, and local user P2P apps
+// Expose LLM API for internal pages, P2P apps, and trusted domains
 if (isInternal || isP2P || isUserP2PApp || url.includes('agregore.mauve.moe')) {
   console.log('Unified-preload: Exposing LLM API for page:', url);
   // Iterator management for streaming
@@ -83,6 +83,7 @@ if (isInternal || isP2P || isUserP2PApp || url.includes('agregore.mauve.moe')) {
   // We need to inject a script to create the complex object structure
   contextBridge.exposeInMainWorld('_llmBridge', {
     isSupported: () => ipcRenderer.invoke('llm-supported'),
+    modelInfo: () => ipcRenderer.invoke('llm-model-info'),
     chat: (args) => ipcRenderer.invoke('llm-chat', args),
     complete: (args) => ipcRenderer.invoke('llm-complete', args),
     chatStream: chatStream,
@@ -90,6 +91,17 @@ if (isInternal || isP2P || isUserP2PApp || url.includes('agregore.mauve.moe')) {
     iteratorNext: iteratorNext,
     iteratorReturn: iteratorReturn
   });
+
+  // LLM Memory: internal pages only
+  if (isInternal || isUserP2PApp) {
+    contextBridge.exposeInMainWorld('llmMemory', {
+      add: (entry) => ipcRenderer.invoke('llm-memory-add', entry),
+      list: (opts) => ipcRenderer.invoke('llm-memory-list', opts || {}),
+      listSessions: (opts) => ipcRenderer.invoke('llm-memory-list-sessions', opts || {}),
+      clear: (opts) => ipcRenderer.invoke('llm-memory-clear', opts || {}),
+      isEnabled: () => ipcRenderer.invoke('llm-memory-enabled')
+    });
+  }
   
   const script = document.createElement('script');
   script.textContent = `
