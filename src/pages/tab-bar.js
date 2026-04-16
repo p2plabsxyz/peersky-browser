@@ -23,6 +23,11 @@ class TabBar extends HTMLElement {
     this.buildTabBar();
     this.setupBrowserCloseHandler();
     this.setupTabContextMenu();
+    this.splitPairs = [];
+    this.pendingSplit = {
+      isActive: false,
+      leftTabId: null
+    };
   }
 
   // Connect to the webview container where all webviews will live
@@ -133,6 +138,35 @@ class TabBar extends HTMLElement {
     const singleTabUrl = searchParams.get('singleTabUrl');
     const singleTabTitle = searchParams.get('singleTabTitle');
     
+    const splitLeftUrl = searchParams.get('splitLeftUrl');
+    const splitRightUrl = searchParams.get('splitRightUrl');
+
+    if (isIsolated && splitLeftUrl && splitRightUrl) {
+      const leftTitle = searchParams.get('splitLeftTitle') || "New Tab";
+      const rightTitle = searchParams.get('splitRightTitle') || "New Tab";
+      const ratio = parseInt(searchParams.get('splitRatio') || '50', 10);
+
+      const leftTabId = this.addTab(splitLeftUrl, leftTitle);
+      const rightTabId = this.addTab(splitRightUrl, rightTitle);
+
+      this.splitPairs.push({ leftTabId: leftTabId, rightTabId: rightTabId, splitRatio: ratio });
+      
+      const leftTab = document.getElementById(leftTabId);
+      const rightTab = document.getElementById(rightTabId);
+      
+      if (leftTab && rightTab && leftTab.parentNode) {
+        leftTab.classList.add('split-left');
+        rightTab.classList.add('split-right');
+        
+        if (leftTab.nextSibling !== rightTab) {
+          leftTab.parentNode.insertBefore(rightTab, leftTab.nextSibling);
+        }
+      }
+      
+      this.selectTab(rightTabId);
+      return;
+    }
+
     if (isIsolated && (singleTabUrl || initialUrl)) {
       // For isolated windows, ONLY create the specified tab and don't load any persisted tabs
       const tabUrl = singleTabUrl || initialUrl;
@@ -231,6 +265,7 @@ getAllTabGroups() {
         }),
         activeTabId: this.activeTabId,
         tabCounter: this.tabCounter,
+        splitPairs: this.splitPairs,
         tabGroups: Array.from(this.tabGroups.entries()).map(([id, group]) => ({
           id,
           name: group.name,
@@ -340,6 +375,26 @@ restoreTabs(persistedData) {
       }
     }
   });
+
+  if (persistedData.splitPairs && persistedData.splitPairs.length > 0) {
+    this.splitPairs = persistedData.splitPairs;
+    
+    setTimeout(() => {
+      this.splitPairs.forEach(split => {
+        const leftTab = document.getElementById(split.leftTabId);
+        const rightTab = document.getElementById(split.rightTabId);
+
+        if (leftTab && rightTab) {
+          leftTab.classList.add('split-left');
+          rightTab.classList.add('split-right');
+          
+          if (leftTab.nextSibling !== rightTab) {
+            leftTab.parentNode.insertBefore(rightTab, leftTab.nextSibling);
+          }
+        }
+      });
+    }, 0);
+  }
 
   // Render all group headers
   for (const groupId of this.tabGroups.keys()) {
@@ -776,12 +831,19 @@ restoreTabs(persistedData) {
         faviconElement.style.display = 'block';
       }
     });
+
+    webview.addEventListener("focus", () => {
+      if (this.activeTabId !== tabId) {
+        this.selectTab(tabId);
+      }
+    });
   }
 
   closeTab(tabId) {
     this.destroyHoverCard(); // remove lingering hover card
     const tabElement = document.getElementById(tabId);
     if (!tabElement) return;
+    this.breakSplitView(tabId);
 
     // Get index of tab to close
     const tabIndex = this.tabs.findIndex(tab => tab.id === tabId);
@@ -846,23 +908,88 @@ restoreTabs(persistedData) {
     this.dispatchEvent(new CustomEvent("tab-closed", { detail: { tabId } }));
   }
 
+  getSplitForTab(tabId) {
+    return this.splitPairs.find(split => split.leftTabId === tabId || split.rightTabId === tabId);
+  }
+
+  initiateSplitView(tabId) {
+    // Prevent splitting a tab that is already in a split
+    if (this.getSplitForTab(tabId)) return;
+
+    this.pendingSplit = {
+      isActive: true,
+      leftTabId: tabId
+    };
+
+    const leftTab = document.getElementById(tabId);
+    if (leftTab) leftTab.classList.add('split-pending');
+
+    if (this.webviewContainer) {
+      this.webviewContainer.style.display = 'flex';
+      this.webviewContainer.style.flexDirection = 'row';
+    }
+
+    this.selectTab(tabId);
+  }
+
+  assignRightSplitTab(tabId) {
+    if (!this.pendingSplit.isActive) return;
+
+    const leftId = this.pendingSplit.leftTabId;
+    const rightId = tabId;
+
+    this.splitPairs.push({ leftTabId: leftId, rightTabId: rightId, splitRatio: 50 });
+    this.pendingSplit = { isActive: false, leftTabId: null };
+
+    const leftTab = document.getElementById(leftId);
+    const rightTab = document.getElementById(rightId);
+
+    if (leftTab && rightTab && leftTab.parentNode) {
+      leftTab.classList.remove('split-pending');
+      leftTab.classList.add('split-left');
+
+      rightTab.classList.add('split-right');
+
+      leftTab.parentNode.insertBefore(rightTab, leftTab.nextSibling);
+    }
+
+    this.selectTab(rightId); 
+  }
+
+  breakSplitView(tabId) {
+    const splitIndex = this.splitPairs.findIndex(s => s.leftTabId === tabId || s.rightTabId === tabId);
+
+    if (splitIndex !== -1) {
+      const split = this.splitPairs[splitIndex];
+      const leftTab = document.getElementById(split.leftTabId);
+      const rightTab = document.getElementById(split.rightTabId);
+
+      if (leftTab) leftTab.classList.remove('split-left');
+      if (rightTab) rightTab.classList.remove('split-right');
+
+      this.splitPairs.splice(splitIndex, 1);
+
+      const survivingTabId = split.leftTabId === tabId ? split.rightTabId : split.leftTabId;
+      this.selectTab(survivingTabId);
+      return;
+    }
+
+    if (this.pendingSplit.isActive && this.pendingSplit.leftTabId === tabId) {
+      const leftTab = document.getElementById(this.pendingSplit.leftTabId);
+      if (leftTab) leftTab.classList.remove('split-pending');
+
+      this.pendingSplit = { isActive: false, leftTabId: null };
+      this.renderWebviews();
+    }
+  }
+
   // Update the selectTab method to handle display properly
   selectTab(tabId, isNewTab = false) {
-    
-    // First, hide ALL webviews to ensure clean state
-    this.webviews.forEach((webview) => {
-      webview.style.display = "none";
-    });
-    
-    // Remove active class from current active tab
     if (this.activeTabId) {
       const currentActive = document.getElementById(this.activeTabId);
-      if (currentActive) {
-        currentActive.classList.remove("active");
-      }
+      if (currentActive) currentActive.classList.remove("active");
     }
-    
-    // Add active class to new active tab
+
     const newActive = document.getElementById(tabId);
     if (newActive) {
       newActive.classList.add("active");
@@ -877,35 +1004,185 @@ restoreTabs(persistedData) {
       } catch (error) {
         console.warn('[TabBar] Error closing extension popups:', error);
       }
-      
-      // Show ONLY the newly active webview
-      const newWebview = this.webviews.get(tabId);
-      if (newWebview) {
-        newWebview.style.display = "flex";
-        
-        // Focus the webview after a short delay to ensure it's visible
-        // Skip webview focus for new tabs to allow address bar focus
-        if (!isNewTab) {
-          setTimeout(() => {
-            if (newWebview && document.body.contains(newWebview)) {
-              newWebview.focus();
-            }
-          }, 10);
-        }
-      }
-      
-      // Find the URL for this tab
+
       const tab = this.tabs.find(t => t.id === tabId);
       if (tab) {
-        // Dispatch event that tab was selected with the URL
-        this.dispatchEvent(new CustomEvent("tab-selected", { 
-          detail: { tabId, url: tab.url } 
-        }));
+        this.dispatchEvent(new CustomEvent("tab-selected", { detail: { tabId, url: tab.url } }));
       }
     }
-    
-    // Save state when tab is selected
+
+    this.renderWebviews();
+
+    if (!isNewTab) {
+      setTimeout(() => {
+        const activeWv = this.webviews.get(tabId);
+        if (activeWv && document.body.contains(activeWv)) activeWv.focus();
+      }, 10);
+    }
+
     this.saveTabsState();
+  }
+
+  renderWebviews() {
+    if (!this.webviewContainer) return;
+
+    let divider = document.getElementById('split-view-divider');
+    if (!divider) {
+      divider = document.createElement('div');
+      divider.id = 'split-view-divider';
+      divider.className = 'split-view-divider';
+      divider.addEventListener('pointerdown', this.handleDividerPointerDown.bind(this));
+      this.webviewContainer.appendChild(divider);
+    }
+
+    divider.style.display = 'none';
+    this.webviews.forEach((webview) => {
+      webview.style.display = "none";
+      webview.style.flex = "none";
+      webview.style.width = "100%";
+      webview.style.borderRight = "none";
+      webview.style.order = "";
+    });
+
+    const existingOverlay = document.getElementById('split-view-selector-overlay');
+    if (existingOverlay) existingOverlay.style.display = 'none';
+
+    const activeSplit = this.getSplitForTab(this.activeTabId);
+
+    if (activeSplit) {
+      const leftWv = this.webviews.get(activeSplit.leftTabId);
+      const rightWv = this.webviews.get(activeSplit.rightTabId);
+
+      if (leftWv && rightWv) {
+        leftWv.style.display = "flex";
+        leftWv.style.flex = `0 0 ${activeSplit.splitRatio || 50}%`;
+        leftWv.style.order = "1";
+        
+        divider.style.display = "block";
+        divider.style.order = "2";
+
+        rightWv.style.display = "flex";
+        rightWv.style.flex = `0 0 ${100 - (activeSplit.splitRatio || 50)}%`;
+        rightWv.style.order = "3";
+      }
+    } else if (this.pendingSplit.isActive && this.activeTabId === this.pendingSplit.leftTabId) {
+      const leftWv = this.webviews.get(this.pendingSplit.leftTabId);
+      if (leftWv) {
+        leftWv.style.display = "flex";
+        leftWv.style.flex = "0 0 50%";
+        leftWv.style.borderRight = "1px solid var(--settings-border)";
+      }
+      this.drawSplitSelectorOverlay();
+    } else {
+      const activeWv = this.webviews.get(this.activeTabId);
+      if (activeWv) {
+        activeWv.style.display = "flex";
+        activeWv.style.flex = "1";
+      }
+    }
+  }
+
+  drawSplitSelectorOverlay() {
+    let selector = document.getElementById('split-view-selector-overlay');
+
+    if (!selector) {
+      selector = document.createElement('div');
+      selector.id = 'split-view-selector-overlay';
+      this.webviewContainer.appendChild(selector);
+    }
+
+    selector.style.display = 'flex';
+    Object.assign(selector.style, {
+      flex: '0 0 50%',
+      backgroundColor: 'var(--browser-theme-background)',
+      display: 'flex',
+      flexDirection: 'column',
+      padding: '30px',
+      boxSizing: 'border-box',
+      overflowY: 'auto',
+      color: 'var(--browser-theme-text-color)'
+    });
+
+    selector.innerHTML = `
+      <h2 style="margin-top: 0; font-weight: normal; font-size: 1.5rem;">Select a tab to split</h2>
+      <p style="color: var(--settings-text-secondary); margin-bottom: 20px;">Choose a tab to open in the right panel.</p>
+    `;
+
+    const newTabBtn = document.createElement('button');
+    Object.assign(newTabBtn.style, {
+      padding: '12px 16px',
+      marginBottom: '16px',
+      backgroundColor: 'var(--browser-theme-primary-highlight)',
+      color: '#fff',
+      border: 'none',
+      borderRadius: '8px',
+      cursor: 'pointer',
+      fontSize: '14px',
+      fontWeight: 'bold',
+      textAlign: 'left',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px'
+    });
+    newTabBtn.innerHTML = `<span style="font-size:18px;">+</span> Open New Tab`;
+    newTabBtn.onclick = () => {
+      const newTabId = this.addTab();
+      this.assignRightSplitTab(newTabId);
+    };
+    selector.appendChild(newTabBtn);
+
+    const tabsList = document.createElement('div');
+    tabsList.style.display = 'flex';
+    tabsList.style.flexDirection = 'column';
+    tabsList.style.gap = '8px';
+
+    this.tabs.forEach(tab => {
+      // Don't show tabs that are already in ANY split view, or the currently pending tab
+      if (tab.id !== this.pendingSplit.leftTabId && !this.getSplitForTab(tab.id)) {
+        const tabBtn = document.createElement('button');
+        Object.assign(tabBtn.style, {
+          padding: '12px 16px',
+          backgroundColor: 'var(--settings-card-bg)',
+          color: 'var(--browser-theme-text-color)',
+          border: '1px solid var(--settings-border)',
+          borderRadius: '8px',
+          cursor: 'pointer',
+          textAlign: 'left',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          fontSize: '14px'
+        });
+
+        let currentIconUrl = 'peersky://static/assets/svg/globe.svg';
+
+        const liveTabElement = document.getElementById(tab.id);
+        if (liveTabElement) {
+          const faviconDiv = liveTabElement.querySelector('.tab-favicon');
+          if (faviconDiv && faviconDiv.style.backgroundImage && faviconDiv.style.backgroundImage !== 'none') {
+            const match = faviconDiv.style.backgroundImage.match(/^url\(['"]?([^'"]+)['"]?\)/);
+            if (match && match[1]) {
+              currentIconUrl = match[1];
+            }
+          }
+        }
+
+        const iconImg = document.createElement('img');
+        iconImg.src = currentIconUrl;
+        iconImg.style.width = '16px';
+        iconImg.style.height = '16px';
+
+        const titleText = document.createTextNode(` ${tab.title}`);
+
+        tabBtn.appendChild(iconImg);
+        tabBtn.appendChild(titleText);
+
+        tabBtn.onclick = () => this.assignRightSplitTab(tab.id);
+        tabsList.appendChild(tabBtn);
+      }
+    });
+
+    selector.appendChild(tabsList);
   }
 
   updateTab(tabId, { url, title }) {
@@ -1032,6 +1309,7 @@ restoreTabs(persistedData) {
     const webview = this.webviews.get(tabId);
     const isPinned = this.pinnedTabs.has(tabId);
     const isMuted = webview?.isAudioMuted() || false;
+    const isSplit = this.getSplitForTab(tabId) || (this.pendingSplit.isActive && this.pendingSplit.leftTabId === tabId);
 
     const iconPath = 'peersky://static/assets/svg';
 
@@ -1044,6 +1322,17 @@ restoreTabs(persistedData) {
         <img class="menu-icon" src="${iconPath}/copy.svg" />
         Duplicate tab
       </div>
+      ${isSplit ? `
+        <div class="context-menu-item" data-action="separate-split">
+          <img class="menu-icon" src="${iconPath}/layout-split.svg" />
+          Separate split view
+        </div>
+        ` : `
+        <div class="context-menu-item" data-action="split-view">
+          <img class="menu-icon" src="${iconPath}/layout-split.svg" />
+          Split view
+        </div>
+      `}
       <div class="context-menu-item" data-action="mute">
         <img class="menu-icon" src="${iconPath}/${isMuted ? 'volume-up.svg' : 'volume-mute.svg'}" />
         ${isMuted ? 'Unmute site' : 'Mute site'}
@@ -1157,6 +1446,14 @@ restoreTabs(persistedData) {
         this.duplicateTab(tabId);
         break;
         
+      case 'split-view':
+        this.initiateSplitView(tabId);
+        break;
+
+      case 'separate-split':
+        this.breakSplitView(tabId);
+        break;
+
       case 'mute':
         if (webview) {
           if (webview.isAudioMuted()) {
@@ -1248,6 +1545,56 @@ restoreTabs(persistedData) {
     return newTabId;
   }
 
+  moveSplitGroupToNewWindow(tabIds) {
+    const [leftId, rightId] = tabIds;
+    
+    const leftTab = this.tabs.find(t => t.id === leftId);
+    const rightTab = this.tabs.find(t => t.id === rightId);
+    const splitPair = this.splitPairs.find(s => s.leftTabId === leftId && s.rightTabId === rightId);
+    const splitRatio = splitPair ? splitPair.splitRatio : 50;
+
+    if (!leftTab || !rightTab) return;
+
+    tabIds.forEach(tabId => {
+      this.destroyHoverCard();
+      const tabElement = document.getElementById(tabId);
+      if (tabElement) tabElement.remove();
+
+      const tabIndex = this.tabs.findIndex(t => t.id === tabId);
+      if (tabIndex !== -1) this.tabs.splice(tabIndex, 1);
+
+      const webview = this.webviews.get(tabId);
+      if (webview) {
+        webview.remove();
+        this.webviews.delete(tabId);
+      }
+
+      this.pinnedTabs.delete(tabId);
+      this.removeTabFromGroup(tabId);
+    });
+
+    const splitIndex = this.splitPairs.findIndex(s => s.leftTabId === leftId && s.rightTabId === rightId);
+    if (splitIndex !== -1) this.splitPairs.splice(splitIndex, 1);
+
+    if (tabIds.includes(this.activeTabId)) {
+      if (this.tabs.length > 0) {
+        this.selectTab(this.tabs[this.tabs.length - 1].id);
+      }
+    }
+
+    this.saveTabsState();
+
+    const { ipcRenderer } = require('electron');
+    ipcRenderer.send('new-window-with-split-tabs', {
+      leftUrl: leftTab.url,
+      leftTitle: leftTab.title,
+      rightUrl: rightTab.url,
+      rightTitle: rightTab.title,
+      splitRatio: splitRatio,
+      isolate: true 
+    });
+  }
+
   moveTabToNewWindow(tabId) {
     this.destroyHoverCard(); // ensure card removed if this tab had it
     const tab = this.tabs.find(t => t.id === tabId);
@@ -1309,20 +1656,33 @@ restoreTabs(persistedData) {
 
   // Toggle pin state of a tab
   togglePinTab(tabId) {
-    const tabElement = document.getElementById(tabId);
-    if (!tabElement) return;
+    const split = this.getSplitForTab(tabId);
 
-    if (this.pinnedTabs.has(tabId)) {
-      // Unpin tab
-      this.pinnedTabs.delete(tabId);
-      tabElement.classList.remove('pinned');
+    const tabsToProcess = split ? [split.leftTabId, split.rightTabId] : [tabId];
+
+    const isCurrentlyPinned = this.pinnedTabs.has(tabId);
+
+    if (isCurrentlyPinned) {
+      tabsToProcess.forEach(id => {
+        this.pinnedTabs.delete(id);
+        const el = document.getElementById(id);
+        if (el) el.classList.remove('pinned');
+      });
     } else {
-      // Pin tab
-      this.pinnedTabs.add(tabId);
-      tabElement.classList.add('pinned');
-      
-      // Move to leftmost position
-      this.moveTabToPosition(tabId, 0);
+      tabsToProcess.forEach(id => {
+        this.pinnedTabs.add(id);
+        const el = document.getElementById(id);
+        if (el) el.classList.add('pinned');
+      });
+
+      // Move to leftmost position while preserving split order
+      if (split) {
+        this.moveTabToPosition(split.leftTabId, 0);
+        this.moveTabToPosition(split.rightTabId, 1);
+      } else {
+        // Normal single tab move
+        this.moveTabToPosition(tabId, 0);
+      }
     }
     
     this.saveTabsState();
@@ -2319,7 +2679,17 @@ restoreTabs(persistedData) {
     const tab = e.target.closest('.tab');
     if (!tab) return;
 
-    this.draggedTab = tab;
+    const split = this.getSplitForTab(tab.id);
+    if (split) {
+      const leftTab = document.getElementById(split.leftTabId);
+      const rightTab = document.getElementById(split.rightTabId);
+      this.draggedElements = [leftTab, rightTab].filter(Boolean);
+    } else {
+      this.draggedElements = [tab];
+    }
+
+    this.primaryDragTarget = tab;
+    
     this.dragStartX = e.clientX;
     this.dragStartY = e.clientY;
     this.isDragging = false;
@@ -2334,7 +2704,7 @@ restoreTabs(persistedData) {
   }
 
   handlePointerMove(e) {
-    if (!this.draggedTab) return;
+    if (!this.draggedElements || this.draggedElements.length === 0) return;
 
     const isVert = this.isVertical;
     const dx = e.clientX - this.dragStartX;
@@ -2344,34 +2714,57 @@ restoreTabs(persistedData) {
       this.isDragging = true;
       this.destroyHoverCard();
 
-      const rect = this.draggedTab.getBoundingClientRect();
-      
-      this.dragOffsetLeft = e.clientX - rect.left;
-      this.dragOffsetTop = e.clientY - rect.top;
+      // Collect bounding rects
+      const rects = this.draggedElements.map(el => el.getBoundingClientRect());
+
+      // Calculate total width and height dynamically based on layout mode
+      let totalWidth = 0;
+      let totalHeight = 0;
+
+      if (isVert) {
+        // Vertical mode: stack heights, use max width
+        totalWidth = Math.max(...rects.map(r => r.width));
+        totalHeight = rects.reduce((sum, r) => sum + r.height, 0);
+      } else {
+        // Horizontal mode: stack widths, use max height
+        totalWidth = rects.reduce((sum, r) => sum + r.width, 0);
+        totalHeight = Math.max(...rects.map(r => r.height));
+      }
+
+      this.dragOffsetLeft = e.clientX - rects[0].left;
+      this.dragOffsetTop = e.clientY - rects[0].top;
 
       this.placeholder = document.createElement('div');
       this.placeholder.className = 'tab-placeholder';
+      this.placeholder.style.width = `${totalWidth}px`;
+      this.placeholder.style.height = `${totalHeight}px`;
 
-      this.placeholder.style.width = `${rect.width}px`;
-      this.placeholder.style.height = `${rect.height}px`;
-
-      this.draggedTab.parentNode.insertBefore(this.placeholder, this.draggedTab);
+      this.draggedElements[0].parentNode.insertBefore(this.placeholder, this.draggedElements[0]);
 
       if (this.webviewContainer) {
         this.webviewContainer.style.pointerEvents = 'none';
       }
 
       this.isMovingDOM = true;
-      document.body.appendChild(this.draggedTab);
+      this.draggedElements.forEach(el => document.body.appendChild(el));
       this.isMovingDOM = false;
 
-      try { this.draggedTab.setPointerCapture(e.pointerId); } catch(err) {}
+      try { this.primaryDragTarget.setPointerCapture(e.pointerId); } catch(err) {}
 
-      this.draggedTab.classList.add('dragging');
-      this.draggedTab.style.setProperty('position', 'fixed', 'important');
-      this.draggedTab.style.zIndex = '9999';
-      this.draggedTab.style.width = `${rect.width}px`;
-      this.draggedTab.style.height = `${rect.height}px`;
+      // Apply drag styles to all involved elements and capture BOTH offsets
+      this.draggedElements.forEach((el, index) => {
+        el.classList.add('dragging');
+        el.style.setProperty('position', 'fixed', 'important');
+        el.style.zIndex = '9999';
+        el.style.width = `${rects[index].width}px`;
+        el.style.height = `${rects[index].height}px`;
+        
+        el.dataset.dragOffsetX = index === 0 ? 0 : (rects[index].left - rects[0].left);
+        el.dataset.dragOffsetY = index === 0 ? 0 : (rects[index].top - rects[0].top);
+      });
+
+      this.dragTotalWidth = totalWidth;
+      this.dragTotalHeight = totalHeight;
     }
 
     if (this.isDragging) {
@@ -2385,37 +2778,76 @@ restoreTabs(persistedData) {
       const floatTop = e.clientY - this.dragOffsetTop;
 
       if (this.isOutsideContainer) {
-        this.draggedTab.style.left = `${floatLeft}px`;
-        this.draggedTab.style.top = `${floatTop}px`;
+        this.draggedElements.forEach(el => {
+          const offsetX = parseFloat(el.dataset.dragOffsetX || 0);
+          const offsetY = parseFloat(el.dataset.dragOffsetY || 0);
+          el.style.left = `${floatLeft + offsetX}px`;
+          el.style.top = `${floatTop + offsetY}px`;
+        });
         if (this.placeholder) this.placeholder.style.display = 'none';
       } else {
         const placeholderRect = this.placeholder.getBoundingClientRect();
         
-        if (isVert) {
-          this.draggedTab.style.left = `${placeholderRect.left}px`;
-          this.draggedTab.style.top = `${floatTop}px`;
-        } else {
-          this.draggedTab.style.top = `${placeholderRect.top}px`;
-          this.draggedTab.style.left = `${floatLeft}px`;
-        }
+        this.draggedElements.forEach(el => {
+          const offsetX = parseFloat(el.dataset.dragOffsetX || 0);
+          const offsetY = parseFloat(el.dataset.dragOffsetY || 0);
+          if (isVert) {
+            el.style.left = `${placeholderRect.left + offsetX}px`;
+            el.style.top = `${floatTop + offsetY}px`;
+          } else {
+            el.style.top = `${placeholderRect.top + offsetY}px`;
+            el.style.left = `${floatLeft + offsetX}px`;
+          }
+        });
         
         if (this.placeholder) this.placeholder.style.display = '';
 
         const draggedCenterRelative = isVert ? 
-              (floatTop + this.draggedTab.offsetHeight / 2) : 
-              (floatLeft + this.draggedTab.offsetWidth / 2);
+              (floatTop + this.dragTotalHeight / 2) : 
+              (floatLeft + this.dragTotalWidth / 2);
         
         const tabs = Array.from(this.tabContainer.querySelectorAll('.tab:not(.dragging)'));
+        
+        const logicalTargets = [];
+        for (let i = 0; i < tabs.length; i++) {
+          const tab = tabs[i];
+          
+          if (tab.classList.contains('split-left')) {
+            const nextTab = tabs[i + 1];
+            if (nextTab && nextTab.classList.contains('split-right')) {
+              const r1 = tab.getBoundingClientRect();
+              const r2 = nextTab.getBoundingClientRect();
+              
+              logicalTargets.push({
+                elementToInsertBefore: tab,
+                rect: {
+                  top: Math.min(r1.top, r2.top),
+                  left: Math.min(r1.left, r2.left),
+                  width: isVert ? Math.max(r1.width, r2.width) : (r1.width + r2.width),
+                  height: isVert ? (r1.height + r2.height) : Math.max(r1.height, r2.height)
+                }
+              });
+              
+              i++; 
+              continue;
+            }
+          }
+          
+          logicalTargets.push({
+            elementToInsertBefore: tab,
+            rect: tab.getBoundingClientRect()
+          });
+        }
+
         let insertBeforeTab = null;
 
-        for (let tab of tabs) {
-          const tabRect = tab.getBoundingClientRect();
+        for (let target of logicalTargets) {
           const tabCenterRelative = isVert ? 
-                (tabRect.top + tabRect.height / 2) : 
-                (tabRect.left + tabRect.width / 2);
+                (target.rect.top + target.rect.height / 2) : 
+                (target.rect.left + target.rect.width / 2);
           
           if (draggedCenterRelative < tabCenterRelative) {
-            insertBeforeTab = tab;
+            insertBeforeTab = target.elementToInsertBefore;
             break;
           }
         }
@@ -2441,63 +2873,85 @@ restoreTabs(persistedData) {
       this.webviewContainer.style.pointerEvents = '';
     }
 
-    if (!this.isDragging || !this.draggedTab) {
-      if (this.draggedTab) {
-        try { this.draggedTab.releasePointerCapture(e.pointerId); } catch(err) {}
+    if (!this.isDragging || !this.draggedElements) {
+      if (this.primaryDragTarget) {
+        try { this.primaryDragTarget.releasePointerCapture(e.pointerId); } catch(err) {}
       }
-      this.draggedTab = null;
+      this.draggedElements = null;
+      this.primaryDragTarget = null;
       return;
     }
 
-    try { this.draggedTab.releasePointerCapture(e.pointerId); } catch(err) {}
+    try { this.primaryDragTarget.releasePointerCapture(e.pointerId); } catch(err) {}
     this.isDragging = false;
-    const tabIdToMove = this.draggedTab.id;
+    
+    const idsToMove = this.draggedElements.map(el => el.id);
 
-    if (this.isOutsideContainer && this.tabs.length > 1) {
-      this.draggedTab.classList.remove('dragging');
+    if (this.isOutsideContainer && this.tabs.length > this.draggedElements.length) {
+      this.draggedElements.forEach(el => {
+        el.classList.remove('dragging');
+        el.remove();
+      });
       
       if (this.placeholder && this.placeholder.parentNode) {
         this.placeholder.remove();
       }
-      this.placeholder = null;
       
-      this.draggedTab.remove(); 
-      this.draggedTab = null;
+      this.placeholder = null;
+      this.draggedElements = null;
+      this.primaryDragTarget = null;
       this.isOutsideContainer = false;
 
-      this.moveTabToNewWindow(tabIdToMove);
+      if (idsToMove.length === 1) {
+        this.moveTabToNewWindow(idsToMove[0]);
+      } else if (idsToMove.length === 2) {
+        this.moveSplitGroupToNewWindow(idsToMove);
+      }
       return;
     }
 
     if (this.placeholder) this.placeholder.style.display = '';
     const placeholderRect = this.placeholder ? this.placeholder.getBoundingClientRect() : { left: 0, top: 0 };
 
-    this.draggedTab.classList.remove('dragging');
-    this.draggedTab.style.transition = 'all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1)';
-    
-    if (this.placeholder) {
-      this.draggedTab.style.left = `${placeholderRect.left}px`;
-      this.draggedTab.style.top = `${placeholderRect.top}px`;
-    }
+    this.draggedElements.forEach(el => {
+      el.classList.remove('dragging');
+      el.style.transition = 'all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1)';
+      const offsetX = parseFloat(el.dataset.dragOffsetX || 0);
+      const offsetY = parseFloat(el.dataset.dragOffsetY || 0);
+
+      if (this.placeholder) {
+        el.style.left = `${placeholderRect.left + offsetX}px`;
+        el.style.top = `${placeholderRect.top + offsetY}px`;
+      }
+    });
+
+    const elementsToCleanup = this.draggedElements;
+    this.draggedElements = null;
+    this.primaryDragTarget = null;
 
     setTimeout(() => {
-      if (!this.draggedTab) return;
+      elementsToCleanup.forEach(el => {
+        el.style.position = '';
+        el.style.left = '';
+        el.style.top = '';
+        el.style.width = '';
+        el.style.height = '';
+        el.style.transition = '';
+        el.style.zIndex = '';
+        delete el.dataset.dragOffsetX;
+        delete el.dataset.dragOffsetY;
 
-      this.draggedTab.style.position = '';
-      this.draggedTab.style.left = '';
-      this.draggedTab.style.top = '';
-      this.draggedTab.style.width = '';
-      this.draggedTab.style.height = '';
-      this.draggedTab.style.transition = '';
-      this.draggedTab.style.zIndex = '';
+        if (this.placeholder && this.placeholder.parentNode) {
+          this.tabContainer.insertBefore(el, this.placeholder);
+        } else {
+          this.tabContainer.appendChild(el);
+        }
+      });
 
-      if (this.placeholder && this.placeholder.parentNode) {
-        this.tabContainer.insertBefore(this.draggedTab, this.placeholder);
+      if (this.placeholder) {
         this.placeholder.remove();
-      } else {
-        this.tabContainer.appendChild(this.draggedTab);
+        this.placeholder = null;
       }
-      this.placeholder = null;
 
       const newTabOrderIds = Array.from(this.tabContainer.querySelectorAll('.tab')).map(el => el.id);
       this.tabs.sort((a, b) => newTabOrderIds.indexOf(a.id) - newTabOrderIds.indexOf(b.id));
@@ -2505,8 +2959,69 @@ restoreTabs(persistedData) {
       this.saveTabsState();
       this.refreshGroupStyles();
 
-      this.draggedTab = null;
     }, 200);
+  }
+
+  // Split View Divider Drag Handlers
+
+  handleDividerPointerDown(e) {
+    e.preventDefault();
+
+    this.activeDividerSplit = this.getSplitForTab(this.activeTabId);
+    if (!this.activeDividerSplit) return;
+
+    this.isDraggingDivider = true;
+
+    if (this.webviewContainer) {
+      this.webviewContainer.style.pointerEvents = 'none';
+    }
+
+    const divider = document.getElementById('split-view-divider');
+    if (divider) divider.classList.add('dragging');
+
+    this.onDividerMove = this.handleDividerPointerMove.bind(this);
+    this.onDividerUp = this.handleDividerPointerUp.bind(this);
+
+    window.addEventListener('pointermove', this.onDividerMove);
+    window.addEventListener('pointerup', this.onDividerUp);
+  }
+
+  handleDividerPointerMove(e) {
+    if (!this.isDraggingDivider || !this.activeDividerSplit) return;
+
+    const containerRect = this.webviewContainer.getBoundingClientRect();
+
+    let newRatio = ((e.clientX - containerRect.left) / containerRect.width) * 100;
+
+    newRatio = Math.max(10, Math.min(newRatio, 90));
+
+    // Update the state
+    this.activeDividerSplit.splitRatio = newRatio;
+
+    const leftWv = this.webviews.get(this.activeDividerSplit.leftTabId);
+    const rightWv = this.webviews.get(this.activeDividerSplit.rightTabId);
+
+    if (leftWv && rightWv) {
+      leftWv.style.flex = `0 0 ${newRatio}%`;
+      rightWv.style.flex = `0 0 ${100 - newRatio}%`;
+    }
+  }
+
+  handleDividerPointerUp(e) {
+    if (!this.isDraggingDivider) return;
+    this.isDraggingDivider = false;
+
+    const divider = document.getElementById('split-view-divider');
+    if (divider) divider.classList.remove('dragging');
+
+    if (this.webviewContainer) {
+      this.webviewContainer.style.pointerEvents = '';
+    }
+
+    window.removeEventListener('pointermove', this.onDividerMove);
+    window.removeEventListener('pointerup', this.onDividerUp);
+
+    this.saveTabsState(); 
   }
 
   // --- P2P Protocol Helpers ---

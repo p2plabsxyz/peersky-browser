@@ -394,20 +394,6 @@ ipcMain.on("window-control", (_event, command) => {
   }
 });
 
-// IPC handler for moving tabs to new window
-ipcMain.on('new-window-with-tab', (_event, tabData) => {
-  // Create new window using WindowManager for proper persistence
-  windowManager.open({
-    url: tabData.url,
-    newWindow: true,
-    isolate: true,
-    singleTab: {
-      url: tabData.url,
-      title: tabData.title
-    }
-  });
-});
-
 // IPC handler for opening files in new tabs (used by BitTorrent pages)
 ipcMain.on('open-url-in-tab', (event, fileUrl) => {
   // Security: only allow file:// URLs
