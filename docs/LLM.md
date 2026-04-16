@@ -209,6 +209,7 @@ document.querySelector('llm-history').addEventListener('select-session', (e) => 
 | [src/pages/unified-preload.js](../src/pages/unified-preload.js) | Exposes `window.llm` and `window.llmMemory` to trusted pages via contextBridge |
 | [src/pages/settings.html](../src/pages/settings.html) | UI for LLM config and memory opt-in toggle |
 | [src/pages/static/js/settings.js](../src/pages/static/js/settings.js) | Renderer logic for saving LLM settings and tracking downloads |
-| [src/pages/p2p/ai-chat/index.html](../src/pages/p2p/ai-chat/index.html) | AI Chat with ChatGPT-style session sidebar |
-| [src/pages/p2p/p2pmd/ai-generator.js](../src/pages/p2p/p2pmd/ai-generator.js) | P2PMD AI generator with History button |
+| [src/pages/p2p/ai-chat/index.html](https://github.com/p2plabsxyz/ai-chat/blob/main/index.html) | AI Chat with ChatGPT-style session sidebar |
+| [src/pages/p2p/p2pmd/ai-generator.js](https://github.com/p2plabsxyz/p2pmd/blob/main/ai-generator.js) | P2PMD AI generator with History button |
+| [src/pages/p2p/peerpad/ai-generator.js](https://github.com/p2plabsxyz/peerpad/blob/main/ai-generator.js) | PeerPad AI generator with History button |
 | [src/pages/p2p/components/llm-history.js](../src/pages/p2p/components/llm-history.js) | Reusable `<llm-history>` web component |
