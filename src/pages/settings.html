@@ -241,8 +241,9 @@
             
             <div class="setting-row">
               <div class="setting-label">Model Name</div>
-              <div class="setting-control">
+              <div class="setting-control" style="flex-direction:column;align-items:flex-end;gap:4px">
                 <input type="text" id="ollama-model" class="setting-input" placeholder="e.g. qwen2.5-coder:3b or anthropic/claude-4.5-sonnet" value="qwen2.5-coder:3b">
+                <div id="model-capability" class="setting-hint" style="margin:0;font-size:0.72rem"></div>
               </div>
             </div>
           </section>
