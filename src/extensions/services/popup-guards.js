@@ -9,7 +9,8 @@
  * @module popup-guards
  */
 
-import { app, BrowserWindow } from 'electron';
+import { app } from 'electron';
+import { openUrlInPeerskyTab } from './open-url-in-browser-tab.js';
 
 // Popup stabilization period - prevent closing for this duration after creation
 const POPUP_STABILIZATION_MS = 2000;
@@ -48,6 +49,17 @@ function isExtensionUrl(url) {
   return url.startsWith('chrome-extension://');
 }
 
+async function openExtensionUrlInTab(url) {
+  try {
+    const opened = await openUrlInPeerskyTab(url, 'Extension Page');
+    if (!opened) {
+      console.warn('[PopupGuards] No window with tabbar found for extension URL');
+    }
+  } catch (e) {
+    console.error('[PopupGuards] Failed to open extension URL in tab:', e);
+  }
+}
+
 /**
  * Install popup navigation guards on the extension manager
  */
@@ -71,6 +83,14 @@ export function installExtensionPopupGuards(manager) {
           continue;
         }
         if (focusedWindow && popup === focusedWindow) continue;
+        // If focus moves back to the popup's opener (main browser window),
+        // don't auto-close. Some extension popups (eg ArchiveWeb.page) trigger
+        // tab creation/navigation and focus remains on the opener while the popup
+        // is still expected to stay open.
+        try {
+          const opener = manager.popupToOpener?.get?.(popup) || popup.getParentWindow?.();
+          if (focusedWindow && opener && focusedWindow === opener) continue;
+        } catch (_) { }
         if (isPopupStabilizing(popup)) continue;
         try { popup.close(); } catch (_) { }
       }
@@ -166,10 +186,16 @@ export function installExtensionPopupGuards(manager) {
     wc.setWindowOpenHandler((details) => {
       const { url } = details;
 
-      // If from extension, allow ALL popups (MetaMask login, OAuth, etc.)
+      // If from extension, handle window.open requests
       if (isFromExtension) {
-        console.log('[PopupGuards] Allowing popup from extension:', url?.substring(0, 60) || 'about:blank');
+        // chrome-extension:// pages (like ArchiveWeb.page's index.html) should
+        // open as proper browser tabs, matching Chrome's behaviour.
+        if (isExtensionUrl(url)) {
+          openExtensionUrlInTab(url);
+          return { action: 'deny' };
+        }
 
+        // Non-extension URLs (OAuth login popups, etc.) still open as popup windows
         // Register the new window for stabilization when it's created
         app.once('browser-window-created', (_evt, newWin) => {
           registerPopupForStabilization(newWin);
