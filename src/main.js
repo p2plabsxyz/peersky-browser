@@ -18,6 +18,7 @@ import p2pAppRegistry from "./p2p-app-registry.js";
 import { setWindowManager } from "./context-menu.js";
 import { isBuiltInSearchEngine } from "./search-engine.js";
 import "./llm.js";
+import "./llm-memory.js";
 // import { setupAutoUpdater } from "./auto-updater.js";
 
 // Import and initialize extension system
@@ -531,20 +532,6 @@ ipcMain.on("window-control", (_event, command) => {
       window.close();
       break;
   }
-});
-
-// IPC handler for moving tabs to new window
-ipcMain.on('new-window-with-tab', (_event, tabData) => {
-  // Create new window using WindowManager for proper persistence
-  windowManager.open({
-    url: tabData.url,
-    newWindow: true,
-    isolate: true,
-    singleTab: {
-      url: tabData.url,
-      title: tabData.title
-    }
-  });
 });
 
 // IPC handler for opening files in new tabs (used by BitTorrent pages)
