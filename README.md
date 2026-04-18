@@ -139,11 +139,11 @@
   - [x] P2P Editor integration (peersky://p2p/peerpad/)
     - [x] New AI generator (`ai-generator.js`) to generate code with AI
 
-  - [ ] 🚧 [LLM Memory](https://github.com/p2plabsxyz/peersky-browser/issues/97)
-    - [ ] `llm.json` to store prompts/responses across P2P apps
-    - [ ] Reusable History component (P2P editor, AI chat, etc.)
-    - [ ] Settings toggle to enable/disable memory
-    - [ ] “Reset P2P Data” also clears `llm.json`
+  - [x] [LLM Memory](https://github.com/p2plabsxyz/peersky-browser/issues/97)
+    - [x] `llm.json` to store prompts/responses across P2P apps
+    - [x] Reusable History component (P2P editor, AI chat, etc.)
+    - [x] Settings toggle to enable/disable memory
+    - [x] “Reset P2P Data” also clears `llm.json`
 
 - [x] [Web extensions](https://github.com/p2plabsxyz/peersky-browser/issues/19):
   - [x] Ability to add and manage extensions

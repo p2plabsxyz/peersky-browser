@@ -849,6 +849,11 @@ function populateFormFields(settings) {
     if (ollamaModel && settings.llm.model) {
       ollamaModel.value = settings.llm.model;
     }
+
+    const llmMemoryEnabled = document.getElementById('llm-memory-enabled');
+    if (llmMemoryEnabled) {
+      llmMemoryEnabled.checked = settings.llm.memoryEnabled || false;
+    }
   }
   
   // Update custom dropdown displays after loading settings
@@ -1365,6 +1370,12 @@ function initializeLLMSettings() {
     // Save the complete LLM settings with the new enabled state
     await saveLLMSettings();
   });
+
+  // Memory toggle – save immediately when changed
+  const llmMemoryToggle = document.getElementById('llm-memory-enabled');
+  llmMemoryToggle?.addEventListener('change', async () => {
+    await saveLLMSettings();
+  });
   
   // Listen for download progress updates
   if (window.electronAPI) {
@@ -1494,12 +1505,15 @@ function initializeLLMSettings() {
       return;
     }
     
+    const llmMemoryEnabledInput = document.getElementById('llm-memory-enabled');
+
     // Simple settings structure config
     const settings = {
       enabled: llmEnabled?.checked || false,
       baseURL: baseURLValue,
       apiKey: apiKeyValue,
-      model: ollamaModelValue
+      model: ollamaModelValue,
+      memoryEnabled: llmMemoryEnabledInput?.checked || false
     };
     
     console.log('Saving LLM settings with model:', settings.model);
@@ -1532,6 +1546,17 @@ function initializeLLMSettings() {
         showSettingsSavedMessage(`Failed to save LLM settings: ${error.message}`, 'error');
       }
     }
+    await updateModelCapability();
+  }
+
+  async function updateModelCapability() {
+    const capEl = document.getElementById('model-capability');
+    if (!capEl) return;
+    try {
+      const info = await window._llmBridge?.modelInfo();
+      if (!info?.model) { capEl.textContent = ''; return; }
+      capEl.textContent = 'Input: ' + (info.vision ? 'text, vision' : 'text');
+    } catch { capEl.textContent = ''; }
   }
   
   // Function to update download progress
@@ -1630,6 +1655,8 @@ function initializeLLMSettings() {
       console.error('Error checking for incomplete LLM downloads:', err);
     }
   }, 100);
+
+  updateModelCapability();
   
   // Function to check for incomplete downloads and auto-resume
   async function checkForIncompleteDownloads(modelName) {

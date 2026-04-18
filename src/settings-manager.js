@@ -74,7 +74,8 @@ const DEFAULT_SETTINGS = {
     enabled: false,
     baseURL: 'http://127.0.0.1:11434/',
     apiKey: 'ollama',
-    model: 'qwen2.5-coder:3b'
+    model: 'qwen2.5-coder:3b',
+    memoryEnabled: false
   }
 };
 
@@ -162,15 +163,21 @@ async function resetP2PData({ resetIdentities = false } = {}) {
   // Wipe internal P2P User App Registry data and cleanly re-sync it
   await p2pAppRegistry.reset();
 
+  // Wipe LLM memory file and invalidate in-memory cache
+  const llmMemoryFile = path.join(USER_DATA, 'llm.json');
+  await fs.rm(llmMemoryFile, { force: true }).catch(() => {});
+  try {
+    const llmMem = await import('./llm-memory.js');
+    llmMem.resetCache?.();
+  } catch {}
+
   if (resetIdentities) {
-    // full wipe
     await fs.rm(ipfsDir,  { recursive: true, force: true }).catch(() => {});
     await fs.rm(hyperDir, { recursive: true, force: true }).catch(() => {});
     logDebug('P2P reset: full wipe including identities');
   } else {
-    // preserve identity files by default
-    await removeChildrenExcept(ipfsDir,  ['libp2p-key']);          // IPFS Peer ID
-    await removeChildrenExcept(hyperDir, ['swarm-keypair.json']);  // Hyper identity
+    await removeChildrenExcept(ipfsDir,  ['libp2p-key']);
+    await removeChildrenExcept(hyperDir, ['swarm-keypair.json']);
     logDebug('P2P reset: data cleared, identities preserved');
   }
 }
@@ -549,7 +556,8 @@ class SettingsManager {
             enabled: llmSettings.enabled || false,
             baseURL: llmSettings.baseURL || DEFAULT_SETTINGS.llm.baseURL,
             apiKey: this.decryptApiKey(llmSettings.apiKey || DEFAULT_SETTINGS.llm.apiKey),
-            model: llmSettings.model || DEFAULT_SETTINGS.llm.model
+            model: llmSettings.model || DEFAULT_SETTINGS.llm.model,
+            memoryEnabled: typeof llmSettings.memoryEnabled === 'boolean' ? llmSettings.memoryEnabled : false
           };
         } else {
           this.settings[key] = loaded[key];
@@ -647,6 +655,7 @@ class SettingsManager {
         if (typeof v.baseURL !== 'string') return false;
         if (typeof v.apiKey !== 'string') return false;
         if (typeof v.model !== 'string') return false;
+        if (v.memoryEnabled !== undefined && typeof v.memoryEnabled !== 'boolean') return false;
         
         return true;
       }

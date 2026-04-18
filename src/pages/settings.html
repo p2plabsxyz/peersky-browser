@@ -241,12 +241,29 @@
             
             <div class="setting-row">
               <div class="setting-label">Model Name</div>
-              <div class="setting-control">
+              <div class="setting-control" style="flex-direction:column;align-items:flex-end;gap:4px">
                 <input type="text" id="ollama-model" class="setting-input" placeholder="e.g. qwen2.5-coder:3b or anthropic/claude-4.5-sonnet" value="qwen2.5-coder:3b">
+                <div id="model-capability" class="setting-hint" style="margin:0;font-size:0.72rem"></div>
               </div>
             </div>
           </section>
           
+          <h1 class="section-title">LLM Memory</h1>
+          <section class="settings-section">
+            <div class="setting-row" style="align-items:center">
+              <div style="flex:1;min-width:0">
+                <div class="setting-label">Enable LLM Memory</div>
+                <div class="setting-hint" style="margin-top:3px">Store prompts &amp; responses locally in llm.json. Memory is private and never shared unless you publish it. Cleared when you reset P2P data.</div>
+              </div>
+              <div class="setting-control" style="flex:none">
+                <label class="toggle-label">
+                  <input type="checkbox" id="llm-memory-enabled" class="toggle-input">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+          </section>
+
           <h1 class="section-title" id="llm-setup-title">Setup</h1>
           <section class="settings-section" id="llm-setup-section">
             <div class="setting-info">
