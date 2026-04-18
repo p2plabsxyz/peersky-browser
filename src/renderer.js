@@ -804,14 +804,26 @@ async function navigateTo(url) {
   }
 }
 
-function updateNavigationButtons(tabBar) {
+function updateNavigationButtons(currentTabBar) {
   if (!nav) return;
   
+  const bar = currentTabBar || tabBar || document.querySelector("#tabbar") || document.querySelector("vertical-tabs");
+  if (!bar) return;
+
   try {
-    const webview = tabBar.getActiveWebview();
+    const webview = bar.getActiveWebview();
+    const tab = (typeof bar.getActiveTab === 'function') ? bar.getActiveTab() : null;
+    
     if (webview) {
-      const canGoBack = webview.canGoBack();
-      const canGoForward = webview.canGoForward();
+      let canGoBack = webview.canGoBack();
+      let canGoForward = webview.canGoForward();
+      
+      // Fallback to saved navigation completely overriding native history
+      if (tab && tab.savedNavigation && tab.savedNavigation.entries && tab.savedNavigation.entries.length > 0) {
+        canGoBack = tab.savedNavigation.activeIndex > 0;
+        canGoForward = tab.savedNavigation.activeIndex < tab.savedNavigation.entries.length - 1;
+      }
+      
       nav.setNavigationButtons(canGoBack, canGoForward);
     } else {
       nav.setNavigationButtons(false, false);
