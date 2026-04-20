@@ -68,6 +68,8 @@ const DEFAULT_SETTINGS = {
   pinnedP2PApps: null,
   extensionP2PEnabled: false,
   extensionAutoUpdate: true,
+  memorySaverEnabled: false,
+  memorySaverExclusions: ['peersky://p2p/*'],
   llm: {
     enabled: false,
     baseURL: 'http://127.0.0.1:11434/',
@@ -642,6 +644,8 @@ class SettingsManager {
       wallpaper: (v) => typeof v === "string",
       wallpaperCustomPath: (v) => v === null || typeof v === "string",
       pinnedP2PApps: (v) => v === null || (Array.isArray(v) && v.every(id => typeof id === 'string')),
+      memorySaverEnabled: (v) => typeof v === "boolean",
+      memorySaverExclusions: (v) => Array.isArray(v) && v.every(ex => typeof ex === 'string'),
       llm: (v) => {
         // Validate LLM settings object (simplified for Ollama-only)
         if (typeof v !== 'object' || v === null) return false;
@@ -748,6 +752,15 @@ class SettingsManager {
         windows.forEach(window => {
           if (window && !window.isDestroyed()) {
             window.webContents.send('pinned-apps-changed', value);
+          }
+        });
+      } else if (key === 'memorySaverEnabled' || key === 'memorySaverExclusions') {
+        windows.forEach(window => {
+          if (window && !window.isDestroyed()) {
+            window.webContents.send('memory-saver-changed', {
+              enabled: this.settings.memorySaverEnabled,
+              exclusions: this.settings.memorySaverExclusions
+            });
           }
         });
       } else if (key === "customSearchTemplate") {
