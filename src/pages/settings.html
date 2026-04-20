@@ -52,7 +52,7 @@
           <img src="peersky://static/assets/svg/folder.svg" class="nav-icon" alt="Archive Icon">
           <span>Archive</span>
         </a>
-        <a href="peersky://history" target="_blank" rel="noopener noreferrer" class="nav-item">
+        <a id="history-nav-link" href="#" class="nav-item">
           <img src="peersky://static/assets/svg/clock-history.svg" class="nav-icon" alt="Clock History Icon">
           <span>History</span>
         </a>
@@ -420,5 +420,25 @@
 <script src="peersky://static/js/pagination.js" type="module"></script>
 <script src="peersky://static/js/archive.js" defer></script>
 <script src="peersky://static/js/settings.js" defer></script>
+<script>
+  document.getElementById('history-nav-link').addEventListener('click', async (e) => {
+    e.preventDefault();
+    try {
+      const result = await window.electronAPI?.extensions?.listExtensions();
+      const extensions = result?.extensions || [];
+      const historyExt = extensions.find(ext => ext.enabled && ext.electronId && (
+        ext.name?.toLowerCase().includes('history') ||
+        ext.displayName?.toLowerCase().includes('history')
+      ));
+      if (historyExt?.electronId) {
+        window.open(`chrome-extension://${historyExt.electronId}/view.html`);
+      } else {
+        window.open('peersky://history');
+      }
+    } catch (err) {
+      window.open('peersky://history');
+    }
+  });
+</script>
 </body>
 </html> 
