@@ -32,7 +32,7 @@ const DEFAULT_POLICY = {
   },
   permissions: {
     blocked: [
-      "nativeMessaging", "debugger", "desktopCapture", "fileSystem", "fileSystemProvider"
+      "nativeMessaging", "desktopCapture", "fileSystem", "fileSystemProvider"
     ],
     dangerous: [
       "<all_urls>", "webRequest", "webRequestBlocking", "proxy", "privacy", "enterprise.platformKeys"
