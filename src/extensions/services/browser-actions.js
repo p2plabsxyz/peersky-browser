@@ -1,7 +1,7 @@
 // Browser actions (click/open popup) and helpers
 
 import { app, BrowserWindow, Menu, webContents } from 'electron';
-import { registerPopupForStabilization } from './popup-guards.js';
+import { registerPopupForStabilization, consumeRecentFocusClose } from './popup-guards.js';
 import { createLogger } from '../../logger.js';
 
 const log = createLogger('extensions');
@@ -219,6 +219,12 @@ export async function clickBrowserAction(manager, actionId, window) {
 
 export async function openBrowserAction(manager, actionId, window, anchorRect) {
   try {
+    // If the click that stole focus already closed this popup, treat this
+    // invocation as the toggle-off half of that click.
+    if (consumeRecentFocusClose(actionId)) {
+      return { success: true, toggled: true };
+    }
+
     const extension = manager.loadedExtensions.get(actionId);
     if (!extension || !extension.enabled) {
       log.warn(`ExtensionManager: Extension ${actionId} not found or disabled`);
