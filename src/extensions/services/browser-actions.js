@@ -140,7 +140,7 @@ export async function clickBrowserAction(manager, actionId, window) {
         }
       }
 
-      // Method 2: Use browserAction.openPopup (electron-chrome-extensions handles no-popup case)
+      // Method 2: Use browserAction.openPopup (peersky-chrome-extensions handles no-popup case)
       // For extensions WITHOUT a popup, openPopup should dispatch onClicked event
       if (manager.electronChromeExtensions.api && manager.electronChromeExtensions.api.browserAction) {
         const browserActionAPI = manager.electronChromeExtensions.api.browserAction;

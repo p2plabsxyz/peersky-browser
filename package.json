@@ -163,7 +163,7 @@
     "content-hash": "^2.5.2",
     "content-type": "^1.0.5",
     "datastore-level": "^12.0.2",
-    "electron-chrome-extensions": "^4.9.0",
+    "@p2plabs/peersky-chrome-extensions": "^1.0.0",
     "electron-chrome-web-store": "^0.13.0",
     "electron-find": "^1.0.7",
     "electron-log": "^5.3.0",

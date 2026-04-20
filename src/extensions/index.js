@@ -30,7 +30,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { promises as fs } from 'fs';
 import { installChromeWebStore } from 'electron-chrome-web-store';
-import { ElectronChromeExtensions } from 'electron-chrome-extensions';
+import { ElectronChromeExtensions } from '@p2plabs/peersky-chrome-extensions';
 import ManifestValidator from './manifest-validator.js';
 import { loadPolicy } from './policy.js';
 import { ensureDir, KeyedMutex, ERR } from './util.js';

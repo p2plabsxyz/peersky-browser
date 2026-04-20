@@ -179,7 +179,7 @@ Validation & security
 
 ## 6. MV3 & Permissions
 
-- MV3 service workers ride on `electron-chrome-extensions`; they go idle after Chromium's ~30 s timer and wake on events, alarms, or network listeners. We do not pin them alive.
+- MV3 service workers ride on [`@p2plabs/peersky-chrome-extensions`](https://www.npmjs.com/package/@p2plabs/peersky-chrome-extensions) (PCE); they go idle after Chromium's ~30 s timer and wake on events, alarms, or network listeners. We do not pin them alive.
 - Browser-action popups run in dedicated windows; `popup-guards` redirect `window.open`/`will-navigate` to real tabs so OAuth flows stay in trusted chrome.
 - Manifest `permissions` and `host_permissions` are validated at install. Risky hosts (`*://*/*`, LAN ranges, etc.) surface warnings in `extension.warnings` for UI review.
 - Optional permission prompts (`chrome.permissions.request`) are currently blocked; calls reject with `E_INVALID_STATE` so extensions must declare needed hosts up front.
