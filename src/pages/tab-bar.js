@@ -1280,36 +1280,15 @@ restoreTabs(persistedData) {
         }
       }
 
-      // Keep extension system in sync with tab switches so popup UIs
-      // can resolve the active tab reliably. (Visibility is handled by renderWebviews below.)
-      const newWebview = this.webviews.get(tabId);
-      if (newWebview) {
-        try {
-          const wcId = newWebview.getWebContentsId?.();
-          if (wcId) {
-            const { ipcRenderer } = require('electron');
-            ipcRenderer.invoke('extensions-pin-active-webview', wcId).then((res) => {
-              if (res && res.success === false) {
-                console.warn('[TabBar] Failed to pin active webview for extensions:', res.error || res.code || res);
-              }
-            }).catch((e) => {
-              console.warn('[TabBar] Error pinning active webview for extensions:', e?.message || e);
-            });
-          }
-        } catch (_) {}
-      }
-      
-      // WAKE UP TAB IF SLEEPING
+      // Wake up suspended tabs before pinning/showing so the fresh webview is used.
       const tab = this.tabs.find(t => t.id === tabId);
       if (tab) {
         if (tab.isSuspended) {
           tab.isFallbackNavigating = true;
-          // Recreate webview
-          const newWebview = this.createWebviewForTab(tabId, tab.url);
-          
-          // Restore history
+          const wokenWebview = this.createWebviewForTab(tabId, tab.url);
+
           if (tab.savedNavigation && tab.savedNavigation.entries?.length) {
-            this.restoreNavigationForWebview(tabId, newWebview, tab.savedNavigation, "sleeping tab");
+            this.restoreNavigationForWebview(tabId, wokenWebview, tab.savedNavigation, "sleeping tab");
           }
           
           tab.isSuspended = false;
@@ -1336,9 +1315,28 @@ restoreTabs(persistedData) {
           break;
         }
       }
-      
-      // Show ONLY the newly active webview
+
       const newWebview = this.webviews.get(tabId);
+
+      // Keep extension system in sync with tab switches so popup UIs
+      // can resolve the active tab reliably.
+      if (newWebview) {
+        try {
+          const wcId = newWebview.getWebContentsId?.();
+          if (wcId) {
+            const { ipcRenderer } = require('electron');
+            ipcRenderer.invoke('extensions-pin-active-webview', wcId).then((res) => {
+              if (res && res.success === false) {
+                console.warn('[TabBar] Failed to pin active webview for extensions:', res.error || res.code || res);
+              }
+            }).catch((e) => {
+              console.warn('[TabBar] Error pinning active webview for extensions:', e?.message || e);
+            });
+          }
+        } catch (_) {}
+      }
+
+      // Show ONLY the newly active webview
       if (newWebview) {
         newWebview.style.display = "flex";
         
