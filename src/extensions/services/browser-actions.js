@@ -255,14 +255,6 @@ export async function openBrowserAction(manager, actionId, window, anchorRect) {
 
         pinECEWindowFocus(manager, window, activeTab);
 
-        if (manager.electronChromeExtensions.getBrowserAction && popupExists) {
-          const browserAction = manager.electronChromeExtensions.getBrowserAction(extension.electronId);
-          if (browserAction && browserAction.onClicked) {
-            browserAction.onClicked.trigger(activeTab);
-            log.info(`ExtensionManager: Browser action triggered for ${extension.displayName || extension.name}`);
-            return { success: true };
-          }
-        }
         // Method 2: Use browserAction.openPopup
         if (manager.electronChromeExtensions.api && manager.electronChromeExtensions.api.browserAction) {
           const browserActionAPI = manager.electronChromeExtensions.api.browserAction;

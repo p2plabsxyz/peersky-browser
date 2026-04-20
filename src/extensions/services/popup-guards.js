@@ -83,14 +83,7 @@ export function installExtensionPopupGuards(manager) {
           continue;
         }
         if (focusedWindow && popup === focusedWindow) continue;
-        // If focus moves back to the popup's opener (main browser window),
-        // don't auto-close. Some extension popups (eg ArchiveWeb.page) trigger
-        // tab creation/navigation and focus remains on the opener while the popup
-        // is still expected to stay open.
-        try {
-          const opener = manager.popupToOpener?.get?.(popup) || popup.getParentWindow?.();
-          if (focusedWindow && opener && focusedWindow === opener) continue;
-        } catch (_) { }
+        // Close when focus moves to any other window
         if (isPopupStabilizing(popup)) continue;
         try { popup.close(); } catch (_) { }
       }
