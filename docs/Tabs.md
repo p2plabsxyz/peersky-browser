@@ -77,7 +77,32 @@ Tab group definitions (id, name, color, expanded state) and each tab's `groupId`
 
 ---
 
-## 5. Pinned Tabs
+## 5. Split View
+
+<img src="./images/peersky-split-view.png" width="800" alt="Split View" />
+
+Split View allows you to dock two tabs side-by-side within the same window, maximizing screen real estate for multitasking without needing multiple browser windows. 
+
+### Initiating a Split
+
+1. Right-click any active tab and select **Split view**.
+2. The browser will split the screen and display the **Split Selector Overlay** on the right side.
+3. Choose an existing open tab from the list, or click **+ Open New Tab** to create a fresh webview for the right panel.
+
+### Managing Split Pairs
+
+- **Resizable Panes:** Hover over the vertical dividing line between the two webviews and drag left or right to adjust the split ratio (e.g., 50/50, 70/30). The custom ratio is preserved during your session.
+- **Drag & Drop:** Dragging a split tab within the tab bar will automatically grab its partner, moving them together as a single unified block. 
+- **Tear-off:** Dragging a split pair *outside* the tab bar will extract the split pair tab you grabbed into a new isolated window.
+- **Separating:** To break a split inside the current window, right-click either half of the split tab and select **Separate split view**.
+
+### Persistence
+
+Split View configurations are fully persistent. The exact pairing of the tabs, their DOM order, and their custom split ratio are serialized into the `splitPairs` array and saved to `localStorage`. Upon restarting the browser, the split groups are automatically rebuilt and snapped back together.
+
+---
+
+## 6. Pinned Tabs
 
 <img src="./images/peersky-tab-pin.png" width="800" alt="Pinned Tabs" />
 
@@ -89,7 +114,7 @@ Tab group definitions (id, name, color, expanded state) and each tab's `groupId`
 
 ---
 
-## 6. Memory Saver
+## 7. Memory Saver
 
 <img src="./images/peersky-memory-saver.png" width="800" alt="Memory Saver" />
 
@@ -152,7 +177,7 @@ Changes are applied immediately via the `memory-saver-changed` IPC event.
 
 ---
 
-## 7. Tab Context Menu
+## 8. Tab Context Menu
 
 <img src="./images/peersky-tab-context-menu.png" alt="Tab Context Menu" />
 
@@ -170,7 +195,7 @@ Right-clicking any tab opens a context menu with:
 
 ---
 
-## 8. Hover Card
+## 9. Hover Card
 
 Hovering over a tab for ~800 ms shows a hover card with:
 - Tab title and full URL
@@ -178,7 +203,7 @@ Hovering over a tab for ~800 ms shows a hover card with:
 
 ---
 
-## 9. File Reference
+## 10. File Reference
 
 | File | Purpose |
 |------|---------|
