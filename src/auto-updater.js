@@ -57,12 +57,18 @@ function setupAutoUpdater() {
     log.error('Auto-update error:', error);
   });
 
-  // Initiate update check after 10 seconds (only if enabled in settings)
-  setTimeout(() => {
+  const checkIfEnabled = () => {
     if (settingsManager.settings.autoUpdateEnabled !== false) {
       autoUpdater.checkForUpdates();
     }
-  }, 10000);
+  };
+
+  // Initiate update check after 10 seconds on startup
+  setTimeout(checkIfEnabled, 10000);
+
+  // Re-check every week
+  const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+  setInterval(checkIfEnabled, ONE_WEEK_MS);
 }
 
 export { setupAutoUpdater };
