@@ -68,6 +68,7 @@ const DEFAULT_SETTINGS = {
   pinnedP2PApps: null,
   extensionP2PEnabled: false,
   extensionAutoUpdate: true,
+  autoUpdateEnabled: true,
   memorySaverEnabled: false,
   memorySaverExclusions: ['peersky://p2p/*'],
   llm: {
@@ -644,6 +645,7 @@ class SettingsManager {
       wallpaper: (v) => typeof v === "string",
       wallpaperCustomPath: (v) => v === null || typeof v === "string",
       pinnedP2PApps: (v) => v === null || (Array.isArray(v) && v.every(id => typeof id === 'string')),
+      autoUpdateEnabled: (v) => typeof v === "boolean",
       memorySaverEnabled: (v) => typeof v === "boolean",
       memorySaverExclusions: (v) => Array.isArray(v) && v.every(ex => typeof ex === 'string'),
       llm: (v) => {
