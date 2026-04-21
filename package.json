@@ -1,6 +1,6 @@
 {
   "name": "peersky-browser",
-  "version": "1.0.0-beta.23",
+  "version": "1.0.0-beta.24",
   "description": "A minimal local-first p2p web browser: access, communicate, and publish offline.",
   "keywords": [
     "peersky",
@@ -26,7 +26,7 @@
     "coverage": "cross-env NODE_OPTIONS=--experimental-loader=@istanbuljs/esm-loader-hook nyc mocha \"test/p2p/ipfs-handler.test.js\" \"test/p2p/hyper-handler.test.js\" \"test/p2p/hs-handler.test.js\" \"test/extensions/**/*.test.js\" \"test/security/**/*.test.js\" --timeout 20000",
     "coverage:report": "nyc report --reporter=text-summary --reporter=html --reporter=lcov",
     "start": "electron .",
-    "postinstall": "git submodule update --init --recursive && node scripts/postinstall.js",
+    "postinstall": "git submodule update --init --recursive --remote --merge && node scripts/postinstall.js",
     "build": "electron-builder build --publish never",
     "build-all": "electron-builder build -mwl"
   },
@@ -171,7 +171,7 @@
     "content-hash": "^2.5.2",
     "content-type": "^1.0.5",
     "datastore-level": "^12.0.2",
-    "electron-chrome-extensions": "^4.9.0",
+    "@p2plabs/peersky-chrome-extensions": "^1.0.0",
     "electron-chrome-web-store": "^0.13.0",
     "electron-find": "^1.0.7",
     "electron-log": "^5.3.0",

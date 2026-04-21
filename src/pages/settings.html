@@ -52,7 +52,7 @@
           <img src="peersky://static/assets/svg/folder.svg" class="nav-icon" alt="Archive Icon">
           <span>Archive</span>
         </a>
-        <a href="peersky://history" target="_blank" rel="noopener noreferrer" class="nav-item">
+        <a id="history-nav-link" href="#" class="nav-item">
           <img src="peersky://static/assets/svg/clock-history.svg" class="nav-icon" alt="Clock History Icon">
           <span>History</span>
         </a>
@@ -241,12 +241,29 @@
             
             <div class="setting-row">
               <div class="setting-label">Model Name</div>
-              <div class="setting-control">
+              <div class="setting-control" style="flex-direction:column;align-items:flex-end;gap:4px">
                 <input type="text" id="ollama-model" class="setting-input" placeholder="e.g. qwen2.5-coder:3b or anthropic/claude-4.5-sonnet" value="qwen2.5-coder:3b">
+                <div id="model-capability" class="setting-hint" style="margin:0;font-size:0.72rem"></div>
               </div>
             </div>
           </section>
           
+          <h1 class="section-title">LLM Memory</h1>
+          <section class="settings-section">
+            <div class="setting-row" style="align-items:center">
+              <div style="flex:1;min-width:0">
+                <div class="setting-label">Enable LLM Memory</div>
+                <div class="setting-hint" style="margin-top:3px">Store prompts &amp; responses locally in llm.json. Memory is private and never shared unless you publish it. Cleared when you reset P2P data.</div>
+              </div>
+              <div class="setting-control" style="flex:none">
+                <label class="toggle-label">
+                  <input type="checkbox" id="llm-memory-enabled" class="toggle-input">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+          </section>
+
           <h1 class="section-title" id="llm-setup-title">Setup</h1>
           <section class="settings-section" id="llm-setup-section">
             <div class="setting-info">
@@ -320,6 +337,37 @@
             </div>
           </div>
         </section>
+        
+        <section class="settings-section">
+          <!-- Memory Saver Toggle Row -->
+          <div class="setting-row">
+            <div class="setting-label">
+              <div style="font-weight: 500;">Memory Saver</div>
+              <div class="setting-hint" style="margin-top: 4px; max-width: 400px;">Inactive tabs are suspended after <strong>30 minutes</strong> to free up RAM. Pinned tabs are never suspended.</div>
+            </div>
+            <div class="setting-control">
+              <label class="toggle-label">
+                <input type="checkbox" id="memory-saver-enabled" class="toggle-input">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <!-- Exclusion list — conditionally visible -->
+        <section class="settings-section" id="memory-exclusions-section" style="display: none;">
+          <div style="margin-bottom: 10px;">
+            <div style="font-weight: 500; margin-bottom: 4px;">Always keep these sites active</div>
+            <div class="setting-hint">Sites matching these domains will never be suspended (e.g. <code>getdweb.net</code>, <code>*.p2plabs.xyz</code>).</div>
+          </div>
+          <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+            <input type="text" id="memory-exclusion-input" class="text-input input-fill" placeholder="Add a site (e.g. getdweb.net)" autocomplete="off" style="flex: 1; min-height: 36px;">
+            <button type="button" id="add-exclusion-btn" class="btn btn-secondary" style="height: 36px;">Add</button>
+          </div>
+          <div id="exclusion-list-container" style="border: 1px solid var(--settings-border); border-radius: 8px; padding: 6px 8px; min-height: 44px; max-height: 180px; overflow-y: auto; background: var(--settings-bg-secondary);">
+          </div>
+        </section>
+
         <tabs-box style="width:100%;"></tabs-box>
       </div>
       <!-- Archive Section -->
@@ -372,5 +420,25 @@
 <script src="peersky://static/js/pagination.js" type="module"></script>
 <script src="peersky://static/js/archive.js" defer></script>
 <script src="peersky://static/js/settings.js" defer></script>
+<script>
+  document.getElementById('history-nav-link').addEventListener('click', async (e) => {
+    e.preventDefault();
+    try {
+      const result = await window.electronAPI?.extensions?.listExtensions();
+      const extensions = result?.extensions || [];
+      const historyExt = extensions.find(ext => ext.enabled && ext.electronId && (
+        ext.name?.toLowerCase().includes('history') ||
+        ext.displayName?.toLowerCase().includes('history')
+      ));
+      if (historyExt?.electronId) {
+        window.open(`chrome-extension://${historyExt.electronId}/view.html`);
+      } else {
+        window.open('peersky://history');
+      }
+    } catch (err) {
+      window.open('peersky://history');
+    }
+  });
+</script>
 </body>
 </html> 

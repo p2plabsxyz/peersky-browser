@@ -18,6 +18,7 @@ import p2pAppRegistry from "./p2p-app-registry.js";
 import { setWindowManager } from "./context-menu.js";
 import { isBuiltInSearchEngine } from "./search-engine.js";
 import "./llm.js";
+import "./llm-memory.js";
 // import { setupAutoUpdater } from "./auto-updater.js";
 
 // Import and initialize extension system
@@ -139,11 +140,11 @@ app.whenReady().then(async () => {
 
   // Set the WindowManager instance in context-menu.js
   setWindowManager(windowManager);
-  
+
   // Get consistent session for protocols and extensions
   const userSession = getBrowserSession();
   await setupProtocols(userSession);
-  installWebviewFileRedirect(userSession);
+  installExtensionWebRequestBridge(userSession);
   setupBittorrentIpc();
 
   // Global webview partition alignment and security hardening
@@ -325,9 +326,146 @@ async function setupProtocols(session) {
   sessionProtocol.handle("magnet", bittorrentProtocolHandler);
 }
 
-function installWebviewFileRedirect(session) {
-  session.webRequest.onBeforeRequest({ urls: ["file://*/*"] }, (_details, callback) => {
-    callback({});
+function installExtensionWebRequestBridge(session) {
+  const shouldForwardToExtensions = (rawUrl) => {
+    const url = typeof rawUrl === "string" ? rawUrl : "";
+    if (!url) return false;
+    if (url.startsWith("file://")) return false;
+    if (url.startsWith("chrome-extension://")) return false;
+    try {
+      const proto = new URL(url).protocol;
+      return proto === "http:" || proto === "https:" || proto === "ws:" || proto === "wss:" || proto === "ftp:";
+    } catch (_) {
+      return false;
+    }
+  };
+
+  session.webRequest.onBeforeRequest({ urls: ["<all_urls>"] }, async (details, callback) => {
+    const url = details?.url || "";
+    if (!shouldForwardToExtensions(url)) {
+      callback({});
+      return;
+    }
+    let result = {};
+    try {
+      result =
+        (await extensionManager.electronChromeExtensions?.notifyWebRequestOnBeforeRequest(
+          details,
+        )) ?? {};
+    } catch (e) {
+      console.warn("[webRequest] onBeforeRequest extension dispatch failed:", e?.message);
+    }
+    callback(result);
+  });
+
+  session.webRequest.onBeforeSendHeaders(
+    { urls: ["<all_urls>"] },
+    async (details, callback) => {
+      const url = details?.url || "";
+      if (!shouldForwardToExtensions(url)) {
+        callback({});
+        return;
+      }
+
+      let result = {};
+      try {
+        result =
+          (await extensionManager.electronChromeExtensions?.notifyWebRequestOnBeforeSendHeaders(
+            details,
+          )) ?? {};
+      } catch (e) {
+        console.warn(
+          "[webRequest] onBeforeSendHeaders extension dispatch failed:",
+          e?.message,
+        );
+      }
+
+      callback(result);
+    },
+  );
+
+  session.webRequest.onSendHeaders({ urls: ["<all_urls>"] }, async (details) => {
+    const url = details?.url || "";
+    if (!shouldForwardToExtensions(url)) {
+      return;
+    }
+    try {
+      await extensionManager.electronChromeExtensions?.notifyWebRequestOnSendHeaders(details);
+    } catch (e) {
+      console.warn("[webRequest] onSendHeaders extension dispatch failed:", e?.message);
+    }
+  });
+
+  session.webRequest.onHeadersReceived(
+    { urls: ["<all_urls>"] },
+    async (details, callback) => {
+      const url = details?.url || "";
+      if (!shouldForwardToExtensions(url)) {
+        callback({});
+        return;
+      }
+
+      let result = {};
+      try {
+        result =
+          (await extensionManager.electronChromeExtensions?.notifyWebRequestOnHeadersReceived(
+            details,
+          )) ?? {};
+      } catch (e) {
+        console.warn(
+          "[webRequest] onHeadersReceived extension dispatch failed:",
+          e?.message,
+        );
+      }
+
+      callback(result);
+    },
+  );
+
+  session.webRequest.onResponseStarted({ urls: ["<all_urls>"] }, async (details) => {
+    const url = details?.url || "";
+    if (!shouldForwardToExtensions(url)) {
+      return;
+    }
+    try {
+      await extensionManager.electronChromeExtensions?.notifyWebRequestOnResponseStarted(
+        details,
+      );
+    } catch (e) {
+      console.warn(
+        "[webRequest] onResponseStarted extension dispatch failed:",
+        e?.message,
+      );
+    }
+  });
+
+  session.webRequest.onCompleted({ urls: ["<all_urls>"] }, async (details) => {
+    const url = details?.url || "";
+    if (!shouldForwardToExtensions(url)) {
+      return;
+    }
+    try {
+      await extensionManager.electronChromeExtensions?.notifyWebRequestOnCompleted(details);
+    } catch (e) {
+      console.warn("[webRequest] onCompleted extension dispatch failed:", e?.message);
+    }
+  });
+
+  session.webRequest.onErrorOccurred({ urls: ["<all_urls>"] }, async (details) => {
+    const url = details?.url || "";
+    if (!shouldForwardToExtensions(url)) {
+      return;
+    }
+    try {
+      await extensionManager.electronChromeExtensions?.notifyWebRequestOnErrorOccurred(
+        details,
+      );
+    } catch (e) {
+      console.warn(
+        "[webRequest] onErrorOccurred extension dispatch failed:",
+        e?.message,
+      );
+    }
   });
 }
 
@@ -346,9 +484,11 @@ app.on("activate", () => {
 ipcMain.on('remove-all-tempIcon', () => {
   try {
     const windows = BrowserWindow.getAllWindows();
-    const mainWindow = windows.find(w => w && !w.isDestroyed());
-    if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
-      mainWindow.webContents.send('remove-all-tempIcon');
+    for (const win of windows) {
+      if (!win || win.isDestroyed()) continue;
+      const wc = win.webContents;
+      if (!wc || wc.isDestroyed()) continue;
+      wc.send('remove-all-tempIcon');
     }
   } catch (error) {
     log.error('Error sending remove-all-tempIcon:', error);
@@ -394,20 +534,6 @@ ipcMain.on("window-control", (_event, command) => {
       window.close();
       break;
   }
-});
-
-// IPC handler for moving tabs to new window
-ipcMain.on('new-window-with-tab', (_event, tabData) => {
-  // Create new window using WindowManager for proper persistence
-  windowManager.open({
-    url: tabData.url,
-    newWindow: true,
-    isolate: true,
-    singleTab: {
-      url: tabData.url,
-      title: tabData.title
-    }
-  });
 });
 
 // IPC handler for opening files in new tabs (used by BitTorrent pages)
@@ -462,6 +588,48 @@ ipcMain.handle('get-tab-memory-usage', async (event, webContentsId) => {
     log.error(`Error getting memory usage for webContents ID ${webContentsId}:`, error);
     return null;
   }
+});
+
+// IPC handler to check if a specific webContents is currently playing audio
+ipcMain.on('is-webcontents-audible', (event, webContentsId) => {
+  try {
+    const wc = webContents.fromId(webContentsId);
+    event.returnValue = wc ? wc.isCurrentlyAudible() : false;
+  } catch (error) {
+    console.error(`Error checking audibility for webContents ID ${webContentsId}:`, error);
+    event.returnValue = false;
+  }
+});
+
+ipcMain.on('get-tab-navigation', (event, webContentsId) => {
+  try {
+    const wc = webContents.fromId(webContentsId);
+    if (!wc || !wc.navigationHistory) {
+      event.returnValue = null;
+      return;
+    }
+
+    const entries = [];
+    const length = wc.navigationHistory.length();
+    for (let i = 0; i < length; i++) {
+      const entry = wc.navigationHistory.getEntryAtIndex(i);
+      entries.push({ url: entry.url, title: entry.title });
+    }
+
+    event.returnValue = {
+      entries,
+      activeIndex: wc.navigationHistory.getActiveIndex()
+    };
+  } catch (error) {
+    log.error(`Error getting navigation history for webContents ID ${webContentsId}:`, error);
+    event.returnValue = null;
+  }
+});
+
+// Electron cannot natively overwrite a WebContents history stack after recreation,
+// so the fallback is handled in the UI layer (savedNavigation on the tab object).
+ipcMain.handle('restore-navigation-history', async (_event, _data) => {
+  return { success: true, note: 'Native history rewrite not supported; relying on UI fallback.' };
 });
 
 ipcMain.on('group-action', (_event, data) => {

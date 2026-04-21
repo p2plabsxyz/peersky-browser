@@ -66,7 +66,6 @@ function setupWebviewErrorHandling(webview) {
 
   const state = {
     isShowingError: false,
-    abortTimeout: null,
     lastFailedUrl: null,
     retryCounts: new Map()
   };
@@ -85,25 +84,30 @@ function setupWebviewErrorHandling(webview) {
     
     if (state.isShowingError && state.lastFailedUrl === validatedURL) return;
 
-    if (state.abortTimeout) {
-      clearTimeout(state.abortTimeout);
-      state.abortTimeout = null;
+    // ERR_ABORTED: navigation was cancelled, usually because another navigation
+    // replaced it (redirect chains, OAuth). Not a terminal failure—do not show
+    // an error page; the active navigation will emit its own result.
+    if (errorCode === -3) {
+      return;
     }
 
-    // Handle ERR_ABORTED - wait for real error
-    if (errorCode === -3) {
-      state.lastFailedUrl = validatedURL;
-      state.abortTimeout = setTimeout(() => {
-        if (!state.isShowingError) {
-          showErrorPage({
-            code: '-3',
-            name: 'Request Aborted',
-            msg: 'The connection was aborted',
-            url: validatedURL || ''
-          });
+    // Extension OAuth redirect host: Chrome resolves *.chromiumapp.org internally;
+    // Electron performs a real DNS lookup → ERR_NAME_NOT_RESOLVED. Do not replace
+    // the tab with peersky://error; return to the prior page (session is often already established).
+    if (errorCode === -105 && validatedURL) {
+      try {
+        const { hostname } = new URL(validatedURL);
+        if (hostname.endsWith('.chromiumapp.org')) {
+          setTimeout(() => {
+            try {
+              if (typeof webview.canGoBack === 'function' && webview.canGoBack()) {
+                webview.goBack();
+              }
+            } catch (_) { /* ignore */ }
+          }, 0);
+          return;
         }
-      }, 300);
-      return;
+      } catch (_) { /* ignore invalid URL */ }
     }
 
     if (errorCode === -102 && validatedURL && isLocalUrl(validatedURL)) {
@@ -163,10 +167,6 @@ function setupWebviewErrorHandling(webview) {
       if (url) {
         state.retryCounts.delete(url);
       }
-      if (state.abortTimeout) {
-        clearTimeout(state.abortTimeout);
-        state.abortTimeout = null;
-      }
     }
   };
 
@@ -175,10 +175,6 @@ function setupWebviewErrorHandling(webview) {
     if (currentSrc && !currentSrc.includes('error.html') &&
         currentSrc !== state.lastFailedUrl) {
       state.isShowingError = false;
-      if (state.abortTimeout) {
-        clearTimeout(state.abortTimeout);
-        state.abortTimeout = null;
-      }
     }
   };
 
@@ -804,14 +800,26 @@ async function navigateTo(url) {
   }
 }
 
-function updateNavigationButtons(tabBar) {
+function updateNavigationButtons(currentTabBar) {
   if (!nav) return;
   
+  const bar = currentTabBar || tabBar || document.querySelector("#tabbar") || document.querySelector("vertical-tabs");
+  if (!bar) return;
+
   try {
-    const webview = tabBar.getActiveWebview();
+    const webview = bar.getActiveWebview();
+    const tab = (typeof bar.getActiveTab === 'function') ? bar.getActiveTab() : null;
+    
     if (webview) {
-      const canGoBack = webview.canGoBack();
-      const canGoForward = webview.canGoForward();
+      let canGoBack = webview.canGoBack();
+      let canGoForward = webview.canGoForward();
+      
+      // Fallback to saved navigation completely overriding native history
+      if (tab && tab.savedNavigation && tab.savedNavigation.entries && tab.savedNavigation.entries.length > 0) {
+        canGoBack = tab.savedNavigation.activeIndex > 0;
+        canGoForward = tab.savedNavigation.activeIndex < tab.savedNavigation.entries.length - 1;
+      }
+      
       nav.setNavigationButtons(canGoBack, canGoForward);
     } else {
       nav.setNavigationButtons(false, false);

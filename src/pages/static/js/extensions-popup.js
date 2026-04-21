@@ -692,6 +692,16 @@ export class ExtensionsPopup {
             return null;
         }
 
+        // Reuse existing temp icon for this extension (avoid stacking duplicates on repeat opens)
+        if (navBox && extensionId) {
+            const dup = Array.from(navBox.querySelectorAll('.temp-icon')).find(
+                (el) => el.dataset.extensionId === extensionId
+            );
+            if (dup) {
+                return dup;
+            }
+        }
+
         // Create temporary icon (same structure as nav-box renderBrowserActions)
         const tempIcon = document.createElement('button');
         tempIcon.className = 'extension-action-btn temp-icon';
