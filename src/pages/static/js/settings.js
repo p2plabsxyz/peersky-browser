@@ -374,6 +374,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Initialize sidebar navigation
   initializeSidebarNavigation();
   
+  // Load and display app version
+  await loadAppVersion();
+  
   // Populate wallpaper dropdown from wallpaper/defaults/
   await populateWallpaperDropdown();
   
@@ -1133,6 +1136,20 @@ function updateClearBtnLabel() {
   const filter = document.getElementById('export-time-filter')?.value || 'all';
   const clearBtn = document.getElementById('clear-archive-btn');
   if (clearBtn) clearBtn.textContent = filter === 'all' ? 'Clear All' : 'Clear';
+}
+
+// Load and display app version
+async function loadAppVersion() {
+  const versionElement = document.getElementById('app-version');
+  if (!versionElement) return;
+  
+  try {
+    const version = await settingsAPI.settings.getVersion();
+    versionElement.textContent = `v${version}`;
+  } catch (error) {
+    console.error('Failed to load app version:', error);
+    versionElement.textContent = 'Unknown';
+  }
 }
 
 // Populate wallpaper dropdown dynamically

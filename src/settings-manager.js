@@ -483,6 +483,11 @@ class SettingsManager {
       return { canceled: true };
     });
 
+    // Get app version
+    ipcMain.handle('settings-get-version', async () => {
+      return app.getVersion();
+    });
+
     ipcMain.handle("settings-clear-archive", async (event, cutoff) => {
       try {
         if (!cutoff || cutoff <= 0) {
