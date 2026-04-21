@@ -54,9 +54,7 @@
       "gatekeeperAssess": false,
       "entitlements": "buildResources/entitlements.mac.plist",
       "entitlementsInherit": "buildResources/entitlements.mac.plist",
-      "notarize": {
-        "teamId": "PP6D6HB667"
-      },
+      "notarize": true,
       "extendInfo": {
         "NSMicrophoneUsageDescription": "The current page is asking to use your microphone",
         "NSCameraUsageDescription": "The current page is asking to use your camera",
