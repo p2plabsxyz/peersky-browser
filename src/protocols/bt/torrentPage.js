@@ -197,7 +197,7 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
     </div>
 
     <div class="privacy-warning">
-      <strong>Privacy Notice:</strong> BitTorrent is a peer-to-peer protocol. When downloading, your IP address is visible to other peers in the swarm and pieces of data are uploaded to other users during the transfer. PeerSky automatically stops the torrent once the download completes and does not seed. This may bypass your proxy or VPN settings.
+      <strong>Privacy Notice:</strong> BitTorrent is a peer-to-peer protocol. Your IP address is visible to peers while downloading, and while seeding if you explicitly enable it. PeerSky auto-stops completed torrents by default (no seeding), and provides explicit Start Seeding / Stop Seeding controls. This may bypass your proxy or VPN settings.
     </div>
 
   </div>
