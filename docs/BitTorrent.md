@@ -54,7 +54,7 @@ The torrent page communicates with the handler via `bt://api?action=api&api=<act
 ## Privacy & Safety
 
 - **Default no-seeding** — torrents stop automatically on completion unless you explicitly choose **Start Seeding**
-- **LAN discovery disabled** — `lsd`, `natUpnp`, `natPmp` are all off
+- **LAN / NAT defaults** — normal downloads keep `lsd`, `natUpnp`, and `natPmp` off. When you use **Start Seeding** and no other torrents are active, the worker switches to a seeding network profile with those features on and an upload cap; when seeding stops and the client is idle, it switches back.
 - **IP visibility** — your IP is visible to peers during download, and while seeding if you enable it
 - **Upload during download** — pieces are shared with peers while downloading (BitTorrent protocol requirement)
 - **Stop control** — you can stop active seeding at any time using **Stop Seeding**
