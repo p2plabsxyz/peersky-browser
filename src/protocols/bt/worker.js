@@ -16,6 +16,7 @@ if (!fs.existsSync(downloadPath)) {
 }
 
 let client = null;
+const torrentModes = new Map();
 
 function send(msg) {
   try {
@@ -80,11 +81,14 @@ setInterval(() => {
   
   for (const torrent of client.torrents) {
     if (!torrent.infoHash) continue;
+    const mode = torrentModes.get(torrent.infoHash) || "download";
     
     const status = {
       infoHash: torrent.infoHash,
       name: torrent.name || "Fetching metadata...",
       downloadPath,
+      mode,
+      isSeeding: mode === "seed" && torrent.done,
       progress: torrent.progress,
       downloaded: torrent.downloaded,
       uploaded: torrent.uploaded,
@@ -188,6 +192,7 @@ async function handleStart(id, { magnetUri, announce }) {
   });
 
   torrent.on("infoHash", () => {
+    torrentModes.set(torrent.infoHash, "download");
     console.log(`[BT-Worker] InfoHash resolved: ${torrent.infoHash}`);
   });
 
@@ -208,6 +213,8 @@ async function handleStart(id, { magnetUri, announce }) {
       infoHash,
       name: torrent.name,
       downloadPath,
+      mode: torrentModes.get(infoHash) || "download",
+      isSeeding: false,
       progress: 1,
       downloaded: torrent.downloaded,
       uploaded: torrent.uploaded,
@@ -317,6 +324,7 @@ async function handleRemove(id, { hash }) {
     return;
   }
   const infoHash = torrent.infoHash;
+  torrentModes.delete(infoHash);
   torrent.destroy({ destroyStore: false }, () => {
     console.log(`[BT-Worker] Removed torrent: ${infoHash}`);
     send({ id, type: "removed", infoHash });
