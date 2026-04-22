@@ -495,6 +495,9 @@ async function pauseResumeTorrent(action, hash) {
           log.info(`[BT] Torrent not in worker, re-starting from cache: ${hash}`);
           removeTorrentState(hash);
           statusCache.delete(hash);
+          if (cached.mode === "seed") {
+            return await seedTorrent(encodeURIComponent(cached.magnetURI), hash);
+          }
           return await startTorrent(encodeURIComponent(cached.magnetURI));
         }
       }
