@@ -60,15 +60,6 @@ The torrent page communicates with the handler via `bt://api?action=api&api=<act
 - **Stop control** — you can stop active seeding at any time using **Stop Seeding**
 - **Isolated process** — WebTorrent runs in a child process; a crash won't take down the browser
 
-## Current TODO Scope (Seeding + Hosting Path)
-
-To match the current BitTorrent TODOs in `bittorrent-handler` and `bt/worker`, the next implementation batch is intentionally limited to:
-
-- **Opt-in seeding only** — default torrent downloads must still auto-stop on completion for privacy.
-- **`bt://<infohash>/path` resolution** — handler should resolve and serve requested files from torrent content.
-
-Out of scope for this batch: broad hosting platform features (publishing pipeline, versioning, advanced hosting UX).
-
 ## Opening Downloaded Files
 
 Downloaded files open in a new browser tab via `file://` URLs. This uses an IPC bridge (`open-url-in-tab`) because Electron blocks direct `file://` navigation from custom protocol pages. The IPC handler only accepts `file://` URLs for security.
