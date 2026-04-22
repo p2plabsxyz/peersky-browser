@@ -137,6 +137,9 @@ process.on("message", (msg) => {
       case "start":
         handleStart(id, params);
         break;
+      case "seed":
+        handleSeed(id, params);
+        break;
       case "pause":
         handlePause(id, params);
         break;
@@ -161,6 +164,14 @@ function extractHash(uri) {
 }
 
 async function handleStart(id, { magnetUri, announce }) {
+  return handleAddTorrent(id, { magnetUri, announce, mode: "download" });
+}
+
+async function handleSeed(id, { magnetUri, announce }) {
+  return handleAddTorrent(id, { magnetUri, announce, mode: "seed" });
+}
+
+async function handleAddTorrent(id, { magnetUri, announce, mode = "download" }) {
   if (!client) {
     send({ id, error: "Client not initialized" });
     return;
@@ -168,11 +179,14 @@ async function handleStart(id, { magnetUri, announce }) {
 
   // Extract infoHash and check by hash, not by full URI
   const hash = extractHash(magnetUri);
-  console.log(`[BT-Worker] Start requested. Hash: ${hash}, Announce: ${(announce || []).length} trackers`);
+  console.log(`[BT-Worker] ${mode} requested. Hash: ${hash}, Announce: ${(announce || []).length} trackers`);
 
   if (hash) {
     const existing = await client.get(hash);
     if (existing && existing.infoHash) {
+      if (mode === "seed") {
+        torrentModes.set(existing.infoHash, "seed");
+      }
       console.log("[BT-Worker] Torrent already active:", existing.infoHash, existing.name || "no name yet");
       send({
         id,
@@ -180,6 +194,7 @@ async function handleStart(id, { magnetUri, announce }) {
         infoHash: existing.infoHash,
         magnetURI: existing.magnetURI,
         name: existing.name,
+        mode: torrentModes.get(existing.infoHash) || "download",
       });
       return;
     }
@@ -192,7 +207,7 @@ async function handleStart(id, { magnetUri, announce }) {
   });
 
   torrent.on("infoHash", () => {
-    torrentModes.set(torrent.infoHash, "download");
+    torrentModes.set(torrent.infoHash, mode === "seed" ? "seed" : "download");
     console.log(`[BT-Worker] InfoHash resolved: ${torrent.infoHash}`);
   });
 
@@ -205,23 +220,29 @@ async function handleStart(id, { magnetUri, announce }) {
   });
 
   torrent.on("done", () => {
-    console.log(`[BT-Worker] Download complete: ${torrent.name}. Destroying torrent to prevent seeding.`);
     const infoHash = torrent.infoHash;
+    const currentMode = torrentModes.get(infoHash) || "download";
+    const keepSeeding = currentMode === "seed";
+    if (keepSeeding) {
+      console.log(`[BT-Worker] Download complete: ${torrent.name}. Keeping torrent alive for seeding.`);
+    } else {
+      console.log(`[BT-Worker] Download complete: ${torrent.name}. Destroying torrent to prevent seeding.`);
+    }
     // Send final status with all file info before destroying
     send({
       type: "status-update",
       infoHash,
       name: torrent.name,
       downloadPath,
-      mode: torrentModes.get(infoHash) || "download",
-      isSeeding: false,
+      mode: currentMode,
+      isSeeding: keepSeeding,
       progress: 1,
       downloaded: torrent.downloaded,
       uploaded: torrent.uploaded,
-      downloadSpeed: 0,
-      uploadSpeed: 0,
+      downloadSpeed: keepSeeding ? torrent.downloadSpeed : 0,
+      uploadSpeed: keepSeeding ? torrent.uploadSpeed : 0,
       ratio: torrent.ratio,
-      numPeers: 0,
+      numPeers: keepSeeding ? torrent.numPeers : 0,
       timeRemaining: 0,
       done: true,
       paused: false,
@@ -238,11 +259,12 @@ async function handleStart(id, { magnetUri, announce }) {
       magnetURI: torrent.magnetURI,
     });
     send({ type: "done", infoHash });
-    // Destroy immediately — keeps files on disk, stops all connections
-    // TODO: Skip destroy when in seed mode (future bt:// website hosting)
-    torrent.destroy({ destroyStore: false }, () => {
-      console.log(`[BT-Worker] Torrent destroyed (no seeding): ${infoHash}`);
-    });
+    // Destroy immediately for download mode; keep alive in explicit seed mode.
+    if (!keepSeeding) {
+      torrent.destroy({ destroyStore: false }, () => {
+        console.log(`[BT-Worker] Torrent destroyed (no seeding): ${infoHash}`);
+      });
+    }
   });
 
   torrent.on("error", (err) => {
@@ -279,6 +301,7 @@ async function handleStart(id, { magnetUri, announce }) {
     type: "started",
     infoHash: torrent.infoHash || hash || null,
     magnetURI: torrent.magnetURI,
+    mode,
   });
 }
 
