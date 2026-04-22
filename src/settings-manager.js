@@ -154,11 +154,13 @@ async function resetP2PData({ resetIdentities = false } = {}) {
   const ensCache = path.join(USER_DATA, 'ensCache.json');
   const btState = path.join(USER_DATA, 'bt-state.json');
   const portsFile = path.join(USER_DATA, 'peersky-ports.json');
+  const chatRooms = path.join(USER_DATA, 'peersky-chat-rooms.json');
 
-  // ENS cache, BitTorrent state, and hs cache can always be removed
+  // ENS cache, BitTorrent state, P2PMD ports, and PeerChat rooms can always be removed
   await fs.rm(ensCache, { recursive: true, force: true }).catch(() => {});
   await fs.rm(btState, { recursive: true, force: true }).catch(() => {});
   await fs.rm(portsFile, { recursive: true, force: true }).catch(() => {});
+  await fs.rm(chatRooms, { recursive: true, force: true }).catch(() => {});
   
   // Wipe internal P2P User App Registry data and cleanly re-sync it
   await p2pAppRegistry.reset();
