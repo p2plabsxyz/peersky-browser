@@ -28,6 +28,10 @@
           <img src="peersky://static/assets/svg/palette.svg" class="nav-icon" alt="Appearance Icon">
           <span>Appearance</span>
         </a>
+        <a href="#general" class="nav-item" data-section="general">
+          <img src="peersky://static/assets/svg/sliders.svg" class="nav-icon" alt="General Icon">
+          <span>General</span>
+        </a>
         <a href="#search" class="nav-item" data-section="search">
           <img src="peersky://static/assets/svg/search.svg" class="nav-icon" alt="Search Icon">
           <span>Search</span>
@@ -128,6 +132,37 @@
                 </div>
               </div>
               <input type="hidden" id="clock-format" value="24h">
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- General Section -->
+      <div id="general-section" class="settings-page">
+        <h1 class="section-title">General</h1>
+
+        <section class="settings-section">
+          <div class="setting-row">
+            <div class="setting-label">
+              <div style="font-weight: 500;">Automatic updates</div>
+              <div class="setting-hint" style="margin-top: 4px;">Automatically check for and download new versions of Peersky Browser</div>
+            </div>
+            <div class="setting-control">
+              <label class="toggle-label">
+                <input type="checkbox" id="auto-update-enabled" class="toggle-input" checked>
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <div class="setting-row">
+            <div class="setting-label">
+              <div style="font-weight: 500;">Version</div>
+            </div>
+            <div class="setting-control">
+              <span id="app-version" style="color: var(--text-secondary); font-size: 0.9rem;">Loading...</span>
             </div>
           </div>
         </section>

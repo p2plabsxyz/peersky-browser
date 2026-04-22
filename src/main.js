@@ -19,7 +19,7 @@ import { setWindowManager } from "./context-menu.js";
 import { isBuiltInSearchEngine } from "./search-engine.js";
 import "./llm.js";
 import "./llm-memory.js";
-// import { setupAutoUpdater } from "./auto-updater.js";
+import { setupAutoUpdater } from "./auto-updater.js";
 
 // Import and initialize extension system
 import extensionManager from "./extensions/index.js";
@@ -239,8 +239,7 @@ app.whenReady().then(async () => {
   }
 
   // Initialize AutoUpdater after windowManager is ready
-  // console.log("App is prepared, setting up AutoUpdater...");
-  // setupAutoUpdater();
+  setupAutoUpdater();
 });
 
 // Introduce a flag to prevent multiple 'before-quit' handling
