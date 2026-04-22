@@ -8,6 +8,7 @@ import { generateTorrentUI } from "./bt/torrentPage.js";
 import settingsManager from "../settings-manager.js";
 import { ipcMain } from "electron";
 import parseTorrent from "parse-torrent";
+import mime from "mime-types";
 
 const log = createLogger('protocols:bt');
 
@@ -231,7 +232,7 @@ export async function createHandler() {
 
     try {
       // Determine protocol from the raw URL
-      let protocol, infoHash, magnetUri, queryParams;
+      let protocol, infoHash, magnetUri, queryParams, requestedTorrentPath = "";
 
       if (rawUrl.startsWith("magnet:")) {
         protocol = "magnet";
@@ -245,7 +246,19 @@ export async function createHandler() {
         const urlObj = new URL(rawUrl);
         protocol = urlObj.protocol.replace(":", "");
         queryParams = urlObj.searchParams;
-        infoHash = urlObj.hostname || urlObj.pathname.replace(/^\/+/, "").replace(/\/+$/, "");
+        if (urlObj.hostname) {
+          infoHash = urlObj.hostname;
+          requestedTorrentPath = urlObj.pathname.replace(/^\/+/, "");
+        } else {
+          const fullPath = urlObj.pathname.replace(/^\/+/, "");
+          const slashIndex = fullPath.indexOf("/");
+          if (slashIndex >= 0) {
+            infoHash = fullPath.slice(0, slashIndex);
+            requestedTorrentPath = fullPath.slice(slashIndex + 1);
+          } else {
+            infoHash = fullPath;
+          }
+        }
       }
 
       const action = queryParams.get("action");
@@ -256,10 +269,10 @@ export async function createHandler() {
         return await handleAPI(api, queryParams, infoHash, request);
       }
 
-      // TODO: Support file path resolution for website hosting
-      // e.g. bt://{INFO_HASH}/index.html should serve the file from the torrent
-      // This would enable hosting websites on BitTorrent (like https://gitlab.com/ivi.eco/akoopa)
-      // Implementation: parse pathname, seed torrent if needed, serve requested file
+      // Serve bt://<infohash>/<path> directly from downloaded torrent files when available.
+      if (protocol !== "magnet" && requestedTorrentPath) {
+        return await serveTorrentFile(infoHash, requestedTorrentPath);
+      }
 
       // Serve UI page (imported from bt/torrentPage.js)
       if (protocol === "magnet") {
@@ -555,4 +568,69 @@ function extractInfoHash(magnetUrl) {
     log.warn('[BT] Failed to extract infoHash:', err.message);
     return null;
   }
+}
+
+function normalizeTorrentPath(input) {
+  if (!input) return "";
+  let decoded = input;
+  try {
+    decoded = decodeURIComponent(input);
+  } catch (err) {
+    // Keep raw input if decode fails; we'll still normalize separators.
+  }
+  const normalized = path.posix.normalize(decoded.replace(/\\/g, "/")).replace(/^\/+/, "");
+  if (normalized.startsWith("..")) return null;
+  return normalized;
+}
+
+async function serveTorrentFile(infoHash, requestedPath) {
+  const cached = statusCache.get(infoHash);
+  if (!cached) {
+    return new Response("Torrent not found. Start or resume it first.", {
+      status: 404,
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
+  }
+
+  const relativePath = normalizeTorrentPath(requestedPath);
+  if (!relativePath) {
+    return new Response("Invalid torrent file path", {
+      status: 400,
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
+  }
+
+  const files = Array.isArray(cached.files) ? cached.files : [];
+  const match = files.find((f) => normalizeTorrentPath(f.path) === relativePath);
+  if (!match) {
+    return new Response(`File not found in torrent: ${relativePath}`, {
+      status: 404,
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
+  }
+
+  const basePath = path.resolve(cached.downloadPath || path.join(app.getPath("downloads"), "PeerskyTorrents"));
+  const filePath = path.resolve(basePath, match.path);
+  if (filePath !== basePath && !filePath.startsWith(`${basePath}${path.sep}`)) {
+    return new Response("Forbidden path", {
+      status: 403,
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
+  }
+
+  if (!(await fs.pathExists(filePath))) {
+    return new Response(`File not available on disk yet: ${relativePath}`, {
+      status: 404,
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
+  }
+
+  const data = await fs.readFile(filePath);
+  const contentType = mime.lookup(filePath) || "application/octet-stream";
+  const withCharset = String(contentType).startsWith("text/") ? `${contentType}; charset=utf-8` : contentType;
+
+  return new Response(data, {
+    status: 200,
+    headers: { "Content-Type": withCharset },
+  });
 }
