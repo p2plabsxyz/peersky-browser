@@ -338,7 +338,7 @@ async function handleAPI(api, queryParams, infoHash, request) {
   }
 
   // Security: mutations require POST method
-  const mutationActions = ['start', 'pause', 'resume', 'remove'];
+  const mutationActions = ['start', 'seed', 'pause', 'resume', 'remove'];
   if (mutationActions.includes(api) && request.method !== 'POST') {
     return jsonResponse({ error: `${api} requires POST method` }, 405);
   }
@@ -347,6 +347,9 @@ async function handleAPI(api, queryParams, infoHash, request) {
     if (api === "start") {
       const magnetUri = queryParams.get("magnet");
       return await startTorrent(magnetUri);
+    } else if (api === "seed") {
+      const magnetUri = queryParams.get("magnet");
+      return await seedTorrent(magnetUri, hash);
     } else if (api === "status") {
       // Serve from cache instantly — no IPC round-trip
       return getCachedStatus(hash);
@@ -409,6 +412,54 @@ async function startTorrent(magnetUri) {
     });
   } catch (err) {
     log.error("[BT] startTorrent error:", err);
+    return jsonResponse({ error: err.message }, 500);
+  }
+}
+
+async function seedTorrent(magnetUri, hash) {
+  try {
+    let decoded = null;
+    if (magnetUri) {
+      decoded = decodeURIComponent(magnetUri);
+    } else if (hash) {
+      const cached = statusCache.get(hash);
+      if (cached?.magnetURI) {
+        decoded = cached.magnetURI;
+      }
+    }
+
+    if (!decoded) {
+      return jsonResponse({ error: "seed requires magnet or hash with cached magnetURI" }, 400);
+    }
+
+    // Merge all trackers from the magnet + defaults
+    let allTrackers = [...DEFAULT_TRACKERS];
+    try {
+      const url = new URL(decoded);
+      const magnetTrackers = url.searchParams.getAll("tr");
+      allTrackers = [...new Set([...magnetTrackers, ...DEFAULT_TRACKERS])];
+    } catch (e) { /* ignore parse errors */ }
+
+    const result = await sendCommand("seed", {
+      magnetUri: decoded,
+      announce: allTrackers,
+    });
+
+    if (result.error) {
+      if (result.error.includes("Unknown action: seed")) {
+        return jsonResponse({ error: "Seed mode is not available yet in worker" }, 501);
+      }
+      return jsonResponse({ error: result.error }, 400);
+    }
+
+    return jsonResponse({
+      success: true,
+      infoHash: result.infoHash || extractInfoHash(decoded),
+      magnetURI: decoded,
+      mode: "seed",
+    });
+  } catch (err) {
+    log.error("[BT] seedTorrent error:", err);
     return jsonResponse({ error: err.message }, 500);
   }
 }
