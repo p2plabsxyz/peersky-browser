@@ -91,6 +91,12 @@ initClient();
 // Track previous status to avoid redundant updates
 const previousStatus = new Map();
 
+function clearTorrentTracking(infoHash) {
+  torrentModes.delete(infoHash);
+  seedingStartedAt.delete(infoHash);
+  previousStatus.delete(infoHash);
+}
+
 function hasStatusChanged(infoHash, newStatus) {
   const prev = previousStatus.get(infoHash);
   if (!prev) return true;
@@ -308,6 +314,7 @@ async function handleAddTorrent(id, { magnetUri, announce, mode = "download" }) 
     // Destroy immediately for download mode; keep alive in explicit seed mode.
     if (!keepSeeding) {
       torrent.destroy({ destroyStore: false }, () => {
+        clearTorrentTracking(infoHash);
         console.log(`[BT-Worker] Torrent destroyed (no seeding): ${infoHash}`);
         void maybeUseDownloadProfileWhenIdle();
       });
@@ -394,8 +401,7 @@ async function handleRemove(id, { hash }) {
     return;
   }
   const infoHash = torrent.infoHash;
-  torrentModes.delete(infoHash);
-  seedingStartedAt.delete(infoHash);
+  clearTorrentTracking(infoHash);
   torrent.destroy({ destroyStore: false }, () => {
     console.log(`[BT-Worker] Removed torrent: ${infoHash}`);
     send({ id, type: "removed", infoHash });
