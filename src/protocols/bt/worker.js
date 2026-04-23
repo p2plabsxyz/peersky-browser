@@ -17,6 +17,7 @@ if (!fs.existsSync(downloadPath)) {
 
 let client = null;
 const torrentModes = new Map();
+const seedingStartedAt = new Map();
 
 // Seed profile: stronger reachability + upload cap. Applied only when no other torrents are active.
 const SEED_UPLOAD_BYTES_PER_SEC = 5 * 1024 * 1024;
@@ -114,13 +115,18 @@ setInterval(() => {
   for (const torrent of client.torrents) {
     if (!torrent.infoHash) continue;
     const mode = torrentModes.get(torrent.infoHash) || "download";
+    const isSeeding = mode === "seed" && torrent.done;
+    if (isSeeding && !seedingStartedAt.has(torrent.infoHash)) {
+      seedingStartedAt.set(torrent.infoHash, Date.now());
+    }
     
     const status = {
       infoHash: torrent.infoHash,
       name: torrent.name || "Fetching metadata...",
       downloadPath,
       mode,
-      isSeeding: mode === "seed" && torrent.done,
+      isSeeding,
+      seedingSince: isSeeding ? seedingStartedAt.get(torrent.infoHash) : null,
       progress: torrent.progress,
       downloaded: torrent.downloaded,
       uploaded: torrent.uploaded,
@@ -259,6 +265,9 @@ async function handleAddTorrent(id, { magnetUri, announce, mode = "download" }) 
     const infoHash = torrent.infoHash;
     const currentMode = torrentModes.get(infoHash) || "download";
     const keepSeeding = currentMode === "seed";
+    if (keepSeeding && !seedingStartedAt.has(infoHash)) {
+      seedingStartedAt.set(infoHash, Date.now());
+    }
     if (keepSeeding) {
       console.log(`[BT-Worker] Download complete: ${torrent.name}. Keeping torrent alive for seeding.`);
     } else {
@@ -272,6 +281,7 @@ async function handleAddTorrent(id, { magnetUri, announce, mode = "download" }) 
       downloadPath,
       mode: currentMode,
       isSeeding: keepSeeding,
+      seedingSince: keepSeeding ? seedingStartedAt.get(infoHash) : null,
       progress: 1,
       downloaded: torrent.downloaded,
       uploaded: torrent.uploaded,
@@ -385,6 +395,7 @@ async function handleRemove(id, { hash }) {
   }
   const infoHash = torrent.infoHash;
   torrentModes.delete(infoHash);
+  seedingStartedAt.delete(infoHash);
   torrent.destroy({ destroyStore: false }, () => {
     console.log(`[BT-Worker] Removed torrent: ${infoHash}`);
     send({ id, type: "removed", infoHash });

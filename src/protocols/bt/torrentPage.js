@@ -175,10 +175,12 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
       </div>
       <div class="stats-grid">
         <div class="stat-item"><div class="stat-label">Downloaded</div><div class="stat-value" id="downloaded">0 B</div></div>
+        <div class="stat-item"><div class="stat-label">Uploaded</div><div class="stat-value" id="uploadedTotal">0 B</div></div>
         <div class="stat-item"><div class="stat-label">Download Speed</div><div class="stat-value" id="downloadSpeed">0 B/s</div></div>
         <div class="stat-item"><div class="stat-label">Upload Speed</div><div class="stat-value" id="uploadSpeed">0 B/s</div></div>
         <div class="stat-item"><div class="stat-label">Peers</div><div class="stat-value" id="peers">0</div></div>
         <div class="stat-item"><div class="stat-label">Time Remaining</div><div class="stat-value" id="timeRemaining">-</div></div>
+        <div class="stat-item"><div class="stat-label">Seeding Time</div><div class="stat-value" id="seedingTime">-</div></div>
         <div class="stat-item"><div class="stat-label">Ratio</div><div class="stat-value" id="ratio">0.00</div></div>
       </div>
 
@@ -257,6 +259,9 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
               document.getElementById('stopSeedBtn').style.display = 'inline-block';
               document.getElementById('stopSeedBtn').disabled = false;
               document.getElementById('seedBtn').style.display = 'none';
+              if (!statusInterval) {
+                statusInterval = setInterval(pollStatus, 2000);
+              }
             } else {
               showStatus('Download complete! Files saved to Downloads/PeerskyTorrents. Torrent stopped automatically (no seeding).', 'success');
               document.getElementById('seedBtn').style.display = 'inline-block';
@@ -320,10 +325,12 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
       }
 
       document.getElementById('downloaded').textContent = formatBytes(s.downloaded);
+      document.getElementById('uploadedTotal').textContent = formatBytes(s.uploaded);
       document.getElementById('downloadSpeed').textContent = formatBytes(s.downloadSpeed) + '/s';
       document.getElementById('uploadSpeed').textContent = formatBytes(s.uploadSpeed) + '/s';
       document.getElementById('peers').textContent = s.numPeers || 0;
       document.getElementById('timeRemaining').textContent = formatTime(s.timeRemaining);
+      document.getElementById('seedingTime').textContent = formatSeedingTime(s);
       document.getElementById('ratio').textContent = (s.ratio || 0).toFixed(2);
 
       if (s.files && s.files.length > 0 && !filesRendered) {
@@ -340,8 +347,6 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
         updateUIFromStatus(s);
 
         if (s.done) {
-          clearInterval(statusInterval);
-          statusInterval = null;
           document.getElementById('pauseBtn').style.display = 'none';
           document.getElementById('resumeBtn').style.display = 'none';
           if (s.mode === 'seed' || s.isSeeding) {
@@ -350,6 +355,8 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
             document.getElementById('stopSeedBtn').style.display = 'inline-block';
             document.getElementById('stopSeedBtn').disabled = false;
           } else {
+            clearInterval(statusInterval);
+            statusInterval = null;
             showStatus('Download complete! Files saved to Downloads/PeerskyTorrents. Torrent stopped automatically (no seeding).', 'success');
             document.getElementById('seedBtn').style.display = 'inline-block';
             document.getElementById('seedBtn').disabled = false;
@@ -507,6 +514,20 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
       if (h > 0) return h + 'h ' + (m % 60) + 'm';
       if (m > 0) return m + 'm ' + (s % 60) + 's';
       return s + 's';
+    }
+
+    function formatSeedingTime(status) {
+      if (!status || !(status.mode === 'seed' || status.isSeeding)) return '-';
+      if (!status.seedingSince) return '-';
+      var elapsedMs = Date.now() - status.seedingSince;
+      if (elapsedMs < 0) return '-';
+      var totalSeconds = Math.floor(elapsedMs / 1000);
+      var hours = Math.floor(totalSeconds / 3600);
+      var minutes = Math.floor((totalSeconds % 3600) / 60);
+      var seconds = totalSeconds % 60;
+      if (hours > 0) return hours + 'h ' + minutes + 'm ' + seconds + 's';
+      if (minutes > 0) return minutes + 'm ' + seconds + 's';
+      return seconds + 's';
     }
 
     function escapeHtml(s) {
