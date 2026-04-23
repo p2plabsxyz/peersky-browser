@@ -110,6 +110,9 @@ async function clearBrowserCache() {
     await clear(['indexdb']); // (Electron's internal key for IndexedDB)
     await clear(['cachestorage', 'serviceworkers']);
 
+    const downloadsFile = path.join(app.getPath("userData"), "downloads.json");
+    await fs.rm(downloadsFile, { force: true }).catch(() => {});
+
     await clearPersistedPermissions();
 
     logDebug('Cache and storage cleared safely');

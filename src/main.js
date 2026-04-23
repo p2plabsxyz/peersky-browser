@@ -2,6 +2,7 @@ import { app, session, protocol as globalProtocol, ipcMain, BrowserWindow, Menu,
 import { createLogger } from './logger.js';
 import fs from "fs/promises";
 import path from "path";
+import crypto from "crypto"
 import { createHandler as createBrowserHandler } from "./protocols/peersky-protocol.js";
 import { createHandler as createBrowserThemeHandler } from "./protocols/theme-handler.js";
 import { createHandler as createIPFSHandler } from "./protocols/ipfs-handler.js";
@@ -80,6 +81,28 @@ const log = createLogger('main');
 
 let windowManager = null;
 
+const trustedUIWebContents = new Set();
+
+app.on("browser-window-created", (event, win) => {
+  trustedUIWebContents.add(win.webContents.id);
+  win.webContents.once("destroyed", () =>
+    trustedUIWebContents.delete(win.webContents.id),
+  );
+});
+
+app.on("web-contents-created", (event, wc) => {
+  wc.on("did-navigate", (e, url) => {
+    if (url.startsWith("peersky://downloads")) {
+      trustedUIWebContents.add(wc.id);
+    } else {
+      if (!BrowserWindow.fromWebContents(wc)) {
+        trustedUIWebContents.delete(wc.id);
+      }
+    }
+  });
+  wc.once("destroyed", () => trustedUIWebContents.delete(wc.id));
+});
+
 const webviewTabShortcutNavAttached = new WeakSet();
 
 function attachWebviewTabShortcutNav(wc) {
@@ -146,6 +169,63 @@ app.whenReady().then(async () => {
   await setupProtocols(userSession);
   installExtensionWebRequestBridge(userSession);
   setupBittorrentIpc();
+
+  userSession.on("will-download", (event, item, sessionWebContents) => {
+    const downloadId = crypto.randomUUID();
+
+    activeDownloadItems.set(downloadId, item);
+
+    const broadcastProgress = (state, forcePaused = null) => {
+      const data = {
+        id: downloadId,
+        filename: item.getFilename(),
+        received: item.getReceivedBytes(),
+        total: item.getTotalBytes(),
+        state: state,
+        isPaused: forcePaused !== null ? forcePaused : item.isPaused(),
+        canResume: item.canResume(),
+        percent: item.getTotalBytes()
+          ? Math.round((item.getReceivedBytes() / item.getTotalBytes()) * 100)
+          : 0,
+      };
+
+      trustedUIWebContents.forEach((id) => {
+        const wc = webContents.fromId(id);
+        if (wc && !wc.isDestroyed()) {
+          wc.send("download-progress", data);
+        } else {
+          trustedUIWebContents.delete(id);
+        }
+      });
+    };
+
+    item.manualBroadcast = broadcastProgress;
+
+    const progressInterval = setInterval(() => {
+      if (item.getState() === "progressing") {
+        broadcastProgress(item.getState());
+      }
+    }, 100);
+
+    item.on("done", async (event, state) => {
+      clearInterval(progressInterval);
+
+      activeDownloadItems.delete(downloadId);
+      broadcastProgress(state);
+
+      if (state === "completed") {
+        const downloadInfo = {
+          id: downloadId,
+          filename: item.getFilename(),
+          size: item.getTotalBytes(),
+          timestamp: Date.now(),
+          savePath: item.getSavePath(),
+          url: item.getURL(),
+        };
+        await saveDownloadHistory(downloadInfo);
+      }
+    });
+  });
 
   // Global webview partition alignment and security hardening
   app.on('web-contents-created', (_e, wc) => {
@@ -561,6 +641,102 @@ ipcMain.on('new-window', (_event, options = {}) => {
   }
 });
 
+const DOWNLOADS_FILE = path.join(app.getPath("userData"), "downloads.json");
+const activeDownloadItems = new Map();
+
+async function saveDownloadHistory(downloadInfo) {
+  try {
+    let downloads = [];
+    try {
+      const data = await fs.readFile(DOWNLOADS_FILE, "utf-8");
+      downloads = JSON.parse(data);
+    } catch (e) {
+      // File doesn't exist or is invalid, start fresh
+    }
+
+    downloads.unshift(downloadInfo);
+
+    if (downloads.length > 100) downloads.length = 100;
+
+    await fs.writeFile(DOWNLOADS_FILE, JSON.stringify(downloads, null, 2));
+  } catch (err) {
+    log.error("Failed to save download history:", err);
+  }
+}
+
+ipcMain.handle("get-downloads", async () => {
+  try {
+    const data = await fs.readFile(DOWNLOADS_FILE, "utf-8");
+    const downloads = JSON.parse(data);
+
+    // Check if each file still exists on the user's disk
+    const enhancedDownloads = await Promise.all(
+      downloads.map(async (item) => {
+        try {
+          await fs.access(item.savePath);
+          return { ...item, fileExists: true };
+        } catch {
+          // File was deleted or moved
+          return { ...item, fileExists: false };
+        }
+      })
+    );
+
+    return enhancedDownloads;
+  } catch (e) {
+    return []; // Return empty array if no history exists yet
+  }
+});
+
+ipcMain.handle("get-active-downloads", async () => {
+  const active = [];
+  for (const [id, item] of activeDownloadItems.entries()) {
+    active.push({
+      id,
+      filename: item.getFilename(),
+      received: item.getReceivedBytes(),
+      total: item.getTotalBytes(),
+      state: item.getState(),
+      isPaused: item.isPaused(),
+      canResume: item.canResume(),
+      percent: item.getTotalBytes() ? Math.round((item.getReceivedBytes() / item.getTotalBytes()) * 100) : 0
+    });
+  }
+  return active;
+});
+
+ipcMain.handle("remove-download", async (event, id) => {
+  try {
+    let downloads = [];
+    try {
+      const data = await fs.readFile(DOWNLOADS_FILE, "utf-8");
+      downloads = JSON.parse(data);
+    } catch (e) {}
+
+    const targetDownload = downloads.find((d) => d.id === id);
+
+    if (!targetDownload) {
+      throw new Error("Download record not found in history.");
+    }
+
+    try {
+      await fs.unlink(targetDownload.savePath);
+    } catch (err) {
+      if (err.code !== "ENOENT") {
+        log.warn("Could not delete file from disk:", err);
+      }
+    }
+
+    downloads = downloads.filter((d) => d.id !== id);
+    await fs.writeFile(DOWNLOADS_FILE, JSON.stringify(downloads, null, 2));
+
+    return { success: true };
+  } catch (err) {
+    log.error("Error removing download:", err);
+    return { success: false, error: err.message };
+  }
+});
+
 ipcMain.handle('get-tab-memory-usage', async (event, webContentsId) => {
   try{
     const wc = webContents.fromId(webContentsId);
@@ -586,6 +762,27 @@ ipcMain.handle('get-tab-memory-usage', async (event, webContentsId) => {
     log.error(`Error getting memory usage for webContents ID ${webContentsId}:`, error);
     return null;
   }
+});
+
+ipcMain.on("download-pause", (event, id) => {
+  const item = activeDownloadItems.get(id);
+  if (item) {
+    if (!item.isPaused()) item.pause();
+    if (item.manualBroadcast) item.manualBroadcast(item.getState(), true);
+  }
+});
+
+ipcMain.on("download-resume", (event, id) => {
+  const item = activeDownloadItems.get(id);
+  if (item) {
+    if (item.canResume()) item.resume();
+    if (item.manualBroadcast) item.manualBroadcast(item.getState(), false);
+  }
+});
+
+ipcMain.on('download-cancel', (event, id) => {
+  const item = activeDownloadItems.get(id);
+  if (item) item.cancel();
 });
 
 // IPC handler to check if a specific webContents is currently playing audio
