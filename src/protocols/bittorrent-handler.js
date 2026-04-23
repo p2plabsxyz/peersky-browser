@@ -269,6 +269,8 @@ export async function createHandler() {
         }
       }
 
+      infoHash = normalizeInfoHash(infoHash);
+
       const action = queryParams.get("action");
 
       // Handle API requests
@@ -598,6 +600,24 @@ function normalizeTorrentPath(input) {
   const normalized = path.posix.normalize(decoded.replace(/\\/g, "/")).replace(/^\/+/, "");
   if (normalized.startsWith("..")) return null;
   return normalized;
+}
+
+function normalizeInfoHash(rawHash) {
+  if (!rawHash || typeof rawHash !== "string") return rawHash;
+  const trimmed = rawHash.trim();
+  if (!trimmed) return trimmed;
+  try {
+    const parsed = parseTorrent(`magnet:?xt=urn:btih:${trimmed}`);
+    if (parsed && parsed.infoHash) {
+      return parsed.infoHash.toLowerCase();
+    }
+  } catch (_err) {
+    // Fallback for plain hex values parse-torrent doesn't accept in this context.
+  }
+  if (/^[a-fA-F0-9]{40}$/.test(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+  return trimmed;
 }
 
 async function serveTorrentFile(infoHash, requestedPath) {
