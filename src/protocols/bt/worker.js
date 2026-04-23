@@ -104,11 +104,15 @@ function hasStatusChanged(infoHash, newStatus) {
   // Check if significant fields changed (ignore minor fluctuations)
   return (
     prev.progress !== newStatus.progress ||
+    prev.uploaded !== newStatus.uploaded ||
     prev.downloadSpeed !== newStatus.downloadSpeed ||
     prev.uploadSpeed !== newStatus.uploadSpeed ||
     prev.numPeers !== newStatus.numPeers ||
     prev.done !== newStatus.done ||
-    prev.paused !== newStatus.paused
+    prev.paused !== newStatus.paused ||
+    prev.mode !== newStatus.mode ||
+    prev.isSeeding !== newStatus.isSeeding ||
+    prev.seedingSince !== newStatus.seedingSince
   );
 }
 
