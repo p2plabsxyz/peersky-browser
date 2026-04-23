@@ -16,6 +16,11 @@ if (!fs.existsSync(downloadPath)) {
 }
 
 let client = null;
+const torrentModes = new Map();
+const seedingStartedAt = new Map();
+
+// Seed profile: stronger reachability + upload cap. Applied only when no other torrents are active.
+const SEED_UPLOAD_BYTES_PER_SEC = 5 * 1024 * 1024;
 
 function send(msg) {
   try {
@@ -25,30 +30,59 @@ function send(msg) {
   }
 }
 
-function initClient() {
-  if (client) return;
-
-  // TODO: For future bt:// website seeding support, add a separate seed mode with:
-  // - lsd: true, natUpnp: true, natPmp: true (so peers can reach us)
-  // - uploadLimit set to a reasonable cap
-  // - Use client.seed(files, opts) instead of client.add()
-  // - Do NOT destroy torrent on done — keep alive for seeding
-  // - Expose via separate API action e.g. bt://api?api=seed
-  client = new WebTorrent({
+function createWebTorrentClient(profile) {
+  const seed = profile === "seed";
+  const c = new WebTorrent({
     maxConns: 55,
-    uploadLimit: -1,
-    lsd: false,
-    natUpnp: false,
-    natPmp: false,
+    uploadLimit: seed ? SEED_UPLOAD_BYTES_PER_SEC : -1,
+    lsd: seed,
+    natUpnp: seed,
+    natPmp: seed,
   });
-
-  client.on("error", (err) => {
+  c._networkProfile = seed ? "seed" : "download";
+  c.on("error", (err) => {
     console.error("[BT-Worker] Client error:", err.message);
     send({ type: "client-error", error: err.message });
   });
+  return c;
+}
 
+function initClient() {
+  if (client) return;
+  client = createWebTorrentClient("download");
   console.log("[BT-Worker] WebTorrent client initialized. Download path:", downloadPath);
   send({ type: "ready" });
+}
+
+async function ensureSeedingNetwork() {
+  if (client && client._networkProfile === "seed") return;
+  if (client && client.torrents.length > 0) {
+    console.warn(
+      "[BT-Worker] LSD/NAT seed profile not applied while other torrents are active; finish or remove them, then start seeding again."
+    );
+    return;
+  }
+  if (client) {
+    await new Promise((resolve) => {
+      client.destroy(() => resolve());
+    });
+    client = null;
+  }
+  client = createWebTorrentClient("seed");
+  console.log(
+    `[BT-Worker] Network profile: seed (lsd/nat upnp+pmp on, upload cap ${SEED_UPLOAD_BYTES_PER_SEC} B/s).`
+  );
+}
+
+async function maybeUseDownloadProfileWhenIdle() {
+  if (!client || client.torrents.length > 0) return;
+  if (client._networkProfile !== "seed") return;
+  await new Promise((resolve) => {
+    client.destroy(() => resolve());
+  });
+  client = null;
+  client = createWebTorrentClient("download");
+  console.log("[BT-Worker] Network profile: download (idle, no LSD/NAT).");
 }
 
 // Initialize immediately
@@ -57,6 +91,12 @@ initClient();
 // Track previous status to avoid redundant updates
 const previousStatus = new Map();
 
+function clearTorrentTracking(infoHash) {
+  torrentModes.delete(infoHash);
+  seedingStartedAt.delete(infoHash);
+  previousStatus.delete(infoHash);
+}
+
 function hasStatusChanged(infoHash, newStatus) {
   const prev = previousStatus.get(infoHash);
   if (!prev) return true;
@@ -64,11 +104,15 @@ function hasStatusChanged(infoHash, newStatus) {
   // Check if significant fields changed (ignore minor fluctuations)
   return (
     prev.progress !== newStatus.progress ||
+    prev.uploaded !== newStatus.uploaded ||
     prev.downloadSpeed !== newStatus.downloadSpeed ||
     prev.uploadSpeed !== newStatus.uploadSpeed ||
     prev.numPeers !== newStatus.numPeers ||
     prev.done !== newStatus.done ||
-    prev.paused !== newStatus.paused
+    prev.paused !== newStatus.paused ||
+    prev.mode !== newStatus.mode ||
+    prev.isSeeding !== newStatus.isSeeding ||
+    prev.seedingSince !== newStatus.seedingSince
   );
 }
 
@@ -80,11 +124,19 @@ setInterval(() => {
   
   for (const torrent of client.torrents) {
     if (!torrent.infoHash) continue;
+    const mode = torrentModes.get(torrent.infoHash) || "download";
+    const isSeeding = mode === "seed" && torrent.done;
+    if (isSeeding && !seedingStartedAt.has(torrent.infoHash)) {
+      seedingStartedAt.set(torrent.infoHash, Date.now());
+    }
     
     const status = {
       infoHash: torrent.infoHash,
       name: torrent.name || "Fetching metadata...",
       downloadPath,
+      mode,
+      isSeeding,
+      seedingSince: isSeeding ? seedingStartedAt.get(torrent.infoHash) : null,
       progress: torrent.progress,
       downloaded: torrent.downloaded,
       uploaded: torrent.uploaded,
@@ -133,6 +185,9 @@ process.on("message", (msg) => {
       case "start":
         handleStart(id, params);
         break;
+      case "seed":
+        handleSeed(id, params);
+        break;
       case "pause":
         handlePause(id, params);
         break;
@@ -157,18 +212,33 @@ function extractHash(uri) {
 }
 
 async function handleStart(id, { magnetUri, announce }) {
+  return handleAddTorrent(id, { magnetUri, announce, mode: "download" });
+}
+
+async function handleSeed(id, { magnetUri, announce }) {
+  return handleAddTorrent(id, { magnetUri, announce, mode: "seed" });
+}
+
+async function handleAddTorrent(id, { magnetUri, announce, mode = "download" }) {
   if (!client) {
     send({ id, error: "Client not initialized" });
     return;
   }
 
+  if (mode === "seed") {
+    await ensureSeedingNetwork();
+  }
+
   // Extract infoHash and check by hash, not by full URI
   const hash = extractHash(magnetUri);
-  console.log(`[BT-Worker] Start requested. Hash: ${hash}, Announce: ${(announce || []).length} trackers`);
+  console.log(`[BT-Worker] ${mode} requested. Hash: ${hash}, Announce: ${(announce || []).length} trackers`);
 
   if (hash) {
     const existing = await client.get(hash);
     if (existing && existing.infoHash) {
+      if (mode === "seed") {
+        torrentModes.set(existing.infoHash, "seed");
+      }
       console.log("[BT-Worker] Torrent already active:", existing.infoHash, existing.name || "no name yet");
       send({
         id,
@@ -176,6 +246,7 @@ async function handleStart(id, { magnetUri, announce }) {
         infoHash: existing.infoHash,
         magnetURI: existing.magnetURI,
         name: existing.name,
+        mode: torrentModes.get(existing.infoHash) || "download",
       });
       return;
     }
@@ -188,6 +259,7 @@ async function handleStart(id, { magnetUri, announce }) {
   });
 
   torrent.on("infoHash", () => {
+    torrentModes.set(torrent.infoHash, mode === "seed" ? "seed" : "download");
     console.log(`[BT-Worker] InfoHash resolved: ${torrent.infoHash}`);
   });
 
@@ -200,21 +272,33 @@ async function handleStart(id, { magnetUri, announce }) {
   });
 
   torrent.on("done", () => {
-    console.log(`[BT-Worker] Download complete: ${torrent.name}. Destroying torrent to prevent seeding.`);
     const infoHash = torrent.infoHash;
+    const currentMode = torrentModes.get(infoHash) || "download";
+    const keepSeeding = currentMode === "seed";
+    if (keepSeeding && !seedingStartedAt.has(infoHash)) {
+      seedingStartedAt.set(infoHash, Date.now());
+    }
+    if (keepSeeding) {
+      console.log(`[BT-Worker] Download complete: ${torrent.name}. Keeping torrent alive for seeding.`);
+    } else {
+      console.log(`[BT-Worker] Download complete: ${torrent.name}. Destroying torrent to prevent seeding.`);
+    }
     // Send final status with all file info before destroying
     send({
       type: "status-update",
       infoHash,
       name: torrent.name,
       downloadPath,
+      mode: currentMode,
+      isSeeding: keepSeeding,
+      seedingSince: keepSeeding ? seedingStartedAt.get(infoHash) : null,
       progress: 1,
       downloaded: torrent.downloaded,
       uploaded: torrent.uploaded,
-      downloadSpeed: 0,
-      uploadSpeed: 0,
+      downloadSpeed: keepSeeding ? torrent.downloadSpeed : 0,
+      uploadSpeed: keepSeeding ? torrent.uploadSpeed : 0,
       ratio: torrent.ratio,
-      numPeers: 0,
+      numPeers: keepSeeding ? torrent.numPeers : 0,
       timeRemaining: 0,
       done: true,
       paused: false,
@@ -230,12 +314,15 @@ async function handleStart(id, { magnetUri, announce }) {
         : [],
       magnetURI: torrent.magnetURI,
     });
-    send({ type: "done", infoHash });
-    // Destroy immediately — keeps files on disk, stops all connections
-    // TODO: Skip destroy when in seed mode (future bt:// website hosting)
-    torrent.destroy({ destroyStore: false }, () => {
-      console.log(`[BT-Worker] Torrent destroyed (no seeding): ${infoHash}`);
-    });
+    // Destroy immediately for download mode; keep alive in explicit seed mode.
+    if (!keepSeeding) {
+      send({ type: "done", infoHash });
+      torrent.destroy({ destroyStore: false }, () => {
+        clearTorrentTracking(infoHash);
+        console.log(`[BT-Worker] Torrent destroyed (no seeding): ${infoHash}`);
+        void maybeUseDownloadProfileWhenIdle();
+      });
+    }
   });
 
   torrent.on("error", (err) => {
@@ -272,6 +359,7 @@ async function handleStart(id, { magnetUri, announce }) {
     type: "started",
     infoHash: torrent.infoHash || hash || null,
     magnetURI: torrent.magnetURI,
+    mode,
   });
 }
 
@@ -317,9 +405,11 @@ async function handleRemove(id, { hash }) {
     return;
   }
   const infoHash = torrent.infoHash;
+  clearTorrentTracking(infoHash);
   torrent.destroy({ destroyStore: false }, () => {
     console.log(`[BT-Worker] Removed torrent: ${infoHash}`);
     send({ id, type: "removed", infoHash });
+    void maybeUseDownloadProfileWhenIdle();
   });
 }
 

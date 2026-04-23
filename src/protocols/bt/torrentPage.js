@@ -8,7 +8,7 @@ function extractDisplayName(magnetUrl) {
   return match ? decodeURIComponent(match[1].replace(/\+/g, " ")) : null;
 }
 
-export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, theme = "dark") {
+export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, theme = "dark", apiToken = "") {
   const name = displayName || extractDisplayName(magnetUrl) || torrentId || "Unknown Torrent";
   const safeInfoHash = escapeForHtml(torrentId);
   const safeName = escapeForHtml(name);
@@ -161,6 +161,8 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
       <button id="startBtn" onclick="startTorrent()">Start Torrent</button>
       <button id="pauseBtn" onclick="pauseTorrent()" disabled style="display:none;">Pause</button>
       <button id="resumeBtn" onclick="resumeTorrent()" disabled style="display:none;">Resume</button>
+      <button id="seedBtn" onclick="startSeeding()" disabled style="display:none;">Start Seeding</button>
+      <button id="stopSeedBtn" onclick="stopSeeding()" class="secondary" disabled style="display:none;">Stop Seeding</button>
       <button class="secondary" onclick="copyMagnetLink()">Copy Magnet Link</button>
     </div>
 
@@ -173,10 +175,12 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
       </div>
       <div class="stats-grid">
         <div class="stat-item"><div class="stat-label">Downloaded</div><div class="stat-value" id="downloaded">0 B</div></div>
+        <div class="stat-item"><div class="stat-label">Uploaded</div><div class="stat-value" id="uploadedTotal">0 B</div></div>
         <div class="stat-item"><div class="stat-label">Download Speed</div><div class="stat-value" id="downloadSpeed">0 B/s</div></div>
         <div class="stat-item"><div class="stat-label">Upload Speed</div><div class="stat-value" id="uploadSpeed">0 B/s</div></div>
         <div class="stat-item"><div class="stat-label">Peers</div><div class="stat-value" id="peers">0</div></div>
         <div class="stat-item"><div class="stat-label">Time Remaining</div><div class="stat-value" id="timeRemaining">-</div></div>
+        <div class="stat-item"><div class="stat-label">Seeding Time</div><div class="stat-value" id="seedingTime">-</div></div>
         <div class="stat-item"><div class="stat-label">Ratio</div><div class="stat-value" id="ratio">0.00</div></div>
       </div>
 
@@ -195,7 +199,7 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
     </div>
 
     <div class="privacy-warning">
-      <strong>Privacy Notice:</strong> BitTorrent is a peer-to-peer protocol. When downloading, your IP address is visible to other peers in the swarm and pieces of data are uploaded to other users during the transfer. PeerSky automatically stops the torrent once the download completes and does not seed. This may bypass your proxy or VPN settings.
+      <strong>Privacy Notice:</strong> BitTorrent is a peer-to-peer protocol. Your IP address is visible to peers while downloading, and while seeding if you explicitly enable it. PeerSky auto-stops completed torrents by default (no seeding), and provides explicit Start Seeding / Stop Seeding controls. This may bypass your proxy or VPN settings.
     </div>
 
   </div>
@@ -204,6 +208,7 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
     var magnetUrl = ${JSON.stringify(magnetUrl)};
     var torrentId = ${JSON.stringify(torrentId)};
     var apiBase = ${JSON.stringify(apiBase)};
+    var apiToken = ${JSON.stringify(apiToken)};
     var currentInfoHash = torrentId;
     var statusInterval = null;
     var filesRendered = false;
@@ -228,8 +233,12 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
       var url = apiBase + '?' + qs.toString();
       
       // Use POST for mutations, GET for status
-      var mutationActions = ['start', 'pause', 'resume', 'remove'];
+      var mutationActions = ['start', 'seed', 'pause', 'resume', 'remove'];
       var method = mutationActions.includes(action) ? 'POST' : 'GET';
+      if (method === 'POST' && apiToken) {
+        qs.set('token', apiToken);
+        url = apiBase + '?' + qs.toString();
+      }
       
       var resp = await fetch(url, { method: method });
       var text = await resp.text();
@@ -250,7 +259,20 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
           showProgressUI();
           updateUIFromStatus(s);
           if (s.done) {
-            showStatus('Download complete! Files saved to Downloads/PeerskyTorrents.', 'success');
+            if (s.mode === 'seed' || s.isSeeding) {
+              showStatus('Download complete. Seeding is active.', 'success');
+              document.getElementById('stopSeedBtn').style.display = 'inline-block';
+              document.getElementById('stopSeedBtn').disabled = false;
+              document.getElementById('seedBtn').style.display = 'none';
+              if (!statusInterval) {
+                statusInterval = setInterval(pollStatus, 2000);
+              }
+            } else {
+              showStatus('Download complete! Files saved to Downloads/PeerskyTorrents. Torrent stopped automatically (no seeding).', 'success');
+              document.getElementById('seedBtn').style.display = 'inline-block';
+              document.getElementById('seedBtn').disabled = false;
+              document.getElementById('stopSeedBtn').style.display = 'none';
+            }
             document.getElementById('pauseBtn').style.display = 'none';
             document.getElementById('resumeBtn').style.display = 'none';
           } else if (s.paused) {
@@ -308,10 +330,12 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
       }
 
       document.getElementById('downloaded').textContent = formatBytes(s.downloaded);
+      document.getElementById('uploadedTotal').textContent = formatBytes(s.uploaded);
       document.getElementById('downloadSpeed').textContent = formatBytes(s.downloadSpeed) + '/s';
       document.getElementById('uploadSpeed').textContent = formatBytes(s.uploadSpeed) + '/s';
       document.getElementById('peers').textContent = s.numPeers || 0;
       document.getElementById('timeRemaining').textContent = formatTime(s.timeRemaining);
+      document.getElementById('seedingTime').textContent = formatSeedingTime(s);
       document.getElementById('ratio').textContent = (s.ratio || 0).toFixed(2);
 
       if (s.files && s.files.length > 0 && !filesRendered) {
@@ -328,11 +352,21 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
         updateUIFromStatus(s);
 
         if (s.done) {
-          clearInterval(statusInterval);
-          statusInterval = null;
-          showStatus('Download complete! Files saved to Downloads/PeerskyTorrents. Torrent stopped automatically (no seeding).', 'success');
           document.getElementById('pauseBtn').style.display = 'none';
           document.getElementById('resumeBtn').style.display = 'none';
+          if (s.mode === 'seed' || s.isSeeding) {
+            showStatus('Download complete. Seeding is active.', 'success');
+            document.getElementById('seedBtn').style.display = 'none';
+            document.getElementById('stopSeedBtn').style.display = 'inline-block';
+            document.getElementById('stopSeedBtn').disabled = false;
+          } else {
+            clearInterval(statusInterval);
+            statusInterval = null;
+            showStatus('Download complete! Files saved to Downloads/PeerskyTorrents. Torrent stopped automatically (no seeding).', 'success');
+            document.getElementById('seedBtn').style.display = 'inline-block';
+            document.getElementById('seedBtn').disabled = false;
+            document.getElementById('stopSeedBtn').style.display = 'none';
+          }
         }
       } catch (err) {
         console.error('[BT-UI] Poll error:', err);
@@ -383,8 +417,62 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
       await apiCall('resume', { hash: currentInfoHash || '' });
       document.getElementById('resumeBtn').style.display = 'none';
       document.getElementById('pauseBtn').style.display = 'inline-block';
+      document.getElementById('seedBtn').style.display = 'none';
+      document.getElementById('stopSeedBtn').style.display = 'none';
       statusInterval = setInterval(pollStatus, 2000);
       showStatus('Torrent resumed', 'success');
+    }
+
+    async function startSeeding() {
+      var btn = document.getElementById('seedBtn');
+      btn.disabled = true;
+      btn.textContent = 'Starting...';
+      try {
+        var data = await apiCall('seed', { hash: currentInfoHash || '', magnet: magnetUrl });
+        if (data && data.success) {
+          showStatus('Seeding started. Your IP may be visible to peers.', 'info');
+          btn.style.display = 'none';
+          document.getElementById('stopSeedBtn').style.display = 'inline-block';
+          document.getElementById('stopSeedBtn').disabled = false;
+          if (!statusInterval) {
+            statusInterval = setInterval(pollStatus, 2000);
+          }
+        } else {
+          showStatus('Failed to start seeding: ' + ((data && data.error) || 'Unknown error'), 'error');
+          btn.disabled = false;
+          btn.textContent = 'Start Seeding';
+        }
+      } catch (err) {
+        showStatus('Error starting seeding: ' + err.message, 'error');
+        btn.disabled = false;
+        btn.textContent = 'Start Seeding';
+      }
+    }
+
+    async function stopSeeding() {
+      var btn = document.getElementById('stopSeedBtn');
+      btn.disabled = true;
+      btn.textContent = 'Stopping...';
+      try {
+        var data = await apiCall('remove', { hash: currentInfoHash || '' });
+        if (data && data.success) {
+          showStatus('Seeding stopped. Torrent removed from active session.', 'info');
+          btn.style.display = 'none';
+          btn.textContent = 'Stop Seeding';
+          document.getElementById('seedBtn').style.display = 'inline-block';
+          document.getElementById('seedBtn').disabled = false;
+          clearInterval(statusInterval);
+          statusInterval = null;
+        } else {
+          showStatus('Failed to stop seeding: ' + ((data && data.error) || 'Unknown error'), 'error');
+          btn.disabled = false;
+          btn.textContent = 'Stop Seeding';
+        }
+      } catch (err) {
+        showStatus('Error stopping seeding: ' + err.message, 'error');
+        btn.disabled = false;
+        btn.textContent = 'Stop Seeding';
+      }
     }
 
     function copyMagnetLink() {
@@ -431,6 +519,20 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
       if (h > 0) return h + 'h ' + (m % 60) + 'm';
       if (m > 0) return m + 'm ' + (s % 60) + 's';
       return s + 's';
+    }
+
+    function formatSeedingTime(status) {
+      if (!status || !(status.mode === 'seed' || status.isSeeding)) return '-';
+      if (!status.seedingSince) return '-';
+      var elapsedMs = Date.now() - status.seedingSince;
+      if (elapsedMs < 0) return '-';
+      var totalSeconds = Math.floor(elapsedMs / 1000);
+      var hours = Math.floor(totalSeconds / 3600);
+      var minutes = Math.floor((totalSeconds % 3600) / 60);
+      var seconds = totalSeconds % 60;
+      if (hours > 0) return hours + 'h ' + minutes + 'm ' + seconds + 's';
+      if (minutes > 0) return minutes + 'm ' + seconds + 's';
+      return seconds + 's';
     }
 
     function escapeHtml(s) {
