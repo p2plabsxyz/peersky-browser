@@ -269,7 +269,7 @@ export async function createHandler() {
         }
       }
 
-      infoHash = normalizeInfoHash(infoHash);
+      infoHash = await normalizeInfoHash(infoHash);
 
       const action = queryParams.get("action");
 
@@ -348,7 +348,8 @@ export function setupBittorrentIpc() {
 
 
 async function handleAPI(api, queryParams, infoHash, request) {
-  const hash = queryParams.get("hash") || infoHash;
+  const rawHash = queryParams.get("hash") || infoHash;
+  const hash = await normalizeInfoHash(rawHash);
   const token = queryParams.get("token");
   log.info(`[BT] API call: ${api}, hash: ${hash}`);
 
@@ -602,12 +603,12 @@ function normalizeTorrentPath(input) {
   return normalized;
 }
 
-function normalizeInfoHash(rawHash) {
+async function normalizeInfoHash(rawHash) {
   if (!rawHash || typeof rawHash !== "string") return rawHash;
   const trimmed = rawHash.trim();
   if (!trimmed) return trimmed;
   try {
-    const parsed = parseTorrent(`magnet:?xt=urn:btih:${trimmed}`);
+    const parsed = await parseTorrent(`magnet:?xt=urn:btih:${trimmed}`);
     if (parsed && parsed.infoHash) {
       return parsed.infoHash.toLowerCase();
     }
