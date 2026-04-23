@@ -314,9 +314,9 @@ async function handleAddTorrent(id, { magnetUri, announce, mode = "download" }) 
         : [],
       magnetURI: torrent.magnetURI,
     });
-    send({ type: "done", infoHash });
     // Destroy immediately for download mode; keep alive in explicit seed mode.
     if (!keepSeeding) {
+      send({ type: "done", infoHash });
       torrent.destroy({ destroyStore: false }, () => {
         clearTorrentTracking(infoHash);
         console.log(`[BT-Worker] Torrent destroyed (no seeding): ${infoHash}`);
