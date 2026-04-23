@@ -625,11 +625,11 @@ async function serveTorrentFile(infoHash, requestedPath) {
     });
   }
 
-  const data = await fs.readFile(filePath);
+  const stream = fs.createReadStream(filePath);
   const contentType = mime.lookup(filePath) || "application/octet-stream";
   const withCharset = String(contentType).startsWith("text/") ? `${contentType}; charset=utf-8` : contentType;
 
-  return new Response(data, {
+  return new Response(stream, {
     status: 200,
     headers: { "Content-Type": withCharset },
   });
