@@ -9,6 +9,7 @@ import settingsManager from "../settings-manager.js";
 import { ipcMain } from "electron";
 import parseTorrent from "parse-torrent";
 import mime from "mime-types";
+import { randomBytes } from "crypto";
 
 const log = createLogger('protocols:bt');
 
@@ -22,6 +23,7 @@ let requestId = 0;
 
 // Cached status from worker push updates (no IPC round-trip needed for status)
 const statusCache = new Map();
+const uiApiTokens = new Set();
 
 // Persist all torrent states (active, paused, completed) so they survive restarts
 let torrentStateCachePath = null;
@@ -84,6 +86,12 @@ const DEFAULT_TRACKERS = [
   "udp://tracker.torrent.eu.org:451/announce",
   "udp://exodus.desync.com:6969/announce",
 ];
+
+function createUiApiToken() {
+  const token = randomBytes(24).toString("hex");
+  uiApiTokens.add(token);
+  return token;
+}
 
 async function initializeWorker() {
   if (worker) return;
@@ -283,7 +291,8 @@ export async function createHandler() {
 
       const displayName = queryParams.get("dn") || null;
       const currentTheme = settingsManager.settings.theme || "dark";
-      const html = generateTorrentUI(magnetUri, infoHash, protocol, displayName, currentTheme);
+      const apiToken = createUiApiToken();
+      const html = generateTorrentUI(magnetUri, infoHash, protocol, displayName, currentTheme, apiToken);
       return new Response(html, {
         status: 200,
         headers: { "Content-Type": "text/html; charset=utf-8" },
@@ -338,6 +347,7 @@ export function setupBittorrentIpc() {
 
 async function handleAPI(api, queryParams, infoHash, request) {
   const hash = queryParams.get("hash") || infoHash;
+  const token = queryParams.get("token");
   log.info(`[BT] API call: ${api}, hash: ${hash}`);
 
   // Security: validate request is from BitTorrent protocol
@@ -352,26 +362,30 @@ async function handleAPI(api, queryParams, infoHash, request) {
 
   // Security: mutations require POST method
   const mutationActions = ['start', 'seed', 'pause', 'resume', 'remove'];
-  if (mutationActions.includes(api) && request.method !== 'POST') {
-    return jsonResponse({ error: `${api} requires POST method` }, 405);
+  const isMutation = mutationActions.includes(api);
+  if (isMutation && request.method !== 'POST') {
+    return jsonResponse({ error: `${api} requires POST method` }, 405, { allowCors: false });
+  }
+  if (isMutation && (!token || !uiApiTokens.has(token))) {
+    return jsonResponse({ error: "Forbidden: invalid API token" }, 403, { allowCors: false });
   }
 
   try {
     if (api === "start") {
       const magnetUri = queryParams.get("magnet");
-      return await startTorrent(magnetUri);
+      return await startTorrent(magnetUri, { allowCors: !isMutation });
     } else if (api === "seed") {
       const magnetUri = queryParams.get("magnet");
-      return await seedTorrent(magnetUri, hash);
+      return await seedTorrent(magnetUri, hash, { allowCors: !isMutation });
     } else if (api === "status") {
       // Serve from cache instantly — no IPC round-trip
       return getCachedStatus(hash);
     } else if (api === "pause") {
-      return await pauseResumeTorrent("pause", hash);
+      return await pauseResumeTorrent("pause", hash, { allowCors: !isMutation });
     } else if (api === "resume") {
-      return await pauseResumeTorrent("resume", hash);
+      return await pauseResumeTorrent("resume", hash, { allowCors: !isMutation });
     } else if (api === "remove") {
-      return await removeTorrent(hash);
+      return await removeTorrent(hash, { allowCors: !isMutation });
     } else {
       return jsonResponse({ error: "Unknown API action" }, 400);
     }
@@ -381,19 +395,22 @@ async function handleAPI(api, queryParams, infoHash, request) {
   }
 }
 
-function jsonResponse(data, status = 200) {
+function jsonResponse(data, status = 200, { allowCors = true } = {}) {
+  const headers = {
+    "Content-Type": "application/json; charset=utf-8",
+  };
+  if (allowCors) {
+    headers["Access-Control-Allow-Origin"] = "*";
+    headers["Access-Control-Allow-Methods"] = "GET, POST";
+    headers["Access-Control-Allow-Headers"] = "Content-Type";
+  }
   return new Response(JSON.stringify(data), {
     status,
-    headers: {
-      "Content-Type": "application/json; charset=utf-8",
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST",
-      "Access-Control-Allow-Headers": "Content-Type",
-    },
+    headers,
   });
 }
 
-async function startTorrent(magnetUri) {
+async function startTorrent(magnetUri, responseOptions = {}) {
   try {
     // Decode the magnet URI
     const decoded = decodeURIComponent(magnetUri);
@@ -415,21 +432,21 @@ async function startTorrent(magnetUri) {
     });
 
     if (result.error) {
-      return jsonResponse({ error: result.error }, 400);
+      return jsonResponse({ error: result.error }, 400, responseOptions);
     }
 
     return jsonResponse({
       success: true,
       infoHash: result.infoHash || hash,
       magnetURI: decoded,
-    });
+    }, 200, responseOptions);
   } catch (err) {
     log.error("[BT] startTorrent error:", err);
-    return jsonResponse({ error: err.message }, 500);
+    return jsonResponse({ error: err.message }, 500, responseOptions);
   }
 }
 
-async function seedTorrent(magnetUri, hash) {
+async function seedTorrent(magnetUri, hash, responseOptions = {}) {
   try {
     let decoded = null;
     if (magnetUri) {
@@ -442,7 +459,7 @@ async function seedTorrent(magnetUri, hash) {
     }
 
     if (!decoded) {
-      return jsonResponse({ error: "seed requires magnet or hash with cached magnetURI" }, 400);
+      return jsonResponse({ error: "seed requires magnet or hash with cached magnetURI" }, 400, responseOptions);
     }
 
     // Merge all trackers from the magnet + defaults
@@ -460,9 +477,9 @@ async function seedTorrent(magnetUri, hash) {
 
     if (result.error) {
       if (result.error.includes("Unknown action: seed")) {
-        return jsonResponse({ error: "Seed mode is not available yet in worker" }, 501);
+        return jsonResponse({ error: "Seed mode is not available yet in worker" }, 501, responseOptions);
       }
-      return jsonResponse({ error: result.error }, 400);
+      return jsonResponse({ error: result.error }, 400, responseOptions);
     }
 
     return jsonResponse({
@@ -470,10 +487,10 @@ async function seedTorrent(magnetUri, hash) {
       infoHash: result.infoHash || extractInfoHash(decoded),
       magnetURI: decoded,
       mode: "seed",
-    });
+    }, 200, responseOptions);
   } catch (err) {
     log.error("[BT] seedTorrent error:", err);
-    return jsonResponse({ error: err.message }, 500);
+    return jsonResponse({ error: err.message }, 500, responseOptions);
   }
 }
 
@@ -497,7 +514,7 @@ function getCachedStatus(hash) {
   return jsonResponse({ error: "Torrent not found in cache" }, 404);
 }
 
-async function pauseResumeTorrent(action, hash) {
+async function pauseResumeTorrent(action, hash, responseOptions = {}) {
   try {
     const result = await sendCommand(action, { hash });
     if (result.error) {
@@ -509,12 +526,12 @@ async function pauseResumeTorrent(action, hash) {
           removeTorrentState(hash);
           statusCache.delete(hash);
           if (cached.mode === "seed") {
-            return await seedTorrent(encodeURIComponent(cached.magnetURI), hash);
+          return await seedTorrent(encodeURIComponent(cached.magnetURI), hash, responseOptions);
           }
-          return await startTorrent(encodeURIComponent(cached.magnetURI));
+          return await startTorrent(encodeURIComponent(cached.magnetURI), responseOptions);
         }
       }
-      return jsonResponse({ error: result.error }, 404);
+      return jsonResponse({ error: result.error }, 404, responseOptions);
     }
     // Persist paused status so it survives restarts
     if (action === "pause") {
@@ -526,19 +543,19 @@ async function pauseResumeTorrent(action, hash) {
     } else if (action === "resume") {
       removeTorrentState(hash);
     }
-    return jsonResponse({ success: true, paused: action === "pause" });
+    return jsonResponse({ success: true, paused: action === "pause" }, 200, responseOptions);
   } catch (err) {
-    return jsonResponse({ error: err.message }, 500);
+    return jsonResponse({ error: err.message }, 500, responseOptions);
   }
 }
 
-async function removeTorrent(hash) {
+async function removeTorrent(hash, responseOptions = {}) {
   try {
     const result = await sendCommand("remove", { hash });
-    if (result.error) return jsonResponse({ error: result.error }, 404);
-    return jsonResponse({ success: true, removed: true });
+    if (result.error) return jsonResponse({ error: result.error }, 404, responseOptions);
+    return jsonResponse({ success: true, removed: true }, 200, responseOptions);
   } catch (err) {
-    return jsonResponse({ error: err.message }, 500);
+    return jsonResponse({ error: err.message }, 500, responseOptions);
   }
 }
 

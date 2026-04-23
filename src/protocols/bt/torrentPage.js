@@ -8,7 +8,7 @@ function extractDisplayName(magnetUrl) {
   return match ? decodeURIComponent(match[1].replace(/\+/g, " ")) : null;
 }
 
-export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, theme = "dark") {
+export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, theme = "dark", apiToken = "") {
   const name = displayName || extractDisplayName(magnetUrl) || torrentId || "Unknown Torrent";
   const safeInfoHash = escapeForHtml(torrentId);
   const safeName = escapeForHtml(name);
@@ -208,6 +208,7 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
     var magnetUrl = ${JSON.stringify(magnetUrl)};
     var torrentId = ${JSON.stringify(torrentId)};
     var apiBase = ${JSON.stringify(apiBase)};
+    var apiToken = ${JSON.stringify(apiToken)};
     var currentInfoHash = torrentId;
     var statusInterval = null;
     var filesRendered = false;
@@ -234,6 +235,10 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
       // Use POST for mutations, GET for status
       var mutationActions = ['start', 'seed', 'pause', 'resume', 'remove'];
       var method = mutationActions.includes(action) ? 'POST' : 'GET';
+      if (method === 'POST' && apiToken) {
+        qs.set('token', apiToken);
+        url = apiBase + '?' + qs.toString();
+      }
       
       var resp = await fetch(url, { method: method });
       var text = await resp.text();
