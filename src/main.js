@@ -147,6 +147,51 @@ app.whenReady().then(async () => {
   installExtensionWebRequestBridge(userSession);
   setupBittorrentIpc();
 
+  userSession.on("will-download", (event, item, sessionWebContents) => {
+    const downloadId = Date.now().toString() + Math.random().toString(36).substr(2, 5);
+
+    activeDownloadItems.set(downloadId, item);
+
+    const broadcastProgress = (state) => {
+      const data = {
+        id: downloadId,
+        filename: item.getFilename(),
+        received: item.getReceivedBytes(),
+        total: item.getTotalBytes(),
+        state: state,
+        isPaused: item.isPaused(),
+        canResume: item.canResume(),
+        percent: item.getTotalBytes()
+          ? Math.round((item.getReceivedBytes() / item.getTotalBytes()) * 100)
+          : 0,
+      };
+
+      webContents.getAllWebContents().forEach((wc) => {
+        if (!wc.isDestroyed()) wc.send("download-progress", data);
+      });
+    };
+
+    item.on("updated", (event, state) => {
+      broadcastProgress(state);
+    });
+
+    item.on("done", async (event, state) => {
+      activeDownloadItems.delete(downloadId);
+      broadcastProgress(state);
+
+      if (state === "completed") {
+        const downloadInfo = {
+          filename: item.getFilename(),
+          size: item.getTotalBytes(),
+          timestamp: Date.now(),
+          savePath: item.getSavePath(),
+          url: item.getURL(),
+        };
+        await saveDownloadHistory(downloadInfo);
+      }
+    });
+  });
+
   // Global webview partition alignment and security hardening
   app.on('web-contents-created', (_e, wc) => {
     attachWebviewTabShortcutNav(wc);
@@ -561,6 +606,80 @@ ipcMain.on('new-window', (_event, options = {}) => {
   }
 });
 
+const DOWNLOADS_FILE = path.join(app.getPath("userData"), "downloads.json");
+const activeDownloadItems = new Map();
+
+async function saveDownloadHistory(downloadInfo) {
+  try {
+    let downloads = [];
+    try {
+      const data = await fs.readFile(DOWNLOADS_FILE, "utf-8");
+      downloads = JSON.parse(data);
+    } catch (e) {
+      // File doesn't exist or is invalid, start fresh
+    }
+
+    downloads.unshift(downloadInfo);
+
+    if (downloads.length > 100) downloads.length = 100;
+
+    await fs.writeFile(DOWNLOADS_FILE, JSON.stringify(downloads, null, 2));
+  } catch (err) {
+    log.error("Failed to save download history:", err);
+  }
+}
+
+ipcMain.handle("get-downloads", async () => {
+  try {
+    const data = await fs.readFile(DOWNLOADS_FILE, "utf-8");
+    const downloads = JSON.parse(data);
+
+    // Check if each file still exists on the user's disk
+    const enhancedDownloads = await Promise.all(
+      downloads.map(async (item) => {
+        try {
+          await fs.access(item.savePath);
+          return { ...item, fileExists: true };
+        } catch {
+          // File was deleted or moved
+          return { ...item, fileExists: false };
+        }
+      })
+    );
+
+    return enhancedDownloads;
+  } catch (e) {
+    return []; // Return empty array if no history exists yet
+  }
+});
+
+ipcMain.handle("remove-download", async (event, savePath) => {
+  try {
+    try {
+      await fs.unlink(savePath);
+    } catch (err) {
+      // If ENOENT, the file was already deleted/moved by the user manually
+      if (err.code !== "ENOENT") {
+        log.warn("Could not delete file from disk:", err);
+      }
+    }
+
+    let downloads = [];
+    try {
+      const data = await fs.readFile(DOWNLOADS_FILE, "utf-8");
+      downloads = JSON.parse(data);
+    } catch (e) {}
+
+    downloads = downloads.filter((d) => d.savePath !== savePath);
+    await fs.writeFile(DOWNLOADS_FILE, JSON.stringify(downloads, null, 2));
+    
+    return { success: true };
+  } catch (err) {
+    log.error("Error removing download:", err);
+    return { success: false, error: err.message };
+  }
+});
+
 ipcMain.handle('get-tab-memory-usage', async (event, webContentsId) => {
   try{
     const wc = webContents.fromId(webContentsId);
@@ -586,6 +705,21 @@ ipcMain.handle('get-tab-memory-usage', async (event, webContentsId) => {
     log.error(`Error getting memory usage for webContents ID ${webContentsId}:`, error);
     return null;
   }
+});
+
+ipcMain.on('download-pause', (event, id) => {
+  const item = activeDownloadItems.get(id);
+  if (item && !item.isPaused()) item.pause();
+});
+
+ipcMain.on('download-resume', (event, id) => {
+  const item = activeDownloadItems.get(id);
+  if (item && item.canResume()) item.resume();
+});
+
+ipcMain.on('download-cancel', (event, id) => {
+  const item = activeDownloadItems.get(id);
+  if (item) item.cancel();
 });
 
 // IPC handler to check if a specific webContents is currently playing audio
