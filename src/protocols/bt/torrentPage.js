@@ -215,7 +215,12 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
     var torrentDownloadPath = '';
 
     function showStatus(message, type) {
-      document.getElementById('statusMessage').innerHTML = '<div class="status-message ' + type + '">' + message + '</div>';
+      var host = document.getElementById('statusMessage');
+      host.textContent = '';
+      var box = document.createElement('div');
+      box.className = 'status-message ' + type;
+      box.textContent = message;
+      host.appendChild(box);
     }
 
     function showProgressUI() {
