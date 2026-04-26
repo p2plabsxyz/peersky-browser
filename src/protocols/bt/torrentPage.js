@@ -163,6 +163,7 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
       <button id="resumeBtn" onclick="resumeTorrent()" disabled style="display:none;">Resume</button>
       <button id="seedBtn" onclick="startSeeding()" disabled style="display:none;">Start Seeding</button>
       <button id="stopSeedBtn" onclick="stopSeeding()" class="secondary" disabled style="display:none;">Stop Seeding</button>
+      <button id="stopBtn" onclick="stopTorrent()" class="secondary" disabled style="display:none;">Stop Torrent</button>
       <button class="secondary" onclick="copyMagnetLink()">Copy Magnet Link</button>
     </div>
 
@@ -228,6 +229,8 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
       document.getElementById('progressContainer').style.display = 'block';
       document.getElementById('pauseBtn').style.display = 'inline-block';
       document.getElementById('pauseBtn').disabled = false;
+      document.getElementById('stopBtn').style.display = 'inline-block';
+      document.getElementById('stopBtn').disabled = false;
     }
 
     async function apiCall(action, params) {
@@ -281,14 +284,19 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
             }
             document.getElementById('pauseBtn').style.display = 'none';
             document.getElementById('resumeBtn').style.display = 'none';
+            document.getElementById('stopBtn').style.display = 'none';
           } else if (s.paused) {
             showStatus('Torrent paused', 'info');
             document.getElementById('pauseBtn').style.display = 'none';
             document.getElementById('resumeBtn').style.display = 'inline-block';
             document.getElementById('resumeBtn').disabled = false;
+            document.getElementById('stopBtn').style.display = 'inline-block';
+            document.getElementById('stopBtn').disabled = false;
           } else {
             showStatus('Torrent is active. Downloading...', 'success');
             statusInterval = setInterval(pollStatus, 2000);
+            document.getElementById('stopBtn').style.display = 'inline-block';
+            document.getElementById('stopBtn').disabled = false;
           }
         }
       } catch (err) {
@@ -360,6 +368,7 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
         if (s.done) {
           document.getElementById('pauseBtn').style.display = 'none';
           document.getElementById('resumeBtn').style.display = 'none';
+          document.getElementById('stopBtn').style.display = 'none';
           if (s.mode === 'seed' || s.isSeeding) {
             showStatus('Download complete. Seeding is active.', 'success');
             document.getElementById('seedBtn').style.display = 'none';
@@ -415,6 +424,8 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
       document.getElementById('pauseBtn').style.display = 'none';
       document.getElementById('resumeBtn').style.display = 'inline-block';
       document.getElementById('resumeBtn').disabled = false;
+      document.getElementById('stopBtn').style.display = 'inline-block';
+      document.getElementById('stopBtn').disabled = false;
       clearInterval(statusInterval);
       showStatus('Torrent paused', 'info');
     }
@@ -425,6 +436,8 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
       document.getElementById('pauseBtn').style.display = 'inline-block';
       document.getElementById('seedBtn').style.display = 'none';
       document.getElementById('stopSeedBtn').style.display = 'none';
+      document.getElementById('stopBtn').style.display = 'inline-block';
+      document.getElementById('stopBtn').disabled = false;
       statusInterval = setInterval(pollStatus, 2000);
       showStatus('Torrent resumed', 'success');
     }
@@ -478,6 +491,39 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
         showStatus('Error stopping seeding: ' + err.message, 'error');
         btn.disabled = false;
         btn.textContent = 'Stop Seeding';
+      }
+    }
+
+    async function stopTorrent() {
+      var btn = document.getElementById('stopBtn');
+      btn.disabled = true;
+      btn.textContent = 'Stopping...';
+      try {
+        var data = await apiCall('remove', { hash: currentInfoHash || '' });
+        if (data && data.success) {
+          showStatus('Torrent stopped and removed from active session.', 'info');
+          clearInterval(statusInterval);
+          statusInterval = null;
+          document.getElementById('pauseBtn').style.display = 'none';
+          document.getElementById('resumeBtn').style.display = 'none';
+          document.getElementById('stopSeedBtn').style.display = 'none';
+          document.getElementById('stopSeedBtn').disabled = true;
+          document.getElementById('seedBtn').style.display = 'none';
+          document.getElementById('seedBtn').disabled = true;
+          btn.style.display = 'none';
+          btn.textContent = 'Stop Torrent';
+          document.getElementById('startBtn').style.display = 'inline-block';
+          document.getElementById('startBtn').disabled = false;
+          document.getElementById('startBtn').textContent = 'Start Torrent';
+        } else {
+          showStatus('Failed to stop torrent: ' + ((data && data.error) || 'Unknown error'), 'error');
+          btn.disabled = false;
+          btn.textContent = 'Stop Torrent';
+        }
+      } catch (err) {
+        showStatus('Error stopping torrent: ' + err.message, 'error');
+        btn.disabled = false;
+        btn.textContent = 'Stop Torrent';
       }
     }
 
