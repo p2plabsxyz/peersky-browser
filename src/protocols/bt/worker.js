@@ -55,12 +55,12 @@ function initClient() {
 }
 
 async function ensureSeedingNetwork() {
-  if (client && client._networkProfile === "seed") return;
+  if (client && client._networkProfile === "seed") return true;
   if (client && client.torrents.length > 0) {
     console.warn(
       "[BT-Worker] LSD/NAT seed profile not applied while other torrents are active; finish or remove them, then start seeding again."
     );
-    return;
+    return false;
   }
   if (client) {
     await new Promise((resolve) => {
@@ -72,6 +72,7 @@ async function ensureSeedingNetwork() {
   console.log(
     `[BT-Worker] Network profile: seed (lsd/nat upnp+pmp on, upload cap ${SEED_UPLOAD_BYTES_PER_SEC} B/s).`
   );
+  return true;
 }
 
 async function maybeUseDownloadProfileWhenIdle() {
@@ -226,7 +227,14 @@ async function handleAddTorrent(id, { magnetUri, announce, mode = "download" }) 
   }
 
   if (mode === "seed") {
-    await ensureSeedingNetwork();
+    const seedingNetworkReady = await ensureSeedingNetwork();
+    if (!seedingNetworkReady) {
+      send({
+        id,
+        error: "Cannot start seeding while other torrents are active. Stop or finish active torrents and try again.",
+      });
+      return;
+    }
   }
 
   // Extract infoHash and check by hash, not by full URI
