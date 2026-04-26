@@ -23,7 +23,9 @@ let requestId = 0;
 
 // Cached status from worker push updates (no IPC round-trip needed for status)
 const statusCache = new Map();
-const uiApiTokens = new Set();
+const uiApiTokens = new Map();
+const UI_API_TOKEN_TTL_MS = 30 * 60 * 1000;
+const UI_API_TOKEN_MAX = 1000;
 
 // Persist all torrent states (active, paused, completed) so they survive restarts
 let torrentStateCachePath = null;
@@ -88,9 +90,34 @@ const DEFAULT_TRACKERS = [
 ];
 
 function createUiApiToken() {
+  pruneUiApiTokens();
+  if (uiApiTokens.size >= UI_API_TOKEN_MAX) {
+    const oldestToken = uiApiTokens.keys().next().value;
+    if (oldestToken) uiApiTokens.delete(oldestToken);
+  }
   const token = randomBytes(24).toString("hex");
-  uiApiTokens.add(token);
+  uiApiTokens.set(token, Date.now() + UI_API_TOKEN_TTL_MS);
   return token;
+}
+
+function pruneUiApiTokens() {
+  const now = Date.now();
+  for (const [token, expiresAt] of uiApiTokens.entries()) {
+    if (expiresAt <= now) {
+      uiApiTokens.delete(token);
+    }
+  }
+}
+
+function isValidUiApiToken(token) {
+  if (!token) return false;
+  const expiresAt = uiApiTokens.get(token);
+  if (!expiresAt) return false;
+  if (expiresAt <= Date.now()) {
+    uiApiTokens.delete(token);
+    return false;
+  }
+  return true;
 }
 
 async function initializeWorker() {
@@ -369,7 +396,7 @@ async function handleAPI(api, queryParams, infoHash, request) {
   if (isMutation && request.method !== 'POST') {
     return jsonResponse({ error: `${api} requires POST method` }, 405, { allowCors: false });
   }
-  if (isMutation && (!token || !uiApiTokens.has(token))) {
+  if (isMutation && !isValidUiApiToken(token)) {
     return jsonResponse({ error: "Forbidden: invalid API token" }, 403, { allowCors: false });
   }
 
