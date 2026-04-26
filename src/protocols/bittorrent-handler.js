@@ -410,6 +410,9 @@ async function handleAPI(api, queryParams, infoHash, request) {
     } else if (api === "status") {
       // Serve from cache instantly — no IPC round-trip
       return getCachedStatus(hash);
+    } else if (api === "list") {
+      // Return all cached torrents for manager pages.
+      return getCachedTorrentList();
     } else if (api === "pause") {
       return await pauseResumeTorrent("pause", hash, { allowCors: !isMutation });
     } else if (api === "resume") {
@@ -542,6 +545,22 @@ function getCachedStatus(hash) {
   }
 
   return jsonResponse({ error: "Torrent not found in cache" }, 404);
+}
+
+function getCachedTorrentList() {
+  const torrents = Array.from(statusCache.values())
+    .map((cached) => {
+      const { type: _t, ...data } = cached;
+      return data;
+    })
+    .sort((a, b) => {
+      const nameA = (a.name || "").toLowerCase();
+      const nameB = (b.name || "").toLowerCase();
+      if (nameA !== nameB) return nameA.localeCompare(nameB);
+      return (a.infoHash || "").localeCompare(b.infoHash || "");
+    });
+
+  return jsonResponse({ torrents });
 }
 
 async function pauseResumeTorrent(action, hash, responseOptions = {}) {
