@@ -235,12 +235,13 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
       // Use POST for mutations, GET for status
       var mutationActions = ['start', 'seed', 'pause', 'resume', 'remove'];
       var method = mutationActions.includes(action) ? 'POST' : 'GET';
+
+      var fetchOptions = { method: method };
       if (method === 'POST' && apiToken) {
-        qs.set('token', apiToken);
-        url = apiBase + '?' + qs.toString();
+        fetchOptions.headers = { 'X-BT-Token': apiToken };
       }
-      
-      var resp = await fetch(url, { method: method });
+
+      var resp = await fetch(url, fetchOptions);
       var text = await resp.text();
       try {
         return JSON.parse(text);
