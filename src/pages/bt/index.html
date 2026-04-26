@@ -78,6 +78,27 @@
     font-size: 14px;
   }
 
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  button {
+    border: 1px solid rgba(127, 127, 127, 0.35);
+    background: transparent;
+    color: inherit;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  button:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
   a {
     color: inherit;
     text-decoration: underline;
@@ -92,12 +113,12 @@
     <table>
       <thead>
         <tr>
-          <th style="width: 38%;">Name</th>
-          <th style="width: 20%;">Info Hash</th>
+          <th style="width: 30%;">Name</th>
+          <th style="width: 18%;">Info Hash</th>
           <th style="width: 10%;">State</th>
           <th style="width: 10%;">Progress</th>
           <th style="width: 10%;">Peers</th>
-          <th style="width: 12%;">Open</th>
+          <th style="width: 22%;">Actions</th>
         </tr>
       </thead>
       <tbody id="rows"></tbody>
@@ -105,6 +126,10 @@
   </div>
 
   <script>
+    var apiToken = "";
+    var pendingHashes = new Set();
+    var pollTimer = null;
+
     function formatState(t) {
       if (t.paused) return "paused";
       if (t.done && (t.mode === "seed" || t.isSeeding)) return "seeding";
@@ -157,26 +182,140 @@
         peersTd.textContent = typeof t.numPeers === "number" ? String(t.numPeers) : "-";
         row.appendChild(peersTd);
 
-        var openTd = document.createElement("td");
+        var actionsTd = document.createElement("td");
+        var actionsWrap = document.createElement("div");
+        actionsWrap.className = "actions";
+
         if (t.infoHash) {
-          var link = document.createElement("a");
-          link.href = "bt://" + t.infoHash;
-          link.textContent = "Open";
-          openTd.appendChild(link);
-        } else {
-          openTd.textContent = "-";
+          var openLink = document.createElement("a");
+          openLink.href = "bt://" + t.infoHash;
+          openLink.textContent = "Open";
+          actionsWrap.appendChild(openLink);
         }
-        row.appendChild(openTd);
+
+        var actionDisabled = pendingHashes.has(t.infoHash);
+
+        if (t.infoHash) {
+          if (t.paused) {
+            actionsWrap.appendChild(makeActionButton("Resume", t, "resume", actionDisabled));
+          } else if (!t.done || t.isSeeding || t.mode === "seed") {
+            actionsWrap.appendChild(makeActionButton("Pause", t, "pause", actionDisabled));
+          }
+
+          if (t.done && !t.isSeeding && t.mode !== "seed") {
+            actionsWrap.appendChild(makeActionButton("Start Seeding", t, "seed", actionDisabled));
+          }
+          if (t.isSeeding || t.mode === "seed") {
+            actionsWrap.appendChild(makeActionButton("Stop Seeding", t, "remove", actionDisabled));
+          }
+
+          if (!t.done || t.paused || t.isSeeding || t.mode === "seed") {
+            actionsWrap.appendChild(makeActionButton("Stop", t, "remove", actionDisabled));
+          }
+
+          actionsWrap.appendChild(makeActionButton("Remove", t, "remove", actionDisabled));
+          actionsWrap.appendChild(makeCopyButton("Copy Hash", t.infoHash));
+          if (t.magnetURI) {
+            actionsWrap.appendChild(makeCopyButton("Copy Magnet", t.magnetURI));
+          }
+        }
+
+        actionsTd.appendChild(actionsWrap);
+        row.appendChild(actionsTd);
 
         host.appendChild(row);
       });
     }
 
+    function makeActionButton(label, torrent, action, disabled) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = label;
+      btn.disabled = disabled;
+      btn.addEventListener("click", function () {
+        runAction(action, torrent);
+      });
+      return btn;
+    }
+
+    function makeCopyButton(label, value) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = label;
+      btn.addEventListener("click", async function () {
+        try {
+          await navigator.clipboard.writeText(value);
+        } catch (_err) {
+          var textArea = document.createElement("textarea");
+          textArea.value = value;
+          document.body.appendChild(textArea);
+          textArea.select();
+          document.execCommand("copy");
+          document.body.removeChild(textArea);
+        }
+      });
+      return btn;
+    }
+
+    async function getApiToken() {
+      var res = await fetch("bt://api?action=api&api=token", { method: "GET" });
+      var data = await res.json();
+      apiToken = data && data.token ? data.token : "";
+      return apiToken;
+    }
+
+    async function callApi(action, torrent, retryOnTokenError) {
+      var url = "bt://api?action=api&api=" + encodeURIComponent(action);
+      if (torrent && torrent.infoHash) {
+        url += "&hash=" + encodeURIComponent(torrent.infoHash);
+      }
+      if (action === "seed" && torrent && torrent.magnetURI) {
+        url += "&magnet=" + encodeURIComponent(torrent.magnetURI);
+      }
+      var options = { method: action === "list" || action === "token" ? "GET" : "POST" };
+      if (options.method === "POST" && !apiToken) {
+        await getApiToken();
+      }
+      if (options.method === "POST" && apiToken) {
+        options.headers = { "X-BT-Token": apiToken };
+      }
+      var resp = await fetch(url, options);
+      var data = await resp.json();
+      if (
+        options.method === "POST" &&
+        data &&
+        data.error === "Forbidden: invalid API token" &&
+        retryOnTokenError !== false
+      ) {
+        await getApiToken();
+        return callApi(action, torrent, false);
+      }
+      return data;
+    }
+
+    async function runAction(action, torrent) {
+      if (!torrent || !torrent.infoHash) return;
+      var statusLine = document.getElementById("statusLine");
+      pendingHashes.add(torrent.infoHash);
+      try {
+        var data = await callApi(action, torrent);
+        if (data && data.error) {
+          statusLine.textContent = "Action failed: " + data.error;
+        } else {
+          statusLine.textContent = "Updated " + (torrent.name || torrent.infoHash);
+        }
+      } catch (_err) {
+        statusLine.textContent = "Action failed.";
+      } finally {
+        pendingHashes.delete(torrent.infoHash);
+        await loadList();
+      }
+    }
+
     async function loadList() {
       var statusLine = document.getElementById("statusLine");
       try {
-        var res = await fetch("bt://api?action=api&api=list");
-        var data = await res.json();
+        var data = await callApi("list");
         var torrents = (data && data.torrents) || [];
         renderRows(torrents);
         statusLine.textContent = torrents.length + " torrent" + (torrents.length === 1 ? "" : "s");
@@ -186,6 +325,16 @@
       }
     }
 
-    loadList();
+    async function init() {
+      try {
+        await getApiToken();
+      } catch (_err) {
+        apiToken = "";
+      }
+      await loadList();
+      pollTimer = setInterval(loadList, 2000);
+    }
+
+    init();
   </script>
 </body>

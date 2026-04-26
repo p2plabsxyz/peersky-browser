@@ -413,6 +413,9 @@ async function handleAPI(api, queryParams, infoHash, request) {
     } else if (api === "list") {
       // Return all cached torrents for manager pages.
       return getCachedTorrentList();
+    } else if (api === "token") {
+      // Allow internal manager pages to run mutation APIs.
+      return jsonResponse({ token: createUiApiToken() });
     } else if (api === "pause") {
       return await pauseResumeTorrent("pause", hash, { allowCors: !isMutation });
     } else if (api === "resume") {
@@ -431,6 +434,7 @@ async function handleAPI(api, queryParams, infoHash, request) {
 function jsonResponse(data, status = 200, { allowCors = true } = {}) {
   const headers = {
     "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
   };
   if (allowCors) {
     headers["Access-Control-Allow-Origin"] = "*";
