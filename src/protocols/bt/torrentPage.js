@@ -303,6 +303,7 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
             document.getElementById('stopBtn').disabled = false;
           } else {
             showStatus('Torrent is active. Downloading...', 'success');
+            if (statusInterval) clearInterval(statusInterval);
             statusInterval = setInterval(pollStatus, 2000);
             document.getElementById('stopBtn').style.display = 'inline-block';
             document.getElementById('stopBtn').disabled = false;
@@ -324,6 +325,7 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
           currentInfoHash = data.infoHash || currentInfoHash;
           showStatus('Torrent started! Connecting to peers...', 'success');
           showProgressUI();
+          if (statusInterval) clearInterval(statusInterval);
           statusInterval = setInterval(pollStatus, 2000);
         } else {
           showStatus('Failed: ' + (data.error || 'Unknown error'), 'error');
@@ -436,6 +438,7 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
       document.getElementById('stopBtn').style.display = 'inline-block';
       document.getElementById('stopBtn').disabled = false;
       clearInterval(statusInterval);
+      statusInterval = null;
       showStatus('Torrent paused', 'info');
     }
 
@@ -447,6 +450,7 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
       document.getElementById('stopSeedBtn').style.display = 'none';
       document.getElementById('stopBtn').style.display = 'inline-block';
       document.getElementById('stopBtn').disabled = false;
+      if (statusInterval) clearInterval(statusInterval);
       statusInterval = setInterval(pollStatus, 2000);
       showStatus('Torrent resumed', 'success');
     }
