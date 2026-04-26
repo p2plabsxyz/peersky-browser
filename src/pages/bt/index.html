@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<meta charset="UTF-8" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="icon" type="image/png" href="peersky://static/assets/favicon.ico" />
+<title>BitTorrent</title>
+<style>
+  @import url("browser://theme/vars.css");
+
+  body {
+    margin: 0;
+    padding: 20px;
+    background: var(--browser-theme-background);
+    color: var(--browser-theme-text-color);
+    font-family: var(--browser-theme-font-family, Arial, sans-serif);
+  }
+
+  h1 {
+    margin: 0 0 10px;
+    font-size: 22px;
+    font-weight: 600;
+  }
+
+  .subtitle {
+    margin: 0 0 16px;
+    opacity: 0.8;
+    font-size: 14px;
+  }
+
+  .status {
+    margin: 0 0 12px;
+    font-size: 13px;
+    opacity: 0.8;
+  }
+
+  .table-wrap {
+    border: 1px solid rgba(127, 127, 127, 0.28);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+  }
+
+  th, td {
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(127, 127, 127, 0.16);
+    text-align: left;
+    font-size: 13px;
+    vertical-align: top;
+  }
+
+  th {
+    font-size: 12px;
+    opacity: 0.78;
+    font-weight: 600;
+  }
+
+  tr:last-child td {
+    border-bottom: none;
+  }
+
+  .name-cell {
+    word-break: break-word;
+  }
+
+  .mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: 12px;
+  }
+
+  .empty {
+    padding: 16px 12px;
+    opacity: 0.8;
+    font-size: 14px;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: underline;
+  }
+</style>
+<body>
+  <h1>BitTorrent</h1>
+  <p class="subtitle">Active and cached torrents</p>
+  <p id="statusLine" class="status">Loading…</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 38%;">Name</th>
+          <th style="width: 20%;">Info Hash</th>
+          <th style="width: 10%;">State</th>
+          <th style="width: 10%;">Progress</th>
+          <th style="width: 10%;">Peers</th>
+          <th style="width: 12%;">Open</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <script>
+    function formatState(t) {
+      if (t.paused) return "paused";
+      if (t.done && (t.mode === "seed" || t.isSeeding)) return "seeding";
+      if (t.done) return "done";
+      return "downloading";
+    }
+
+    function formatProgress(value) {
+      if (typeof value !== "number") return "-";
+      return Math.round(value * 100) + "%";
+    }
+
+    function renderRows(torrents) {
+      var host = document.getElementById("rows");
+      host.textContent = "";
+
+      if (!torrents || torrents.length === 0) {
+        var row = document.createElement("tr");
+        var cell = document.createElement("td");
+        cell.colSpan = 6;
+        cell.className = "empty";
+        cell.textContent = "No torrents found in cache.";
+        row.appendChild(cell);
+        host.appendChild(row);
+        return;
+      }
+
+      torrents.forEach(function (t) {
+        var row = document.createElement("tr");
+
+        var nameTd = document.createElement("td");
+        nameTd.className = "name-cell";
+        nameTd.textContent = t.name || "Unknown";
+        row.appendChild(nameTd);
+
+        var hashTd = document.createElement("td");
+        hashTd.className = "mono";
+        hashTd.textContent = t.infoHash || "-";
+        row.appendChild(hashTd);
+
+        var stateTd = document.createElement("td");
+        stateTd.textContent = formatState(t);
+        row.appendChild(stateTd);
+
+        var progressTd = document.createElement("td");
+        progressTd.textContent = formatProgress(t.progress);
+        row.appendChild(progressTd);
+
+        var peersTd = document.createElement("td");
+        peersTd.textContent = typeof t.numPeers === "number" ? String(t.numPeers) : "-";
+        row.appendChild(peersTd);
+
+        var openTd = document.createElement("td");
+        if (t.infoHash) {
+          var link = document.createElement("a");
+          link.href = "bt://" + t.infoHash;
+          link.textContent = "Open";
+          openTd.appendChild(link);
+        } else {
+          openTd.textContent = "-";
+        }
+        row.appendChild(openTd);
+
+        host.appendChild(row);
+      });
+    }
+
+    async function loadList() {
+      var statusLine = document.getElementById("statusLine");
+      try {
+        var res = await fetch("bt://api?action=api&api=list");
+        var data = await res.json();
+        var torrents = (data && data.torrents) || [];
+        renderRows(torrents);
+        statusLine.textContent = torrents.length + " torrent" + (torrents.length === 1 ? "" : "s");
+      } catch (_err) {
+        renderRows([]);
+        statusLine.textContent = "Unable to load torrent list.";
+      }
+    }
+
+    loadList();
+  </script>
+</body>
