@@ -146,6 +146,14 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
     }
     .privacy-warning strong { color: var(--settings-danger-color, #e53935); }
     .open-btn { padding: 6px 14px; font-size: 0.85rem; }
+    .manager-link {
+      margin-top: 8px;
+      font-size: 0.9rem;
+    }
+    .manager-link a {
+      color: var(--peersky-link-color, #6eb5ff);
+      text-decoration: underline;
+    }
   </style>
 </head>
 <body>
@@ -166,6 +174,7 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
       <button id="stopBtn" onclick="stopTorrent()" class="secondary" disabled style="display:none;">Stop Torrent</button>
       <button class="secondary" onclick="copyMagnetLink()">Copy Magnet Link</button>
     </div>
+    <div class="manager-link"><a href="peersky://bt/">Manage all torrents</a></div>
 
     <div id="statusMessage"></div>
 
