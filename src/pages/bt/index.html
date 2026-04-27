@@ -5,120 +5,101 @@
 <link rel="icon" type="image/png" href="peersky://static/assets/favicon.ico" />
 <title>BitTorrent</title>
 <style>
+  @import url("browser://theme/index.css");
   @import url("browser://theme/vars.css");
+  @import url("browser://theme/settings.css");
 
   body {
     margin: 0;
-    padding: 20px;
-    background: var(--browser-theme-background);
-    color: var(--browser-theme-text-color);
-    font-family: var(--browser-theme-font-family, Arial, sans-serif);
+    background: var(--settings-bg-primary);
+    color: var(--settings-text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    overflow-y: auto !important;
   }
 
-  h1 {
-    margin: 0 0 10px;
-    font-size: 22px;
-    font-weight: 600;
+  .page-wrap {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 2rem;
   }
 
-  .subtitle {
-    margin: 0 0 16px;
-    opacity: 0.8;
-    font-size: 14px;
+  html {
+    height: 100%;
+    overflow-y: auto !important;
   }
 
-  .status {
-    margin: 0 0 12px;
-    font-size: 13px;
-    opacity: 0.8;
+  .bt-note {
+    margin-top: 0;
   }
 
-  .table-wrap {
-    border: 1px solid rgba(127, 127, 127, 0.28);
-    border-radius: 10px;
-    overflow: hidden;
-  }
-
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    table-layout: fixed;
-  }
-
-  th, td {
-    padding: 10px 12px;
-    border-bottom: 1px solid rgba(127, 127, 127, 0.16);
-    text-align: left;
-    font-size: 13px;
-    vertical-align: top;
-  }
-
-  th {
-    font-size: 12px;
-    opacity: 0.78;
-    font-weight: 600;
-  }
-
-  tr:last-child td {
-    border-bottom: none;
-  }
-
-  .name-cell {
+  .archive-table td {
     word-break: break-word;
-  }
-
-  .mono {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-    font-size: 12px;
-  }
-
-  .empty {
-    padding: 16px 12px;
-    opacity: 0.8;
-    font-size: 14px;
   }
 
   .actions {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
+    align-items: flex-start;
   }
 
-  button {
-    border: 1px solid rgba(127, 127, 127, 0.35);
-    background: transparent;
-    color: inherit;
+  .archive-table td .btn,
+  .actions .action-link {
+    min-width: auto;
+    padding: 0.35rem 0.55rem;
+    font-size: 0.75rem;
+    line-height: 1.2;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     border-radius: 6px;
-    padding: 4px 8px;
-    font-size: 12px;
-    cursor: pointer;
   }
 
-  button:disabled {
-    opacity: 0.5;
-    cursor: default;
+  .actions .action-link {
+    text-decoration: none;
   }
 
-  a {
-    color: inherit;
-    text-decoration: underline;
+  .actions .action-link:hover {
+    text-decoration: none;
+  }
+
+  .actions-cell {
+    vertical-align: top !important;
+  }
+
+  .status-text {
+    color: var(--settings-text-secondary);
+    font-size: 0.85rem;
+  }
+
+  .hash-text {
+    font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Code", "Droid Sans Mono", "Source Code Pro", monospace;
+    font-size: 0.82rem;
+    color: #58a6ff;
   }
 </style>
 <body>
-  <h1>BitTorrent</h1>
-  <p class="subtitle">Active and cached torrents</p>
-  <p id="statusLine" class="status">Loading…</p>
+  <div class="page-wrap">
+    <h1 class="section-title">BitTorrent</h1>
+    <div class="archive-filter-bar">
+      <span class="filter-label">Manager</span>
+      <span id="statusLine" class="status-text">Loading…</span>
+      <div class="filter-actions">
+        <button type="button" id="refreshBtn" class="btn btn-secondary">Refresh</button>
+      </div>
+    </div>
 
-  <div class="table-wrap">
-    <table>
+    <p class="archive-note bt-note">Manage active and cached torrents. Use <code>Open</code> to jump to the torrent page and run torrent actions from here.</p>
+
+    <table class="archive-table">
       <thead>
         <tr>
-          <th style="width: 30%;">Name</th>
+          <th style="width: 26%;">Name</th>
           <th style="width: 18%;">Info Hash</th>
           <th style="width: 10%;">State</th>
           <th style="width: 10%;">Progress</th>
-          <th style="width: 10%;">Peers</th>
-          <th style="width: 22%;">Actions</th>
+          <th style="width: 8%;">Peers</th>
+          <th style="width: 28%;">Actions</th>
         </tr>
       </thead>
       <tbody id="rows"></tbody>
@@ -150,7 +131,7 @@
         var row = document.createElement("tr");
         var cell = document.createElement("td");
         cell.colSpan = 6;
-        cell.className = "empty";
+        cell.className = "archive-empty";
         cell.textContent = "No torrents found in cache.";
         row.appendChild(cell);
         host.appendChild(row);
@@ -166,7 +147,7 @@
         row.appendChild(nameTd);
 
         var hashTd = document.createElement("td");
-        hashTd.className = "mono";
+        hashTd.className = "hash-text";
         hashTd.textContent = t.infoHash || "-";
         row.appendChild(hashTd);
 
@@ -183,6 +164,7 @@
         row.appendChild(peersTd);
 
         var actionsTd = document.createElement("td");
+        actionsTd.className = "actions-cell";
         var actionsWrap = document.createElement("div");
         actionsWrap.className = "actions";
 
@@ -190,6 +172,7 @@
           var openLink = document.createElement("a");
           openLink.href = "bt://" + t.infoHash;
           openLink.textContent = "Open";
+          openLink.className = "btn btn-secondary action-link";
           actionsWrap.appendChild(openLink);
         }
 
@@ -197,7 +180,7 @@
 
         if (t.infoHash) {
           if (t.paused) {
-            actionsWrap.appendChild(makeActionButton("Resume", t, "resume", actionDisabled));
+          actionsWrap.appendChild(makeActionButton("Resume", t, "resume", actionDisabled));
           } else if (!t.done || t.isSeeding || t.mode === "seed") {
             actionsWrap.appendChild(makeActionButton("Pause", t, "pause", actionDisabled));
           }
@@ -231,6 +214,7 @@
       var btn = document.createElement("button");
       btn.type = "button";
       btn.textContent = label;
+      btn.className = "btn btn-secondary";
       btn.disabled = disabled;
       btn.addEventListener("click", function () {
         runAction(action, torrent);
@@ -242,6 +226,7 @@
       var btn = document.createElement("button");
       btn.type = "button";
       btn.textContent = label;
+      btn.className = "btn btn-secondary";
       btn.addEventListener("click", async function () {
         try {
           await navigator.clipboard.writeText(value);
@@ -333,6 +318,7 @@
       }
       await loadList();
       pollTimer = setInterval(loadList, 2000);
+      document.getElementById("refreshBtn").addEventListener("click", loadList);
     }
 
     init();
