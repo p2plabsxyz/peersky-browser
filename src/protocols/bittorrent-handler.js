@@ -457,8 +457,8 @@ function jsonResponse(data, status = 200, { allowCors = true } = {}) {
   };
   if (allowCors) {
     headers["Access-Control-Allow-Origin"] = "*";
-    headers["Access-Control-Allow-Methods"] = "GET, POST";
-    headers["Access-Control-Allow-Headers"] = "Content-Type";
+    headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS";
+    headers["Access-Control-Allow-Headers"] = "Content-Type, X-BT-Token";
   }
   return new Response(JSON.stringify(data), {
     status,
