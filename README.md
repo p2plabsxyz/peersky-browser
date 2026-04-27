@@ -82,6 +82,8 @@
   - [x] `peersky://p2p/p2pmd/`
     - Real-time collaborative markdown editor
     - Presentation slides mode with speaker notes
+    - Offline KaTeX math mode with inline scientific templates
+    - IEEE-style two-column research paper preview/export
     - AI-powered content generation
     - Publish to IPFS/Hypercore
     - Peers dashboard with roles, live editing status, and edit history
