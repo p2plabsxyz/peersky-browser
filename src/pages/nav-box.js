@@ -17,6 +17,7 @@ class NavBox extends HTMLElement {
     this._outsideClickListener = null;
     this._resizeListener = null;
     this._extensionsPopup = null;
+    this._downloadsPopup = null;
     
     // Autocomplete state
     this._autocompleteDebounceTimer = null;
@@ -31,6 +32,7 @@ class NavBox extends HTMLElement {
     this.attachExtensionListeners();
     this.attachAutocompleteListeners();
     this.initializeExtensionsPopup();
+    this.initializeDownloadsPopup();
   }
 
   connectedCallback() {
@@ -55,6 +57,7 @@ class NavBox extends HTMLElement {
       { id: "home", svg: "home.svg", position: "start" },
       { id: "bookmark", svg: "bookmark.svg", position: "start" },
       { id: "extensions", svg: "extensions.svg", position: "end" },
+      { id: "downloads", svg: "download.svg", position: "end" },
       { id: "settings", svg: "settings.svg", position: "end" },
     ];
 
@@ -749,6 +752,8 @@ class NavBox extends HTMLElement {
           this._toggleQrCodePopup();
         } else if (button.id === "extensions") {
           this._toggleExtensionsPopup();
+        }else if (button.id === "downloads") {
+          this._toggleDownloadsPopup();
         } else if (button.id === "settings") {
           this.dispatchEvent(
             new CustomEvent("navigate", {
@@ -913,6 +918,21 @@ class NavBox extends HTMLElement {
     if (extensionsButton) {
       this._extensionsPopup.toggle(extensionsButton);
     }
+  }
+
+  async initializeDownloadsPopup() {
+    try {
+      const { DownloadsPopup } = await import('./static/js/downloads-popup.js');
+      this._downloadsPopup = new DownloadsPopup(navBoxIPC);
+    } catch (error) {
+      console.error('Failed to initialize downloads popup:', error);
+    }
+  }
+
+  _toggleDownloadsPopup() {
+    if (!this._downloadsPopup) return;
+    const dlButton = this.buttonElements["downloads"];
+    if (dlButton) this._downloadsPopup.toggle(dlButton);
   }
 
   // Autocomplete / History Suggestions
