@@ -78,18 +78,6 @@
     color: #58a6ff;
   }
 
-  .pager {
-    margin-top: 12px;
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-    align-items: center;
-  }
-
-  .pager-info {
-    color: var(--settings-text-secondary);
-    font-size: 0.82rem;
-  }
 </style>
 <body>
   <div class="page-wrap">
@@ -104,33 +92,15 @@
 
     <p class="archive-note bt-note">Manage active and cached torrents.</p>
 
-    <table class="archive-table">
-      <thead>
-        <tr>
-          <th style="width: 26%;">Name</th>
-          <th style="width: 18%;">Info Hash</th>
-          <th style="width: 10%;">State</th>
-          <th style="width: 10%;">Progress</th>
-          <th style="width: 8%;">Peers</th>
-          <th style="width: 28%;">Actions</th>
-        </tr>
-      </thead>
-      <tbody id="rows"></tbody>
-    </table>
-    <div class="pager">
-      <button type="button" id="prevPageBtn" class="btn btn-secondary">Prev</button>
-      <span id="pageInfo" class="pager-info">Page 1</span>
-      <button type="button" id="nextPageBtn" class="btn btn-secondary">Next</button>
-    </div>
+    <pagination-control id="bt-pagination" search-placeholder="Search torrents by name or hash..."></pagination-control>
   </div>
 
+  <script src="peersky://static/js/pagination.js" type="module"></script>
   <script>
     var apiToken = "";
     var pendingHashes = new Set();
     var pollTimer = null;
     var allTorrents = [];
-    var pageSize = 10;
-    var currentPage = 1;
     var lastActionMessage = "";
 
     function formatState(t) {
@@ -150,124 +120,108 @@
       return Math.round(value * 100) + "%";
     }
 
-    function renderRows(torrents) {
-      var host = document.getElementById("rows");
-      host.textContent = "";
+    function escapeHtml(value) {
+      return String(value == null ? "" : value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
 
-      if (!torrents || torrents.length === 0) {
-        var row = document.createElement("tr");
-        var cell = document.createElement("td");
-        cell.colSpan = 6;
-        cell.className = "archive-empty";
-        cell.textContent = "No torrents found in cache.";
-        row.appendChild(cell);
-        host.appendChild(row);
-        return;
+    function renderRowHtml(t) {
+      var hash = t.infoHash || "";
+      var disabled = pendingHashes.has(hash) ? " disabled" : "";
+      var parts = [];
+      if (hash) {
+        parts.push('<a href="bt://' + encodeURIComponent(hash) + '" class="archive-action-btn action-link">Open</a>');
       }
-
-      torrents.forEach(function (t) {
-        var row = document.createElement("tr");
-
-        var nameTd = document.createElement("td");
-        nameTd.className = "name-cell";
-        nameTd.textContent = t.name || "Unknown";
-        row.appendChild(nameTd);
-
-        var hashTd = document.createElement("td");
-        hashTd.className = "hash-text";
-        hashTd.textContent = t.infoHash || "-";
-        row.appendChild(hashTd);
-
-        var stateTd = document.createElement("td");
-        stateTd.textContent = formatState(t);
-        row.appendChild(stateTd);
-
-        var progressTd = document.createElement("td");
-        progressTd.textContent = formatProgress(t.progress);
-        row.appendChild(progressTd);
-
-        var peersTd = document.createElement("td");
-        peersTd.textContent = typeof t.numPeers === "number" ? String(t.numPeers) : "-";
-        row.appendChild(peersTd);
-
-        var actionsTd = document.createElement("td");
-        actionsTd.className = "actions-cell";
-        var actionsWrap = document.createElement("div");
-        actionsWrap.className = "actions";
-
-        if (t.infoHash) {
-          var openLink = document.createElement("a");
-          openLink.href = "bt://" + t.infoHash;
-          openLink.textContent = "Open";
-          openLink.className = "btn btn-secondary action-link";
-          actionsWrap.appendChild(openLink);
+      if (hash) {
+        if (t.paused) {
+          parts.push('<button class="archive-action-btn bt-action-btn" data-action="resume" data-hash="' + escapeHtml(hash) + '"' + disabled + '>Resume</button>');
+        } else if (!t.done || t.isSeeding || t.mode === "seed") {
+          parts.push('<button class="archive-action-btn bt-action-btn" data-action="pause" data-hash="' + escapeHtml(hash) + '"' + disabled + '>Pause</button>');
         }
-
-        var actionDisabled = pendingHashes.has(t.infoHash);
-
-        if (t.infoHash) {
-          if (t.paused) {
-            actionsWrap.appendChild(makeActionButton("Resume", t, "resume", actionDisabled));
-          } else if (!t.done || t.isSeeding || t.mode === "seed") {
-            actionsWrap.appendChild(makeActionButton("Pause", t, "pause", actionDisabled));
-          }
-
-          if (t.done && !isActivelySeeding(t)) {
-            actionsWrap.appendChild(makeActionButton("Start Seeding", t, "seed", actionDisabled));
-          }
-          if (isActivelySeeding(t)) {
-            actionsWrap.appendChild(makeActionButton("Stop Seeding", t, "unseed", actionDisabled));
-          }
-
-          if (!t.done || t.paused || t.isSeeding || t.mode === "seed") {
-            actionsWrap.appendChild(makeActionButton("Stop", t, "stop", actionDisabled));
-          }
-
-          actionsWrap.appendChild(makeActionButton("Remove", t, "remove", actionDisabled));
-          actionsWrap.appendChild(makeCopyButton("Copy Hash", t.infoHash));
-          if (t.magnetURI) {
-            actionsWrap.appendChild(makeCopyButton("Copy Magnet", t.magnetURI));
-          }
+        if (t.done && !isActivelySeeding(t)) {
+          parts.push('<button class="archive-action-btn bt-action-btn" data-action="seed" data-hash="' + escapeHtml(hash) + '"' + disabled + '>Start Seeding</button>');
         }
-
-        actionsTd.appendChild(actionsWrap);
-        row.appendChild(actionsTd);
-
-        host.appendChild(row);
-      });
-      updatePager();
+        if (isActivelySeeding(t)) {
+          parts.push('<button class="archive-action-btn bt-action-btn" data-action="unseed" data-hash="' + escapeHtml(hash) + '"' + disabled + '>Stop Seeding</button>');
+        }
+        if (!t.done || t.paused || t.isSeeding || t.mode === "seed") {
+          parts.push('<button class="archive-action-btn bt-action-btn" data-action="stop" data-hash="' + escapeHtml(hash) + '"' + disabled + '>Stop</button>');
+        }
+        parts.push('<button class="archive-action-btn bt-action-btn" data-action="remove" data-hash="' + escapeHtml(hash) + '"' + disabled + '>Remove</button>');
+        parts.push('<button class="archive-action-btn bt-copy-btn" data-copy="' + escapeHtml(hash) + '">Copy Hash</button>');
+        if (t.magnetURI) {
+          parts.push('<button class="archive-action-btn bt-copy-btn" data-copy="' + escapeHtml(t.magnetURI) + '">Copy Magnet</button>');
+        }
+      }
+      return '<tr>' +
+        '<td>' + escapeHtml(t.name || "Unknown") + '</td>' +
+        '<td class="hash-text">' + escapeHtml(hash || "-") + '</td>' +
+        '<td>' + escapeHtml(formatState(t)) + '</td>' +
+        '<td>' + escapeHtml(formatProgress(t.progress)) + '</td>' +
+        '<td>' + (typeof t.numPeers === "number" ? String(t.numPeers) : "-") + '</td>' +
+        '<td class="actions-cell" style="white-space: normal;"><div class="actions">' + parts.join("") + '</div></td>' +
+      '</tr>';
     }
 
-    function makeActionButton(label, torrent, action, disabled) {
-      var btn = document.createElement("button");
-      btn.type = "button";
-      btn.textContent = label;
-      btn.className = "btn btn-secondary";
-      btn.disabled = disabled;
-      btn.addEventListener("click", function () {
-        runAction(action, torrent);
+    function attachActionListeners(container) {
+      container.querySelectorAll(".bt-action-btn").forEach(function (btn) {
+        if (btn.dataset.listenerAttached) return;
+        btn.dataset.listenerAttached = "true";
+        btn.addEventListener("click", function () {
+          var hash = btn.dataset.hash;
+          var torrent = allTorrents.find(function (t) { return t.infoHash === hash; });
+          if (!torrent) return;
+          runAction(btn.dataset.action, torrent);
+        });
       });
-      return btn;
+
+      container.querySelectorAll(".bt-copy-btn").forEach(function (btn) {
+        if (btn.dataset.listenerAttached) return;
+        btn.dataset.listenerAttached = "true";
+        btn.addEventListener("click", async function () {
+          var value = btn.dataset.copy || "";
+          try {
+            await navigator.clipboard.writeText(value);
+          } catch (_err) {
+            var textArea = document.createElement("textarea");
+            textArea.value = value;
+            document.body.appendChild(textArea);
+            textArea.select();
+            document.execCommand("copy");
+            document.body.removeChild(textArea);
+          }
+        });
+      });
     }
 
-    function makeCopyButton(label, value) {
-      var btn = document.createElement("button");
-      btn.type = "button";
-      btn.textContent = label;
-      btn.className = "btn btn-secondary";
-      btn.addEventListener("click", async function () {
-        try {
-          await navigator.clipboard.writeText(value);
-        } catch (_err) {
-          var textArea = document.createElement("textarea");
-          textArea.value = value;
-          document.body.appendChild(textArea);
-          textArea.select();
-          document.execCommand("copy");
-          document.body.removeChild(textArea);
-        }
+    function setupPagination(torrents) {
+      var pager = document.getElementById("bt-pagination");
+      if (!pager || typeof pager.setup !== "function") return;
+      var previousPage = pager.currentPage || 1;
+      pager.setup({
+        data: torrents || [],
+        searchKeys: ["name", "infoHash", "magnetURI"],
+        renderWrapper: function (itemsHtml) {
+          return '<table class="archive-table"><thead><tr>' +
+            '<th style="width: 26%;">Name</th>' +
+            '<th style="width: 18%;">Info Hash</th>' +
+            '<th style="width: 10%;">State</th>' +
+            '<th style="width: 10%;">Progress</th>' +
+            '<th style="width: 8%;">Peers</th>' +
+            '<th style="width: 28%;">Actions</th>' +
+            '</tr></thead><tbody>' + itemsHtml + '</tbody></table>';
+        },
+        renderItem: renderRowHtml,
+        emptyMessage: '<p class="archive-empty">No torrents found in cache.</p>',
+        onRendered: attachActionListeners
       });
-      return btn;
+      var totalPages = Math.max(1, Math.ceil(((pager.filteredData && pager.filteredData.length) || 0) / pager.itemsPerPage));
+      pager.currentPage = Math.min(previousPage, totalPages);
+      pager.renderPage();
     }
 
     async function getApiToken() {
@@ -333,31 +287,13 @@
       try {
         var data = await callApi("list");
         allTorrents = (data && data.torrents) || [];
-        var maxPage = Math.max(1, Math.ceil(allTorrents.length / pageSize));
-        if (currentPage > maxPage) currentPage = maxPage;
-        var start = (currentPage - 1) * pageSize;
-        var pageItems = allTorrents.slice(start, start + pageSize);
-        renderRows(pageItems);
+        setupPagination(allTorrents);
         var base = allTorrents.length + " torrent" + (allTorrents.length === 1 ? "" : "s");
         statusLine.textContent = lastActionMessage ? (base + " — " + lastActionMessage) : base;
       } catch (_err) {
-        renderRows([]);
+        setupPagination([]);
         statusLine.textContent = "Unable to load torrent list.";
       }
-    }
-
-    function updatePager() {
-      var maxPage = Math.max(1, Math.ceil(allTorrents.length / pageSize));
-      document.getElementById("pageInfo").textContent = "Page " + currentPage + " of " + maxPage;
-      document.getElementById("prevPageBtn").disabled = currentPage <= 1;
-      document.getElementById("nextPageBtn").disabled = currentPage >= maxPage;
-    }
-
-    function gotoPage(nextPage) {
-      var maxPage = Math.max(1, Math.ceil(allTorrents.length / pageSize));
-      currentPage = Math.min(maxPage, Math.max(1, nextPage));
-      var start = (currentPage - 1) * pageSize;
-      renderRows(allTorrents.slice(start, start + pageSize));
     }
 
     async function init() {
@@ -366,15 +302,10 @@
       } catch (_err) {
         apiToken = "";
       }
+      await customElements.whenDefined("pagination-control");
       await loadList();
       pollTimer = setInterval(loadList, 2000);
       document.getElementById("refreshBtn").addEventListener("click", loadList);
-      document.getElementById("prevPageBtn").addEventListener("click", function () {
-        gotoPage(currentPage - 1);
-      });
-      document.getElementById("nextPageBtn").addEventListener("click", function () {
-        gotoPage(currentPage + 1);
-      });
     }
 
     init();
