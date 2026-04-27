@@ -418,16 +418,16 @@ async function handleUnseed(id, { hash }) {
     send({ id, error: "Torrent not found" });
     return;
   }
-  torrentModes.set(torrent.infoHash, "download");
-  seedingStartedAt.delete(torrent.infoHash);
-  // Stop active transfers after exiting seed mode.
-  torrent.pause();
-  if (torrent.wires) {
-    torrent.wires.forEach((wire) => wire.choke());
-  }
-  torrent.deselect(0, torrent.pieces.length - 1, 0);
-  console.log(`[BT-Worker] Stopped seeding: ${torrent.infoHash}`);
-  send({ id, type: "unseeded", infoHash: torrent.infoHash });
+  const infoHash = torrent.infoHash;
+  torrentModes.set(infoHash, "download");
+  seedingStartedAt.delete(infoHash);
+  clearTorrentTracking(infoHash);
+  // End torrent session when leaving seed mode so it cannot resume uploads.
+  torrent.destroy({ destroyStore: false }, () => {
+    console.log(`[BT-Worker] Stopped seeding: ${infoHash}`);
+    send({ id, type: "unseeded", infoHash });
+    void maybeUseDownloadProfileWhenIdle();
+  });
 }
 
 async function handleStop(id, { hash }) {
