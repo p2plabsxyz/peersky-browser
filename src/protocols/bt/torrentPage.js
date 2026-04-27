@@ -246,7 +246,20 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
       return !!(status && (status.mode === 'seed' || status.isSeeding) && !status.paused && !status.stopped);
     }
 
-    async function apiCall(action, params) {
+    async function refreshApiToken() {
+      var tokenUrl = apiBase + '?action=api&api=token';
+      var resp = await fetch(tokenUrl, { method: 'GET' });
+      var text = await resp.text();
+      try {
+        var data = JSON.parse(text);
+        apiToken = data && data.token ? data.token : '';
+      } catch (e) {
+        apiToken = '';
+      }
+      return apiToken;
+    }
+
+    async function apiCall(action, params, retryOnTokenError) {
       var qs = new URLSearchParams({ action: 'api', api: action });
       if (params) {
         Object.keys(params).forEach(function(k) { qs.set(k, params[k]); });
@@ -258,6 +271,9 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
       var method = mutationActions.includes(action) ? 'POST' : 'GET';
 
       var fetchOptions = { method: method };
+      if (method === 'POST' && !apiToken) {
+        await refreshApiToken();
+      }
       if (method === 'POST' && apiToken) {
         fetchOptions.headers = { 'X-BT-Token': apiToken };
       }
@@ -265,7 +281,17 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
       var resp = await fetch(url, fetchOptions);
       var text = await resp.text();
       try {
-        return JSON.parse(text);
+        var data = JSON.parse(text);
+        if (
+          method === 'POST' &&
+          data &&
+          data.error === 'Forbidden: invalid API token' &&
+          retryOnTokenError !== false
+        ) {
+          await refreshApiToken();
+          return apiCall(action, params, false);
+        }
+        return data;
       } catch (e) {
         console.error('[BT-UI] Bad JSON:', text.substring(0, 200));
         return { error: 'Invalid JSON' };
