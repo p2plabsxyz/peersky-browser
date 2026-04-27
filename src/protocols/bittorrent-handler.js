@@ -392,7 +392,7 @@ export function setupBittorrentIpc() {
 async function handleAPI(api, queryParams, infoHash, request) {
   const rawHash = queryParams.get("hash") || infoHash;
   const hash = await normalizeInfoHash(rawHash);
-  const token = request.headers?.get("x-bt-token") || queryParams.get("token");
+  const token = request.headers?.get("x-bt-token");
   log.info(`[BT] API call: ${api}, hash: ${hash}`);
 
   // Security: validate request is from BitTorrent protocol
