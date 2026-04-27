@@ -183,6 +183,21 @@ async function initializeWorker() {
       removeTorrentState(msg.infoHash);
     }
 
+    if (msg.type === "stopped" && msg.infoHash) {
+      const prev = statusCache.get(msg.infoHash) || {};
+      const merged = {
+        ...prev,
+        ...msg,
+        mode: "download",
+        paused: true,
+        stopped: true,
+        isSeeding: false,
+        seedingSince: null,
+      };
+      statusCache.set(msg.infoHash, merged);
+      saveTorrentState(msg.infoHash, merged);
+    }
+
     // Resolve pending request if this message has an id
     if (msg.id && pendingRequests.has(msg.id)) {
       const resolve = pendingRequests.get(msg.id);
@@ -391,7 +406,7 @@ async function handleAPI(api, queryParams, infoHash, request) {
   }
 
   // Security: mutations require POST method
-  const mutationActions = ['start', 'seed', 'pause', 'resume', 'remove'];
+  const mutationActions = ['start', 'seed', 'unseed', 'pause', 'resume', 'stop', 'remove'];
   const isMutation = mutationActions.includes(api);
   if (isMutation && request.method !== 'POST') {
     return jsonResponse({ error: `${api} requires POST method` }, 405, { allowCors: false });
@@ -407,6 +422,8 @@ async function handleAPI(api, queryParams, infoHash, request) {
     } else if (api === "seed") {
       const magnetUri = queryParams.get("magnet");
       return await seedTorrent(magnetUri, hash, { allowCors: !isMutation });
+    } else if (api === "unseed") {
+      return await unseedTorrent(hash, { allowCors: !isMutation });
     } else if (api === "status") {
       // Serve from cache instantly — no IPC round-trip
       return getCachedStatus(hash);
@@ -420,6 +437,8 @@ async function handleAPI(api, queryParams, infoHash, request) {
       return await pauseResumeTorrent("pause", hash, { allowCors: !isMutation });
     } else if (api === "resume") {
       return await pauseResumeTorrent("resume", hash, { allowCors: !isMutation });
+    } else if (api === "stop") {
+      return await stopTorrentSession(hash, { allowCors: !isMutation });
     } else if (api === "remove") {
       return await removeTorrent(hash, { allowCors: !isMutation });
     } else {
@@ -531,6 +550,27 @@ async function seedTorrent(magnetUri, hash, responseOptions = {}) {
   }
 }
 
+async function unseedTorrent(hash, responseOptions = {}) {
+  try {
+    if (!hash) {
+      return jsonResponse({ error: "unseed requires hash" }, 400, responseOptions);
+    }
+    const result = await sendCommand("unseed", { hash });
+    if (result.error) return jsonResponse({ error: result.error }, 404, responseOptions);
+    const cached = statusCache.get(hash);
+    if (cached) {
+      cached.mode = "download";
+      cached.isSeeding = false;
+      cached.seedingSince = null;
+      cached.paused = true;
+      saveTorrentState(hash, cached);
+    }
+    return jsonResponse({ success: true, infoHash: hash, mode: "download", paused: true }, 200, responseOptions);
+  } catch (err) {
+    return jsonResponse({ error: err.message }, 500, responseOptions);
+  }
+}
+
 function getCachedStatus(hash) {
   if (!hash) {
     // Return first available torrent status
@@ -575,6 +615,13 @@ async function pauseResumeTorrent(action, hash, responseOptions = {}) {
       if (action === "resume") {
         const cached = statusCache.get(hash);
         if (cached && cached.magnetURI) {
+          const activeSeederExists = Array.from(statusCache.entries()).some(([otherHash, status]) => {
+            if (otherHash === hash) return false;
+            return status && (status.isSeeding || status.mode === "seed") && !status.paused;
+          });
+          if (activeSeederExists) {
+            return jsonResponse({ error: "Cannot resume while another torrent is actively seeding. Stop that seeding session first." }, 409, responseOptions);
+          }
           log.info(`[BT] Torrent not in worker, re-starting from cache: ${hash}`);
           removeTorrentState(hash);
           statusCache.delete(hash);
@@ -607,6 +654,29 @@ async function removeTorrent(hash, responseOptions = {}) {
     const result = await sendCommand("remove", { hash });
     if (result.error) return jsonResponse({ error: result.error }, 404, responseOptions);
     return jsonResponse({ success: true, removed: true }, 200, responseOptions);
+  } catch (err) {
+    return jsonResponse({ error: err.message }, 500, responseOptions);
+  }
+}
+
+async function stopTorrentSession(hash, responseOptions = {}) {
+  try {
+    if (!hash) return jsonResponse({ error: "stop requires hash" }, 400, responseOptions);
+    const result = await sendCommand("stop", { hash });
+    if (result.error) return jsonResponse({ error: result.error }, 404, responseOptions);
+    const cached = statusCache.get(hash);
+    if (cached) {
+      cached.mode = "download";
+      cached.paused = true;
+      cached.stopped = true;
+      cached.isSeeding = false;
+      cached.seedingSince = null;
+      cached.downloadSpeed = 0;
+      cached.uploadSpeed = 0;
+      cached.numPeers = 0;
+      saveTorrentState(hash, cached);
+    }
+    return jsonResponse({ success: true, stopped: true, infoHash: hash }, 200, responseOptions);
   } catch (err) {
     return jsonResponse({ error: err.message }, 500, responseOptions);
   }

@@ -126,7 +126,7 @@ setInterval(() => {
   for (const torrent of client.torrents) {
     if (!torrent.infoHash) continue;
     const mode = torrentModes.get(torrent.infoHash) || "download";
-    const isSeeding = mode === "seed" && torrent.done;
+    const isSeeding = mode === "seed" && torrent.done && !torrent.paused;
     if (isSeeding && !seedingStartedAt.has(torrent.infoHash)) {
       seedingStartedAt.set(torrent.infoHash, Date.now());
     }
@@ -192,8 +192,14 @@ process.on("message", (msg) => {
       case "pause":
         handlePause(id, params);
         break;
+      case "unseed":
+        handleUnseed(id, params);
+        break;
       case "resume":
         handleResume(id, params);
+        break;
+      case "stop":
+        handleStop(id, params);
         break;
       case "remove":
         handleRemove(id, params);
@@ -404,6 +410,77 @@ async function handleResume(id, { hash }) {
   }
   console.log(`[BT-Worker] Resumed torrent: ${torrent.infoHash}`);
   send({ id, type: "resumed", infoHash: torrent.infoHash });
+}
+
+async function handleUnseed(id, { hash }) {
+  const torrent = hash ? await client.get(hash) : client.torrents[0];
+  if (!torrent) {
+    send({ id, error: "Torrent not found" });
+    return;
+  }
+  torrentModes.set(torrent.infoHash, "download");
+  seedingStartedAt.delete(torrent.infoHash);
+  // Stop active transfers after exiting seed mode.
+  torrent.pause();
+  if (torrent.wires) {
+    torrent.wires.forEach((wire) => wire.choke());
+  }
+  torrent.deselect(0, torrent.pieces.length - 1, 0);
+  console.log(`[BT-Worker] Stopped seeding: ${torrent.infoHash}`);
+  send({ id, type: "unseeded", infoHash: torrent.infoHash });
+}
+
+async function handleStop(id, { hash }) {
+  const torrent = hash ? await client.get(hash) : client.torrents[0];
+  if (!torrent) {
+    send({ id, error: "Torrent not found" });
+    return;
+  }
+  const infoHash = torrent.infoHash;
+  const mode = torrentModes.get(infoHash) || "download";
+  const wasDone = !!torrent.done;
+  const name = torrent.name || "";
+  const magnetURI = torrent.magnetURI;
+  const uploaded = torrent.uploaded || 0;
+  const downloaded = torrent.downloaded || 0;
+  const ratio = torrent.ratio || 0;
+  const files = torrent.files
+    ? torrent.files.map((f, i) => ({
+        index: i,
+        name: f.name,
+        path: f.path,
+        length: f.length,
+        downloaded: f.downloaded,
+        progress: f.progress,
+      }))
+    : [];
+  clearTorrentTracking(infoHash);
+  torrent.destroy({ destroyStore: false }, () => {
+    console.log(`[BT-Worker] Stopped torrent session: ${infoHash}`);
+    send({
+      id,
+      type: "stopped",
+      infoHash,
+      name,
+      mode,
+      done: wasDone,
+      paused: true,
+      stopped: true,
+      isSeeding: false,
+      seedingSince: null,
+      downloadPath,
+      magnetURI,
+      uploaded,
+      downloaded,
+      downloadSpeed: 0,
+      uploadSpeed: 0,
+      numPeers: 0,
+      ratio,
+      timeRemaining: null,
+      files,
+    });
+    void maybeUseDownloadProfileWhenIdle();
+  });
 }
 
 async function handleRemove(id, { hash }) {
