@@ -75,6 +75,29 @@ function removeTorrentState(infoHash) {
   }
 }
 
+async function removeTorrentFilesFromDisk(status) {
+  if (!status || !Array.isArray(status.files) || status.files.length === 0) return;
+  const basePath = path.resolve(
+    status.downloadPath || path.join(app.getPath("downloads"), "PeerskyTorrents")
+  );
+  const uniquePaths = new Set();
+  for (const file of status.files) {
+    if (!file || typeof file.path !== "string" || !file.path) continue;
+    const absPath = path.resolve(basePath, file.path);
+    if (absPath !== basePath && !absPath.startsWith(`${basePath}${path.sep}`)) {
+      continue;
+    }
+    uniquePaths.add(absPath);
+  }
+  for (const absPath of uniquePaths) {
+    try {
+      await fs.remove(absPath);
+    } catch (err) {
+      log.warn(`[BT] Failed to remove file path ${absPath}: ${err.message}`);
+    }
+  }
+}
+
 // Load persisted torrent states on module init
 
 const DEFAULT_TRACKERS = [
@@ -651,9 +674,18 @@ async function pauseResumeTorrent(action, hash, responseOptions = {}) {
 
 async function removeTorrent(hash, responseOptions = {}) {
   try {
+    if (!hash) return jsonResponse({ error: "remove requires hash" }, 400, responseOptions);
+    const cached = statusCache.get(hash);
     const result = await sendCommand("remove", { hash });
-    if (result.error) return jsonResponse({ error: result.error }, 404, responseOptions);
-    return jsonResponse({ success: true, removed: true }, 200, responseOptions);
+    if (result.error && !cached) {
+      return jsonResponse({ error: result.error }, 404, responseOptions);
+    }
+    if (cached) {
+      await removeTorrentFilesFromDisk(cached);
+      statusCache.delete(hash);
+      removeTorrentState(hash);
+    }
+    return jsonResponse({ success: true, removed: true, filesDeleted: !!cached }, 200, responseOptions);
   } catch (err) {
     return jsonResponse({ error: err.message }, 500, responseOptions);
   }

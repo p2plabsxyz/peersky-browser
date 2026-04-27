@@ -262,6 +262,10 @@
 
     async function runAction(action, torrent) {
       if (!torrent || !torrent.infoHash) return;
+      if (action === "remove") {
+        var confirmed = window.confirm("Remove this torrent and delete all downloaded files from disk?");
+        if (!confirmed) return;
+      }
       var statusLine = document.getElementById("statusLine");
       pendingHashes.add(torrent.infoHash);
       try {
