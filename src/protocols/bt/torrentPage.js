@@ -505,7 +505,7 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
       try {
         var data = await apiCall('unseed', { hash: currentInfoHash || '' });
         if (data && data.success) {
-          showStatus('Seeding stopped. Torrent remains in list and can be started again.', 'info');
+          showStatus('Seeding stopped.', 'info');
           btn.style.display = 'none';
           btn.textContent = 'Stop Seeding';
           document.getElementById('seedBtn').style.display = 'inline-block';
@@ -535,7 +535,7 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
       try {
         var data = await apiCall('stop', { hash: currentInfoHash || '' });
         if (data && data.success) {
-          showStatus('Torrent stopped. It remains in list and can be resumed.', 'info');
+          showStatus('Torrent stopped.', 'info');
           clearInterval(statusInterval);
           statusInterval = null;
           document.getElementById('pauseBtn').style.display = 'none';
