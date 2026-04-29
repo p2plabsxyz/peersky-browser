@@ -452,6 +452,11 @@ async function handleAPI(api, queryParams, infoHash, request) {
     return jsonResponse({ error: 'Forbidden: API only accessible from BitTorrent protocol' }, 403);
   }
 
+  // Handle CORS preflight for custom headers
+  if (request.method === 'OPTIONS') {
+    return jsonResponse({ success: true }, 200, { allowCors: true });
+  }
+
   // Security: mutations require POST method
   const mutationActions = ['start', 'seed', 'unseed', 'pause', 'resume', 'stop', 'remove'];
   const isMutation = mutationActions.includes(api);
@@ -465,12 +470,12 @@ async function handleAPI(api, queryParams, infoHash, request) {
   try {
     if (api === "start") {
       const magnetUri = queryParams.get("magnet");
-      return await startTorrent(magnetUri, { allowCors: !isMutation });
+      return await startTorrent(magnetUri, { allowCors: true });
     } else if (api === "seed") {
       const magnetUri = queryParams.get("magnet");
-      return await seedTorrent(magnetUri, hash, { allowCors: !isMutation });
+      return await seedTorrent(magnetUri, hash, { allowCors: true });
     } else if (api === "unseed") {
-      return await unseedTorrent(hash, { allowCors: !isMutation });
+      return await unseedTorrent(hash, { allowCors: true });
     } else if (api === "status") {
       // Serve from cache instantly — no IPC round-trip
       return getCachedStatus(hash);
@@ -481,13 +486,13 @@ async function handleAPI(api, queryParams, infoHash, request) {
       // Allow internal manager pages to run mutation APIs.
       return jsonResponse({ token: createUiApiToken() });
     } else if (api === "pause") {
-      return await pauseResumeTorrent("pause", hash, { allowCors: !isMutation });
+      return await pauseResumeTorrent("pause", hash, { allowCors: true });
     } else if (api === "resume") {
-      return await pauseResumeTorrent("resume", hash, { allowCors: !isMutation });
+      return await pauseResumeTorrent("resume", hash, { allowCors: true });
     } else if (api === "stop") {
-      return await stopTorrentSession(hash, { allowCors: !isMutation });
+      return await stopTorrentSession(hash, { allowCors: true });
     } else if (api === "remove") {
-      return await removeTorrent(hash, { allowCors: !isMutation });
+      return await removeTorrent(hash, { allowCors: true });
     } else {
       return jsonResponse({ error: "Unknown API action" }, 400);
     }
