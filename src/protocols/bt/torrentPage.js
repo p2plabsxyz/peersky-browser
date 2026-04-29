@@ -223,6 +223,8 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
     var statusInterval = null;
     var filesRendered = false;
     var torrentDownloadPath = '';
+    var startedAtMs = 0;
+    var networkHintShown = false;
 
     function showStatus(message, type) {
       var host = document.getElementById('statusMessage');
@@ -339,6 +341,8 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
             }
           } else {
             showStatus('Torrent is active. Downloading...', 'success');
+            startedAtMs = Date.now();
+            networkHintShown = false;
             if (statusInterval) clearInterval(statusInterval);
             statusInterval = setInterval(pollStatus, 2000);
             document.getElementById('stopBtn').style.display = 'inline-block';
@@ -359,6 +363,8 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
         var data = await apiCall('start', { magnet: magnetUrl });
         if (data.success) {
           currentInfoHash = data.infoHash || currentInfoHash;
+          startedAtMs = Date.now();
+          networkHintShown = false;
           showStatus('Torrent started! Connecting to peers...', 'success');
           showProgressUI();
           if (statusInterval) clearInterval(statusInterval);
@@ -411,6 +417,20 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
         if (s.error) return;
 
         updateUIFromStatus(s);
+
+        if (!startedAtMs) startedAtMs = Date.now();
+        var elapsedSinceStart = Date.now() - startedAtMs;
+        var isStuckAtZeroPeers = !s.done && !s.paused && (s.numPeers || 0) === 0;
+        if (isStuckAtZeroPeers && elapsedSinceStart > 35000 && !networkHintShown) {
+          networkHintShown = true;
+          showStatus(
+            'Still 0 peers after ~35s. This usually means tracker traffic is blocked by your network/ISP. Try VPN or a different network.',
+            'info'
+          );
+        }
+        if ((s.numPeers || 0) > 0) {
+          networkHintShown = false;
+        }
 
         if (s.done) {
           document.getElementById('pauseBtn').style.display = 'none';

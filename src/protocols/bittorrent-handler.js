@@ -104,13 +104,37 @@ const DEFAULT_TRACKERS = [
   "wss://tracker.openwebtorrent.com",
   "wss://tracker.btorrent.xyz",
   "wss://tracker.webtorrent.dev",
+  "wss://tracker.files.fm:7073/announce",
+  "wss://tracker.fastcast.nz",
   "udp://tracker.opentrackr.org:1337/announce",
   "udp://open.tracker.cl:1337/announce",
   "udp://tracker.openbittorrent.com:6969/announce",
   "udp://open.stealth.si:80/announce",
   "udp://tracker.torrent.eu.org:451/announce",
   "udp://exodus.desync.com:6969/announce",
+  "udp://tracker.moeking.me:6969/announce",
+  "udp://tracker.dler.org:6969/announce",
+  "udp://tracker.0x7c0.com:6969/announce",
+  "udp://tracker.theoks.net:6969/announce",
+  "udp://tracker1.bt.moack.co.kr:80/announce",
+  "udp://tracker2.dler.org:80/announce",
+  "udp://tracker.bittor.pw:1337/announce",
+  "udp://tracker.dler.com:6969/announce",
 ];
+
+function mergeTrackerLists(...lists) {
+  const merged = [];
+  for (const list of lists) {
+    if (!Array.isArray(list)) continue;
+    for (const tracker of list) {
+      if (typeof tracker !== "string") continue;
+      const trimmed = tracker.trim();
+      if (!trimmed) continue;
+      merged.push(trimmed);
+    }
+  }
+  return [...new Set(merged)];
+}
 
 function createUiApiToken() {
   pruneUiApiTokens();
@@ -501,7 +525,7 @@ async function startTorrent(magnetUri, responseOptions = {}) {
     try {
       const url = new URL(decoded);
       const magnetTrackers = url.searchParams.getAll("tr");
-      allTrackers = [...new Set([...magnetTrackers, ...DEFAULT_TRACKERS])];
+      allTrackers = mergeTrackerLists(magnetTrackers, DEFAULT_TRACKERS);
     } catch (e) { /* ignore parse errors */ }
 
     // Send to worker process
@@ -546,7 +570,7 @@ async function seedTorrent(magnetUri, hash, responseOptions = {}) {
     try {
       const url = new URL(decoded);
       const magnetTrackers = url.searchParams.getAll("tr");
-      allTrackers = [...new Set([...magnetTrackers, ...DEFAULT_TRACKERS])];
+      allTrackers = mergeTrackerLists(magnetTrackers, DEFAULT_TRACKERS);
     } catch (e) { /* ignore parse errors */ }
 
     const result = await sendCommand("seed", {
