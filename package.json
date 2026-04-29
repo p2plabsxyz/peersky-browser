@@ -20,6 +20,9 @@
     "start": "electron .",
     "postinstall": "git submodule update --init --recursive --remote --merge && node scripts/postinstall.js",
     "build": "electron-builder build --publish never",
+    "build:dmg": "electron-builder build --mac dmg zip --publish never",
+    "build:mas": "electron-builder build --mac mas --publish never",
+    "release": "electron-builder build --mac dmg zip --publish always",
     "build-all": "electron-builder build -mwl"
   },
   "build": {
@@ -47,19 +50,26 @@
     ],
     "mac": {
       "artifactName": "${name}-${version}-${os}-${arch}.${ext}",
+      "hardenedRuntime": true,
       "gatekeeperAssess": false,
-      "identity": null,
+      "entitlements": "buildResources/entitlements.mac.plist",
+      "entitlementsInherit": "buildResources/entitlements.mac.plist",
+      "notarize": true,
       "extendInfo": {
         "NSMicrophoneUsageDescription": "The current page is asking to use your microphone",
         "NSCameraUsageDescription": "The current page is asking to use your camera",
-        "NSLocationWhenInUseUsageDescription": "The current page is asking to access your location",
-        "com.apple.security.device.audio-input": true,
-        "com.apple.security.device.camera": true,
-        "com.apple.security.personal-information.location": true
+        "NSLocationWhenInUseUsageDescription": "The current page is asking to access your location"
       },
       "target": [
         {
-          "target": "default",
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
           "arch": [
             "x64",
             "arm64"
@@ -67,6 +77,20 @@
         }
       ],
       "icon": "./public/icon.icns"
+    },
+    "mas": {
+      "hardenedRuntime": false,
+      "entitlements": "buildResources/entitlements.mas.plist",
+      "entitlementsInherit": "buildResources/entitlements.mas.inherit.plist",
+      "target": [
+        {
+          "target": "mas",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
     },
     "win": {
       "target": [

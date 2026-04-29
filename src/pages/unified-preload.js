@@ -345,6 +345,7 @@ function createSettingsAPI(pageContext) {
         return ipcRenderer.invoke('settings-upload-wallpaper', fileData);
       },
       getDefaultWallpapers: () => ipcRenderer.invoke('settings-get-default-wallpapers'),
+      getVersion: () => ipcRenderer.invoke('settings-get-version'),
       getArchiveData: () => ipcRenderer.invoke('settings-get-archive-data'),
       exportArchive: (jsonContent) => ipcRenderer.invoke('settings-export-archive', jsonContent),
       clearArchive: (cutoff) => ipcRenderer.invoke('settings-clear-archive', cutoff)
