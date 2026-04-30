@@ -1,4 +1,4 @@
-import { app, session, protocol as globalProtocol, ipcMain, BrowserWindow, Menu, shell, dialog, webContents} from "electron";
+import { app, session, protocol as globalProtocol, ipcMain, BrowserWindow, Menu, shell, webContents} from "electron";
 import { createLogger } from './logger.js';
 import fs from "fs/promises";
 import path from "path";
@@ -27,6 +27,7 @@ import extensionManager from "./extensions/index.js";
 import { setupExtensionIpcHandlers } from "./extensions/extensions-ipc.js";
 import { getBrowserSession, usePersist } from "./session.js";
 import { setupPermissionHandler } from "./permissions.js";
+import { setupP2pmdPdfExportIpc } from "./pages/p2p/p2pmd/pdf-export-ipc.js";
 
 const P2P_PROTOCOL = {
   standard: true,
@@ -84,23 +85,23 @@ let windowManager = null;
 const trustedUIWebContents = new Set();
 
 app.on("browser-window-created", (event, win) => {
-  trustedUIWebContents.add(win.webContents.id);
-  win.webContents.once("destroyed", () =>
-    trustedUIWebContents.delete(win.webContents.id),
-  );
+  const wcId = win.webContents.id;
+  trustedUIWebContents.add(wcId);
+  win.webContents.once("destroyed", () => trustedUIWebContents.delete(wcId));
 });
 
 app.on("web-contents-created", (event, wc) => {
+  const wcId = wc.id;
   wc.on("did-navigate", (e, url) => {
     if (url.startsWith("peersky://downloads")) {
-      trustedUIWebContents.add(wc.id);
+      trustedUIWebContents.add(wcId);
     } else {
       if (!BrowserWindow.fromWebContents(wc)) {
-        trustedUIWebContents.delete(wc.id);
+        trustedUIWebContents.delete(wcId);
       }
     }
   });
-  wc.once("destroyed", () => trustedUIWebContents.delete(wc.id));
+  wc.once("destroyed", () => trustedUIWebContents.delete(wcId));
 });
 
 const webviewTabShortcutNavAttached = new WeakSet();
@@ -860,37 +861,6 @@ ipcMain.handle('check-built-in-engine', (event, template) => {
   }
 });
 
-ipcMain.handle('p2pmd-print-to-pdf', async (event, { html, fileName } = {}) => {
-  const parentWindow = BrowserWindow.fromWebContents(event.sender);
-  const safeName = typeof fileName === "string" && fileName.trim() ? fileName : "p2pmd-document.pdf";
-  const { canceled, filePath } = await dialog.showSaveDialog(parentWindow, {
-    defaultPath: path.join(app.getPath("downloads"), safeName),
-    filters: [{ name: "PDF", extensions: ["pdf"] }]
-  });
-  if (canceled || !filePath) {
-    return { canceled: true };
-  }
-  const printWindow = new BrowserWindow({
-    show: false,
-    webPreferences: {
-      sandbox: false,
-      contextIsolation: true
-    }
-  });
-  try {
-    const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(html || "")}`;
-    await printWindow.loadURL(dataUrl);
-    const pdfBuffer = await printWindow.webContents.printToPDF({
-      printBackground: true,
-      preferCSSPageSize: true
-    });
-    await fs.writeFile(filePath, pdfBuffer);
-    return { canceled: false, filePath };
-  } finally {
-    if (!printWindow.isDestroyed()) {
-      printWindow.close();
-    }
-  }
-});
+setupP2pmdPdfExportIpc();
 
 export { windowManager };
