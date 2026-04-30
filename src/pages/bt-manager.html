@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<meta charset="UTF-8" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="icon" type="image/png" href="peersky://static/assets/favicon.ico" />
+<title>BitTorrent</title>
+<style>
+  @import url("browser://theme/index.css");
+  @import url("browser://theme/vars.css");
+  @import url("browser://theme/settings.css");
+
+  body {
+    margin: 0;
+    background: var(--settings-bg-primary);
+    color: var(--settings-text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    overflow-y: auto !important;
+  }
+
+  .page-wrap {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 2rem;
+  }
+
+  html {
+    height: 100%;
+    overflow-y: auto !important;
+  }
+
+  .bt-note {
+    margin-top: 0;
+  }
+
+  .archive-table td {
+    word-break: break-word;
+  }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: flex-start;
+  }
+
+  .archive-table td .btn,
+  .actions .action-link {
+    min-width: auto;
+    padding: 0.35rem 0.55rem;
+    font-size: 0.75rem;
+    line-height: 1.2;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+  }
+
+  .actions .action-link {
+    text-decoration: none;
+  }
+
+  .actions .action-link:hover {
+    text-decoration: none;
+  }
+
+  .actions-cell {
+    vertical-align: top !important;
+  }
+
+  .status-text {
+    color: var(--settings-text-secondary);
+    font-size: 0.85rem;
+  }
+
+  .hash-text {
+    font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Code", "Droid Sans Mono", "Source Code Pro", monospace;
+    font-size: 0.82rem;
+    color: #58a6ff;
+  }
+
+</style>
+<body>
+  <div class="page-wrap">
+    <h1 class="section-title">BitTorrent</h1>
+    <div class="archive-filter-bar">
+      <span class="filter-label">Manager</span>
+      <span id="statusLine" class="status-text">Loading…</span>
+      <div class="filter-actions">
+        <button type="button" id="refreshBtn" class="btn btn-secondary">Refresh</button>
+      </div>
+    </div>
+
+    <p class="archive-note bt-note">Manage active and cached torrents.</p>
+
+    <pagination-control id="bt-pagination" search-placeholder="Search torrents by name or hash..."></pagination-control>
+  </div>
+
+  <script src="peersky://static/js/pagination.js" type="module"></script>
+  <script>
+    var apiToken = "";
+    var pendingHashes = new Set();
+    var pollTimer = null;
+    var allTorrents = [];
+    var lastActionMessage = "";
+
+    function formatState(t) {
+      if (t.stopped) return "stopped";
+      if (t.paused) return "paused";
+      if (t.done && t.isSeeding && !t.paused && !t.stopped) return "seeding";
+      if (t.done) return "done";
+      return "downloading";
+    }
+
+    function isActivelySeeding(t) {
+      return !!(t && t.done && t.isSeeding && !t.paused && !t.stopped);
+    }
+
+    function formatProgress(value) {
+      if (typeof value !== "number") return "-";
+      return Math.round(value * 100) + "%";
+    }
+
+    function escapeHtml(value) {
+      return String(value == null ? "" : value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function renderRowHtml(t) {
+      var hash = t.infoHash || "";
+      var disabled = pendingHashes.has(hash) ? " disabled" : "";
+      var parts = [];
+      if (hash) {
+        parts.push('<a href="bt://' + encodeURIComponent(hash) + '" class="archive-action-btn action-link">Open</a>');
+      }
+      if (hash) {
+        if (t.paused) {
+          parts.push('<button class="archive-action-btn bt-action-btn" data-action="resume" data-hash="' + escapeHtml(hash) + '"' + disabled + '>Resume</button>');
+        } else if (!t.done || t.isSeeding || t.mode === "seed") {
+          parts.push('<button class="archive-action-btn bt-action-btn" data-action="pause" data-hash="' + escapeHtml(hash) + '"' + disabled + '>Pause</button>');
+        }
+        if (t.done && !isActivelySeeding(t)) {
+          parts.push('<button class="archive-action-btn bt-action-btn" data-action="seed" data-hash="' + escapeHtml(hash) + '"' + disabled + '>Start Seeding</button>');
+        }
+        if (isActivelySeeding(t)) {
+          parts.push('<button class="archive-action-btn bt-action-btn" data-action="unseed" data-hash="' + escapeHtml(hash) + '"' + disabled + '>Stop Seeding</button>');
+        }
+        if (!t.done || t.paused || t.isSeeding || t.mode === "seed") {
+          parts.push('<button class="archive-action-btn bt-action-btn" data-action="stop" data-hash="' + escapeHtml(hash) + '"' + disabled + '>Stop</button>');
+        }
+        parts.push('<button class="archive-action-btn bt-action-btn" data-action="remove" data-hash="' + escapeHtml(hash) + '"' + disabled + '>Remove</button>');
+        parts.push('<button class="archive-action-btn bt-copy-btn" data-copy="' + escapeHtml(hash) + '">Copy Hash</button>');
+        if (t.magnetURI) {
+          parts.push('<button class="archive-action-btn bt-copy-btn" data-copy="' + escapeHtml(t.magnetURI) + '">Copy Magnet</button>');
+        }
+      }
+      return '<tr>' +
+        '<td>' + escapeHtml(t.name || "Unknown") + '</td>' +
+        '<td class="hash-text">' + escapeHtml(hash || "-") + '</td>' +
+        '<td>' + escapeHtml(formatState(t)) + '</td>' +
+        '<td>' + escapeHtml(formatProgress(t.progress)) + '</td>' +
+        '<td>' + (typeof t.numPeers === "number" ? String(t.numPeers) : "-") + '</td>' +
+        '<td class="actions-cell" style="white-space: normal;"><div class="actions">' + parts.join("") + '</div></td>' +
+      '</tr>';
+    }
+
+    function attachActionListeners(container) {
+      container.querySelectorAll(".bt-action-btn").forEach(function (btn) {
+        if (btn.dataset.listenerAttached) return;
+        btn.dataset.listenerAttached = "true";
+        btn.addEventListener("click", function () {
+          var hash = btn.dataset.hash;
+          var torrent = allTorrents.find(function (t) { return t.infoHash === hash; });
+          if (!torrent) return;
+          runAction(btn.dataset.action, torrent);
+        });
+      });
+
+      container.querySelectorAll(".bt-copy-btn").forEach(function (btn) {
+        if (btn.dataset.listenerAttached) return;
+        btn.dataset.listenerAttached = "true";
+        btn.addEventListener("click", async function () {
+          var value = btn.dataset.copy || "";
+          try {
+            await navigator.clipboard.writeText(value);
+          } catch (_err) {
+            var textArea = document.createElement("textarea");
+            textArea.value = value;
+            document.body.appendChild(textArea);
+            textArea.select();
+            document.execCommand("copy");
+            document.body.removeChild(textArea);
+          }
+        });
+      });
+    }
+
+    function setupPagination(torrents) {
+      var pager = document.getElementById("bt-pagination");
+      if (!pager || typeof pager.setup !== "function") return;
+      var previousPage = pager.currentPage || 1;
+      pager.setup({
+        data: torrents || [],
+        searchKeys: ["name", "infoHash", "magnetURI"],
+        renderWrapper: function (itemsHtml) {
+          return '<table class="archive-table"><thead><tr>' +
+            '<th style="width: 26%;">Name</th>' +
+            '<th style="width: 18%;">Info Hash</th>' +
+            '<th style="width: 10%;">State</th>' +
+            '<th style="width: 10%;">Progress</th>' +
+            '<th style="width: 8%;">Peers</th>' +
+            '<th style="width: 28%;">Actions</th>' +
+            '</tr></thead><tbody>' + itemsHtml + '</tbody></table>';
+        },
+        renderItem: renderRowHtml,
+        emptyMessage: '<p class="archive-empty">No torrents found in cache.</p>',
+        onRendered: attachActionListeners
+      });
+      var totalPages = Math.max(1, Math.ceil(((pager.filteredData && pager.filteredData.length) || 0) / pager.itemsPerPage));
+      pager.currentPage = Math.min(previousPage, totalPages);
+      pager.renderPage();
+    }
+
+    async function getApiToken() {
+      var res = await fetch("bt://api?action=api&api=token", { method: "GET" });
+      var data = await res.json();
+      apiToken = data && data.token ? data.token : "";
+      return apiToken;
+    }
+
+    async function callApi(action, torrent, retryOnTokenError) {
+      var url = "bt://api?action=api&api=" + encodeURIComponent(action);
+      if (torrent && torrent.infoHash) {
+        url += "&hash=" + encodeURIComponent(torrent.infoHash);
+      }
+      if (action === "seed" && torrent && torrent.magnetURI) {
+        url += "&magnet=" + encodeURIComponent(torrent.magnetURI);
+      }
+      var options = { method: action === "list" || action === "token" ? "GET" : "POST" };
+      if (options.method === "POST" && !apiToken) {
+        await getApiToken();
+      }
+      if (options.method === "POST" && apiToken) {
+        options.headers = { "X-BT-Token": apiToken };
+      }
+      var resp = await fetch(url, options);
+      var data = await resp.json();
+      if (
+        options.method === "POST" &&
+        data &&
+        data.error === "Forbidden: invalid API token" &&
+        retryOnTokenError !== false
+      ) {
+        await getApiToken();
+        return callApi(action, torrent, false);
+      }
+      return data;
+    }
+
+    async function runAction(action, torrent) {
+      if (!torrent || !torrent.infoHash) return;
+      if (action === "remove") {
+        var confirmed = window.confirm("Remove this torrent and delete all downloaded files from disk?");
+        if (!confirmed) return;
+      }
+      var statusLine = document.getElementById("statusLine");
+      pendingHashes.add(torrent.infoHash);
+      try {
+        var data = await callApi(action, torrent);
+        if (data && data.error) {
+          lastActionMessage = "Action failed: " + data.error;
+          statusLine.textContent = lastActionMessage;
+        } else {
+          lastActionMessage = "Updated " + (torrent.name || torrent.infoHash);
+          statusLine.textContent = lastActionMessage;
+        }
+      } catch (_err) {
+        lastActionMessage = "Action failed.";
+        statusLine.textContent = lastActionMessage;
+      } finally {
+        pendingHashes.delete(torrent.infoHash);
+        await loadList();
+      }
+    }
+
+    async function loadList() {
+      var statusLine = document.getElementById("statusLine");
+      try {
+        var data = await callApi("list");
+        allTorrents = (data && data.torrents) || [];
+        setupPagination(allTorrents);
+        var base = allTorrents.length + " torrent" + (allTorrents.length === 1 ? "" : "s");
+        statusLine.textContent = lastActionMessage ? (base + " — " + lastActionMessage) : base;
+      } catch (_err) {
+        setupPagination([]);
+        statusLine.textContent = "Unable to load torrent list.";
+      }
+    }
+
+    async function init() {
+      try {
+        await getApiToken();
+      } catch (_err) {
+        apiToken = "";
+      }
+      await customElements.whenDefined("pagination-control");
+      await loadList();
+      pollTimer = setInterval(loadList, 2000);
+      document.getElementById("refreshBtn").addEventListener("click", loadList);
+    }
+
+    init();
+  </script>
+</body>
