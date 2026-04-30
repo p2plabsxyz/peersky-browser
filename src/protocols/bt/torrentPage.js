@@ -174,7 +174,7 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
       <button id="stopBtn" onclick="stopTorrent()" class="secondary" disabled style="display:none;">Stop Torrent</button>
       <button class="secondary" onclick="copyMagnetLink()">Copy Magnet Link</button>
     </div>
-    <div class="manager-link"><a href="peersky://bt/">Manage all torrents</a></div>
+    <div class="manager-link"><a href="peersky://bt-manager">Manage all torrents</a></div>
 
     <div id="statusMessage"></div>
 

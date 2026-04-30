@@ -14,7 +14,7 @@ Peersky supports BitTorrent downloading and streaming natively using [WebTorrent
 
 All three schemes load the same torrent download UI.
 
-Peersky also provides a global BitTorrent manager page at `peersky://bt/` for viewing and controlling all cached torrents in one place.
+Peersky also provides a global BitTorrent manager page at `peersky://bt-manager` for viewing and controlling all cached torrents in one place.
 
 ### Opening Local Torrent Files
 You can drag and drop a local `.torrent` file directly onto the browser's address bar. The browser will automatically parse the file to obtain its infohash and resolve it to a `magnet:` URI, opening the standard torrent start page.
@@ -33,9 +33,9 @@ You can drag and drop a local `.torrent` file directly onto the browser's addres
 8. **Stop torrent session** — click **Stop Torrent** to stop the active session while keeping it in the manager list
 9. **Open files** — click "Play" (media) or "Open" (other files) to view in a new tab
 
-## Global Torrent Manager (`peersky://bt/`)
+## Global Torrent Manager (`peersky://bt-manager`)
 
-Use `peersky://bt/` to manage all torrents from one page.
+Use `peersky://bt-manager` to manage all torrents from one page.
 
 - View cached torrents and status (`downloading`, `paused`, `stopped`, `seeding`, `done`)
 - Open a torrent page (`bt://<infohash>`)
