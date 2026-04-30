@@ -85,23 +85,23 @@ let windowManager = null;
 const trustedUIWebContents = new Set();
 
 app.on("browser-window-created", (event, win) => {
-  trustedUIWebContents.add(win.webContents.id);
-  win.webContents.once("destroyed", () =>
-    trustedUIWebContents.delete(win.webContents.id),
-  );
+  const wcId = win.webContents.id;
+  trustedUIWebContents.add(wcId);
+  win.webContents.once("destroyed", () => trustedUIWebContents.delete(wcId));
 });
 
 app.on("web-contents-created", (event, wc) => {
+  const wcId = wc.id;
   wc.on("did-navigate", (e, url) => {
     if (url.startsWith("peersky://downloads")) {
-      trustedUIWebContents.add(wc.id);
+      trustedUIWebContents.add(wcId);
     } else {
       if (!BrowserWindow.fromWebContents(wc)) {
-        trustedUIWebContents.delete(wc.id);
+        trustedUIWebContents.delete(wcId);
       }
     }
   });
-  wc.once("destroyed", () => trustedUIWebContents.delete(wc.id));
+  wc.once("destroyed", () => trustedUIWebContents.delete(wcId));
 });
 
 const webviewTabShortcutNavAttached = new WeakSet();
