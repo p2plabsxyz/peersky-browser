@@ -201,7 +201,7 @@
     "chai": "^6.2.2",
     "chrome-extension-fetch": "^1.0.0",
     "cross-env": "^10.1.0",
-    "electron": "^37.2.2",
+    "electron": "^41.4.0",
     "electron-builder": "^26.0.12",
     "esmock": "^2.7.3",
     "mocha": "^11.7.5",
