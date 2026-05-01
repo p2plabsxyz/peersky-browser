@@ -137,3 +137,11 @@ build/
 
 # Unpacked preinstalled extensions (archives live in the same directory)
 src/extensions/preinstalled-extensions/*/
+
+# Local test data fallback used outside Electron runtime
+.peersky-test-userdata/
+
+# E2e test runtime data (real IPFS/Hyper nodes)
+.test-e2e-data/
+.test-e2e-data-debug*/
+

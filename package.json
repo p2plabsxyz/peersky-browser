@@ -16,7 +16,15 @@
   "type": "module",
   "repository": "https://github.com/p2plabsxyz/peersky-browser",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "npm run test:all",
+    "test:all": "npm run test:p2p && npm run test:p2p:e2e && npm run test:extensions && npm run test:security && npm run test:integration",
+    "test:integration": "mocha \"test/integration/**/*.test.js\" --timeout 300000",
+    "test:p2p": "mocha \"test/p2p/ipfs-handler.test.js\" \"test/p2p/hyper-handler.test.js\" \"test/p2p/hs-handler.test.js\" --timeout 20000",
+    "test:p2p:e2e": "rimraf .test-e2e-data && cross-env PEERSKY_TEST_USERDATA=.test-e2e-data mocha --file ./test/setup.js \"test/p2p/p2p-e2e.test.js\" --timeout 120000 --exit",
+    "test:extensions": "mocha \"test/extensions/**/*.test.js\" --timeout 20000",
+    "test:security": "mocha \"test/security/**/*.test.js\" --timeout 20000",
+    "coverage": "cross-env NODE_OPTIONS=--experimental-loader=@istanbuljs/esm-loader-hook nyc mocha \"test/p2p/ipfs-handler.test.js\" \"test/p2p/hyper-handler.test.js\" \"test/p2p/hs-handler.test.js\" \"test/extensions/**/*.test.js\" \"test/security/**/*.test.js\" --timeout 20000",
+    "coverage:report": "nyc report --reporter=text-summary --reporter=html --reporter=lcov",
     "start": "electron .",
     "postinstall": "git submodule update --init --recursive --remote --merge && node scripts/postinstall.js",
     "build": "electron-builder build --publish never",
@@ -189,8 +197,40 @@
     "yjs": "^13.6.27"
   },
   "devDependencies": {
+    "@istanbuljs/esm-loader-hook": "^0.3.0",
+    "chai": "^6.2.2",
     "chrome-extension-fetch": "^1.0.0",
-    "electron": "^37.2.2",
-    "electron-builder": "^26.0.12"
+    "cross-env": "^10.1.0",
+    "electron": "^41.4.0",
+    "electron-builder": "^26.0.12",
+    "esmock": "^2.7.3",
+    "mocha": "^11.7.5",
+    "nyc": "^18.0.0",
+    "sinon": "^21.0.2"
+  },
+  "nyc": {
+    "all": true,
+    "cache": false,
+    "extension": [
+      ".js",
+      ".mjs"
+    ],
+    "include": [
+      "src/protocols/hyper-handler.js",
+      "src/protocols/ipfs-handler.js",
+      "src/protocols/hs-handler.js"
+    ],
+    "exclude": [
+      "test/**",
+      "scripts/**",
+      "src/pages/static/**"
+    ],
+    "reporter": [
+      "text",
+      "text-summary",
+      "html",
+      "lcov"
+    ],
+    "report-dir": "coverage"
   }
 }
