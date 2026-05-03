@@ -55,7 +55,7 @@
   - [x] `bittorrent://` / `bt://` / `magnet:` native URLs support
   - [x] Real-time download progress UI with pause/resume
   - [x] Auto-destroy torrent on completion (no seeding)
-  - [ ] 🚧 `bt://` website seeding and hosting
+  - [x] Optional `bt://` seeding
 
 - [x] Local `file://` browsing with P2P publishing:
   - [x] Custom `file://` support with privileged access
@@ -82,6 +82,8 @@
   - [x] `peersky://p2p/p2pmd/`
     - Real-time collaborative markdown editor
     - Presentation slides mode with speaker notes
+    - Offline KaTeX math mode with inline scientific templates
+    - IEEE-style two-column research paper preview/export
     - AI-powered content generation
     - Publish to IPFS/Hypercore
     - Peers dashboard with roles, live editing status, and edit history
@@ -139,11 +141,11 @@
   - [x] P2P Editor integration (peersky://p2p/peerpad/)
     - [x] New AI generator (`ai-generator.js`) to generate code with AI
 
-  - [ ] 🚧 [LLM Memory](https://github.com/p2plabsxyz/peersky-browser/issues/97)
-    - [ ] `llm.json` to store prompts/responses across P2P apps
-    - [ ] Reusable History component (P2P editor, AI chat, etc.)
-    - [ ] Settings toggle to enable/disable memory
-    - [ ] “Reset P2P Data” also clears `llm.json`
+  - [x] [LLM Memory](https://github.com/p2plabsxyz/peersky-browser/issues/97)
+    - [x] `llm.json` to store prompts/responses across P2P apps
+    - [x] Reusable History component (P2P editor, AI chat, etc.)
+    - [x] Settings toggle to enable/disable memory
+    - [x] “Reset P2P Data” also clears `llm.json`
 
 - [x] [Web extensions](https://github.com/p2plabsxyz/peersky-browser/issues/19):
   - [x] Ability to add and manage extensions

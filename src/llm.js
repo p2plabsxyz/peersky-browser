@@ -90,6 +90,37 @@ ipcMain.handle('llm-supported', async (event) => {
   return isSupported();
 });
 
+ipcMain.handle('llm-model-info', async () => {
+  const settings = settingsManager.settings || {};
+  if (!settings.llm?.enabled) return { model: '', vision: false };
+  const model = settings.llm.model || '';
+  const isOllama = settings.llm.apiKey === 'ollama';
+  let vision = false;
+  if (isOllama) {
+    try {
+      const rawBase = (settings.llm.baseURL || 'http://127.0.0.1:11434').replace(/\/+$/, '');
+      const res = await fetch(`${rawBase}/api/show`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: model })
+      });
+      if (res.ok) {
+        const info = await res.json();
+        const families = info.details?.families || [];
+        const hasVisionFamily = families.some(f =>
+          f === 'clip' || f === 'mllama' || f.includes('vl') || f.includes('vision')
+        );
+        const hasProjector = !!(info.projector_info || info.model_info?.['clip.type']);
+        const nameHeuristic = ['-vl', ':vl', 'llava', 'bakllava', 'moondream', 'minicpm-v', 'cogvlm'].some(k =>
+          model.toLowerCase().includes(k)
+        );
+        vision = hasVisionFamily || hasProjector || nameHeuristic;
+      }
+    } catch { /* model info unavailable */ }
+  }
+  return { model, vision };
+});
+
 ipcMain.handle('llm-chat', async (event, args) => {
   const settings = settingsManager.settings || {};
   if (!settings.llm?.enabled) return Promise.reject(new Error('LLM API is disabled'));
@@ -575,17 +606,30 @@ export async function* chatStream({
   // Construct the full URL for chat completions
   const chatURL = constructChatURL(baseURLRaw);
   
-  // Simple streaming request - let Ollama use its defaults
-  for await (const { choices } of stream(chatURL, {
-    messages,
-    model,
-    temperature: temperature ?? DEFAULT_TEMPERATURE,
-    max_tokens: maxTokens ?? DEFAULT_MAX_TOKENS,
-    stop
-  }, 'Unable to generate chat stream', apiKey)) {
-    if (choices && choices[0]?.delta) {
-      yield choices[0].delta;
+  try {
+    // Simple streaming request - let Ollama use its defaults
+    for await (const { choices } of stream(chatURL, {
+      messages,
+      model,
+      temperature: temperature ?? DEFAULT_TEMPERATURE,
+      max_tokens: maxTokens ?? DEFAULT_MAX_TOKENS,
+      stop
+    }, 'Unable to generate chat stream', apiKey)) {
+      if (choices && choices[0]?.delta) {
+        yield choices[0].delta;
+      }
     }
+  } catch (error) {
+    const msg = error?.message || '';
+    if (msg.includes('model failed to load') || msg.includes('resource limitations')) {
+      throw new Error(
+        `Model "${model}" failed to load — Ollama ran out of memory or hit a resource limit.\n` +
+        `Try: run \`ollama run ${model}\` in a terminal to see the full error, ` +
+        `or free up RAM/VRAM and retry. You can also try a smaller model in Settings > AI / LLMs.`
+      );
+    }
+    await maybeShowOllamaNotInstalledDialog(error);
+    throw error;
   }
 }
 
@@ -629,7 +673,15 @@ async function* stream(url, data = {}, errorMessage = 'Request failed', apiKey =
     });
     
     if (!response.ok) {
-      throw new Error(`${errorMessage} ${await response.text()}`);
+      const bodyText = await response.text();
+      try {
+        const parsed = JSON.parse(bodyText);
+        const msg = parsed.error?.message || parsed.error || bodyText;
+        throw new Error(`${errorMessage}: ${msg}`);
+      } catch (jsonErr) {
+        if (jsonErr.message && jsonErr.message.startsWith(errorMessage)) throw jsonErr;
+        throw new Error(`${errorMessage}: ${bodyText}`);
+      }
     }
     
     const decoder = new TextDecoder('utf-8');
@@ -681,7 +733,22 @@ async function post(url, data, errorMessage = 'Request failed', parseBody = true
     });
 
     if (!response.ok) {
-      throw new Error(`${errorMessage} ${await response.text()}`);
+      const bodyText = await response.text();
+      try {
+        const parsed = JSON.parse(bodyText);
+        const msg = parsed.error?.message || parsed.error || bodyText;
+        if (parsed.error?.code === 'model_failed_to_load') {
+          throw new Error(
+            `Model failed to load — Ollama ran out of memory or hit a resource limit.\n` +
+            `Try: run \`ollama run ${parsed.error.model}\` in a terminal to see the full error, ` +
+            `or free up RAM/VRAM and retry. You can also try a smaller model in Settings > AI / LLMs.`
+          );
+        }
+        throw new Error(`${errorMessage}: ${msg}`);
+      } catch (jsonErr) {
+        if (jsonErr.message && jsonErr.message.startsWith(errorMessage)) throw jsonErr;
+        throw new Error(`${errorMessage}: ${bodyText}`);
+      }
     }
 
     if (parseBody) {

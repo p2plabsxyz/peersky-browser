@@ -657,12 +657,33 @@ find-menu {
 .tab-favicon {
   width: 20px;
   height: 20px;
-  background-size: contain;
+  background-size: 14px 14px;
   background-repeat: no-repeat;
   background-position: center;
   margin-right: 8px;
   flex-shrink: 0;
   order: 1;
+  border-radius: 50%;
+  transition: box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.tab.sleeping .tab-favicon {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.15), 0 0 0 3px currentColor;
+  outline: 2px dashed var(--peersky-nav-button-inactive);
+  outline-offset: 2px;
+  opacity: 0.55;
+}
+
+.tab.sleeping .tab-title {
+  opacity: 0.55;
+}
+
+.tab.sleeping {
+  opacity: 1 !important; 
+}
+
+.sleeping-indicator {
+  display: none;
 }
 
 .p2p-indicator {
@@ -1259,4 +1280,41 @@ body {
   border: none;
   border-radius: 6px;
   transition: width 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), height 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.tab.split-left.pinned,
+.tab.split-right.pinned,
+.tab.split-pending.pinned {
+  background-color: var(--browser-theme-primary-highlight) !important;
+  color: var(--browser-theme-background) !important;
+  min-width: 80px !important; 
+  max-width: 120px !important;
+}
+
+.tab.split-left.pinned .tab-title,
+.tab.split-right.pinned .tab-title,
+.tab.split-left.pinned .close-tab,
+.tab.split-right.pinned .close-tab,
+.tab.split-left.pinned .p2p-indicator,
+.tab.split-right.pinned .p2p-indicator {
+  color: var(--browser-theme-background) !important;
+}
+
+.tab.split-left.pinned {
+  border: 3px solid var(--browser-theme-secondary-highlight) !important;
+  border-right: none !important;  
+  border-top-right-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+}
+
+.tab.split-right.pinned {
+  border: 3px solid var(--browser-theme-secondary-highlight) !important;
+  border-left: 1px solid rgba(0, 0, 0, 0.2) !important;  
+  border-top-left-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+}
+
+.tab.split-left.pinned .close-tab:hover,
+.tab.split-right.pinned .close-tab:hover {
+  background-color: rgba(0, 0, 0, 0.15) !important;
 }

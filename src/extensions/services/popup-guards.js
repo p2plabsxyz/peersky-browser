@@ -9,16 +9,24 @@
  * @module popup-guards
  */
 
-import { app, BrowserWindow } from 'electron';
+import { app } from 'electron';
+import { openUrlInPeerskyTab } from './open-url-in-browser-tab.js';
 
 // Popup stabilization period - prevent closing for this duration after creation
 const POPUP_STABILIZATION_MS = 2000;
+
+// Window in which a focus-triggered close collapses with the incoming open
+// request for the same extension (click same icon to toggle off).
+const FOCUS_CLOSE_TOGGLE_MS = 250;
 
 // Track popup windows with their creation timestamps
 const popupCreationTimes = new WeakMap();
 
 // Track which windows are extension-related
 const extensionRelatedWindows = new WeakSet();
+
+// actionId -> timestamp of the most recent focus-triggered close.
+const recentFocusCloses = new Map();
 
 /**
  * Check if a popup is in its stabilization period (should not be closed)
@@ -28,6 +36,18 @@ export function isPopupStabilizing(popup) {
   const createdAt = popupCreationTimes.get(popup);
   if (!createdAt) return false;
   return (Date.now() - createdAt) < POPUP_STABILIZATION_MS;
+}
+
+/**
+ * Returns true once if this extension's popup was closed by a focus change in
+ * the last FOCUS_CLOSE_TOGGLE_MS. The entry is always cleared on read.
+ */
+export function consumeRecentFocusClose(actionId) {
+  if (!actionId) return false;
+  const t = recentFocusCloses.get(actionId);
+  if (!t) return false;
+  recentFocusCloses.delete(actionId);
+  return (Date.now() - t) < FOCUS_CLOSE_TOGGLE_MS;
 }
 
 /**
@@ -46,6 +66,17 @@ export function registerPopupForStabilization(popup) {
 function isExtensionUrl(url) {
   if (!url) return false;
   return url.startsWith('chrome-extension://');
+}
+
+async function openExtensionUrlInTab(url) {
+  try {
+    const opened = await openUrlInPeerskyTab(url, 'Extension Page');
+    if (!opened) {
+      console.warn('[PopupGuards] No window with tabbar found for extension URL');
+    }
+  } catch (e) {
+    console.error('[PopupGuards] Failed to open extension URL in tab:', e);
+  }
 }
 
 /**
@@ -71,7 +102,12 @@ export function installExtensionPopupGuards(manager) {
           continue;
         }
         if (focusedWindow && popup === focusedWindow) continue;
+        // Close when focus moves to any other window
         if (isPopupStabilizing(popup)) continue;
+
+        const extId = manager.popupToExtensionId?.get(popup);
+        if (extId) recentFocusCloses.set(extId, Date.now());
+
         try { popup.close(); } catch (_) { }
       }
     });
@@ -166,10 +202,16 @@ export function installExtensionPopupGuards(manager) {
     wc.setWindowOpenHandler((details) => {
       const { url } = details;
 
-      // If from extension, allow ALL popups (MetaMask login, OAuth, etc.)
+      // If from extension, handle window.open requests
       if (isFromExtension) {
-        console.log('[PopupGuards] Allowing popup from extension:', url?.substring(0, 60) || 'about:blank');
+        // chrome-extension:// pages (like ArchiveWeb.page's index.html) should
+        // open as proper browser tabs, matching Chrome's behaviour.
+        if (isExtensionUrl(url)) {
+          openExtensionUrlInTab(url);
+          return { action: 'deny' };
+        }
 
+        // Non-extension URLs (OAuth login popups, etc.) still open as popup windows
         // Register the new window for stabilization when it's created
         app.once('browser-window-created', (_evt, newWin) => {
           registerPopupForStabilization(newWin);
@@ -202,4 +244,4 @@ export function installExtensionPopupGuards(manager) {
   console.log('[PopupGuards] Extension popup guards installed');
 }
 
-export default { installExtensionPopupGuards, isPopupStabilizing, registerPopupForStabilization };
+export default { installExtensionPopupGuards, isPopupStabilizing, registerPopupForStabilization, consumeRecentFocusClose };

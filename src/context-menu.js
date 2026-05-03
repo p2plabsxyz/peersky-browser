@@ -1,6 +1,7 @@
 import { Menu, MenuItem, clipboard, dialog } from "electron";
 import WindowManager from "./window-manager.js";
 import path from "path";
+import extensionManager from "./extensions/index.js";
 
 const isMac = process.platform === "darwin";
 
@@ -334,6 +335,22 @@ export function attachContextMenus(browserWindow, windowManager) {
             },
           })
         );
+      }
+
+      // Extension context menu items (chrome.contextMenus API)
+      try {
+        const ext = extensionManager.electronChromeExtensions;
+        if (ext && typeof ext.getContextMenuItems === "function") {
+          const extItems = ext.getContextMenuItems(webContents, params) || [];
+          if (extItems.length > 0) {
+            menu.append(new MenuItem({ type: "separator" }));
+            for (const item of extItems) {
+              menu.append(item);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("[Context menu] Extension menu items failed:", e?.message);
       }
 
       menu.popup();

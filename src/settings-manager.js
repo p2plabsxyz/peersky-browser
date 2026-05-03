@@ -68,11 +68,14 @@ const DEFAULT_SETTINGS = {
   pinnedP2PApps: null,
   extensionP2PEnabled: false,
   extensionAutoUpdate: true,
+  memorySaverEnabled: false,
+  memorySaverExclusions: ['peersky://p2p/*'],
   llm: {
     enabled: false,
     baseURL: 'http://127.0.0.1:11434/',
     apiKey: 'ollama',
-    model: 'qwen2.5-coder:3b'
+    model: 'qwen2.5-coder:3b',
+    memoryEnabled: false
   }
 };
 
@@ -106,6 +109,9 @@ async function clearBrowserCache() {
     await clear(['cookies', 'localstorage', 'sessionstorage']);
     await clear(['indexdb']); // (Electron's internal key for IndexedDB)
     await clear(['cachestorage', 'serviceworkers']);
+
+    const downloadsFile = path.join(app.getPath("userData"), "downloads.json");
+    await fs.rm(downloadsFile, { force: true }).catch(() => {});
 
     await clearPersistedPermissions();
 
@@ -151,24 +157,32 @@ async function resetP2PData({ resetIdentities = false } = {}) {
   const ensCache = path.join(USER_DATA, 'ensCache.json');
   const btState = path.join(USER_DATA, 'bt-state.json');
   const portsFile = path.join(USER_DATA, 'peersky-ports.json');
+  const chatRooms = path.join(USER_DATA, 'peersky-chat-rooms.json');
 
-  // ENS cache, BitTorrent state, and hs cache can always be removed
+  // ENS cache, BitTorrent state, P2PMD ports, and PeerChat rooms can always be removed
   await fs.rm(ensCache, { recursive: true, force: true }).catch(() => {});
   await fs.rm(btState, { recursive: true, force: true }).catch(() => {});
   await fs.rm(portsFile, { recursive: true, force: true }).catch(() => {});
+  await fs.rm(chatRooms, { recursive: true, force: true }).catch(() => {});
   
   // Wipe internal P2P User App Registry data and cleanly re-sync it
   await p2pAppRegistry.reset();
 
+  // Wipe LLM memory file and invalidate in-memory cache
+  const llmMemoryFile = path.join(USER_DATA, 'llm.json');
+  await fs.rm(llmMemoryFile, { force: true }).catch(() => {});
+  try {
+    const llmMem = await import('./llm-memory.js');
+    llmMem.resetCache?.();
+  } catch {}
+
   if (resetIdentities) {
-    // full wipe
     await fs.rm(ipfsDir,  { recursive: true, force: true }).catch(() => {});
     await fs.rm(hyperDir, { recursive: true, force: true }).catch(() => {});
     logDebug('P2P reset: full wipe including identities');
   } else {
-    // preserve identity files by default
-    await removeChildrenExcept(ipfsDir,  ['libp2p-key']);          // IPFS Peer ID
-    await removeChildrenExcept(hyperDir, ['swarm-keypair.json']);  // Hyper identity
+    await removeChildrenExcept(ipfsDir,  ['libp2p-key']);
+    await removeChildrenExcept(hyperDir, ['swarm-keypair.json']);
     logDebug('P2P reset: data cleared, identities preserved');
   }
 }
@@ -547,7 +561,8 @@ class SettingsManager {
             enabled: llmSettings.enabled || false,
             baseURL: llmSettings.baseURL || DEFAULT_SETTINGS.llm.baseURL,
             apiKey: this.decryptApiKey(llmSettings.apiKey || DEFAULT_SETTINGS.llm.apiKey),
-            model: llmSettings.model || DEFAULT_SETTINGS.llm.model
+            model: llmSettings.model || DEFAULT_SETTINGS.llm.model,
+            memoryEnabled: typeof llmSettings.memoryEnabled === 'boolean' ? llmSettings.memoryEnabled : false
           };
         } else {
           this.settings[key] = loaded[key];
@@ -634,6 +649,8 @@ class SettingsManager {
       wallpaper: (v) => typeof v === "string",
       wallpaperCustomPath: (v) => v === null || typeof v === "string",
       pinnedP2PApps: (v) => v === null || (Array.isArray(v) && v.every(id => typeof id === 'string')),
+      memorySaverEnabled: (v) => typeof v === "boolean",
+      memorySaverExclusions: (v) => Array.isArray(v) && v.every(ex => typeof ex === 'string'),
       llm: (v) => {
         // Validate LLM settings object (simplified for Ollama-only)
         if (typeof v !== 'object' || v === null) return false;
@@ -643,6 +660,7 @@ class SettingsManager {
         if (typeof v.baseURL !== 'string') return false;
         if (typeof v.apiKey !== 'string') return false;
         if (typeof v.model !== 'string') return false;
+        if (v.memoryEnabled !== undefined && typeof v.memoryEnabled !== 'boolean') return false;
         
         return true;
       }
@@ -739,6 +757,15 @@ class SettingsManager {
         windows.forEach(window => {
           if (window && !window.isDestroyed()) {
             window.webContents.send('pinned-apps-changed', value);
+          }
+        });
+      } else if (key === 'memorySaverEnabled' || key === 'memorySaverExclusions') {
+        windows.forEach(window => {
+          if (window && !window.isDestroyed()) {
+            window.webContents.send('memory-saver-changed', {
+              enabled: this.settings.memorySaverEnabled,
+              exclusions: this.settings.memorySaverExclusions
+            });
           }
         });
       } else if (key === "customSearchTemplate") {

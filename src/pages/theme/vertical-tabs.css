@@ -400,3 +400,163 @@ body:has(.titlebar.titlebar-collapsed-darwin) .tabbar.vertical-tabs {
   border-left: none !important;
   box-shadow: none !important;
 }
+
+.tabbar.vertical-tabs .tab.split-left,
+.tabbar.vertical-tabs .tab.split-right {
+  transform: none !important;
+  position: relative !important;
+  left: auto !important;
+  top: auto !important;
+  margin-left: 4px !important;
+  margin-right: 4px !important;
+}
+
+.tabbar.vertical-tabs:not(.expanded) .tab.split-left,
+.tabbar.vertical-tabs:not(.expanded) .tab.split-right {
+  width: 48px !important;
+  min-width: 48px !important; 
+}
+
+.tabbar.vertical-tabs.expanded .tab.split-left,
+.tabbar.vertical-tabs.expanded .tab.split-right,
+.tabbar.vertical-tabs.keep-expanded .tab.split-left,
+.tabbar.vertical-tabs.keep-expanded .tab.split-right {
+  width: calc(100% - 8px) !important; 
+  min-width: 0 !important;
+  max-width: none !important;
+  flex: 0 0 auto !important;
+  padding: 8px 12px !important; 
+  box-sizing: border-box !important;
+}
+
+.tabbar.vertical-tabs .tab.split-left {
+  margin-bottom: 0 !important;
+  border-top-left-radius: 8px !important;
+  border-top-right-radius: 8px !important;
+  border-bottom-left-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+  border: var(--peersky-nav-button-inactive) 0.5px solid !important;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.2) !important;
+}
+
+.tabbar.vertical-tabs .tab.split-right {
+  margin-top: 0 !important;
+  border-top-left-radius: 0 !important;
+  border-top-right-radius: 0 !important;
+  border-bottom-left-radius: 8px !important;
+  border-bottom-right-radius: 8px !important;
+  border: var(--peersky-nav-button-inactive) 0.5px solid !important;
+  border-top: none !important;
+}
+
+.tabbar.vertical-tabs .tab.split-left.active {
+  margin-bottom: 0 !important;
+  border-bottom-left-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+}
+
+.tabbar.vertical-tabs .tab.split-right.active {
+  margin-top: 0 !important;
+  border-top-left-radius: 0 !important;
+  border-top-right-radius: 0 !important;
+}
+
+.tabbar.vertical-tabs .tab.split-left::before,
+.tabbar.vertical-tabs .tab.split-right::before,
+.tabbar.vertical-tabs .tab.split-left .tab-title::before,
+.tabbar.vertical-tabs .tab.split-right .tab-title::before {
+  display: none !important;
+}
+
+.tabbar.vertical-tabs .tab.split-left.dragging,
+.tabbar.vertical-tabs .tab.split-right.dragging,
+body:has(.tabbar.vertical-tabs) > .tab.split-left.dragging,
+body:has(.tabbar.vertical-tabs) > .tab.split-right.dragging {
+  transform: none !important;
+  opacity: 0.95 !important;
+  margin: 0 !important; 
+  background-color: var(--settings-bg-primary) !important; 
+  border-left: 1px solid var(--peersky-nav-border-color) !important;
+  border-right: 1px solid var(--peersky-nav-border-color) !important;
+  box-sizing: border-box !important;
+}
+
+.tabbar.vertical-tabs .tab.split-left.dragging,
+body:has(.tabbar.vertical-tabs) > .tab.split-left.dragging {
+  border-radius: 8px 8px 0 0 !important; 
+  border-top: 1px solid var(--peersky-nav-border-color) !important;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.2) !important; 
+  box-shadow: 0 -8px 16px rgba(0,0,0,0.1), 4px 0 16px rgba(0,0,0,0.1), -4px 0 16px rgba(0,0,0,0.1) !important;
+}
+
+.tabbar.vertical-tabs .tab.split-right.dragging,
+body:has(.tabbar.vertical-tabs) > .tab.split-right.dragging {
+  border-radius: 0 0 8px 8px !important; 
+  border-bottom: 1px solid var(--peersky-nav-border-color) !important;
+  border-top: none !important;
+  box-shadow: 0 16px 24px rgba(0,0,0,0.2), 4px 0 16px rgba(0,0,0,0.1), -4px 0 16px rgba(0,0,0,0.1) !important;
+}
+
+body:has(.tabbar.vertical-tabs) > .tab.split-left.dragging::before,
+body:has(.tabbar.vertical-tabs) > .tab.split-right.dragging::before,
+body:has(.tabbar.vertical-tabs) > .tab.split-left.dragging .tab-title::before,
+body:has(.tabbar.vertical-tabs) > .tab.split-right.dragging .tab-title::before {
+  display: none !important;
+}
+
+body:has(.tabbar.vertical-tabs.expanded) > .tab.split-left.dragging,
+body:has(.tabbar.vertical-tabs.expanded) > .tab.split-right.dragging,
+body:has(.tabbar.vertical-tabs.keep-expanded) > .tab.split-left.dragging,
+body:has(.tabbar.vertical-tabs.keep-expanded) > .tab.split-right.dragging {
+  width: 192px !important;
+  min-width: 192px !important;
+  max-width: 192px !important;
+  padding: 8px 12px !important;
+}
+
+body:has(.tabbar.vertical-tabs:not(.expanded):not(.keep-expanded)) > .tab.split-left.dragging,
+body:has(.tabbar.vertical-tabs:not(.expanded):not(.keep-expanded)) > .tab.split-right.dragging {
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
+  padding: 4px !important;
+}
+
+.tabbar.vertical-tabs .tab.split-left.pinned,
+.tabbar.vertical-tabs .tab.split-right.pinned,
+.tabbar.vertical-tabs .tab.split-pending.pinned {
+  background-color: var(--browser-theme-primary-highlight) !important;
+  color: var(--browser-theme-background) !important;
+}
+
+.tabbar.vertical-tabs .tab.split-left.pinned .tab-title,
+.tabbar.vertical-tabs .tab.split-right.pinned .tab-title,
+.tabbar.vertical-tabs .tab.split-left.pinned .close-tab,
+.tabbar.vertical-tabs .tab.split-right.pinned .close-tab,
+.tabbar.vertical-tabs .tab.split-left.pinned .p2p-indicator,
+.tabbar.vertical-tabs .tab.split-right.pinned .p2p-indicator {
+  color: var(--browser-theme-background) !important;
+}
+
+.tabbar.vertical-tabs .tab.split-left.pinned {
+  border-top: 3px solid var(--browser-theme-secondary-highlight) !important;
+  border-left: 3px solid var(--browser-theme-secondary-highlight) !important;
+  border-right: 3px solid var(--browser-theme-secondary-highlight) !important;
+  border-bottom: none !important; /* Keep the seam clean to connect to partner */
+}
+
+.tabbar.vertical-tabs .tab.split-right.pinned {
+  border-bottom: 3px solid var(--browser-theme-secondary-highlight) !important;
+  border-left: 3px solid var(--browser-theme-secondary-highlight) !important;
+  border-right: 3px solid var(--browser-theme-secondary-highlight) !important;
+  border-top: 1px solid rgba(0, 0, 0, 0.2) !important; 
+}
+
+.tabbar.vertical-tabs .tab.split-right.pinned::before {
+  display: none !important;
+}
+
+.tabbar.vertical-tabs .tab.split-left.pinned .close-tab:hover,
+.tabbar.vertical-tabs .tab.split-right.pinned .close-tab:hover {
+  background-color: rgba(0, 0, 0, 0.15) !important;
+}

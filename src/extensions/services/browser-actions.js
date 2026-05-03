@@ -1,7 +1,7 @@
 // Browser actions (click/open popup) and helpers
 
 import { app, BrowserWindow, Menu, webContents } from 'electron';
-import { registerPopupForStabilization } from './popup-guards.js';
+import { registerPopupForStabilization, consumeRecentFocusClose } from './popup-guards.js';
 import { createLogger } from '../../logger.js';
 
 const log = createLogger('extensions');
@@ -140,7 +140,7 @@ export async function clickBrowserAction(manager, actionId, window) {
         }
       }
 
-      // Method 2: Use browserAction.openPopup (electron-chrome-extensions handles no-popup case)
+      // Method 2: Use browserAction.openPopup (peersky-chrome-extensions handles no-popup case)
       // For extensions WITHOUT a popup, openPopup should dispatch onClicked event
       if (manager.electronChromeExtensions.api && manager.electronChromeExtensions.api.browserAction) {
         const browserActionAPI = manager.electronChromeExtensions.api.browserAction;
@@ -219,6 +219,12 @@ export async function clickBrowserAction(manager, actionId, window) {
 
 export async function openBrowserAction(manager, actionId, window, anchorRect) {
   try {
+    // If the click that stole focus already closed this popup, treat this
+    // invocation as the toggle-off half of that click.
+    if (consumeRecentFocusClose(actionId)) {
+      return { success: true, toggled: true };
+    }
+
     const extension = manager.loadedExtensions.get(actionId);
     if (!extension || !extension.enabled) {
       log.warn(`ExtensionManager: Extension ${actionId} not found or disabled`);
@@ -255,14 +261,6 @@ export async function openBrowserAction(manager, actionId, window, anchorRect) {
 
         pinECEWindowFocus(manager, window, activeTab);
 
-        if (manager.electronChromeExtensions.getBrowserAction && popupExists) {
-          const browserAction = manager.electronChromeExtensions.getBrowserAction(extension.electronId);
-          if (browserAction && browserAction.onClicked) {
-            browserAction.onClicked.trigger(activeTab);
-            log.info(`ExtensionManager: Browser action triggered for ${extension.displayName || extension.name}`);
-            return { success: true };
-          }
-        }
         // Method 2: Use browserAction.openPopup
         if (manager.electronChromeExtensions.api && manager.electronChromeExtensions.api.browserAction) {
           const browserActionAPI = manager.electronChromeExtensions.api.browserAction;

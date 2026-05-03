@@ -30,7 +30,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { promises as fs } from 'fs';
 import { installChromeWebStore } from 'electron-chrome-web-store';
-import { ElectronChromeExtensions } from 'electron-chrome-extensions';
+import { ElectronChromeExtensions } from '@p2plabs/peersky-chrome-extensions';
 import ManifestValidator from './manifest-validator.js';
 import { loadPolicy } from './policy.js';
 import { ensureDir, KeyedMutex, ERR } from './util.js';
@@ -44,6 +44,7 @@ import * as RegistryService from './services/registry.js';
 import * as LoaderService from './services/loader.js';
 import * as BrowserActions from './services/browser-actions.js';
 import { installExtensionPopupGuards as installPopupGuards } from './services/popup-guards.js';
+import { openUrlInPeerskyTab } from './services/open-url-in-browser-tab.js';
 import * as WebStoreService from './services/webstore.js';
 import { createLogger } from '../logger.js';
 
@@ -153,54 +154,12 @@ class ExtensionManager {
 
               const url = typeof details.url === "string" && details.url.length > 0 ? details.url : "peersky://home";
 
-              // Find the main Peersky window (the one with the tabbar)
-              // Important: Skip small popup windows - they're likely extension popups
-              const allWindows = BrowserWindow.getAllWindows();
-              let windowWithTabbar = null;
-
-              for (const w of allWindows) {
-                if (w.isDestroyed()) continue;
-
-                // Skip small windows (likely extension popups)
-                const bounds = w.getBounds();
-                if (bounds.width < 500 || bounds.height < 400) {
-                  log.info("[ExtensionManager] Skipping small window:", bounds);
-                  continue;
-                }
-
-                try {
-                  const hasTabBar = await w.webContents.executeJavaScript(`
-                    !!(document.getElementById('tabbar') && typeof document.getElementById('tabbar').addTab === 'function')
-                  `, true);
-                  if (hasTabBar) {
-                    windowWithTabbar = w;
-                    log.info("[ExtensionManager] Found window with tabbar:", w.id);
-                    break;
-                  }
-                } catch (e) {
-                  log.info("[ExtensionManager] Window check failed:", e.message);
-                }
-              }
-
-              if (!windowWithTabbar) {
+              const opened = await openUrlInPeerskyTab(url, "New Tab");
+              if (!opened) {
                 log.error("[ExtensionManager] No window with tabbar found!");
                 throw new Error("No browser window with tabbar available for createTab");
               }
-
-              // Use direct JavaScript call to tabBar.addTab - more reliable than IPC
-              log.info("[ExtensionManager] Creating tab via direct JS for URL:", url);
-              const addTabJs = `
-                (function() {
-                  const tabBar = document.getElementById('tabbar');
-                  if (!tabBar || typeof tabBar.addTab !== 'function') {
-                    return null;
-                  }
-                  const tabId = tabBar.addTab(${JSON.stringify(url)}, "New Tab");
-                  return tabId;
-                })();
-              `;
-
-              const tabId = await windowWithTabbar.webContents.executeJavaScript(addTabJs, true);
+              const { browserWindow: windowWithTabbar, tabId } = opened;
               log.info("[ExtensionManager] Tab created with ID:", tabId);
 
               // Brief delay to let the webview initialize
@@ -466,7 +425,14 @@ class ExtensionManager {
             const originalQuery = ece.api.tabs.query.bind(ece.api.tabs);
             ece.ctx.router.handle("tabs.query", (event, info = {}) => {
               if (info.currentWindow || info.lastFocusedWindow) {
-                info.windowId = -2; // Maps to ece.api.tabs.WINDOW_ID_CURRENT
+                // Prefer the ECE tracked last-focused browser window id (set via our focus pinning),
+                // and fall back to WINDOW_ID_CURRENT.
+                const lastFocusedWindowId = ece?.ctx?.store?.lastFocusedWindowId;
+                if (typeof lastFocusedWindowId === 'number' && lastFocusedWindowId > 0) {
+                  info.windowId = lastFocusedWindowId;
+                } else {
+                  info.windowId = -2; // Maps to ece.api.tabs.WINDOW_ID_CURRENT
+                }
               }
               return originalQuery(event, info);
             });
@@ -885,10 +851,10 @@ class ExtensionManager {
         const wcId = webContents.id;
         if (this._registeredTabs.has(wcId)) return;
         this._registeredTabs.add(wcId);
-        // Clean up when the webContents is destroyed
         webContents.once('destroyed', () => {
           this._registeredTabs?.delete(wcId);
         });
+
         this.electronChromeExtensions.addTab(webContents, window);
         log.info(`[ExtensionManager] Registered webContents ${webContents.id} with extension system`);
       } catch (error) {

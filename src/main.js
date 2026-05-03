@@ -1,7 +1,8 @@
-import { app, session, protocol as globalProtocol, ipcMain, BrowserWindow, Menu, shell, dialog, webContents} from "electron";
+import { app, session, protocol as globalProtocol, ipcMain, BrowserWindow, Menu, shell, webContents} from "electron";
 import { createLogger } from './logger.js';
 import fs from "fs/promises";
 import path from "path";
+import crypto from "crypto"
 import { createHandler as createBrowserHandler } from "./protocols/peersky-protocol.js";
 import { createHandler as createBrowserThemeHandler } from "./protocols/theme-handler.js";
 import { createHandler as createIPFSHandler } from "./protocols/ipfs-handler.js";
@@ -18,6 +19,7 @@ import p2pAppRegistry from "./p2p-app-registry.js";
 import { setWindowManager } from "./context-menu.js";
 import { isBuiltInSearchEngine } from "./search-engine.js";
 import "./llm.js";
+import "./llm-memory.js";
 // import { setupAutoUpdater } from "./auto-updater.js";
 
 // Import and initialize extension system
@@ -25,6 +27,7 @@ import extensionManager from "./extensions/index.js";
 import { setupExtensionIpcHandlers } from "./extensions/extensions-ipc.js";
 import { getBrowserSession, usePersist } from "./session.js";
 import { setupPermissionHandler } from "./permissions.js";
+import { setupP2pmdPdfExportIpc } from "./pages/p2p/p2pmd/pdf-export-ipc.js";
 
 const P2P_PROTOCOL = {
   standard: true,
@@ -78,6 +81,28 @@ const MAGNET_PROTOCOL = {
 const log = createLogger('main');
 
 let windowManager = null;
+
+const trustedUIWebContents = new Set();
+
+app.on("browser-window-created", (event, win) => {
+  const wcId = win.webContents.id;
+  trustedUIWebContents.add(wcId);
+  win.webContents.once("destroyed", () => trustedUIWebContents.delete(wcId));
+});
+
+app.on("web-contents-created", (event, wc) => {
+  const wcId = wc.id;
+  wc.on("did-navigate", (e, url) => {
+    if (url.startsWith("peersky://downloads")) {
+      trustedUIWebContents.add(wcId);
+    } else {
+      if (!BrowserWindow.fromWebContents(wc)) {
+        trustedUIWebContents.delete(wcId);
+      }
+    }
+  });
+  wc.once("destroyed", () => trustedUIWebContents.delete(wcId));
+});
 
 const webviewTabShortcutNavAttached = new WeakSet();
 
@@ -139,12 +164,69 @@ app.whenReady().then(async () => {
 
   // Set the WindowManager instance in context-menu.js
   setWindowManager(windowManager);
-  
+
   // Get consistent session for protocols and extensions
   const userSession = getBrowserSession();
   await setupProtocols(userSession);
-  installWebviewFileRedirect(userSession);
+  installExtensionWebRequestBridge(userSession);
   setupBittorrentIpc();
+
+  userSession.on("will-download", (event, item, sessionWebContents) => {
+    const downloadId = crypto.randomUUID();
+
+    activeDownloadItems.set(downloadId, item);
+
+    const broadcastProgress = (state, forcePaused = null) => {
+      const data = {
+        id: downloadId,
+        filename: item.getFilename(),
+        received: item.getReceivedBytes(),
+        total: item.getTotalBytes(),
+        state: state,
+        isPaused: forcePaused !== null ? forcePaused : item.isPaused(),
+        canResume: item.canResume(),
+        percent: item.getTotalBytes()
+          ? Math.round((item.getReceivedBytes() / item.getTotalBytes()) * 100)
+          : 0,
+      };
+
+      trustedUIWebContents.forEach((id) => {
+        const wc = webContents.fromId(id);
+        if (wc && !wc.isDestroyed()) {
+          wc.send("download-progress", data);
+        } else {
+          trustedUIWebContents.delete(id);
+        }
+      });
+    };
+
+    item.manualBroadcast = broadcastProgress;
+
+    const progressInterval = setInterval(() => {
+      if (item.getState() === "progressing") {
+        broadcastProgress(item.getState());
+      }
+    }, 100);
+
+    item.on("done", async (event, state) => {
+      clearInterval(progressInterval);
+
+      activeDownloadItems.delete(downloadId);
+      broadcastProgress(state);
+
+      if (state === "completed") {
+        const downloadInfo = {
+          id: downloadId,
+          filename: item.getFilename(),
+          size: item.getTotalBytes(),
+          timestamp: Date.now(),
+          savePath: item.getSavePath(),
+          url: item.getURL(),
+        };
+        await saveDownloadHistory(downloadInfo);
+      }
+    });
+  });
 
   // Global webview partition alignment and security hardening
   app.on('web-contents-created', (_e, wc) => {
@@ -323,9 +405,146 @@ async function setupProtocols(session) {
   sessionProtocol.handle("magnet", bittorrentProtocolHandler);
 }
 
-function installWebviewFileRedirect(session) {
-  session.webRequest.onBeforeRequest({ urls: ["file://*/*"] }, (_details, callback) => {
-    callback({});
+function installExtensionWebRequestBridge(session) {
+  const shouldForwardToExtensions = (rawUrl) => {
+    const url = typeof rawUrl === "string" ? rawUrl : "";
+    if (!url) return false;
+    if (url.startsWith("file://")) return false;
+    if (url.startsWith("chrome-extension://")) return false;
+    try {
+      const proto = new URL(url).protocol;
+      return proto === "http:" || proto === "https:" || proto === "ws:" || proto === "wss:" || proto === "ftp:";
+    } catch (_) {
+      return false;
+    }
+  };
+
+  session.webRequest.onBeforeRequest({ urls: ["<all_urls>"] }, async (details, callback) => {
+    const url = details?.url || "";
+    if (!shouldForwardToExtensions(url)) {
+      callback({});
+      return;
+    }
+    let result = {};
+    try {
+      result =
+        (await extensionManager.electronChromeExtensions?.notifyWebRequestOnBeforeRequest(
+          details,
+        )) ?? {};
+    } catch (e) {
+      console.warn("[webRequest] onBeforeRequest extension dispatch failed:", e?.message);
+    }
+    callback(result);
+  });
+
+  session.webRequest.onBeforeSendHeaders(
+    { urls: ["<all_urls>"] },
+    async (details, callback) => {
+      const url = details?.url || "";
+      if (!shouldForwardToExtensions(url)) {
+        callback({});
+        return;
+      }
+
+      let result = {};
+      try {
+        result =
+          (await extensionManager.electronChromeExtensions?.notifyWebRequestOnBeforeSendHeaders(
+            details,
+          )) ?? {};
+      } catch (e) {
+        console.warn(
+          "[webRequest] onBeforeSendHeaders extension dispatch failed:",
+          e?.message,
+        );
+      }
+
+      callback(result);
+    },
+  );
+
+  session.webRequest.onSendHeaders({ urls: ["<all_urls>"] }, async (details) => {
+    const url = details?.url || "";
+    if (!shouldForwardToExtensions(url)) {
+      return;
+    }
+    try {
+      await extensionManager.electronChromeExtensions?.notifyWebRequestOnSendHeaders(details);
+    } catch (e) {
+      console.warn("[webRequest] onSendHeaders extension dispatch failed:", e?.message);
+    }
+  });
+
+  session.webRequest.onHeadersReceived(
+    { urls: ["<all_urls>"] },
+    async (details, callback) => {
+      const url = details?.url || "";
+      if (!shouldForwardToExtensions(url)) {
+        callback({});
+        return;
+      }
+
+      let result = {};
+      try {
+        result =
+          (await extensionManager.electronChromeExtensions?.notifyWebRequestOnHeadersReceived(
+            details,
+          )) ?? {};
+      } catch (e) {
+        console.warn(
+          "[webRequest] onHeadersReceived extension dispatch failed:",
+          e?.message,
+        );
+      }
+
+      callback(result);
+    },
+  );
+
+  session.webRequest.onResponseStarted({ urls: ["<all_urls>"] }, async (details) => {
+    const url = details?.url || "";
+    if (!shouldForwardToExtensions(url)) {
+      return;
+    }
+    try {
+      await extensionManager.electronChromeExtensions?.notifyWebRequestOnResponseStarted(
+        details,
+      );
+    } catch (e) {
+      console.warn(
+        "[webRequest] onResponseStarted extension dispatch failed:",
+        e?.message,
+      );
+    }
+  });
+
+  session.webRequest.onCompleted({ urls: ["<all_urls>"] }, async (details) => {
+    const url = details?.url || "";
+    if (!shouldForwardToExtensions(url)) {
+      return;
+    }
+    try {
+      await extensionManager.electronChromeExtensions?.notifyWebRequestOnCompleted(details);
+    } catch (e) {
+      console.warn("[webRequest] onCompleted extension dispatch failed:", e?.message);
+    }
+  });
+
+  session.webRequest.onErrorOccurred({ urls: ["<all_urls>"] }, async (details) => {
+    const url = details?.url || "";
+    if (!shouldForwardToExtensions(url)) {
+      return;
+    }
+    try {
+      await extensionManager.electronChromeExtensions?.notifyWebRequestOnErrorOccurred(
+        details,
+      );
+    } catch (e) {
+      console.warn(
+        "[webRequest] onErrorOccurred extension dispatch failed:",
+        e?.message,
+      );
+    }
   });
 }
 
@@ -344,9 +563,11 @@ app.on("activate", () => {
 ipcMain.on('remove-all-tempIcon', () => {
   try {
     const windows = BrowserWindow.getAllWindows();
-    const mainWindow = windows.find(w => w && !w.isDestroyed());
-    if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
-      mainWindow.webContents.send('remove-all-tempIcon');
+    for (const win of windows) {
+      if (!win || win.isDestroyed()) continue;
+      const wc = win.webContents;
+      if (!wc || wc.isDestroyed()) continue;
+      wc.send('remove-all-tempIcon');
     }
   } catch (error) {
     log.error('Error sending remove-all-tempIcon:', error);
@@ -394,20 +615,6 @@ ipcMain.on("window-control", (_event, command) => {
   }
 });
 
-// IPC handler for moving tabs to new window
-ipcMain.on('new-window-with-tab', (_event, tabData) => {
-  // Create new window using WindowManager for proper persistence
-  windowManager.open({
-    url: tabData.url,
-    newWindow: true,
-    isolate: true,
-    singleTab: {
-      url: tabData.url,
-      title: tabData.title
-    }
-  });
-});
-
 // IPC handler for opening files in new tabs (used by BitTorrent pages)
 ipcMain.on('open-url-in-tab', (event, fileUrl) => {
   // Security: only allow file:// URLs
@@ -432,6 +639,102 @@ ipcMain.on('new-window', (_event, options = {}) => {
     windowManager.open({ ...options, restoreTabs: false }); // not restoring other tabs of isolated window
   } else {
     windowManager.open(options);
+  }
+});
+
+const DOWNLOADS_FILE = path.join(app.getPath("userData"), "downloads.json");
+const activeDownloadItems = new Map();
+
+async function saveDownloadHistory(downloadInfo) {
+  try {
+    let downloads = [];
+    try {
+      const data = await fs.readFile(DOWNLOADS_FILE, "utf-8");
+      downloads = JSON.parse(data);
+    } catch (e) {
+      // File doesn't exist or is invalid, start fresh
+    }
+
+    downloads.unshift(downloadInfo);
+
+    if (downloads.length > 100) downloads.length = 100;
+
+    await fs.writeFile(DOWNLOADS_FILE, JSON.stringify(downloads, null, 2));
+  } catch (err) {
+    log.error("Failed to save download history:", err);
+  }
+}
+
+ipcMain.handle("get-downloads", async () => {
+  try {
+    const data = await fs.readFile(DOWNLOADS_FILE, "utf-8");
+    const downloads = JSON.parse(data);
+
+    // Check if each file still exists on the user's disk
+    const enhancedDownloads = await Promise.all(
+      downloads.map(async (item) => {
+        try {
+          await fs.access(item.savePath);
+          return { ...item, fileExists: true };
+        } catch {
+          // File was deleted or moved
+          return { ...item, fileExists: false };
+        }
+      })
+    );
+
+    return enhancedDownloads;
+  } catch (e) {
+    return []; // Return empty array if no history exists yet
+  }
+});
+
+ipcMain.handle("get-active-downloads", async () => {
+  const active = [];
+  for (const [id, item] of activeDownloadItems.entries()) {
+    active.push({
+      id,
+      filename: item.getFilename(),
+      received: item.getReceivedBytes(),
+      total: item.getTotalBytes(),
+      state: item.getState(),
+      isPaused: item.isPaused(),
+      canResume: item.canResume(),
+      percent: item.getTotalBytes() ? Math.round((item.getReceivedBytes() / item.getTotalBytes()) * 100) : 0
+    });
+  }
+  return active;
+});
+
+ipcMain.handle("remove-download", async (event, id) => {
+  try {
+    let downloads = [];
+    try {
+      const data = await fs.readFile(DOWNLOADS_FILE, "utf-8");
+      downloads = JSON.parse(data);
+    } catch (e) {}
+
+    const targetDownload = downloads.find((d) => d.id === id);
+
+    if (!targetDownload) {
+      throw new Error("Download record not found in history.");
+    }
+
+    try {
+      await fs.unlink(targetDownload.savePath);
+    } catch (err) {
+      if (err.code !== "ENOENT") {
+        log.warn("Could not delete file from disk:", err);
+      }
+    }
+
+    downloads = downloads.filter((d) => d.id !== id);
+    await fs.writeFile(DOWNLOADS_FILE, JSON.stringify(downloads, null, 2));
+
+    return { success: true };
+  } catch (err) {
+    log.error("Error removing download:", err);
+    return { success: false, error: err.message };
   }
 });
 
@@ -460,6 +763,69 @@ ipcMain.handle('get-tab-memory-usage', async (event, webContentsId) => {
     log.error(`Error getting memory usage for webContents ID ${webContentsId}:`, error);
     return null;
   }
+});
+
+ipcMain.on("download-pause", (event, id) => {
+  const item = activeDownloadItems.get(id);
+  if (item) {
+    if (!item.isPaused()) item.pause();
+    if (item.manualBroadcast) item.manualBroadcast(item.getState(), true);
+  }
+});
+
+ipcMain.on("download-resume", (event, id) => {
+  const item = activeDownloadItems.get(id);
+  if (item) {
+    if (item.canResume()) item.resume();
+    if (item.manualBroadcast) item.manualBroadcast(item.getState(), false);
+  }
+});
+
+ipcMain.on('download-cancel', (event, id) => {
+  const item = activeDownloadItems.get(id);
+  if (item) item.cancel();
+});
+
+// IPC handler to check if a specific webContents is currently playing audio
+ipcMain.on('is-webcontents-audible', (event, webContentsId) => {
+  try {
+    const wc = webContents.fromId(webContentsId);
+    event.returnValue = wc ? wc.isCurrentlyAudible() : false;
+  } catch (error) {
+    console.error(`Error checking audibility for webContents ID ${webContentsId}:`, error);
+    event.returnValue = false;
+  }
+});
+
+ipcMain.on('get-tab-navigation', (event, webContentsId) => {
+  try {
+    const wc = webContents.fromId(webContentsId);
+    if (!wc || !wc.navigationHistory) {
+      event.returnValue = null;
+      return;
+    }
+
+    const entries = [];
+    const length = wc.navigationHistory.length();
+    for (let i = 0; i < length; i++) {
+      const entry = wc.navigationHistory.getEntryAtIndex(i);
+      entries.push({ url: entry.url, title: entry.title });
+    }
+
+    event.returnValue = {
+      entries,
+      activeIndex: wc.navigationHistory.getActiveIndex()
+    };
+  } catch (error) {
+    log.error(`Error getting navigation history for webContents ID ${webContentsId}:`, error);
+    event.returnValue = null;
+  }
+});
+
+// Electron cannot natively overwrite a WebContents history stack after recreation,
+// so the fallback is handled in the UI layer (savedNavigation on the tab object).
+ipcMain.handle('restore-navigation-history', async (_event, _data) => {
+  return { success: true, note: 'Native history rewrite not supported; relying on UI fallback.' };
 });
 
 ipcMain.on('group-action', (_event, data) => {
@@ -495,37 +861,6 @@ ipcMain.handle('check-built-in-engine', (event, template) => {
   }
 });
 
-ipcMain.handle('p2pmd-print-to-pdf', async (event, { html, fileName } = {}) => {
-  const parentWindow = BrowserWindow.fromWebContents(event.sender);
-  const safeName = typeof fileName === "string" && fileName.trim() ? fileName : "p2pmd-document.pdf";
-  const { canceled, filePath } = await dialog.showSaveDialog(parentWindow, {
-    defaultPath: path.join(app.getPath("downloads"), safeName),
-    filters: [{ name: "PDF", extensions: ["pdf"] }]
-  });
-  if (canceled || !filePath) {
-    return { canceled: true };
-  }
-  const printWindow = new BrowserWindow({
-    show: false,
-    webPreferences: {
-      sandbox: false,
-      contextIsolation: true
-    }
-  });
-  try {
-    const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(html || "")}`;
-    await printWindow.loadURL(dataUrl);
-    const pdfBuffer = await printWindow.webContents.printToPDF({
-      printBackground: true,
-      preferCSSPageSize: true
-    });
-    await fs.writeFile(filePath, pdfBuffer);
-    return { canceled: false, filePath };
-  } finally {
-    if (!printWindow.isDestroyed()) {
-      printWindow.close();
-    }
-  }
-});
+setupP2pmdPdfExportIpc();
 
 export { windowManager };
