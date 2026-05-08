@@ -99,6 +99,36 @@ export async function createHandler(ipfsOptions, session) {
 
   await initializeIPFSNode();
 
+  // Re-announce cached CIDs to the DHT every 6h so provider records
+  // don't expire (48h validity). The built-in reprovider crashes, so
+  // we do our own sequential loop here.
+  const REPROVIDE_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
+  async function reprovideAllCids() {
+    if (!node || ipfsCache.length === 0) return;
+    log.info(`[IPFS] Starting periodic re-provide for ${ipfsCache.length} CID(s)`);
+    let provided = 0;
+    for (const entry of ipfsCache) {
+      try {
+        if (!entry.cid) continue;
+        const cid = CID.parse(entry.cid);
+        await node.libp2p.contentRouting.provide(cid, { signal: AbortSignal.timeout(30_000) });
+        provided++;
+      } catch (err) {
+        log.warn(`[IPFS] Re-provide failed for ${entry.cid}: ${err.message}`);
+      }
+      // Small delay between provides to avoid overwhelming the DHT
+      await new Promise(r => setTimeout(r, 2000));
+    }
+    log.info(`[IPFS] Re-provide complete: ${provided}/${ipfsCache.length} succeeded`);
+  }
+  setInterval(() => {
+    reprovideAllCids().catch(err => log.error('[IPFS] Re-provide loop error:', err.message));
+  }, REPROVIDE_INTERVAL_MS);
+  // Run first re-provide 2 minutes after startup (give DHT time to bootstrap)
+  setTimeout(() => {
+    reprovideAllCids().catch(err => log.error('[IPFS] Initial re-provide error:', err.message));
+  }, 2 * 60 * 1000);
+
   // Initialize Ethereum provider with configurable RPC URL
   const provider = new JsonRpcProvider(RPC_URL);
 

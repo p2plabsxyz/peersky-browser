@@ -548,10 +548,12 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
       var btn = document.getElementById('stopSeedBtn');
       btn.disabled = true;
       btn.textContent = 'Stopping...';
+      clearInterval(statusInterval);
+      statusInterval = null;
       try {
         var data = await apiCall('unseed', { hash: currentInfoHash || '' });
         if (data && data.success) {
-          showStatus('Seeding stopped.', 'info');
+          showStatus('Seeding stopped. Files remain in Downloads/PeerskyTorrents.', 'success');
           btn.style.display = 'none';
           btn.textContent = 'Stop Seeding';
           document.getElementById('seedBtn').style.display = 'inline-block';
@@ -560,17 +562,22 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
           document.getElementById('pauseBtn').style.display = 'none';
           document.getElementById('resumeBtn').style.display = 'none';
           document.getElementById('stopBtn').style.display = 'none';
-          clearInterval(statusInterval);
-          statusInterval = null;
+          document.getElementById('downloadSpeed').textContent = '0 B/s';
+          document.getElementById('uploadSpeed').textContent = '0 B/s';
+          document.getElementById('peers').textContent = '0';
+          document.getElementById('timeRemaining').textContent = '-';
+          document.getElementById('seedingTime').textContent = '-';
         } else {
           showStatus('Failed to stop seeding: ' + ((data && data.error) || 'Unknown error'), 'error');
           btn.disabled = false;
           btn.textContent = 'Stop Seeding';
+          statusInterval = setInterval(pollStatus, 2000);
         }
       } catch (err) {
         showStatus('Error stopping seeding: ' + err.message, 'error');
         btn.disabled = false;
         btn.textContent = 'Stop Seeding';
+        statusInterval = setInterval(pollStatus, 2000);
       }
     }
 
