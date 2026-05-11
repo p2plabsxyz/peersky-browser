@@ -14,6 +14,7 @@ import { base58btc } from "multiformats/bases/base58";
 import { peerIdFromString, peerIdFromCID } from "@libp2p/peer-id";
 import { ensCache, saveEnsCache, RPC_URL, ipfsCache, saveIpfsCache } from "./config.js";
 import { JsonRpcProvider } from "ethers";
+import { enforceExtensionWritePolicy } from "../extensions/request-policy.js";
 
 const log = createLogger('protocols:ipfs');
 
@@ -84,7 +85,8 @@ function getPeerIdFromString(peerIdString) {
   return peerIdFromCID(CID.parse(peerIdString, multibaseDecoder));
 }
 
-export async function createHandler(ipfsOptions, session) {
+export async function createHandler(ipfsOptions, session, securityOptions = {}) {
+  const { isExtensionWriteAllowed } = securityOptions;
   let node, unixFileSystem, name, dnsLinkResolver;
 
   async function initializeIPFSNode() {
@@ -412,7 +414,7 @@ export async function createHandler(ipfsOptions, session) {
     }
   }
 
-  return async function protocolHandler(request) {
+  const handler = async function protocolHandler(request) {
     const { url, method, headers } = request;
     if (!node) {
       log.info("IPFS node is not ready yet");
@@ -423,6 +425,16 @@ export async function createHandler(ipfsOptions, session) {
     }
 
     // Handle file uploads for ipfs:// URLs
+    // Enforce extension write policy first (mirrors hyper-handler.js).
+    const writeBlocked = await enforceExtensionWritePolicy({
+      request,
+      scheme: "ipfs",
+      isExtensionWriteAllowed,
+    });
+    if (writeBlocked) {
+      return writeBlocked;
+    }
+
     if (
       (method === "PUT" || method === "POST") &&
       request.body &&
@@ -433,8 +445,6 @@ export async function createHandler(ipfsOptions, session) {
     }
 
     let ipfsPath;
-    let data = null;
-    let statusCode = 200;
     let responseHeaders = {
       "Access-Control-Allow-Origin": "*",
       "Allow-CSP-From": "*",
@@ -766,4 +776,9 @@ export async function createHandler(ipfsOptions, session) {
       }
     }
   };
+
+  // Expose the node for integration tests (non-breaking; ignored in prod).
+  if (process.env.NODE_ENV === "test") handler.__node = node;
+
+  return handler;
 }

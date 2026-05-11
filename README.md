@@ -206,10 +206,29 @@ npm run build-all
 
 Now, the `dist` folder will appear in the root directory.
 
+### Testing
+
+Run all tests:
+
+```bash
+npm test
+```
+
+Run specific test suites:
+
+```bash
+npm run test:p2p          # Unit tests (IPFS/Hyper handlers)
+npm run test:p2p:e2e      # End-to-end sync tests (2-3 min)
+npm run test:extensions   # Extension lifecycle tests
+npm run test:security     # Security and isolation tests
+npm run test:integration  # Real app restart tests (5+ min)
+```
+
+For detailed testing documentation, see [Testing Guide](./docs/Testing.md).
+
 ### Logging
 
 For details on the Peersky logging system, see the [Logging Documentation](./docs/Logging.md). 
-
 
 ## Contribute
 

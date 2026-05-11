@@ -108,15 +108,37 @@ export async function createNode() {
   /** @type {any} */
   const bs = options.blockstore;
 
-  const node = await createHelia({
-    ...options,
-    libp2p,
-    datastore: ds,
-    blockstore: bs,
-  });
+  let dsOpened = false;
+  let bsOpened = false;
 
-  log.info("Peer ID:", node.libp2p.peerId.toString());
-  log.info("Node userAgent:", agentVersion);
+  try {
+    // datastore-level and blockstore-level implement open()/close() but not the
+    // Startable interface (start()/stop()), so Helia's isStartable check skips them.
+    // We must open them explicitly before createHelia calls helia.start().
+    await ds.open();
+    dsOpened = true;
+    await bs.open();
+    bsOpened = true;
 
-  return node;
+    const node = await createHelia({
+      ...options,
+      libp2p,
+      datastore: ds,
+      blockstore: bs,
+    });
+
+    log.info("Peer ID:", node.libp2p.peerId.toString());
+    log.info("Node userAgent:", agentVersion);
+
+    return node;
+  } catch (error) {
+    if (bsOpened) {
+      try { await bs.close(); } catch (e) { log.warn("Failed to close blockstore after init failure:", e); }
+    }
+    if (dsOpened) {
+      try { await ds.close(); } catch (e) { log.warn("Failed to close datastore after init failure:", e); }
+    }
+    try { await libp2p.stop(); } catch (e) { log.warn("Failed to stop libp2p after init failure:", e); }
+    throw error;
+  }
 }
