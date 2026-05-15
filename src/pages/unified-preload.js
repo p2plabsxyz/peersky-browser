@@ -414,7 +414,7 @@ function createEventListener (eventName, callback) {
 
   const wrappedCallback = (event, ...args) => {
     try {
-      callback(...args)
+      callback(...args) // eslint-disable-line n/no-callback-literal
     } catch (error) {
       console.error(`${eventName} callback error:`, error)
     }

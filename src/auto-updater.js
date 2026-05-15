@@ -1,4 +1,4 @@
-import { app, dialog } from 'electron'
+import { dialog } from 'electron'
 import pkg from 'electron-updater'
 import log from 'electron-log'
 const { autoUpdater } = pkg

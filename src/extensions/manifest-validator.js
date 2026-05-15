@@ -52,7 +52,7 @@ class ManifestValidator {
     // Validation patterns
     this.patterns = {
       version: /^\d+(\.\d+)*$/,
-      name: /^[\w\s\-\.]{1,50}$/
+      name: /^[\w\s\-.]{1,50}$/
     }
 
     // Chrome Web Store URL parsing
@@ -431,16 +431,13 @@ class ManifestValidator {
         hostInfo.description = 'Broad access pattern - can access any website'
         result.warnings.push(`High-risk host permission: ${hostPattern} - ${hostInfo.description}`)
         result.riskScore += 25
-      }
-      // Check for suspicious domains
-      else if (suspiciousDomains.some(domain => hostPattern.includes(domain))) {
+      } else if (suspiciousDomains.some(domain => hostPattern.includes(domain))) {
         hostInfo.risk = 'medium'
         hostInfo.description = 'Local/internal network access'
         result.warnings.push(`Medium-risk host permission: ${hostPattern} - ${hostInfo.description}`)
         result.riskScore += 10
-      }
       // Check for overly broad wildcards
-      else if (hostPattern.includes('*://*/') || hostPattern.includes('*.*')) {
+      } else if (hostPattern.includes('*://*/') || hostPattern.includes('*.*')) {
         hostInfo.risk = 'medium'
         hostInfo.description = 'Broad wildcard pattern'
         result.warnings.push(`Medium-risk host permission: ${hostPattern} - ${hostInfo.description}`)

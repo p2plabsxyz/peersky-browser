@@ -234,7 +234,7 @@ async function connectPeer (localUrl, clientId, role) {
     `${localUrl}/events?clientId=${encodeURIComponent(clientId)}&role=${encodeURIComponent(role)}`,
     { signal: controller.signal }
   )
-  const timeoutPromise = new Promise((_, reject) => {
+  const timeoutPromise = new Promise((_resolve, reject) => {
     timer = setTimeout(() => {
       controller.abort()
       reject(new Error('SSE connect timeout'))

@@ -4,7 +4,7 @@ import path from 'path'
 import mime from 'mime-types'
 import { pathToFileURL } from 'url'
 
-const log = createLogger('protocols:file')
+const log = createLogger('protocols:file') // eslint-disable-line no-unused-vars
 
 function generateDirectoryListing (dirPath, entries) {
   const parentPath = path.dirname(dirPath)

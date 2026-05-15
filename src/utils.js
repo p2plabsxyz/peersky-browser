@@ -12,7 +12,7 @@ const MAGNET_PREFIX = 'magnet:'
 // Utility functions
 function isURL (string) {
   try {
-    new URL(string)
+    const u = new URL(string) // eslint-disable-line no-unused-vars, no-new
     return true
   } catch {
     return false

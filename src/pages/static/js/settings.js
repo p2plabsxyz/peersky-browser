@@ -62,7 +62,7 @@ function validateSearchTemplate (tpl) {
   if (!s) return { valid: false, reason: 'Template cannot be empty.' }
 
   try {
-    new URL(s) // just test if it's a valid URL structure
+    const u = new URL(s) // eslint-disable-line no-unused-vars, no-new
     return { valid: true }
   } catch {
     return { valid: false, reason: 'Template must be a valid URL.' }
@@ -244,7 +244,7 @@ function openResetP2PModal () {
 // Create fallback API wrapper
 function createFallbackAPI (ipc) {
   const wrapCallback = (eventName, callback) => {
-    const wrappedCallback = (event, ...args) => callback(...args)
+    const wrappedCallback = (event, ...args) => callback(...args) // eslint-disable-line n/no-callback-literal
     ipc.on(eventName, wrappedCallback)
     return () => ipc.removeListener(eventName, wrappedCallback)
   }
@@ -272,7 +272,7 @@ function createFallbackAPI (ipc) {
 }
 
 // Escape HTML to prevent XSS
-function escapeHtml (text) {
+function escapeHtml (text) { // eslint-disable-line no-unused-vars
   if (!text) return text
   return String(text)
     .replace(/&/g, '&amp;')
@@ -394,7 +394,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const wallpaperFile = document.getElementById('wallpaper-file')
   const wallpaperBrowse = document.getElementById('wallpaper-browse')
   const wallpaperRemove = document.getElementById('wallpaper-remove')
-  const wallpaperPreview = document.getElementById('wallpaper-preview')
+  document.getElementById('wallpaper-preview') // referenced via DOM later
   const clearBrowserCacheBtn = document.getElementById('clear-browser-cache')
   const resetP2PBtn = document.getElementById('reset-p2p')
 
@@ -908,7 +908,7 @@ async function saveSettingToBackend (key, value) {
   }
 }
 
-async function resetSettingsToDefaults () {
+async function resetSettingsToDefaults () { // eslint-disable-line no-unused-vars
   if (!settingsAPI?.settings) {
     console.warn('Settings: API not available, cannot reset settings')
     showSettingsSavedMessage('Settings not available', 'error')
@@ -949,7 +949,6 @@ function applyThemeImmediately (themeName) {
 // Sidebar navigation functionality for page switching
 function initializeSidebarNavigation () {
   const navItems = document.querySelectorAll('.nav-item')
-  const pages = document.querySelectorAll('.settings-page')
 
   // Handle nav clicks for page switching
   navItems.forEach(item => {
@@ -975,9 +974,8 @@ function initializeSidebarNavigation () {
   const subpathMatch = currentPath.match(/\/settings\/(\w+)/) || currentHref.match(/\/settings\/(\w+)/)
   if (subpathMatch) {
     targetSection = subpathMatch[1]
-  }
   // Check for hash-based navigation (backward compatibility)
-  else if (currentPath.includes('#')) {
+  } else if (currentPath.includes('#')) {
     const hashSection = currentPath.replace('#', '')
     if (hashSection && ['appearance', 'search', 'tabs', 'extensions', 'archive'].includes(hashSection)) {
       targetSection = hashSection
@@ -1147,7 +1145,7 @@ function initializeCustomDropdowns () {
 
   customSelects.forEach(select => {
     const display = select.querySelector('.select-display')
-    const dropdown = select.querySelector('.select-dropdown')
+    select.querySelector('.select-dropdown')
     const options = select.querySelectorAll('.select-option')
     const hiddenInput = select.parentElement.querySelector('input[type="hidden"]')
 

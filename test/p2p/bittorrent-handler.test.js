@@ -942,7 +942,7 @@ export default class FakeWebTorrent extends EventEmitter {
         if (m && m.type === 'fake-destroy') sawDestroy = true
       }
       child.on('message', onMsg)
-      await new Promise((r) => setTimeout(r, 200))
+      await new Promise((resolve) => setTimeout(resolve, 200))
       child.off('message', onMsg)
 
       expect(sawDone).to.equal(false)

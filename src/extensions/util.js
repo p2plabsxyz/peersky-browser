@@ -260,7 +260,7 @@ export async function validateSourcePath (sourcePath) {
 
   // Pre-normalization traversal checks on raw input
   const raw = sourcePath.trim()
-  const hasDotDot = raw.split(/[\\\/]+/).some(seg => seg === '..')
+  const hasDotDot = raw.split(/[\\/]+/).some(seg => seg === '..')
   const hasTildeAtStart = raw.startsWith('~')
   if (hasDotDot || hasTildeAtStart) {
     throw Object.assign(new Error('Path traversal detected'), { code: ERR.E_PATH_TRAVERSAL })
@@ -338,7 +338,7 @@ export async function validateInstallSource (sourcePath, opts = {}) {
   }
   {
     const raw = sourcePath.trim()
-    const hasDotDot = raw.split(/[\\\/]+/).some(seg => seg === '..')
+    const hasDotDot = raw.split(/[\\/]+/).some(seg => seg === '..')
     const hasTildeAtStart = raw.startsWith('~')
     if (hasDotDot || hasTildeAtStart) {
       throw Object.assign(new Error('Path traversal detected'), { code: ERR.E_PATH_TRAVERSAL })

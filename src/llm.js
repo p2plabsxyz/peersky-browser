@@ -17,8 +17,8 @@ const llmAgent = new Agent({
 })
 
 // Download management
-let currentDownloadModel = null
-let currentDownloadPercent = 0
+let currentDownloadModel = null // eslint-disable-line no-unused-vars
+let currentDownloadPercent = 0 // eslint-disable-line no-unused-vars
 
 // Ollama availability tracking
 let ollamaMissingNotified = false
@@ -723,40 +723,36 @@ async function post (url, data, errorMessage = 'Request failed', parseBody = tru
     headers.Authorization = `Bearer ${apiKey}`
   }
 
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(data),
-      dispatcher: llmAgent // Use custom agent with no timeouts
-    })
+  const response = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(data),
+    dispatcher: llmAgent // Use custom agent with no timeouts
+  })
 
-    if (!response.ok) {
-      const bodyText = await response.text()
-      try {
-        const parsed = JSON.parse(bodyText)
-        const msg = parsed.error?.message || parsed.error || bodyText
-        if (parsed.error?.code === 'model_failed_to_load') {
-          throw new Error(
-            'Model failed to load — Ollama ran out of memory or hit a resource limit.\n' +
-            `Try: run \`ollama run ${parsed.error.model}\` in a terminal to see the full error, ` +
-            'or free up RAM/VRAM and retry. You can also try a smaller model in Settings > AI / LLMs.'
-          )
-        }
-        throw new Error(`${errorMessage}: ${msg}`)
-      } catch (jsonErr) {
-        if (jsonErr.message && jsonErr.message.startsWith(errorMessage)) throw jsonErr
-        throw new Error(`${errorMessage}: ${bodyText}`)
+  if (!response.ok) {
+    const bodyText = await response.text()
+    try {
+      const parsed = JSON.parse(bodyText)
+      const msg = parsed.error?.message || parsed.error || bodyText
+      if (parsed.error?.code === 'model_failed_to_load') {
+        throw new Error(
+          'Model failed to load — Ollama ran out of memory or hit a resource limit.\n' +
+          `Try: run \`ollama run ${parsed.error.model}\` in a terminal to see the full error, ` +
+          'or free up RAM/VRAM and retry. You can also try a smaller model in Settings > AI / LLMs.'
+        )
       }
+      throw new Error(`${errorMessage}: ${msg}`)
+    } catch (jsonErr) {
+      if (jsonErr.message && jsonErr.message.startsWith(errorMessage)) throw jsonErr
+      throw new Error(`${errorMessage}: ${bodyText}`)
     }
-
-    if (parseBody) {
-      return await response.json()
-    }
-    return await response.text()
-  } catch (error) {
-    throw error
   }
+
+  if (parseBody) {
+    return await response.json()
+  }
+  return await response.text()
 }
 
 async function * iterate (reader) {

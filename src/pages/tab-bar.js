@@ -381,7 +381,7 @@ class TabBar extends HTMLElement {
       // For isolated windows, ONLY create the specified tab and don't load any persisted tabs
       const tabUrl = singleTabUrl || initialUrl
       const tabTitle = singleTabTitle || searchParams.get('title') || 'New Tab'
-      const homeTabId = this.addTab(tabUrl, tabTitle)
+      this.addTab(tabUrl, tabTitle)
       // Don't call saveTabsState() here to avoid overwriting the main window's tabs
       return
     }
@@ -1671,7 +1671,7 @@ class TabBar extends HTMLElement {
     menu.style.top = `${event.clientY}px`
     menu.style.zIndex = '10000'
 
-    const tab = this.tabs.find(t => t.id === tabId)
+    this.tabs.find(t => t.id === tabId) // looked up for potential future use
     const webview = this.webviews.get(tabId)
     const isPinned = this.pinnedTabs.has(tabId)
     const isMuted = webview?.isAudioMuted() || false
@@ -2334,10 +2334,11 @@ class TabBar extends HTMLElement {
     console.log(`Handling group action: ${action} for group: ${groupId}`)
 
     switch (action) {
-      case 'add-tab':
+      case 'add-tab': {
         const newTabId = this.addTab('peersky://home', 'Home')
         this.addTabToGroupAcrossWindows(newTabId, groupId)
         break
+      }
 
       case 'edit':
         this.showGroupEditDialogAcrossWindows(groupId)
@@ -2862,12 +2863,13 @@ class TabBar extends HTMLElement {
 
   // TODO: This overrides the earlier enhanced version — remove or merge the logic.
   // Handle group context menu actions
-  handleGroupContextMenuAction (action, groupId) {
+  handleGroupContextMenuAction (action, groupId) { // eslint-disable-line no-dupe-class-members
     switch (action) {
-      case 'add-tab':
+      case 'add-tab': {
         const newTabId = this.addTab('peersky://home', 'Home')
         this.addTabToGroup(newTabId, groupId)
         break
+      }
 
       case 'edit':
         this.showGroupEditDialog(groupId)

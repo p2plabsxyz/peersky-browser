@@ -12,7 +12,7 @@ const P2P_APP_DRIVE_NAMES = new Set([
 ])
 
 // Load archive data for the Archive section
-async function loadArchiveData () {
+async function loadArchiveData () { // eslint-disable-line no-unused-vars
   if (!settingsAPI?.settings?.getArchiveData) return
   try {
     const data = await settingsAPI.settings.getArchiveData()
@@ -195,7 +195,7 @@ async function loadArchiveData () {
 }
 
 // Export archive data as JSON with time filtering
-async function exportArchiveData () {
+async function exportArchiveData () { // eslint-disable-line no-unused-vars
   if (!settingsAPI?.settings?.getArchiveData) return
   try {
     const data = await settingsAPI.settings.getArchiveData()

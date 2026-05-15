@@ -235,8 +235,8 @@ class WindowManager {
       }
     })
 
-    ipcMain.handle('group-action', (_event, data) => {
-      const { action, groupId } = data
+    ipcMain.handle('group-action', (event, data) => {
+      const { action } = data
 
       // For "add-tab" action, send to specific window
       if (action === 'add-tab' || action === 'edit') {
@@ -603,7 +603,7 @@ class WindowManager {
 
         // Get URL with timeout
         const urlPromise = window.getURL()
-        const timeoutPromise = new Promise((_, reject) => {
+        const timeoutPromise = new Promise((_resolve, reject) => {
           setTimeout(() => reject(new Error('URL fetch timeout')), 2000)
         })
 
@@ -874,7 +874,7 @@ class WindowManager {
 
 class PeerskyWindow {
   constructor (options = {}, windowManager) {
-    const { url, isMainWindow = false, newWindow = false, windowId, savedTabs, isolate, singleTab, ...windowOptions } = options
+    const { url, isMainWindow = false, newWindow = false, windowId, savedTabs, isolate, singleTab, ...windowOptions } = options // eslint-disable-line no-unused-vars
     this.window = new BrowserWindow({
       width: 1280,
       height: 800,
@@ -1057,7 +1057,7 @@ class PeerskyWindow {
 
     try {
       // Increase timeout to 2000ms to handle slow shutdowns
-      const timeoutPromise = new Promise((_, reject) => {
+      const timeoutPromise = new Promise((_resolve, reject) => {
         setTimeout(() => reject(new Error('getURL timeout')), 2000)
       })
 

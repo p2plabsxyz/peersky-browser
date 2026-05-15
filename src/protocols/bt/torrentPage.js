@@ -468,7 +468,7 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
 
       tbody.innerHTML = '';
       files.forEach(function(file) {
-        var isMedia = /\.(mp4|mkv|avi|mov|webm|mp3|wav|flac|ogg|m4a)$/i.test(file.name);
+        var isMedia = /\\.(mp4|mkv|avi|mov|webm|mp3|wav|flac|ogg|m4a)$/i.test(file.name);
         var label = isMedia ? 'Play' : 'Open';
         var row = document.createElement('tr');
         row.innerHTML =

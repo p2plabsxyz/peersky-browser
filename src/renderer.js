@@ -1,8 +1,4 @@
 import {
-  IPFS_PREFIX,
-  IPNS_PREFIX,
-  HYPER_PREFIX,
-  WEB3_PREFIX,
   handleURL
 } from './utils.js'
 
@@ -427,7 +423,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     setTimeout(() => {
       if (tabBar.style) {
         tabBar.style.display = 'none'
-        tabBar.offsetHeight // Trigger reflow
+        tabBar.offsetHeight // eslint-disable-line no-unused-expressions
         tabBar.style.display = ''
       }
     }, 100)
@@ -828,7 +824,7 @@ function updateNavigationButtons (currentTabBar) {
   }
 }
 
-function focusURLInput () {
+function focusURLInput () { // eslint-disable-line no-unused-vars
   try {
     const urlInput = nav.querySelector('#url')
     if (urlInput) {

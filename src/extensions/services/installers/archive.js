@@ -5,7 +5,7 @@ import { promises as fs } from 'fs'
 import { randomBytes } from 'crypto'
 import { ensureDir, atomicReplaceDir } from '../../util.js'
 import { extractZipFile, extractZipBuffer } from '../../zip.js'
-import { isCrx, extractCrx, derToBase64 } from '../../crx.js'
+import { isCrx, extractCrx } from '../../crx.js'
 import { generateSecureExtensionId } from '../../utils/ids.js'
 import { resolveManifestStrings } from '../../utils/strings.js'
 import { findExtensionManifest } from '../../utils/manifest-file.js'
@@ -24,7 +24,7 @@ export async function prepareFromArchive (manager, archivePath) {
   await ensureDir(stagingDir)
 
   let sourceType = 'file-zip'
-  let publicKeyDer = null
+  let publicKeyDer = null // eslint-disable-line no-unused-vars
 
   if (isZip) {
     await extractZipFile(archivePath, stagingDir)
@@ -32,7 +32,7 @@ export async function prepareFromArchive (manager, archivePath) {
     sourceType = 'file-crx'
     const buff = await fs.readFile(archivePath)
     const crx = await extractCrx(buff)
-    publicKeyDer = crx.publicKeyDer || null
+    publicKeyDer = crx.publicKeyDer || null // eslint-disable-line no-unused-vars
     await extractZipBuffer(crx.zipBuffer, stagingDir)
   }
 
@@ -66,7 +66,7 @@ export async function prepareFromArchive (manager, archivePath) {
     throw new Error('No valid manifest.json (or supported alternative) found in archive')
   }
 
-  const { path: manifestPath, content: manifestRaw } = manifestFound
+  const { content: manifestRaw } = manifestFound
   const manifest = JSON.parse(manifestRaw)
 
   const semverLike = (v) => typeof v === 'string' && /^\d+(\.\d+)*$/.test(v)

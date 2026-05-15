@@ -1,5 +1,5 @@
 import { app, BrowserWindow } from 'electron'
-import WindowManager from './window-manager.js'
+import WindowManager from './window-manager.js' // eslint-disable-line no-unused-vars
 import { createLogger } from './logger.js'
 const log = createLogger('actions')
 

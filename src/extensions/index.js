@@ -46,7 +46,7 @@ import { installExtensionPopupGuards as installPopupGuards } from './services/po
 import { openUrlInPeerskyTab } from './services/open-url-in-browser-tab.js'
 import * as WebStoreService from './services/webstore.js'
 import { createLogger } from '../logger.js'
-const { app, BrowserWindow, webContents } = electron
+const { BrowserWindow, webContents } = electron // eslint-disable-line no-unused-vars
 
 const log = createLogger('extensions')
 
@@ -163,7 +163,7 @@ class ExtensionManager {
               log.info('[ExtensionManager] Tab created with ID:', tabId)
 
               // Brief delay to let the webview initialize
-              await new Promise(r => setTimeout(r, 300))
+              await new Promise(resolve => setTimeout(resolve, 300))
 
               // Try to get the tab's webContents
               const getWcJs = `

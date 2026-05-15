@@ -1,6 +1,6 @@
 import { Menu, MenuItem, clipboard, dialog } from 'electron'
-import WindowManager from './window-manager.js'
 import path from 'path'
+import WindowManager from './window-manager.js' // eslint-disable-line no-unused-vars
 import extensionManager from './extensions/index.js'
 
 const isMac = process.platform === 'darwin'

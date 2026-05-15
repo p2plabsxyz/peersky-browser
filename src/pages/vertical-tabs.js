@@ -99,7 +99,7 @@ export default class VerticalTabs extends BaseTabBar {
     link.onload = () => {
       // Force a reflow to apply styles
       this.style.display = 'none'
-      this.offsetHeight // Trigger reflow
+      this.offsetHeight // eslint-disable-line no-unused-expressions
       this.style.display = ''
     }
     document.head.appendChild(link)

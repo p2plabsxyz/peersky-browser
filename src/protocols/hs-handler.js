@@ -1,7 +1,6 @@
 import Holesail from 'holesail'
 import { createLogger } from '../logger.js'
 import http from 'http'
-import { PassThrough } from 'stream'
 import fs from 'fs'
 import path from 'path'
 import { app, safeStorage } from 'electron'
@@ -1149,7 +1148,7 @@ function handleDocRequest (req, res, session) {
             try {
               applyTextDiffToYText(session.ytext, beforeContent, fullText)
               usedTextFallback = true
-              applied = true
+              applied = true // eslint-disable-line no-unused-vars
             } catch (fallbackErr) {
               console.warn('[p2pmd] /doc/update fallback failed:', fallbackErr.message)
               res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
@@ -1703,7 +1702,7 @@ export async function createHandler () {
       }
 
       const sessionState = createSession()
-      const { host: boundHost, port: boundPort } = await ensureDocServer(sessionState, host, port, secure)
+      const { port: boundPort } = await ensureDocServer(sessionState, host, port, secure)
       await stopHolesailServer(sessionState)
       // Pass 127.0.0.1 to holesail so clients connect to localhost
       // Holesail forwards tunnel traffic to this address, and stores it on DHT for clients
@@ -1777,7 +1776,7 @@ export async function createHandler () {
         sessionState = createSession(key)
         roomSessions.set(key, sessionState)
       }
-      const { host: boundHost, port: boundPort } = await ensureDocServer(sessionState, host, port, secure)
+      const { port: boundPort } = await ensureDocServer(sessionState, host, port, secure)
 
       if (initialContent) {
         sessionState.docState.content = initialContent
@@ -1894,7 +1893,7 @@ export async function createHandler () {
           await stopHolesailClient(sessionState)
           await stopDocServer(sessionState)
         }
-        const { host: boundHost, port: boundPort } = await ensureDocServer(sessionState, '127.0.0.1', savedEntry.port, resolvedSecure)
+        const { port: boundPort } = await ensureDocServer(sessionState, '127.0.0.1', savedEntry.port, resolvedSecure)
         // Create Holesail server WITHOUT key, then inject the saved seed before ready()
         // This makes Holesail generate the exact same keypair → same key → same connection string
         const holesailServer = new Holesail({

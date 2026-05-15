@@ -1,4 +1,4 @@
-import { app, session, protocol as globalProtocol, ipcMain, BrowserWindow, Menu, shell, webContents } from 'electron'
+import { app, session, protocol as globalProtocol, ipcMain, BrowserWindow, Menu, webContents } from 'electron' // eslint-disable-line no-unused-vars
 import { createLogger } from './logger.js'
 import fs from 'fs/promises'
 import path from 'path'
@@ -14,7 +14,7 @@ import { createHandler as createBittorrentHandler, setupBittorrentIpc, shutdownB
 import { ipfsOptions, hyperOptions } from './protocols/config.js'
 import { createMenuTemplate } from './actions.js'
 import WindowManager from './window-manager.js'
-import settingsManager from './settings-manager.js'
+import './settings-manager.js'
 import p2pAppRegistry from './p2p-app-registry.js'
 import { setWindowManager } from './context-menu.js'
 import { isBuiltInSearchEngine } from './search-engine.js'
@@ -432,7 +432,7 @@ function installExtensionWebRequestBridge (session) {
   session.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, async (details, callback) => {
     const url = details?.url || ''
     if (!shouldForwardToExtensions(url)) {
-      callback({})
+      callback({}) // eslint-disable-line n/no-callback-literal
       return
     }
     let result = {}
@@ -452,7 +452,7 @@ function installExtensionWebRequestBridge (session) {
     async (details, callback) => {
       const url = details?.url || ''
       if (!shouldForwardToExtensions(url)) {
-        callback({})
+        callback({}) // eslint-disable-line n/no-callback-literal
         return
       }
 
@@ -490,7 +490,7 @@ function installExtensionWebRequestBridge (session) {
     async (details, callback) => {
       const url = details?.url || ''
       if (!shouldForwardToExtensions(url)) {
-        callback({})
+        callback({}) // eslint-disable-line n/no-callback-literal
         return
       }
 

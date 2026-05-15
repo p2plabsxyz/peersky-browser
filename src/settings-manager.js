@@ -6,7 +6,6 @@ import { app, ipcMain, BrowserWindow, session, safeStorage, dialog } from 'elect
 import { promises as fs } from 'fs'
 import path from 'path'
 import os from 'os'
-import { getBrowserSession } from './session.js'
 import { ensCache, ipfsCache, hyperCache, saveEnsCache, saveIpfsCache, saveHyperCache } from './protocols/config.js'
 import { normalizeEnsHash } from './ens-utils.js'
 import { clearPersistedPermissions } from './permissions.js'
@@ -96,7 +95,7 @@ async function clearBrowserCache () {
       )
     )
 
-    await new Promise(r => setTimeout(r, 100)) // small delay
+    await new Promise(resolve => setTimeout(resolve, 100)) // small delay
 
     // Step 2 → Clear cache and storage (in smaller groups)
     const clear = storages =>
@@ -620,7 +619,7 @@ class SettingsManager {
         if (typeof v !== 'string' || v.length >= 2048) return false
         try {
           // Just check if it’s parseable as a URL with any protocol
-          new URL(v)
+          const u = new URL(v) // eslint-disable-line no-unused-vars
           return true
         } catch {
           return false

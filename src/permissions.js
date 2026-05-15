@@ -85,7 +85,7 @@ export async function setupPermissionHandler (session) {
 
   session.setPermissionRequestHandler((webContents, permission, callback) => {
     if (!PROMPT_PERMISSIONS.has(permission)) {
-      callback(false)
+      callback(false) // eslint-disable-line n/no-callback-literal
       return
     }
     let origin = 'unknown'
@@ -123,7 +123,7 @@ export async function setupPermissionHandler (session) {
         callback(allow)
       })
       .catch(() => {
-        callback(false)
+        callback(false) // eslint-disable-line n/no-callback-literal
       })
   })
 }

@@ -6,7 +6,7 @@ import esmock from 'esmock'
 import { createHandler as createIpfsHandler } from '../../src/protocols/ipfs-handler.js'
 import { ipfsOptions, hyperOptions } from '../../src/protocols/config.js'
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const __dirname = path.dirname(fileURLToPath(import.meta.url)) // eslint-disable-line no-unused-vars
 
 let _libdatachannelHandler
 before(function () {

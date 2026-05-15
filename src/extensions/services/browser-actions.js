@@ -1,6 +1,6 @@
 // Browser actions (click/open popup) and helpers
 
-import { app, BrowserWindow, Menu, webContents } from 'electron'
+import { app, Menu, webContents } from 'electron'
 import { registerPopupForStabilization, consumeRecentFocusClose } from './popup-guards.js'
 import { createLogger } from '../../logger.js'
 

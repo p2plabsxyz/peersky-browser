@@ -26,7 +26,7 @@ function emitResult (payload) {
 
 async function withTimeout (taskPromise, timeoutMs, label) {
   let timer = null
-  const timeoutPromise = new Promise((_, reject) => {
+  const timeoutPromise = new Promise((_resolve, reject) => {
     timer = setTimeout(() => {
       reject(new Error(`${label} timed out after ${timeoutMs}ms`))
     }, timeoutMs)

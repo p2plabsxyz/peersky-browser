@@ -119,7 +119,7 @@ export async function createHandler (ipfsOptions, session, securityOptions = {})
         log.warn(`[IPFS] Re-provide failed for ${entry.cid}: ${err.message}`)
       }
       // Small delay between provides to avoid overwhelming the DHT
-      await new Promise(r => setTimeout(r, 2000))
+      await new Promise(resolve => setTimeout(resolve, 2000))
     }
     log.info(`[IPFS] Re-provide complete: ${provided}/${ipfsCache.length} succeeded`)
   }
@@ -149,7 +149,7 @@ export async function createHandler (ipfsOptions, session, securityOptions = {})
         if (contentType.includes('multipart/form-data')) {
           const formData = await request.formData()
 
-          for (const [fieldName, value] of formData.entries()) {
+          for (const [, value] of formData.entries()) {
             if (value instanceof File) {
               let fileName = value.name || 'index.html'
               const pathParts = fileName.split('/').filter(Boolean)
@@ -415,7 +415,7 @@ export async function createHandler (ipfsOptions, session, securityOptions = {})
   }
 
   const handler = async function protocolHandler (request) {
-    const { url, method, headers } = request
+    const { url, method } = request
     if (!node) {
       log.info('IPFS node is not ready yet')
       return new Response('IPFS node is not ready yet', {
