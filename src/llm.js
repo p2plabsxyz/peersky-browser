@@ -1,70 +1,70 @@
 // Handles LLM API with streaming support for chat and completion
-import settingsManager from './settings-manager.js';
-import { ipcMain, dialog, shell } from 'electron';
-import { Agent } from 'undici';
+import settingsManager from './settings-manager.js'
+import { ipcMain, dialog, shell } from 'electron'
+import { Agent } from 'undici'
 
-let isInitialized = false;
-let initializedModel = null; // Track which model we initialized with
+let isInitialized = false
+let initializedModel = null // Track which model we initialized with
 // Completion Iterators, id to iterator
-const inProgress = new Map();
-let streamId = 1;
+const inProgress = new Map()
+let streamId = 1
 
 // Create custom undici agent with no timeouts for LLM requests
 // This prevents "Headers Timeout Error" when models take long to respond
 const llmAgent = new Agent({
   headersTimeout: 0, // No timeout for headers
-  bodyTimeout: 0     // No timeout for body
-});
+  bodyTimeout: 0 // No timeout for body
+})
 
 // Download management
-let currentDownloadModel = null;
-let currentDownloadPercent = 0;
+let currentDownloadModel = null
+let currentDownloadPercent = 0
 
 // Ollama availability tracking
-let ollamaMissingNotified = false;
+let ollamaMissingNotified = false
 
-const DEFAULT_TEMPERATURE = 0.7;
-const DEFAULT_MAX_TOKENS = 2048;
+const DEFAULT_TEMPERATURE = 0.7
+const DEFAULT_MAX_TOKENS = 2048
 
-function isUsingLocalOllama(settings) {
-  const baseURL = settings.llm?.baseURL || '';
-  return settings.llm?.apiKey === 'ollama' && (baseURL.includes('127.0.0.1') || baseURL.includes('localhost'));
+function isUsingLocalOllama (settings) {
+  const baseURL = settings.llm?.baseURL || ''
+  return settings.llm?.apiKey === 'ollama' && (baseURL.includes('127.0.0.1') || baseURL.includes('localhost'))
 }
 
-function isLikelyOllamaMissing(error) {
-  const message = error?.message || '';
-  return message.includes('ECONNREFUSED') || message.includes('ENOTFOUND') || message.includes('fetch failed');
+function isLikelyOllamaMissing (error) {
+  const message = error?.message || ''
+  return message.includes('ECONNREFUSED') || message.includes('ENOTFOUND') || message.includes('fetch failed')
 }
 
-function isOpenRouterURL(url = '') {
-  return url.includes('openrouter.ai');
+function isOpenRouterURL (url = '') {
+  return url.includes('openrouter.ai')
 }
 
-function constructChatURL(baseURLRaw) {
-  let url = baseURLRaw || '';
+function constructChatURL (baseURLRaw) {
+  let url = baseURLRaw || ''
 
   // Default to local Ollama if nothing configured
   if (!url) {
-    url = 'http://127.0.0.1:11434';
+    url = 'http://127.0.0.1:11434'
   }
 
   if (isOpenRouterURL(url)) {
-    const normalized = url.endsWith('/') ? url.slice(0, -1) : url;
-    const base = normalized.includes('/api/v1') ? normalized : `${normalized}/api/v1`;
-    return `${base}/chat/completions`;
+    const normalized = url.endsWith('/') ? url.slice(0, -1) : url
+    const base = normalized.includes('/api/v1') ? normalized : `${normalized}/api/v1`
+    return `${base}/chat/completions`
   }
 
   // Ollama-style endpoints expect /v1/ prefix
-  const baseURL = url.endsWith('/') ? url : url + '/';
-  return baseURL + 'v1/chat/completions';
+  const baseURL = url.endsWith('/') ? url : url + '/'
+  return baseURL + 'v1/chat/completions'
 }
 
-async function maybeShowOllamaNotInstalledDialog(error) {
-  if (ollamaMissingNotified) return;
-  const settings = settingsManager.settings || {};
-  if (!isUsingLocalOllama(settings)) return;
-  if (!isLikelyOllamaMissing(error)) return;
-  ollamaMissingNotified = true;
+async function maybeShowOllamaNotInstalledDialog (error) {
+  if (ollamaMissingNotified) return
+  const settings = settingsManager.settings || {}
+  if (!isUsingLocalOllama(settings)) return
+  if (!isLikelyOllamaMissing(error)) return
+  ollamaMissingNotified = true
   try {
     const { response } = await dialog.showMessageBox({
       type: 'warning',
@@ -74,163 +74,163 @@ async function maybeShowOllamaNotInstalledDialog(error) {
       title: 'Ollama Not Detected',
       message: 'PeerSky could not connect to the local Ollama service.',
       detail: 'Install or start Ollama to enable local AI generation. You can also configure a remote endpoint under Settings > AI / LLMs.'
-    });
+    })
     if (response === 0) {
-      await shell.openExternal('https://ollama.com/download');
+      await shell.openExternal('https://ollama.com/download')
     }
   } catch (dialogError) {
-    console.error('Failed to show Ollama install dialog:', dialogError);
+    console.error('Failed to show Ollama install dialog:', dialogError)
   }
 }
 
 // IPC Handlers
 ipcMain.handle('llm-supported', async (event) => {
-  const settings = settingsManager.settings || {};
-  if (!settings.llm?.enabled) return false;
-  return isSupported();
-});
+  const settings = settingsManager.settings || {}
+  if (!settings.llm?.enabled) return false
+  return isSupported()
+})
 
 ipcMain.handle('llm-model-info', async () => {
-  const settings = settingsManager.settings || {};
-  if (!settings.llm?.enabled) return { model: '', vision: false };
-  const model = settings.llm.model || '';
-  const isOllama = settings.llm.apiKey === 'ollama';
-  let vision = false;
+  const settings = settingsManager.settings || {}
+  if (!settings.llm?.enabled) return { model: '', vision: false }
+  const model = settings.llm.model || ''
+  const isOllama = settings.llm.apiKey === 'ollama'
+  let vision = false
   if (isOllama) {
     try {
-      const rawBase = (settings.llm.baseURL || 'http://127.0.0.1:11434').replace(/\/+$/, '');
+      const rawBase = (settings.llm.baseURL || 'http://127.0.0.1:11434').replace(/\/+$/, '')
       const res = await fetch(`${rawBase}/api/show`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: model })
-      });
+      })
       if (res.ok) {
-        const info = await res.json();
-        const families = info.details?.families || [];
+        const info = await res.json()
+        const families = info.details?.families || []
         const hasVisionFamily = families.some(f =>
           f === 'clip' || f === 'mllama' || f.includes('vl') || f.includes('vision')
-        );
-        const hasProjector = !!(info.projector_info || info.model_info?.['clip.type']);
+        )
+        const hasProjector = !!(info.projector_info || info.model_info?.['clip.type'])
         const nameHeuristic = ['-vl', ':vl', 'llava', 'bakllava', 'moondream', 'minicpm-v', 'cogvlm'].some(k =>
           model.toLowerCase().includes(k)
-        );
-        vision = hasVisionFamily || hasProjector || nameHeuristic;
+        )
+        vision = hasVisionFamily || hasProjector || nameHeuristic
       }
     } catch { /* model info unavailable */ }
   }
-  return { model, vision };
-});
+  return { model, vision }
+})
 
 ipcMain.handle('llm-chat', async (event, args) => {
-  const settings = settingsManager.settings || {};
-  if (!settings.llm?.enabled) return Promise.reject(new Error('LLM API is disabled'));
-  return chat(args);
-});
+  const settings = settingsManager.settings || {}
+  if (!settings.llm?.enabled) return Promise.reject(new Error('LLM API is disabled'))
+  return chat(args)
+})
 
 ipcMain.handle('llm-complete', async (event, args) => {
-  const settings = settingsManager.settings || {};
-  if (!settings.llm?.enabled) return Promise.reject(new Error('LLM API is disabled'));
-  return complete(args);
-});
+  const settings = settingsManager.settings || {}
+  if (!settings.llm?.enabled) return Promise.reject(new Error('LLM API is disabled'))
+  return complete(args)
+})
 
 ipcMain.handle('llm-update-settings', async (event, newSettings) => {
   try {
     // Update the settings through settings manager
-    const currentSettings = settingsManager.settings || {};
-    const oldModel = currentSettings.llm?.model;
-    const oldBaseURL = currentSettings.llm?.baseURL;
-    const oldApiKey = currentSettings.llm?.apiKey;
-    currentSettings.llm = newSettings;
-    await settingsManager.saveSettings();
+    const currentSettings = settingsManager.settings || {}
+    const oldModel = currentSettings.llm?.model
+    const oldBaseURL = currentSettings.llm?.baseURL
+    const oldApiKey = currentSettings.llm?.apiKey
+    currentSettings.llm = newSettings
+    await settingsManager.saveSettings()
 
     // Force reload settings to ensure backend has latest values
-    await settingsManager.loadSettings();
+    await settingsManager.loadSettings()
 
     // Reset Ollama missing notification if connection settings changed
     if (newSettings.baseURL !== oldBaseURL || newSettings.apiKey !== oldApiKey) {
-      ollamaMissingNotified = false;
+      ollamaMissingNotified = false
     }
 
     // Reset initialization when model changes so next API call uses new model
     if (newSettings.model !== oldModel) {
-      console.log(`Model changed from ${oldModel} to ${newSettings.model}, will reinitialize on next use`);
-      isInitialized = false;
-      initializedModel = null;
+      console.log(`Model changed from ${oldModel} to ${newSettings.model}, will reinitialize on next use`)
+      isInitialized = false
+      initializedModel = null
     }
-    
+
     // If LLM is enabled, check if we need to download the model
     // Check even if model name didn't change (user might have deleted it with ollama rm)
     if (newSettings.enabled && newSettings.model) {
       // Always check if model exists, even if name didn't change
-      const modelExists = await hasModel();
-      
+      const modelExists = await hasModel()
+
       if (!modelExists) {
         // Check if using OpenRouter - no download needed
         if (newSettings.apiKey !== 'ollama' && isOpenRouterURL(newSettings.baseURL)) {
-          console.log('Using OpenRouter API, no model download needed');
-          return { success: true };
+          console.log('Using OpenRouter API, no model download needed')
+          return { success: true }
         }
-        
+
         // Model not found locally, auto-download for Ollama
-        console.log(`Model ${newSettings.model} not found locally, starting download...`);
-        
+        console.log(`Model ${newSettings.model} not found locally, starting download...`)
+
         try {
           // Don't show progress until we know the model exists
-          let downloadStarted = false;
-          let lastPercent = 0;
-          let lastSentPercent = -1;
+          let downloadStarted = false
+          let lastPercent = 0
+          let lastSentPercent = -1
 
           // Pull the model with progress tracking
           const success = await pullModel((percent, status) => {
             // Track last known percent
             if (percent >= 0) {
-              lastPercent = percent;
+              lastPercent = percent
             }
 
             // Only send progress events after we're sure download is happening
             if (!downloadStarted && percent >= 0) {
-              downloadStarted = true;
+              downloadStarted = true
               if (!event.sender.isDestroyed()) {
                 event.sender.send('llm-download-progress', {
                   status: 'starting',
                   model: newSettings.model,
                   percent: 0
-                });
+                })
               }
             }
-            
+
             if (downloadStarted && !event.sender.isDestroyed()) {
               // Use last known non-negative percent if this update is a sentinel
-              const currentPercent = percent >= 0 ? percent : lastPercent;
+              const currentPercent = percent >= 0 ? percent : lastPercent
 
               // Throttle to changes of at least 1% (integer step)
               if (
                 currentPercent >= 0 &&
                 Math.floor(currentPercent) !== Math.floor(lastSentPercent)
               ) {
-                lastSentPercent = currentPercent;
+                lastSentPercent = currentPercent
                 event.sender.send('llm-download-progress', {
                   status: 'downloading',
                   model: newSettings.model,
                   percent: currentPercent,
                   message: status
-                });
+                })
               }
             }
-          });
-          
+          })
+
           if (success) {
             // Send completion
             event.sender.send('llm-download-progress', {
               status: 'complete',
               model: newSettings.model,
               percent: 100
-            });
-            
+            })
+
             // Update the installed models list
             event.sender.send('llm-models-updated', {
               model: newSettings.model
-            });
+            })
           } else {
             // Model doesn't exist in Ollama library
             event.sender.send('llm-download-progress', {
@@ -238,14 +238,14 @@ ipcMain.handle('llm-update-settings', async (event, newSettings) => {
               model: newSettings.model,
               message: `Model '${newSettings.model}' not found. Check available models at ollama.com/library`,
               percent: 0
-            });
-            return { success: false, error: `Model '${newSettings.model}' not found in Ollama library` };
+            })
+            return { success: false, error: `Model '${newSettings.model}' not found in Ollama library` }
           }
         } catch (error) {
           if (error.message && (error.message.includes('not found') || error.message.includes('file does not exist'))) {
             // Model doesn't exist - don't send progress event, just return error
-            console.log(`Model ${newSettings.model} not found:`, error.message);
-            return { success: false, error: `Model '${newSettings.model}' not found. Check available models at ollama.com/library` };
+            console.log(`Model ${newSettings.model} not found:`, error.message)
+            return { success: false, error: `Model '${newSettings.model}' not found. Check available models at ollama.com/library` }
           } else {
             // Other errors during download - send error progress
             if (!event.sender.isDestroyed()) {
@@ -254,270 +254,269 @@ ipcMain.handle('llm-update-settings', async (event, newSettings) => {
                 model: newSettings.model,
                 message: error.message || 'Download failed',
                 percent: 0
-              });
+              })
             }
-            return { success: false, error: error.message };
+            return { success: false, error: error.message }
           }
         }
       }
     }
-    
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-});
 
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: error.message }
+  }
+})
 
 ipcMain.handle('llm-test-connection', async (event) => {
   try {
-    const settings = settingsManager.settings || {};
+    const settings = settingsManager.settings || {}
     if (!settings.llm?.enabled) {
-      return { success: false, error: 'LLM is not enabled' };
+      return { success: false, error: 'LLM is not enabled' }
     }
-    
+
     // Try to list models to test Ollama connection
-    const models = await listModels();
-    return { success: true, models };
+    const models = await listModels()
+    return { success: true, models }
   } catch (error) {
-    return { success: false, error: error.message };
+    return { success: false, error: error.message }
   }
-});
+})
 
 ipcMain.handle('llm-chat-stream', async (event, args) => {
-  const settings = settingsManager.settings || {};
-  if (!settings.llm?.enabled) return Promise.reject(new Error('LLM API is disabled'));
-  const id = streamId++;
-  const iterator = chatStream(args);
-  inProgress.set(id, iterator);
-  return { id };
-});
+  const settings = settingsManager.settings || {}
+  if (!settings.llm?.enabled) return Promise.reject(new Error('LLM API is disabled'))
+  const id = streamId++
+  const iterator = chatStream(args)
+  inProgress.set(id, iterator)
+  return { id }
+})
 
 ipcMain.handle('llm-complete-stream', async (event, args) => {
-  const settings = settingsManager.settings || {};
-  if (!settings.llm?.enabled) return Promise.reject(new Error('LLM API is disabled'));
-  const id = streamId++;
-  const iterator = completeStream(args);
-  inProgress.set(id, iterator);
-  return { id };
-});
+  const settings = settingsManager.settings || {}
+  if (!settings.llm?.enabled) return Promise.reject(new Error('LLM API is disabled'))
+  const id = streamId++
+  const iterator = completeStream(args)
+  inProgress.set(id, iterator)
+  return { id }
+})
 
 ipcMain.handle('llm-iterate-next', async (event, args) => {
-  const { id } = args;
-  if (!inProgress.has(id)) throw new Error('Unknown Iterator');
-  const iterator = inProgress.get(id);
-  const { done, value } = await iterator.next();
-  if (done) inProgress.delete(id);
-  return { done, value };
-});
+  const { id } = args
+  if (!inProgress.has(id)) throw new Error('Unknown Iterator')
+  const iterator = inProgress.get(id)
+  const { done, value } = await iterator.next()
+  if (done) inProgress.delete(id)
+  return { done, value }
+})
 
 ipcMain.handle('llm-iterate-return', async (event, args) => {
-  const { id } = args;
-  if (!inProgress.has(id)) return;
-  const iterator = inProgress.get(id);
-  await iterator.return();
-  inProgress.delete(id);
-});
+  const { id } = args
+  if (!inProgress.has(id)) return
+  const iterator = inProgress.get(id)
+  await iterator.return()
+  inProgress.delete(id)
+})
 
-export async function isSupported() {
-  const settings = settingsManager.settings || {};
-  if (!settings.llm?.enabled) return false;
-  
+export async function isSupported () {
+  const settings = settingsManager.settings || {}
+  if (!settings.llm?.enabled) return false
+
   // If API key is 'ollama', we treat it as local Ollama service
   if (settings.llm.apiKey === 'ollama') {
     // Local Ollama can always pull models on demand
-    return true;
+    return true
   }
-  
+
   // For other providers, check if API key is set
-  return !!settings.llm.apiKey;
+  return !!settings.llm.apiKey
 }
 
-export function addPreloads(session) {
+export function addPreloads (session) {
   // This is handled by unified-preload.js in PeerSky
   // No separate preload needed
 }
 
-export async function init() {
-  const settings = settingsManager.settings || {};
-  if (!settings.llm?.enabled) throw new Error('LLM API is disabled');
-  
-  const currentModel = settings.llm.model || 'qwen2.5-coder:3b';
-  
+export async function init () {
+  const settings = settingsManager.settings || {}
+  if (!settings.llm?.enabled) throw new Error('LLM API is disabled')
+
+  const currentModel = settings.llm.model || 'qwen2.5-coder:3b'
+
   // Check if we need to reinitialize for a different model
   if (isInitialized && initializedModel === currentModel) {
-    return; // Already initialized with this model
+    return // Already initialized with this model
   }
-  
+
   // Reset initialization if model changed
   if (initializedModel && initializedModel !== currentModel) {
-    console.log(`Model changed from ${initializedModel} to ${currentModel}, reinitializing...`);
-    isInitialized = false;
+    console.log(`Model changed from ${initializedModel} to ${currentModel}, reinitializing...`)
+    isInitialized = false
   }
-  
-  console.log(`Initializing with model ${currentModel}...`);
-  
+
+  console.log(`Initializing with model ${currentModel}...`)
+
   try {
     if (!(await hasModel())) {
-      console.log(`Model ${currentModel} not found, will be downloaded when settings are updated`);
+      console.log(`Model ${currentModel} not found, will be downloaded when settings are updated`)
       // Don't throw error - model will be downloaded when user selects it in settings
     }
   } catch (error) {
-    console.error('Error checking for model:', error);
+    console.error('Error checking for model:', error)
     // Continue anyway - model might be downloaded later
   }
-  
-  isInitialized = true;
-  initializedModel = currentModel; // Remember which model we initialized with
+
+  isInitialized = true
+  initializedModel = currentModel // Remember which model we initialized with
 }
 
-async function listModels() {
+async function listModels () {
   try {
-    const settings = settingsManager.settings || {};
-    
+    const settings = settingsManager.settings || {}
+
     // OpenRouter doesn't have a list models endpoint we can use
     if (settings.llm.apiKey !== 'ollama' && isOpenRouterURL(settings.llm.baseURL)) {
-      return [];
+      return []
     }
-    
-    const rawBase = settings.llm.baseURL || 'http://127.0.0.1:11434/';
-    const baseURL = rawBase.replace(/\/+$/, '');
-    const response = await fetch(`${baseURL}/api/tags`);
-    
+
+    const rawBase = settings.llm.baseURL || 'http://127.0.0.1:11434/'
+    const baseURL = rawBase.replace(/\/+$/, '')
+    const response = await fetch(`${baseURL}/api/tags`)
+
     if (!response.ok) {
-      throw new Error(`Failed to list models: ${response.statusText}`);
+      throw new Error(`Failed to list models: ${response.statusText}`)
     }
-    
-    const data = await response.json();
-    return data.models || [];
+
+    const data = await response.json()
+    return data.models || []
   } catch (error) {
-    console.error('Error listing models:', error);
-    await maybeShowOllamaNotInstalledDialog(error);
-    return [];
+    console.error('Error listing models:', error)
+    await maybeShowOllamaNotInstalledDialog(error)
+    return []
   }
 }
 
-async function pullModel(progressCallback) {
-  const settings = settingsManager.settings || {};
-  const rawBase = settings.llm.baseURL || 'http://127.0.0.1:11434/';
-  const baseURL = rawBase.replace(/\/+$/, '');
+async function pullModel (progressCallback) {
+  const settings = settingsManager.settings || {}
+  const rawBase = settings.llm.baseURL || 'http://127.0.0.1:11434/'
+  const baseURL = rawBase.replace(/\/+$/, '')
 
-  const modelName = settings.llm.model || 'qwen2.5-coder:3b';
-  
-  console.log(`Pulling model ${modelName} from ${baseURL}/api/pull`);
-  
-  currentDownloadModel = modelName;
-  currentDownloadPercent = 0;
-  
+  const modelName = settings.llm.model || 'qwen2.5-coder:3b'
+
+  console.log(`Pulling model ${modelName} from ${baseURL}/api/pull`)
+
+  currentDownloadModel = modelName
+  currentDownloadPercent = 0
+
   try {
     // Use streaming to get progress updates
     const response = await fetch(`${baseURL}/api/pull`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: modelName, stream: true })
-    });
-    
+    })
+
     if (!response.ok) {
-      throw new Error(`Failed to pull model: ${response.statusText}`);
+      throw new Error(`Failed to pull model: ${response.statusText}`)
     }
-    
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let hasError = false;
-    let errorMessage = '';
-    
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let hasError = false
+    let errorMessage = ''
+
     while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-      
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
       for (const line of lines) {
         if (line.trim()) {
           try {
-            const data = JSON.parse(line);
-            
+            const data = JSON.parse(line)
+
             // Check for error in response
             if (data.error) {
-              hasError = true;
-              errorMessage = data.error;
-              console.error(`Pull error: ${data.error}`);
+              hasError = true
+              errorMessage = data.error
+              console.error(`Pull error: ${data.error}`)
               // Check if it's a "not found" error
               if (data.error.includes('not found') || data.error.includes('no such file')) {
-                throw new Error(`Model '${modelName}' not found in Ollama library`);
+                throw new Error(`Model '${modelName}' not found in Ollama library`)
               }
             }
-            
+
             if (data.status) {
-              console.log(`Pull status: ${data.status}`);
+              console.log(`Pull status: ${data.status}`)
               // Calculate progress if available
               if (data.completed && data.total) {
-                const percent = Math.round((data.completed / data.total) * 100);
-                currentDownloadPercent = percent; // Track globally
+                const percent = Math.round((data.completed / data.total) * 100)
+                currentDownloadPercent = percent // Track globally
                 if (progressCallback) {
-                  progressCallback(percent, data.status);
+                  progressCallback(percent, data.status)
                 }
               } else if (progressCallback) {
-                progressCallback(-1, data.status);
+                progressCallback(-1, data.status)
               }
             }
           } catch (e) {
             if (e.message && e.message.includes('not found')) {
-              throw e; // Re-throw "not found" errors
+              throw e // Re-throw "not found" errors
             }
-            console.error('Error parsing pull response:', e);
+            console.error('Error parsing pull response:', e)
           }
         }
       }
     }
-    
+
     if (hasError) {
-      throw new Error(errorMessage);
+      throw new Error(errorMessage)
     }
-    
-    console.log(`Model ${modelName} pulled successfully`);
-    currentDownloadModel = null;
-    return true; // Success
+
+    console.log(`Model ${modelName} pulled successfully`)
+    currentDownloadModel = null
+    return true // Success
   } catch (error) {
-    console.error(`Error pulling model: ${error}`);
-    await maybeShowOllamaNotInstalledDialog(error);
-    throw error;
+    console.error(`Error pulling model: ${error}`)
+    await maybeShowOllamaNotInstalledDialog(error)
+    throw error
   } finally {
-    currentDownloadModel = null;
-    currentDownloadPercent = 0;
+    currentDownloadModel = null
+    currentDownloadPercent = 0
   }
 }
 
-async function hasModel() {
+async function hasModel () {
   try {
-    const settings = settingsManager.settings || {};
-    
+    const settings = settingsManager.settings || {}
+
     // If using OpenRouter, assume model exists (cloud-based)
     if (settings.llm.apiKey !== 'ollama' && isOpenRouterURL(settings.llm.baseURL)) {
-      return true;
+      return true
     }
-    
-    const models = await listModels();
-    const modelName = settings.llm.model || 'qwen2.5-coder:3b';
+
+    const models = await listModels()
+    const modelName = settings.llm.model || 'qwen2.5-coder:3b'
     // Check if model exists - Ollama models have a 'name' field
     const found = models.find((model) => {
-      return model.name === modelName || model.name.startsWith(modelName + ':');
-    });
-    
+      return model.name === modelName || model.name.startsWith(modelName + ':')
+    })
+
     if (found) {
-      console.log(`Checking for model ${modelName}: found`);
-      return true;
+      console.log(`Checking for model ${modelName}: found`)
+      return true
     } else {
-      console.log(`Checking for model ${modelName}: not found`);
-      return false;
+      console.log(`Checking for model ${modelName}: not found`)
+      return false
     }
   } catch (error) {
-    console.error('Error checking for model:', error);
-    await maybeShowOllamaNotInstalledDialog(error);
-    return false;
+    console.error('Error checking for model:', error)
+    await maybeShowOllamaNotInstalledDialog(error)
+    return false
   }
 }
 
@@ -526,33 +525,33 @@ async function hasModel() {
 // Instead, we let Ollama's pull endpoint handle validation - it will return an error
 // if the model doesn't exist in the library.
 
-export async function chat({
+export async function chat ({
   messages = [],
   temperature,
   maxTokens,
   stop
 }) {
-  await init();
-  const settings = settingsManager.settings || {};
-  
+  await init()
+  const settings = settingsManager.settings || {}
+
   // Get settings first
-  const baseURLRaw = settings.llm.baseURL || 'http://127.0.0.1:11434/';
-  const apiKey = settings.llm.apiKey || 'ollama';
-  const model = settings.llm.model || 'qwen2.5-coder:3b';
-  const isOpenRouter = isOpenRouterURL(baseURLRaw);
-  
+  const baseURLRaw = settings.llm.baseURL || 'http://127.0.0.1:11434/'
+  const apiKey = settings.llm.apiKey || 'ollama'
+  const model = settings.llm.model || 'qwen2.5-coder:3b'
+  const isOpenRouter = isOpenRouterURL(baseURLRaw)
+
   // Only check if model is installed for Ollama (not OpenRouter)
   if (!isOpenRouter && !(await hasModel())) {
-    throw new Error(`Model '${model}' is not installed. Please select it in Settings > AI / LLMs to download it.`);
+    throw new Error(`Model '${model}' is not installed. Please select it in Settings > AI / LLMs to download it.`)
   }
-  
+
   // Construct the full URL for chat completions
   // OpenRouter: https://openrouter.ai/api/v1/chat/completions
   // Ollama: http://127.0.0.1:11434/v1/chat/completions
-  const chatURL = constructChatURL(baseURLRaw);
-  
+  const chatURL = constructChatURL(baseURLRaw)
+
   // Simple request body - let Ollama use its defaults
-  console.log('Making chat request to URL:', chatURL);
+  console.log('Making chat request to URL:', chatURL)
   const { choices } = await post(chatURL, {
     messages,
     model,
@@ -560,19 +559,19 @@ export async function chat({
     max_tokens: maxTokens ?? DEFAULT_MAX_TOKENS,
     stop,
     stream: false
-  }, 'Unable to generate chat completion', true, apiKey);
+  }, 'Unable to generate chat completion', true, apiKey)
 
-  return choices[0].message;
+  return choices[0].message
 }
 
-export async function complete({
+export async function complete ({
   prompt,
   temperature,
   maxTokens,
   stop
 }) {
-  await init();
-  
+  await init()
+
   // Most modern APIs don't have separate completion endpoints
   // Convert to chat format
   return chat({
@@ -580,32 +579,32 @@ export async function complete({
     temperature,
     maxTokens,
     stop
-  });
+  })
 }
 
-export async function* chatStream({
+export async function * chatStream ({
   messages = [],
   temperature,
   maxTokens,
   stop
 } = {}) {
-  await init();
-  const settings = settingsManager.settings || {};
-  
+  await init()
+  const settings = settingsManager.settings || {}
+
   // Get settings first
-  const baseURLRaw = settings.llm.baseURL || 'http://127.0.0.1:11434/';
-  const apiKey = settings.llm.apiKey || 'ollama';
-  const model = settings.llm.model || 'qwen2.5-coder:3b';
-  const isOpenRouter = isOpenRouterURL(baseURLRaw);
-  
+  const baseURLRaw = settings.llm.baseURL || 'http://127.0.0.1:11434/'
+  const apiKey = settings.llm.apiKey || 'ollama'
+  const model = settings.llm.model || 'qwen2.5-coder:3b'
+  const isOpenRouter = isOpenRouterURL(baseURLRaw)
+
   // Only check if model is installed for Ollama (not OpenRouter)
   if (!isOpenRouter && !(await hasModel())) {
-    throw new Error(`Model '${model}' is not installed. Please select it in Settings > AI / LLMs to download it.`);
+    throw new Error(`Model '${model}' is not installed. Please select it in Settings > AI / LLMs to download it.`)
   }
-  
+
   // Construct the full URL for chat completions
-  const chatURL = constructChatURL(baseURLRaw);
-  
+  const chatURL = constructChatURL(baseURLRaw)
+
   try {
     // Simple streaming request - let Ollama use its defaults
     for await (const { choices } of stream(chatURL, {
@@ -616,155 +615,155 @@ export async function* chatStream({
       stop
     }, 'Unable to generate chat stream', apiKey)) {
       if (choices && choices[0]?.delta) {
-        yield choices[0].delta;
+        yield choices[0].delta
       }
     }
   } catch (error) {
-    const msg = error?.message || '';
+    const msg = error?.message || ''
     if (msg.includes('model failed to load') || msg.includes('resource limitations')) {
       throw new Error(
         `Model "${model}" failed to load — Ollama ran out of memory or hit a resource limit.\n` +
         `Try: run \`ollama run ${model}\` in a terminal to see the full error, ` +
-        `or free up RAM/VRAM and retry. You can also try a smaller model in Settings > AI / LLMs.`
-      );
+        'or free up RAM/VRAM and retry. You can also try a smaller model in Settings > AI / LLMs.'
+      )
     }
-    await maybeShowOllamaNotInstalledDialog(error);
-    throw error;
+    await maybeShowOllamaNotInstalledDialog(error)
+    throw error
   }
 }
 
-export async function* completeStream({
+export async function * completeStream ({
   prompt,
   temperature,
   maxTokens,
   stop
 }) {
   // Convert to chat stream
-  const messages = [{ role: 'user', content: prompt }];
+  const messages = [{ role: 'user', content: prompt }]
   try {
     for await (const delta of chatStream({ messages, temperature, maxTokens, stop })) {
-      yield delta.content || '';
+      yield delta.content || ''
     }
   } catch (error) {
-    await maybeShowOllamaNotInstalledDialog(error);
-    throw error;
+    await maybeShowOllamaNotInstalledDialog(error)
+    throw error
   }
 }
 
-async function* stream(url, data = {}, errorMessage = 'Request failed', apiKey = 'ollama') {
+async function * stream (url, data = {}, errorMessage = 'Request failed', apiKey = 'ollama') {
   // Don't add trailing slash - URL should already be complete
-  if (!data.stream) data.stream = true;
-  
+  if (!data.stream) data.stream = true
+
   const headers = {
     'Content-Type': 'application/json; charset=utf8'
-  };
-  
+  }
+
   // Add authorization header for OpenRouter or other authenticated APIs
   if (apiKey && apiKey !== 'ollama') {
-    headers['Authorization'] = `Bearer ${apiKey}`;
+    headers.Authorization = `Bearer ${apiKey}`
   }
-  
+
   try {
     const response = await fetch(url, {
       method: 'POST',
       headers,
       body: JSON.stringify(data),
       dispatcher: llmAgent // Use custom agent with no timeouts
-    });
-    
+    })
+
     if (!response.ok) {
-      const bodyText = await response.text();
+      const bodyText = await response.text()
       try {
-        const parsed = JSON.parse(bodyText);
-        const msg = parsed.error?.message || parsed.error || bodyText;
-        throw new Error(`${errorMessage}: ${msg}`);
+        const parsed = JSON.parse(bodyText)
+        const msg = parsed.error?.message || parsed.error || bodyText
+        throw new Error(`${errorMessage}: ${msg}`)
       } catch (jsonErr) {
-        if (jsonErr.message && jsonErr.message.startsWith(errorMessage)) throw jsonErr;
-        throw new Error(`${errorMessage}: ${bodyText}`);
+        if (jsonErr.message && jsonErr.message.startsWith(errorMessage)) throw jsonErr
+        throw new Error(`${errorMessage}: ${bodyText}`)
       }
     }
-    
-    const decoder = new TextDecoder('utf-8');
-    let remaining = '';
-    
-    const reader = response.body.getReader();
-    
+
+    const decoder = new TextDecoder('utf-8')
+    let remaining = ''
+
+    const reader = response.body.getReader()
+
     for await (const chunk of iterate(reader)) {
-      remaining += decoder.decode(chunk, { stream: true });
-      const lines = remaining.split('\n');
-      remaining = lines.pop() || '';
-      
+      remaining += decoder.decode(chunk, { stream: true })
+      const lines = remaining.split('\n')
+      remaining = lines.pop() || ''
+
       for (const line of lines) {
         if (line.startsWith('data: ')) {
-          const data = line.slice(6);
-          if (data === '[DONE]') return;
+          const data = line.slice(6)
+          if (data === '[DONE]') return
           if (data) {
             try {
-              yield JSON.parse(data);
+              yield JSON.parse(data)
             } catch (e) {
-              console.error('Failed to parse streaming data:', e, data);
+              console.error('Failed to parse streaming data:', e, data)
             }
           }
         }
       }
     }
   } catch (error) {
-    await maybeShowOllamaNotInstalledDialog(error);
-    throw error;
+    await maybeShowOllamaNotInstalledDialog(error)
+    throw error
   }
 }
 
-async function post(url, data, errorMessage = 'Request failed', parseBody = true, apiKey = 'ollama') {
+async function post (url, data, errorMessage = 'Request failed', parseBody = true, apiKey = 'ollama') {
   const headers = {
     'Content-Type': 'application/json; charset=utf8'
-  };
-  
+  }
+
   // Add authorization header for OpenRouter or other authenticated APIs
   if (apiKey && apiKey !== 'ollama') {
-    headers['Authorization'] = `Bearer ${apiKey}`;
+    headers.Authorization = `Bearer ${apiKey}`
   }
-  
+
   try {
     const response = await fetch(url, {
       method: 'POST',
       headers,
       body: JSON.stringify(data),
       dispatcher: llmAgent // Use custom agent with no timeouts
-    });
+    })
 
     if (!response.ok) {
-      const bodyText = await response.text();
+      const bodyText = await response.text()
       try {
-        const parsed = JSON.parse(bodyText);
-        const msg = parsed.error?.message || parsed.error || bodyText;
+        const parsed = JSON.parse(bodyText)
+        const msg = parsed.error?.message || parsed.error || bodyText
         if (parsed.error?.code === 'model_failed_to_load') {
           throw new Error(
-            `Model failed to load — Ollama ran out of memory or hit a resource limit.\n` +
+            'Model failed to load — Ollama ran out of memory or hit a resource limit.\n' +
             `Try: run \`ollama run ${parsed.error.model}\` in a terminal to see the full error, ` +
-            `or free up RAM/VRAM and retry. You can also try a smaller model in Settings > AI / LLMs.`
-          );
+            'or free up RAM/VRAM and retry. You can also try a smaller model in Settings > AI / LLMs.'
+          )
         }
-        throw new Error(`${errorMessage}: ${msg}`);
+        throw new Error(`${errorMessage}: ${msg}`)
       } catch (jsonErr) {
-        if (jsonErr.message && jsonErr.message.startsWith(errorMessage)) throw jsonErr;
-        throw new Error(`${errorMessage}: ${bodyText}`);
+        if (jsonErr.message && jsonErr.message.startsWith(errorMessage)) throw jsonErr
+        throw new Error(`${errorMessage}: ${bodyText}`)
       }
     }
 
     if (parseBody) {
-      return await response.json();
+      return await response.json()
     }
-    return await response.text();
+    return await response.text()
   } catch (error) {
-    throw error;
+    throw error
   }
 }
 
-async function* iterate(reader) {
+async function * iterate (reader) {
   while (true) {
-    const { done, value } = await reader.read();
-    if (done) return;
-    yield value;
+    const { done, value } = await reader.read()
+    if (done) return
+    yield value
   }
 }
 
@@ -775,4 +774,4 @@ export default {
   complete,
   chatStream,
   completeStream
-};
+}

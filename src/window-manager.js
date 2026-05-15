@@ -1,136 +1,136 @@
-import { app, BrowserWindow, ipcMain, webContents, session } from "electron";
-import { createLogger } from './logger.js';
-import path from "path";
-import fs from "fs-extra";
-import ScopedFS from 'scoped-fs';
-import { fileURLToPath } from "url";
-import { attachContextMenus } from "./context-menu.js";
-import { randomUUID } from "crypto";
-import { getPartition } from "./session.js";
-import extensionManager from "./extensions/index.js";
+import { app, BrowserWindow, ipcMain, webContents, session } from 'electron'
+import { createLogger } from './logger.js'
+import path from 'path'
+import fs from 'fs-extra'
+import ScopedFS from 'scoped-fs'
+import { fileURLToPath } from 'url'
+import { attachContextMenus } from './context-menu.js'
+import { randomUUID } from 'crypto'
+import { getPartition } from './session.js'
+import extensionManager from './extensions/index.js'
 
-const log = createLogger('window-manager');
+const log = createLogger('window-manager')
 
-const __dirname = fileURLToPath(new URL(".", import.meta.url));
+const __dirname = fileURLToPath(new URL('.', import.meta.url))
 
-const USER_DATA_PATH = app.getPath("userData");
-const BOOKMARKS_FILE = path.join(USER_DATA_PATH, "bookmarks.json");
-const PERSIST_FILE = path.join(USER_DATA_PATH, "lastOpened.json");
+const USER_DATA_PATH = app.getPath('userData')
+const BOOKMARKS_FILE = path.join(USER_DATA_PATH, 'bookmarks.json')
+const PERSIST_FILE = path.join(USER_DATA_PATH, 'lastOpened.json')
 
-const DEFAULT_SAVE_INTERVAL = 30 * 1000;
-const cssPath = path.join(__dirname, "pages", "theme");
-const cssFS = new ScopedFS(cssPath);
+const DEFAULT_SAVE_INTERVAL = 30 * 1000
+const cssPath = path.join(__dirname, 'pages', 'theme')
+const cssFS = new ScopedFS(cssPath)
 
-ipcMain.handle("peersky-read-css", async (_event, name) => {
+ipcMain.handle('peersky-read-css', async (_event, name) => {
   try {
-    const safeName = path.basename(name).replace(/\.css$/, '') + '.css';
+    const safeName = path.basename(name).replace(/\.css$/, '') + '.css'
     const data = await new Promise((resolve, reject) => {
       cssFS.readFile(safeName, (err, buffer) => {
         if (err) {
-          reject(err);
+          reject(err)
         } else {
-          resolve(buffer.toString('utf8'));
+          resolve(buffer.toString('utf8'))
         }
-      });
-    });
-    return data;
+      })
+    })
+    return data
   } catch (err) {
-    log.error(`Failed to read CSS ${name}:`, err);
-    return "";
+    log.error(`Failed to read CSS ${name}:`, err)
+    return ''
   }
-});
+})
 
 class WindowManager {
-  constructor() {
-    this.windows = new Set();
-    this.saverTimer = null;
-    this.saverInterval = DEFAULT_SAVE_INTERVAL;
-    this.isSaving = false;
-    this.isQuitting = false;
-    this.shutdownInProgress = false;
-    this.finalSaveCompleted = false;
-    this.saveQueue = Promise.resolve();
-    this.registerListeners();
+  constructor () {
+    this.windows = new Set()
+    this.saverTimer = null
+    this.saverInterval = DEFAULT_SAVE_INTERVAL
+    this.isSaving = false
+    this.isQuitting = false
+    this.shutdownInProgress = false
+    this.finalSaveCompleted = false
+    this.saveQueue = Promise.resolve()
+    this.registerListeners()
 
     // Treat Ctrl+C / SIGTERM as explicit quits in dev:
     if (!app.isPackaged) {
       const handleSignal = (signal) => {
         if (this.shutdownInProgress) {
-          log.info(`${signal} received while shutdown already in progress – ignoring.`);
-          return;
+          log.info(`${signal} received while shutdown already in progress – ignoring.`)
+          return
         }
-      
-        this.isQuitting = true;
-        this.shutdownInProgress = true;
-        this.stopSaver();
-      
+
+        this.isQuitting = true
+        this.shutdownInProgress = true
+        this.stopSaver()
+
         log.info(`${signal} received – saving session state WITHOUT clearing it, then exiting.`);
-      
+
         (async () => {
           try {
-            await this.saveCompleteState();
+            await this.saveCompleteState()
           } catch (error) {
-            log.error(`Error during ${signal} shutdown save:`, error);
+            log.error(`Error during ${signal} shutdown save:`, error)
           } finally {
-            this.finalSaveCompleted = true;
-            app.exit(0);
+            this.finalSaveCompleted = true
+            app.exit(0)
           }
-        })();
-      };
-    
-      process.on('SIGINT', () => handleSignal('SIGINT'));
-      process.on('SIGTERM', () => handleSignal('SIGTERM'));
+        })()
+      }
+
+      process.on('SIGINT', () => handleSignal('SIGINT'))
+      process.on('SIGTERM', () => handleSignal('SIGTERM'))
     }
 
     app.on('before-quit', (event) => {
       // Avoid re-entering if something calls app.quit() again
       if (this.shutdownInProgress) {
-        log.info('before-quit: shutdown already in progress, ignoring.');
-        return;
+        log.info('before-quit: shutdown already in progress, ignoring.')
+        return
       }
-    
-      log.info('before-quit: performing final session save (without clearing).');
-      this.isQuitting = true;
-      this.shutdownInProgress = true;
-      this.stopSaver();
-    
+
+      log.info('before-quit: performing final session save (without clearing).')
+      this.isQuitting = true
+      this.shutdownInProgress = true
+      this.stopSaver()
+
       // Prevent the default quit, we'll exit manually after the async save
       event.preventDefault();
-    
+
       (async () => {
         try {
-          await this.saveCompleteState();
+          await this.saveCompleteState()
         } catch (error) {
-          log.error('Error during final save in before-quit:', error);
+          log.error('Error during final save in before-quit:', error)
         } finally {
-          this.finalSaveCompleted = true;
+          this.finalSaveCompleted = true
           // Important: app.exit() does not re-emit 'before-quit'
-          app.exit(0);
+          app.exit(0)
         }
-      })();
-    });
+      })()
+    })
   }
 
-  registerListeners() {
-    ipcMain.on("new-window", () => {
-      this.open();
-    });
+  registerListeners () {
+    ipcMain.on('new-window', () => {
+      this.open()
+    })
 
     // Handles tearing off a single tab into a new window
     ipcMain.on('new-window-with-tab', (event, data) => {
-      log.info("Creating new window for torn off tab:", data.url);
+      log.info('Creating new window for torn off tab:', data.url)
       this.open({
         isolate: true,
         singleTab: {
           url: data.url,
           title: data.title
         }
-      });
-    });
+      })
+    })
 
     // Handles tearing off a split tab pair into a new window
     ipcMain.on('new-window-with-split-tabs', (event, data) => {
-      log.info("Creating new window for torn off split pair");
+      log.info('Creating new window for torn off split pair')
       this.open({
         isolate: true,
         splitLeftUrl: data.leftUrl,
@@ -138,54 +138,53 @@ class WindowManager {
         splitRightUrl: data.rightUrl,
         splitRightTitle: data.rightTitle,
         splitRatio: data.splitRatio
-      });
-    });
+      })
+    })
 
     // Explicit quit from UI (custom Quit button, etc.).
     // We just call app.quit(); app.on('before-quit') will save session files.
-    ipcMain.on("quit-app", () => {
-      log.info("Quit app requested from UI");
-      this.isQuitting = true;
-      app.quit();
-    });
+    ipcMain.on('quit-app', () => {
+      log.info('Quit app requested from UI')
+      this.isQuitting = true
+      app.quit()
+    })
 
     // Close the current window and let Electron/main.js decide
     // whether the app should quit (non-macOS) or stay alive (macOS).
-    ipcMain.on("close-window", (event) => {
-      const senderId = event.sender.id;
-      const window = this.findWindowBySenderId(senderId);
+    ipcMain.on('close-window', (event) => {
+      const senderId = event.sender.id
+      const window = this.findWindowBySenderId(senderId)
 
       if (window) {
-        window.window.close();
+        window.window.close()
       }
-    });
+    })
 
-    ipcMain.on("add-bookmark", (_, { url, title, favicon }) => {
-      this.addBookmark({ url, title, favicon });
-    });
+    ipcMain.on('add-bookmark', (_, { url, title, favicon }) => {
+      this.addBookmark({ url, title, favicon })
+    })
 
+    ipcMain.handle('get-bookmarks', () => {
+      return this.loadBookmarks()
+    })
 
-    ipcMain.handle("get-bookmarks", () => {
-      return this.loadBookmarks();
-    });
+    ipcMain.handle('delete-bookmark', (_event, { url }) => {
+      return this.deleteBookmark(url)
+    })
 
-    ipcMain.handle("delete-bookmark", (_event, { url }) => {
-      return this.deleteBookmark(url);
-    });
+    ipcMain.handle('get-tabs', () => {
+      return this.getTabs()
+    })
 
-    ipcMain.handle("get-tabs", () => {
-      return this.getTabs();
-    });
+    ipcMain.handle('close-tab', (_event, id) => {
+      this.sendToMainWindow('close-tab', id)
+    })
 
-    ipcMain.handle("close-tab", (_event, id) => {
-      this.sendToMainWindow('close-tab', id);
-    });
-
-    ipcMain.handle("activate-tab", async (_event, id) => {
-      log.info('Activating tab:', id);
+    ipcMain.handle('activate-tab', async (_event, id) => {
+      log.info('Activating tab:', id)
 
       // Find which window contains this tab
-      let targetWindow = null;
+      let targetWindow = null
 
       for (const peerskyWindow of this.windows.values()) {
         if (peerskyWindow.window && !peerskyWindow.window.isDestroyed()) {
@@ -203,14 +202,14 @@ class WindowManager {
                   return false;
                 }
               })()
-            `);
+            `)
 
             if (hasTab) {
-              targetWindow = peerskyWindow;
-              break;
+              targetWindow = peerskyWindow
+              break
             }
           } catch (error) {
-            log.info('Error checking tab in window:', error);
+            log.info('Error checking tab in window:', error)
             // Continue to next window
           }
         }
@@ -219,44 +218,43 @@ class WindowManager {
       if (targetWindow) {
         // Bring the window to front
         if (targetWindow.window.isMinimized()) {
-          targetWindow.window.restore();
+          targetWindow.window.restore()
         }
-        targetWindow.window.focus();
-        targetWindow.window.show();
+        targetWindow.window.focus()
+        targetWindow.window.show()
 
         // Activate the tab in that window
-        targetWindow.window.webContents.send('activate-tab', id);
+        targetWindow.window.webContents.send('activate-tab', id)
 
-        return { success: true, windowId: targetWindow.windowId };
+        return { success: true, windowId: targetWindow.windowId }
       } else {
         // Fallback to main window if tab not found
-        log.warn(`Tab ${id} not found in any window, falling back to main window`);
-        this.sendToMainWindow('activate-tab', id);
-        return { success: false, message: 'Tab not found, sent to main window' };
+        log.warn(`Tab ${id} not found in any window, falling back to main window`)
+        this.sendToMainWindow('activate-tab', id)
+        return { success: false, message: 'Tab not found, sent to main window' }
       }
-    });
-    
-    ipcMain.handle("group-action", (_event, data) => {
-      const { action, groupId } = data;
+    })
+
+    ipcMain.handle('group-action', (_event, data) => {
+      const { action, groupId } = data
 
       // For "add-tab" action, send to specific window
       if (action === 'add-tab' || action === 'edit') {
         // Find the window that sent this request
-        let senderWindow = this.findWindowByWebContentsId(event.sender.id);
+        let senderWindow = this.findWindowByWebContentsId(event.sender.id)
 
         // If not found directly, it might be a webview - try to find parent window
         if (!senderWindow) {
           // Try to find the parent window by checking all webContents
-          const allWebContents = webContents.getAllWebContents();
+          const allWebContents = webContents.getAllWebContents()
 
           for (const wc of allWebContents) {
             if (wc.id === event.sender.id) {
-
               // Check if this webContents has a hostWebContents (parent)
               if (wc.hostWebContents) {
-                senderWindow = this.findWindowByWebContentsId(wc.hostWebContents.id);
+                senderWindow = this.findWindowByWebContentsId(wc.hostWebContents.id)
                 if (senderWindow) {
-                  break;
+                  break
                 }
               }
             }
@@ -265,168 +263,168 @@ class WindowManager {
 
         if (senderWindow) {
           // Send the action to the originating window (or its parent if it was a webview)
-          this.sendToSpecificWindow(senderWindow, 'group-action', data);
+          this.sendToSpecificWindow(senderWindow, 'group-action', data)
         } else {
           // Fallback to main window if sender not found
-          log.warn('Could not find sender window for group action, falling back to main window');
-          this.sendToMainWindow('group-action', data);
+          log.warn('Could not find sender window for group action, falling back to main window')
+          this.sendToMainWindow('group-action', data)
         }
-        this.saveOpened(true);
+        this.saveOpened(true)
       } else {
-        // For edit, toggle, ungroup, close-group actions, broadcast to ALL windows        
+        // For edit, toggle, ungroup, close-group actions, broadcast to ALL windows
         this.windows.forEach(peerskyWindow => {
           if (peerskyWindow.window && !peerskyWindow.window.isDestroyed()) {
-            peerskyWindow.window.webContents.send('group-action', data);
+            peerskyWindow.window.webContents.send('group-action', data)
           }
-        });
+        })
       }
-      return { success: true };
-    });
+      return { success: true }
+    })
 
     // Handle save-state events from renderer (tabs/windows changed)
-    ipcMain.on("save-state", () => {
+    ipcMain.on('save-state', () => {
       if (!this.isQuitting && !this.shutdownInProgress) {
-        this.saveOpened();
+        this.saveOpened()
       }
-    });
+    })
   }
 
-  findWindowBySenderId(senderId) {
+  findWindowBySenderId (senderId) {
     for (const window of this.windows) {
       if (window.window.webContents.id === senderId) {
-        return window;
+        return window
       }
     }
-    return null;
+    return null
   }
 
-  findWindowByWebContentsId(webContentsId) {
+  findWindowByWebContentsId (webContentsId) {
     for (const window of this.windows) {
       if (window.window.webContents.id === webContentsId) {
-        return window;
+        return window
       }
     }
-    return null;
+    return null
   }
 
-  setQuitting(flag) {
-    this.isQuitting = flag;
+  setQuitting (flag) {
+    this.isQuitting = flag
   }
 
-  addBookmark(newBookmark) {
+  addBookmark (newBookmark) {
     if (!newBookmark || !newBookmark.url) {
-      log.error("Invalid bookmark data provided.");
-      return;
+      log.error('Invalid bookmark data provided.')
+      return
     }
     try {
-      const bookmarks = this.loadBookmarks();
+      const bookmarks = this.loadBookmarks()
       const existingIndex = bookmarks.findIndex(
         (b) => b.url === newBookmark.url
-      );
+      )
 
       if (existingIndex > -1) {
         bookmarks[existingIndex] = {
           ...bookmarks[existingIndex],
-          ...newBookmark,
-        };
-        log.info(`Bookmark updated: ${newBookmark.url}`);
+          ...newBookmark
+        }
+        log.info(`Bookmark updated: ${newBookmark.url}`)
       } else {
-        bookmarks.push({ ...newBookmark, dateAdded: new Date().toISOString() });
-        log.info(`Bookmark added: ${newBookmark.url}`);
+        bookmarks.push({ ...newBookmark, dateAdded: new Date().toISOString() })
+        log.info(`Bookmark added: ${newBookmark.url}`)
       }
 
-      fs.writeJsonSync(BOOKMARKS_FILE, bookmarks, { spaces: 2 });
+      fs.writeJsonSync(BOOKMARKS_FILE, bookmarks, { spaces: 2 })
     } catch (error) {
-      log.error("Error adding bookmark:", error);
+      log.error('Error adding bookmark:', error)
     }
   }
 
-  deleteBookmark(urlToDelete) {
-    if (!urlToDelete) return false;
+  deleteBookmark (urlToDelete) {
+    if (!urlToDelete) return false
     try {
-      log.info(`Attempting to delete bookmark: ${urlToDelete}`);
-      const bookmarks = this.loadBookmarks();
-      const updatedBookmarks = bookmarks.filter((b) => b.url !== urlToDelete);
+      log.info(`Attempting to delete bookmark: ${urlToDelete}`)
+      const bookmarks = this.loadBookmarks()
+      const updatedBookmarks = bookmarks.filter((b) => b.url !== urlToDelete)
 
       if (bookmarks.length === updatedBookmarks.length) {
         log.warn(
           `Attempted to delete a non-existent bookmark: ${urlToDelete}`
-        );
-        return false;
+        )
+        return false
       }
 
-      fs.writeJsonSync(BOOKMARKS_FILE, updatedBookmarks, { spaces: 2 });
-      log.info(`Bookmark deleted: ${urlToDelete}`);
-      return true;
+      fs.writeJsonSync(BOOKMARKS_FILE, updatedBookmarks, { spaces: 2 })
+      log.info(`Bookmark deleted: ${urlToDelete}`)
+      return true
     } catch (error) {
-      log.error(`Error deleting bookmark: ${urlToDelete}`, error);
-      return false;
+      log.error(`Error deleting bookmark: ${urlToDelete}`, error)
+      return false
     }
   }
 
-  loadBookmarks() {
+  loadBookmarks () {
     try {
       if (!fs.existsSync(BOOKMARKS_FILE)) {
-        log.info("Bookmarks file does not exist, creating a new one.");
-        fs.writeJsonSync(BOOKMARKS_FILE, [], { spaces: 2 });
+        log.info('Bookmarks file does not exist, creating a new one.')
+        fs.writeJsonSync(BOOKMARKS_FILE, [], { spaces: 2 })
       }
-      const bookmarks = fs.readJsonSync(BOOKMARKS_FILE);
+      const bookmarks = fs.readJsonSync(BOOKMARKS_FILE)
       if (!Array.isArray(bookmarks)) {
         log.error(
-          "Bookmarks file is not an array, resetting to empty array."
-        );
-        return [];
+          'Bookmarks file is not an array, resetting to empty array.'
+        )
+        return []
       }
-      return bookmarks;
+      return bookmarks
     } catch (error) {
-      log.error("Error loading bookmarks:", error);
-      return [];
+      log.error('Error loading bookmarks:', error)
+      return []
     }
   }
 
-  getMainWindow() {
-    const entry = this.windows.values().next();
+  getMainWindow () {
+    const entry = this.windows.values().next()
     if (entry && entry.value) {
-      return entry.value.window;
+      return entry.value.window
     }
-    return null;
+    return null
   }
 
-  getMainPeerskyWindow() {
-    const entry = this.windows.values().next();
+  getMainPeerskyWindow () {
+    const entry = this.windows.values().next()
     if (entry && entry.value) {
-      return entry.value;
+      return entry.value
     }
-    return null;
+    return null
   }
 
-  sendToMainWindow(channel, data) {
-    const win = this.getMainWindow();
+  sendToMainWindow (channel, data) {
+    const win = this.getMainWindow()
     if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
-      win.webContents.send(channel, data);
+      win.webContents.send(channel, data)
     }
   }
 
-  sendToSpecificWindow(peerskyWindow, channel, data) {
-    const win = peerskyWindow.window;
+  sendToSpecificWindow (peerskyWindow, channel, data) {
+    const win = peerskyWindow.window
     if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
-      win.webContents.send(channel, data);
+      win.webContents.send(channel, data)
     }
   }
 
-  async getTabs() {
-    const results = {};
+  async getTabs () {
+    const results = {}
     const validWindows = Array.from(this.windows).filter(w =>
       w.window && !w.window.isDestroyed() && !w.window.webContents.isDestroyed()
-    );
+    )
 
-    log.info(`Getting tabs from ${validWindows.length} windows`);
+    log.info(`Getting tabs from ${validWindows.length} windows`)
 
     for (const peerskyWin of validWindows) {
-      const win = peerskyWin.window;
+      const win = peerskyWin.window
 
       try {
-        const windowId = peerskyWin.windowId;
+        const windowId = peerskyWin.windowId
         const tabsData = await win.webContents.executeJavaScript(`
         (() => {
           try {
@@ -445,176 +443,176 @@ class WindowManager {
             return null;
           }
         })()
-      `);
+      `)
 
         if (tabsData && tabsData.tabs) {
-          results[windowId] = tabsData;
-          log.info(`Got ${tabsData.tabs.length} tabs from window ${windowId}`);
+          results[windowId] = tabsData
+          log.info(`Got ${tabsData.tabs.length} tabs from window ${windowId}`)
         }
       } catch (e) {
-        log.error(`Failed to read tabs from window ${peerskyWin.windowId}:`, e.message);
+        log.error(`Failed to read tabs from window ${peerskyWin.windowId}:`, e.message)
       }
     }
 
-    return Object.keys(results).length > 0 ? results : null;
+    return Object.keys(results).length > 0 ? results : null
   }
 
-  open(options = {}) {
-    const window = new PeerskyWindow(options, this);
-    this.windows.add(window);
+  open (options = {}) {
+    const window = new PeerskyWindow(options, this)
+    this.windows.add(window)
 
-    window.window.on("closed", () => {
-      const wasLastWindow = this.windows.size === 1;
-      this.windows.delete(window);
+    window.window.on('closed', () => {
+      const wasLastWindow = this.windows.size === 1
+      this.windows.delete(window)
       ipcMain.removeListener(
         `webview-did-navigate-${window.id}`,
         window.navigateListener
-      );
+      )
 
       // Only save if not shutting down and not closing the last window
       if (!this.isQuitting && !this.shutdownInProgress && !wasLastWindow) {
-        this.saveOpened();
+        this.saveOpened()
       }
-    });
+    })
 
-    window.window.on("close", (event) => {
+    window.window.on('close', (event) => {
       if (this.shutdownInProgress && !this.finalSaveCompleted) {
-        log.info(`Preventing window ${window.id} from closing until save completes`);
-        event.preventDefault();
-        return;
+        log.info(`Preventing window ${window.id} from closing until save completes`)
+        event.preventDefault()
+        return
       }
-      
+
       // If this is the last window, mark that we're clearing state
       if (this.windows.size === 1) {
-        this.stopSaver();
+        this.stopSaver()
       }
-    });
+    })
 
     // Only save on move/resize if not shutting down
-    window.window.on("move", () => {
+    window.window.on('move', () => {
       if (!this.isQuitting && !this.shutdownInProgress) {
-        this.saveOpened();
+        this.saveOpened()
       }
-    });
+    })
 
-    window.window.on("resize", () => {
+    window.window.on('resize', () => {
       if (!this.isQuitting && !this.shutdownInProgress) {
-        this.saveOpened();
+        this.saveOpened()
       }
-    });
+    })
 
-    window.webContents.on("did-navigate", () => {
+    window.webContents.on('did-navigate', () => {
       if (!this.isQuitting && !this.shutdownInProgress) {
-        this.saveOpened();
+        this.saveOpened()
       }
-    });
+    })
 
-    return window;
+    return window
   }
 
-  get all() {
-    return [...this.windows.values()];
+  get all () {
+    return [...this.windows.values()]
   }
-  async clearSavedState() {
+
+  async clearSavedState () {
     try {
-      log.info("Clearing saved session state (files and browser data)...");
-      const TABS_FILE = path.join(USER_DATA_PATH, "tabs.json");
+      log.info('Clearing saved session state (files and browser data)...')
+      const TABS_FILE = path.join(USER_DATA_PATH, 'tabs.json')
 
       // Promise to clear session storage (localStorage, etc.)
-      const clearSessionPromise = session.defaultSession.clearStorageData();
+      const clearSessionPromise = session.defaultSession.clearStorageData()
 
       // Promise to clear our custom state files
       const clearFilesPromise = (async () => {
-        await fs.outputJson(PERSIST_FILE, [], { spaces: 2 });
-        await fs.outputJson(TABS_FILE, {}, { spaces: 2 });
-      })();
+        await fs.outputJson(PERSIST_FILE, [], { spaces: 2 })
+        await fs.outputJson(TABS_FILE, {}, { spaces: 2 })
+      })()
 
-      await Promise.all([clearSessionPromise, clearFilesPromise]);
+      await Promise.all([clearSessionPromise, clearFilesPromise])
 
-      log.info("Session state has been cleared successfully.");
+      log.info('Session state has been cleared successfully.')
     } catch (error) {
-      log.error("Error clearing saved session state:", error);
+      log.error('Error clearing saved session state:', error)
     }
   }
 
-  async saveCompleteState() {
+  async saveCompleteState () {
     // Save both window positions/sizes and tab data
     const savePromises = [
       this.saveWindowStates(),
       this.saveAllTabsData()
-    ];
+    ]
 
-    await Promise.allSettled(savePromises);
+    await Promise.allSettled(savePromises)
   }
 
-  async saveWindowStates() {
-    log.info(`Starting saveWindowStates with ${this.windows.size} windows`);
+  async saveWindowStates () {
+    log.info(`Starting saveWindowStates with ${this.windows.size} windows`)
 
     // Filter out destroyed windows BEFORE starting async operations
     const validWindows = Array.from(this.windows).filter(window => {
       try {
         return !window.window.isDestroyed() &&
-          !window.window.webContents.isDestroyed();
+          !window.window.webContents.isDestroyed()
       } catch (e) {
-        log.error(`Error checking window ${window.id}:`, e);
-        return false;
+        log.error(`Error checking window ${window.id}:`, e)
+        return false
       }
-    });
+    })
 
-    log.info(`Found ${validWindows.length} valid windows to save`);
+    log.info(`Found ${validWindows.length} valid windows to save`)
 
     // If there are no live windows…
     if (validWindows.length === 0) {
       // When the app is quitting (Cmd+Q, menu Quit, SIGINT, etc.), we MUST NOT clear
       // the session files. We just leave whatever was last saved on disk.
       if (this.isQuitting || this.shutdownInProgress) {
-        log.warn('No valid windows to save during quit – leaving window state file untouched.');
-        return;
+        log.warn('No valid windows to save during quit – leaving window state file untouched.')
+        return
       }
-    
+
       // But if the app is still running and the user has closed the last window,
       // we DO clear the file so the next launch starts fresh
-      log.warn('No valid windows to save – clearing window state file so session does not restore.');
+      log.warn('No valid windows to save – clearing window state file so session does not restore.')
       try {
-        const tempPath = PERSIST_FILE + ".tmp";
-        await fs.outputJson(tempPath, [], { spaces: 2 });
-        await fs.move(tempPath, PERSIST_FILE, { overwrite: true });
-        log.info(`Wrote empty window state to ${PERSIST_FILE}`);
+        const tempPath = PERSIST_FILE + '.tmp'
+        await fs.outputJson(tempPath, [], { spaces: 2 })
+        await fs.move(tempPath, PERSIST_FILE, { overwrite: true })
+        log.info(`Wrote empty window state to ${PERSIST_FILE}`)
       } catch (error) {
-        log.error("Error clearing window state file:", error);
+        log.error('Error clearing window state file:', error)
       }
-      return;
+      return
     }
 
-    const windowStates = [];
+    const windowStates = []
 
     // Save each window's state with individual error handling
     for (const window of validWindows) {
       try {
         // Double-check window is still valid
         if (window.window.isDestroyed() || window.window.webContents.isDestroyed()) {
-          log.info(`Window ${window.id} was destroyed during save, skipping`);
-          continue;
+          log.info(`Window ${window.id} was destroyed during save, skipping`)
+          continue
         }
 
         // Get window properties synchronously to avoid race conditions
-        const position = window.window.getPosition();
-        const size = window.window.getSize();
-        const windowId = window.windowId;
+        const position = window.window.getPosition()
+        const size = window.window.getSize()
+        const windowId = window.windowId
 
         // Get URL with timeout
-        const urlPromise = window.getURL();
+        const urlPromise = window.getURL()
         const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('URL fetch timeout')), 2000);
-        });
+          setTimeout(() => reject(new Error('URL fetch timeout')), 2000)
+        })
 
-        const url = await Promise.race([urlPromise, timeoutPromise]);
+        const url = await Promise.race([urlPromise, timeoutPromise])
 
-        windowStates.push({ windowId, url, position, size });
-        log.info(`Saved state for window ${windowId}: ${url}`);
-
+        windowStates.push({ windowId, url, position, size })
+        log.info(`Saved state for window ${windowId}: ${url}`)
       } catch (error) {
-        log.error(`Error saving window ${window.id}:`, error.message);
+        log.error(`Error saving window ${window.id}:`, error.message)
         // Continue with other windows
       }
     }
@@ -623,261 +621,260 @@ class WindowManager {
     // TODO: If this happens during app quit/shutdown, we probably should NOT clear
     // the existing file. Match the earlier logic where (isQuitting || shutdownInProgress). keeps the last good snapshot instead of wiping it.
     if (windowStates.length === 0) {
-      log.warn('No window states collected during save – clearing window state file.');
+      log.warn('No window states collected during save – clearing window state file.')
       try {
-        const tempPath = PERSIST_FILE + ".tmp";
-        await fs.outputJson(tempPath, [], { spaces: 2 });
-        await fs.move(tempPath, PERSIST_FILE, { overwrite: true });
-        log.info(`Wrote empty window state to ${PERSIST_FILE}`);
+        const tempPath = PERSIST_FILE + '.tmp'
+        await fs.outputJson(tempPath, [], { spaces: 2 })
+        await fs.move(tempPath, PERSIST_FILE, { overwrite: true })
+        log.info(`Wrote empty window state to ${PERSIST_FILE}`)
       } catch (error) {
-        log.error("Error clearing window state file:", error);
+        log.error('Error clearing window state file:', error)
       }
-      return;
+      return
     }
 
     try {
-      const tempPath = PERSIST_FILE + ".tmp";
-      await fs.outputJson(tempPath, windowStates, { spaces: 2 });
-      await fs.move(tempPath, PERSIST_FILE, { overwrite: true });
-      log.info(`Successfully saved ${windowStates.length} window states to ${PERSIST_FILE}`);
+      const tempPath = PERSIST_FILE + '.tmp'
+      await fs.outputJson(tempPath, windowStates, { spaces: 2 })
+      await fs.move(tempPath, PERSIST_FILE, { overwrite: true })
+      log.info(`Successfully saved ${windowStates.length} window states to ${PERSIST_FILE}`)
     } catch (error) {
-      log.error("Error writing window states to file:", error);
-      throw error;
+      log.error('Error writing window states to file:', error)
+      throw error
     }
   }
 
-  async saveAllTabsData() {
-    log.info("Starting saveAllTabsData...");
+  async saveAllTabsData () {
+    log.info('Starting saveAllTabsData...')
 
     try {
-      const allTabsData = await this.getTabs();
-      const TABS_FILE = path.join(USER_DATA_PATH, "tabs.json");
+      const allTabsData = await this.getTabs()
+      const TABS_FILE = path.join(USER_DATA_PATH, 'tabs.json')
 
       // 🔑 If there are no tabs/windows, clear the tabs file
       if (!allTabsData || Object.keys(allTabsData).length === 0) {
         // Same logic as window states: if we're quitting, do NOT clear the file.
         if (this.isQuitting || this.shutdownInProgress) {
-          log.warn("No tabs data to save during quit – leaving tabs file untouched.");
-          return;
+          log.warn('No tabs data to save during quit – leaving tabs file untouched.')
+          return
         }
-      
-        log.warn("No tabs data to save – clearing tabs file so session does not restore.");
+
+        log.warn('No tabs data to save – clearing tabs file so session does not restore.')
         try {
-          const tempPath = TABS_FILE + ".tmp";
-          await fs.outputJson(tempPath, {}, { spaces: 2 });
-          await fs.move(tempPath, TABS_FILE, { overwrite: true });
-          log.info(`Wrote empty tabs data to ${TABS_FILE}`);
+          const tempPath = TABS_FILE + '.tmp'
+          await fs.outputJson(tempPath, {}, { spaces: 2 })
+          await fs.move(tempPath, TABS_FILE, { overwrite: true })
+          log.info(`Wrote empty tabs data to ${TABS_FILE}`)
         } catch (error) {
-          log.error("Error clearing tabs data file:", error);
+          log.error('Error clearing tabs data file:', error)
         }
-        return;
+        return
       }
 
-      const windowCount = Object.keys(allTabsData).length;
+      const windowCount = Object.keys(allTabsData).length
 
-      log.info(`Saving tabs for ${windowCount} windows...`);
+      log.info(`Saving tabs for ${windowCount} windows...`)
 
-      const tempPath = TABS_FILE + ".tmp";
-      await fs.outputJson(tempPath, allTabsData, { spaces: 2 });
-      await fs.move(tempPath, TABS_FILE, { overwrite: true });
+      const tempPath = TABS_FILE + '.tmp'
+      await fs.outputJson(tempPath, allTabsData, { spaces: 2 })
+      await fs.move(tempPath, TABS_FILE, { overwrite: true })
 
-      log.info(`Successfully saved tabs data to ${TABS_FILE} (${windowCount} windows)`);
+      log.info(`Successfully saved tabs data to ${TABS_FILE} (${windowCount} windows)`)
     } catch (error) {
-      log.error("Error writing tabs data to file:", error);
-      throw error;
+      log.error('Error writing tabs data to file:', error)
+      throw error
     }
   }
 
-  async saveOpened(forceSave = false) {
+  async saveOpened (forceSave = false) {
     // Prevent saving when the last window has no tabs (closing last tab)
     if (
       this.windows.size === 1 &&
       !this.isQuitting &&
       !this.shutdownInProgress
     ) {
-      const onlyWindow = [...this.windows][0];
+      const onlyWindow = [...this.windows][0]
       if (onlyWindow && onlyWindow.savedTabs === null) {
-        log.info("Preventing save: last window has no tabs (closing last tab).");
-        return;
+        log.info('Preventing save: last window has no tabs (closing last tab).')
+        return
       }
     }
 
-    //Never save(periodic saves) during shutdown
+    // Never save(periodic saves) during shutdown
     if (this.shutdownInProgress) {
-      log.info("Shutdown in progress - saveOpened blocked");
-      return;
+      log.info('Shutdown in progress - saveOpened blocked')
+      return
     }
 
     if (this.finalSaveCompleted) {
-      log.info("Final save completed - saveOpened blocked");
-      return;
+      log.info('Final save completed - saveOpened blocked')
+      return
     }
 
     // Queue saves to prevent concurrent operations
     this.saveQueue = this.saveQueue.then(async () => {
       // Double-check we're not shutting down
       if (this.shutdownInProgress || this.finalSaveCompleted) {
-        return;
+        return
       }
 
       if (this.isSaving && !forceSave) {
-        log.warn("Save already in progress");
-        return;
+        log.warn('Save already in progress')
+        return
       }
 
-      this.isSaving = true;
+      this.isSaving = true
 
       try {
-        await this.saveCompleteState();
-        return true;
+        await this.saveCompleteState()
+        return true
       } catch (error) {
-        log.error("Error in saveOpened:", error);
-        return false;
+        log.error('Error in saveOpened:', error)
+        return false
       } finally {
-        this.isSaving = false;
+        this.isSaving = false
       }
-    });
+    })
 
-    return this.saveQueue;
+    return this.saveQueue
   }
 
-
-  async loadSaved() {
+  async loadSaved () {
     try {
-      const exists = await fs.pathExists(PERSIST_FILE);
+      const exists = await fs.pathExists(PERSIST_FILE)
       if (!exists) {
-        log.info("Persist file does not exist.");
-        return [];
+        log.info('Persist file does not exist.')
+        return []
       }
 
-      const data = await fs.readFile(PERSIST_FILE, "utf8");
+      const data = await fs.readFile(PERSIST_FILE, 'utf8')
       if (!data.trim()) {
-        log.info("Persist file is empty.");
-        return [];
+        log.info('Persist file is empty.')
+        return []
       }
 
-      let windowStates;
+      let windowStates
       try {
-        windowStates = JSON.parse(data);
+        windowStates = JSON.parse(data)
       } catch (parseError) {
-        log.error("Error parsing JSON from lastOpened.json:", parseError);
-        const backupPath = PERSIST_FILE + ".backup";
-        await fs.move(PERSIST_FILE, backupPath, { overwrite: true });
-        log.warn(`Corrupted lastOpened.json backed up to ${backupPath}. Starting fresh.`);
-        windowStates = [];
+        log.error('Error parsing JSON from lastOpened.json:', parseError)
+        const backupPath = PERSIST_FILE + '.backup'
+        await fs.move(PERSIST_FILE, backupPath, { overwrite: true })
+        log.warn(`Corrupted lastOpened.json backed up to ${backupPath}. Starting fresh.`)
+        windowStates = []
       }
 
       if (!Array.isArray(windowStates)) {
-        log.error("Invalid format for window states. Expected an array.");
-        return [];
+        log.error('Invalid format for window states. Expected an array.')
+        return []
       }
 
-      log.info(`Loaded ${windowStates.length} window state(s) from persist file.`);
-      return windowStates;
+      log.info(`Loaded ${windowStates.length} window state(s) from persist file.`)
+      return windowStates
     } catch (e) {
-      log.error("Error loading saved windows", e);
-      return [];
+      log.error('Error loading saved windows', e)
+      return []
     }
   }
 
-  async loadSavedTabs() {
-    const TABS_FILE = path.join(USER_DATA_PATH, "tabs.json");
+  async loadSavedTabs () {
+    const TABS_FILE = path.join(USER_DATA_PATH, 'tabs.json')
 
     try {
-      const exists = await fs.pathExists(TABS_FILE);
+      const exists = await fs.pathExists(TABS_FILE)
       if (!exists) {
-        log.info("Tabs file does not exist.");
-        return {};
+        log.info('Tabs file does not exist.')
+        return {}
       }
 
-      const data = await fs.readFile(TABS_FILE, "utf8");
+      const data = await fs.readFile(TABS_FILE, 'utf8')
       if (!data.trim()) {
-        log.info("Tabs file is empty.");
-        return {};
+        log.info('Tabs file is empty.')
+        return {}
       }
 
-      let tabsData;
+      let tabsData
       try {
-        tabsData = JSON.parse(data);
+        tabsData = JSON.parse(data)
       } catch (parseError) {
-        log.error("Error parsing JSON from tabs.json:", parseError);
-        const backupPath = TABS_FILE + ".backup";
-        await fs.move(TABS_FILE, backupPath, { overwrite: true });
-        log.warn(`Corrupted tabs.json backed up to ${backupPath}. Starting fresh.`);
-        tabsData = {};
+        log.error('Error parsing JSON from tabs.json:', parseError)
+        const backupPath = TABS_FILE + '.backup'
+        await fs.move(TABS_FILE, backupPath, { overwrite: true })
+        log.warn(`Corrupted tabs.json backed up to ${backupPath}. Starting fresh.`)
+        tabsData = {}
       }
 
-      return tabsData;
+      return tabsData
     } catch (e) {
-      log.error("Error loading saved tabs", e);
-      return {};
+      log.error('Error loading saved tabs', e)
+      return {}
     }
   }
 
-  async openSavedWindows() {
+  async openSavedWindows () {
     const [windowStates, savedTabs] = await Promise.all([
       this.loadSaved(),
       this.loadSavedTabs()
-    ]);
+    ])
 
     if (windowStates.length === 0) {
-      log.info("No windows to restore, creating default window.");
-      this.open(); // Create default window
-      return;
+      log.info('No windows to restore, creating default window.')
+      this.open() // Create default window
+      return
     }
 
     for (const [index, state] of windowStates.entries()) {
-      log.info(`Opening saved window ${index + 1}:`, state);
+      log.info(`Opening saved window ${index + 1}:`, state)
       const options = {
         windowId: state.windowId,
         savedTabs: savedTabs[state.windowId] || null
-      };
+      }
 
       if (state.position && Array.isArray(state.position)) {
-        const [x, y] = state.position;
-        options.x = x;
-        options.y = y;
+        const [x, y] = state.position
+        options.x = x
+        options.y = y
       }
 
       if (state.size && Array.isArray(state.size)) {
-        const [width, height] = state.size;
-        options.width = width;
-        options.height = height;
+        const [width, height] = state.size
+        options.width = width
+        options.height = height
       }
 
       if (state.url) {
-        options.url = state.url;
+        options.url = state.url
       } else {
-        options.url = "peersky://home";
+        options.url = 'peersky://home'
       }
 
-      this.open(options);
+      this.open(options)
     }
 
-    log.info(`${windowStates.length} window(s) restored.`);
+    log.info(`${windowStates.length} window(s) restored.`)
   }
 
-  startSaver() {
+  startSaver () {
     this.saverTimer = setInterval(() => {
-      this.saveOpened();
-    }, this.saverInterval);
+      this.saveOpened()
+    }, this.saverInterval)
     log.info(
       `Window state saver started with interval ${this.saverInterval}ms.`
-    );
+    )
   }
 
-  stopSaver() {
+  stopSaver () {
     if (this.saverTimer) {
-      clearInterval(this.saverTimer);
-      this.saverTimer = null;
-      log.info("Window state saver stopped.");
+      clearInterval(this.saverTimer)
+      this.saverTimer = null
+      log.info('Window state saver stopped.')
     }
   }
 }
 
 class PeerskyWindow {
-  constructor(options = {}, windowManager) {
-    const { url, isMainWindow = false, newWindow = false, windowId, savedTabs, isolate, singleTab, ...windowOptions } = options;
+  constructor (options = {}, windowManager) {
+    const { url, isMainWindow = false, newWindow = false, windowId, savedTabs, isolate, singleTab, ...windowOptions } = options
     this.window = new BrowserWindow({
       width: 1280,
       height: 800,
@@ -890,19 +887,19 @@ class PeerskyWindow {
         nodeIntegration: true,
         contextIsolation: false,
         nativeWindowOpen: true,
-        webviewTag: true,
+        webviewTag: true
       },
-      ...windowOptions,
-    });
+      ...windowOptions
+    })
 
-    this.id = this.window.webContents.id;
+    this.id = this.window.webContents.id
     this.windowId = windowId || randomUUID()
-    this.savedTabs = savedTabs; // Store saved tabs for restoration
+    this.savedTabs = savedTabs // Store saved tabs for restoration
 
-    const loadURL = path.join(__dirname, "pages", "index.html");
+    const loadURL = path.join(__dirname, 'pages', 'index.html')
     const query = {
       query: {
-        url: url || "peersky://home",
+        url: url || 'peersky://home',
         ...(newWindow && { newWindow: 'true' }),
         windowId: this.windowId,
         ...(savedTabs && { restoreTabs: 'true' }),
@@ -919,58 +916,58 @@ class PeerskyWindow {
           splitRatio: options.splitRatio
         })
       }
-    };
-    this.window.loadFile(loadURL, query);
+    }
+    this.window.loadFile(loadURL, query)
 
     // Frost/blur: vibrancy (macOS only), Mica (Win11 only). Win10 gets plain transparent from constructor.
     if (process.platform === 'darwin') {
-      this.window.setVibrancy('fullscreen-ui');
+      this.window.setVibrancy('fullscreen-ui')
     } else if (process.platform === 'win32' && typeof this.window.setBackgroundMaterial === 'function') {
-      this.window.setBackgroundMaterial('mica');
+      this.window.setBackgroundMaterial('mica')
     }
 
     // Attach context menus
-    attachContextMenus(this.window, windowManager);
+    attachContextMenus(this.window, windowManager)
 
     // Register window with extension system for browser actions
     // Important: Do NOT register this.window.webContents as a tab - it's the shell UI.
     try {
-      extensionManager.addWindow(this.window);
+      extensionManager.addWindow(this.window)
     } catch (error) {
-      log.warn('Failed to register window with extension system:', error);
+      log.warn('Failed to register window with extension system:', error)
     }
 
     // Register webviews with the extension system as soon as they attach
     // This ensures extensions (especially MV3) can target tabs at document_start
     try {
-      this.window.webContents.on("did-attach-webview", (_event, webviewWebContents) => {
+      this.window.webContents.on('did-attach-webview', (_event, webviewWebContents) => {
         try {
           if (webviewWebContents && !webviewWebContents.isDestroyed()) {
-            extensionManager.addWindow(this.window, webviewWebContents);
+            extensionManager.addWindow(this.window, webviewWebContents)
           }
         } catch (e) {
-          log.warn("Failed to register attached webview with extension system:", e);
+          log.warn('Failed to register attached webview with extension system:', e)
         }
-      });
+      })
     } catch (e) {
-      log.warn("Unable to observe did-attach-webview for extension registration:", e);
+      log.warn('Unable to observe did-attach-webview for extension registration:', e)
     }
 
     // Reference to windowManager for saving state
-    this.windowManager = windowManager;
+    this.windowManager = windowManager
 
     // Define the listener function
     this.navigateListener = (_event, url) => {
-      this.currentURL = url;
-      log.info(`Navigation detected in window ${this.id}: ${url}`);
-      windowManager.saveOpened();
-    };
+      this.currentURL = url
+      log.info(`Navigation detected in window ${this.id}: ${url}`)
+      windowManager.saveOpened()
+    }
 
     // Listen for navigation events from renderer
-    ipcMain.on(`webview-did-navigate-${this.id}`, this.navigateListener);
+    ipcMain.on(`webview-did-navigate-${this.id}`, this.navigateListener)
 
     // Inject JavaScript into renderer to set up IPC communication
-    this.window.webContents.on("did-finish-load", () => {
+    this.window.webContents.on('did-finish-load', () => {
       if (!this.window.isDestroyed() && !this.window.webContents.isDestroyed()) {
         if (this.savedTabs) {
           this.window.webContents.executeJavaScript(`
@@ -1005,8 +1002,8 @@ class PeerskyWindow {
           }
         })();
       `).catch(error => {
-            log.error("Error restoring tabs:", error);
-          });
+            log.error('Error restoring tabs:', error)
+          })
         }
 
         this.window.webContents.executeJavaScript(`
@@ -1023,46 +1020,46 @@ class PeerskyWindow {
         ipcRenderer.send('set-window-id', ${this.id});
       })();
     `).catch((error) => {
-          log.error("Error injecting script into webContents:", error);
-        });
+          log.error('Error injecting script into webContents:', error)
+        })
       }
-    });
+    })
 
-    this.window.on("closed", () => {
+    this.window.on('closed', () => {
       // Unregister window from extension system
       try {
         // Store webContents reference before window is fully destroyed
-        const webContents = this.window?.webContents;
+        const webContents = this.window?.webContents
         if (webContents && !webContents.isDestroyed()) {
-          extensionManager.removeWindow(webContents);
+          extensionManager.removeWindow(webContents)
         }
       } catch (error) {
         // Silently ignore errors during shutdown - the extension system is likely shutting down too
-        console.debug('Extension system cleanup during shutdown:', error.message);
+        console.debug('Extension system cleanup during shutdown:', error.message)
       }
 
       ipcMain.removeListener(
         `webview-did-navigate-${this.id}`,
         this.navigateListener
-      );
-    });
+      )
+    })
   }
 
-  get webContents() {
-    return this.window.webContents;
+  get webContents () {
+    return this.window.webContents
   }
 
-  async getURL() {
+  async getURL () {
     // First check if window is destroyed to avoid unnecessary errors
     if (this.window.isDestroyed() || this.window.webContents.isDestroyed()) {
-      return "peersky://home";
+      return 'peersky://home'
     }
 
     try {
       // Increase timeout to 2000ms to handle slow shutdowns
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('getURL timeout')), 2000);
-      });
+        setTimeout(() => reject(new Error('getURL timeout')), 2000)
+      })
 
       const urlPromise = this.window.webContents.executeJavaScript(`
       (function() {
@@ -1085,22 +1082,22 @@ class PeerskyWindow {
           return 'peersky://home';
         }
       })()
-    `);
+    `)
 
       // Race the promises to ensure we don't hang
-      const url = await Promise.race([urlPromise, timeoutPromise]);
-      return url;
+      const url = await Promise.race([urlPromise, timeoutPromise])
+      return url
     } catch (error) {
       // Don't log timeout errors during shutdown
       if (!this.windowManager || !this.windowManager.shutdownInProgress) {
-        log.error("Error getting URL:", error);
+        log.error('Error getting URL:', error)
       }
-      return "peersky://home";
+      return 'peersky://home'
     }
   }
 }
 // handling for isolated windows
-export function createIsolatedWindow(options = {}) {
+export function createIsolatedWindow (options = {}) {
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -1113,35 +1110,35 @@ export function createIsolatedWindow(options = {}) {
       nodeIntegration: true,
       contextIsolation: false,
       nativeWindowOpen: true,
-      webviewTag: true,
-    },
-  });
+      webviewTag: true
+    }
+  })
 
   if (options.isolate && options.singleTab) {
     // For isolated windows, pass the specific tab data as URL parameters
-    const url = new URL(path.join(__dirname, 'pages', 'index.html'), 'file:');
-    url.searchParams.set('url', options.singleTab.url);
-    url.searchParams.set('title', options.singleTab.title);
-    url.searchParams.set('isolate', 'true');
-    win.loadURL(url.toString());
+    const url = new URL(path.join(__dirname, 'pages', 'index.html'), 'file:')
+    url.searchParams.set('url', options.singleTab.url)
+    url.searchParams.set('title', options.singleTab.title)
+    url.searchParams.set('isolate', 'true')
+    win.loadURL(url.toString())
   } else if (options.url) {
     // Regular new window with specific URL
-    const url = new URL(path.join(__dirname, 'pages', 'index.html'), 'file:');
-    url.searchParams.set('url', options.url);
-    win.loadURL(url.toString());
+    const url = new URL(path.join(__dirname, 'pages', 'index.html'), 'file:')
+    url.searchParams.set('url', options.url)
+    win.loadURL(url.toString())
   } else {
     // Default window
-    win.loadFile(path.join(__dirname, 'pages', 'index.html'));
+    win.loadFile(path.join(__dirname, 'pages', 'index.html'))
   }
 
   // Frost/blur: vibrancy (macOS only), Mica (Win11 only). Win10 gets plain transparent.
   if (process.platform === 'darwin') {
-    win.setVibrancy('fullscreen-ui');
+    win.setVibrancy('fullscreen-ui')
   } else if (process.platform === 'win32' && typeof win.setBackgroundMaterial === 'function') {
-    win.setBackgroundMaterial('mica');
+    win.setBackgroundMaterial('mica')
   }
 
-  return win;
+  return win
 }
 
-export default WindowManager;
+export default WindowManager

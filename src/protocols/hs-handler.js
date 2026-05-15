@@ -1,185 +1,185 @@
-import Holesail from "holesail";
-import { createLogger } from '../logger.js';
-import http from "http";
-import { PassThrough } from "stream";
-import fs from "fs";
-import path from "path";
-import { app, safeStorage } from "electron";
-import * as Y from "yjs";
+import Holesail from 'holesail'
+import { createLogger } from '../logger.js'
+import http from 'http'
+import { PassThrough } from 'stream'
+import fs from 'fs'
+import path from 'path'
+import { app, safeStorage } from 'electron'
+import * as Y from 'yjs'
 
-const log = createLogger('protocols:hs');
+const log = createLogger('protocols:hs')
 
-const roomSessions = new Map();
-const roomPorts = new Map();
-let peerSequence = 0;
-const EDIT_ACTIVITY_DEBOUNCE_MS = 1200;
-const TYPING_STALE_MS = 2500;
+const roomSessions = new Map()
+const roomPorts = new Map()
+let peerSequence = 0
+const EDIT_ACTIVITY_DEBOUNCE_MS = 1200
+const TYPING_STALE_MS = 2500
 
 // Rate limiting: track requests per IP/action
-const rateLimits = new Map(); // key -> { count, resetAt }
+const rateLimits = new Map() // key -> { count, resetAt }
 
 // Debug mode - only log sensitive data in development
-const DEBUG = process.env.NODE_ENV === 'development';
+const DEBUG = process.env.NODE_ENV === 'development'
 
-const MARKDOWN_IT_PATH = path.join(app.getAppPath(), "src", "pages", "p2p", "p2pmd", "lib", "markdown-it.min.js");
-let markdownItScript = "";
-try { markdownItScript = fs.readFileSync(MARKDOWN_IT_PATH, "utf-8"); } catch {}
+const MARKDOWN_IT_PATH = path.join(app.getAppPath(), 'src', 'pages', 'p2p', 'p2pmd', 'lib', 'markdown-it.min.js')
+let markdownItScript = ''
+try { markdownItScript = fs.readFileSync(MARKDOWN_IT_PATH, 'utf-8') } catch {}
 
-const YJS_PATH = path.join(app.getAppPath(), "src", "pages", "p2p", "p2pmd", "lib", "yjs.min.js");
-let yjsScript = "";
-try { yjsScript = fs.readFileSync(YJS_PATH, "utf-8"); } catch {}
+const YJS_PATH = path.join(app.getAppPath(), 'src', 'pages', 'p2p', 'p2pmd', 'lib', 'yjs.min.js')
+let yjsScript = ''
+try { yjsScript = fs.readFileSync(YJS_PATH, 'utf-8') } catch {}
 
-const FAVICON_PATH = path.join(app.getAppPath(), "src", "pages", "static", "assets", "favicon.ico");
-let faviconBuffer = null;
-try { faviconBuffer = fs.readFileSync(FAVICON_PATH); } catch {}
+const FAVICON_PATH = path.join(app.getAppPath(), 'src', 'pages', 'static', 'assets', 'favicon.ico')
+let faviconBuffer = null
+try { faviconBuffer = fs.readFileSync(FAVICON_PATH) } catch {}
 
-const PORTS_FILE = path.join(app.getPath("userData"), "peersky-ports.json");
-const SETTINGS_FILE = path.join(app.getPath("userData"), "settings.json");
+const PORTS_FILE = path.join(app.getPath('userData'), 'peersky-ports.json')
+const SETTINGS_FILE = path.join(app.getPath('userData'), 'settings.json')
 
-function getCurrentTheme() {
+function getCurrentTheme () {
   try {
     if (fs.existsSync(SETTINGS_FILE)) {
-      const data = fs.readFileSync(SETTINGS_FILE, "utf8");
-      const parsed = JSON.parse(data);
-      return parsed.theme || "dark";
+      const data = fs.readFileSync(SETTINGS_FILE, 'utf8')
+      const parsed = JSON.parse(data)
+      return parsed.theme || 'dark'
     }
   } catch {}
-  return "dark";
+  return 'dark'
 }
 
-function loadPortsFromFile() {
+function loadPortsFromFile () {
   try {
     if (fs.existsSync(PORTS_FILE)) {
-      const data = fs.readFileSync(PORTS_FILE, "utf8");
-      const parsed = JSON.parse(data);
+      const data = fs.readFileSync(PORTS_FILE, 'utf8')
+      const parsed = JSON.parse(data)
       Object.entries(parsed).forEach(([key, value]) => {
         // Support old format (just port number) and new format ({port, seed})
-        if (typeof value === "number") {
-          roomPorts.set(key, { port: value, seed: null });
-        } else if (value && typeof value === "object") {
+        if (typeof value === 'number') {
+          roomPorts.set(key, { port: value, seed: null })
+        } else if (value && typeof value === 'object') {
           // SECURITY: Decrypt seed if present
-          const decryptedSeed = value.seed ? decryptSeed(value.seed) : null;
-          roomPorts.set(key, { port: value.port, seed: decryptedSeed });
+          const decryptedSeed = value.seed ? decryptSeed(value.seed) : null
+          roomPorts.set(key, { port: value.port, seed: decryptedSeed })
         }
-      });
-      log.info("[p2pmd] loaded ports from file", { count: roomPorts.size });
+      })
+      log.info('[p2pmd] loaded ports from file', { count: roomPorts.size })
     }
   } catch (err) {
-    log.error("[p2pmd] failed to load ports", err);
+    log.error('[p2pmd] failed to load ports', err)
   }
 }
 
-function savePortsToFile() {
+function savePortsToFile () {
   try {
     // SECURITY: Encrypt seeds before saving
-    const obj = {};
+    const obj = {}
     for (const [key, value] of roomPorts.entries()) {
       obj[key] = {
         port: value.port,
         seed: value.seed ? encryptSeed(value.seed) : null
-      };
+      }
     }
-    fs.writeFileSync(PORTS_FILE, JSON.stringify(obj, null, 2), "utf8");
+    fs.writeFileSync(PORTS_FILE, JSON.stringify(obj, null, 2), 'utf8')
   } catch (err) {
-    log.error("[p2pmd] failed to save ports", err);
+    log.error('[p2pmd] failed to save ports', err)
   }
 }
 
-loadPortsFromFile();
+loadPortsFromFile()
 
 // SECURITY: CORS headers for local HTTP server responses
 // Note: Electron custom protocols (peersky://, bt://, ipfs://, hyper://) don't send Origin headers
 // Security is enforced via hostname validation (urlObj.hostname !== "p2pmd") in protocol handler
 // This prevents external websites from calling hs://p2pmd APIs
-function getCorsHeaders(session) {
+function getCorsHeaders (session) {
   return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type"
-  };
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type'
+  }
 }
 
 // SECURITY: Rate limiting to prevent DoS
-function checkRateLimit(key, maxRequests = 10, windowMs = 60000) {
-  const now = Date.now();
-  const limit = rateLimits.get(key);
-  
+function checkRateLimit (key, maxRequests = 10, windowMs = 60000) {
+  const now = Date.now()
+  const limit = rateLimits.get(key)
+
   if (!limit || now > limit.resetAt) {
-    rateLimits.set(key, { count: 1, resetAt: now + windowMs });
-    return true;
+    rateLimits.set(key, { count: 1, resetAt: now + windowMs })
+    return true
   }
-  
+
   if (limit.count >= maxRequests) {
-    return false;
+    return false
   }
-  
-  limit.count++;
-  return true;
+
+  limit.count++
+  return true
 }
 
 // SECURITY: Encrypt/decrypt seeds using Electron's safeStorage
-function encryptSeed(seed) {
-  if (!seed) return null;
+function encryptSeed (seed) {
+  if (!seed) return null
   try {
     if (safeStorage.isEncryptionAvailable()) {
-      const encrypted = safeStorage.encryptString(seed);
-      return encrypted.toString('base64');
+      const encrypted = safeStorage.encryptString(seed)
+      return encrypted.toString('base64')
     }
   } catch (err) {
-    log.error('[p2pmd] Failed to encrypt seed:', err.message);
+    log.error('[p2pmd] Failed to encrypt seed:', err.message)
   }
-  return seed; // Fallback to plain text if encryption unavailable
+  return seed // Fallback to plain text if encryption unavailable
 }
 
-function decryptSeed(encryptedSeed) {
-  if (!encryptedSeed) return null;
+function decryptSeed (encryptedSeed) {
+  if (!encryptedSeed) return null
   try {
     if (safeStorage.isEncryptionAvailable()) {
-      const buffer = Buffer.from(encryptedSeed, 'base64');
-      return safeStorage.decryptString(buffer);
+      const buffer = Buffer.from(encryptedSeed, 'base64')
+      return safeStorage.decryptString(buffer)
     }
   } catch (err) {
-    log.error('[p2pmd] Failed to decrypt seed:', err.message);
+    log.error('[p2pmd] Failed to decrypt seed:', err.message)
   }
-  return encryptedSeed; // Fallback if decryption fails
+  return encryptedSeed // Fallback if decryption fails
 }
 
 // SECURITY: Redact sensitive data for logging
-function redactKey(key) {
-  if (!key || typeof key !== 'string') return null;
-  return key.length > 10 ? `${key.slice(0, 10)}...` : key;
+function redactKey (key) {
+  if (!key || typeof key !== 'string') return null
+  return key.length > 10 ? `${key.slice(0, 10)}...` : key
 }
 
-function buildJsonResponse(statusCode, payload) {
+function buildJsonResponse (statusCode, payload) {
   return new Response(JSON.stringify(payload), {
     status: statusCode,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...getCorsHeaders()
     }
-  });
+  })
 }
 
-function buildTextResponse(statusCode, text) {
+function buildTextResponse (statusCode, text) {
   return new Response(text, {
     status: statusCode,
     headers: {
-      "Content-Type": "text/plain",
+      'Content-Type': 'text/plain',
       ...getCorsHeaders()
     }
-  });
+  })
 }
 
-function createSession(key = null) {
+function createSession (key = null) {
   return {
     key,
     server: null,
-    host: "127.0.0.1",
+    host: '127.0.0.1',
     port: null,
     originalPort: null,
     sseClients: new Map(),
     sockets: new Set(),
-    docState: { content: "", updatedAt: Date.now() },
+    docState: { content: '', updatedAt: Date.now() },
     holesailServer: null,
     holesailClient: null,
     ydoc: null,
@@ -190,107 +190,107 @@ function createSession(key = null) {
     peerMetaByClientId: new Map(),
     unknownPeerSequence: 0,
     unknownPeerBySource: new Map()
-  };
+  }
 }
 
-function initSessionCrdt(session, initialText = "", initialYjsState = null, preserveExisting = false) {
+function initSessionCrdt (session, initialText = '', initialYjsState = null, preserveExisting = false) {
   // Preserve Y.Doc with peer edits when preserveExisting=true
   if (preserveExisting && session.ydoc && session.ytext) {
-    const existingContent = session.ytext.toString();
+    const existingContent = session.ytext.toString()
     if (existingContent.length > 0) {
-      session.docState.content = existingContent;
-      session.docState.updatedAt = Date.now();
-      return;
+      session.docState.content = existingContent
+      session.docState.updatedAt = Date.now()
+      return
     }
   }
 
   if (session.ydoc) {
-    try { session.ydoc.destroy(); } catch {}
+    try { session.ydoc.destroy() } catch {}
   }
-  session.ydoc = new Y.Doc();
-  session.ytext = session.ydoc.getText("content");
+  session.ydoc = new Y.Doc()
+  session.ytext = session.ydoc.getText('content')
 
-  let restoredFromYjsState = false;
-  if (typeof initialYjsState === "string" && initialYjsState.length > 0) {
+  let restoredFromYjsState = false
+  if (typeof initialYjsState === 'string' && initialYjsState.length > 0) {
     try {
-      const updateBytes = new Uint8Array(Buffer.from(initialYjsState, "base64"));
-      Y.applyUpdate(session.ydoc, updateBytes, "initial-restore");
-      restoredFromYjsState = true;
+      const updateBytes = new Uint8Array(Buffer.from(initialYjsState, 'base64'))
+      Y.applyUpdate(session.ydoc, updateBytes, 'initial-restore')
+      restoredFromYjsState = true
     } catch (err) {
-      console.warn("[p2pmd] Failed to restore initial Yjs state, falling back to text:", err.message);
+      console.warn('[p2pmd] Failed to restore initial Yjs state, falling back to text:', err.message)
     }
   }
   if (!restoredFromYjsState && initialText) {
-    session.ydoc.transact(() => session.ytext.insert(0, initialText));
+    session.ydoc.transact(() => session.ytext.insert(0, initialText))
   }
-  session.docState.content = session.ytext.toString();
-  session.docState.updatedAt = Date.now();
+  session.docState.content = session.ytext.toString()
+  session.docState.updatedAt = Date.now()
 }
 
-function getExistingSession(key) {
-  if (!key) return null;
-  return roomSessions.get(key) || null;
+function getExistingSession (key) {
+  if (!key) return null
+  return roomSessions.get(key) || null
 }
 
-function normalizePeerRole(role) {
-  if (role === "host") return "host";
-  if (role === "client") return "client";
-  return "viewer";
+function normalizePeerRole (role) {
+  if (role === 'host') return 'host'
+  if (role === 'client') return 'client'
+  return 'viewer'
 }
 
-function sanitizePeerName(value) {
-  if (typeof value !== "string") return "";
-  return value.trim().replace(/\s+/g, " ").slice(0, 32);
+function sanitizePeerName (value) {
+  if (typeof value !== 'string') return ''
+  return value.trim().replace(/\s+/g, ' ').slice(0, 32)
 }
 
-function sanitizePeerColor(value) {
-  if (typeof value !== "string") return "";
-  const trimmed = value.trim();
-  return /^#[0-9a-fA-F]{6}$/.test(trimmed) ? trimmed.toUpperCase() : "";
+function sanitizePeerColor (value) {
+  if (typeof value !== 'string') return ''
+  const trimmed = value.trim()
+  return /^#[0-9a-fA-F]{6}$/.test(trimmed) ? trimmed.toUpperCase() : ''
 }
 
-function getPeerColor(seed) {
-  const source = String(seed || "peer");
-  let hash = 0;
+function getPeerColor (seed) {
+  const source = String(seed || 'peer')
+  let hash = 0
   for (let i = 0; i < source.length; i++) {
-    hash = ((hash << 5) - hash) + source.charCodeAt(i);
-    hash |= 0;
+    hash = ((hash << 5) - hash) + source.charCodeAt(i)
+    hash |= 0
   }
-  const hue = Math.abs(hash) % 360;
-  return `hsl(${hue} 72% 44%)`;
+  const hue = Math.abs(hash) % 360
+  return `hsl(${hue} 72% 44%)`
 }
 
-function getPeerDisplayName(client) {
-  if (!client) return "Peer";
-  const sanitized = sanitizePeerName(client.name || "");
-  if (sanitized) return sanitized;
-  if (client.id) return `Peer #${client.id}`;
-  if (client.clientId) return `Peer ${String(client.clientId).slice(0, 8)}`;
-  return "Peer";
+function getPeerDisplayName (client) {
+  if (!client) return 'Peer'
+  const sanitized = sanitizePeerName(client.name || '')
+  if (sanitized) return sanitized
+  if (client.id) return `Peer #${client.id}`
+  if (client.clientId) return `Peer ${String(client.clientId).slice(0, 8)}`
+  return 'Peer'
 }
 
-function getPeerCount(session) {
-  let count = 0;
+function getPeerCount (session) {
+  let count = 0
   for (const client of session.sseClients.values()) {
-    if (client.role !== "host") count += 1;
+    if (client.role !== 'host') count += 1
   }
-  return count;
+  return count
 }
 
-function getPeerList(session) {
-  const now = Date.now();
+function getPeerList (session) {
+  const now = Date.now()
   return Array.from(session.sseClients.values())
     .sort((a, b) => {
-      if (a.role === "host" && b.role !== "host") return -1;
-      if (a.role !== "host" && b.role === "host") return 1;
-      return (a.joinedAt || 0) - (b.joinedAt || 0);
+      if (a.role === 'host' && b.role !== 'host') return -1
+      if (a.role !== 'host' && b.role === 'host') return 1
+      return (a.joinedAt || 0) - (b.joinedAt || 0)
     })
     .map((client) => {
       const isFreshTyping = client.isTyping === true &&
         Number.isFinite(Number(client.lastTypingAt)) &&
-        (now - Number(client.lastTypingAt) <= TYPING_STALE_MS);
+        (now - Number(client.lastTypingAt) <= TYPING_STALE_MS)
       if (client.isTyping && !isFreshTyping) {
-        client.isTyping = false;
+        client.isTyping = false
       }
       return {
         id: client.id,
@@ -306,79 +306,79 @@ function getPeerList(session) {
         joinedAt: Number.isFinite(Number(client.joinedAt)) ? Number(client.joinedAt) : Date.now(),
         updatedAt: Number.isFinite(Number(client.updatedAt)) ? Number(client.updatedAt) : Date.now(),
         lineAttributions: client.lineAttributions || null
-      };
-    });
+      }
+    })
 }
 
-function findClientByClientId(session, clientId) {
-  if (!session || !clientId) return null;
+function findClientByClientId (session, clientId) {
+  if (!session || !clientId) return null
   for (const client of session.sseClients.values()) {
-    if (client.clientId === clientId) return client;
+    if (client.clientId === clientId) return client
   }
-  return null;
+  return null
 }
 
-function addActivity(session, entry = {}) {
-  if (!session) return null;
-  session.activitySequence = (session.activitySequence || 0) + 1;
-  const id = session.activitySequence;
-  const fallbackPeerName = Number.isFinite(Number(entry.peerId)) ? `Peer #${Number(entry.peerId)}` : "Peer";
+function addActivity (session, entry = {}) {
+  if (!session) return null
+  session.activitySequence = (session.activitySequence || 0) + 1
+  const id = session.activitySequence
+  const fallbackPeerName = Number.isFinite(Number(entry.peerId)) ? `Peer #${Number(entry.peerId)}` : 'Peer'
   const event = {
     id,
-    type: typeof entry.type === "string" ? entry.type : "event",
-    role: normalizePeerRole(entry.role || "client"),
-    name: sanitizePeerName(entry.name || "") || fallbackPeerName,
-    clientId: typeof entry.clientId === "string" ? entry.clientId : null,
-    message: typeof entry.message === "string" ? entry.message : "",
+    type: typeof entry.type === 'string' ? entry.type : 'event',
+    role: normalizePeerRole(entry.role || 'client'),
+    name: sanitizePeerName(entry.name || '') || fallbackPeerName,
+    clientId: typeof entry.clientId === 'string' ? entry.clientId : null,
+    message: typeof entry.message === 'string' ? entry.message : '',
     timestamp: Date.now()
-  };
-  session.activityLog.unshift(event);
-  if (session.activityLog.length > 200) {
-    session.activityLog.length = 200;
   }
-  return event;
+  session.activityLog.unshift(event)
+  if (session.activityLog.length > 200) {
+    session.activityLog.length = 200
+  }
+  return event
 }
 
-function getOrCreatePeerMeta(session, clientId, hints = {}) {
-  if (!session || !clientId) return null;
-  if (!session.peerMetaByClientId) session.peerMetaByClientId = new Map();
-  let meta = session.peerMetaByClientId.get(clientId) || null;
+function getOrCreatePeerMeta (session, clientId, hints = {}) {
+  if (!session || !clientId) return null
+  if (!session.peerMetaByClientId) session.peerMetaByClientId = new Map()
+  let meta = session.peerMetaByClientId.get(clientId) || null
   if (!meta) {
-    session.unknownPeerSequence = (session.unknownPeerSequence || 0) + 1;
+    session.unknownPeerSequence = (session.unknownPeerSequence || 0) + 1
     meta = {
       id: session.unknownPeerSequence,
       clientId,
-      role: normalizePeerRole(hints.role || "client"),
-      name: "",
-      color: "",
+      role: normalizePeerRole(hints.role || 'client'),
+      name: '',
+      color: '',
       lastCursorLine: null,
       lastCursorColumn: null,
       updatedAt: Date.now()
-    };
-    session.peerMetaByClientId.set(clientId, meta);
+    }
+    session.peerMetaByClientId.set(clientId, meta)
   }
 
-  const hintedId = Number(hints.id);
-  if (Number.isInteger(hintedId) && hintedId > 0) meta.id = hintedId;
-  if (hints.role) meta.role = normalizePeerRole(hints.role);
-  const sanitizedName = sanitizePeerName(hints.name || "");
+  const hintedId = Number(hints.id)
+  if (Number.isInteger(hintedId) && hintedId > 0) meta.id = hintedId
+  if (hints.role) meta.role = normalizePeerRole(hints.role)
+  const sanitizedName = sanitizePeerName(hints.name || '')
   if (sanitizedName) {
-    meta.name = sanitizedName;
-    renameLineAttributionOwner(meta, sanitizedName);
+    meta.name = sanitizedName
+    renameLineAttributionOwner(meta, sanitizedName)
   }
-  const sanitizedColor = sanitizePeerColor(hints.color || "");
-  if (sanitizedColor) meta.color = sanitizedColor;
-  if (Number.isFinite(Number(hints.cursorLine))) meta.lastCursorLine = Number(hints.cursorLine);
-  if (Number.isFinite(Number(hints.cursorColumn))) meta.lastCursorColumn = Number(hints.cursorColumn);
-  if (hints.lineAttributions && typeof hints.lineAttributions === "object") {
-    mergeLineAttributions(meta, hints.lineAttributions, getPeerDisplayName(meta));
+  const sanitizedColor = sanitizePeerColor(hints.color || '')
+  if (sanitizedColor) meta.color = sanitizedColor
+  if (Number.isFinite(Number(hints.cursorLine))) meta.lastCursorLine = Number(hints.cursorLine)
+  if (Number.isFinite(Number(hints.cursorColumn))) meta.lastCursorColumn = Number(hints.cursorColumn)
+  if (hints.lineAttributions && typeof hints.lineAttributions === 'object') {
+    mergeLineAttributions(meta, hints.lineAttributions, getPeerDisplayName(meta))
   }
-  meta.updatedAt = Date.now();
-  return meta;
+  meta.updatedAt = Date.now()
+  return meta
 }
 
-function syncPeerMetaFromActor(session, actor) {
-  if (!session || !actor || !actor.clientId) return null;
+function syncPeerMetaFromActor (session, actor) {
+  if (!session || !actor || !actor.clientId) return null
   return getOrCreatePeerMeta(session, actor.clientId, {
     id: actor.id,
     role: actor.role,
@@ -387,249 +387,249 @@ function syncPeerMetaFromActor(session, actor) {
     cursorLine: actor.cursorLine,
     cursorColumn: actor.cursorColumn,
     lineAttributions: actor.lineAttributions
-  });
+  })
 }
 
-function mergeLineAttributions(target, lineAttributions, fallbackName = "") {
-  if (!target || !lineAttributions || typeof lineAttributions !== "object") return;
-  if (!target.lineAttributions) target.lineAttributions = {};
-  const fallback = sanitizePeerName(fallbackName || "");
+function mergeLineAttributions (target, lineAttributions, fallbackName = '') {
+  if (!target || !lineAttributions || typeof lineAttributions !== 'object') return
+  if (!target.lineAttributions) target.lineAttributions = {}
+  const fallback = sanitizePeerName(fallbackName || '')
   for (const [line, info] of Object.entries(lineAttributions)) {
-    const lineNum = Number(line);
-    if (!Number.isFinite(lineNum) || lineNum < 1) continue;
-    if (!info || typeof info !== "object" || typeof info.color !== "string") continue;
-    const incomingName = sanitizePeerName(typeof info.name === "string" ? info.name : "");
+    const lineNum = Number(line)
+    if (!Number.isFinite(lineNum) || lineNum < 1) continue
+    if (!info || typeof info !== 'object' || typeof info.color !== 'string') continue
+    const incomingName = sanitizePeerName(typeof info.name === 'string' ? info.name : '')
     target.lineAttributions[String(Math.floor(lineNum))] = {
       name: incomingName || fallback,
       color: info.color
-    };
+    }
   }
 }
 
-function renameLineAttributionOwner(target, nextName) {
-  if (!target || !target.lineAttributions || typeof target.lineAttributions !== "object") return;
-  const sanitized = sanitizePeerName(nextName || "");
-  if (!sanitized) return;
+function renameLineAttributionOwner (target, nextName) {
+  if (!target || !target.lineAttributions || typeof target.lineAttributions !== 'object') return
+  const sanitized = sanitizePeerName(nextName || '')
+  if (!sanitized) return
   for (const [line, info] of Object.entries(target.lineAttributions)) {
-    if (!info || typeof info !== "object" || typeof info.color !== "string") continue;
+    if (!info || typeof info !== 'object' || typeof info.color !== 'string') continue
     target.lineAttributions[line] = {
       name: sanitized,
       color: info.color
-    };
+    }
   }
 }
 
-function markEditedLineAttribution(session, actor, cursorLine) {
-  if (!session || !actor) return;
-  const lineNum = Number(cursorLine);
-  if (!Number.isFinite(lineNum) || lineNum < 1) return;
-  const lineKey = String(Math.floor(lineNum));
+function markEditedLineAttribution (session, actor, cursorLine) {
+  if (!session || !actor) return
+  const lineNum = Number(cursorLine)
+  if (!Number.isFinite(lineNum) || lineNum < 1) return
+  const lineKey = String(Math.floor(lineNum))
   // Enforce one owner per line: when someone edits a line, clear that line from others.
   for (const client of session.sseClients.values()) {
-    if (!client || client === actor || !client.lineAttributions) continue;
+    if (!client || client === actor || !client.lineAttributions) continue
     if (Object.prototype.hasOwnProperty.call(client.lineAttributions, lineKey)) {
-      delete client.lineAttributions[lineKey];
+      delete client.lineAttributions[lineKey]
     }
   }
-  if (!actor.lineAttributions) actor.lineAttributions = {};
+  if (!actor.lineAttributions) actor.lineAttributions = {}
   actor.lineAttributions[lineKey] = {
     name: getPeerDisplayName(actor),
     color: actor.color || getPeerColor(actor.clientId || actor.id)
-  };
+  }
 }
 
-function getOrCreateUnknownPeerId(session, sourceKey = "") {
-  if (!session) return null;
-  if (!session.unknownPeerBySource) session.unknownPeerBySource = new Map();
-  const normalizedSource = String(sourceKey || "unknown");
-  let peerId = session.unknownPeerBySource.get(normalizedSource) || null;
+function getOrCreateUnknownPeerId (session, sourceKey = '') {
+  if (!session) return null
+  if (!session.unknownPeerBySource) session.unknownPeerBySource = new Map()
+  const normalizedSource = String(sourceKey || 'unknown')
+  let peerId = session.unknownPeerBySource.get(normalizedSource) || null
   if (!Number.isFinite(Number(peerId))) {
-    session.unknownPeerSequence = (session.unknownPeerSequence || 0) + 1;
-    peerId = session.unknownPeerSequence;
-    session.unknownPeerBySource.set(normalizedSource, peerId);
+    session.unknownPeerSequence = (session.unknownPeerSequence || 0) + 1
+    peerId = session.unknownPeerSequence
+    session.unknownPeerBySource.set(normalizedSource, peerId)
   }
-  return Number(peerId);
+  return Number(peerId)
 }
 
-function scheduleEditActivity(session, entry = {}) {
-  if (!session) return;
-  const clientId = typeof entry.clientId === "string" ? entry.clientId : "";
-  const sourceKey = typeof entry.sourceKey === "string" ? entry.sourceKey : "";
-  let hintedPeerId = Number.isFinite(Number(entry.peerId)) ? Number(entry.peerId) : null;
+function scheduleEditActivity (session, entry = {}) {
+  if (!session) return
+  const clientId = typeof entry.clientId === 'string' ? entry.clientId : ''
+  const sourceKey = typeof entry.sourceKey === 'string' ? entry.sourceKey : ''
+  let hintedPeerId = Number.isFinite(Number(entry.peerId)) ? Number(entry.peerId) : null
   if (!hintedPeerId && !clientId) {
-    hintedPeerId = getOrCreateUnknownPeerId(session, sourceKey || "unknown");
+    hintedPeerId = getOrCreateUnknownPeerId(session, sourceKey || 'unknown')
   }
-  const hintedCursorLine = Number.isFinite(Number(entry.cursorLine)) ? Number(entry.cursorLine) : null;
-  const hintedCursorColumn = Number.isFinite(Number(entry.cursorColumn)) ? Number(entry.cursorColumn) : null;
-  const hintedRole = normalizePeerRole(entry.role || "client");
-  const hintedName = sanitizePeerName(entry.name || "");
+  const hintedCursorLine = Number.isFinite(Number(entry.cursorLine)) ? Number(entry.cursorLine) : null
+  const hintedCursorColumn = Number.isFinite(Number(entry.cursorColumn)) ? Number(entry.cursorColumn) : null
+  const hintedRole = normalizePeerRole(entry.role || 'client')
+  const hintedName = sanitizePeerName(entry.name || '')
   const cachedMeta = clientId
     ? getOrCreatePeerMeta(session, clientId, {
-        id: hintedPeerId,
-        role: hintedRole,
-        name: hintedName,
-        cursorLine: hintedCursorLine,
-        cursorColumn: hintedCursorColumn
-      })
-    : null;
+      id: hintedPeerId,
+      role: hintedRole,
+      name: hintedName,
+      cursorLine: hintedCursorLine,
+      cursorColumn: hintedCursorColumn
+    })
+    : null
 
-  const key = clientId || (hintedPeerId ? `peer-${hintedPeerId}` : `source-${sourceKey || "unknown"}`);
-  if (!key) return;
-  if (!session.editLogTimers) session.editLogTimers = new Map();
-  const existing = session.editLogTimers.get(key);
-  if (existing) clearTimeout(existing);
+  const key = clientId || (hintedPeerId ? `peer-${hintedPeerId}` : `source-${sourceKey || 'unknown'}`)
+  if (!key) return
+  if (!session.editLogTimers) session.editLogTimers = new Map()
+  const existing = session.editLogTimers.get(key)
+  if (existing) clearTimeout(existing)
 
   const timer = setTimeout(() => {
-    session.editLogTimers.delete(key);
-    const actor = clientId ? findClientByClientId(session, clientId) : null;
-    const meta = actor ? syncPeerMetaFromActor(session, actor) : (cachedMeta || (clientId ? getOrCreatePeerMeta(session, clientId) : null));
-    const resolvedPeerId = actor?.id || meta?.id || hintedPeerId || null;
+    session.editLogTimers.delete(key)
+    const actor = clientId ? findClientByClientId(session, clientId) : null
+    const meta = actor ? syncPeerMetaFromActor(session, actor) : (cachedMeta || (clientId ? getOrCreatePeerMeta(session, clientId) : null))
+    const resolvedPeerId = actor?.id || meta?.id || hintedPeerId || null
     const resolvedName = actor
       ? getPeerDisplayName(actor)
-      : (sanitizePeerName(meta?.name || hintedName) || (resolvedPeerId ? `Peer #${resolvedPeerId}` : "Peer"));
-    const resolvedRole = actor?.role || meta?.role || hintedRole;
+      : (sanitizePeerName(meta?.name || hintedName) || (resolvedPeerId ? `Peer #${resolvedPeerId}` : 'Peer'))
+    const resolvedRole = actor?.role || meta?.role || hintedRole
     const lineNumber = Number.isFinite(Number(entry.cursorLine))
       ? Number(entry.cursorLine)
       : (Number.isFinite(Number(actor?.cursorLine))
           ? Number(actor.cursorLine)
-          : (Number.isFinite(Number(meta?.lastCursorLine)) ? Number(meta.lastCursorLine) : null));
+          : (Number.isFinite(Number(meta?.lastCursorLine)) ? Number(meta.lastCursorLine) : null))
     const columnNumber = Number.isFinite(Number(entry.cursorColumn))
       ? Number(entry.cursorColumn)
       : (Number.isFinite(Number(actor?.cursorColumn))
           ? Number(actor.cursorColumn)
-          : (Number.isFinite(Number(meta?.lastCursorColumn)) ? Number(meta.lastCursorColumn) : null));
+          : (Number.isFinite(Number(meta?.lastCursorColumn)) ? Number(meta.lastCursorColumn) : null))
     const positionHint = (lineNumber && columnNumber)
       ? ` (line ${lineNumber}, col ${columnNumber})`
-      : (lineNumber ? ` (line ${lineNumber})` : "");
+      : (lineNumber ? ` (line ${lineNumber})` : '')
     const activity = addActivity(session, {
-      type: "edit",
+      type: 'edit',
       role: resolvedRole,
       name: resolvedName,
       peerId: resolvedPeerId,
       clientId: clientId || actor?.clientId || null,
       message: `${resolvedName} edited the document${positionHint}`
-    });
-    broadcastActivity(session, activity);
-  }, EDIT_ACTIVITY_DEBOUNCE_MS);
+    })
+    broadcastActivity(session, activity)
+  }, EDIT_ACTIVITY_DEBOUNCE_MS)
 
-  session.editLogTimers.set(key, timer);
+  session.editLogTimers.set(key, timer)
 }
 
-function broadcastPeers(session) {
-  const count = getPeerCount(session);
+function broadcastPeers (session) {
+  const count = getPeerCount(session)
   for (const client of session.sseClients.values()) {
-    client.res.write(`event: peers\ndata: ${count}\n\n`);
+    client.res.write(`event: peers\ndata: ${count}\n\n`)
   }
 }
 
-function broadcastPeerList(session) {
-  const payload = JSON.stringify(getPeerList(session));
+function broadcastPeerList (session) {
+  const payload = JSON.stringify(getPeerList(session))
   for (const client of session.sseClients.values()) {
-    client.res.write(`event: peerlist\ndata: ${payload}\n\n`);
+    client.res.write(`event: peerlist\ndata: ${payload}\n\n`)
   }
 }
 
-function broadcastActivity(session, activity) {
-  if (!session || !activity) return;
-  const payload = JSON.stringify(activity);
+function broadcastActivity (session, activity) {
+  if (!session || !activity) return
+  const payload = JSON.stringify(activity)
   for (const client of session.sseClients.values()) {
-    client.res.write(`event: activity\ndata: ${payload}\n\n`);
+    client.res.write(`event: activity\ndata: ${payload}\n\n`)
   }
 }
 
-function broadcastUpdate(session) {
-  const payload = JSON.stringify(session.docState);
+function broadcastUpdate (session) {
+  const payload = JSON.stringify(session.docState)
   for (const client of session.sseClients.values()) {
-    client.res.write(`event: update\ndata: ${payload}\n\n`);
+    client.res.write(`event: update\ndata: ${payload}\n\n`)
   }
 }
 
-function broadcastYjsUpdate(session, base64Update) {
+function broadcastYjsUpdate (session, base64Update) {
   for (const client of session.sseClients.values()) {
-    client.res.write(`event: yjsupdate\ndata: ${base64Update}\n\n`);
+    client.res.write(`event: yjsupdate\ndata: ${base64Update}\n\n`)
   }
 }
 
-function applyTextDiffToYText(ytextRef, oldText, newText) {
-  if (!ytextRef || oldText === newText) return;
-  let prefixLen = 0;
-  const minLen = Math.min(oldText.length, newText.length);
-  while (prefixLen < minLen && oldText[prefixLen] === newText[prefixLen]) prefixLen++;
+function applyTextDiffToYText (ytextRef, oldText, newText) {
+  if (!ytextRef || oldText === newText) return
+  let prefixLen = 0
+  const minLen = Math.min(oldText.length, newText.length)
+  while (prefixLen < minLen && oldText[prefixLen] === newText[prefixLen]) prefixLen++
 
-  let oldSuffix = oldText.length;
-  let newSuffix = newText.length;
+  let oldSuffix = oldText.length
+  let newSuffix = newText.length
   while (oldSuffix > prefixLen && newSuffix > prefixLen &&
          oldText[oldSuffix - 1] === newText[newSuffix - 1]) {
-    oldSuffix--;
-    newSuffix--;
+    oldSuffix--
+    newSuffix--
   }
 
-  const deleteLen = oldSuffix - prefixLen;
-  const insertStr = newText.slice(prefixLen, newSuffix);
+  const deleteLen = oldSuffix - prefixLen
+  const insertStr = newText.slice(prefixLen, newSuffix)
   ytextRef.doc.transact(() => {
-    if (deleteLen > 0) ytextRef.delete(prefixLen, deleteLen);
-    if (insertStr) ytextRef.insert(prefixLen, insertStr);
-  });
+    if (deleteLen > 0) ytextRef.delete(prefixLen, deleteLen)
+    if (insertStr) ytextRef.insert(prefixLen, insertStr)
+  })
 }
 
-function handleDocRequest(req, res, session) {
-  const url = new URL(req.url, `http://${session.host}:${session.port}`);
-  if (req.method === "OPTIONS") {
+function handleDocRequest (req, res, session) {
+  const url = new URL(req.url, `http://${session.host}:${session.port}`)
+  if (req.method === 'OPTIONS') {
     res.writeHead(204, {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type"
-    });
-    res.end();
-    return;
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type'
+    })
+    res.end()
+    return
   }
 
-  if (url.pathname === "/lib/markdown-it.min.js" && req.method === "GET") {
+  if (url.pathname === '/lib/markdown-it.min.js' && req.method === 'GET') {
     res.writeHead(200, {
-      "Content-Type": "application/javascript",
-      "Access-Control-Allow-Origin": "*",
-      "Cache-Control": "public, max-age=86400"
-    });
-    res.end(markdownItScript);
-    return;
+      'Content-Type': 'application/javascript',
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'public, max-age=86400'
+    })
+    res.end(markdownItScript)
+    return
   }
 
-  if (url.pathname === "/lib/yjs.min.js" && req.method === "GET") {
+  if (url.pathname === '/lib/yjs.min.js' && req.method === 'GET') {
     if (!yjsScript) {
-      res.writeHead(404, { "Content-Type": "text/plain" });
-      res.end("Not found");
-      return;
+      res.writeHead(404, { 'Content-Type': 'text/plain' })
+      res.end('Not found')
+      return
     }
     res.writeHead(200, {
-      "Content-Type": "application/javascript",
-      "Access-Control-Allow-Origin": "*",
-      "Cache-Control": "public, max-age=86400"
-    });
-    res.end(yjsScript);
-    return;
+      'Content-Type': 'application/javascript',
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'public, max-age=86400'
+    })
+    res.end(yjsScript)
+    return
   }
 
-  if (url.pathname === "/favicon.ico" && req.method === "GET") {
+  if (url.pathname === '/favicon.ico' && req.method === 'GET') {
     if (faviconBuffer) {
       res.writeHead(200, {
-        "Content-Type": "image/x-icon",
-        "Access-Control-Allow-Origin": "*",
-        "Cache-Control": "public, max-age=86400"
-      });
-      res.end(faviconBuffer);
+        'Content-Type': 'image/x-icon',
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'public, max-age=86400'
+      })
+      res.end(faviconBuffer)
     } else {
-      res.writeHead(404);
-      res.end();
+      res.writeHead(404)
+      res.end()
     }
-    return;
+    return
   }
 
-  if ((url.pathname === "/" || url.pathname === "/index.html") && req.method === "GET") {
+  if ((url.pathname === '/' || url.pathname === '/index.html') && req.method === 'GET') {
     res.writeHead(200, {
-      "Content-Type": "text/html",
-      "Access-Control-Allow-Origin": "*",
-      "Cache-Control": "no-cache"
-    });
+      'Content-Type': 'text/html',
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'no-cache'
+    })
     res.end(`<!DOCTYPE html>
 <html lang="en" data-theme="${getCurrentTheme()}">
 <head>
@@ -1023,320 +1023,320 @@ function handleDocRequest(req, res, session) {
     connectSSE();
   </script>
 </body>
-</html>`);
-    return;
+</html>`)
+    return
   }
 
-  if (url.pathname === "/doc" && req.method === "GET") {
+  if (url.pathname === '/doc' && req.method === 'GET') {
     res.writeHead(200, {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*",
-      "Cache-Control": "no-cache"
-    });
-    res.end(JSON.stringify(session.docState));
-    return;
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'no-cache'
+    })
+    res.end(JSON.stringify(session.docState))
+    return
   }
 
-  if (url.pathname === "/doc/yjsstate" && req.method === "GET") {
+  if (url.pathname === '/doc/yjsstate' && req.method === 'GET') {
     if (!session.ydoc) {
       res.writeHead(200, {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-        "Cache-Control": "no-cache"
-      });
-      res.end(JSON.stringify({ yjsState: null }));
-      return;
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'no-cache'
+      })
+      res.end(JSON.stringify({ yjsState: null }))
+      return
     }
-    const stateBytes = Y.encodeStateAsUpdate(session.ydoc);
-    const stateBase64 = Buffer.from(stateBytes).toString("base64");
+    const stateBytes = Y.encodeStateAsUpdate(session.ydoc)
+    const stateBase64 = Buffer.from(stateBytes).toString('base64')
     res.writeHead(200, {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*",
-      "Cache-Control": "no-cache"
-    });
-    res.end(JSON.stringify({ yjsState: stateBase64 }));
-    return;
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'no-cache'
+    })
+    res.end(JSON.stringify({ yjsState: stateBase64 }))
+    return
   }
 
-  if (url.pathname === "/doc/update" && req.method === "POST") {
+  if (url.pathname === '/doc/update' && req.method === 'POST') {
     if (!session.ydoc) {
-      res.writeHead(503, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
-      res.end(JSON.stringify({ ok: false, error: "No Y.Doc on this node (client-only session)" }));
-      return;
+      res.writeHead(503, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
+      res.end(JSON.stringify({ ok: false, error: 'No Y.Doc on this node (client-only session)' }))
+      return
     }
-    let body = "";
-    const MAX_UPDATE_SIZE = 1 * 1024 * 1024;
-    let overflow = false;
-    req.on("data", (chunk) => {
-      body += chunk.toString();
+    let body = ''
+    const MAX_UPDATE_SIZE = 1 * 1024 * 1024
+    let overflow = false
+    req.on('data', (chunk) => {
+      body += chunk.toString()
       if (body.length > MAX_UPDATE_SIZE) {
-        overflow = true;
-        res.writeHead(413, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
-        res.end(JSON.stringify({ ok: false, error: "Update too large" }));
-        req.destroy();
+        overflow = true
+        res.writeHead(413, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
+        res.end(JSON.stringify({ ok: false, error: 'Update too large' }))
+        req.destroy()
       }
-    });
-    req.on("end", () => {
-      if (overflow) return;
+    })
+    req.on('end', () => {
+      if (overflow) return
       try {
-        const requestSourceKey = `${req.socket?.remoteAddress || "local"}|${req.headers["user-agent"] || "ua"}`;
-        const parsed = JSON.parse(body || "{}");
-        const base64 = typeof parsed.update === "string" ? parsed.update : null;
-        const fullText = typeof parsed.fullText === "string" ? parsed.fullText : null;
-        const clientId = typeof parsed.clientId === "string" ? parsed.clientId : "";
-        const providedName = sanitizePeerName(parsed.name || "");
-        const providedColor = sanitizePeerColor(parsed.color || "");
-        const cursorLine = Number.isFinite(Number(parsed.cursorLine)) ? Number(parsed.cursorLine) : null;
-        const cursorColumn = Number.isFinite(Number(parsed.cursorColumn)) ? Number(parsed.cursorColumn) : null;
-        const selectionStart = Number.isFinite(Number(parsed.selectionStart)) ? Number(parsed.selectionStart) : null;
-        const selectionEnd = Number.isFinite(Number(parsed.selectionEnd)) ? Number(parsed.selectionEnd) : null;
-        const actor = clientId ? findClientByClientId(session, clientId) : null;
+        const requestSourceKey = `${req.socket?.remoteAddress || 'local'}|${req.headers['user-agent'] || 'ua'}`
+        const parsed = JSON.parse(body || '{}')
+        const base64 = typeof parsed.update === 'string' ? parsed.update : null
+        const fullText = typeof parsed.fullText === 'string' ? parsed.fullText : null
+        const clientId = typeof parsed.clientId === 'string' ? parsed.clientId : ''
+        const providedName = sanitizePeerName(parsed.name || '')
+        const providedColor = sanitizePeerColor(parsed.color || '')
+        const cursorLine = Number.isFinite(Number(parsed.cursorLine)) ? Number(parsed.cursorLine) : null
+        const cursorColumn = Number.isFinite(Number(parsed.cursorColumn)) ? Number(parsed.cursorColumn) : null
+        const selectionStart = Number.isFinite(Number(parsed.selectionStart)) ? Number(parsed.selectionStart) : null
+        const selectionEnd = Number.isFinite(Number(parsed.selectionEnd)) ? Number(parsed.selectionEnd) : null
+        const actor = clientId ? findClientByClientId(session, clientId) : null
         if (actor) {
           if (providedName) {
-            actor.name = providedName;
-            renameLineAttributionOwner(actor, providedName);
+            actor.name = providedName
+            renameLineAttributionOwner(actor, providedName)
           }
-          if (providedColor) actor.color = providedColor;
-          if (cursorLine !== null) actor.cursorLine = cursorLine;
-          if (cursorColumn !== null) actor.cursorColumn = cursorColumn;
-          if (selectionStart !== null) actor.selectionStart = selectionStart;
-          if (selectionEnd !== null) actor.selectionEnd = selectionEnd;
-          mergeLineAttributions(actor, parsed.lineAttributions, getPeerDisplayName(actor));
-          markEditedLineAttribution(session, actor, cursorLine !== null ? cursorLine : actor.cursorLine);
-          actor.isTyping = true;
-          actor.lastTypingAt = Date.now();
-          actor.updatedAt = actor.lastTypingAt;
-          syncPeerMetaFromActor(session, actor);
-          broadcastPeerList(session);
+          if (providedColor) actor.color = providedColor
+          if (cursorLine !== null) actor.cursorLine = cursorLine
+          if (cursorColumn !== null) actor.cursorColumn = cursorColumn
+          if (selectionStart !== null) actor.selectionStart = selectionStart
+          if (selectionEnd !== null) actor.selectionEnd = selectionEnd
+          mergeLineAttributions(actor, parsed.lineAttributions, getPeerDisplayName(actor))
+          markEditedLineAttribution(session, actor, cursorLine !== null ? cursorLine : actor.cursorLine)
+          actor.isTyping = true
+          actor.lastTypingAt = Date.now()
+          actor.updatedAt = actor.lastTypingAt
+          syncPeerMetaFromActor(session, actor)
+          broadcastPeerList(session)
         } else if (clientId) {
           const peerMeta = getOrCreatePeerMeta(session, clientId, {
-            role: "client",
+            role: 'client',
             name: providedName,
             color: providedColor,
             cursorLine,
             cursorColumn
-          });
+          })
           // Merge line attributions even for peers without SSE connection yet
           if (peerMeta && parsed.lineAttributions) {
-            if (!peerMeta.lineAttributions) peerMeta.lineAttributions = {};
-            mergeLineAttributions(peerMeta, parsed.lineAttributions, getPeerDisplayName(peerMeta));
+            if (!peerMeta.lineAttributions) peerMeta.lineAttributions = {}
+            mergeLineAttributions(peerMeta, parsed.lineAttributions, getPeerDisplayName(peerMeta))
           }
         }
         if (!base64) {
-          res.writeHead(400, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
-          res.end(JSON.stringify({ ok: false, error: "Missing update field" }));
-          return;
+          res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
+          res.end(JSON.stringify({ ok: false, error: 'Missing update field' }))
+          return
         }
-        let updateBytes;
+        let updateBytes
         try {
-          updateBytes = new Uint8Array(Buffer.from(base64, "base64"));
+          updateBytes = new Uint8Array(Buffer.from(base64, 'base64'))
         } catch {
-          res.writeHead(400, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
-          res.end(JSON.stringify({ ok: false, error: "Invalid base64" }));
-          return;
+          res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
+          res.end(JSON.stringify({ ok: false, error: 'Invalid base64' }))
+          return
         }
 
-        let beforeContent = session.ytext.toString();
-        let applied = false;
-        let usedTextFallback = false;
+        const beforeContent = session.ytext.toString()
+        let applied = false
+        let usedTextFallback = false
         try {
-          Y.applyUpdate(session.ydoc, updateBytes, "client-update");
-          applied = true;
+          Y.applyUpdate(session.ydoc, updateBytes, 'client-update')
+          applied = true
         } catch (applyErr) {
-          console.warn("[p2pmd] /doc/update: Y.applyUpdate rejected payload:", applyErr.message);
+          console.warn('[p2pmd] /doc/update: Y.applyUpdate rejected payload:', applyErr.message)
           // Fallback path: if client sends full text, reconcile using text diff.
-          if (typeof fullText === "string") {
+          if (typeof fullText === 'string') {
             try {
-              applyTextDiffToYText(session.ytext, beforeContent, fullText);
-              usedTextFallback = true;
-              applied = true;
+              applyTextDiffToYText(session.ytext, beforeContent, fullText)
+              usedTextFallback = true
+              applied = true
             } catch (fallbackErr) {
-              console.warn("[p2pmd] /doc/update fallback failed:", fallbackErr.message);
-              res.writeHead(400, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
-              res.end(JSON.stringify({ ok: false, error: "Invalid Yjs update payload" }));
-              return;
+              console.warn('[p2pmd] /doc/update fallback failed:', fallbackErr.message)
+              res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
+              res.end(JSON.stringify({ ok: false, error: 'Invalid Yjs update payload' }))
+              return
             }
           } else {
-            res.writeHead(400, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
-            res.end(JSON.stringify({ ok: false, error: "Invalid Yjs update payload" }));
-            return;
+            res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
+            res.end(JSON.stringify({ ok: false, error: 'Invalid Yjs update payload' }))
+            return
           }
         }
-        let afterContent = session.ytext.toString();
+        const afterContent = session.ytext.toString()
 
-        const contentChanged = beforeContent !== afterContent;
-        session.docState.content = afterContent;
-        session.docState.updatedAt = Date.now();
+        const contentChanged = beforeContent !== afterContent
+        session.docState.content = afterContent
+        session.docState.updatedAt = Date.now()
 
         // Broadcast canonical server state after any content change so
         // reconnecting/diverged clients can re-converge safely.
         if (usedTextFallback || contentChanged) {
-          const stateBytes = Y.encodeStateAsUpdate(session.ydoc);
-          const stateBase64 = Buffer.from(stateBytes).toString("base64");
-          broadcastYjsUpdate(session, stateBase64);
+          const stateBytes = Y.encodeStateAsUpdate(session.ydoc)
+          const stateBase64 = Buffer.from(stateBytes).toString('base64')
+          broadcastYjsUpdate(session, stateBase64)
           scheduleEditActivity(session, {
             clientId,
             peerId: actor?.id || null,
-            role: actor?.role || "client",
+            role: actor?.role || 'client',
             name: actor ? getPeerDisplayName(actor) : providedName,
             cursorLine: cursorLine !== null ? cursorLine : actor?.cursorLine,
             cursorColumn: cursorColumn !== null ? cursorColumn : actor?.cursorColumn,
             sourceKey: requestSourceKey
-          });
+          })
         }
-        res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
-        res.end(JSON.stringify({ ok: true }));
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
+        res.end(JSON.stringify({ ok: true }))
       } catch (err) {
-        console.error("[p2pmd] /doc/update error:", err.message);
-        res.writeHead(500, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
-        res.end(JSON.stringify({ ok: false, error: "Internal error" }));
+        console.error('[p2pmd] /doc/update error:', err.message)
+        res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
+        res.end(JSON.stringify({ ok: false, error: 'Internal error' }))
       }
-    });
-    return;
+    })
+    return
   }
 
-  if (url.pathname === "/doc" && req.method === "POST") {
-    let body = "";
-    const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10MB
-    let overflow = false;
-    req.on("data", (chunk) => {
-      body += chunk.toString();
+  if (url.pathname === '/doc' && req.method === 'POST') {
+    let body = ''
+    const MAX_BODY_SIZE = 10 * 1024 * 1024 // 10MB
+    let overflow = false
+    req.on('data', (chunk) => {
+      body += chunk.toString()
       if (body.length > MAX_BODY_SIZE) {
-        overflow = true;
-        res.writeHead(413, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
-        res.end(JSON.stringify({ ok: false, error: "Document too large" }));
-        req.destroy();
+        overflow = true
+        res.writeHead(413, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
+        res.end(JSON.stringify({ ok: false, error: 'Document too large' }))
+        req.destroy()
       }
-    });
-    req.on("end", () => {
-      if (overflow) return;
+    })
+    req.on('end', () => {
+      if (overflow) return
       try {
-        const requestSourceKey = `${req.socket?.remoteAddress || "local"}|${req.headers["user-agent"] || "ua"}`;
-        const parsed = JSON.parse(body || "{}");
-        const content = typeof parsed.content === "string" ? parsed.content : "";
-        const clientId = typeof parsed.clientId === "string" ? parsed.clientId : "";
-        const providedName = sanitizePeerName(parsed.name || "");
-        const providedColor = sanitizePeerColor(parsed.color || "");
-        const cursorLine = Number.isFinite(Number(parsed.cursorLine)) ? Number(parsed.cursorLine) : null;
-        const cursorColumn = Number.isFinite(Number(parsed.cursorColumn)) ? Number(parsed.cursorColumn) : null;
-        const selectionStart = Number.isFinite(Number(parsed.selectionStart)) ? Number(parsed.selectionStart) : null;
-        const selectionEnd = Number.isFinite(Number(parsed.selectionEnd)) ? Number(parsed.selectionEnd) : null;
-        const actor = clientId ? findClientByClientId(session, clientId) : null;
+        const requestSourceKey = `${req.socket?.remoteAddress || 'local'}|${req.headers['user-agent'] || 'ua'}`
+        const parsed = JSON.parse(body || '{}')
+        const content = typeof parsed.content === 'string' ? parsed.content : ''
+        const clientId = typeof parsed.clientId === 'string' ? parsed.clientId : ''
+        const providedName = sanitizePeerName(parsed.name || '')
+        const providedColor = sanitizePeerColor(parsed.color || '')
+        const cursorLine = Number.isFinite(Number(parsed.cursorLine)) ? Number(parsed.cursorLine) : null
+        const cursorColumn = Number.isFinite(Number(parsed.cursorColumn)) ? Number(parsed.cursorColumn) : null
+        const selectionStart = Number.isFinite(Number(parsed.selectionStart)) ? Number(parsed.selectionStart) : null
+        const selectionEnd = Number.isFinite(Number(parsed.selectionEnd)) ? Number(parsed.selectionEnd) : null
+        const actor = clientId ? findClientByClientId(session, clientId) : null
         if (actor) {
           if (providedName) {
-            actor.name = providedName;
-            renameLineAttributionOwner(actor, providedName);
+            actor.name = providedName
+            renameLineAttributionOwner(actor, providedName)
           }
-          if (providedColor) actor.color = providedColor;
-          if (cursorLine !== null) actor.cursorLine = cursorLine;
-          if (cursorColumn !== null) actor.cursorColumn = cursorColumn;
-          if (selectionStart !== null) actor.selectionStart = selectionStart;
-          if (selectionEnd !== null) actor.selectionEnd = selectionEnd;
-          mergeLineAttributions(actor, parsed.lineAttributions, getPeerDisplayName(actor));
-          markEditedLineAttribution(session, actor, cursorLine !== null ? cursorLine : actor.cursorLine);
-          actor.isTyping = true;
-          actor.lastTypingAt = Date.now();
-          actor.updatedAt = actor.lastTypingAt;
-          syncPeerMetaFromActor(session, actor);
-          broadcastPeerList(session);
+          if (providedColor) actor.color = providedColor
+          if (cursorLine !== null) actor.cursorLine = cursorLine
+          if (cursorColumn !== null) actor.cursorColumn = cursorColumn
+          if (selectionStart !== null) actor.selectionStart = selectionStart
+          if (selectionEnd !== null) actor.selectionEnd = selectionEnd
+          mergeLineAttributions(actor, parsed.lineAttributions, getPeerDisplayName(actor))
+          markEditedLineAttribution(session, actor, cursorLine !== null ? cursorLine : actor.cursorLine)
+          actor.isTyping = true
+          actor.lastTypingAt = Date.now()
+          actor.updatedAt = actor.lastTypingAt
+          syncPeerMetaFromActor(session, actor)
+          broadcastPeerList(session)
         } else if (clientId) {
           const peerMeta = getOrCreatePeerMeta(session, clientId, {
-            role: "client",
+            role: 'client',
             name: providedName,
             color: providedColor,
             cursorLine,
             cursorColumn
-          });
+          })
           // Merge line attributions even for peers without SSE connection yet
           if (peerMeta && parsed.lineAttributions) {
-            if (!peerMeta.lineAttributions) peerMeta.lineAttributions = {};
-            mergeLineAttributions(peerMeta, parsed.lineAttributions, getPeerDisplayName(peerMeta));
+            if (!peerMeta.lineAttributions) peerMeta.lineAttributions = {}
+            mergeLineAttributions(peerMeta, parsed.lineAttributions, getPeerDisplayName(peerMeta))
           }
         }
-        const beforeContent = session.ydoc && session.ytext ? session.ytext.toString() : session.docState.content;
-        session.docState.content = content;
-        session.docState.updatedAt = Date.now();
+        const beforeContent = session.ydoc && session.ytext ? session.ytext.toString() : session.docState.content
+        session.docState.content = content
+        session.docState.updatedAt = Date.now()
         if (session.ydoc && session.ytext) {
-          const current = session.ytext.toString();
+          const current = session.ytext.toString()
           if (current !== content) {
-            let deltaUpdate = null;
+            let deltaUpdate = null
             const onUpdate = (update) => {
-              deltaUpdate = deltaUpdate ? Y.mergeUpdates([deltaUpdate, update]) : update;
-            };
-            session.ydoc.on("update", onUpdate);
+              deltaUpdate = deltaUpdate ? Y.mergeUpdates([deltaUpdate, update]) : update
+            }
+            session.ydoc.on('update', onUpdate)
             try {
-              applyTextDiffToYText(session.ytext, current, content);
+              applyTextDiffToYText(session.ytext, current, content)
             } finally {
-              session.ydoc.off("update", onUpdate);
+              session.ydoc.off('update', onUpdate)
             }
             if (deltaUpdate) {
-              const updateBase64 = Buffer.from(deltaUpdate).toString("base64");
-              broadcastYjsUpdate(session, updateBase64);
+              const updateBase64 = Buffer.from(deltaUpdate).toString('base64')
+              broadcastYjsUpdate(session, updateBase64)
             }
           }
         } else {
-          broadcastUpdate(session);
+          broadcastUpdate(session)
         }
         if (beforeContent !== content) {
           scheduleEditActivity(session, {
             clientId,
             peerId: actor?.id || null,
-            role: actor?.role || "client",
+            role: actor?.role || 'client',
             name: actor ? getPeerDisplayName(actor) : providedName,
             cursorLine: cursorLine !== null ? cursorLine : actor?.cursorLine,
             cursorColumn: cursorColumn !== null ? cursorColumn : actor?.cursorColumn,
             sourceKey: requestSourceKey
-          });
+          })
         }
         res.writeHead(200, {
-          "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "*",
-          "Cache-Control": "no-cache"
-        });
-        res.end(JSON.stringify({ ok: true }));
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'no-cache'
+        })
+        res.end(JSON.stringify({ ok: true }))
       } catch {
         res.writeHead(400, {
-          "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "*"
-        });
-        res.end(JSON.stringify({ ok: false }));
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        })
+        res.end(JSON.stringify({ ok: false }))
       }
-    });
-    return;
+    })
+    return
   }
 
-  if (url.pathname === "/events" && req.method === "GET") {
+  if (url.pathname === '/events' && req.method === 'GET') {
     res.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      "Connection": "keep-alive",
-      "Access-Control-Allow-Origin": "*"
-    });
-    const role = normalizePeerRole(url.searchParams.get("role") || "client");
-    const name = sanitizePeerName(url.searchParams.get("name") || "");
-    const requestedColor = sanitizePeerColor(url.searchParams.get("color") || "");
-    const rawClientId = typeof url.searchParams.get("clientId") === "string" ? url.searchParams.get("clientId") : "";
-    const clientId = rawClientId ? rawClientId.slice(0, 128) : `peer-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-    const existing = clientId ? findClientByClientId(session, clientId) : null;
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+      'Access-Control-Allow-Origin': '*'
+    })
+    const role = normalizePeerRole(url.searchParams.get('role') || 'client')
+    const name = sanitizePeerName(url.searchParams.get('name') || '')
+    const requestedColor = sanitizePeerColor(url.searchParams.get('color') || '')
+    const rawClientId = typeof url.searchParams.get('clientId') === 'string' ? url.searchParams.get('clientId') : ''
+    const clientId = rawClientId ? rawClientId.slice(0, 128) : `peer-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+    const existing = clientId ? findClientByClientId(session, clientId) : null
     if (existing?.res && existing.res !== res) {
-      try { existing.res.end(); } catch {}
-      session.sseClients.delete(existing.res);
+      try { existing.res.end() } catch {}
+      session.sseClients.delete(existing.res)
     }
     const peerMeta = clientId
       ? getOrCreatePeerMeta(session, clientId, { role, name, color: requestedColor })
-      : null;
+      : null
     const peerId = Number.isFinite(Number(peerMeta?.id))
       ? Number(peerMeta.id)
-      : ++peerSequence;
-    const resolvedRole = normalizePeerRole(peerMeta?.role || role || "client");
-    const resolvedName = sanitizePeerName(peerMeta?.name || name || "");
+      : ++peerSequence
+    const resolvedRole = normalizePeerRole(peerMeta?.role || role || 'client')
+    const resolvedName = sanitizePeerName(peerMeta?.name || name || '')
     const peerState = {
       res,
       id: peerId,
       role: resolvedRole,
       name: resolvedName,
       clientId,
-      color: requestedColor || sanitizePeerColor(peerMeta?.color || "") || getPeerColor(clientId || peerId),
+      color: requestedColor || sanitizePeerColor(peerMeta?.color || '') || getPeerColor(clientId || peerId),
       isTyping: false,
       cursorLine: null,
       cursorColumn: null,
@@ -1348,396 +1348,396 @@ function handleDocRequest(req, res, session) {
       lastEditAt: 0,
       // Preserve lineAttributions from peerMeta if available (fixes host reconnection bug)
       lineAttributions: peerMeta?.lineAttributions || {}
-    };
-    session.sseClients.set(res, peerState);
-    syncPeerMetaFromActor(session, peerState);
-    const currentPeerCount = getPeerCount(session);
-    log.info(`[p2pmd] SSE connected: peerId=${peerId}, role=${role}, totalClients=${session.sseClients.size}, peerCount=${currentPeerCount}`);
-    
-    res.write(`event: peers\ndata: ${currentPeerCount}\n\n`);
-    res.write(`event: peerlist\ndata: ${JSON.stringify(getPeerList(session))}\n\n`);
+    }
+    session.sseClients.set(res, peerState)
+    syncPeerMetaFromActor(session, peerState)
+    const currentPeerCount = getPeerCount(session)
+    log.info(`[p2pmd] SSE connected: peerId=${peerId}, role=${role}, totalClients=${session.sseClients.size}, peerCount=${currentPeerCount}`)
+
+    res.write(`event: peers\ndata: ${currentPeerCount}\n\n`)
+    res.write(`event: peerlist\ndata: ${JSON.stringify(getPeerList(session))}\n\n`)
     if (Array.isArray(session.activityLog) && session.activityLog.length > 0) {
-      res.write(`event: activity\ndata: ${JSON.stringify(session.activityLog.slice(0, 100))}\n\n`);
+      res.write(`event: activity\ndata: ${JSON.stringify(session.activityLog.slice(0, 100))}\n\n`)
     }
     if (session.ydoc) {
-      const stateBytes = Y.encodeStateAsUpdate(session.ydoc);
-      const stateBase64 = Buffer.from(stateBytes).toString("base64");
-      res.write(`event: yjsupdate\ndata: ${stateBase64}\n\n`);
+      const stateBytes = Y.encodeStateAsUpdate(session.ydoc)
+      const stateBase64 = Buffer.from(stateBytes).toString('base64')
+      res.write(`event: yjsupdate\ndata: ${stateBase64}\n\n`)
     } else {
-      res.write(`event: update\ndata: ${JSON.stringify(session.docState)}\n\n`);
+      res.write(`event: update\ndata: ${JSON.stringify(session.docState)}\n\n`)
     }
     const joinActivity = addActivity(session, {
-      type: "join",
+      type: 'join',
       role: resolvedRole,
       name: getPeerDisplayName(peerState),
       clientId,
       message: `${getPeerDisplayName(peerState)} joined as ${resolvedRole}`
-    });
-    broadcastPeers(session);
-    broadcastPeerList(session);
-    broadcastActivity(session, joinActivity);
+    })
+    broadcastPeers(session)
+    broadcastPeerList(session)
+    broadcastActivity(session, joinActivity)
     if (!session.keepaliveInterval) {
       session.keepaliveInterval = setInterval(() => {
         for (const client of session.sseClients.values()) {
-          try { client.res.write(":keepalive\n\n"); } catch {}
+          try { client.res.write(':keepalive\n\n') } catch {}
         }
-      }, 20000);
+      }, 20000)
     }
-    req.on("close", () => {
-      const departingPeer = session.sseClients.get(res);
-      session.sseClients.delete(res);
+    req.on('close', () => {
+      const departingPeer = session.sseClients.get(res)
+      session.sseClients.delete(res)
       if (session.sseClients.size === 0 && session.keepaliveInterval) {
-        clearInterval(session.keepaliveInterval);
-        session.keepaliveInterval = null;
+        clearInterval(session.keepaliveInterval)
+        session.keepaliveInterval = null
       }
       if (departingPeer) {
         const leaveActivity = addActivity(session, {
-          type: "leave",
+          type: 'leave',
           role: departingPeer.role,
           name: getPeerDisplayName(departingPeer),
           clientId: departingPeer.clientId || null,
           message: `${getPeerDisplayName(departingPeer)} left the room`
-        });
-        broadcastActivity(session, leaveActivity);
+        })
+        broadcastActivity(session, leaveActivity)
       }
-      broadcastPeers(session);
-      broadcastPeerList(session);
-    });
-    return;
+      broadcastPeers(session)
+      broadcastPeerList(session)
+    })
+    return
   }
 
-  if (url.pathname === "/status" && req.method === "GET") {
+  if (url.pathname === '/status' && req.method === 'GET') {
     res.writeHead(200, {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*",
-      "Cache-Control": "no-cache"
-    });
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'no-cache'
+    })
     res.end(JSON.stringify({
       peers: getPeerCount(session),
       peerList: getPeerList(session),
       activityCount: Array.isArray(session.activityLog) ? session.activityLog.length : 0
-    }));
-    return;
+    }))
+    return
   }
 
-  if (url.pathname === "/activity" && req.method === "GET") {
+  if (url.pathname === '/activity' && req.method === 'GET') {
     res.writeHead(200, {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*",
-      "Cache-Control": "no-cache"
-    });
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'no-cache'
+    })
     res.end(JSON.stringify({
       activity: Array.isArray(session.activityLog) ? session.activityLog.slice(0, 150) : []
-    }));
-    return;
+    }))
+    return
   }
 
-  if (url.pathname === "/presence" && req.method === "POST") {
-    let body = "";
-    let overflow = false;
-    const MAX_BODY_SIZE = 32 * 1024;
-    req.on("data", (chunk) => {
-      body += chunk.toString();
+  if (url.pathname === '/presence' && req.method === 'POST') {
+    let body = ''
+    let overflow = false
+    const MAX_BODY_SIZE = 32 * 1024
+    req.on('data', (chunk) => {
+      body += chunk.toString()
       if (body.length > MAX_BODY_SIZE) {
-        overflow = true;
-        res.writeHead(413, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
-        res.end(JSON.stringify({ ok: false, error: "Presence payload too large" }));
-        req.destroy();
+        overflow = true
+        res.writeHead(413, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
+        res.end(JSON.stringify({ ok: false, error: 'Presence payload too large' }))
+        req.destroy()
       }
-    });
-    req.on("end", () => {
-      if (overflow) return;
+    })
+    req.on('end', () => {
+      if (overflow) return
       try {
-        const parsed = JSON.parse(body || "{}");
-        const clientId = typeof parsed.clientId === "string" ? parsed.clientId : "";
-        const nextName = sanitizePeerName(parsed.name || "");
-        const nextColor = sanitizePeerColor(parsed.color || "");
-        const actor = findClientByClientId(session, clientId);
+        const parsed = JSON.parse(body || '{}')
+        const clientId = typeof parsed.clientId === 'string' ? parsed.clientId : ''
+        const nextName = sanitizePeerName(parsed.name || '')
+        const nextColor = sanitizePeerColor(parsed.color || '')
+        const actor = findClientByClientId(session, clientId)
         const peerMeta = clientId
           ? getOrCreatePeerMeta(session, clientId, {
-              role: parsed.role || "client",
-              name: nextName,
-              color: nextColor,
-              cursorLine: parsed.cursorLine,
-              cursorColumn: parsed.cursorColumn,
-              lineAttributions: parsed.lineAttributions
-            })
-          : null;
+            role: parsed.role || 'client',
+            name: nextName,
+            color: nextColor,
+            cursorLine: parsed.cursorLine,
+            cursorColumn: parsed.cursorColumn,
+            lineAttributions: parsed.lineAttributions
+          })
+          : null
         if (!actor && !peerMeta) {
-          res.writeHead(404, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
-          res.end(JSON.stringify({ ok: false, error: "Peer not found" }));
-          return;
+          res.writeHead(404, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
+          res.end(JSON.stringify({ ok: false, error: 'Peer not found' }))
+          return
         }
         if (actor && nextName) {
-          actor.name = nextName;
-          renameLineAttributionOwner(actor, nextName);
+          actor.name = nextName
+          renameLineAttributionOwner(actor, nextName)
         }
-        if (actor && nextColor) actor.color = nextColor;
-        if (actor) actor.role = normalizePeerRole(parsed.role || actor.role || "client");
-        const nextTyping = parsed.isTyping === true;
+        if (actor && nextColor) actor.color = nextColor
+        if (actor) actor.role = normalizePeerRole(parsed.role || actor.role || 'client')
+        const nextTyping = parsed.isTyping === true
         if (actor) {
-          mergeLineAttributions(actor, parsed.lineAttributions, getPeerDisplayName(actor));
-          actor.isTyping = nextTyping;
+          mergeLineAttributions(actor, parsed.lineAttributions, getPeerDisplayName(actor))
+          actor.isTyping = nextTyping
           if (nextTyping) {
-            actor.lastTypingAt = Date.now();
+            actor.lastTypingAt = Date.now()
           }
-          actor.cursorLine = Number.isFinite(Number(parsed.cursorLine)) ? Number(parsed.cursorLine) : null;
-          actor.cursorColumn = Number.isFinite(Number(parsed.cursorColumn)) ? Number(parsed.cursorColumn) : null;
-          actor.selectionStart = Number.isFinite(Number(parsed.selectionStart)) ? Number(parsed.selectionStart) : null;
-          actor.selectionEnd = Number.isFinite(Number(parsed.selectionEnd)) ? Number(parsed.selectionEnd) : null;
-          actor.updatedAt = Date.now();
-          syncPeerMetaFromActor(session, actor);
+          actor.cursorLine = Number.isFinite(Number(parsed.cursorLine)) ? Number(parsed.cursorLine) : null
+          actor.cursorColumn = Number.isFinite(Number(parsed.cursorColumn)) ? Number(parsed.cursorColumn) : null
+          actor.selectionStart = Number.isFinite(Number(parsed.selectionStart)) ? Number(parsed.selectionStart) : null
+          actor.selectionEnd = Number.isFinite(Number(parsed.selectionEnd)) ? Number(parsed.selectionEnd) : null
+          actor.updatedAt = Date.now()
+          syncPeerMetaFromActor(session, actor)
         }
 
-        broadcastPeerList(session);
-        res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
-        res.end(JSON.stringify({ ok: true }));
+        broadcastPeerList(session)
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
+        res.end(JSON.stringify({ ok: true }))
       } catch {
-        res.writeHead(400, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
-        res.end(JSON.stringify({ ok: false, error: "Invalid payload" }));
+        res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
+        res.end(JSON.stringify({ ok: false, error: 'Invalid payload' }))
       }
-    });
-    return;
+    })
+    return
   }
 
   res.writeHead(404, {
-    "Content-Type": "text/plain",
-    "Access-Control-Allow-Origin": "*"
-  });
-  res.end("Not found");
+    'Content-Type': 'text/plain',
+    'Access-Control-Allow-Origin': '*'
+  })
+  res.end('Not found')
 }
 
-async function stopDocServer(session) {
-  if (!session?.server) return;
+async function stopDocServer (session) {
+  if (!session?.server) return
   if (session.editLogTimers && session.editLogTimers.size > 0) {
     for (const timer of session.editLogTimers.values()) {
-      clearTimeout(timer);
+      clearTimeout(timer)
     }
-    session.editLogTimers.clear();
+    session.editLogTimers.clear()
   }
   if (session.keepaliveInterval) {
-    clearInterval(session.keepaliveInterval);
-    session.keepaliveInterval = null;
+    clearInterval(session.keepaliveInterval)
+    session.keepaliveInterval = null
   }
   for (const client of session.sseClients.values()) {
     try {
-      client.res.end();
+      client.res.end()
     } catch {}
   }
-  session.sseClients.clear();
+  session.sseClients.clear()
   for (const socket of session.sockets) {
     try {
-      socket.destroy();
+      socket.destroy()
     } catch {}
   }
-  session.sockets.clear();
+  session.sockets.clear()
   await new Promise((resolve) => {
     session.server.close(() => {
-      resolve();
-    });
-  });
-  session.server = null;
-  session.port = null;
+      resolve()
+    })
+  })
+  session.server = null
+  session.port = null
 }
 
-async function ensureDocServer(session, host, port, secure) {
+async function ensureDocServer (session, host, port, secure) {
   // Bind HTTP server to 127.0.0.1
   // Holesail server forwards tunnel traffic to this same address locally
   // DHT stores host: "127.0.0.1" so mobile clients create their proxy on localhost
-  const nextHost = "127.0.0.1";
-  
+  const nextHost = '127.0.0.1'
+
   if (session.server && session.host === nextHost && (port === null || session.port === port)) {
-    return { host: session.host, port: session.port };
+    return { host: session.host, port: session.port }
   }
   if (session.server) {
-    await stopDocServer(session);
+    await stopDocServer(session)
   }
-  session.host = nextHost;
-  const savedEntry = session.key ? roomPorts.get(session.key) : null;
-  const savedPort = savedEntry?.port || null;
-  const requestedPort = port || session.originalPort || savedPort || 0;
-  log.info("[p2pmd] ensureDocServer", { key: session.key, port, originalPort: session.originalPort, savedPort, requestedPort });
-  session.server = http.createServer((req, res) => handleDocRequest(req, res, session));
-  session.server.on("connection", (socket) => {
-    session.sockets.add(socket);
-    socket.on("close", () => session.sockets.delete(socket));
-  });
-  let retries = 3;
-  let lastError = null;
+  session.host = nextHost
+  const savedEntry = session.key ? roomPorts.get(session.key) : null
+  const savedPort = savedEntry?.port || null
+  const requestedPort = port || session.originalPort || savedPort || 0
+  log.info('[p2pmd] ensureDocServer', { key: session.key, port, originalPort: session.originalPort, savedPort, requestedPort })
+  session.server = http.createServer((req, res) => handleDocRequest(req, res, session))
+  session.server.on('connection', (socket) => {
+    session.sockets.add(socket)
+    socket.on('close', () => session.sockets.delete(socket))
+  })
+  let retries = 3
+  let lastError = null
   while (retries > 0) {
     try {
       await new Promise((resolve, reject) => {
         const onError = (err) => {
-          session.server.off("listening", onListening);
-          reject(err);
-        };
+          session.server.off('listening', onListening)
+          reject(err)
+        }
         const onListening = () => {
-          session.server.off("error", onError);
-          resolve();
-        };
-        session.server.once("error", onError);
-        session.server.once("listening", onListening);
-        session.server.listen(requestedPort, session.host);
-      });
-      const address = session.server.address();
-      session.port = address.port;
+          session.server.off('error', onError)
+          resolve()
+        }
+        session.server.once('error', onError)
+        session.server.once('listening', onListening)
+        session.server.listen(requestedPort, session.host)
+      })
+      const address = session.server.address()
+      session.port = address.port
       if (!session.originalPort) {
-        session.originalPort = session.port;
+        session.originalPort = session.port
       }
       if (session.key && !roomPorts.has(session.key)) {
-        roomPorts.set(session.key, { port: session.port, seed: null });
-        savePortsToFile();
-        log.info("[p2pmd] saved port for room", { key: session.key, port: session.port });
+        roomPorts.set(session.key, { port: session.port, seed: null })
+        savePortsToFile()
+        log.info('[p2pmd] saved port for room', { key: session.key, port: session.port })
       }
-      return { host: session.host, port: session.port };
+      return { host: session.host, port: session.port }
     } catch (err) {
-      lastError = err;
-      retries--;
+      lastError = err
+      retries--
       if (retries > 0) {
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100))
       }
     }
   }
-  session.server = null;
-  throw lastError || new Error("Failed to bind server after retries");
+  session.server = null
+  throw lastError || new Error('Failed to bind server after retries')
 }
 
-async function stopHolesailServer(session) {
-  if (!session?.holesailServer) return;
+async function stopHolesailServer (session) {
+  if (!session?.holesailServer) return
   try {
-    await session.holesailServer.close();
+    await session.holesailServer.close()
   } catch {}
-  session.holesailServer = null;
+  session.holesailServer = null
 }
 
-async function stopHolesailClient(session) {
-  if (!session?.holesailClient) return;
+async function stopHolesailClient (session) {
+  if (!session?.holesailClient) return
   try {
-    await session.holesailClient.close();
+    await session.holesailClient.close()
   } catch {}
-  session.holesailClient = null;
+  session.holesailClient = null
 }
 
-function parseBoolean(value, fallback = false) {
-  if (value === undefined || value === null) return fallback;
-  if (typeof value === "boolean") return value;
-  if (typeof value === "number") return value !== 0;
-  if (typeof value === "string") {
-    return value === "true" || value === "1";
+function parseBoolean (value, fallback = false) {
+  if (value === undefined || value === null) return fallback
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'number') return value !== 0
+  if (typeof value === 'string') {
+    return value === 'true' || value === '1'
   }
-  return fallback;
+  return fallback
 }
 
-function normalizeHost(value) {
-  if (!value || typeof value !== "string") return "127.0.0.1";
-  const trimmed = value.trim();
-  if (!trimmed) return "127.0.0.1";
+function normalizeHost (value) {
+  if (!value || typeof value !== 'string') return '127.0.0.1'
+  const trimmed = value.trim()
+  if (!trimmed) return '127.0.0.1'
   try {
-    if (trimmed.includes("://")) {
-      const parsed = new URL(trimmed);
-      return parsed.hostname || "127.0.0.1";
+    if (trimmed.includes('://')) {
+      const parsed = new URL(trimmed)
+      return parsed.hostname || '127.0.0.1'
     }
   } catch {}
-  if (trimmed.includes("/")) {
-    return trimmed.split("/")[0] || "127.0.0.1";
+  if (trimmed.includes('/')) {
+    return trimmed.split('/')[0] || '127.0.0.1'
   }
-  if (trimmed.includes(":")) {
-    return trimmed.split(":")[0] || "127.0.0.1";
+  if (trimmed.includes(':')) {
+    return trimmed.split(':')[0] || '127.0.0.1'
   }
-  return trimmed;
+  return trimmed
 }
 
-function normalizePort(value) {
-  const num = Number(value);
-  return Number.isFinite(num) && num > 0 ? num : null;
+function normalizePort (value) {
+  const num = Number(value)
+  return Number.isFinite(num) && num > 0 ? num : null
 }
 
-function extractPort(value) {
-  if (!value || typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
+function extractPort (value) {
+  if (!value || typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
   try {
-    if (trimmed.includes("://")) {
-      const parsed = new URL(trimmed);
-      if (parsed.port) return Number(parsed.port);
+    if (trimmed.includes('://')) {
+      const parsed = new URL(trimmed)
+      if (parsed.port) return Number(parsed.port)
     }
   } catch {}
-  if (trimmed.includes(":")) {
-    const parts = trimmed.split(":");
-    const port = Number(parts[1]);
-    return Number.isFinite(port) ? port : null;
+  if (trimmed.includes(':')) {
+    const parts = trimmed.split(':')
+    const port = Number(parts[1])
+    return Number.isFinite(port) ? port : null
   }
-  return null;
+  return null
 }
 
-function getResponseHost(session) {
+function getResponseHost (session) {
   // Holesail creates a P2P tunnel that makes peers appear on the same local network
   // Clients should ALWAYS connect to localhost, regardless of secure/public mode
   // The holesail library handles the tunneling transparently
-  return "127.0.0.1";
+  return '127.0.0.1'
 }
 
-export async function createHandler() {
-  return async function protocolHandler(req) {
-    const { url, method } = req;
-    const urlObj = new URL(url);
-    const action = urlObj.searchParams.get("action");
+export async function createHandler () {
+  return async function protocolHandler (req) {
+    const { url, method } = req
+    const urlObj = new URL(url)
+    const action = urlObj.searchParams.get('action')
 
-    if (urlObj.hostname !== "p2pmd") {
-      return buildTextResponse(404, "Unknown hs target");
+    if (urlObj.hostname !== 'p2pmd') {
+      return buildTextResponse(404, 'Unknown hs target')
     }
 
-    if (method === "POST" && action === "create") {
+    if (method === 'POST' && action === 'create') {
       // SECURITY: Rate limit room creation (5 per minute)
       if (!checkRateLimit('create', 5, 60000)) {
-        return buildJsonResponse(429, { error: "Too many requests. Please wait before creating another room." });
+        return buildJsonResponse(429, { error: 'Too many requests. Please wait before creating another room.' })
       }
 
-      const body = await req.json();
-      const secure = parseBoolean(body.secure, false);
-      const udp = parseBoolean(body.udp, false);
-      const host = normalizeHost(body.host);
-      const port = normalizePort(body.port);
+      const body = await req.json()
+      const secure = parseBoolean(body.secure, false)
+      const udp = parseBoolean(body.udp, false)
+      const host = normalizeHost(body.host)
+      const port = normalizePort(body.port)
       if (DEBUG) {
-        log.info("[p2pmd] create request", { secure, udp, host, port });
+        log.info('[p2pmd] create request', { secure, udp, host, port })
       }
 
-      const sessionState = createSession();
-      const { host: boundHost, port: boundPort } = await ensureDocServer(sessionState, host, port, secure);
-      await stopHolesailServer(sessionState);
+      const sessionState = createSession()
+      const { host: boundHost, port: boundPort } = await ensureDocServer(sessionState, host, port, secure)
+      await stopHolesailServer(sessionState)
       // Pass 127.0.0.1 to holesail so clients connect to localhost
       // Holesail forwards tunnel traffic to this address, and stores it on DHT for clients
       const holesailServer = new Holesail({
         server: true,
         secure,
         udp,
-        host: "127.0.0.1",
+        host: '127.0.0.1',
         port: boundPort,
         log: 1
-      });
-      await holesailServer.ready();
-      const roomKey = holesailServer.info?.url || null;
+      })
+      await holesailServer.ready()
+      const roomKey = holesailServer.info?.url || null
       // SECURITY: Redact sensitive data in logs
-      log.info("[p2pmd] holesail server ready", { key: redactKey(roomKey), port: boundPort });
+      log.info('[p2pmd] holesail server ready', { key: redactKey(roomKey), port: boundPort })
       if (DEBUG) {
-        log.info("  Connection string:", roomKey);
-        log.info("  DHT key:", holesailServer.info?.key);
+        log.info('  Connection string:', roomKey)
+        log.info('  DHT key:', holesailServer.info?.key)
       }
-      sessionState.key = roomKey;
-      sessionState.holesailServer = holesailServer;
-      initSessionCrdt(sessionState);
+      sessionState.key = roomKey
+      sessionState.holesailServer = holesailServer
+      initSessionCrdt(sessionState)
       // Extract seed from holesail-server so we can recreate with the same key later
-      const serverSeed = holesailServer.dht?.seed ? holesailServer.dht.seed.toString("hex") : null;
+      const serverSeed = holesailServer.dht?.seed ? holesailServer.dht.seed.toString('hex') : null
       if (roomKey) {
-        roomSessions.set(roomKey, sessionState);
+        roomSessions.set(roomKey, sessionState)
         // Save port + seed now that we have the key (seed will be encrypted)
-        roomPorts.set(roomKey, { port: boundPort, seed: serverSeed });
-        savePortsToFile();
-        log.info("[p2pmd] saved port+seed for room", { key: redactKey(roomKey), port: boundPort });
+        roomPorts.set(roomKey, { port: boundPort, seed: serverSeed })
+        savePortsToFile()
+        log.info('[p2pmd] saved port+seed for room', { key: redactKey(roomKey), port: boundPort })
       }
-      log.info("[p2pmd] create ready", { key: redactKey(roomKey), port: boundPort });
+      log.info('[p2pmd] create ready', { key: redactKey(roomKey), port: boundPort })
 
-      const responseHost = getResponseHost(sessionState);
+      const responseHost = getResponseHost(sessionState)
       return buildJsonResponse(200, {
         key: roomKey,
         localHost: responseHost,
@@ -1745,179 +1745,179 @@ export async function createHandler() {
         localUrl: `http://${responseHost}:${boundPort}`,
         secure,
         udp
-      });
+      })
     }
 
-    if (method === "POST" && action === "rehost") {
+    if (method === 'POST' && action === 'rehost') {
       // SECURITY: Rate limit rehost (10 per minute)
       if (!checkRateLimit('rehost', 10, 60000)) {
-        return buildJsonResponse(429, { error: "Too many requests. Please wait before rehosting." });
+        return buildJsonResponse(429, { error: 'Too many requests. Please wait before rehosting.' })
       }
 
-      const body = await req.json();
-      const key = body.key || "";
+      const body = await req.json()
+      const key = body.key || ''
       if (!key) {
-        return buildJsonResponse(400, { error: "Missing key" });
+        return buildJsonResponse(400, { error: 'Missing key' })
       }
-      const parsedKey = Holesail.urlParser(key);
-      const secure = body.secure === undefined ? parsedKey.secure === true : parseBoolean(body.secure, true);
-      const udp = parseBoolean(body.udp, false);
-      const host = normalizeHost(body.host);
-      const port = normalizePort(body.port);
-      const initialContent = typeof body.initialContent === "string" ? body.initialContent : "";
-      log.info("[p2pmd] rehost request", { key: redactKey(key), port, hasInitialContent: initialContent.length > 0 });
-      const initialYjsState = typeof body.initialYjsState === "string" ? body.initialYjsState : null;
+      const parsedKey = Holesail.urlParser(key)
+      const secure = body.secure === undefined ? parsedKey.secure === true : parseBoolean(body.secure, true)
+      const udp = parseBoolean(body.udp, false)
+      const host = normalizeHost(body.host)
+      const port = normalizePort(body.port)
+      const initialContent = typeof body.initialContent === 'string' ? body.initialContent : ''
+      log.info('[p2pmd] rehost request', { key: redactKey(key), port, hasInitialContent: initialContent.length > 0 })
+      const initialYjsState = typeof body.initialYjsState === 'string' ? body.initialYjsState : null
 
-      let sessionState = getExistingSession(key);
+      let sessionState = getExistingSession(key)
       if (sessionState) {
-        await stopHolesailServer(sessionState);
-        await stopHolesailClient(sessionState);
-        await stopDocServer(sessionState);
+        await stopHolesailServer(sessionState)
+        await stopHolesailClient(sessionState)
+        await stopDocServer(sessionState)
       } else {
-        sessionState = createSession(key);
-        roomSessions.set(key, sessionState);
+        sessionState = createSession(key)
+        roomSessions.set(key, sessionState)
       }
-      const { host: boundHost, port: boundPort } = await ensureDocServer(sessionState, host, port, secure);
-      
+      const { host: boundHost, port: boundPort } = await ensureDocServer(sessionState, host, port, secure)
+
       if (initialContent) {
-        sessionState.docState.content = initialContent;
-        sessionState.docState.updatedAt = Date.now();
+        sessionState.docState.content = initialContent
+        sessionState.docState.updatedAt = Date.now()
       }
       // Keep Y.Doc with peer edits if it exists
-      initSessionCrdt(sessionState, sessionState.docState.content, initialYjsState, true);
-      
+      initSessionCrdt(sessionState, sessionState.docState.content, initialYjsState, true)
+
       // Use localhost for holesail and restore original seed for same room URL
-      const savedReHostEntry = roomPorts.get(key) || null;
-      const savedSeedBuffer = savedReHostEntry?.seed ? Buffer.from(savedReHostEntry.seed, 'hex') : null;
+      const savedReHostEntry = roomPorts.get(key) || null
+      const savedSeedBuffer = savedReHostEntry?.seed ? Buffer.from(savedReHostEntry.seed, 'hex') : null
       const holesailServer = new Holesail({
         server: true,
         secure,
         udp,
-        host: "127.0.0.1",
+        host: '127.0.0.1',
         port: boundPort,
         ...(savedSeedBuffer ? {} : { key }),
         log: 1
-      });
+      })
       if (savedSeedBuffer) {
-        holesailServer.seed = savedSeedBuffer;
+        holesailServer.seed = savedSeedBuffer
       }
-      await holesailServer.ready();
-      const roomKey = holesailServer.info?.url || key;
-      log.info("[p2pmd] rehost server ready", { key: redactKey(roomKey), port: boundPort });
+      await holesailServer.ready()
+      const roomKey = holesailServer.info?.url || key
+      log.info('[p2pmd] rehost server ready', { key: redactKey(roomKey), port: boundPort })
       if (roomKey !== key) {
-        roomSessions.delete(key);
+        roomSessions.delete(key)
       }
-      sessionState.key = roomKey;
-      sessionState.holesailServer = holesailServer;
-      roomSessions.set(roomKey, sessionState);
+      sessionState.key = roomKey
+      sessionState.holesailServer = holesailServer
+      roomSessions.set(roomKey, sessionState)
       // Save seed for rehosted rooms so auto-rehost works after disconnect (will be encrypted)
-      const serverSeed = holesailServer.dht?.seed ? holesailServer.dht.seed.toString("hex") : null;
+      const serverSeed = holesailServer.dht?.seed ? holesailServer.dht.seed.toString('hex') : null
       if (roomKey) {
-        roomPorts.set(roomKey, { port: boundPort, seed: serverSeed });
-        savePortsToFile();
+        roomPorts.set(roomKey, { port: boundPort, seed: serverSeed })
+        savePortsToFile()
       }
-      log.info("[p2pmd] rehost ready", { key: redactKey(roomKey), port: boundPort });
+      log.info('[p2pmd] rehost ready', { key: redactKey(roomKey), port: boundPort })
 
-      const responseHost = getResponseHost(sessionState);
-      return buildJsonResponse( 200, {
+      const responseHost = getResponseHost(sessionState)
+      return buildJsonResponse(200, {
         key: roomKey,
         localHost: responseHost,
         localPort: boundPort,
         localUrl: `http://${responseHost}:${boundPort}`,
         secure,
         udp
-      });
+      })
     }
 
-    if (method === "POST" && action === "resume") {
-      const body = await req.json();
-      const key = body.key || "";
-      const sessionState = key ? getExistingSession(key) : (roomSessions.size === 1 ? Array.from(roomSessions.values())[0] : null);
+    if (method === 'POST' && action === 'resume') {
+      const body = await req.json()
+      const key = body.key || ''
+      const sessionState = key ? getExistingSession(key) : (roomSessions.size === 1 ? Array.from(roomSessions.values())[0] : null)
       if (!sessionState || !sessionState.server) {
-        return buildJsonResponse(404, { error: "No active room" });
+        return buildJsonResponse(404, { error: 'No active room' })
       }
-      const responseHost = getResponseHost(sessionState);
-      return buildJsonResponse( 200, {
+      const responseHost = getResponseHost(sessionState)
+      return buildJsonResponse(200, {
         key: sessionState.key,
         localHost: responseHost,
         localPort: sessionState.port,
         localUrl: `http://${responseHost}:${sessionState.port}`,
         secure: sessionState.holesailServer?.info?.secure,
         udp: sessionState.holesailServer?.info?.udp
-      });
+      })
     }
 
-    if (method === "POST" && action === "join") {
-      const body = await req.json();
-      const key = body.key || "";
+    if (method === 'POST' && action === 'join') {
+      const body = await req.json()
+      const key = body.key || ''
       if (!key) {
-        return buildJsonResponse(400, { error: "Missing key" });
+        return buildJsonResponse(400, { error: 'Missing key' })
       }
 
-      const parsedKey = Holesail.urlParser(key);
-      const secure = body.secure === undefined ? null : parseBoolean(body.secure, true);
-      const udp = body.udp === undefined ? null : parseBoolean(body.udp, false);
-      const hostValue = typeof body.host === "string" ? body.host : "";
-      const extractedPort = extractPort(hostValue);
-      const portInput = normalizePort(body.port);
-      const host = hostValue ? normalizeHost(hostValue) : null;
-      const keyPort = parsedKey?.port || null;
-      const port = keyPort || extractedPort || portInput || null;
-      log.info("[p2pmd] join request", { key: redactKey(key), port });
+      const parsedKey = Holesail.urlParser(key)
+      const secure = body.secure === undefined ? null : parseBoolean(body.secure, true)
+      const udp = body.udp === undefined ? null : parseBoolean(body.udp, false)
+      const hostValue = typeof body.host === 'string' ? body.host : ''
+      const extractedPort = extractPort(hostValue)
+      const portInput = normalizePort(body.port)
+      const host = hostValue ? normalizeHost(hostValue) : null
+      const keyPort = parsedKey?.port || null
+      const port = keyPort || extractedPort || portInput || null
+      log.info('[p2pmd] join request', { key: redactKey(key), port })
 
       // If this room already has a running holesail server, don't destroy it.
       // This happens when the page reloads after creating a room.
-      let sessionState = getExistingSession(key);
+      let sessionState = getExistingSession(key)
       if (sessionState?.holesailServer && sessionState.server) {
-        const responseHost = getResponseHost(sessionState);
-        const localUrl = `http://${responseHost}:${sessionState.port}`;
-        log.info("[p2pmd] join: server already running", { key: redactKey(key), port: sessionState.port });
+        const responseHost = getResponseHost(sessionState)
+        const localUrl = `http://${responseHost}:${sessionState.port}`
+        log.info('[p2pmd] join: server already running', { key: redactKey(key), port: sessionState.port })
         return buildJsonResponse(200, {
           key,
           localHost: responseHost,
           localPort: sessionState.port,
           localUrl
-        });
+        })
       }
 
       // If this device has a saved port+seed for this room (creator), automatically rehost on the same port with the same seed
-      const savedEntry = roomPorts.get(key) || null;
-      const resolvedSecure = secure === null ? (parsedKey.secure === true) : secure;
-      const resolvedUdp = udp === null ? parseBoolean(parsedKey.udp, false) : udp;
-      const savedSeedBuffer = savedEntry?.seed ? Buffer.from(savedEntry.seed, 'hex') : null;
+      const savedEntry = roomPorts.get(key) || null
+      const resolvedSecure = secure === null ? (parsedKey.secure === true) : secure
+      const resolvedUdp = udp === null ? parseBoolean(parsedKey.udp, false) : udp
+      const savedSeedBuffer = savedEntry?.seed ? Buffer.from(savedEntry.seed, 'hex') : null
       if (savedSeedBuffer && !sessionState?.holesailServer && !sessionState?.holesailClient) {
         if (!sessionState) {
-          sessionState = createSession(key);
-          roomSessions.set(key, sessionState);
+          sessionState = createSession(key)
+          roomSessions.set(key, sessionState)
         } else {
-          await stopHolesailServer(sessionState);
-          await stopHolesailClient(sessionState);
-          await stopDocServer(sessionState);
+          await stopHolesailServer(sessionState)
+          await stopHolesailClient(sessionState)
+          await stopDocServer(sessionState)
         }
-        const { host: boundHost, port: boundPort } = await ensureDocServer(sessionState, "127.0.0.1", savedEntry.port, resolvedSecure);
+        const { host: boundHost, port: boundPort } = await ensureDocServer(sessionState, '127.0.0.1', savedEntry.port, resolvedSecure)
         // Create Holesail server WITHOUT key, then inject the saved seed before ready()
         // This makes Holesail generate the exact same keypair → same key → same connection string
         const holesailServer = new Holesail({
           server: true,
           secure: resolvedSecure,
           udp: resolvedUdp,
-          host: "127.0.0.1",
+          host: '127.0.0.1',
           port: boundPort,
           log: 1
-        });
-        holesailServer.seed = savedSeedBuffer;
-        await holesailServer.ready();
-        const rehostedKey = holesailServer.info?.url || key;
+        })
+        holesailServer.seed = savedSeedBuffer
+        await holesailServer.ready()
+        const rehostedKey = holesailServer.info?.url || key
         if (rehostedKey !== key) {
-          roomSessions.delete(key);
+          roomSessions.delete(key)
         }
-        sessionState.key = rehostedKey;
-        sessionState.holesailServer = holesailServer;
-        roomSessions.set(rehostedKey, sessionState);
-        log.info("[p2pmd] join: auto-rehosted existing room", { key: redactKey(rehostedKey), port: boundPort });
+        sessionState.key = rehostedKey
+        sessionState.holesailServer = holesailServer
+        roomSessions.set(rehostedKey, sessionState)
+        log.info('[p2pmd] join: auto-rehosted existing room', { key: redactKey(rehostedKey), port: boundPort })
         // Keep Y.Doc with peer edits if it exists
-        initSessionCrdt(sessionState, sessionState.docState.content, null, true);
-        const responseHost = getResponseHost(sessionState);
+        initSessionCrdt(sessionState, sessionState.docState.content, null, true)
+        const responseHost = getResponseHost(sessionState)
         return buildJsonResponse(200, {
           key: sessionState.key,
           localHost: responseHost,
@@ -1925,83 +1925,82 @@ export async function createHandler() {
           localUrl: `http://${responseHost}:${boundPort}`,
           secure: resolvedSecure,
           udp: resolvedUdp
-        });
+        })
       }
 
       if (sessionState) {
-        await stopHolesailServer(sessionState);
-        await stopHolesailClient(sessionState);
-        await stopDocServer(sessionState);
+        await stopHolesailServer(sessionState)
+        await stopHolesailClient(sessionState)
+        await stopDocServer(sessionState)
       } else {
-        sessionState = createSession(key);
-        roomSessions.set(key, sessionState);
+        sessionState = createSession(key)
+        roomSessions.set(key, sessionState)
       }
 
       // For a pure client join, do NOT start a local doc server. Just create a Holesail client
       // and let it bind the local proxy port. If the user provided a port, honor it; otherwise
       // allow Holesail to choose (which typically mirrors the server's port).
-      const requestedPort = port || savedEntry?.port || null;
-      const finalHost = host || "127.0.0.1";
+      const requestedPort = port || savedEntry?.port || null
+      const finalHost = host || '127.0.0.1'
       const clientOptions = {
         client: true,
         key,
         host: finalHost,
         log: 1
-      };
-      if (secure !== null) clientOptions.secure = secure;
-      if (udp !== null) clientOptions.udp = udp;
-      if (requestedPort) clientOptions.port = requestedPort;
-      if (DEBUG) {
-        log.info("[p2pmd] join creating client", { port: requestedPort });
       }
-      const holesailClient = new Holesail(clientOptions);
-      sessionState.holesailClient = holesailClient;
-      await holesailClient.ready();
-      const boundPort = holesailClient.info?.port || requestedPort || 0;
-      sessionState.port = boundPort;
-      log.info("[p2pmd] join client ready", { port: boundPort });
+      if (secure !== null) clientOptions.secure = secure
+      if (udp !== null) clientOptions.udp = udp
+      if (requestedPort) clientOptions.port = requestedPort
       if (DEBUG) {
-        log.info("  Client info:", JSON.stringify(holesailClient.info, null, 2));
+        log.info('[p2pmd] join creating client', { port: requestedPort })
+      }
+      const holesailClient = new Holesail(clientOptions)
+      sessionState.holesailClient = holesailClient
+      await holesailClient.ready()
+      const boundPort = holesailClient.info?.port || requestedPort || 0
+      sessionState.port = boundPort
+      log.info('[p2pmd] join client ready', { port: boundPort })
+      if (DEBUG) {
+        log.info('  Client info:', JSON.stringify(holesailClient.info, null, 2))
       }
 
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 500))
 
-      const responseHost = getResponseHost(sessionState);
-      const localUrl = `http://${responseHost}:${boundPort}`;
-      log.info("[p2pmd] join ready", { key: redactKey(key), port: boundPort });
-      
+      const responseHost = getResponseHost(sessionState)
+      const localUrl = `http://${responseHost}:${boundPort}`
+      log.info('[p2pmd] join ready', { key: redactKey(key), port: boundPort })
+
       return buildJsonResponse(200, {
         key,
         localHost: responseHost,
         localPort: boundPort,
         localUrl
-      });
+      })
     }
 
-    if (method === "POST" && action === "close") {
-      const body = await req.json();
-      const key = body.key || "";
+    if (method === 'POST' && action === 'close') {
+      const body = await req.json()
+      const key = body.key || ''
       if (key) {
-        const sessionState = getExistingSession(key);
+        const sessionState = getExistingSession(key)
         if (!sessionState) {
-          return buildJsonResponse(404, { error: "Room not found" });
+          return buildJsonResponse(404, { error: 'Room not found' })
         }
-        await stopHolesailClient(sessionState);
-        await stopHolesailServer(sessionState);
-        await stopDocServer(sessionState);
-        roomSessions.delete(key);
-        return buildJsonResponse(200, { ok: true });
+        await stopHolesailClient(sessionState)
+        await stopHolesailServer(sessionState)
+        await stopDocServer(sessionState)
+        roomSessions.delete(key)
+        return buildJsonResponse(200, { ok: true })
       }
       for (const sessionState of roomSessions.values()) {
-        await stopHolesailClient(sessionState);
-        await stopHolesailServer(sessionState);
-        await stopDocServer(sessionState);
+        await stopHolesailClient(sessionState)
+        await stopHolesailServer(sessionState)
+        await stopDocServer(sessionState)
       }
-      roomSessions.clear();
-      return buildJsonResponse(200, { ok: true });
+      roomSessions.clear()
+      return buildJsonResponse(200, { ok: true })
     }
 
-    return buildJsonResponse(404, { error: "Unknown action" });
-  };
+    return buildJsonResponse(404, { error: 'Unknown action' })
+  }
 }
-

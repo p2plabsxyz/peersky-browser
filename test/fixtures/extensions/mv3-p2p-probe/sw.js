@@ -1,35 +1,35 @@
-﻿async function probeFetch(url, init) {
+async function probeFetch (url, init) {
   try {
-    const response = await fetch(url, init);
+    const response = await fetch(url, init)
     return {
       status: response.status,
       ok: response.ok,
-      error: null,
-    };
+      error: null
+    }
   } catch (error) {
     return {
       status: null,
       ok: false,
-      error: String(error && error.message ? error.message : error),
-    };
+      error: String(error && error.message ? error.message : error)
+    }
   }
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (!message || message.type !== "probe") {
-    return;
+  if (!message || message.type !== 'probe') {
+    return
   }
 
   (async () => {
-    const current = await chrome.storage.local.get("probeRuns");
-    const probeRuns = (current && current.probeRuns ? current.probeRuns : 0) + 1;
-    await chrome.storage.local.set({ probeRuns });
+    const current = await chrome.storage.local.get('probeRuns')
+    const probeRuns = (current && current.probeRuns ? current.probeRuns : 0) + 1
+    await chrome.storage.local.set({ probeRuns })
 
-    const peersky = await probeFetch("peersky://home");
-    const hyper = await probeFetch("hyper://fixture/hello.txt");
-    const ipfs = await probeFetch("ipfs://bafyfixture/index.html");
-    const hyperWrite = await probeFetch("hyper://fixture/write.txt", { method: "PUT", body: "blocked-write" });
-    const ipfsWrite = await probeFetch("ipfs://bafyfixture/write.txt", { method: "PUT", body: "blocked-write" });
+    const peersky = await probeFetch('peersky://home')
+    const hyper = await probeFetch('hyper://fixture/hello.txt')
+    const ipfs = await probeFetch('ipfs://bafyfixture/index.html')
+    const hyperWrite = await probeFetch('hyper://fixture/write.txt', { method: 'PUT', body: 'blocked-write' })
+    const ipfsWrite = await probeFetch('ipfs://bafyfixture/write.txt', { method: 'PUT', body: 'blocked-write' })
 
     sendResponse({
       probeRuns,
@@ -45,10 +45,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       hyperWriteStatus: hyperWrite.status,
       hyperWriteError: hyperWrite.error,
       ipfsWriteStatus: ipfsWrite.status,
-      ipfsWriteError: ipfsWrite.error,
-    });
+      ipfsWriteError: ipfsWrite.error
+    })
   })().catch((error) => {
-    const fallbackError = String(error && error.message ? error.message : error);
+    const fallbackError = String(error && error.message ? error.message : error)
     sendResponse({
       probeRuns: -1,
       peerskyStatus: null,
@@ -63,9 +63,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       hyperWriteStatus: null,
       hyperWriteError: fallbackError,
       ipfsWriteStatus: null,
-      ipfsWriteError: fallbackError,
-    });
-  });
+      ipfsWriteError: fallbackError
+    })
+  })
 
-  return true;
-});
+  return true
+})

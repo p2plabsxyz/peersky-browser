@@ -1,225 +1,225 @@
 /**
  * Extension Popup Guards
- * 
+ *
  * This module provides navigation guards for extension popups to:
  * 1. Handle OAuth flows properly (maintain window.opener)
  * 2. Protect popups from being closed during stabilization period
  * 3. Allow extension popups to open child windows freely (for login flows)
- * 
+ *
  * @module popup-guards
  */
 
-import { app } from 'electron';
-import { openUrlInPeerskyTab } from './open-url-in-browser-tab.js';
+import { app } from 'electron'
+import { openUrlInPeerskyTab } from './open-url-in-browser-tab.js'
 
 // Popup stabilization period - prevent closing for this duration after creation
-const POPUP_STABILIZATION_MS = 2000;
+const POPUP_STABILIZATION_MS = 2000
 
 // Window in which a focus-triggered close collapses with the incoming open
 // request for the same extension (click same icon to toggle off).
-const FOCUS_CLOSE_TOGGLE_MS = 250;
+const FOCUS_CLOSE_TOGGLE_MS = 250
 
 // Track popup windows with their creation timestamps
-const popupCreationTimes = new WeakMap();
+const popupCreationTimes = new WeakMap()
 
 // Track which windows are extension-related
-const extensionRelatedWindows = new WeakSet();
+const extensionRelatedWindows = new WeakSet()
 
 // actionId -> timestamp of the most recent focus-triggered close.
-const recentFocusCloses = new Map();
+const recentFocusCloses = new Map()
 
 /**
  * Check if a popup is in its stabilization period (should not be closed)
  */
-export function isPopupStabilizing(popup) {
-  if (!popup || popup.isDestroyed()) return false;
-  const createdAt = popupCreationTimes.get(popup);
-  if (!createdAt) return false;
-  return (Date.now() - createdAt) < POPUP_STABILIZATION_MS;
+export function isPopupStabilizing (popup) {
+  if (!popup || popup.isDestroyed()) return false
+  const createdAt = popupCreationTimes.get(popup)
+  if (!createdAt) return false
+  return (Date.now() - createdAt) < POPUP_STABILIZATION_MS
 }
 
 /**
  * Returns true once if this extension's popup was closed by a focus change in
  * the last FOCUS_CLOSE_TOGGLE_MS. The entry is always cleared on read.
  */
-export function consumeRecentFocusClose(actionId) {
-  if (!actionId) return false;
-  const t = recentFocusCloses.get(actionId);
-  if (!t) return false;
-  recentFocusCloses.delete(actionId);
-  return (Date.now() - t) < FOCUS_CLOSE_TOGGLE_MS;
+export function consumeRecentFocusClose (actionId) {
+  if (!actionId) return false
+  const t = recentFocusCloses.get(actionId)
+  if (!t) return false
+  recentFocusCloses.delete(actionId)
+  return (Date.now() - t) < FOCUS_CLOSE_TOGGLE_MS
 }
 
 /**
  * Register a popup for stabilization tracking
  */
-export function registerPopupForStabilization(popup) {
-  if (!popup || popup.isDestroyed()) return;
-  popupCreationTimes.set(popup, Date.now());
-  extensionRelatedWindows.add(popup);
-  console.log('[PopupGuards] Registered popup for stabilization tracking');
+export function registerPopupForStabilization (popup) {
+  if (!popup || popup.isDestroyed()) return
+  popupCreationTimes.set(popup, Date.now())
+  extensionRelatedWindows.add(popup)
+  console.log('[PopupGuards] Registered popup for stabilization tracking')
 }
 
 /**
  * Check if a URL is an extension URL
  */
-function isExtensionUrl(url) {
-  if (!url) return false;
-  return url.startsWith('chrome-extension://');
+function isExtensionUrl (url) {
+  if (!url) return false
+  return url.startsWith('chrome-extension://')
 }
 
-async function openExtensionUrlInTab(url) {
+async function openExtensionUrlInTab (url) {
   try {
-    const opened = await openUrlInPeerskyTab(url, 'Extension Page');
+    const opened = await openUrlInPeerskyTab(url, 'Extension Page')
     if (!opened) {
-      console.warn('[PopupGuards] No window with tabbar found for extension URL');
+      console.warn('[PopupGuards] No window with tabbar found for extension URL')
     }
   } catch (e) {
-    console.error('[PopupGuards] Failed to open extension URL in tab:', e);
+    console.error('[PopupGuards] Failed to open extension URL in tab:', e)
   }
 }
 
 /**
  * Install popup navigation guards on the extension manager
  */
-export function installExtensionPopupGuards(manager) {
+export function installExtensionPopupGuards (manager) {
   if (!manager || !manager.app) {
-    console.warn('[PopupGuards] No manager or app provided');
-    return;
+    console.warn('[PopupGuards] No manager or app provided')
+    return
   }
 
-  console.log('[PopupGuards] Installing extension popup guards...');
+  console.log('[PopupGuards] Installing extension popup guards...')
 
   // Close extension popups when focus moves elsewhere (outside click)
   if (!manager.__peerskyPopupFocusHandlerInstalled) {
-    manager.__peerskyPopupFocusHandlerInstalled = true;
+    manager.__peerskyPopupFocusHandlerInstalled = true
     app.on('browser-window-focus', (_event, focusedWindow) => {
-      const popups = manager.activePopups;
-      if (!popups || popups.size === 0) return;
+      const popups = manager.activePopups
+      if (!popups || popups.size === 0) return
       for (const popup of [...popups]) {
         if (!popup || popup.isDestroyed()) {
-          popups.delete(popup);
-          continue;
+          popups.delete(popup)
+          continue
         }
-        if (focusedWindow && popup === focusedWindow) continue;
+        if (focusedWindow && popup === focusedWindow) continue
         // Close when focus moves to any other window
-        if (isPopupStabilizing(popup)) continue;
+        if (isPopupStabilizing(popup)) continue
 
-        const extId = manager.popupToExtensionId?.get(popup);
-        if (extId) recentFocusCloses.set(extId, Date.now());
+        const extId = manager.popupToExtensionId?.get(popup)
+        if (extId) recentFocusCloses.set(extId, Date.now())
 
-        try { popup.close(); } catch (_) { }
+        try { popup.close() } catch (_) { }
       }
-    });
+    })
   }
 
   // Override closeAllPopups to respect stabilization period
-  const originalCloseAllPopups = manager.closeAllPopups?.bind(manager);
+  const originalCloseAllPopups = manager.closeAllPopups?.bind(manager)
   if (originalCloseAllPopups) {
     manager.closeAllPopups = function (force = false) {
-      if (!this.activePopups || this.activePopups.size === 0) return;
+      if (!this.activePopups || this.activePopups.size === 0) return
 
       // Check for stabilizing popups
       const stabilizing = [...this.activePopups].filter(p =>
         !p.isDestroyed() && isPopupStabilizing(p)
-      );
+      )
 
       if (stabilizing.length > 0 && !force) {
-        console.log(`[PopupGuards] ${stabilizing.length} popup(s) stabilizing, skipping close`);
+        console.log(`[PopupGuards] ${stabilizing.length} popup(s) stabilizing, skipping close`)
 
         // Only close non-stabilizing popups
         for (const popup of this.activePopups) {
           if (popup.isDestroyed()) {
-            this.activePopups.delete(popup);
-            continue;
+            this.activePopups.delete(popup)
+            continue
           }
           if (!isPopupStabilizing(popup)) {
-            try { popup.close(); } catch (_) { }
+            try { popup.close() } catch (_) { }
           }
         }
-        return;
+        return
       }
 
       // Otherwise call original
-      originalCloseAllPopups();
-    };
+      originalCloseAllPopups()
+    }
   }
 
   // Track ALL browser windows created - register extension-related ones for stabilization
   app.on('browser-window-created', (_event, newWindow) => {
     // Check parent window - if parent is extension-related, child is too
-    const parent = newWindow.getParentWindow?.();
+    const parent = newWindow.getParentWindow?.()
     if (parent && extensionRelatedWindows.has(parent)) {
-      registerPopupForStabilization(newWindow);
+      registerPopupForStabilization(newWindow)
       if (manager.activePopups) {
-        manager.activePopups.add(newWindow);
-        newWindow.on('closed', () => manager.activePopups.delete(newWindow));
+        manager.activePopups.add(newWindow)
+        newWindow.on('closed', () => manager.activePopups.delete(newWindow))
       }
-      console.log('[PopupGuards] Child popup of extension window registered');
+      console.log('[PopupGuards] Child popup of extension window registered')
     }
 
     // Also check URL once loaded
     newWindow.webContents.once('did-finish-load', () => {
-      const url = newWindow.webContents.getURL();
+      const url = newWindow.webContents.getURL()
       if (isExtensionUrl(url)) {
-        registerPopupForStabilization(newWindow);
+        registerPopupForStabilization(newWindow)
         if (manager.activePopups) {
-          manager.activePopups.add(newWindow);
-          newWindow.on('closed', () => manager.activePopups.delete(newWindow));
+          manager.activePopups.add(newWindow)
+          newWindow.on('closed', () => manager.activePopups.delete(newWindow))
         }
       }
-    });
+    })
 
     // Register on did-start-navigation too (catches about:blank -> URL transitions)
     newWindow.webContents.once('did-start-navigation', (_e, url) => {
       if (isExtensionUrl(url) && !popupCreationTimes.has(newWindow)) {
-        registerPopupForStabilization(newWindow);
+        registerPopupForStabilization(newWindow)
         if (manager.activePopups) {
-          manager.activePopups.add(newWindow);
-          newWindow.on('closed', () => manager.activePopups.delete(newWindow));
+          manager.activePopups.add(newWindow)
+          newWindow.on('closed', () => manager.activePopups.delete(newWindow))
         }
       }
-    });
-  });
+    })
+  })
 
   // For extension popup web contents: allow ALL window.open calls
   // Don't be restrictive - extensions need to open login popups freely
   manager.app.on('web-contents-created', (_e, wc) => {
-    if (wc.__peerskyPopupGuardsInstalled) return;
-    wc.__peerskyPopupGuardsInstalled = true;
+    if (wc.__peerskyPopupGuardsInstalled) return
+    wc.__peerskyPopupGuardsInstalled = true
 
-    let isFromExtension = false;
+    let isFromExtension = false
 
     // Track if this web contents is from an extension
     wc.on('did-start-navigation', (_evt, url, _isInPlace, isMainFrame) => {
       if (isMainFrame && isExtensionUrl(url)) {
-        isFromExtension = true;
+        isFromExtension = true
       }
-    });
+    })
 
     // Allow all popups from extension contexts - don't block anything
     // The context-menu.js already has proper rate limiting for webviews
     wc.setWindowOpenHandler((details) => {
-      const { url } = details;
+      const { url } = details
 
       // If from extension, handle window.open requests
       if (isFromExtension) {
         // chrome-extension:// pages (like ArchiveWeb.page's index.html) should
         // open as proper browser tabs, matching Chrome's behaviour.
         if (isExtensionUrl(url)) {
-          openExtensionUrlInTab(url);
-          return { action: 'deny' };
+          openExtensionUrlInTab(url)
+          return { action: 'deny' }
         }
 
         // Non-extension URLs (OAuth login popups, etc.) still open as popup windows
         // Register the new window for stabilization when it's created
         app.once('browser-window-created', (_evt, newWin) => {
-          registerPopupForStabilization(newWin);
+          registerPopupForStabilization(newWin)
           if (manager.activePopups) {
-            manager.activePopups.add(newWin);
-            newWin.on('closed', () => manager.activePopups.delete(newWin));
+            manager.activePopups.add(newWin)
+            newWin.on('closed', () => manager.activePopups.delete(newWin))
           }
-        });
+        })
 
         return {
           action: 'allow',
@@ -230,18 +230,18 @@ export function installExtensionPopupGuards(manager) {
               nodeIntegration: false,
               contextIsolation: true,
               sandbox: true,
-              nativeWindowOpen: true,  // CRITICAL for window.opener
+              nativeWindowOpen: true // CRITICAL for window.opener
             }
           }
-        };
+        }
       }
 
       // For non-extension contexts, allow by default (let context-menu.js handle)
-      return { action: 'allow' };
-    });
-  });
+      return { action: 'allow' }
+    })
+  })
 
-  console.log('[PopupGuards] Extension popup guards installed');
+  console.log('[PopupGuards] Extension popup guards installed')
 }
 
-export default { installExtensionPopupGuards, isPopupStabilizing, registerPopupForStabilization, consumeRecentFocusClose };
+export default { installExtensionPopupGuards, isPopupStabilizing, registerPopupForStabilization, consumeRecentFocusClose }

@@ -1,40 +1,40 @@
-import fs from "fs-extra";
-import { createLogger } from '../logger.js';
-import path from "path";
-import mime from "mime-types";
-import { pathToFileURL } from "url";
+import fs from 'fs-extra'
+import { createLogger } from '../logger.js'
+import path from 'path'
+import mime from 'mime-types'
+import { pathToFileURL } from 'url'
 
-const log = createLogger('protocols:file');
+const log = createLogger('protocols:file')
 
-function generateDirectoryListing(dirPath, entries) {
-  const parentPath = path.dirname(dirPath);
-  const parentDirName = path.basename(parentPath) || 'Parent Directory';
+function generateDirectoryListing (dirPath, entries) {
+  const parentPath = path.dirname(dirPath)
+  const parentDirName = path.basename(parentPath) || 'Parent Directory'
 
   const sortedEntries = entries.sort((a, b) => {
-    if (a.isDirectory && !b.isDirectory) return -1;
-    if (!a.isDirectory && b.isDirectory) return 1;
-    return a.name.localeCompare(b.name);
-  });
+    if (a.isDirectory && !b.isDirectory) return -1
+    if (!a.isDirectory && b.isDirectory) return 1
+    return a.name.localeCompare(b.name)
+  })
 
   const rows = sortedEntries.map(entry => {
-    const icon = entry.isDirectory ? '📁' : '📄';
-    const name = entry.isDirectory ? entry.name + '/' : entry.name;
-    const size = entry.isDirectory ? '-' : formatBytes(entry.size);
-    const modified = new Date(entry.mtime).toLocaleString();
-    const fullPath = path.join(dirPath, entry.name);
-    let href = pathToFileURL(fullPath).href;
-    if (entry.isDirectory && !href.endsWith("/")) {
-      href += "/";
+    const icon = entry.isDirectory ? '📁' : '📄'
+    const name = entry.isDirectory ? entry.name + '/' : entry.name
+    const size = entry.isDirectory ? '-' : formatBytes(entry.size)
+    const modified = new Date(entry.mtime).toLocaleString()
+    const fullPath = path.join(dirPath, entry.name)
+    let href = pathToFileURL(fullPath).href
+    if (entry.isDirectory && !href.endsWith('/')) {
+      href += '/'
     }
-    
+
     return `
       <tr>
         <td><a href="${escapeHtml(href)}">${icon} ${escapeHtml(name)}</a></td>
         <td class="size">${size}</td>
         <td class="modified">${modified}</td>
       </tr>
-    `;
-  }).join('');
+    `
+  }).join('')
 
   return `<!DOCTYPE html>
 <html>
@@ -77,13 +77,15 @@ function generateDirectoryListing(dirPath, entries) {
       <th class="size">Size</th>
       <th class="modified">Date Modified</th>
     </tr>
-    ${parentPath !== dirPath ? `
+    ${parentPath !== dirPath
+? `
     <tr>
       <td><a href="${escapeHtml(pathToFileURL(parentPath).href)}">📁 [${escapeHtml(parentDirName)}]</a></td>
       <td class="size">-</td>
       <td class="modified">-</td>
     </tr>
-    ` : ''}
+    `
+: ''}
     ${rows}
   </table>
   
@@ -233,107 +235,107 @@ function generateDirectoryListing(dirPath, entries) {
     }
   </script>
 </body>
-</html>`;
+</html>`
 }
 
-function formatBytes(bytes, decimals = 1) {
-  if (bytes === 0) return '0 Bytes';
-  const k = 1024;
-  const dm = decimals < 0 ? 0 : decimals;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+function formatBytes (bytes, decimals = 1) {
+  if (bytes === 0) return '0 Bytes'
+  const k = 1024
+  const dm = decimals < 0 ? 0 : decimals
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i]
 }
 
-function escapeHtml(text) {
-  if (typeof text !== 'string') return '';
+function escapeHtml (text) {
+  if (typeof text !== 'string') return ''
   const map = {
     '&': '&amp;',
     '<': '&lt;',
     '>': '&gt;',
     '"': '&quot;',
     "'": '&#039;'
-  };
-  return text.replace(/[&<>"']/g, m => map[m]);
+  }
+  return text.replace(/[&<>"']/g, m => map[m])
 }
 
-export async function createHandler() {
-  async function getFilesRecursive(dirPath, basePath = '') {
-    const allFiles = [];
-    let entries;
+export async function createHandler () {
+  async function getFilesRecursive (dirPath, basePath = '') {
+    const allFiles = []
+    let entries
     try {
-      entries = await fs.readdir(dirPath, { withFileTypes: true });
+      entries = await fs.readdir(dirPath, { withFileTypes: true })
     } catch (error) {
     //   log.error(`Could not read directory: ${dirPath}`, error);
-      return []; // Return empty if directory is unreadable
+      return [] // Return empty if directory is unreadable
     }
 
     for (const entry of entries) {
-      const fullPath = path.join(dirPath, entry.name);
-      const relativePath = basePath ? path.join(basePath, entry.name) : entry.name;
+      const fullPath = path.join(dirPath, entry.name)
+      const relativePath = basePath ? path.join(basePath, entry.name) : entry.name
 
       if (entry.isDirectory()) {
-        const subFiles = await getFilesRecursive(fullPath, relativePath);
-        allFiles.push(...subFiles);
+        const subFiles = await getFilesRecursive(fullPath, relativePath)
+        allFiles.push(...subFiles)
       } else {
         try {
-          const stat = await fs.stat(fullPath);
+          const stat = await fs.stat(fullPath)
           allFiles.push({
             name: entry.name,
             path: fullPath,
             relativePath,
             size: stat.size,
             fileUrl: pathToFileURL(fullPath).href
-          });
+          })
         } catch (err) {
         //   log.error('Could not stat file:', fullPath, err);
         }
       }
     }
-    return allFiles;
+    return allFiles
   }
 
-  return async function handleFileProtocol(request) {
-    const url = new URL(request.url);
-    let filePath = decodeURIComponent(url.pathname);
+  return async function handleFileProtocol (request) {
+    const url = new URL(request.url)
+    let filePath = decodeURIComponent(url.pathname)
 
     // On Windows, pathname starts with a slash, e.g., /C:/Users/...
     if (process.platform === 'win32' && filePath.startsWith('/')) {
-      filePath = filePath.substring(1);
+      filePath = filePath.substring(1)
     }
 
     // log.info('File protocol request:', request.url, '-> decoded path:', filePath);
 
     try {
-      const stats = await fs.stat(filePath);
-    //   log.info('Path stats:', filePath, 'isDirectory:', stats.isDirectory(), 'isFile:', stats.isFile());
+      const stats = await fs.stat(filePath)
+      //   log.info('Path stats:', filePath, 'isDirectory:', stats.isDirectory(), 'isFile:', stats.isFile());
 
       if (stats.isDirectory()) {
         // Handle manifest requests first (used for publishing)
         if (url.searchParams.get('__publishManifest') === '1') {
-          const manifest = await getFilesRecursive(filePath, '');
+          const manifest = await getFilesRecursive(filePath, '')
           return new Response(JSON.stringify({ files: manifest }), {
             status: 200,
             headers: {
               'Content-Type': 'application/json; charset=utf-8',
               'Cache-Control': 'no-cache'
             }
-          });
+          })
         }
 
         // For directories, read entries for the current level to display
-        const dirEntries = await fs.readdir(filePath);
+        const dirEntries = await fs.readdir(filePath)
         const entryStats = await Promise.all(
           dirEntries.map(async (name) => {
             try {
-              const entryPath = path.join(filePath, name);
-              const stat = await fs.stat(entryPath);
-              
+              const entryPath = path.join(filePath, name)
+              const stat = await fs.stat(entryPath)
+
               // Hide entries that cannot be opened to avoid dead links (e.g. protected system folders).
               if (stat.isDirectory()) {
-                await fs.readdir(entryPath);
+                await fs.readdir(entryPath)
               } else {
-                await fs.access(entryPath, fs.constants.R_OK);
+                await fs.access(entryPath, fs.constants.R_OK)
               }
 
               return {
@@ -341,16 +343,16 @@ export async function createHandler() {
                 isDirectory: stat.isDirectory(),
                 size: stat.size,
                 mtime: stat.mtime
-              };
+              }
             } catch (err) {
-              return null; // Skip files we can't read
+              return null // Skip files we can't read
             }
           })
-        );
+        )
 
-        const validEntries = entryStats.filter(e => e !== null);
+        const validEntries = entryStats.filter(e => e !== null)
 
-        const html = generateDirectoryListing(filePath, validEntries);
+        const html = generateDirectoryListing(filePath, validEntries)
 
         return new Response(html, {
           status: 200,
@@ -358,58 +360,58 @@ export async function createHandler() {
             'Content-Type': 'text/html; charset=utf-8',
             'Cache-Control': 'no-cache'
           }
-        });
+        })
       } else {
         // For files, serve them directly with Range request support for streaming
-        let contentType = mime.lookup(filePath) || 'application/octet-stream';
+        let contentType = mime.lookup(filePath) || 'application/octet-stream'
 
         // Remap container types that Chromium won't play inline to compatible equivalents
         const mimeRemaps = {
           'video/x-matroska': 'video/webm', // MKV → WebM (same Matroska container)
           'video/quicktime': 'video/mp4', // MOV → MP4 (same H.264/AAC codecs)
-          'audio/x-flac': 'audio/flac', // normalize x-flac to standard flac
-        };
-        if (mimeRemaps[contentType]) contentType = mimeRemaps[contentType];
+          'audio/x-flac': 'audio/flac' // normalize x-flac to standard flac
+        }
+        if (mimeRemaps[contentType]) contentType = mimeRemaps[contentType]
 
-        const fileSize = stats.size;
-        const rangeHeader = request.headers.get('Range');
+        const fileSize = stats.size
+        const rangeHeader = request.headers.get('Range')
 
         // Force inline display for media files (prevents download dialog)
-        const isMedia = contentType.startsWith('video/') || contentType.startsWith('audio/');
+        const isMedia = contentType.startsWith('video/') || contentType.startsWith('audio/')
         const baseHeaders = {
           'Content-Type': contentType,
           'Accept-Ranges': 'bytes',
           'Cache-Control': 'public, max-age=3600',
           ...(isMedia && { 'Content-Disposition': 'inline' })
-        };
+        }
 
         if (rangeHeader) {
-          const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+          const match = rangeHeader.match(/bytes=(\d+)-(\d*)/)
           if (match) {
-            const start = parseInt(match[1], 10);
-            const end = match[2] ? parseInt(match[2], 10) : fileSize - 1;
-            const chunkSize = end - start + 1;
+            const start = parseInt(match[1], 10)
+            const end = match[2] ? parseInt(match[2], 10) : fileSize - 1
+            const chunkSize = end - start + 1
 
-            const stream = fs.createReadStream(filePath, { start, end });
+            const stream = fs.createReadStream(filePath, { start, end })
             return new Response(stream, {
               status: 206,
               headers: {
                 ...baseHeaders,
                 'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-                'Content-Length': chunkSize.toString(),
+                'Content-Length': chunkSize.toString()
               }
-            });
+            })
           }
         }
 
-        const stream = fs.createReadStream(filePath);
+        const stream = fs.createReadStream(filePath)
         return new Response(stream, {
           status: 200,
           headers: {
             ...baseHeaders,
-            'Content-Length': fileSize.toString(),
+            'Content-Length': fileSize.toString()
           }
-        });
+        })
       }
     } catch (error) {
     //   log.error('File protocol error:', error);
@@ -417,16 +419,16 @@ export async function createHandler() {
       <style>body{background-color:#18181C; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:40px;color:#333;}
       h1{font-size:24px;margin-bottom:10px;}p{color:#666;}</style></head><body>
       <h1>Error Loading File</h1><p>${escapeHtml(error.message)}</p><p><code>${escapeHtml(filePath)}</code></p>
-      </body></html>`;
+      </body></html>`
 
-      let status = 500;
-      if (error.code === 'ENOENT') status = 404;
-      else if (error.code === 'EACCES' || error.code === 'EPERM') status = 403;
-      
+      let status = 500
+      if (error.code === 'ENOENT') status = 404
+      else if (error.code === 'EACCES' || error.code === 'EPERM') status = 403
+
       return new Response(errorHtml, {
         status,
         headers: { 'Content-Type': 'text/html; charset=utf-8' }
-      });
+      })
     }
-  };
+  }
 }

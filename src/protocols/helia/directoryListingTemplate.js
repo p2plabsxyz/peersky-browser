@@ -11,4 +11,4 @@ export const directoryListingHtml = (shortCID, filesHtml) => `
             </ul>
           </body>
         </html>
-        `;
+        `
