@@ -1136,11 +1136,9 @@ function handleDocRequest (req, res, session) {
         }
 
         const beforeContent = session.ytext.toString()
-        let applied = false
         let usedTextFallback = false
         try {
           Y.applyUpdate(session.ydoc, updateBytes, 'client-update')
-          applied = true
         } catch (applyErr) {
           console.warn('[p2pmd] /doc/update: Y.applyUpdate rejected payload:', applyErr.message)
           // Fallback path: if client sends full text, reconcile using text diff.
@@ -1148,7 +1146,6 @@ function handleDocRequest (req, res, session) {
             try {
               applyTextDiffToYText(session.ytext, beforeContent, fullText)
               usedTextFallback = true
-              applied = true // eslint-disable-line no-unused-vars
             } catch (fallbackErr) {
               console.warn('[p2pmd] /doc/update fallback failed:', fallbackErr.message)
               res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })

@@ -57,7 +57,6 @@ export function getBrowserSession () {
  * @throws {Error} If session mismatch detected
  */
 export function assertSessionConsistency (actualSession) {
-  const expectedSession = getBrowserSession() // eslint-disable-line no-unused-vars
   const usePersist = process.env.PEERSKY_USE_PERSIST_SESSION === 'true'
 
   if (usePersist) {

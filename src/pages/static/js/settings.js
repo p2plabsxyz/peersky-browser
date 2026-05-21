@@ -394,7 +394,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   const wallpaperFile = document.getElementById('wallpaper-file')
   const wallpaperBrowse = document.getElementById('wallpaper-browse')
   const wallpaperRemove = document.getElementById('wallpaper-remove')
-  document.getElementById('wallpaper-preview') // referenced via DOM later
   const clearBrowserCacheBtn = document.getElementById('clear-browser-cache')
   const resetP2PBtn = document.getElementById('reset-p2p')
 
@@ -1145,7 +1144,6 @@ function initializeCustomDropdowns () {
 
   customSelects.forEach(select => {
     const display = select.querySelector('.select-display')
-    select.querySelector('.select-dropdown')
     const options = select.querySelectorAll('.select-option')
     const hiddenInput = select.parentElement.querySelector('input[type="hidden"]')
 

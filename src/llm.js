@@ -16,10 +16,6 @@ const llmAgent = new Agent({
   bodyTimeout: 0 // No timeout for body
 })
 
-// Download management
-let currentDownloadModel = null // eslint-disable-line no-unused-vars
-let currentDownloadPercent = 0 // eslint-disable-line no-unused-vars
-
 // Ollama availability tracking
 let ollamaMissingNotified = false
 
@@ -405,9 +401,6 @@ async function pullModel (progressCallback) {
 
   console.log(`Pulling model ${modelName} from ${baseURL}/api/pull`)
 
-  currentDownloadModel = modelName
-  currentDownloadPercent = 0
-
   try {
     // Use streaming to get progress updates
     const response = await fetch(`${baseURL}/api/pull`, {
@@ -455,7 +448,6 @@ async function pullModel (progressCallback) {
               // Calculate progress if available
               if (data.completed && data.total) {
                 const percent = Math.round((data.completed / data.total) * 100)
-                currentDownloadPercent = percent // Track globally
                 if (progressCallback) {
                   progressCallback(percent, data.status)
                 }
@@ -478,15 +470,11 @@ async function pullModel (progressCallback) {
     }
 
     console.log(`Model ${modelName} pulled successfully`)
-    currentDownloadModel = null
     return true // Success
   } catch (error) {
     console.error(`Error pulling model: ${error}`)
     await maybeShowOllamaNotInstalledDialog(error)
     throw error
-  } finally {
-    currentDownloadModel = null
-    currentDownloadPercent = 0
   }
 }
 

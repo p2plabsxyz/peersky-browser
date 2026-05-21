@@ -824,17 +824,6 @@ function updateNavigationButtons (currentTabBar) {
   }
 }
 
-function focusURLInput () { // eslint-disable-line no-unused-vars
-  try {
-    const urlInput = nav.querySelector('#url')
-    if (urlInput) {
-      urlInput.focus()
-    }
-  } catch (error) {
-    console.error('Error focusing URL input:', error)
-  }
-}
-
 document.addEventListener('keydown', (e) => {
   if (e.key === 'f' && (e.ctrlKey || e.metaKey)) {
     e.preventDefault()

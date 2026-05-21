@@ -1671,7 +1671,6 @@ class TabBar extends HTMLElement {
     menu.style.top = `${event.clientY}px`
     menu.style.zIndex = '10000'
 
-    this.tabs.find(t => t.id === tabId) // looked up for potential future use
     const webview = this.webviews.get(tabId)
     const isPinned = this.pinnedTabs.has(tabId)
     const isMuted = webview?.isAudioMuted() || false
