@@ -874,7 +874,7 @@ class WindowManager {
 
 class PeerskyWindow {
   constructor (options = {}, windowManager) {
-    const { url, newWindow = false, windowId, savedTabs, isolate, singleTab, ...windowOptions } = options
+    const { url, isMainWindow = false, newWindow = false, windowId, savedTabs, isolate, singleTab, ...windowOptions } = options // eslint-disable-line no-unused-vars
     this.window = new BrowserWindow({
       width: 1280,
       height: 800,
