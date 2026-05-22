@@ -1,111 +1,111 @@
 // Registry and pinning helpers
 
-import path from 'path';
-import { promises as fs } from 'fs';
-import { readJsonSafe, writeJsonAtomic } from '../util.js';
-import { resolveManifestStrings } from '../utils/strings.js';
-import { createLogger } from '../../logger.js';
+import path from 'path'
+import { promises as fs } from 'fs'
+import { readJsonSafe, writeJsonAtomic } from '../util.js'
+import { resolveManifestStrings } from '../utils/strings.js'
+import { createLogger } from '../../logger.js'
 
-const log = createLogger('extensions');
+const log = createLogger('extensions')
 
 /**
  * Load registry from disk and populate manager.loadedExtensions
  * Cleans stale entries and fixes legacy icon paths.
  * @param {any} manager - ExtensionManager instance
  */
-export async function loadRegistry(manager) {
+export async function loadRegistry (manager) {
   try {
-    const registry = await readJsonSafe(manager.extensionsRegistryFile, { extensions: [] });
-    manager.loadedExtensions.clear();
-    const validExtensions = [];
+    const registry = await readJsonSafe(manager.extensionsRegistryFile, { extensions: [] })
+    manager.loadedExtensions.clear()
+    const validExtensions = []
 
     for (const extensionData of registry.extensions || []) {
       try {
         if (extensionData.installedPath) {
-          await fs.access(extensionData.installedPath);
+          await fs.access(extensionData.installedPath)
         }
 
         // Resolve display strings if missing
         if ((!extensionData.displayName || !extensionData.displayDescription) && extensionData.installedPath && extensionData.manifest) {
           try {
-            const appLocale = (manager.app && typeof manager.app.getLocale === 'function') ? manager.app.getLocale() : 'en';
-            const resolved = await resolveManifestStrings(extensionData.installedPath, extensionData.manifest, appLocale, 'en');
-            extensionData.displayName = extensionData.displayName || resolved.name;
-            extensionData.displayDescription = extensionData.displayDescription || resolved.description;
+            const appLocale = (manager.app && typeof manager.app.getLocale === 'function') ? manager.app.getLocale() : 'en'
+            const resolved = await resolveManifestStrings(extensionData.installedPath, extensionData.manifest, appLocale, 'en')
+            extensionData.displayName = extensionData.displayName || resolved.name
+            extensionData.displayDescription = extensionData.displayDescription || resolved.description
           } catch (_) {}
         }
 
         // Fix legacy icon paths to peersky:// with cache-busting
         if (extensionData.iconPath && (extensionData.iconPath.startsWith('file://') || extensionData.iconPath.startsWith('chrome-extension://'))) {
-          const icons = extensionData.manifest?.icons;
+          const icons = extensionData.manifest?.icons
           if (icons) {
-            const iconSizes = ['64', '48', '32', '16'];
+            const iconSizes = ['64', '48', '32', '16']
             for (const size of iconSizes) {
               if (icons[size]) {
-                const v = extensionData.version ? `?v=${encodeURIComponent(String(extensionData.version))}` : '';
-                extensionData.iconPath = `peersky://extension-icon/${extensionData.id}/${size}${v}`;
-                break;
+                const v = extensionData.version ? `?v=${encodeURIComponent(String(extensionData.version))}` : ''
+                extensionData.iconPath = `peersky://extension-icon/${extensionData.id}/${size}${v}`
+                break
               }
             }
           }
         }
 
-        manager.loadedExtensions.set(extensionData.id, extensionData);
-        validExtensions.push(extensionData);
+        manager.loadedExtensions.set(extensionData.id, extensionData)
+        validExtensions.push(extensionData)
       } catch (_) {
-        log.info(`ExtensionManager: Removing stale registry entry for ${extensionData.name} (${extensionData.id}) - directory not found`);
+        log.info(`ExtensionManager: Removing stale registry entry for ${extensionData.name} (${extensionData.id}) - directory not found`)
       }
     }
 
-    log.info(`ExtensionManager: Loaded ${manager.loadedExtensions.size} extensions from registry`);
+    log.info(`ExtensionManager: Loaded ${manager.loadedExtensions.size} extensions from registry`)
 
     // Deduplicate by Chrome/Electron ID: prefer system/preinstalled entries
     try {
-      const byElectronId = new Map();
-      const toRemove = [];
+      const byElectronId = new Map()
+      const toRemove = []
       for (const ext of manager.loadedExtensions.values()) {
-        const eid = ext.electronId || null;
-        if (!eid) continue;
-        const existing = byElectronId.get(eid);
+        const eid = ext.electronId || null
+        if (!eid) continue
+        const existing = byElectronId.get(eid)
         if (!existing) {
-          byElectronId.set(eid, ext);
+          byElectronId.set(eid, ext)
         } else {
-          const preferExisting = existing.isSystem === true || existing.source === 'preinstalled';
-          const preferNew = ext.isSystem === true || ext.source === 'preinstalled';
+          const preferExisting = existing.isSystem === true || existing.source === 'preinstalled'
+          const preferNew = ext.isSystem === true || ext.source === 'preinstalled'
           if (preferNew && !preferExisting) {
             // Replace existing with system ext; remove old
-            byElectronId.set(eid, ext);
-            toRemove.push(existing);
+            byElectronId.set(eid, ext)
+            toRemove.push(existing)
           } else {
             // Keep existing, drop new
-            toRemove.push(ext);
+            toRemove.push(ext)
           }
         }
       }
       if (toRemove.length) {
         for (const ext of toRemove) {
           try {
-            manager.loadedExtensions.delete(ext.id);
+            manager.loadedExtensions.delete(ext.id)
             if (ext.id) {
-              const root = path.join(manager.extensionsBaseDir, ext.id);
-              await fs.rm(root, { recursive: true, force: true }).catch(() => {});
+              const root = path.join(manager.extensionsBaseDir, ext.id)
+              await fs.rm(root, { recursive: true, force: true }).catch(() => {})
             }
           } catch (_) {}
         }
-        log.info(`ExtensionManager: Removed ${toRemove.length} duplicate extension entr${toRemove.length===1?'y':'ies'} by electronId (kept system/preinstalled)`);
-        await writeRegistry(manager);
+        log.info(`ExtensionManager: Removed ${toRemove.length} duplicate extension entr${toRemove.length === 1 ? 'y' : 'ies'} by electronId (kept system/preinstalled)`)
+        await writeRegistry(manager)
       }
     } catch (dedupeErr) {
-      log.warn('ExtensionManager: Registry dedupe by electronId failed:', dedupeErr);
+      log.warn('ExtensionManager: Registry dedupe by electronId failed:', dedupeErr)
     }
 
-    const originalCount = (registry.extensions || []).length;
+    const originalCount = (registry.extensions || []).length
     if (validExtensions.length !== originalCount) {
-      log.info(`ExtensionManager: Cleaned ${originalCount - validExtensions.length} stale entries from registry`);
-      await writeRegistry(manager);
+      log.info(`ExtensionManager: Cleaned ${originalCount - validExtensions.length} stale entries from registry`)
+      await writeRegistry(manager)
     }
   } catch (error) {
-    log.error('ExtensionManager: Failed to read registry:', error);
+    log.error('ExtensionManager: Failed to read registry:', error)
   }
 }
 
@@ -113,40 +113,40 @@ export async function loadRegistry(manager) {
  * Persist registry from manager.loadedExtensions
  * @param {any} manager
  */
-export async function writeRegistry(manager) {
-  const registry = { extensions: Array.from(manager.loadedExtensions.values()) };
-  await writeJsonAtomic(manager.extensionsRegistryFile, registry);
+export async function writeRegistry (manager) {
+  const registry = { extensions: Array.from(manager.loadedExtensions.values()) }
+  await writeJsonAtomic(manager.extensionsRegistryFile, registry)
 }
 
 /**
  * Validate installed paths and remove stale registry entries, then save.
  * @param {any} manager
  */
-export async function validateAndClean(manager) {
+export async function validateAndClean (manager) {
   try {
-    const initialCount = manager.loadedExtensions.size;
-    const removedExtensions = [];
+    const initialCount = manager.loadedExtensions.size
+    const removedExtensions = []
     for (const [id, ext] of manager.loadedExtensions.entries()) {
       try {
-        if (ext.installedPath) await fs.access(ext.installedPath);
+        if (ext.installedPath) await fs.access(ext.installedPath)
       } catch (_) {
-        log.info(`ExtensionManager: Removing stale entry: ${ext.name} (${id})`);
-        removedExtensions.push({ id, name: ext.name, reason: 'Directory not found' });
-        manager.loadedExtensions.delete(id);
+        log.info(`ExtensionManager: Removing stale entry: ${ext.name} (${id})`)
+        removedExtensions.push({ id, name: ext.name, reason: 'Directory not found' })
+        manager.loadedExtensions.delete(id)
       }
     }
     if (removedExtensions.length > 0) {
-      await writeRegistry(manager);
+      await writeRegistry(manager)
     }
     return {
       initialCount,
       finalCount: manager.loadedExtensions.size,
       removedCount: removedExtensions.length,
       removedExtensions
-    };
+    }
   } catch (error) {
-    log.error('ExtensionManager: Failed to validate registry:', error);
-    throw error;
+    log.error('ExtensionManager: Failed to validate registry:', error)
+    throw error
   }
 }
 
@@ -155,13 +155,13 @@ export async function validateAndClean(manager) {
  * @param {string} extensionsBaseDir
  * @returns {Promise<string[]>}
  */
-export async function getPinned(extensionsBaseDir) {
+export async function getPinned (extensionsBaseDir) {
   try {
-    const pinnedData = await readJsonSafe(path.join(extensionsBaseDir, 'pinned.json'));
-    return pinnedData?.pinnedExtensions || [];
+    const pinnedData = await readJsonSafe(path.join(extensionsBaseDir, 'pinned.json'))
+    return pinnedData?.pinnedExtensions || []
   } catch (err) {
-    log.warn('[Registry] Error reading pinned extensions:', err);
-    return [];
+    log.warn('[Registry] Error reading pinned extensions:', err)
+    return []
   }
 }
 
@@ -170,7 +170,7 @@ export async function getPinned(extensionsBaseDir) {
  * @param {string} extensionsBaseDir
  * @param {string[]} pinnedExtensions
  */
-export async function setPinned(extensionsBaseDir, pinnedExtensions) {
-  const pinnedFilePath = path.join(extensionsBaseDir, 'pinned.json');
-  await writeJsonAtomic(pinnedFilePath, { pinnedExtensions });
+export async function setPinned (extensionsBaseDir, pinnedExtensions) {
+  const pinnedFilePath = path.join(extensionsBaseDir, 'pinned.json')
+  await writeJsonAtomic(pinnedFilePath, { pinnedExtensions })
 }

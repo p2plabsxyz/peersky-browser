@@ -1,21 +1,21 @@
-function escapeForHtml(str) {
-  if (!str) return "";
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+function escapeForHtml (str) {
+  if (!str) return ''
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
-function extractDisplayName(magnetUrl) {
-  const match = magnetUrl.match(/[?&]dn=([^&]+)/);
-  return match ? decodeURIComponent(match[1].replace(/\+/g, " ")) : null;
+function extractDisplayName (magnetUrl) {
+  const match = magnetUrl.match(/[?&]dn=([^&]+)/)
+  return match ? decodeURIComponent(match[1].replace(/\+/g, ' ')) : null
 }
 
-export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, theme = "dark", apiToken = "") {
-  const name = displayName || extractDisplayName(magnetUrl) || torrentId || "Unknown Torrent";
-  const safeInfoHash = escapeForHtml(torrentId);
-  const safeName = escapeForHtml(name);
-  const safeMagnetUrl = escapeForHtml(magnetUrl);
+export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, theme = 'dark', apiToken = '') {
+  const name = displayName || extractDisplayName(magnetUrl) || torrentId || 'Unknown Torrent'
+  const safeInfoHash = escapeForHtml(torrentId)
+  const safeName = escapeForHtml(name)
+  const safeMagnetUrl = escapeForHtml(magnetUrl)
 
   // All API calls use bt:// which is a standard URL scheme
-  const apiBase = "bt://api";
+  const apiBase = 'bt://api'
 
   return `<!DOCTYPE html>
 <html lang="en" data-theme="${escapeForHtml(theme)}">
@@ -204,7 +204,7 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
     </div>
 
     <div class="info-section">
-      <p><strong>Info Hash:</strong> <code>${safeInfoHash || "will resolve on start"}</code></p>
+      <p><strong>Info Hash:</strong> <code>${safeInfoHash || 'will resolve on start'}</code></p>
       <div class="magnet-link">${safeMagnetUrl}</div>
     </div>
 
@@ -468,7 +468,7 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
 
       tbody.innerHTML = '';
       files.forEach(function(file) {
-        var isMedia = /\.(mp4|mkv|avi|mov|webm|mp3|wav|flac|ogg|m4a)$/i.test(file.name);
+        var isMedia = /\\.(mp4|mkv|avi|mov|webm|mp3|wav|flac|ogg|m4a)$/i.test(file.name);
         var label = isMedia ? 'Play' : 'Open';
         var row = document.createElement('tr');
         row.innerHTML =
@@ -679,5 +679,5 @@ export function generateTorrentUI(magnetUrl, torrentId, protocol, displayName, t
     }
   </script>
 </body>
-</html>`;
+</html>`
 }

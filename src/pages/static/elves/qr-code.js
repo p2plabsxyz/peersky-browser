@@ -2,7 +2,7 @@ import $elf from 'peersky://static/elves/elf.js'
 import QrCreator from 'peersky://static/js/vendor/qr-creator/qr-creator.js'
 
 // utilize this to hop off the bifrost
-function sleep(D) { return new Promise(x => setTimeout(x,D))}
+function sleep (D) { return new Promise(x => setTimeout(x, D)) }
 
 const $ = $elf('qr-code')
 
@@ -10,17 +10,19 @@ $.draw(target => {
   const codes = $.learn()
   const code = target.getAttribute('src')
   const image = codes[code]
-  const { fg='saddlebrown', bg='lemonchiffon' } = target.dataset
-  generate(target, code, {fg, bg})
-  return image ? `
+  const { fg = 'saddlebrown', bg = 'lemonchiffon' } = target.dataset
+  generate(target, code, { fg, bg })
+  return image
+    ? `
     <button class="portal" style="--fg: ${fg}; --bg: ${bg}">
       ${image}
     </button>
-  ` : 'loading...'
+  `
+    : 'loading...'
 })
 
-async function generate(target, code, {fg, bg}) {
-  if(target.code === code) return
+async function generate (target, code, { fg, bg }) {
+  if (target.code === code) return
   target.code = code
   await sleep(1) // get this off the bifrost
   const node = document.createElement('div')
@@ -32,11 +34,11 @@ async function generate(target, code, {fg, bg}) {
     fill: fg, // foreground color
     background: bg, // color or null for transparent
     size: 1080 // in pixels
-  }, node);
+  }, node)
 
   const dataURL = node.querySelector('canvas').toDataURL()
 
-  $.teach({ [code]: `<img src="${dataURL}" alt="code" />`})
+  $.teach({ [code]: `<img src="${dataURL}" alt="code" />` })
 }
 
 $.when('click', '.portal', (event) => {
