@@ -10,7 +10,7 @@ const RESULT_PREFIX = "__PEERSKY_RESULT__";
 const HARNESS_TIMEOUT_MS = 260_000;
 const MAX_GAP_PX = 48;
 const EXPECTED_FINAL_TEXT =
-  "first line after block by person1\nsecond line after block by person 2\nthird line after block by person 3\n\n# person3\n- line1\n- line2\n- line3\n\n# person1\n- line1\n- line2\n- line3\n\n# person2\n- line1\n- line2\n- line3";
+  "second line after block by person 2\nthird line after block by person 3\n\n# person3\n- line1\n- line2\n- line3\n\n# person1\n- line1\n- line2\n- line3\n\n# person2\n- line1\n- line2\n- line3";
 
 function createRoomServer() {
   let docContent = "";
@@ -363,18 +363,15 @@ describe("p2pmd: 3-peer gutter sync E2E (distributed edits)", function () {
       }
     }
 
-    // Semantic correctness:
-    // top lines authored by respective peers, plus each person block owner.
-    // Final text lines:
-    // 1 => person1, 2 => person2, 3 => person3
-    // 5-8 => person3, 10-13 => person1, 15-18 => person2
+    // Semantic correctness for delete + trailing-space churn scenario:
+    // line ownership should remain stable for each person block.
+    // Top lines can legitimately change owner if another peer edits them.
     const expectedOwnerByLine = new Map([
-      [1, "person1"],
+      [1, "person2"],
       [2, "person2"],
-      [3, "person3"],
-      [5, "person3"], [6, "person3"], [7, "person3"], [8, "person3"],
-      [10, "person1"], [11, "person1"], [12, "person1"], [13, "person1"],
-      [15, "person2"], [16, "person2"], [17, "person2"], [18, "person2"],
+      [4, "person3"], [5, "person3"], [6, "person3"], [7, "person3"],
+      [9, "person1"], [10, "person1"], [11, "person1"], [12, "person1"],
+      [14, "person2"], [15, "person2"], [16, "person2"], [17, "person2"],
     ]);
     for (const inst of result.instances) {
       const byLine = new Map((inst.lineOwners || []).map((line) => [line.line, line]));

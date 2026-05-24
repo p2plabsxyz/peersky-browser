@@ -43,9 +43,11 @@ const PERSON3_BLOCK = "# person3\n- line1\n- line2\n- line3";
 const TOP_LINE_1 = "first line after block by person1";
 const TOP_LINE_2 = "second line after block by person 2";
 const TOP_LINE_3 = "third line after block by person 3";
+const PERSON3_EXTRA_BLANK_COUNT = 6;
+const TRAILING_SPACES_COUNT = 6;
 
 const EXPECTED_FINAL_TEXT =
-  "first line after block by person1\nsecond line after block by person 2\nthird line after block by person 3\n\n# person3\n- line1\n- line2\n- line3\n\n# person1\n- line1\n- line2\n- line3\n\n# person2\n- line1\n- line2\n- line3";
+  "second line after block by person 2\nthird line after block by person 3\n\n# person3\n- line1\n- line2\n- line3\n\n# person1\n- line1\n- line2\n- line3\n\n# person2\n- line1\n- line2\n- line3";
 
 function emitResult(payload) {
   process.stdout.write(`${RESULT_PREFIX}${JSON.stringify(payload)}\n`);
@@ -244,6 +246,119 @@ async function insertTopLineAtIndex(win, lineText, index, ensureBlankAfterTop = 
   );
 }
 
+async function deleteLineAtIndex(win, index) {
+  return safeExec(
+    win,
+    `
+      (() => {
+        const ta = document.getElementById("markdownInput");
+        if (!ta) return { ok: false, reason: "markdownInput missing" };
+        const current = ta.value || "";
+        const lines = current.length > 0 ? current.split("\\n") : [];
+        const idx = Math.max(0, Math.min(${index}, Math.max(0, lines.length - 1)));
+        if (lines.length === 0) return { ok: true, length: 0 };
+        lines.splice(idx, 1);
+        const next = lines.join("\\n");
+        ta.value = next;
+        ta.dispatchEvent(new Event("input", { bubbles: true }));
+        return { ok: true, length: next.length };
+      })();
+    `,
+    "deleteLineAtIndex"
+  );
+}
+
+async function insertBlankLinesAfterPerson3Block(win, blankCount = PERSON3_EXTRA_BLANK_COUNT) {
+  return safeExec(
+    win,
+    `
+      (() => {
+        const ta = document.getElementById("markdownInput");
+        if (!ta) return { ok: false, reason: "markdownInput missing" };
+        const block = ${JSON.stringify(PERSON3_BLOCK)};
+        const spacer = "\\n".repeat(${blankCount});
+        const current = ta.value || "";
+        const idx = current.indexOf(block);
+        if (idx < 0) return { ok: false, reason: "person3 block not found" };
+        const insertAt = idx + block.length;
+        const next = current.slice(0, insertAt) + spacer + current.slice(insertAt);
+        ta.value = next;
+        ta.dispatchEvent(new Event("input", { bubbles: true }));
+        return { ok: true, length: next.length };
+      })();
+    `,
+    "insertBlankLinesAfterPerson3Block"
+  );
+}
+
+async function removeBlankLinesAfterPerson3Block(win, blankCount = PERSON3_EXTRA_BLANK_COUNT) {
+  return safeExec(
+    win,
+    `
+      (() => {
+        const ta = document.getElementById("markdownInput");
+        if (!ta) return { ok: false, reason: "markdownInput missing" };
+        const block = ${JSON.stringify(PERSON3_BLOCK)};
+        const withSpacer = block + "\\n".repeat(${blankCount});
+        const current = ta.value || "";
+        const idx = current.indexOf(withSpacer);
+        if (idx < 0) return { ok: false, reason: "person3 block + spacer not found" };
+        const next = current.slice(0, idx) + block + current.slice(idx + withSpacer.length);
+        ta.value = next;
+        ta.dispatchEvent(new Event("input", { bubbles: true }));
+        return { ok: true, length: next.length };
+      })();
+    `,
+    "removeBlankLinesAfterPerson3Block"
+  );
+}
+
+async function addTrailingSpacesToTopLine3(win, spacesCount = TRAILING_SPACES_COUNT) {
+  return safeExec(
+    win,
+    `
+      (() => {
+        const ta = document.getElementById("markdownInput");
+        if (!ta) return { ok: false, reason: "markdownInput missing" };
+        const target = ${JSON.stringify(TOP_LINE_3)};
+        const current = ta.value || "";
+        const lines = current.split("\\n");
+        const idx = lines.findIndex((line) => line === target);
+        if (idx < 0) return { ok: false, reason: "top line 3 not found" };
+        lines[idx] = target + " ".repeat(${spacesCount});
+        const next = lines.join("\\n");
+        ta.value = next;
+        ta.dispatchEvent(new Event("input", { bubbles: true }));
+        return { ok: true, length: next.length };
+      })();
+    `,
+    "addTrailingSpacesToTopLine3"
+  );
+}
+
+async function removeTrailingSpacesFromTopLine3(win) {
+  return safeExec(
+    win,
+    `
+      (() => {
+        const ta = document.getElementById("markdownInput");
+        if (!ta) return { ok: false, reason: "markdownInput missing" };
+        const target = ${JSON.stringify(TOP_LINE_3)};
+        const current = ta.value || "";
+        const lines = current.split("\\n");
+        const idx = lines.findIndex((line) => line.startsWith(target));
+        if (idx < 0) return { ok: false, reason: "top line 3 not found" };
+        lines[idx] = target;
+        const next = lines.join("\\n");
+        ta.value = next;
+        ta.dispatchEvent(new Event("input", { bubbles: true }));
+        return { ok: true, length: next.length };
+      })();
+    `,
+    "removeTrailingSpacesFromTopLine3"
+  );
+}
+
 async function getText(win) {
   return safeExec(win, `document.getElementById("markdownInput")?.value || ""`, "getText");
 }
@@ -413,6 +528,26 @@ app.whenReady().then(async () => {
 
     console.log("[harness] person3 top line");
     await insertTopLineAtIndex(w3, TOP_LINE_3, 2, true);
+    await sleep(BETWEEN_PASTE_MS);
+
+    console.log("[harness] person1 delete top line");
+    await deleteLineAtIndex(w1, 0);
+    await sleep(BETWEEN_PASTE_MS);
+
+    console.log("[harness] person3 add 6 blank lines after person3 block");
+    await insertBlankLinesAfterPerson3Block(w3, PERSON3_EXTRA_BLANK_COUNT);
+    await sleep(BETWEEN_PASTE_MS);
+
+    console.log("[harness] person2 remove 6 blank lines after person3 block");
+    await removeBlankLinesAfterPerson3Block(w2, PERSON3_EXTRA_BLANK_COUNT);
+    await sleep(BETWEEN_PASTE_MS);
+
+    console.log("[harness] person3 add 6 trailing spaces on top line 3");
+    await addTrailingSpacesToTopLine3(w3, TRAILING_SPACES_COUNT);
+    await sleep(BETWEEN_PASTE_MS);
+
+    console.log("[harness] person2 remove trailing spaces on top line 3");
+    await removeTrailingSpacesFromTopLine3(w2);
     await sleep(BETWEEN_PASTE_MS);
 
     console.log("[harness] waiting for convergence");
