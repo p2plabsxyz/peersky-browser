@@ -1,143 +1,143 @@
-﻿import { expect } from "chai";
-import sinon from "sinon";
-import esmock from "esmock";
+import { expect } from 'chai'
+import sinon from 'sinon'
+import esmock from 'esmock'
 
-describe("Hyper protocol handler", function () {
+describe('Hyper protocol handler', function () {
   afterEach(function () {
-    sinon.restore();
-  });
+    sinon.restore()
+  })
 
-  async function loadHyperModule({ fetchImpl, chatResponse, chatReject, throwOnFetch } = {}) {
-    const sdk = { id: "sdk-test" };
-    const createSDK = sinon.stub().resolves(sdk);
+  async function loadHyperModule ({ fetchImpl, chatResponse, chatReject, throwOnFetch } = {}) {
+    const sdk = { id: 'sdk-test' }
+    const createSDK = sinon.stub().resolves(sdk)
 
     const fetchStub = sinon.stub().callsFake(async (url, options) => {
       if (throwOnFetch) {
-        throw new Error("network failed");
+        throw new Error('network failed')
       }
       if (fetchImpl) {
-        return fetchImpl(url, options);
+        return fetchImpl(url, options)
       }
-      return new Response("hyper-ok", { status: 200, headers: { "Content-Type": "text/plain" } });
-    });
+      return new Response('hyper-ok', { status: 200, headers: { 'Content-Type': 'text/plain' } })
+    })
 
-    const initChat = sinon.spy();
-    const handleChatRequest = sinon.stub();
+    const initChat = sinon.spy()
+    const handleChatRequest = sinon.stub()
     if (chatReject) {
-      handleChatRequest.rejects(new Error(chatReject));
+      handleChatRequest.rejects(new Error(chatReject))
     } else {
       handleChatRequest.resolves(
-        chatResponse || new Response("chat-ok", { status: 200, headers: { "Content-Type": "text/plain" } }),
-      );
+        chatResponse || new Response('chat-ok', { status: 200, headers: { 'Content-Type': 'text/plain' } })
+      )
     }
-    const hyperFetchFactory = sinon.stub().returns(fetchStub);
+    const hyperFetchFactory = sinon.stub().returns(fetchStub)
 
-    const module = await esmock("../../src/protocols/hyper-handler.js", {
+    const module = await esmock('../../src/protocols/hyper-handler.js', {
       electron: {
         app: {
-          getPath: () => "test-userdata",
+          getPath: () => 'test-userdata'
         },
-        safeStorage: {},
+        safeStorage: {}
       },
-      "hyper-sdk": {
-        create: createSDK,
+      'hyper-sdk': {
+        create: createSDK
       },
-      "hypercore-fetch": {
-        default: hyperFetchFactory,
+      'hypercore-fetch': {
+        default: hyperFetchFactory
       },
-      "../../src/pages/p2p/peerchat/p2p.js": {
+      '../../src/pages/p2p/peerchat/p2p.js': {
         initChat,
         handleChatRequest,
-        CHAT_STORAGE: "test-chat-store",
-      },
-    });
+        CHAT_STORAGE: 'test-chat-store'
+      }
+    })
 
-    return { module, createSDK, fetchStub, hyperFetchFactory, initChat, handleChatRequest, sdk };
+    return { module, createSDK, fetchStub, hyperFetchFactory, initChat, handleChatRequest, sdk }
   }
 
-  it("routes chat namespace to chat handler", async function () {
+  it('routes chat namespace to chat handler', async function () {
     const { module, handleChatRequest, sdk } = await loadHyperModule({
-      chatResponse: new Response("chat-routed", { status: 200, headers: { "Content-Type": "text/plain" } }),
-    });
-    const handler = await module.createHandler({ storage: "test-chat" });
+      chatResponse: new Response('chat-routed', { status: 200, headers: { 'Content-Type': 'text/plain' } })
+    })
+    const handler = await module.createHandler({ storage: 'test-chat' })
 
-    const response = await handler(new Request("hyper://chat/messages", { method: "GET" }));
+    const response = await handler(new Request('hyper://chat/messages', { method: 'GET' }))
 
-    expect(response.status).to.equal(200);
-    expect(await response.text()).to.equal("chat-routed");
-    expect(handleChatRequest.callCount).to.equal(1);
-    expect(handleChatRequest.firstCall.args[1]).to.equal(sdk);
-  });
+    expect(response.status).to.equal(200)
+    expect(await response.text()).to.equal('chat-routed')
+    expect(handleChatRequest.callCount).to.equal(1)
+    expect(handleChatRequest.firstCall.args[1]).to.equal(sdk)
+  })
 
-  it("returns 500 response when Hyper fetch fails", async function () {
-    const { module } = await loadHyperModule({ throwOnFetch: true });
-    sinon.stub(console, "error");
-    const handler = await module.createHandler({ storage: "test-error" });
+  it('returns 500 response when Hyper fetch fails', async function () {
+    const { module } = await loadHyperModule({ throwOnFetch: true })
+    sinon.stub(console, 'error')
+    const handler = await module.createHandler({ storage: 'test-error' })
 
-    const response = await handler(new Request("hyper://example.org/fail", { method: "GET" }));
+    const response = await handler(new Request('hyper://example.org/fail', { method: 'GET' }))
 
-    expect(response.status).to.equal(500);
-    const text = await response.text();
-    expect(text).to.contain("network failed");
-  });
+    expect(response.status).to.equal(500)
+    const text = await response.text()
+    expect(text).to.contain('network failed')
+  })
 
-  it("returns 500 response when chat handler rejects", async function () {
-    const { module } = await loadHyperModule({ chatReject: "chat-crash" });
-    sinon.stub(console, "error");
-    const handler = await module.createHandler({ storage: "test-chat-error" });
+  it('returns 500 response when chat handler rejects', async function () {
+    const { module } = await loadHyperModule({ chatReject: 'chat-crash' })
+    sinon.stub(console, 'error')
+    const handler = await module.createHandler({ storage: 'test-chat-error' })
 
-    const response = await handler(new Request("hyper://chat/messages", { method: "GET" }));
+    const response = await handler(new Request('hyper://chat/messages', { method: 'GET' }))
 
-    expect(response.status).to.equal(500);
-    const text = await response.text();
-    expect(text).to.contain("chat-crash");
-  });
+    expect(response.status).to.equal(500)
+    const text = await response.text()
+    expect(text).to.contain('chat-crash')
+  })
 
-  it("blocks extension-origin writes when no explicit write permission is granted", async function () {
-    const { module, fetchStub } = await loadHyperModule();
+  it('blocks extension-origin writes when no explicit write permission is granted', async function () {
+    const { module, fetchStub } = await loadHyperModule()
     const handler = await module.createHandler(
-      { storage: "test-write-deny" },
-      { isExtensionWriteAllowed: () => false },
-    );
+      { storage: 'test-write-deny' },
+      { isExtensionWriteAllowed: () => false }
+    )
 
     const response = await handler({
-      url: "hyper://example.org/write.txt",
-      method: "PUT",
+      url: 'hyper://example.org/write.txt',
+      method: 'PUT',
       headers: new Headers({
-        referer: "chrome-extension://ext-denied/probe.html",
+        referer: 'chrome-extension://ext-denied/probe.html'
       }),
-      body: Buffer.from("write"),
-    });
+      body: Buffer.from('write')
+    })
 
-    expect(response.status).to.equal(403);
-    expect(fetchStub.called).to.equal(false);
-    expect(await response.text()).to.contain("not allowed");
-  });
+    expect(response.status).to.equal(403)
+    expect(fetchStub.called).to.equal(false)
+    expect(await response.text()).to.contain('not allowed')
+  })
 
-  it("allows extension-origin writes when explicit permission is granted", async function () {
-    const { module, fetchStub } = await loadHyperModule();
-    const permissionCheck = sinon.stub().resolves(true);
+  it('allows extension-origin writes when explicit permission is granted', async function () {
+    const { module, fetchStub } = await loadHyperModule()
+    const permissionCheck = sinon.stub().resolves(true)
     const handler = await module.createHandler(
-      { storage: "test-write-allow" },
-      { isExtensionWriteAllowed: permissionCheck },
-    );
+      { storage: 'test-write-allow' },
+      { isExtensionWriteAllowed: permissionCheck }
+    )
 
     const response = await handler({
-      url: "hyper://example.org/write.txt",
-      method: "PUT",
+      url: 'hyper://example.org/write.txt',
+      method: 'PUT',
       headers: new Headers({
-        referer: "chrome-extension://ext-allowed/probe.html",
+        referer: 'chrome-extension://ext-allowed/probe.html'
       }),
-      body: Buffer.from("write"),
-    });
+      body: Buffer.from('write')
+    })
 
-    expect(response.status).to.equal(200);
-    expect(fetchStub.calledOnce).to.equal(true);
-    expect(permissionCheck.calledOnce).to.equal(true);
+    expect(response.status).to.equal(200)
+    expect(fetchStub.calledOnce).to.equal(true)
+    expect(permissionCheck.calledOnce).to.equal(true)
     expect(permissionCheck.firstCall.args[0]).to.include({
-      extensionId: "ext-allowed",
-      scheme: "hyper",
-      method: "PUT",
-    });
-  });
-});
+      extensionId: 'ext-allowed',
+      scheme: 'hyper',
+      method: 'PUT'
+    })
+  })
+})

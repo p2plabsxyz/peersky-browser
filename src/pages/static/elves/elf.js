@@ -9,17 +9,17 @@
  *
  */
 
-const { innerHTML } = self.diff || { 
-  innerHTML: (target, html) => { 
-    target.innerHTML = html 
-  } 
+const { innerHTML } = self.diff || {
+  innerHTML: (target, html) => {
+    target.innerHTML = html
+  }
 }
 
-if(!self.crypto.randomUUID) {
+if (!self.crypto.randomUUID) {
   self.crypto.randomUUID = () => {
-    return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, c =>
+    return '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, c =>
       (+c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> +c / 4).toString(16)
-    );
+    )
   }
 }
 
@@ -27,8 +27,8 @@ const renderers = {}
 const eventMaze = {}
 const reactiveFunctions = {}
 
-function addRenderer(link, compositor, lifeCycle) {
-  if(!reactiveFunctions[link]) {
+function addRenderer (link, compositor, lifeCycle) {
+  if (!reactiveFunctions[link]) {
     reactiveFunctions[link] = {}
   }
 
@@ -37,25 +37,24 @@ function addRenderer(link, compositor, lifeCycle) {
     lifeCycle
   }
 
-  teach(link, { '_initialized': true })
+  teach(link, { _initialized: true })
 }
 
 const logs = {}
 
-export function insights() {
+export function insights () {
   return logs
 }
 
-function insight(name, link) {
-  if(!logs[`${name}:${link}`]) {
+function insight (name, link) {
+  if (!logs[`${name}:${link}`]) {
     logs[`${name}:${link}`] = 0
   }
   logs[`${name}:${link}`] += 1
 }
 
-
-function react(link) {
-  if(!reactiveFunctions[link]) return
+function react (link) {
+  if (!reactiveFunctions[link]) return
 
   Object.keys(reactiveFunctions[link])
     .map(id => reactiveFunctions[link][id]())
@@ -63,18 +62,18 @@ function react(link) {
 
 const backupAgents = {}
 
-function ensureAgentDispatcher(link) {
-  if(!backupAgents[link]) {
+function ensureAgentDispatcher (link) {
+  if (!backupAgents[link]) {
     backupAgents[link] = []
   }
 }
 
-function addAgent(link, agent) {
+function addAgent (link, agent) {
   ensureAgentDispatcher(link)
   backupAgents[link].push(agent)
 }
 
-function backup(link) {
+function backup (link) {
   ensureAgentDispatcher(link)
 
   const allAgents = backupAgents[link]
@@ -82,36 +81,36 @@ function backup(link) {
   allAgents.map(callback => callback())
 }
 
-function plan68path(target) {
+function plan68path (target) {
   return PLAN68_ROOT_DIR + target.id
 }
 
 const notifications = {
   [react.toString()]: react,
-  [backup.toString()]: backup,
+  [backup.toString()]: backup
 }
 
-function notify(link) {
+function notify (link) {
   Object.keys(notifications)
     .map(key => notifications[key](link))
 }
 
 const store = createStore({}, notify)
 
-function update(link, target) {
-  if(!renderers[link]) return
+function update (link, target) {
+  if (!renderers[link]) return
 
   insight('elf:update', link)
 
   const { lifeCycle, compositor } = renderers[link]
-  if(lifeCycle.beforeUpdate) {
+  if (lifeCycle.beforeUpdate) {
     lifeCycle.beforeUpdate.call(this, target)
   }
 
   const html = compositor.call(this, target)
-  if(html) innerHTML(target, html)
+  if (html) innerHTML(target, html)
 
-  if(lifeCycle.afterUpdate) {
+  if (lifeCycle.afterUpdate) {
     lifeCycle.afterUpdate.call(this, target)
   }
 }
@@ -120,10 +119,10 @@ const middleware = [
   c2sSync
 ]
 
-async function c2sSync(link, target) {
-  if(target.getAttribute('offline') === 'true') return
-  if(target['c2sSync']) return
-  target['c2sSync'] = true
+async function c2sSync (link, target) {
+  if (target.getAttribute('offline') === 'true') return
+  if (target.c2sSync) return
+  target.c2sSync = true
 
   /*
    *
@@ -136,69 +135,67 @@ async function c2sSync(link, target) {
   */
 }
 
-function draw(link, compositor, lifeCycle={}) {
+function draw (link, compositor, lifeCycle = {}) {
   insight('elf:draw', link)
   addRenderer(link, compositor, lifeCycle)
 }
 
-
-function style(link, stylesheet) {
+function style (link, stylesheet) {
   insight('elf:style', link)
   const styles = `
     <style type="text/css" data-link="${link}">
       ${stylesheet.replaceAll('&', link)}
     </style>
-  `;
+  `
 
-
-  document.body.insertAdjacentHTML("beforeend", styles)
+  document.body.insertAdjacentHTML('beforeend', styles)
 }
 
-export function learn(link) {
+export function learn (link) {
   insight('elf:learn', link)
   return store.get(link) || {}
 }
 
-export function teach(link, knowledge, nuance = (s, p) => ({...s,...p})) {
+export function teach (link, knowledge, nuance = (s, p) => ({ ...s, ...p })) {
   insight('elf:teach', link)
   store.set(link, knowledge, nuance)
 }
 
-export function when(link, type, arg2, callback) {
-  if(typeof arg2 === 'function') {
-    insight('elf:when:'+type, link)
+export function when (link, type, arg2, callback) {
+  if (typeof arg2 === 'function') {
+    insight('elf:when:' + type, link)
     return listen.call(this, link, type, '', arg2)
   } else {
     const nested = `${link} ${arg2}`
-    insight('elf:when:'+type, nested)
+    insight('elf:when:' + type, nested)
     return listen.call(this, link, type, arg2, callback)
   }
 }
 
-function declare(elf) {
+function declare (elf) {
   if (!customElements.get(elf.link)) {
     class WebComponent extends HTMLElement {
-      constructor() {
-        super();
+      constructor () {
+        super()
       }
 
-      connectedCallback() {
+      connectedCallback () {
         console.log(elf.link, 'declared')
         if (!this._initialized) {
           console.log(elf.link, 'initialized')
           dispatchCreate(elf.link, this)
           console.log(elf.link, 'created')
-          this._initialized = true;
+          this._initialized = true
         }
       }
     }
 
-    customElements.define(elf.link, WebComponent);
+    customElements.define(elf.link, WebComponent)
   }
 }
 
-export default function Self(link, initialState = {}) {
-  if(typeof link !== 'string') {
+export default function Self (link, initialState = {}) {
+  if (typeof link !== 'string') {
     declare(link)
     return
   }
@@ -213,7 +210,7 @@ export default function Self(link, initialState = {}) {
     controller: teach.bind(this, link),
 
     // link is a human that is permitted to be an elf per order of the deku tree
-    link: link,
+    link,
     elf: link,
     table: link,
     root: link,
@@ -256,56 +253,55 @@ export default function Self(link, initialState = {}) {
     put: teach.bind(this, link),
     post: teach.bind(this, link),
     patch: teach.bind(this, link),
-    delete: teach.bind(this, link),
+    delete: teach.bind(this, link)
   }
 }
 
-export function subscribe(fun) {
+export function subscribe (fun) {
   notifications[fun.toString] = fun
 }
 
-export function unsubscribe(fun) {
-  if(notifications[fun.toString]) {
+export function unsubscribe (fun) {
+  if (notifications[fun.toString]) {
     delete notifications[fun.toString]
   }
 }
 
-export function listen(link, type, scope, handler = () => null) {
+export function listen (link, type, scope, handler = () => null) {
   const callback = (event) => {
-    if(
+    if (
       event.target &&
       event.target.matches &&
       event.target.matches(scope)
     ) {
-
-      insight('elf:listen:'+type, link)
-      handler.call(this, event);
+      insight('elf:listen:' + type, link)
+      handler.call(this, event)
     }
-  };
+  }
 
   const options = { capture: true, passive: false }
 
   addToEventMaze(link, { type, callback, options })
 
-  function addToEventMaze(link, eventMetadata) {
-    if(!eventMaze[link]) {
+  function addToEventMaze (link, eventMetadata) {
+    if (!eventMaze[link]) {
       eventMaze[link] = []
     }
 
     eventMaze[link].push(eventMetadata)
   }
 
-  return function unlisten(target) {
-    target.removeEventListener(type, callback, options);
+  return function unlisten (target) {
+    target.removeEventListener(type, callback, options)
   }
 }
 
-function dispatchCreate(link, target) {
+function dispatchCreate (link, target) {
   insight('elf:create', target.localName)
   try {
-    if(!target.id) target.id = self.crypto.randomUUID()
-  } catch(e) {
-    if(!target.id) target.id = uuidv4()
+    if (!target.id) target.id = self.crypto.randomUUID()
+  } catch (e) {
+    if (!target.id) target.id = uuidv4()
   }
   middleware.forEach(x => x(link, target))
   const draw = update.bind(this, link, target)
@@ -315,41 +311,41 @@ function dispatchCreate(link, target) {
   draw()
   console.log(link, 'drawn')
 
-  if(eventMaze[link]) {
+  if (eventMaze[link]) {
     console.log(link, 'event horizoned')
     eventMaze[link].forEach(({ type, callback, options }) => {
-      target.addEventListener(type, callback, options);
+      target.addEventListener(type, callback, options)
     })
   }
 }
 
-function createStore(initialState = {}, subscribe = () => null) {
+function createStore (initialState = {}, subscribe = () => null) {
   let state = {
     ...initialState
-  };
+  }
 
   return {
-    set: function(link, knowledge, nuance) {
-      const wisdom = nuance(state[link] || {}, knowledge);
+    set: function (link, knowledge, nuance) {
+      const wisdom = nuance(state[link] || {}, knowledge)
 
       state = {
         ...state,
         [link]: wisdom
-      };
+      }
 
-      subscribe(link);
+      subscribe(link)
     },
 
-    get: function(link) {
-      return state[link];
+    get: function (link) {
+      return state[link]
     }
   }
 }
 
-function uuidv4() {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    const r = Math.random() * 16 | 0;
-    const v = c === 'x' ? r : (r & 0x3 | 0x8);
-    return v.toString(16);
-  });
+function uuidv4 () {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+    const r = Math.random() * 16 | 0
+    const v = c === 'x' ? r : (r & 0x3 | 0x8)
+    return v.toString(16)
+  })
 }

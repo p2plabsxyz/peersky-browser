@@ -1,173 +1,173 @@
-import path from "path";
-import { fileURLToPath } from "url";
-import { app, ipcMain, dialog } from "electron";
-import { promises as fs } from "fs";
-import { exec } from "child_process";
-import { promisify } from "util";
-import unzipper from "unzipper";
+import path from 'path'
+import { fileURLToPath } from 'url'
+import { app, ipcMain, dialog } from 'electron'
+import { promises as fs } from 'fs'
+import { exec } from 'child_process'
+import { promisify } from 'util'
+import unzipper from 'unzipper'
 
-const execAsync = promisify(exec);
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const execAsync = promisify(exec)
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
-const MAX_ICON_BYTES = 512 * 1024;
-const MAX_BUNDLE_BYTES = 25 * 1024 * 1024;
-const MAX_BUNDLE_FILES = 500;
+const MAX_ICON_BYTES = 512 * 1024
+const MAX_BUNDLE_BYTES = 25 * 1024 * 1024
+const MAX_BUNDLE_FILES = 500
 const ALLOWED_BUNDLE_EXTENSIONS = new Set([
-  ".html", ".htm", ".css", ".js", ".mjs", ".cjs", ".json",
-  ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico",
-  ".woff", ".woff2", ".ttf", ".otf", ".map", ".txt"
-]);
+  '.html', '.htm', '.css', '.js', '.mjs', '.cjs', '.json',
+  '.svg', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico',
+  '.woff', '.woff2', '.ttf', '.otf', '.map', '.txt'
+])
 
-function getUserAppsDir() {
-  return path.join(app.getPath("userData"), "myapps");
+function getUserAppsDir () {
+  return path.join(app.getPath('userData'), 'myapps')
 }
 
-function getRegistryFilePath() {
-  return path.join(getUserAppsDir(), "p2p-app-registry.json");
+function getRegistryFilePath () {
+  return path.join(getUserAppsDir(), 'p2p-app-registry.json')
 }
 
-function slugify(value) {
-  return String(value || "")
+function slugify (value) {
+  return String(value || '')
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 48);
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48)
 }
 
-function sanitizeId(id) {
-  const safe = String(id || "").trim();
-  return /^[a-z0-9-]{1,64}$/.test(safe) ? safe : null;
+function sanitizeId (id) {
+  const safe = String(id || '').trim()
+  return /^[a-z0-9-]{1,64}$/.test(safe) ? safe : null
 }
 
-function isSafeUserAppUrl(urlObj) {
-  const allowed = new Set(["peersky:", "ipfs:", "ipns:", "hyper:", "hs:", "web3:"]);
-  return allowed.has(urlObj.protocol);
+function isSafeUserAppUrl (urlObj) {
+  const allowed = new Set(['peersky:', 'ipfs:', 'ipns:', 'hyper:', 'hs:', 'web3:'])
+  return allowed.has(urlObj.protocol)
 }
 
-function inferNameFromUrl(urlObj) {
-  const pathname = (urlObj.pathname || "").replace(/\/+$/, "");
-  const tail = pathname.split("/").filter(Boolean).pop();
+function inferNameFromUrl (urlObj) {
+  const pathname = (urlObj.pathname || '').replace(/\/+$/, '')
+  const tail = pathname.split('/').filter(Boolean).pop()
   if (tail) {
     return tail
-      .replace(/[-_]+/g, " ")
-      .replace(/\b\w/g, (c) => c.toUpperCase());
+      .replace(/[-_]+/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase())
   }
   if (urlObj.hostname) {
     return urlObj.hostname
-      .replace(/^www\./, "")
-      .split(".")[0]
-      .replace(/[-_]+/g, " ")
-      .replace(/\b\w/g, (c) => c.toUpperCase());
+      .replace(/^www\./, '')
+      .split('.')[0]
+      .replace(/[-_]+/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase())
   }
-  return "User App";
+  return 'User App'
 }
 
-function sanitizeBundlePath(inputPath) {
-  const value = String(inputPath || "").replace(/\\/g, "/").trim();
-  if (!value || value.startsWith("/") || value.includes("\0")) return null;
-  const segments = value.split("/").filter(Boolean);
-  if (!segments.length) return null;
-  if (segments.some((seg) => seg === "." || seg === "..")) return null;
-  return segments.join("/");
+function sanitizeBundlePath (inputPath) {
+  const value = String(inputPath || '').replace(/\\/g, '/').trim()
+  if (!value || value.startsWith('/') || value.includes('\0')) return null
+  const segments = value.split('/').filter(Boolean)
+  if (!segments.length) return null
+  if (segments.some((seg) => seg === '.' || seg === '..')) return null
+  return segments.join('/')
 }
 
 class P2PAppRegistry {
-  constructor() {
-    this.registry = [];
+  constructor () {
+    this.registry = []
   }
 
-  async init() {
-    await fs.mkdir(getUserAppsDir(), { recursive: true });
-    this.registry = await this.loadRegistry();
+  async init () {
+    await fs.mkdir(getUserAppsDir(), { recursive: true })
+    this.registry = await this.loadRegistry()
   }
 
-  async loadRegistry() {
+  async loadRegistry () {
     try {
-      const raw = await fs.readFile(getRegistryFilePath(), "utf8");
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return [];
+      const raw = await fs.readFile(getRegistryFilePath(), 'utf8')
+      const parsed = JSON.parse(raw)
+      if (!Array.isArray(parsed)) return []
       return parsed
         .map((entry) => this.normalizeEntry(entry))
-        .filter(Boolean);
+        .filter(Boolean)
     } catch {
-      return [];
+      return []
     }
   }
 
-  normalizeEntry(entry) {
-    if (!entry || typeof entry !== "object") return null;
-    const id = sanitizeId(entry.id);
-    if (!id) return null;
-    if (typeof entry.name !== "string" || !entry.name.trim()) return null;
-    if (typeof entry.url !== "string" || !entry.url.trim()) return null;
+  normalizeEntry (entry) {
+    if (!entry || typeof entry !== 'object') return null
+    const id = sanitizeId(entry.id)
+    if (!id) return null
+    if (typeof entry.name !== 'string' || !entry.name.trim()) return null
+    if (typeof entry.url !== 'string' || !entry.url.trim()) return null
     try {
-      const urlObj = new URL(entry.url);
-      if (!isSafeUserAppUrl(urlObj)) return null;
+      const urlObj = new URL(entry.url)
+      if (!isSafeUserAppUrl(urlObj)) return null
     } catch {
-      return null;
+      return null
     }
-    const iconFilename = entry.hasIcon ? "icon.svg" : null;
+    const iconFilename = entry.hasIcon ? 'icon.svg' : null
     return {
       id,
       name: entry.name.trim().slice(0, 80),
       url: entry.url.trim(),
       hasIcon: !!entry.hasIcon,
       iconUrl: iconFilename ? `peersky://myapps/${id}/${iconFilename}` : null,
-      createdAt: typeof entry.createdAt === "string" ? entry.createdAt : new Date().toISOString()
-    };
+      createdAt: typeof entry.createdAt === 'string' ? entry.createdAt : new Date().toISOString()
+    }
   }
 
-  async saveRegistry() {
+  async saveRegistry () {
     const serializable = this.registry.map((entry) => ({
       id: entry.id,
       name: entry.name,
       url: entry.url,
       hasIcon: !!entry.hasIcon,
       createdAt: entry.createdAt
-    }));
-    await fs.writeFile(getRegistryFilePath(), JSON.stringify(serializable, null, 2), "utf8");
+    }))
+    await fs.writeFile(getRegistryFilePath(), JSON.stringify(serializable, null, 2), 'utf8')
   }
 
-  getUserApps() {
-    return this.registry.map((entry) => ({ ...entry }));
+  getUserApps () {
+    return this.registry.map((entry) => ({ ...entry }))
   }
 
-  findById(id) {
-    return this.registry.find((entry) => entry.id === id) || null;
+  findById (id) {
+    return this.registry.find((entry) => entry.id === id) || null
   }
 
-  makeUniqueId(base, existingIds) {
-    if (!existingIds.has(base)) return base;
-    let i = 2;
-    while (existingIds.has(`${base}-${i}`) && i < 9999) i += 1;
-    return `${base}-${i}`;
+  makeUniqueId (base, existingIds) {
+    if (!existingIds.has(base)) return base
+    let i = 2
+    while (existingIds.has(`${base}-${i}`) && i < 9999) i += 1
+    return `${base}-${i}`
   }
 
-  async addFromUrl(rawUrl) {
-    let urlObj;
+  async addFromUrl (rawUrl) {
+    let urlObj
     try {
-      urlObj = new URL(String(rawUrl || "").trim());
+      urlObj = new URL(String(rawUrl || '').trim())
     } catch {
-      throw new Error("Please drop a valid URL");
+      throw new Error('Please drop a valid URL')
     }
     if (!isSafeUserAppUrl(urlObj)) {
-      throw new Error("This URL scheme is not allowed");
+      throw new Error('This URL scheme is not allowed')
     }
-    const normalizedUrl = urlObj.toString();
-    const existingByUrl = this.registry.find((entry) => entry.url === normalizedUrl);
-    if (existingByUrl) return { ...existingByUrl };
+    const normalizedUrl = urlObj.toString()
+    const existingByUrl = this.registry.find((entry) => entry.url === normalizedUrl)
+    if (existingByUrl) return { ...existingByUrl }
 
-    const inferredName = inferNameFromUrl(urlObj);
-    
+    const inferredName = inferNameFromUrl(urlObj)
+
     // Fallback if downloading failed, it's not a folder, or no index.html found.
-    let finalFallbackName = inferredName;
+    let finalFallbackName = inferredName
     if (/^[a-z0-9]{40,}$/i.test(finalFallbackName.replace(/ /g, ''))) {
-      finalFallbackName = "P2P App";
+      finalFallbackName = 'P2P App'
     }
 
-    const baseId = slugify(inferredName) || "user-app";
-    const uniqueId = this.makeUniqueId(baseId, new Set(this.registry.map((a) => a.id)));
+    const baseId = slugify(inferredName) || 'user-app'
+    const uniqueId = this.makeUniqueId(baseId, new Set(this.registry.map((a) => a.id)))
 
     const entry = {
       id: uniqueId,
@@ -176,107 +176,107 @@ class P2PAppRegistry {
       hasIcon: false,
       iconUrl: null,
       createdAt: new Date().toISOString()
-    };
-    this.registry.push(entry);
-    await this.saveRegistry();
-    return { ...entry };
+    }
+    this.registry.push(entry)
+    await this.saveRegistry()
+    return { ...entry }
   }
 
-  async uploadIcon(payload) {
-    const appId = sanitizeId(payload?.appId);
-    if (!appId) throw new Error("Invalid app id");
-    const name = String(payload?.name || "").toLowerCase();
-    if (!name.endsWith(".svg")) {
-      throw new Error("Only SVG icons are supported");
+  async uploadIcon (payload) {
+    const appId = sanitizeId(payload?.appId)
+    if (!appId) throw new Error('Invalid app id')
+    const name = String(payload?.name || '').toLowerCase()
+    if (!name.endsWith('.svg')) {
+      throw new Error('Only SVG icons are supported')
     }
 
-    const appEntry = this.findById(appId);
-    if (!appEntry) throw new Error("App not found");
+    const appEntry = this.findById(appId)
+    if (!appEntry) throw new Error('App not found')
 
-    const dataAny = payload?.data;
+    const dataAny = payload?.data
     const byteLength = Buffer.isBuffer(dataAny)
       ? dataAny.length
-      : (typeof dataAny === "object" && dataAny !== null && typeof dataAny.byteLength === "number")
-        ? dataAny.byteLength
-        : (ArrayBuffer.isView(dataAny) ? dataAny.byteLength : 0);
+      : (typeof dataAny === 'object' && dataAny !== null && typeof dataAny.byteLength === 'number')
+          ? dataAny.byteLength
+          : (ArrayBuffer.isView(dataAny) ? dataAny.byteLength : 0)
     if (!Number.isFinite(byteLength) || byteLength <= 0) {
-      throw new Error("Invalid icon payload");
+      throw new Error('Invalid icon payload')
     }
     if (byteLength > MAX_ICON_BYTES) {
-      throw new Error("Icon exceeds 512KB");
+      throw new Error('Icon exceeds 512KB')
     }
 
     const iconBuffer = Buffer.isBuffer(dataAny)
       ? dataAny
-      : Buffer.from(dataAny instanceof ArrayBuffer ? new Uint8Array(dataAny) : dataAny);
-    const sample = iconBuffer.toString("utf8", 0, Math.min(iconBuffer.length, 512)).toLowerCase();
-    if (!sample.includes("<svg")) {
-      throw new Error("Uploaded file is not a valid SVG");
+      : Buffer.from(dataAny instanceof ArrayBuffer ? new Uint8Array(dataAny) : dataAny)
+    const sample = iconBuffer.toString('utf8', 0, Math.min(iconBuffer.length, 512)).toLowerCase()
+    if (!sample.includes('<svg')) {
+      throw new Error('Uploaded file is not a valid SVG')
     }
 
-    const appDir = path.join(getUserAppsDir(), appId);
-    await fs.mkdir(appDir, { recursive: true });
-    await fs.writeFile(path.join(appDir, "icon.svg"), iconBuffer);
+    const appDir = path.join(getUserAppsDir(), appId)
+    await fs.mkdir(appDir, { recursive: true })
+    await fs.writeFile(path.join(appDir, 'icon.svg'), iconBuffer)
 
-    appEntry.hasIcon = true;
-    appEntry.iconUrl = `peersky://myapps/${appId}/icon.svg`;
-    await this.saveRegistry();
-    return { ...appEntry };
+    appEntry.hasIcon = true
+    appEntry.iconUrl = `peersky://myapps/${appId}/icon.svg`
+    await this.saveRegistry()
+    return { ...appEntry }
   }
 
-  async importFolder(payload) {
-    const files = Array.isArray(payload?.files) ? payload.files : [];
-    if (!files.length) throw new Error("Folder is empty");
+  async importFolder (payload) {
+    const files = Array.isArray(payload?.files) ? payload.files : []
+    if (!files.length) throw new Error('Folder is empty')
     if (files.length > MAX_BUNDLE_FILES) {
-      throw new Error(`Too many files (max ${MAX_BUNDLE_FILES})`);
+      throw new Error(`Too many files (max ${MAX_BUNDLE_FILES})`)
     }
 
-    const normalizedFiles = [];
-    let totalBytes = 0;
+    const normalizedFiles = []
+    let totalBytes = 0
     for (const file of files) {
-      const relPath = sanitizeBundlePath(file?.path);
-      if (!relPath) throw new Error("Folder contains invalid file paths");
+      const relPath = sanitizeBundlePath(file?.path)
+      if (!relPath) throw new Error('Folder contains invalid file paths')
 
-      const ext = path.extname(relPath).toLowerCase();
+      const ext = path.extname(relPath).toLowerCase()
       if (!ALLOWED_BUNDLE_EXTENSIONS.has(ext)) {
-        throw new Error(`Unsupported file type in bundle: ${relPath}`);
+        throw new Error(`Unsupported file type in bundle: ${relPath}`)
       }
 
-      const dataAny = file?.data;
+      const dataAny = file?.data
       const byteLength = Buffer.isBuffer(dataAny)
         ? dataAny.length
-        : (typeof dataAny === "object" && dataAny !== null && typeof dataAny.byteLength === "number")
-          ? dataAny.byteLength
-          : (ArrayBuffer.isView(dataAny) ? dataAny.byteLength : 0);
+        : (typeof dataAny === 'object' && dataAny !== null && typeof dataAny.byteLength === 'number')
+            ? dataAny.byteLength
+            : (ArrayBuffer.isView(dataAny) ? dataAny.byteLength : 0)
       if (!Number.isFinite(byteLength) || byteLength < 0) {
-        throw new Error(`Invalid file payload: ${relPath}`);
+        throw new Error(`Invalid file payload: ${relPath}`)
       }
-      totalBytes += byteLength;
+      totalBytes += byteLength
       if (totalBytes > MAX_BUNDLE_BYTES) {
-        throw new Error(`Bundle too large (max ${Math.floor(MAX_BUNDLE_BYTES / (1024 * 1024))}MB)`);
+        throw new Error(`Bundle too large (max ${Math.floor(MAX_BUNDLE_BYTES / (1024 * 1024))}MB)`)
       }
 
       const buffer = Buffer.isBuffer(dataAny)
         ? dataAny
-        : Buffer.from(dataAny instanceof ArrayBuffer ? new Uint8Array(dataAny) : dataAny);
-      normalizedFiles.push({ relPath, buffer });
+        : Buffer.from(dataAny instanceof ArrayBuffer ? new Uint8Array(dataAny) : dataAny)
+      normalizedFiles.push({ relPath, buffer })
     }
 
-    const hasRootIndex = normalizedFiles.some((f) => f.relPath.toLowerCase() === "index.html");
+    const hasRootIndex = normalizedFiles.some((f) => f.relPath.toLowerCase() === 'index.html')
     if (!hasRootIndex) {
-      throw new Error("Folder must include index.html at the root");
+      throw new Error('Folder must include index.html at the root')
     }
 
-    const inferredName = String(payload?.name || "").trim() || "Local App";
-    const baseId = slugify(inferredName) || "local-app";
-    const uniqueId = this.makeUniqueId(baseId, new Set(this.registry.map((a) => a.id)));
-    const appDir = path.join(getUserAppsDir(), uniqueId, "app");
-    await fs.mkdir(appDir, { recursive: true });
+    const inferredName = String(payload?.name || '').trim() || 'Local App'
+    const baseId = slugify(inferredName) || 'local-app'
+    const uniqueId = this.makeUniqueId(baseId, new Set(this.registry.map((a) => a.id)))
+    const appDir = path.join(getUserAppsDir(), uniqueId, 'app')
+    await fs.mkdir(appDir, { recursive: true })
 
     for (const file of normalizedFiles) {
-      const destination = path.join(appDir, file.relPath);
-      await fs.mkdir(path.dirname(destination), { recursive: true });
-      await fs.writeFile(destination, file.buffer);
+      const destination = path.join(appDir, file.relPath)
+      await fs.mkdir(path.dirname(destination), { recursive: true })
+      await fs.writeFile(destination, file.buffer)
     }
 
     const entry = {
@@ -286,96 +286,96 @@ class P2PAppRegistry {
       hasIcon: false,
       iconUrl: null,
       createdAt: new Date().toISOString()
-    };
-    this.registry.push(entry);
-    await this.saveRegistry();
-    return { ...entry };
+    }
+    this.registry.push(entry)
+    await this.saveRegistry()
+    return { ...entry }
   }
 
-  async importFolderFromPath(folderPath) {
-    const stat = await fs.stat(folderPath).catch(() => null);
+  async importFolderFromPath (folderPath) {
+    const stat = await fs.stat(folderPath).catch(() => null)
     if (!stat || !stat.isDirectory()) {
-      throw new Error("Dropped item is not a valid folder");
+      throw new Error('Dropped item is not a valid folder')
     }
 
-    const folderName = path.basename(folderPath);
+    const folderName = path.basename(folderPath)
 
-    const files = [];
-    let totalBytes = 0;
+    const files = []
+    let totalBytes = 0
 
     const getFiles = async (dirPath, baseDir) => {
-      const entries = await fs.readdir(dirPath, { withFileTypes: true });
+      const entries = await fs.readdir(dirPath, { withFileTypes: true })
       for (const entry of entries) {
-        const fullPath = path.join(dirPath, entry.name);
+        const fullPath = path.join(dirPath, entry.name)
         if (entry.isDirectory()) {
-          await getFiles(fullPath, baseDir);
+          await getFiles(fullPath, baseDir)
         } else if (entry.isFile()) {
-          const relPath = path.relative(baseDir, fullPath).replace(/\\/g, "/");
-          const data = await fs.readFile(fullPath);
-          const nextFileCount = files.length + 1;
-          const nextTotalBytes = totalBytes + data.length;
-          
+          const relPath = path.relative(baseDir, fullPath).replace(/\\/g, '/')
+          const data = await fs.readFile(fullPath)
+          const nextFileCount = files.length + 1
+          const nextTotalBytes = totalBytes + data.length
+
           if (nextFileCount > MAX_BUNDLE_FILES) {
-            throw new Error(`App bundle has too many files (max ${MAX_BUNDLE_FILES})`);
+            throw new Error(`App bundle has too many files (max ${MAX_BUNDLE_FILES})`)
           }
           if (nextTotalBytes > MAX_BUNDLE_BYTES) {
-            throw new Error(`App bundle is too large (max ${Math.floor(MAX_BUNDLE_BYTES / (1024 * 1024))}MB)`);
+            throw new Error(`App bundle is too large (max ${Math.floor(MAX_BUNDLE_BYTES / (1024 * 1024))}MB)`)
           }
-          
-          totalBytes = nextTotalBytes;
-          files.push({ path: relPath, data });
+
+          totalBytes = nextTotalBytes
+          files.push({ path: relPath, data })
         }
       }
-    };
+    }
 
-    await getFiles(folderPath, folderPath);
-    return await this.importFolder({ name: folderName, files });
+    await getFiles(folderPath, folderPath)
+    return await this.importFolder({ name: folderName, files })
   }
 
-  async removeApp(appId) {
-    const safeId = sanitizeId(appId);
-    if (!safeId) throw new Error("Invalid app id");
+  async removeApp (appId) {
+    const safeId = sanitizeId(appId)
+    if (!safeId) throw new Error('Invalid app id')
 
-    const index = this.registry.findIndex(a => a.id === safeId);
-    if (index === -1) throw new Error("App not found");
+    const index = this.registry.findIndex(a => a.id === safeId)
+    if (index === -1) throw new Error('App not found')
 
-    this.registry.splice(index, 1);
-    await this.saveRegistry();
+    this.registry.splice(index, 1)
+    await this.saveRegistry()
 
-    const appDir = path.join(getUserAppsDir(), safeId);
+    const appDir = path.join(getUserAppsDir(), safeId)
     try {
-      await fs.rm(appDir, { recursive: true, force: true });
+      await fs.rm(appDir, { recursive: true, force: true })
     } catch {
-      console.error("Failed to remove app directory");
+      console.error('Failed to remove app directory')
     }
 
-    return { success: true, id: safeId };
+    return { success: true, id: safeId }
   }
 
-  async reset() {
-    this.registry = [];
-    const dir = getUserAppsDir();
+  async reset () {
+    this.registry = []
+    const dir = getUserAppsDir()
     try {
-      await fs.rm(dir, { recursive: true, force: true });
+      await fs.rm(dir, { recursive: true, force: true })
     } catch (e) {
-      console.error("Failed to cleanly remove myapps directory on reset", e);
+      console.error('Failed to cleanly remove myapps directory on reset', e)
     }
-    await fs.mkdir(dir, { recursive: true }).catch(() => {});
-    await this.saveRegistry();
+    await fs.mkdir(dir, { recursive: true }).catch(() => {})
+    await this.saveRegistry()
   }
 
-  parseGitModules(content) {
-    const submodules = [];
-    let current = null;
+  parseGitModules (content) {
+    const submodules = []
+    let current = null
     for (const line of content.split('\n')) {
-      const trimmed = line.trim();
+      const trimmed = line.trim()
       if (trimmed.startsWith('[submodule')) {
-        current = {};
-        submodules.push(current);
+        current = {}
+        submodules.push(current)
       } else if (current && trimmed.startsWith('path =')) {
-        current.subPath = trimmed.slice('path ='.length).trim();
+        current.subPath = trimmed.slice('path ='.length).trim()
       } else if (current && trimmed.startsWith('url =')) {
-        current.url = trimmed.slice('url ='.length).trim();
+        current.url = trimmed.slice('url ='.length).trim()
       }
     }
     return submodules
@@ -383,81 +383,81 @@ class P2PAppRegistry {
       .map(s => ({
         repo: s.url.replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, ''),
         dir: path.basename(s.subPath)
-      }));
+      }))
   }
 
-  async updateSubmodulesFromGitHub() {
-    let SUBMODULE_APPS;
+  async updateSubmodulesFromGitHub () {
+    let SUBMODULE_APPS
     try {
-      const gitmodulesPath = path.join(app.getAppPath(), '.gitmodules');
-      const content = await fs.readFile(gitmodulesPath, 'utf8');
-      SUBMODULE_APPS = this.parseGitModules(content);
-      if (!SUBMODULE_APPS.length) throw new Error('No GitHub submodules found in .gitmodules');
+      const gitmodulesPath = path.join(app.getAppPath(), '.gitmodules')
+      const content = await fs.readFile(gitmodulesPath, 'utf8')
+      SUBMODULE_APPS = this.parseGitModules(content)
+      if (!SUBMODULE_APPS.length) throw new Error('No GitHub submodules found in .gitmodules')
     } catch (err) {
-      console.error('Could not parse .gitmodules:', err.message);
-      return { success: false, error: `Could not read .gitmodules: ${err.message}` };
+      console.error('Could not parse .gitmodules:', err.message)
+      return { success: false, error: `Could not read .gitmodules: ${err.message}` }
     }
 
     // In packaged builds, __dirname points inside app.asar (read-only)
     // We need to write to app.asar.unpacked instead
-    let p2pDir;
+    let p2pDir
     if (app.isPackaged) {
-      const appPath = app.getAppPath();
-      const unpackedPath = appPath.replace(/\.asar$/, '.asar.unpacked');
-      p2pDir = path.join(unpackedPath, 'src', 'pages', 'p2p');
+      const appPath = app.getAppPath()
+      const unpackedPath = appPath.replace(/\.asar$/, '.asar.unpacked')
+      p2pDir = path.join(unpackedPath, 'src', 'pages', 'p2p')
     } else {
-      p2pDir = path.join(__dirname, 'pages', 'p2p');
+      p2pDir = path.join(__dirname, 'pages', 'p2p')
     }
-    const errors = [];
+    const errors = []
 
     for (const mod of SUBMODULE_APPS) {
       try {
-        const zipUrl = `https://github.com/${mod.repo}/archive/HEAD.zip`;
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 60000);
+        const zipUrl = `https://github.com/${mod.repo}/archive/HEAD.zip`
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), 60000)
 
-        let response;
+        let response
         try {
-          response = await fetch(zipUrl, { signal: controller.signal });
+          response = await fetch(zipUrl, { signal: controller.signal })
         } finally {
-          clearTimeout(timer);
+          clearTimeout(timer)
         }
 
         if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
+          throw new Error(`HTTP ${response.status}`)
         }
 
-        const buffer = Buffer.from(await response.arrayBuffer());
-        const directory = await unzipper.Open.buffer(buffer);
-        const targetDir = path.join(p2pDir, mod.dir);
+        const buffer = Buffer.from(await response.arrayBuffer())
+        const directory = await unzipper.Open.buffer(buffer)
+        const targetDir = path.join(p2pDir, mod.dir)
 
         // Clear existing contents before extracting fresh copy
         try {
-          const existing = await fs.readdir(targetDir);
+          const existing = await fs.readdir(targetDir)
           await Promise.all(
             existing.map(e => fs.rm(path.join(targetDir, e), { recursive: true, force: true }))
-          );
+          )
         } catch {
-          await fs.mkdir(targetDir, { recursive: true });
+          await fs.mkdir(targetDir, { recursive: true })
         }
 
         // Extract all files, stripping the top-level GitHub zip folder (e.g. "peerchat-main/")
         for (const file of directory.files) {
-          const relativePath = file.path.replace(/^[^/]+\//, '');
-          if (!relativePath) continue;
+          const relativePath = file.path.replace(/^[^/]+\//, '')
+          if (!relativePath) continue
 
-          const destPath = path.join(targetDir, relativePath);
+          const destPath = path.join(targetDir, relativePath)
           if (file.type === 'Directory' || relativePath.endsWith('/')) {
-            await fs.mkdir(destPath, { recursive: true });
+            await fs.mkdir(destPath, { recursive: true })
           } else {
-            await fs.mkdir(path.dirname(destPath), { recursive: true });
-            const content = await file.buffer();
-            await fs.writeFile(destPath, content);
+            await fs.mkdir(path.dirname(destPath), { recursive: true })
+            const content = await file.buffer()
+            await fs.writeFile(destPath, content)
           }
         }
       } catch (error) {
-        console.error(`Failed to update ${mod.dir}:`, error);
-        errors.push(`${mod.dir}: ${error.message}`);
+        console.error(`Failed to update ${mod.dir}:`, error)
+        errors.push(`${mod.dir}: ${error.message}`)
       }
     }
 
@@ -465,124 +465,124 @@ class P2PAppRegistry {
       return {
         success: false,
         error: `Failed to update some apps: ${errors.join('; ')}`
-      };
+      }
     }
 
     return {
       success: true,
       message: 'P2P apps updated to latest versions. Refresh to see changes.'
-    };
+    }
   }
 
-  async updateSubmodules() {
+  async updateSubmodules () {
     // Packaged builds have no .git and no git binary — use GitHub zip downloads instead
     if (app.isPackaged) {
-      return await this.updateSubmodulesFromGitHub();
+      return await this.updateSubmodulesFromGitHub()
     }
 
     // Development: use git submodule update
     try {
-      const projectRoot = app.getAppPath();
-      
+      const projectRoot = app.getAppPath()
+
       // Update all submodules to their latest commits
       const { stdout, stderr } = await execAsync(
         'git submodule update --remote --merge',
         { cwd: projectRoot, timeout: 60000 }
-      );
-      
+      )
+
       return {
         success: true,
         message: 'P2P apps updated to latest versions',
         output: stdout || stderr
-      };
+      }
     } catch (error) {
-      console.error('Failed to update submodules:', error);
+      console.error('Failed to update submodules:', error)
       return {
         success: false,
         error: error.message || 'Failed to update P2P apps'
-      };
+      }
     }
   }
 
-  setupIpc() {
-    ipcMain.handle("p2p-user-apps-list", async () => {
+  setupIpc () {
+    ipcMain.handle('p2p-user-apps-list', async () => {
       try {
-        return { success: true, apps: this.getUserApps() };
+        return { success: true, apps: this.getUserApps() }
       } catch (error) {
-        return { success: false, error: error.message };
+        return { success: false, error: error.message }
       }
-    });
+    })
 
-    ipcMain.handle("p2p-user-apps-add-from-url", async (_event, rawUrl) => {
+    ipcMain.handle('p2p-user-apps-add-from-url', async (_event, rawUrl) => {
       try {
-        const entry = await this.addFromUrl(rawUrl);
-        return { success: true, app: entry };
+        const entry = await this.addFromUrl(rawUrl)
+        return { success: true, app: entry }
       } catch (error) {
-        return { success: false, error: error.message };
+        return { success: false, error: error.message }
       }
-    });
+    })
 
-    ipcMain.handle("p2p-user-apps-upload-icon", async (_event, payload) => {
+    ipcMain.handle('p2p-user-apps-upload-icon', async (_event, payload) => {
       try {
-        const entry = await this.uploadIcon(payload);
-        return { success: true, app: entry };
+        const entry = await this.uploadIcon(payload)
+        return { success: true, app: entry }
       } catch (error) {
-        return { success: false, error: error.message };
+        return { success: false, error: error.message }
       }
-    });
+    })
 
-    ipcMain.handle("p2p-user-apps-import-folder", async (_event, payload) => {
+    ipcMain.handle('p2p-user-apps-import-folder', async (_event, payload) => {
       try {
-        const entry = await this.importFolder(payload);
-        return { success: true, app: entry };
+        const entry = await this.importFolder(payload)
+        return { success: true, app: entry }
       } catch (error) {
-        return { success: false, error: error.message };
+        return { success: false, error: error.message }
       }
-    });
+    })
 
-    ipcMain.handle("p2p-user-apps-select-folder", async () => {
+    ipcMain.handle('p2p-user-apps-select-folder', async () => {
       try {
         const result = await dialog.showOpenDialog({
-          properties: ["openDirectory"]
-        });
+          properties: ['openDirectory']
+        })
         if (result.canceled || !result.filePaths.length) {
-          return { success: true, canceled: true };
+          return { success: true, canceled: true }
         }
 
-        const imported = await this.importFolderFromPath(result.filePaths[0]);
-        return { success: true, app: imported };
+        const imported = await this.importFolderFromPath(result.filePaths[0])
+        return { success: true, app: imported }
       } catch (error) {
-        return { success: false, error: error.message };
+        return { success: false, error: error.message }
       }
-    });
+    })
 
-    ipcMain.handle("p2p-user-apps-import-drop", async (_event, folderPath) => {
+    ipcMain.handle('p2p-user-apps-import-drop', async (_event, folderPath) => {
       try {
-        const imported = await this.importFolderFromPath(folderPath);
-        return { success: true, app: imported };
+        const imported = await this.importFolderFromPath(folderPath)
+        return { success: true, app: imported }
       } catch (error) {
-        return { success: false, error: error.message };
+        return { success: false, error: error.message }
       }
-    });
+    })
 
-    ipcMain.handle("p2p-user-apps-remove", async (_event, appId) => {
+    ipcMain.handle('p2p-user-apps-remove', async (_event, appId) => {
       try {
-        return await this.removeApp(appId);
+        return await this.removeApp(appId)
       } catch (error) {
-        return { success: false, error: error.message };
+        return { success: false, error: error.message }
       }
-    });
+    })
 
-    ipcMain.handle("p2p-apps-update-submodules", async () => {
+    ipcMain.handle('p2p-apps-update-submodules', async () => {
       try {
-        return await this.updateSubmodules();
+        return await this.updateSubmodules()
       } catch (error) {
-        return { success: false, error: error.message };
+        return { success: false, error: error.message }
       }
-    });
+    })
   }
 }
 
-const p2pAppRegistry = new P2PAppRegistry();
+const p2pAppRegistry = new P2PAppRegistry()
 
-export default p2pAppRegistry;
+export default p2pAppRegistry
