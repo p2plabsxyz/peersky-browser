@@ -432,6 +432,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   function handleTabSelected (e) {
     const { tabId, url } = e.detail
 
+    const navbox = document.querySelector('#navbox')
+    if (url && url.startsWith('peersky://onboarding')) {
+      if (navbox) navbox.style.display = 'none'
+      if (tabBar) tabBar.style.display = 'none'
+    } else {
+      if (navbox) navbox.style.display = ''
+      if (tabBar) tabBar.style.display = ''
+    }
+
     // Hide peersky://home URL, show all others
     if (isHomePage(url)) {
       nav.setStyledUrl('')
@@ -456,6 +465,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     const { tabId, url } = e.detail
 
     if (tabId === tabBar.activeTabId) {
+      const navbox = document.querySelector('#navbox')
+      if (url && url.startsWith('peersky://onboarding')) {
+        if (navbox) navbox.style.display = 'none'
+        if (tabBar) tabBar.style.display = 'none'
+      } else {
+        if (navbox) navbox.style.display = ''
+        if (tabBar) tabBar.style.display = ''
+      }
+
       // Hide peersky://home URL, show all others
       if (isHomePage(url)) {
         nav.setStyledUrl('')

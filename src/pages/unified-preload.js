@@ -17,6 +17,7 @@ const url = window.location.href
 const isSettings = url.startsWith('peersky://settings')
 const isExtensions = url.startsWith('peersky://extensions')
 const isHome = url.startsWith('peersky://home')
+const isOnboarding = url.startsWith('peersky://onboarding')
 const isBookmarks = url.includes('peersky://bookmarks')
 const isDownloads = url.includes('peersky://downloads')
 const isTabsPage = url.includes('peersky://tabs')
@@ -531,7 +532,16 @@ const settingsAPI = createSettingsAPI(context)
 
 // Expose APIs based on context with enhanced granularity
 try {
-  if (isSettings) {
+  if (isOnboarding) {
+    contextBridge.exposeInMainWorld('electronAPI', {
+      settings: settingsAPI,
+      importOnboardingData: (data) => ipcRenderer.invoke('onboarding-import-data', data),
+      skipOnboarding: () => ipcRenderer.invoke('onboarding-skip'),
+      restoreBackup: (backupContent) => ipcRenderer.invoke('onboarding-restore-backup', backupContent),
+      openExternalLink: (url) => ipcRenderer.send('open-external-link', url)
+    })
+    console.log('Unified-preload: Onboarding electronAPI exposed')
+  } else if (isSettings) {
     // Settings pages get full electronAPI access (exactly what settings.js expects)
     contextBridge.exposeInMainWorld('electronAPI', {
       settings: settingsAPI,
