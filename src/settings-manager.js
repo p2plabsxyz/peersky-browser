@@ -533,6 +533,11 @@ class SettingsManager {
       // Start with defaults
       this.settings = { ...DEFAULT_SETTINGS }
 
+      // Existing profiles upgrading to this version should bypass onboarding
+      if (loaded && !('onboardingCompleted' in loaded)) {
+        this.settings.onboardingCompleted = true
+      }
+
       // Merge loaded settings, handling nested objects properly
       for (const key in loaded) {
         if (key === 'llm' && typeof loaded[key] === 'object' && loaded[key] !== null) {
