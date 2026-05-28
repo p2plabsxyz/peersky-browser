@@ -2,121 +2,123 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Welcome to Peersky</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+  <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' peersky:; object-src 'none'; style-src 'self' 'unsafe-inline' browser:;">
+  <link rel="icon" type="image/png" href="peersky://static/assets/logo.png" />
   <style>
-    :root {
-      --bg-gradient: linear-gradient(135deg, #0e1118 0%, #161b26 100%);
-      --text-main: #f3f4f6;
-      --text-muted: #9ca3af;
-      --accent: #2563eb;
-      --accent-glow: rgba(37, 99, 235, 0.4);
-      --glass-bg: rgba(255, 255, 255, 0.03);
-      --glass-border: rgba(255, 255, 255, 0.06);
-      --glass-border-hover: rgba(255, 255, 255, 0.15);
-      --card-bg: rgba(20, 24, 33, 0.6);
-    }
+    @import url("browser://theme/vars.css");
+    @import url("browser://theme/themes.css");
 
-    /* Transparent/dark theme alignment */
-    [data-theme="light"] {
-      --bg-gradient: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
-      --text-main: #1f2937;
-      --text-muted: #6b7280;
-      --accent: #1d4ed8;
-      --accent-glow: rgba(29, 78, 216, 0.2);
-      --glass-bg: rgba(0, 0, 0, 0.02);
-      --glass-border: rgba(0, 0, 0, 0.08);
-      --glass-border-hover: rgba(0, 0, 0, 0.18);
-      --card-bg: rgba(255, 255, 255, 0.8);
-    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
+    html, body {
+      height: 100%;
+      background: var(--settings-bg-primary);
+      color: var(--settings-text-primary);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      user-select: none;
+      overflow: hidden;
     }
 
     body {
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background: var(--bg-gradient);
-      color: var(--text-main);
-      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    /* ── Step 1: Welcome ── */
+    .welcome-screen {
+      position: absolute;
+      inset: 0;
       display: flex;
       flex-direction: column;
       justify-content: center;
       align-items: center;
-      padding: 20px;
-      overflow: hidden;
-      user-select: none;
+      opacity: 1;
+      transition: opacity 0.5s ease;
+      z-index: 10;
     }
 
-    .container {
-      width: 100%;
-      max-width: 680px;
-      background: var(--card-bg);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      border: 1px solid var(--glass-border);
-      border-radius: 24px;
-      padding: 40px;
-      text-align: center;
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-      animation: fadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+    .welcome-screen.hidden {
+      opacity: 0;
+      pointer-events: none;
     }
 
-    @keyframes fadeIn {
-      from {
-        opacity: 0;
-        transform: translateY(20px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
+    .welcome-logo {
+      width: 56px;
+      height: 56px;
+      margin-bottom: 20px;
+      opacity: 0;
+      transform: scale(0.8);
+      animation: logoIn 0.6s ease forwards 0.2s;
     }
 
-    header {
-      margin-bottom: 32px;
-    }
-
-    h1 {
-      font-family: 'Outfit', sans-serif;
-      font-size: 32px;
-      font-weight: 700;
-      letter-spacing: -0.5px;
-      margin-bottom: 8px;
-      background: linear-gradient(135deg, var(--text-main) 30%, var(--accent) 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-
-    .subtitle {
-      color: var(--text-muted);
-      font-size: 16px;
-      font-weight: 400;
-    }
-
-    /* Extension download buttons */
-    .extension-section {
-      margin-bottom: 32px;
-    }
-
-    .section-title {
-      font-size: 14px;
-      text-transform: uppercase;
-      letter-spacing: 1.5px;
-      color: var(--text-muted);
+    .welcome-text {
+      font-size: 1.5rem;
       font-weight: 600;
-      margin-bottom: 16px;
+      opacity: 0;
+      transform: translateY(8px);
+      animation: fadeUp 0.5s ease forwards 0.5s;
     }
 
-    .browser-buttons {
+    .welcome-sub {
+      font-size: 0.85rem;
+      color: var(--settings-text-secondary);
+      margin-top: 6px;
+      opacity: 0;
+      transform: translateY(8px);
+      animation: fadeUp 0.5s ease forwards 0.7s;
+    }
+
+    @keyframes logoIn {
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    @keyframes fadeUp {
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Step 2: Import ── */
+    .import-screen {
       display: flex;
-      justify-content: center;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+      max-width: 480px;
+      padding: 40px 24px;
+      opacity: 0;
+      transform: translateY(12px);
+      transition: opacity 0.5s ease, transform 0.5s ease;
+      pointer-events: none;
+    }
+
+    .import-screen.visible {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+
+    /* Header */
+    .onboarding-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 6px;
+      text-align: center;
+    }
+
+    .onboarding-subtitle {
+      font-size: 0.85rem;
+      color: var(--settings-text-secondary);
+      margin-bottom: 36px;
+      text-align: center;
+    }
+
+    /* Browser icon buttons */
+    .browser-row {
+      display: flex;
       gap: 16px;
+      margin-bottom: 36px;
     }
 
     .browser-btn {
@@ -124,102 +126,84 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      width: 180px;
-      height: 120px;
-      background: var(--glass-bg);
-      border: 1px solid var(--glass-border);
-      border-radius: 16px;
+      gap: 10px;
+      width: 140px;
+      height: 110px;
+      background: var(--settings-card-bg);
+      border: 1px solid var(--settings-border);
+      border-radius: 8px;
       cursor: pointer;
-      color: var(--text-main);
-      font-weight: 500;
-      font-size: 14px;
-      transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-    }
-
-    .browser-btn svg {
-      margin-bottom: 12px;
-      transition: transform 0.3s ease;
+      color: var(--settings-text-primary);
+      font-size: 0.8rem;
+      font-weight: 400;
+      transition: border-color 0.15s ease;
     }
 
     .browser-btn:hover {
-      background: rgba(255, 255, 255, 0.05);
-      border-color: var(--glass-border-hover);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-      transform: translateY(-2px);
+      border-color: var(--settings-border-hover);
     }
 
-    .browser-btn:hover svg {
-      transform: scale(1.1);
+    .browser-btn img {
+      width: 36px;
+      height: 36px;
     }
 
-    [data-theme="light"] .browser-btn:hover {
-      background: rgba(0, 0, 0, 0.03);
-    }
-
-    /* Drag and drop upload zone */
-    .import-section {
-      margin-bottom: 32px;
-    }
-
+    /* Drop zone */
     .drop-zone {
-      background: var(--glass-bg);
-      border: 2px dashed var(--glass-border);
-      border-radius: 16px;
-      padding: 32px 20px;
+      width: 100%;
+      background: var(--settings-card-bg);
+      border: 1px dashed var(--settings-border);
+      border-radius: 8px;
+      padding: 24px;
       cursor: pointer;
-      transition: all 0.3s ease;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
+      text-align: center;
+      transition: border-color 0.15s ease;
+      margin-bottom: 24px;
     }
 
-    .drop-zone:hover, .drop-zone.drag-over {
-      border-color: var(--accent);
-      background: rgba(37, 99, 235, 0.02);
-      box-shadow: 0 0 16px var(--accent-glow);
+    .drop-zone:hover,
+    .drop-zone.drag-over {
+      border-color: var(--settings-border-focus);
     }
 
-    .drop-zone svg {
-      stroke: var(--text-muted);
-      margin-bottom: 12px;
-      transition: stroke 0.3s ease;
-    }
-
-    .drop-zone:hover svg, .drop-zone.drag-over svg {
-      stroke: var(--accent);
+    .drop-zone-icon {
+      width: 20px;
+      height: 20px;
+      margin-bottom: 8px;
+      opacity: 0.6;
+      filter: brightness(0) invert(1);
     }
 
     .drop-text {
-      font-size: 14px;
-      color: var(--text-main);
-      font-weight: 500;
-      margin-bottom: 4px;
+      font-size: 0.85rem;
+      color: var(--settings-text-primary);
+      margin-bottom: 2px;
     }
 
     .drop-subtext {
-      font-size: 12px;
-      color: var(--text-muted);
+      font-size: 0.75rem;
+      color: var(--settings-text-secondary);
     }
 
     #file-input {
       display: none;
     }
 
-    /* Status messages */
+    /* Status */
     .status-msg {
       display: none;
-      font-size: 13px;
-      padding: 10px 16px;
-      border-radius: 8px;
-      margin-top: 16px;
+      font-size: 0.8rem;
+      padding: 8px 12px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+      width: 100%;
       text-align: left;
     }
 
     .status-msg.error {
-      background: rgba(239, 68, 68, 0.1);
-      border: 1px solid rgba(239, 68, 68, 0.2);
-      color: #f87171;
+      background: rgba(229, 57, 53, 0.12);
+      border: 1px solid rgba(229, 57, 53, 0.25);
+      color: var(--settings-danger-color);
     }
 
     .status-msg.success {
@@ -228,223 +212,181 @@
       color: #34d399;
     }
 
-    /* Footer buttons */
-    .footer {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 16px;
-      margin-top: 8px;
-    }
-
+    /* Skip button */
     .skip-btn {
       width: 100%;
-      height: 48px;
-      background: var(--accent);
+      height: 36px;
+      background: var(--browser-theme-primary-highlight);
       color: #ffffff;
       border: none;
-      border-radius: 12px;
-      font-weight: 600;
-      font-size: 15px;
+      border-radius: 6px;
+      font-weight: 500;
+      font-size: 0.85rem;
       cursor: pointer;
-      transition: all 0.3s ease;
-      box-shadow: 0 4px 12px var(--accent-glow);
+      transition: filter 0.15s ease;
+      margin-bottom: 14px;
     }
 
     .skip-btn:hover {
-      background: #1d4ed8;
-      box-shadow: 0 6px 16px rgba(29, 78, 216, 0.5);
-      transform: translateY(-1px);
+      filter: brightness(1.1);
     }
 
-    .skip-btn:active {
-      transform: translateY(0);
-    }
-
+    /* Restore backup link */
     .backup-link {
-      font-size: 13px;
-      color: var(--text-muted);
-      text-decoration: none;
+      font-size: 0.78rem;
+      color: var(--settings-text-secondary);
       cursor: pointer;
-      transition: color 0.2s ease;
+      text-decoration: none;
+      transition: color 0.15s ease;
     }
 
     .backup-link:hover {
-      color: var(--text-main);
+      color: var(--settings-text-primary);
       text-decoration: underline;
     }
+
+    /* Section label */
+    .section-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--settings-text-secondary);
+      font-weight: 500;
+      margin-bottom: 10px;
+      width: 100%;
+      text-align: left;
+    }
   </style>
+  <title>Welcome to Peersky</title>
 </head>
 <body>
 
-  <div class="container">
-    <header>
-      <h1>Restore Tabs and Extensions</h1>
-      <p class="subtitle">Import your existing tabs and extensions from other browsers</p>
-    </header>
+  <!-- Step 1: Welcome -->
+  <div class="welcome-screen" id="welcome-screen">
+    <img class="welcome-logo" src="peersky://static/assets/logo.png" alt="Peersky">
+    <div class="welcome-text">Welcome to Peersky</div>
+    <div class="welcome-sub">Your local-first p2p browser</div>
+  </div>
 
-    <div class="extension-section">
-      <h2 class="section-title">1. Get Onboarding Extension</h2>
-      <div class="browser-buttons">
-        <button class="browser-btn" id="chrome-btn">
-          <!-- Stylized Chrome Icon -->
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="12" cy="12" r="11" fill="#4285F4"/>
-            <path d="M12 2A10 10 0 0 0 2 12a10 10 0 0 0 10 10 10 10 0 0 0 10-10A10 10 0 0 0 12 2zm0 3.5a6.5 6.5 0 0 1 5.3 2.7L12 16.2 6.7 8.2A6.5 6.5 0 0 1 12 5.5z" fill="#FFFFFF"/>
-            <circle cx="12" cy="12" r="4.5" fill="#4285F4"/>
-            <circle cx="12" cy="12" r="3.5" fill="#FFFFFF"/>
-          </svg>
-          <span>For Chrome / Edge</span>
-        </button>
+  <!-- Step 2: Import -->
+  <div class="import-screen" id="import-screen">
+    <h1 class="onboarding-title">Restore Tabs and Extensions</h1>
+    <p class="onboarding-subtitle">Import your tabs and extensions from another browser</p>
 
-        <button class="browser-btn" id="firefox-btn">
-          <!-- Stylized Firefox Icon -->
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="12" cy="12" r="11" fill="#E66000"/>
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z" fill="#FF9500"/>
-            <path d="M12 5.5c-3.58 0-6.5 2.92-6.5 6.5s2.92 6.5 6.5 6.5 6.5-2.92 6.5-6.5-2.92-6.5-6.5-6.5zm1 7.5c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1z" fill="#0060DF"/>
-          </svg>
-          <span>For Firefox</span>
-        </button>
-      </div>
+    <div class="section-label">Get Onboarding Extension</div>
+    <div class="browser-row">
+      <button class="browser-btn" id="chrome-btn">
+        <img src="peersky://static/assets/svg/globe.svg" alt="Chrome">
+        <span>Chrome / Edge</span>
+      </button>
+      <button class="browser-btn" id="firefox-btn">
+        <img src="peersky://static/assets/svg/globe.svg" alt="Firefox">
+        <span>Firefox</span>
+      </button>
     </div>
 
-    <div class="import-section">
-      <h2 class="section-title">2. Import Exported JSON</h2>
-      <div class="drop-zone" id="drop-zone">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-          <polyline points="17 8 12 3 7 8"></polyline>
-          <line x1="12" y1="3" x2="12" y2="15"></line>
-        </svg>
-        <div class="drop-text">Drag & drop peersky-export.json here</div>
-        <div class="drop-subtext">or click to browse from files</div>
-      </div>
-      <input type="file" id="file-input" accept=".json">
-      <div class="status-msg" id="status-text"></div>
+    <div class="section-label">Import Exported JSON</div>
+    <div class="drop-zone" id="drop-zone">
+      <img class="drop-zone-icon" src="peersky://static/assets/svg/file-upload.svg" alt="Upload">
+      <div class="drop-text">Drop peersky-export.json here</div>
+      <div class="drop-subtext">or click to browse</div>
     </div>
+    <input type="file" id="file-input" accept=".json">
 
-    <div class="footer">
-      <button class="skip-btn" id="skip-btn">Skip & Start Fresh</button>
-      <a class="backup-link" id="backup-link">Restore a profile settings backup (.json)</a>
-    </div>
+    <div class="status-msg" id="status-text"></div>
+
+    <button class="skip-btn" id="skip-btn">Skip</button>
+    <a class="backup-link" id="backup-link">Restore a Peersky backup (.zip)</a>
   </div>
 
   <script>
-    // Initialize Theme immediately based on settings
-    const initTheme = async () => {
+    // Theme init
+    (async () => {
       try {
         if (window.electronAPI && window.electronAPI.settings) {
           const theme = await window.electronAPI.settings.get('theme');
-          if (theme) {
-            document.documentElement.setAttribute('data-theme', theme);
-          }
+          if (theme) document.documentElement.setAttribute('data-theme', theme);
         }
-      } catch (err) {
-        console.error('Failed to init theme:', err);
-      }
-    };
-    initTheme();
+      } catch (_) {}
+    })();
 
-    const { importOnboardingData, skipOnboarding, restoreBackup, openExternalLink } = window.electronAPI || {};
+    // Animated flow: welcome → import after 2s
+    const welcomeScreen = document.getElementById('welcome-screen');
+    const importScreen = document.getElementById('import-screen');
 
-    // Web store URL targets
+    setTimeout(() => {
+      welcomeScreen.classList.add('hidden');
+      setTimeout(() => {
+        importScreen.classList.add('visible');
+      }, 400);
+    }, 2000);
+
+    // API
+    const api = window.electronAPI || {};
+    const { importOnboardingData, skipOnboarding, restoreBackup, openExternalLink } = api;
+
     const CHROME_STORE_URL = 'https://chromewebstore.google.com/';
     const FIREFOX_ADDONS_URL = 'https://addons.mozilla.org/';
 
     document.getElementById('chrome-btn').addEventListener('click', () => {
-      openExternalLink(CHROME_STORE_URL);
+      if (openExternalLink) openExternalLink(CHROME_STORE_URL);
     });
 
     document.getElementById('firefox-btn').addEventListener('click', () => {
-      openExternalLink(FIREFOX_ADDONS_URL);
+      if (openExternalLink) openExternalLink(FIREFOX_ADDONS_URL);
     });
 
     document.getElementById('skip-btn').addEventListener('click', async () => {
-      await skipOnboarding();
+      if (skipOnboarding) await skipOnboarding();
     });
 
+    // Backup link — .zip restore (UI only, handler not wired yet)
     document.getElementById('backup-link').addEventListener('click', () => {
-      document.getElementById('file-input').click();
+      // TODO: wire up zip restore handler
+      alert('Peersky backup restore coming soon.');
     });
 
-    // File Drop Zone Setup
+    // Drop zone
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
     const statusText = document.getElementById('status-text');
 
-    dropZone.addEventListener('click', () => {
-      fileInput.click();
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    ['dragenter', 'dragover'].forEach(ev => {
+      dropZone.addEventListener(ev, (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); }, false);
     });
 
-    ['dragenter', 'dragover'].forEach(eventName => {
-      dropZone.addEventListener(eventName, (e) => {
-        e.preventDefault();
-        dropZone.classList.add('drag-over');
-      }, false);
-    });
-
-    ['dragleave', 'drop'].forEach(eventName => {
-      dropZone.addEventListener(eventName, (e) => {
-        e.preventDefault();
-        dropZone.classList.remove('drag-over');
-      }, false);
+    ['dragleave', 'drop'].forEach(ev => {
+      dropZone.addEventListener(ev, (e) => { e.preventDefault(); dropZone.classList.remove('drag-over'); }, false);
     });
 
     dropZone.addEventListener('drop', (e) => {
-      const dt = e.dataTransfer;
-      const files = dt.files;
-      if (files.length > 0) {
-        handleFile(files[0]);
-      }
+      if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
     });
 
     fileInput.addEventListener('change', (e) => {
-      const files = e.target.files;
-      if (files.length > 0) {
-        handleFile(files[0]);
-      }
+      if (e.target.files.length > 0) handleFile(e.target.files[0]);
     });
 
     function handleFile(file) {
-      if (!file.name.endsWith('.json')) {
-        showError('Please select a valid .json file.');
-        return;
-      }
+      if (!file.name.endsWith('.json')) { showError('Please select a .json file.'); return; }
 
       const reader = new FileReader();
       reader.onload = async (e) => {
         const text = e.target.result;
         try {
           const data = JSON.parse(text);
-          if (data && typeof data === 'object') {
-            showSuccess('Analyzing file content...');
+          if (!data || typeof data !== 'object') { showError('Invalid file.'); return; }
 
-            // Distinguish extension export vs profile settings backup
-            const isExtensionExport = (data.windows !== undefined || data.extensions !== undefined);
-
-            if (isExtensionExport) {
-              showSuccess('Importing tabs and extensions...');
-              const res = await importOnboardingData(text);
-              if (res.success) {
-                showSuccess('Import complete! Loading browser...');
-              } else {
-                showError(res.error || 'Failed to import onboarding data.');
-              }
-            } else {
-              showSuccess('Restoring profile backup...');
-              const res = await restoreBackup(text);
-              if (res.success) {
-                showSuccess('Backup restored successfully!');
-              } else {
-                showError(res.error || 'Failed to restore settings backup.');
-              }
-            }
-          } else {
-            showError('Invalid file structure. Make sure it is a valid JSON export.');
+          if (importOnboardingData) {
+            showSuccess('Importing...');
+            const res = await importOnboardingData(text);
+            if (res.success) showSuccess('Done! Loading browser...');
+            else showError(res.error || 'Import failed.');
           }
-        } catch (err) {
-          showError('Failed to parse JSON file.');
+        } catch (_) {
+          showError('Failed to parse JSON.');
         }
       };
       reader.readAsText(file);
@@ -452,13 +394,13 @@
 
     function showError(msg) {
       statusText.className = 'status-msg error';
-      statusText.innerText = msg;
+      statusText.textContent = msg;
       statusText.style.display = 'block';
     }
 
     function showSuccess(msg) {
       statusText.className = 'status-msg success';
-      statusText.innerText = msg;
+      statusText.textContent = msg;
       statusText.style.display = 'block';
     }
   </script>
