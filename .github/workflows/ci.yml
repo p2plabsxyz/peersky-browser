@@ -30,6 +30,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Verify Electron Installation
+        run: npx electron -v || node node_modules/electron/install.js
+
       - name: Lint
         run: npm run lint
 
