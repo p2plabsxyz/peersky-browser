@@ -429,17 +429,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     }, 100)
   })
 
+  function updateOnboardingVisibility (url) {
+    const isOb = url && url.startsWith('peersky://onboarding')
+    if (nav) nav.style.display = isOb ? 'none' : ''
+    if (tabBar) tabBar.style.display = isOb ? 'none' : ''
+  }
+
   function handleTabSelected (e) {
     const { tabId, url } = e.detail
 
-    const navbox = document.querySelector('#navbox')
-    if (url && url.startsWith('peersky://onboarding')) {
-      if (navbox) navbox.style.display = 'none'
-      if (tabBar) tabBar.style.display = 'none'
-    } else {
-      if (navbox) navbox.style.display = ''
-      if (tabBar) tabBar.style.display = ''
-    }
+    updateOnboardingVisibility(url)
 
     // Hide peersky://home URL, show all others
     if (isHomePage(url)) {
@@ -465,14 +464,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const { tabId, url } = e.detail
 
     if (tabId === tabBar.activeTabId) {
-      const navbox = document.querySelector('#navbox')
-      if (url && url.startsWith('peersky://onboarding')) {
-        if (navbox) navbox.style.display = 'none'
-        if (tabBar) tabBar.style.display = 'none'
-      } else {
-        if (navbox) navbox.style.display = ''
-        if (tabBar) tabBar.style.display = ''
-      }
+      updateOnboardingVisibility(url)
 
       // Hide peersky://home URL, show all others
       if (isHomePage(url)) {

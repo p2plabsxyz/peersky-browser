@@ -1,4 +1,4 @@
-import { app, session, protocol as globalProtocol, ipcMain, BrowserWindow, Menu, webContents } from 'electron' // eslint-disable-line no-unused-vars
+import { app, session, protocol as globalProtocol, ipcMain, BrowserWindow, Menu, webContents, shell } from 'electron' // eslint-disable-line no-unused-vars
 import { createLogger } from './logger.js'
 import fs from 'fs/promises'
 import path from 'path'
@@ -899,8 +899,14 @@ ipcMain.handle('onboarding-import-data', async (event, dataStr) => {
     if (importData.windows && Array.isArray(importData.windows) && importData.windows.length > 0) {
       for (const win of importData.windows) {
         const windowId = crypto.randomUUID()
-        const activeTabIndex = win.activeTabIndex || 0
-        const activeTab = win.tabs[activeTabIndex] || win.tabs[0] || { url: 'peersky://home' }
+        let activeTabIndex = win.activeTabIndex || 0
+        if (!win.tabs || !win.tabs.length) {
+          win.tabs = [{ url: 'peersky://home' }]
+        }
+        if (activeTabIndex < 0 || activeTabIndex >= win.tabs.length) {
+          activeTabIndex = 0
+        }
+        const activeTab = win.tabs[activeTabIndex]
 
         windowStates.push({
           windowId,
@@ -963,8 +969,10 @@ ipcMain.handle('onboarding-import-data', async (event, dataStr) => {
     }
 
     // Write session files atomically
-    await fs.writeFile(TABS_FILE, JSON.stringify(allTabsData, null, 2), 'utf-8')
-    await fs.writeFile(PERSIST_FILE, JSON.stringify(windowStates, null, 2), 'utf-8')
+    await fs.writeFile(TABS_FILE + '.tmp', JSON.stringify(allTabsData, null, 2), 'utf-8')
+    await fs.rename(TABS_FILE + '.tmp', TABS_FILE)
+    await fs.writeFile(PERSIST_FILE + '.tmp', JSON.stringify(windowStates, null, 2), 'utf-8')
+    await fs.rename(PERSIST_FILE + '.tmp', PERSIST_FILE)
 
     // Mark onboarding as completed
     settingsManager.settings.onboardingCompleted = true
@@ -1054,12 +1062,18 @@ ipcMain.handle('onboarding-restore-backup', async (event, backupContent) => {
   }
 })
 
-ipcMain.on('open-external-link', (_event, url) => {
+ipcMain.handle('open-external-link', (_event, url) => {
   try {
-    const { shell } = require('electron')
-    shell.openExternal(url)
+    const parsed = new URL(url)
+    if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+      shell.openExternal(url)
+      return { success: true }
+    } else {
+      throw new Error('Only HTTP/HTTPS URLs are allowed')
+    }
   } catch (err) {
     log.error('Failed to open external link:', err)
+    return { success: false, error: err.message }
   }
 })
 

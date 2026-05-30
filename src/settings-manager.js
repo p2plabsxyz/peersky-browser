@@ -534,7 +534,7 @@ class SettingsManager {
       this.settings = { ...DEFAULT_SETTINGS }
 
       // Existing profiles upgrading to this version should bypass onboarding
-      if (loaded && !('onboardingCompleted' in loaded)) {
+      if (loaded && Object.keys(loaded).length > 0 && !('onboardingCompleted' in loaded)) {
         this.settings.onboardingCompleted = true
       }
 
