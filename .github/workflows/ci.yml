@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest, macos-15]
 
     steps:
       - name: Checkout repository
@@ -24,11 +24,40 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "lts/*"
+          node-version: "lts/jod"
           cache: "npm"
 
+      - name: Cache Electron download
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/electron
+            ~/Library/Caches/electron
+            ~\AppData\Local\electron\Cache
+          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            electron-${{ runner.os }}-
+
       - name: Install dependencies
-        run: npm ci
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          shell: bash
+          command: npm ci
+
+      - name: Ensure Electron binary
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 3
+          shell: bash
+          command: |
+            if ! node -e "require('electron')" 2>/dev/null; then
+              echo "Electron binary missing — running npm rebuild electron..."
+              npm rebuild electron
+            fi
+            node -e "console.log('Electron path:', require('electron'))"
 
       - name: Lint
         run: npm run lint
