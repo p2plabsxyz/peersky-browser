@@ -58,16 +58,18 @@ export async function createNode() {
     addresses: {
       listen: [
         '/ip4/0.0.0.0/tcp/0',
-        '/ip4/0.0.0.0/tcp/0/ws',
-        '/ip4/0.0.0.0/udp/0/webrtc-direct',
+        '/ip4/0.0.0.0/tcp/4002/ws',
+        '/ip4/0.0.0.0/udp/4003/webrtc-direct',
         '/ip6/::/tcp/0',
-        '/ip6/::/tcp/0/ws',
-        '/ip6/::/udp/0/webrtc-direct',
+        '/ip6/::/tcp/4002/ws',
+        '/ip6/::/udp/4003/webrtc-direct',
         '/p2p-circuit'
       ],
     },
     transports: [
-      circuitRelayTransport(),
+      circuitRelayTransport({
+        reservationConcurrency: 3
+      }),
       tcp(),
       webRTC(),
       webRTCDirect(),
@@ -81,19 +83,26 @@ export async function createNode() {
     ],
     services: {
       autoNAT: autoNAT(),
-      autoTLS: autoTLS(),
+      autoTLS: autoTLS({
+        autoConfirmAddress: true
+      }),
       dcutr: dcutr(),
       delegatedRouting: delegatedRoutingV1HttpApiClient({ url: 'https://delegated-ipfs.dev' }),
       dht: kadDHT({
         validators: { ipns: ipnsValidator },
         selectors: { ipns: ipnsSelector },
         clientMode: false,
+        reprovide: {
+          interval: 2147483647
+        }
       }),
       identify: identify(),
       identifyPush: identifyPush(),
       keychain: keychain(),
       ping: ping(),
-      upnp: uPnPNAT(),
+      upnp: uPnPNAT({
+        autoConfirmAddress: true
+      }),
       http: http(),
     },
     connectionManager: {
