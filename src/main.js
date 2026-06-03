@@ -873,10 +873,12 @@ ipcMain.handle('check-built-in-engine', (event, template) => {
 setupP2pmdPdfExportIpc()
 
 // Suppress the libp2p/utils queue stack-overflow that fires when the
-// kad-DHT reprovider runs. Without this Electron shows a blocking dialog.
+// kad-DHT provide operation runs. The provide still succeeds via HTTP
+// delegated routing; only the DHT's internal queue overflows. Without
+// this handler Electron shows a blocking crash dialog.
 process.on('uncaughtException', (error) => {
   if (error instanceof RangeError && error.message === 'Maximum call stack size exceeded') {
-    log.warn('[main] Caught libp2p queue stack overflow (reprovider) — suppressed')
+    log.debug('[main] Suppressed libp2p DHT queue stack overflow (known issue, provide succeeds via delegated routing)')
     return
   }
   log.error('[main] Uncaught exception:', error)
