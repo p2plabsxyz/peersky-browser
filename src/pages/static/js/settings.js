@@ -371,6 +371,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Initialize sidebar navigation
   initializeSidebarNavigation()
 
+  // Load and display app version
+  await loadAppVersion()
+
   // Populate wallpaper dropdown from wallpaper/defaults/
   await populateWallpaperDropdown()
 
@@ -397,6 +400,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const clearBrowserCacheBtn = document.getElementById('clear-browser-cache')
   const resetP2PBtn = document.getElementById('reset-p2p')
 
+  const autoUpdateEnabled = document.getElementById('auto-update-enabled')
   const memorySaverEnabled = document.getElementById('memory-saver-enabled')
   const memoryExclusionInput = document.getElementById('memory-exclusion-input')
   const addExclusionBtn = document.getElementById('add-exclusion-btn')
@@ -653,6 +657,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   })
 
+  autoUpdateEnabled?.addEventListener('change', async (e) => {
+    await saveSettingToBackend('autoUpdateEnabled', e.target.checked)
+  })
+
   memorySaverEnabled?.addEventListener('change', async (e) => {
     const enabled = e.target.checked
     await saveSettingToBackend('memorySaverEnabled', enabled)
@@ -687,7 +695,9 @@ function loadDefaultSettings () {
   if (keepTabsExpanded) keepTabsExpanded.checked = false
   if (wallpaperSelector) wallpaperSelector.value = 'ten_lakes'
 
+  const autoUpdateEnabled = document.getElementById('auto-update-enabled')
   const memorySaverEnabled = document.getElementById('memory-saver-enabled')
+  if (autoUpdateEnabled) autoUpdateEnabled.checked = true
   if (memorySaverEnabled) memorySaverEnabled.checked = false
   const exclusionsSection = document.getElementById('memory-exclusions-section')
   if (exclusionsSection) exclusionsSection.style.display = 'none'
@@ -726,6 +736,7 @@ function populateFormFields (settings) {
   const verticalTabs = document.getElementById('vertical-tabs')
   const keepTabsExpanded = document.getElementById('keep-tabs-expanded')
   const wallpaperSelector = document.getElementById('wallpaper-selector')
+  const autoUpdateEnabled = document.getElementById('auto-update-enabled')
   const memorySaverEnabled = document.getElementById('memory-saver-enabled')
 
   if (searchEngine && settings.searchEngine) {
@@ -783,6 +794,9 @@ function populateFormFields (settings) {
     keepTabsExpanded.checked = settings.keepTabsExpanded
   }
 
+  if (autoUpdateEnabled && typeof settings.autoUpdateEnabled === 'boolean') {
+    autoUpdateEnabled.checked = settings.autoUpdateEnabled
+  }
   if (memorySaverEnabled && typeof settings.memorySaverEnabled === 'boolean') {
     memorySaverEnabled.checked = settings.memorySaverEnabled
   }
@@ -976,7 +990,7 @@ function initializeSidebarNavigation () {
   // Check for hash-based navigation (backward compatibility)
   } else if (currentPath.includes('#')) {
     const hashSection = currentPath.replace('#', '')
-    if (hashSection && ['appearance', 'search', 'tabs', 'extensions', 'archive'].includes(hashSection)) {
+    if (hashSection && ['general', 'appearance', 'search', 'tabs', 'extensions', 'archive'].includes(hashSection)) {
       targetSection = hashSection
     }
   }
@@ -999,7 +1013,7 @@ function initializeSidebarNavigation () {
         sectionFromHistory = subpathMatch[1]
       } else if (currentPath.includes('#')) {
         const hashSection = currentPath.replace('#', '')
-        if (hashSection && ['appearance', 'search', 'tabs', 'extensions', 'archive'].includes(hashSection)) {
+        if (hashSection && ['general', 'appearance', 'search', 'tabs', 'extensions', 'archive'].includes(hashSection)) {
           sectionFromHistory = hashSection
         }
       }
@@ -1111,6 +1125,20 @@ function updateClearBtnLabel () {
   const filter = document.getElementById('export-time-filter')?.value || 'all'
   const clearBtn = document.getElementById('clear-archive-btn')
   if (clearBtn) clearBtn.textContent = filter === 'all' ? 'Clear All' : 'Clear'
+}
+
+// Load and display app version
+async function loadAppVersion () {
+  const versionElement = document.getElementById('app-version')
+  if (!versionElement) return
+
+  try {
+    const version = await settingsAPI.settings.getVersion()
+    versionElement.textContent = `v${version}`
+  } catch (error) {
+    console.error('Failed to load app version:', error)
+    versionElement.textContent = 'Unknown'
+  }
 }
 
 // Populate wallpaper dropdown dynamically

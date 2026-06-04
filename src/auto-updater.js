@@ -1,7 +1,9 @@
 import { dialog } from 'electron'
 import pkg from 'electron-updater'
 import log from 'electron-log'
+import settingsManager from './settings-manager.js'
 const { autoUpdater } = pkg
+// import { app } from 'electron'
 
 // Uncomment while locally testing the AutoUpdater
 // Object.defineProperty(app, 'isPackaged', {
@@ -56,10 +58,18 @@ function setupAutoUpdater () {
     log.error('Auto-update error:', error)
   })
 
-  // Initiate update check after 10 seconds
-  setTimeout(() => {
-    autoUpdater.checkForUpdates()
-  }, 10000)
+  const checkIfEnabled = () => {
+    if (settingsManager.settings.autoUpdateEnabled !== false) {
+      autoUpdater.checkForUpdates()
+    }
+  }
+
+  // Initiate update check after 10 seconds on startup
+  setTimeout(checkIfEnabled, 10000)
+
+  // Re-check every week
+  const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000
+  setInterval(checkIfEnabled, ONE_WEEK_MS)
 }
 
 export { setupAutoUpdater }
