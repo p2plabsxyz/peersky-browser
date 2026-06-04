@@ -13,12 +13,12 @@ on:
 
 jobs:
   release:
-    continue-on-error: true
+    continue-on-error: false
     runs-on: ${{ matrix.os }}
 
     strategy:
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
+        os: [macos-15, ubuntu-latest, windows-latest]
 
     steps:
       - name: Install libarchive-tools for pacman build # Related https://github.com/electron-userland/electron-builder/issues/4181
@@ -35,14 +35,56 @@ jobs:
       - name: Install Node.js, NPM and Yarn
         uses: actions/setup-node@v3
         with:
-          node-version: 'lts/*'
+          node-version: 'lts/jod'
 
       - name: Non-tag specific build step
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         run: echo "This build was triggered without a tag."
 
+      - name: Cache Electron download
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/electron
+            ~/Library/Caches/electron
+            ~\AppData\Local\electron\Cache
+          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            electron-${{ runner.os }}-
+
       - name: Install dependencies with npm
-        run: npm ci
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          shell: bash
+          command: npm ci
+
+      - name: Ensure Electron binary
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 3
+          shell: bash
+          command: |
+            if ! node -e "require('electron')" 2>/dev/null; then
+              echo "Electron binary missing — running npm rebuild electron..."
+              npm rebuild electron
+            fi
+            node -e "console.log('Electron path:', require('electron'))"
+
+      - name: Run tests
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 2
+          shell: bash
+          command: npm run test:p2p && npm run test:p2p:e2e && npm run test:extensions && npm run test:security
+
+      - name: Run integration test (Windows/macOS)
+        if: ${{ !startsWith(matrix.os, 'ubuntu') }}
+        timeout-minutes: 10
+        run: npm run test:integration
 
       - name: Build binaries with electron-builder
         uses: coparse-inc/action-electron-builder@29a7606c7d726b5b0f4dc2f334026f58bea0e1bb # v1.6.0 but safer than a tag that can be changed

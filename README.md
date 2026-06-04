@@ -11,6 +11,7 @@
     <!-- <img src="https://img.shields.io/github/v/release/p2plabsxyz/peersky-browser?color=green" alt="GitHub Release"> -->
     <a href="https://mastodon.social/@peersky"><img src="https://img.shields.io/mastodon/follow/113323887574214930" alt="Mastodon Follow"></a>
     <a href="https://deepwiki.com/p2plabsxyz/peersky-browser"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
+    <a href="https://standardjs.com"><img src="https://img.shields.io/badge/code_style-standard-brightgreen.svg" alt="JavaScript Style Guide"></a>
     <img src="/demo.png" width="800" alt="PeerSky Browser home page">
 </div>
 
@@ -55,7 +56,7 @@
   - [x] `bittorrent://` / `bt://` / `magnet:` native URLs support
   - [x] Real-time download progress UI with pause/resume
   - [x] Auto-destroy torrent on completion (no seeding)
-  - [ ] 🚧 `bt://` website seeding and hosting
+  - [x] Optional `bt://` seeding
 
 - [x] Local `file://` browsing with P2P publishing:
   - [x] Custom `file://` support with privileged access
@@ -82,6 +83,8 @@
   - [x] `peersky://p2p/p2pmd/`
     - Real-time collaborative markdown editor
     - Presentation slides mode with speaker notes
+    - Offline KaTeX math mode with inline scientific templates
+    - IEEE-style two-column research paper preview/export
     - AI-powered content generation
     - Publish to IPFS/Hypercore
     - Peers dashboard with roles, live editing status, and edit history
@@ -204,10 +207,43 @@ npm run build-all
 
 Now, the `dist` folder will appear in the root directory.
 
+### Linting
+
+This project uses [StandardJS](https://standardjs.com) for code style. To check for lint errors:
+
+```bash
+npm run lint
+```
+
+To auto-fix lint errors:
+
+```bash
+npx standard --fix
+```
+
+### Testing
+
+Run all tests:
+
+```bash
+npm test
+```
+
+Run specific test suites:
+
+```bash
+npm run test:p2p          # Unit tests (IPFS/Hyper handlers)
+npm run test:p2p:e2e      # End-to-end sync tests (2-3 min)
+npm run test:extensions   # Extension lifecycle tests
+npm run test:security     # Security and isolation tests
+npm run test:integration  # Real app restart tests (5+ min)
+```
+
+For detailed testing documentation, see [Testing Guide](./docs/Testing.md).
+
 ### Logging
 
 For details on the Peersky logging system, see the [Logging Documentation](./docs/Logging.md). 
-
 
 ## Contribute
 

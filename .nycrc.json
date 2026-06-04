@@ -1,0 +1,18 @@
+{
+  "all": true,
+  "cache": false,
+  "extension": [".js", ".mjs"],
+  "include": [
+    "src/protocols/bittorrent-handler.js",
+    "src/protocols/hyper-handler.js",
+    "src/protocols/ipfs-handler.js",
+    "src/protocols/hs-handler.js"
+  ],
+  "exclude": [
+    "test/**",
+    "scripts/**",
+    "src/pages/static/**"
+  ],
+  "reporter": ["text", "text-summary", "html", "lcov"],
+  "report-dir": "coverage"
+}

@@ -1,170 +1,192 @@
-import { app } from "electron";
-import { LevelBlockstore } from "blockstore-level";
-import { LevelDatastore } from "datastore-level";
-import path from "path";
-import fs from "fs-extra";
-import { getDefaultChainList } from "web3protocol/chains";
-import { generateKeyPair, privateKeyFromProtobuf, privateKeyToProtobuf } from "@libp2p/crypto/keys";
-import { createLogger } from '../logger.js';
+import { LevelBlockstore } from 'blockstore-level'
+import { LevelDatastore } from 'datastore-level'
+import os from 'os'
+import path from 'path'
+import fs from 'fs-extra'
+import { getDefaultChainList } from 'web3protocol/chains'
+import { generateKeyPair, privateKeyFromProtobuf, privateKeyToProtobuf } from '@libp2p/crypto/keys'
+import electron from 'electron'
+import { createLogger } from '../logger.js'
 
-const log = createLogger('protocols:config');
+const log = createLogger('protocols:config')
 
-const USER_DATA = app.getPath("userData");
-const DEFAULT_IPFS_DIR = path.join(USER_DATA, "ipfs");
-const BLOCKSTORE_PATH = path.join(DEFAULT_IPFS_DIR, "blocks");
-const DATASTORE_PATH = path.join(DEFAULT_IPFS_DIR, "datastore"); 
-const DEFAULT_HYPER_DIR = path.join(USER_DATA, "hyper");
-const ENS_CACHE = path.join(USER_DATA, "ensCache.json");
-const IPFS_CACHE = path.join(USER_DATA, "ipfsCache.json");
-const HYPER_CACHE = path.join(USER_DATA, "hyperCache.json");
-const LIBP2P_KEY_PATH = path.join(DEFAULT_IPFS_DIR, "libp2p-key");
+function resolveUserDataPath () {
+  if (process.env.PEERSKY_TEST_USERDATA) return process.env.PEERSKY_TEST_USERDATA
+
+  const app = (electron && typeof electron === 'object' && electron.app && typeof electron.app.getPath === 'function')
+    ? electron.app
+    : null
+
+  if (app) {
+    try {
+      return app.getPath('userData')
+    } catch (error) {
+      log.warn(`Falling back to temp userData path: ${error.message}`)
+    }
+  }
+
+  return path.join(os.tmpdir(), 'peersky-test-userdata')
+}
+
+const USER_DATA = resolveUserDataPath()
+const DEFAULT_IPFS_DIR = path.join(USER_DATA, 'ipfs')
+const BLOCKSTORE_PATH = path.join(DEFAULT_IPFS_DIR, 'blocks')
+const DATASTORE_PATH = path.join(DEFAULT_IPFS_DIR, 'datastore')
+const DEFAULT_HYPER_DIR = path.join(USER_DATA, 'hyper')
+const ENS_CACHE = path.join(USER_DATA, 'ensCache.json')
+const IPFS_CACHE = path.join(USER_DATA, 'ipfsCache.json')
+const HYPER_CACHE = path.join(USER_DATA, 'hyperCache.json')
+const LIBP2P_KEY_PATH = path.join(DEFAULT_IPFS_DIR, 'libp2p-key')
 
 // Load the libp2p private key from disk (for Helia)
-export async function loadLibp2pKey() {
+export async function loadLibp2pKey () {
   try {
-    const raw = await fs.promises.readFile(LIBP2P_KEY_PATH);
-    log.info(`Loaded libp2p key from ${LIBP2P_KEY_PATH}`);
-    return privateKeyFromProtobuf(new Uint8Array(raw));
+    const raw = await fs.promises.readFile(LIBP2P_KEY_PATH)
+    log.info(`Loaded libp2p key from ${LIBP2P_KEY_PATH}`)
+    return privateKeyFromProtobuf(new Uint8Array(raw))
   } catch (err) {
-    if (err.code === "ENOENT") {
-      log.info(`No libp2p key found at ${LIBP2P_KEY_PATH}, will generate a new one`);
-      return null;
+    if (err.code === 'ENOENT') {
+      log.info(`No libp2p key found at ${LIBP2P_KEY_PATH}, will generate a new one`)
+      return null
     }
-    throw err;
+    throw err
   }
 }
 
 // Save the libp2p private key to disk (for Helia)
-export async function saveLibp2pKey(privateKey) {
+export async function saveLibp2pKey (privateKey) {
   try {
-    await fs.promises.mkdir(path.dirname(LIBP2P_KEY_PATH), { recursive: true });
-    const pb = privateKeyToProtobuf(privateKey);
-    await fs.promises.writeFile(LIBP2P_KEY_PATH, Buffer.from(pb));
-    log.info(`Saved libp2p key to ${LIBP2P_KEY_PATH}`);
+    await fs.promises.mkdir(path.dirname(LIBP2P_KEY_PATH), { recursive: true })
+    const pb = privateKeyToProtobuf(privateKey)
+    await fs.promises.writeFile(LIBP2P_KEY_PATH, Buffer.from(pb))
+    log.info(`Saved libp2p key to ${LIBP2P_KEY_PATH}`)
   } catch (err) {
-    log.error(`Error saving libp2p key: ${err.message}`);
-    throw err;
+    log.error(`Error saving libp2p key: ${err.message}`)
+    throw err
   }
 }
 
 // Get or generate a persistent private key for Helia
-export async function getLibp2pPrivateKey() {
-  let privateKey = await loadLibp2pKey();
+export async function getLibp2pPrivateKey () {
+  let privateKey = await loadLibp2pKey()
   if (!privateKey) {
-    privateKey = await generateKeyPair("Ed25519");
-    await saveLibp2pKey(privateKey);
+    privateKey = await generateKeyPair('Ed25519')
+    await saveLibp2pKey(privateKey)
   }
-  return privateKey;
+  return privateKey
 }
 
-export async function ipfsOptions() {
-  await fs.ensureDir(BLOCKSTORE_PATH);
-  await fs.ensureDir(DATASTORE_PATH);
+export async function ipfsOptions () {
+  await fs.ensureDir(BLOCKSTORE_PATH)
+  await fs.ensureDir(DATASTORE_PATH)
   return {
     repo: DEFAULT_IPFS_DIR,
     blockstore: new LevelBlockstore(BLOCKSTORE_PATH),
-    datastore: new LevelDatastore(DATASTORE_PATH),
-  };
+    datastore: new LevelDatastore(DATASTORE_PATH)
+  }
 }
 
 export const hyperOptions = {
   // All options here: https://github.com/datproject/sdk/#const-hypercore-hyperdrive-resolvename-keypair-derivesecret-registerextension-close--await-sdkopts
-  storage: DEFAULT_HYPER_DIR,
-};
+  storage: DEFAULT_HYPER_DIR
+}
 
 // Initialize RPC_URL using top-level await (avoiding an async IIFE)
-const chainList = await getDefaultChainList();
-const targetChainId = 1; // Ethereum mainnet
-const targetChain = chainList.find((chain) => chain.id === targetChainId);
+const chainList = await getDefaultChainList()
+const targetChainId = 1 // Ethereum mainnet
+const targetChain = chainList.find((chain) => chain.id === targetChainId)
 export const RPC_URL =
   targetChain && targetChain.rpcUrls?.length > 0
     ? targetChain.rpcUrls[0]
-    : (log.error(`Could not find RPC URL for chain ${targetChainId}`), null);
+    : (log.error(`Could not find RPC URL for chain ${targetChainId}`), null)
 
 // Initialize or load ENS cache
-let ensCache = new Map();
+let ensCache = new Map()
 if (fs.existsSync(ENS_CACHE)) {
   try {
-    const data = fs.readFileSync(ENS_CACHE, "utf-8");
-    const parsedData = JSON.parse(data);
-    ensCache = new Map(parsedData);
+    const data = fs.readFileSync(ENS_CACHE, 'utf-8')
+    const parsedData = JSON.parse(data)
+    ensCache = new Map(parsedData)
   } catch (error) {
-    log.error("Failed to load ENS cache from file:", error);
+    log.error('Failed to load ENS cache from file:', error)
   }
 } else {
-  log.info("No existing ENS cache file found. Starting with an empty cache.");
+  log.info('No existing ENS cache file found. Starting with an empty cache.')
 }
 
 // Initialize or load IPFS cache
-let ipfsCache = [];
+let ipfsCache = []
 if (fs.existsSync(IPFS_CACHE)) {
   try {
-    const data = fs.readFileSync(IPFS_CACHE, "utf-8");
-    const parsed = JSON.parse(data);
+    const data = fs.readFileSync(IPFS_CACHE, 'utf-8')
+    const parsed = JSON.parse(data)
     if (Array.isArray(parsed)) {
-      ipfsCache = parsed;
+      ipfsCache = parsed
     } else {
-      log.warn("IPFS cache file is not an array. Falling back to empty cache.");
-      ipfsCache = [];
+      log.warn('IPFS cache file is not an array. Falling back to empty cache.')
+      ipfsCache = []
     }
   } catch (error) {
-    log.error("Failed to load IPFS cache from file:", error);
-    ipfsCache = [];
+    log.error('Failed to load IPFS cache from file:', error)
+    ipfsCache = []
   }
 } else {
-  log.info("No existing IPFS cache file found. Starting with an empty cache.");
+  log.info('No existing IPFS cache file found. Starting with an empty cache.')
 }
 
 // Initialize or load Hyper cache
-let hyperCache = [];
+let hyperCache = []
 if (fs.existsSync(HYPER_CACHE)) {
   try {
-    const data = fs.readFileSync(HYPER_CACHE, "utf-8");
-    const parsed = JSON.parse(data);
+    const data = fs.readFileSync(HYPER_CACHE, 'utf-8')
+    const parsed = JSON.parse(data)
     if (Array.isArray(parsed)) {
-      hyperCache = parsed;
+      hyperCache = parsed
     } else {
-      log.warn("Hyper cache file is not an array. Falling back to empty cache.");
-      hyperCache = [];
+      log.warn('Hyper cache file is not an array. Falling back to empty cache.')
+      hyperCache = []
     }
   } catch (error) {
-    log.error("Failed to load Hyper cache from file:", error);
-    hyperCache = [];
+    log.error('Failed to load Hyper cache from file:', error)
+    hyperCache = []
   }
 } else {
-  log.info("No existing Hyper cache file found. Starting with an empty cache.");
+  log.info('No existing Hyper cache file found. Starting with an empty cache.')
 }
 
 // Function to save cache to file
-export function saveEnsCache() {
+export function saveEnsCache () {
   try {
-    const data = JSON.stringify(Array.from(ensCache.entries()), null, 2);
-    fs.writeFileSync(ENS_CACHE, data, "utf-8");
-    log.info("ENS cache saved to file.");
+    fs.ensureDirSync(path.dirname(ENS_CACHE))
+    const data = JSON.stringify(Array.from(ensCache.entries()), null, 2)
+    fs.writeFileSync(ENS_CACHE, data, 'utf-8')
+    log.info('ENS cache saved to file.')
   } catch (error) {
-    log.error("Failed to save ENS cache to file:", error);
+    log.error('Failed to save ENS cache to file:', error)
   }
 }
 
-export function saveIpfsCache() {
+export function saveIpfsCache () {
   try {
-    const data = JSON.stringify(ipfsCache, null, 2);
-    fs.writeFileSync(IPFS_CACHE, data, "utf-8");
-    log.info("IPFS cache saved to file.");
+    fs.ensureDirSync(path.dirname(IPFS_CACHE))
+    const data = JSON.stringify(ipfsCache, null, 2)
+    fs.writeFileSync(IPFS_CACHE, data, 'utf-8')
+    log.info('IPFS cache saved to file.')
   } catch (error) {
-    log.error("Failed to save IPFS cache to file:", error);
+    log.error('Failed to save IPFS cache to file:', error)
   }
 }
 
-export function saveHyperCache() {
+export function saveHyperCache () {
   try {
-    const data = JSON.stringify(hyperCache, null, 2);
-    fs.writeFileSync(HYPER_CACHE, data, "utf-8");
-    log.info("Hyper cache saved to file.");
+    fs.ensureDirSync(path.dirname(HYPER_CACHE))
+    const data = JSON.stringify(hyperCache, null, 2)
+    fs.writeFileSync(HYPER_CACHE, data, 'utf-8')
+    log.info('Hyper cache saved to file.')
   } catch (error) {
-    log.error("Failed to save Hyper cache to file:", error);
+    log.error('Failed to save Hyper cache to file:', error)
   }
 }
 
 // Export the cache and save function
-export { ensCache, ipfsCache, hyperCache };
+export { ensCache, ipfsCache, hyperCache }

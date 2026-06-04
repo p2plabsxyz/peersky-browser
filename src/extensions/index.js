@@ -1,22 +1,22 @@
 /**
  * Extension Manager - Core Extension System
- * 
+ *
  * This module provides the main extension management system for Peersky Browser.
  * It handles extension lifecycle, loading, validation, and metadata management.
- * 
+ *
  * Key Features:
  * - Extension installation and management
  * - Manifest validation and metadata handling
  * - Extension enable/disable functionality
  * - Browser action integration
  * - Settings UI integration via IPC
- * 
+ *
  * Architecture:
  * - ExtensionManager: Main class handling all extension operations
  * - ManifestValidator: Manifest V3 validation and compliance checking
  * - Electron integration: Built-in extension system integration
  * - IPC communication: UI integration for extension management
- * 
+ *
  * Usage:
  * ```javascript
  * import extensionManager from './extensions/index.js';
@@ -24,102 +24,102 @@
  * ```
  */
 
-import electron from 'electron';
-const { app, BrowserWindow, webContents } = electron;
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { promises as fs } from 'fs';
-import { installChromeWebStore } from 'electron-chrome-web-store';
-import { ElectronChromeExtensions } from '@p2plabs/peersky-chrome-extensions';
-import ManifestValidator from './manifest-validator.js';
-import { loadPolicy } from './policy.js';
-import { ensureDir, KeyedMutex, ERR } from './util.js';
+import electron from 'electron'
+import path from 'path'
+import { fileURLToPath } from 'url'
+import { promises as fs } from 'fs'
+import { installChromeWebStore } from 'electron-chrome-web-store'
+import { ElectronChromeExtensions } from '@p2plabs/peersky-chrome-extensions'
+import ManifestValidator from './manifest-validator.js'
+import { loadPolicy } from './policy.js'
+import { ensureDir, KeyedMutex, ERR } from './util.js'
 // (archive handling moved to services)
-import ChromeWebStoreManager from './chrome-web-store.js';
+import ChromeWebStoreManager from './chrome-web-store.js'
 // URL parsing now handled by ManifestValidator
-import { withInstallLock, withUpdateLock } from './mutex.js';
-import { generateSecureExtensionId } from './utils/ids.js';
-import { resolveManifestStrings } from './utils/strings.js';
-import * as RegistryService from './services/registry.js';
-import * as LoaderService from './services/loader.js';
-import * as BrowserActions from './services/browser-actions.js';
-import { installExtensionPopupGuards as installPopupGuards } from './services/popup-guards.js';
-import { openUrlInPeerskyTab } from './services/open-url-in-browser-tab.js';
-import * as WebStoreService from './services/webstore.js';
-import { createLogger } from '../logger.js';
+import { withInstallLock, withUpdateLock } from './mutex.js'
+import { generateSecureExtensionId } from './utils/ids.js'
+import { resolveManifestStrings } from './utils/strings.js'
+import * as RegistryService from './services/registry.js'
+import * as LoaderService from './services/loader.js'
+import * as BrowserActions from './services/browser-actions.js'
+import { installExtensionPopupGuards as installPopupGuards } from './services/popup-guards.js'
+import { openUrlInPeerskyTab } from './services/open-url-in-browser-tab.js'
+import * as WebStoreService from './services/webstore.js'
+import { createLogger } from '../logger.js'
+const { BrowserWindow, webContents } = electron // eslint-disable-line no-unused-vars
 
-const log = createLogger('extensions');
+const log = createLogger('extensions')
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // Alternate manifest handling moved to installers/directory.js
 
 /**
  * ExtensionManager - Main extension management class
- * 
+ *
  * Handles all extension operations including installation, validation,
  * lifecycle management, and integration with Electron's extension system.
  */
 class ExtensionManager {
-  constructor() {
-    this.isInitialized = false;
-    this.loadedExtensions = new Map();
-    this.manifestValidator = null;
-    this.initializationPromise = null;
-    this.mutex = new KeyedMutex();
+  constructor () {
+    this.isInitialized = false
+    this.loadedExtensions = new Map()
+    this.manifestValidator = null
+    this.initializationPromise = null
+    this.mutex = new KeyedMutex()
 
     // Session and app (set in initialize)
-    this.session = null;
-    this.app = null;
+    this.session = null
+    this.app = null
 
     // Chrome Web Store manager
-    this.chromeWebStore = null;
+    this.chromeWebStore = null
 
     // ElectronChromeExtensions for browser actions
-    this.electronChromeExtensions = null;
+    this.electronChromeExtensions = null
 
     // Track active popups for auto-close on tab switch
-    this.activePopups = new Set();
-    this.popupToOpener = new Map();
-    this.popupToExtensionId = new Map();
+    this.activePopups = new Set()
+    this.popupToOpener = new Map()
+    this.popupToExtensionId = new Map()
 
     // Paths (set in initialize)
-    this.extensionsBaseDir = null;
-    this.extensionsRegistryFile = null;
+    this.extensionsBaseDir = null
+    this.extensionsRegistryFile = null
   }
 
   /**
    * Initialize the extension system
-   * 
+   *
    * @param {Object} options - Configuration options
    * @param {Electron.App} options.app - Electron app instance
    * @param {Electron.Session} options.session - Electron session for extension loading
    */
-  async initialize(options) {
+  async initialize (options) {
     if (this.initializationPromise) {
-      return this.initializationPromise;
+      return this.initializationPromise
     }
-    this.initializationPromise = this._doInitialize(options);
-    return this.initializationPromise;
+    this.initializationPromise = this._doInitialize(options)
+    return this.initializationPromise
   }
 
-  async _doInitialize(options) {
+  async _doInitialize (options) {
     try {
-      log.info('ExtensionManager: Starting extension system initialization...');
+      log.info('ExtensionManager: Starting extension system initialization...')
 
       // Store references
-      this.app = options.app;
-      this.session = options.session;
+      this.app = options.app
+      this.session = options.session
 
       // Set up paths
-      this.extensionsBaseDir = path.join(this.app.getPath('userData'), 'extensions');
-      this.extensionsRegistryFile = path.join(this.extensionsBaseDir, 'extensions.json');
+      this.extensionsBaseDir = path.join(this.app.getPath('userData'), 'extensions')
+      this.extensionsRegistryFile = path.join(this.extensionsBaseDir, 'extensions.json')
 
       // Create directories
-      await ensureDir(this.extensionsBaseDir);
+      await ensureDir(this.extensionsBaseDir)
 
       // Initialize Chrome Web Store support
-      log.info('ExtensionManager: Initializing Chrome Web Store support...');
+      log.info('ExtensionManager: Initializing Chrome Web Store support...')
       try {
         await installChromeWebStore({
           session: this.session,
@@ -128,42 +128,42 @@ class ExtensionManager {
           loadExtensions: false, // We'll handle loading manually
           allowlist: [], // No restrictions for MVP
           denylist: [] // No restrictions for MVP
-        });
-        this.chromeWebStore = new ChromeWebStoreManager(this.session);
-        log.info('ExtensionManager: Chrome Web Store support initialized');
+        })
+        this.chromeWebStore = new ChromeWebStoreManager(this.session)
+        log.info('ExtensionManager: Chrome Web Store support initialized')
       } catch (error) {
-        log.warn('ExtensionManager: Chrome Web Store initialization failed:', error.message);
-        log.warn('ExtensionManager: Continuing without Chrome Web Store support');
-        this.chromeWebStore = null;
+        log.warn('ExtensionManager: Chrome Web Store initialization failed:', error.message)
+        log.warn('ExtensionManager: Continuing without Chrome Web Store support')
+        this.chromeWebStore = null
       }
 
       // Initialize ElectronChromeExtensions for browser actions
-      log.info('ExtensionManager: Initializing ElectronChromeExtensions...');
+      log.info('ExtensionManager: Initializing ElectronChromeExtensions...')
       try {
         // Provide minimal impl so extensions can open tabs
         this.electronChromeExtensions = new ElectronChromeExtensions({
           session: this.session,
-          license: "GPL-3.0", // Compatible with MIT open source Peersky Browser
+          license: 'GPL-3.0', // Compatible with MIT open source Peersky Browser
           /**
            * Create a new tab in the existing window and return [tabWebContents, window].
            * details: { url?: string, active?: boolean, windowId?: number }
            */
           createTab: async (details = {}) => {
             try {
-              log.info("[ExtensionManager] createTab called with:", details);
+              log.info('[ExtensionManager] createTab called with:', details)
 
-              const url = typeof details.url === "string" && details.url.length > 0 ? details.url : "peersky://home";
+              const url = typeof details.url === 'string' && details.url.length > 0 ? details.url : 'peersky://home'
 
-              const opened = await openUrlInPeerskyTab(url, "New Tab");
+              const opened = await openUrlInPeerskyTab(url, 'New Tab')
               if (!opened) {
-                log.error("[ExtensionManager] No window with tabbar found!");
-                throw new Error("No browser window with tabbar available for createTab");
+                log.error('[ExtensionManager] No window with tabbar found!')
+                throw new Error('No browser window with tabbar available for createTab')
               }
-              const { browserWindow: windowWithTabbar, tabId } = opened;
-              log.info("[ExtensionManager] Tab created with ID:", tabId);
+              const { browserWindow: windowWithTabbar, tabId } = opened
+              log.info('[ExtensionManager] Tab created with ID:', tabId)
 
               // Brief delay to let the webview initialize
-              await new Promise(r => setTimeout(r, 300));
+              await new Promise(resolve => setTimeout(resolve, 300))
 
               // Try to get the tab's webContents
               const getWcJs = `
@@ -178,33 +178,32 @@ class ExtensionManager {
                   const activeWv = tabBar.getActiveWebview && tabBar.getActiveWebview();
                   return activeWv && typeof activeWv.getWebContentsId === 'function' ? activeWv.getWebContentsId() : null;
                 })();
-              `;
+              `
 
-              let wcId = null;
+              let wcId = null
               try {
-                wcId = await windowWithTabbar.webContents.executeJavaScript(getWcJs, true);
+                wcId = await windowWithTabbar.webContents.executeJavaScript(getWcJs, true)
               } catch (_) { }
 
-              let tabWc = wcId ? webContents.fromId(wcId) : null;
+              const tabWc = wcId ? webContents.fromId(wcId) : null
 
               // Fallback: return the window's webContents
-              const retWc = tabWc && !tabWc.isDestroyed() ? tabWc : windowWithTabbar.webContents;
-              return [retWc, windowWithTabbar];
+              const retWc = tabWc && !tabWc.isDestroyed() ? tabWc : windowWithTabbar.webContents
+              return [retWc, windowWithTabbar]
             } catch (err) {
-              log.error("[ExtensionManager] createTab impl failed:", err);
-              throw err;
+              log.error('[ExtensionManager] createTab impl failed:', err)
+              throw err
             }
           },
-
 
           /**
            * Select/focus a tab given its WebContents
            */
           selectTab: async (tab, win) => {
             try {
-              if (!win || win.isDestroyed()) return;
-              const tabId = tab && typeof tab.id === "number" ? tab.id : null;
-              if (!tabId) return;
+              if (!win || win.isDestroyed()) return
+              const tabId = tab && typeof tab.id === 'number' ? tab.id : null
+              if (!tabId) return
               const js = `
                 (function () {
                   const tabBar = document.getElementById('tabbar');
@@ -221,10 +220,10 @@ class ExtensionManager {
                   } catch (_) {}
                   return false;
                 })();
-              `;
-              await win.webContents.executeJavaScript(js, true);
+              `
+              await win.webContents.executeJavaScript(js, true)
             } catch (err) {
-              log.warn("[ExtensionManager] selectTab impl failed:", err);
+              log.warn('[ExtensionManager] selectTab impl failed:', err)
             }
           },
 
@@ -234,45 +233,45 @@ class ExtensionManager {
            */
           removeTab: async (tab, win) => {
             try {
-              log.info("[ExtensionManager] removeTab called for webContents:", tab?.id);
-              
+              log.info('[ExtensionManager] removeTab called for webContents:', tab?.id)
+
               if (!tab || (typeof tab.isDestroyed === 'function' && tab.isDestroyed())) {
-                log.warn("[ExtensionManager] removeTab: tab already destroyed");
-                return;
+                log.warn('[ExtensionManager] removeTab: tab already destroyed')
+                return
               }
 
-              const wcId = typeof tab.id === "number" ? tab.id : null;
+              const wcId = typeof tab.id === 'number' ? tab.id : null
               if (!wcId) {
-                log.warn("[ExtensionManager] removeTab: no valid webContents ID");
-                return;
+                log.warn('[ExtensionManager] removeTab: no valid webContents ID')
+                return
               }
 
               // Find the main window with tabbar
-              const allWindows = BrowserWindow.getAllWindows();
-              let windowWithTabbar = win && !win.isDestroyed() ? win : null;
+              const allWindows = BrowserWindow.getAllWindows()
+              let windowWithTabbar = win && !win.isDestroyed() ? win : null
 
               // If win is not valid, find a suitable window
               if (!windowWithTabbar) {
                 for (const w of allWindows) {
-                  if (w.isDestroyed()) continue;
-                  const bounds = w.getBounds();
-                  if (bounds.width < 500 || bounds.height < 400) continue;
-                  
+                  if (w.isDestroyed()) continue
+                  const bounds = w.getBounds()
+                  if (bounds.width < 500 || bounds.height < 400) continue
+
                   try {
                     const hasTabBar = await w.webContents.executeJavaScript(`
                       !!(document.getElementById('tabbar') && typeof document.getElementById('tabbar').closeTab === 'function')
-                    `, true);
+                    `, true)
                     if (hasTabBar) {
-                      windowWithTabbar = w;
-                      break;
+                      windowWithTabbar = w
+                      break
                     }
                   } catch (_) { }
                 }
               }
 
               if (!windowWithTabbar) {
-                log.warn("[ExtensionManager] removeTab: no window with tabbar found");
-                return;
+                log.warn('[ExtensionManager] removeTab: no window with tabbar found')
+                return
               }
 
               // Find and close the tab by matching webContents ID
@@ -300,13 +299,12 @@ class ExtensionManager {
                   console.warn('[removeTab] Tab with webContentsId ${wcId} not found');
                   return false;
                 })();
-              `;
+              `
 
-              const result = await windowWithTabbar.webContents.executeJavaScript(closeTabJs, true);
-              log.info("[ExtensionManager] removeTab result:", result);
-              
+              const result = await windowWithTabbar.webContents.executeJavaScript(closeTabJs, true)
+              log.info('[ExtensionManager] removeTab result:', result)
             } catch (err) {
-              log.error("[ExtensionManager] removeTab impl failed:", err);
+              log.error('[ExtensionManager] removeTab impl failed:', err)
             }
           },
 
@@ -317,27 +315,27 @@ class ExtensionManager {
            */
           createWindow: async (details = {}) => {
             try {
-              log.info("[ExtensionManager] createWindow called with:", details);
+              log.info('[ExtensionManager] createWindow called with:', details)
 
-              const url = typeof details.url === "string" && details.url.length > 0 ? details.url : "about:blank";
-              const type = details.type || "normal";
-              const width = details.width || 400;
-              const height = details.height || 600;
-              const left = details.left;
-              const top = details.top;
-              const focused = details.focused !== false; // default true
+              const url = typeof details.url === 'string' && details.url.length > 0 ? details.url : 'about:blank'
+              const type = details.type || 'normal'
+              const width = details.width || 400
+              const height = details.height || 600
+              const left = details.left
+              const top = details.top
+              const focused = details.focused !== false // default true
 
               // For 'popup' type, create a frameless or minimal window
-              const isPopup = type === "popup" || type === "panel";
+              const isPopup = type === 'popup' || type === 'panel'
 
               const windowOptions = {
                 width,
                 height,
-                x: typeof left === "number" ? left : undefined,
-                y: typeof top === "number" ? top : undefined,
+                x: typeof left === 'number' ? left : undefined,
+                y: typeof top === 'number' ? top : undefined,
                 show: false, // Show after load
                 frame: !isPopup, // Popup windows are frameless
-                titleBarStyle: isPopup ? "hidden" : "default",
+                titleBarStyle: isPopup ? 'hidden' : 'default',
                 autoHideMenuBar: true,
                 resizable: !isPopup,
                 minimizable: !isPopup,
@@ -348,51 +346,50 @@ class ExtensionManager {
                   nodeIntegration: false,
                   contextIsolation: true,
                   sandbox: true,
-                  partition: this.session ? this.session.partition : undefined,
+                  partition: this.session ? this.session.partition : undefined
                 }
-              };
-
-              // Center window if no position specified
-              if (typeof left !== "number" || typeof top !== "number") {
-                windowOptions.center = true;
               }
 
-              const newWindow = new BrowserWindow(windowOptions);
-              
-              log.info("[ExtensionManager] Created new window:", newWindow.id, "type:", type);
+              // Center window if no position specified
+              if (typeof left !== 'number' || typeof top !== 'number') {
+                windowOptions.center = true
+              }
+
+              const newWindow = new BrowserWindow(windowOptions)
+
+              log.info('[ExtensionManager] Created new window:', newWindow.id, 'type:', type)
 
               // Track this window for cleanup
               if (this.activePopups) {
-                this.activePopups.add(newWindow);
-                newWindow.on('closed', () => this.activePopups.delete(newWindow));
+                this.activePopups.add(newWindow)
+                newWindow.on('closed', () => this.activePopups.delete(newWindow))
               }
 
               // Register with extension system
               try {
                 if (this.electronChromeExtensions) {
-                  this.electronChromeExtensions.addTab(newWindow.webContents, newWindow);
+                  this.electronChromeExtensions.addTab(newWindow.webContents, newWindow)
                 }
               } catch (regErr) {
-                log.warn("[ExtensionManager] Failed to register new window with extension system:", regErr);
+                log.warn('[ExtensionManager] Failed to register new window with extension system:', regErr)
               }
 
               // Load the URL
-              await newWindow.loadURL(url);
+              await newWindow.loadURL(url)
 
               // Show the window
               if (focused) {
-                newWindow.show();
-                newWindow.focus();
+                newWindow.show()
+                newWindow.focus()
               } else {
-                newWindow.showInactive();
+                newWindow.showInactive()
               }
 
-              log.info("[ExtensionManager] Window created and loaded:", url);
-              return [newWindow.webContents, newWindow];
-              
+              log.info('[ExtensionManager] Window created and loaded:', url)
+              return [newWindow.webContents, newWindow]
             } catch (err) {
-              log.error("[ExtensionManager] createWindow impl failed:", err);
-              throw err;
+              log.error('[ExtensionManager] createWindow impl failed:', err)
+              throw err
             }
           },
 
@@ -401,92 +398,90 @@ class ExtensionManager {
            */
           removeWindow: async (win) => {
             try {
-              log.info("[ExtensionManager] removeWindow called for window:", win?.id);
-              
+              log.info('[ExtensionManager] removeWindow called for window:', win?.id)
+
               if (!win || (typeof win.isDestroyed === 'function' && win.isDestroyed())) {
-                log.warn("[ExtensionManager] removeWindow: window already destroyed");
-                return;
+                log.warn('[ExtensionManager] removeWindow: window already destroyed')
+                return
               }
 
               // Close the window
-              win.close();
-              log.info("[ExtensionManager] Window closed:", win.id);
-              
+              win.close()
+              log.info('[ExtensionManager] Window closed:', win.id)
             } catch (err) {
-              log.error("[ExtensionManager] removeWindow impl failed:", err);
+              log.error('[ExtensionManager] removeWindow impl failed:', err)
             }
-          },
-        });
-        log.info('ExtensionManager: ElectronChromeExtensions initialized');
+          }
+        })
+        log.info('ExtensionManager: ElectronChromeExtensions initialized')
         // this is a patch fix for the tabs.query to work properly
         try {
-          const ece = this.electronChromeExtensions;
+          const ece = this.electronChromeExtensions
           if (ece?.ctx?.router && ece?.api?.tabs) {
-            const originalQuery = ece.api.tabs.query.bind(ece.api.tabs);
-            ece.ctx.router.handle("tabs.query", (event, info = {}) => {
+            const originalQuery = ece.api.tabs.query.bind(ece.api.tabs)
+            ece.ctx.router.handle('tabs.query', (event, info = {}) => {
               if (info.currentWindow || info.lastFocusedWindow) {
                 // Prefer the ECE tracked last-focused browser window id (set via our focus pinning),
                 // and fall back to WINDOW_ID_CURRENT.
-                const lastFocusedWindowId = ece?.ctx?.store?.lastFocusedWindowId;
+                const lastFocusedWindowId = ece?.ctx?.store?.lastFocusedWindowId
                 if (typeof lastFocusedWindowId === 'number' && lastFocusedWindowId > 0) {
-                  info.windowId = lastFocusedWindowId;
+                  info.windowId = lastFocusedWindowId
                 } else {
-                  info.windowId = -2; // Maps to ece.api.tabs.WINDOW_ID_CURRENT
+                  info.windowId = -2 // Maps to ece.api.tabs.WINDOW_ID_CURRENT
                 }
               }
-              return originalQuery(event, info);
-            });
+              return originalQuery(event, info)
+            })
           }
         } catch (err) { }
 
         try {
-          const api = this.electronChromeExtensions?.api?.browserAction;
+          const api = this.electronChromeExtensions?.api?.browserAction
           if (api && typeof api.onUpdate === 'function' && !api.__peerskyOnUpdatePatched) {
-            const originalOnUpdate = api.onUpdate.bind(api);
+            const originalOnUpdate = api.onUpdate.bind(api)
             api.onUpdate = (...args) => {
-              const res = originalOnUpdate(...args);
-              this._broadcastBrowserActionUpdated();
-              return res;
-            };
-            api.__peerskyOnUpdatePatched = true;
+              const res = originalOnUpdate(...args)
+              this._broadcastBrowserActionUpdated()
+              return res
+            }
+            api.__peerskyOnUpdatePatched = true
           }
         } catch (_) { }
       } catch (error) {
-        log.warn('ExtensionManager: ElectronChromeExtensions initialization failed:', error.message);
-        log.warn('ExtensionManager: Continuing without browser action support');
-        this.electronChromeExtensions = null;
+        log.warn('ExtensionManager: ElectronChromeExtensions initialization failed:', error.message)
+        log.warn('ExtensionManager: Continuing without browser action support')
+        this.electronChromeExtensions = null
       }
 
       // Initialize validator with policy
       try {
-        this.policy = await loadPolicy(this.app);
+        this.policy = await loadPolicy(this.app)
       } catch (_) {
-        this.policy = null;
+        this.policy = null
       }
-      this.manifestValidator = new ManifestValidator(this.policy || undefined);
+      this.manifestValidator = new ManifestValidator(this.policy || undefined)
 
       // Load registry
-      await this._readRegistry();
+      await this._readRegistry()
 
       // Install bundled preinstalled extensions (one-time import)
       try {
-        await this._installBundledPreinstalled();
+        await this._installBundledPreinstalled()
       } catch (err) {
-        log.warn('ExtensionManager: Preinstalled import skipped:', err.message || err);
+        log.warn('ExtensionManager: Preinstalled import skipped:', err.message || err)
       }
 
       // Load enabled extensions
-      await this._loadExtensionsIntoElectron();
+      await this._loadExtensionsIntoElectron()
 
       // Attach navigation guards for extension popups so external URLs open in tabs
-      try { installPopupGuards(this); } catch (guardErr) { log.warn('[ExtensionManager] Failed to install popup navigation guards:', guardErr); }
+      try { installPopupGuards(this) } catch (guardErr) { log.warn('[ExtensionManager] Failed to install popup navigation guards:', guardErr) }
 
-      this.isInitialized = true;
-      log.info('ExtensionManager: Extension system initialized successfully');
-
+      this.isInitialized = true
+      log.info('ExtensionManager: Extension system initialized successfully')
     } catch (error) {
-      log.error('ExtensionManager: Failed to initialize:', error);
-      throw error;
+      log.error('ExtensionManager: Failed to initialize:', error)
+      throw error
     }
   }
 
@@ -494,88 +489,88 @@ class ExtensionManager {
    * Import bundled preinstalled extensions from src/preinstalled-extensions
    * Copies into userData if not already present, marks as system/non-removable.
    */
-  async _installBundledPreinstalled() {
+  async _installBundledPreinstalled () {
     // Read manifest generated by postinstall script
-    const preDir = path.join(__dirname, 'preinstalled-extensions');
-    const jsonPath = path.join(preDir, 'preinstalled.json');
-    let manifest;
+    const preDir = path.join(__dirname, 'preinstalled-extensions')
+    const jsonPath = path.join(preDir, 'preinstalled.json')
+    let manifest
     try {
-      const raw = await fs.readFile(jsonPath, 'utf8');
-      manifest = JSON.parse(raw);
+      const raw = await fs.readFile(jsonPath, 'utf8')
+      manifest = JSON.parse(raw)
     } catch (_) {
-      return; // no manifest => nothing to apply
+      return // no manifest => nothing to apply
     }
 
-    const entries = Array.isArray(manifest.extensions) ? manifest.extensions : [];
-    const desiredIds = new Set(entries.map(e => e.id));
+    const entries = Array.isArray(manifest.extensions) ? manifest.extensions : []
+    const desiredIds = new Set(entries.map(e => e.id))
 
     // Prune removed preinstalled
     const toPrune = Array.from(this.loadedExtensions.values())
       .filter(ext => (ext.source === 'preinstalled' || ext.isSystem === true))
-      .filter(ext => !desiredIds.has(ext.id));
+      .filter(ext => !desiredIds.has(ext.id))
     for (const ext of toPrune) {
       try {
         if (this.session && ext.electronId) {
-          try { await this.session.removeExtension(ext.electronId); } catch (_) { }
+          try { await this.session.removeExtension(ext.electronId) } catch (_) { }
         }
-        const extPath = path.join(this.extensionsBaseDir, ext.id);
-        await fs.rm(extPath, { recursive: true, force: true });
-        this.loadedExtensions.delete(ext.id);
-        await this._writeRegistry();
-        log.info('ExtensionManager: Pruned removed preinstalled extension:', ext.displayName || ext.name);
+        const extPath = path.join(this.extensionsBaseDir, ext.id)
+        await fs.rm(extPath, { recursive: true, force: true })
+        this.loadedExtensions.delete(ext.id)
+        await this._writeRegistry()
+        log.info('ExtensionManager: Pruned removed preinstalled extension:', ext.displayName || ext.name)
       } catch (err) {
-        log.warn('ExtensionManager: Failed to prune preinstalled extension', ext.id, err.message || err);
+        log.warn('ExtensionManager: Failed to prune preinstalled extension', ext.id, err.message || err)
       }
     }
 
     // Install missing preinstalled
     for (const entry of entries) {
       try {
-        if (this.loadedExtensions.has(entry.id)) continue;
-        const sourceRef = typeof entry.archive === 'string' && entry.archive.length ? entry.archive : entry.dir;
+        if (this.loadedExtensions.has(entry.id)) continue
+        const sourceRef = typeof entry.archive === 'string' && entry.archive.length ? entry.archive : entry.dir
         if (!sourceRef) {
-          log.warn('ExtensionManager: Preinstalled entry missing source reference');
-          continue;
+          log.warn('ExtensionManager: Preinstalled entry missing source reference')
+          continue
         }
 
-        const sourcePath = path.join(preDir, sourceRef);
-        let stat;
+        const sourcePath = path.join(preDir, sourceRef)
+        let stat
         try {
-          stat = await fs.stat(sourcePath);
+          stat = await fs.stat(sourcePath)
         } catch (statErr) {
-          log.warn('ExtensionManager: Preinstalled source missing:', sourceRef, statErr.message || statErr);
-          continue;
+          log.warn('ExtensionManager: Preinstalled source missing:', sourceRef, statErr.message || statErr)
+          continue
         }
 
-        let extData;
+        let extData
         if (stat.isDirectory()) {
-          extData = await this._prepareFromDirectory(sourcePath);
+          extData = await this._prepareFromDirectory(sourcePath)
         } else {
-          extData = await this._prepareFromArchive(sourcePath);
+          extData = await this._prepareFromArchive(sourcePath)
         }
 
         // Respect ID from postinstall manifest
         if (entry.id) {
-          extData.id = entry.id;
+          extData.id = entry.id
         }
-        extData.isSystem = true;
-        extData.removable = false;
-        extData.source = 'preinstalled';
-        await this._saveExtensionMetadata(extData);
+        extData.isSystem = true
+        extData.removable = false
+        extData.source = 'preinstalled'
+        await this._saveExtensionMetadata(extData)
         if (this.session && extData.enabled) {
           try {
-            const electronExtension = await this.session.loadExtension(extData.installedPath, { allowFileAccess: false });
-            extData.electronId = electronExtension.id;
+            const electronExtension = await this.session.loadExtension(extData.installedPath, { allowFileAccess: false })
+            extData.electronId = electronExtension.id
           } catch (loadErr) {
-            log.warn('ExtensionManager: Failed to load preinstalled extension:', loadErr.message);
+            log.warn('ExtensionManager: Failed to load preinstalled extension:', loadErr.message)
           }
         }
-        this.loadedExtensions.set(extData.id, extData);
-        await this._writeRegistry();
-        log.info('ExtensionManager: Preinstalled extension imported:', extData.displayName || extData.name);
+        this.loadedExtensions.set(extData.id, extData)
+        await this._writeRegistry()
+        log.info('ExtensionManager: Preinstalled extension imported:', extData.displayName || extData.name)
       } catch (err) {
-        const ref = entry && (entry.archive || entry.dir || entry.id || 'unknown');
-        log.warn('ExtensionManager: Skipped preinstalled entry:', ref, err.message || err);
+        const ref = entry && (entry.archive || entry.dir || entry.id || 'unknown')
+        log.warn('ExtensionManager: Skipped preinstalled entry:', ref, err.message || err)
       }
     }
   }
@@ -584,349 +579,346 @@ class ExtensionManager {
    * Install global guards so that extension popups cannot directly navigate to
    * external URLs. Instead, open those URLs in a regular Peersky tab.
    */
-  _installExtensionPopupGuards() {
+  _installExtensionPopupGuards () {
     // Backwards compatibility: delegate to service
-    installPopupGuards(this);
+    installPopupGuards(this)
   }
 
   /**
    * Install extension from local directory
-   * 
+   *
    * @param {string} sourcePath - Path to extension directory
    * @returns {Promise<Object>} Installation result
    */
-  async installExtension(sourcePath) {
+  async installExtension (sourcePath) {
     return this.mutex.run('install-' + sourcePath, async () => {
-      await this.initialize();
+      await this.initialize()
 
       try {
-        log.info('ExtensionManager: Installing extension from:', sourcePath);
+        log.info('ExtensionManager: Installing extension from:', sourcePath)
 
         // Validate and prepare extension
-        const extensionData = await this._prepareExtension(sourcePath);
+        const extensionData = await this._prepareExtension(sourcePath)
 
         // Prevent duplicate installs by internal ID
         if (this.loadedExtensions.has(extensionData.id)) {
-          throw Object.assign(new Error(`Extension ${extensionData.id} is already installed`), { code: ERR.E_ALREADY_EXISTS });
+          throw Object.assign(new Error(`Extension ${extensionData.id} is already installed`), { code: ERR.E_ALREADY_EXISTS })
         }
 
         // Use consolidated validation
         const validationResult = await this.manifestValidator.validateExtension(
           extensionData.installedPath,
           extensionData.manifest
-        );
+        )
         if (validationResult.outcome === 'deny') {
-          throw new Error(`Extension validation failed: ${validationResult.errors.join(', ')}`);
+          throw new Error(`Extension validation failed: ${validationResult.errors.join(', ')}`)
         }
         // Attach warnings and risk info for UI/registry
         if (Array.isArray(validationResult.warnings) && validationResult.warnings.length) {
-          extensionData.warnings = validationResult.warnings.slice(0, 50);
+          extensionData.warnings = validationResult.warnings.slice(0, 50)
         }
         if (typeof validationResult.manifestValidation?.riskScore === 'number') {
-          extensionData.riskScore = validationResult.manifestValidation.riskScore;
+          extensionData.riskScore = validationResult.manifestValidation.riskScore
         }
 
         // Save extension metadata
-        await this._saveExtensionMetadata(extensionData);
+        await this._saveExtensionMetadata(extensionData)
 
         // Load extension into Electron's extension system with security restrictions
         if (this.session && extensionData.enabled) {
           try {
-            log.info(`ExtensionManager: Loading installed extension into Electron: ${extensionData.name}`);
+            log.info(`ExtensionManager: Loading installed extension into Electron: ${extensionData.name}`)
             let electronExtension = await this.session.loadExtension(extensionData.installedPath, {
-              allowFileAccess: false  // Restrict file system access for security
-            });
-            extensionData.electronId = electronExtension.id;
+              allowFileAccess: false // Restrict file system access for security
+            })
+            extensionData.electronId = electronExtension.id
 
             // If Chromium computed an ID (e.g., via manifest.key) different from our provisional ID,
             // relocate directory to keep path and icon handling consistent.
             if (electronExtension.id && electronExtension.id !== extensionData.id) {
-              const oldId = extensionData.id;
-              const versionDirName = path.basename(extensionData.installedPath);
-              const newRoot = path.join(this.extensionsBaseDir, electronExtension.id);
-              const newVersionPath = path.join(newRoot, versionDirName);
+              const oldId = extensionData.id
+              const versionDirName = path.basename(extensionData.installedPath)
+              const newRoot = path.join(this.extensionsBaseDir, electronExtension.id)
+              const newVersionPath = path.join(newRoot, versionDirName)
               try {
-                await ensureDir(newRoot);
-                await fs.rename(extensionData.installedPath, newVersionPath);
-                extensionData.installedPath = newVersionPath;
-                extensionData.id = electronExtension.id;
+                await ensureDir(newRoot)
+                await fs.rename(extensionData.installedPath, newVersionPath)
+                extensionData.installedPath = newVersionPath
+                extensionData.id = electronExtension.id
                 // Move map entry
-                this.loadedExtensions.delete(oldId);
+                this.loadedExtensions.delete(oldId)
 
                 // Reload extension from its new path so resource URLs resolve correctly
                 try {
-                  await this.session.removeExtension(electronExtension.id);
+                  await this.session.removeExtension(electronExtension.id)
                 } catch (_) { }
                 try {
-                  electronExtension = await this.session.loadExtension(newVersionPath, { allowFileAccess: false });
-                  extensionData.electronId = electronExtension.id;
+                  electronExtension = await this.session.loadExtension(newVersionPath, { allowFileAccess: false })
+                  extensionData.electronId = electronExtension.id
                 } catch (reErr) {
-                  log.warn(`ExtensionManager: Reload after relocate failed for ${extensionData.name}:`, reErr);
+                  log.warn(`ExtensionManager: Reload after relocate failed for ${extensionData.name}:`, reErr)
                 }
               } catch (mvErr) {
-                log.warn(`ExtensionManager: Could not relocate extension folder to new ID path:`, mvErr);
+                log.warn('ExtensionManager: Could not relocate extension folder to new ID path:', mvErr)
               }
             }
 
             // Compute icon path with cache-busting
-            const icons = extensionData.manifest?.icons || {};
-            const sizes = ['64', '48', '32', '16'];
+            const icons = extensionData.manifest?.icons || {}
+            const sizes = ['64', '48', '32', '16']
             for (const s of sizes) {
               if (icons[s]) {
-                const v = extensionData.version ? `?v=${encodeURIComponent(extensionData.version)}` : '';
-                extensionData.iconPath = `peersky://extension-icon/${extensionData.id}/${s}${v}`;
-                break;
+                const v = extensionData.version ? `?v=${encodeURIComponent(extensionData.version)}` : ''
+                extensionData.iconPath = `peersky://extension-icon/${extensionData.id}/${s}${v}`
+                break
               }
             }
 
-            log.info(`ExtensionManager: Extension loaded in Electron: ${extensionData.name} (${electronExtension.id})`);
+            log.info(`ExtensionManager: Extension loaded in Electron: ${extensionData.name} (${electronExtension.id})`)
 
             // Detect conflicts with existing preinstalled/system extension by Chrome/Electron ID
-            const conflict = Array.from(this.loadedExtensions.values()).find(ext => ext.electronId && ext.electronId === extensionData.electronId);
+            const conflict = Array.from(this.loadedExtensions.values()).find(ext => ext.electronId && ext.electronId === extensionData.electronId)
             if (conflict && (conflict.isSystem === true || conflict.source === 'preinstalled')) {
-              log.warn(`ExtensionManager: Detected conflict with system extension (${conflict.displayName || conflict.name}). Reverting install.`);
+              log.warn(`ExtensionManager: Detected conflict with system extension (${conflict.displayName || conflict.name}). Reverting install.`)
               try {
                 // Remove the newly loaded duplicate from Electron
-                await this.session.removeExtension(extensionData.electronId);
+                await this.session.removeExtension(extensionData.electronId)
               } catch (_) { }
               try {
                 // Ensure system extension is (re)loaded
-                const ee = await this.session.loadExtension(conflict.installedPath, { allowFileAccess: false });
-                conflict.electronId = ee.id;
+                const ee = await this.session.loadExtension(conflict.installedPath, { allowFileAccess: false })
+                conflict.electronId = ee.id
               } catch (reloadErr) {
-                log.warn('ExtensionManager: Failed to reload system extension after conflict:', reloadErr);
+                log.warn('ExtensionManager: Failed to reload system extension after conflict:', reloadErr)
               }
               // Remove the newly installed files and abort install
-              try { await fs.rm(path.join(this.extensionsBaseDir, extensionData.id), { recursive: true, force: true }); } catch (_) { }
-              throw Object.assign(new Error('Extension already installed as a system extension'), { code: ERR.E_ALREADY_EXISTS });
+              try { await fs.rm(path.join(this.extensionsBaseDir, extensionData.id), { recursive: true, force: true }) } catch (_) { }
+              throw Object.assign(new Error('Extension already installed as a system extension'), { code: ERR.E_ALREADY_EXISTS })
             }
           } catch (error) {
-            log.error(`ExtensionManager: Failed to load extension into Electron:`, error);
+            log.error('ExtensionManager: Failed to load extension into Electron:', error)
           }
         }
 
-        this.loadedExtensions.set(extensionData.id, extensionData);
+        this.loadedExtensions.set(extensionData.id, extensionData)
 
         // Auto-pin newly installed extensions that expose a browser action, if pin slots available
         try {
-          const action = extensionData.manifest?.action || extensionData.manifest?.browser_action;
+          const action = extensionData.manifest?.action || extensionData.manifest?.browser_action
           if (action) {
-            const pinned = await this.getPinnedExtensions();
+            const pinned = await this.getPinnedExtensions()
             if (pinned.length < 6 && !pinned.includes(extensionData.id)) {
-              await this.pinExtension(extensionData.id);
+              await this.pinExtension(extensionData.id)
             }
           }
         } catch (_) { }
 
         // Persist final state
-        await this._writeRegistry();
-        log.info('ExtensionManager: Extension installed successfully:', extensionData.name);
-        return { success: true, extension: extensionData };
-
+        await this._writeRegistry()
+        log.info('ExtensionManager: Extension installed successfully:', extensionData.name)
+        return { success: true, extension: extensionData }
       } catch (error) {
-        log.error('ExtensionManager: Installation failed:', error);
-        throw error;
+        log.error('ExtensionManager: Installation failed:', error)
+        throw error
       }
-    });
+    })
   }
 
   /**
    * Enable or disable an extension
-   * 
+   *
    * @param {string} extensionId - Extension identifier
    * @param {boolean} enabled - Whether to enable or disable
    * @returns {Promise<boolean>} Success status
    */
-  async toggleExtension(extensionId, enabled) {
+  async toggleExtension (extensionId, enabled) {
     return this.mutex.run(extensionId, async () => {
-      await this.initialize();
+      await this.initialize()
 
       try {
-        const extension = this._getById(extensionId);
+        const extension = this._getById(extensionId)
         if (!extension) {
-          throw Object.assign(new Error(`Extension not found: ${extensionId}`), { code: ERR.E_INVALID_ID });
+          throw Object.assign(new Error(`Extension not found: ${extensionId}`), { code: ERR.E_INVALID_ID })
         }
 
-        extension.enabled = enabled;
+        extension.enabled = enabled
 
         if (this.session) {
           try {
             if (enabled) {
               const electronExtension = await this.session.loadExtension(extension.installedPath, {
-                allowFileAccess: false  // Restrict file system access for security
-              });
-              extension.electronId = electronExtension.id;
+                allowFileAccess: false // Restrict file system access for security
+              })
+              extension.electronId = electronExtension.id
             } else {
               if (extension.electronId) {
-                await this.session.removeExtension(extension.electronId);
+                await this.session.removeExtension(extension.electronId)
               }
             }
           } catch (error) {
             throw Object.assign(
               new Error(enabled ? 'Failed to load extension' : 'Failed to remove extension'),
               { code: enabled ? ERR.E_LOAD_FAILED : ERR.E_REMOVE_FAILED }
-            );
+            )
           }
         }
 
-        await this._writeRegistry();
-        return true;
-
+        await this._writeRegistry()
+        return true
       } catch (error) {
-        log.error('ExtensionManager: Toggle failed:', error);
-        throw error;
+        log.error('ExtensionManager: Toggle failed:', error)
+        throw error
       }
-    });
+    })
   }
 
   /**
    * List all installed extensions
-   * 
+   *
    * @returns {Promise<Array>} Array of extension metadata
    */
-  async listExtensions() {
-    await this.initialize();
+  async listExtensions () {
+    await this.initialize()
 
     try {
-      return Array.from(this.loadedExtensions.values());
+      return Array.from(this.loadedExtensions.values())
     } catch (error) {
-      log.error('ExtensionManager: List failed:', error);
-      throw error;
+      log.error('ExtensionManager: List failed:', error)
+      throw error
     }
   }
 
   /**
    * Get browser actions for current window
-   * 
+   *
    * @param {Object} window - Window instance
    * @returns {Promise<Array>} Array of browser actions
    */
-  async listBrowserActions(window) {
-    await this.initialize();
-    try { return await BrowserActions.listBrowserActions(this, window); } catch (error) { log.error('ExtensionManager: Failed to list browser actions:', error); return []; }
+  async listBrowserActions (window) {
+    await this.initialize()
+    try { return await BrowserActions.listBrowserActions(this, window) } catch (error) { log.error('ExtensionManager: Failed to list browser actions:', error); return [] }
   }
 
   /**
    * Handle browser action click
-   * 
+   *
    * @param {string} actionId - Browser action identifier
    * @param {Object} window - Window instance
    */
-  async clickBrowserAction(actionId, window) {
-    await this.initialize();
+  async clickBrowserAction (actionId, window) {
+    await this.initialize()
     // Delegate to the browser-actions service which has improved triggering methods
     try {
-      await BrowserActions.clickBrowserAction(this, actionId, window);
+      await BrowserActions.clickBrowserAction(this, actionId, window)
     } catch (error) {
-      log.error('ExtensionManager: Browser action click failed:', error);
+      log.error('ExtensionManager: Browser action click failed:', error)
     }
   }
 
   /**
    * Open browser action popup
-   * 
+   *
    * @param {string} actionId - Browser action identifier
    * @param {Object} window - Window instance
    * @param {Object} anchorRect - Anchor rectangle for popup positioning
    * @returns {Promise<Object>} Success result
    */
-  async openBrowserActionPopup(actionId, window, anchorRect = {}) {
-    await this.initialize();
-    return BrowserActions.openBrowserAction(this, actionId, window, anchorRect);
+  async openBrowserActionPopup (actionId, window, anchorRect = {}) {
+    await this.initialize()
+    return BrowserActions.openBrowserAction(this, actionId, window, anchorRect)
   }
 
   /**
    * Register a window with ElectronChromeExtensions for browser action support
-   * 
+   *
    * @param {Electron.BrowserWindow} window - Window to register
    * @param {Electron.WebContents} webContents - WebContents to register as tab
    */
-  addWindow(window, webContents) {
+  addWindow (window, webContents) {
     if (this.electronChromeExtensions) {
-      if (!webContents) return; // avoid registering shell UI or popups as tabs
+      if (!webContents) return // avoid registering shell UI or popups as tabs
       try {
         // Skip if this webContents is already registered to avoid duplicate
         // addTab() calls which can trigger spurious navigations/reloads
-        if (!this._registeredTabs) this._registeredTabs = new Set();
-        const wcId = webContents.id;
-        if (this._registeredTabs.has(wcId)) return;
-        this._registeredTabs.add(wcId);
+        if (!this._registeredTabs) this._registeredTabs = new Set()
+        const wcId = webContents.id
+        if (this._registeredTabs.has(wcId)) return
+        this._registeredTabs.add(wcId)
         webContents.once('destroyed', () => {
-          this._registeredTabs?.delete(wcId);
-        });
+          this._registeredTabs?.delete(wcId)
+        })
 
-        this.electronChromeExtensions.addTab(webContents, window);
-        log.info(`[ExtensionManager] Registered webContents ${webContents.id} with extension system`);
+        this.electronChromeExtensions.addTab(webContents, window)
+        log.info(`[ExtensionManager] Registered webContents ${webContents.id} with extension system`)
       } catch (error) {
-        log.error(`[ExtensionManager] Failed to register window:`, error);
+        log.error('[ExtensionManager] Failed to register window:', error)
       }
     } else {
-      log.warn('[ExtensionManager] ElectronChromeExtensions not available');
+      log.warn('[ExtensionManager] ElectronChromeExtensions not available')
     }
   }
 
   /**
    * Unregister a window from ElectronChromeExtensions
-   * 
+   *
    * @param {Electron.WebContents} webContents - WebContents to unregister
    */
-  removeWindow(webContents) {
+  removeWindow (webContents) {
     if (!this.electronChromeExtensions || !webContents) {
-      return; // Extension system not available or webContents is null
+      return // Extension system not available or webContents is null
     }
 
     try {
       // Additional safety check for destroyed webContents
       if (webContents.isDestroyed && webContents.isDestroyed()) {
-        console.debug(`[ExtensionManager] Skipping unregister of destroyed webContents`);
-        return;
+        console.debug('[ExtensionManager] Skipping unregister of destroyed webContents')
+        return
       }
 
-      this.electronChromeExtensions.removeTab(webContents);
-      log.info(`[ExtensionManager] Unregistered webContents ${webContents.id} from extension system`);
+      this.electronChromeExtensions.removeTab(webContents)
+      log.info(`[ExtensionManager] Unregistered webContents ${webContents.id} from extension system`)
     } catch (error) {
       // During shutdown, this is expected and not an error
-      console.debug(`[ExtensionManager] Extension system cleanup during shutdown:`, error.message);
+      console.debug('[ExtensionManager] Extension system cleanup during shutdown:', error.message)
     }
   }
 
-
   /**
    * Uninstall an extension
-   * 
+   *
    * @param {string} extensionId - Extension identifier
    * @returns {Promise<boolean>} Success status
    */
-  async uninstallExtension(extensionId) {
+  async uninstallExtension (extensionId) {
     return this.mutex.run(extensionId, async () => {
-      await this.initialize();
+      await this.initialize()
 
       try {
-        const extension = this.loadedExtensions.get(extensionId);
+        const extension = this.loadedExtensions.get(extensionId)
         if (!extension) {
-          throw new Error(`Extension not found: ${extensionId}`);
+          throw new Error(`Extension not found: ${extensionId}`)
         }
 
         // Prevent uninstall of system/preinstalled extensions
         if (extension.isSystem === true || extension.removable === false || extension.source === 'preinstalled') {
-          throw Object.assign(new Error('Cannot uninstall a system extension'), { code: ERR.E_INVALID_STATE });
+          throw Object.assign(new Error('Cannot uninstall a system extension'), { code: ERR.E_INVALID_STATE })
         }
 
         // Unload extension from Electron's system
         if (this.session && extension.electronId) {
           try {
-            log.info(`ExtensionManager: Unloading extension from Electron: ${extension.displayName || extension.name}`);
-            await this.session.removeExtension(extension.electronId);
+            log.info(`ExtensionManager: Unloading extension from Electron: ${extension.displayName || extension.name}`)
+            await this.session.removeExtension(extension.electronId)
           } catch (error) {
-            log.error(`ExtensionManager: Failed to unload extension from Electron:`, error);
+            log.error('ExtensionManager: Failed to unload extension from Electron:', error)
           }
         }
 
         // Clear extension storage data (localStorage, IndexedDB, cookies, etc.)
         if (this.session) {
           try {
-            const extensionOrigin = `chrome-extension://${extensionId}`;
-            log.info(`ExtensionManager: Clearing storage data for: ${extensionOrigin}`);
+            const extensionOrigin = `chrome-extension://${extensionId}`
+            log.info(`ExtensionManager: Clearing storage data for: ${extensionOrigin}`)
             await this.session.clearStorageData({
               origin: extensionOrigin,
               storages: [
@@ -940,14 +932,14 @@ class ExtensionManager {
                 'shadercache'
               ],
               quotas: ['persistent', 'temporary']
-            });
+            })
             // Flush storage to ensure changes are written
             if (this.session.flushStorageData) {
-              await this.session.flushStorageData();
+              await this.session.flushStorageData()
             }
-            log.info(`ExtensionManager: Storage data cleared for: ${extensionId}`);
+            log.info(`ExtensionManager: Storage data cleared for: ${extensionId}`)
           } catch (error) {
-            log.error(`ExtensionManager: Failed to clear storage data for ${extensionId}:`, error);
+            log.error(`ExtensionManager: Failed to clear storage data for ${extensionId}:`, error)
             // Continue with uninstall regardless
           }
         }
@@ -955,7 +947,7 @@ class ExtensionManager {
         // Clear extension's chrome.storage data from disk (LevelDB files)
         // These are stored in session storage paths under "Local Extension Settings" and "Sync Extension Settings"
         try {
-          const userData = this.app.getPath('userData');
+          const userData = this.app.getPath('userData')
           // Try multiple possible locations where extension storage might be
           const storagePaths = [
             // Default session path
@@ -969,259 +961,300 @@ class ExtensionManager {
             path.join(userData, 'Partitions', 'persist%3Apeersky', 'IndexedDB', `chrome-extension_${extensionId}_0.indexeddb.leveldb`),
             // Extension state
             path.join(userData, 'Extension State', extensionId),
-            path.join(userData, 'Partitions', 'persist%3Apeersky', 'Extension State', extensionId),
-          ];
+            path.join(userData, 'Partitions', 'persist%3Apeersky', 'Extension State', extensionId)
+          ]
 
           for (const storagePath of storagePaths) {
             try {
-              await fs.rm(storagePath, { recursive: true, force: true });
+              await fs.rm(storagePath, { recursive: true, force: true })
             } catch (e) {
               // Silently ignore non-existent paths
             }
           }
-          log.info(`ExtensionManager: Removed extension storage data for: ${extensionId}`);
+          log.info(`ExtensionManager: Removed extension storage data for: ${extensionId}`)
         } catch (error) {
-          log.warn(`ExtensionManager: Failed to remove extension storage data for ${extensionId}:`, error.message);
+          log.warn(`ExtensionManager: Failed to remove extension storage data for ${extensionId}:`, error.message)
         }
 
         // If installed from Chrome Web Store, uninstall there as well
         if (extension.source === 'webstore' && this.chromeWebStore) {
           try {
-            log.info(`ExtensionManager: Uninstalling from Chrome Web Store: ${extension.name} (${extensionId})`);
-            await this.chromeWebStore.uninstallById(extensionId);
+            log.info(`ExtensionManager: Uninstalling from Chrome Web Store: ${extension.name} (${extensionId})`)
+            await this.chromeWebStore.uninstallById(extensionId)
           } catch (error) {
-            log.error(`ExtensionManager: Chrome Web Store uninstall failed for ${extension.displayName || extension.name}:`, error);
+            log.error(`ExtensionManager: Chrome Web Store uninstall failed for ${extension.displayName || extension.name}:`, error)
             // Continue with local removal regardless
           }
         }
 
         // Remove extension files
-        const extensionPath = path.join(this.extensionsBaseDir, extensionId);
-        await fs.rm(extensionPath, { recursive: true, force: true });
+        const extensionPath = path.join(this.extensionsBaseDir, extensionId)
+        await fs.rm(extensionPath, { recursive: true, force: true })
 
         // Remove from loaded extensions
-        this.loadedExtensions.delete(extensionId);
+        this.loadedExtensions.delete(extensionId)
 
         // Update registry file
-        await this._writeRegistry();
+        await this._writeRegistry()
 
         // Also remove from pinned list if present
         try {
-          const pins = await RegistryService.getPinned(this.extensionsBaseDir);
-          const idx = pins.indexOf(extensionId);
+          const pins = await RegistryService.getPinned(this.extensionsBaseDir)
+          const idx = pins.indexOf(extensionId)
           if (idx !== -1) {
-            pins.splice(idx, 1);
-            await RegistryService.setPinned(this.extensionsBaseDir, pins);
+            pins.splice(idx, 1)
+            await RegistryService.setPinned(this.extensionsBaseDir, pins)
           }
         } catch (_) { }
 
-        log.info('ExtensionManager: Extension uninstalled:', extensionId);
-        return true;
-
+        log.info('ExtensionManager: Extension uninstalled:', extensionId)
+        return true
       } catch (error) {
-        log.error('ExtensionManager: Uninstall failed:', error);
-        throw error;
+        log.error('ExtensionManager: Uninstall failed:', error)
+        throw error
       }
-    });
+    })
   }
 
   /**
    * Install extension from Chrome Web Store URL or ID
-   * 
+   *
    * @param {string} urlOrId - Chrome Web Store URL or extension ID
    * @returns {Promise<Object>} Installation result with extension metadata
    */
-  async installFromWebStore(urlOrId) {
-    return withInstallLock(async () => { await this.initialize(); return WebStoreService.installFromWebStore(this, urlOrId); });
+  async installFromWebStore (urlOrId) {
+    return withInstallLock(async () => { await this.initialize(); return WebStoreService.installFromWebStore(this, urlOrId) })
   }
 
   /**
    * Update all extensions to latest versions
-   * 
+   *
    * @returns {Promise<Object>} Update results with counts and errors
    */
-  async updateAllExtensions() {
-    return withUpdateLock(async () => { await this.initialize(); return WebStoreService.updateAllExtensions(this); });
+  async updateAllExtensions () {
+    return withUpdateLock(async () => { await this.initialize(); return WebStoreService.updateAllExtensions(this) })
   }
 
   /**
    * Update extension system configuration
-   * 
+   *
    * @param {Object} newConfig - Configuration updates
    */
-  updateConfig(newConfig) {
+  updateConfig (newConfig) {
     try {
-      log.info('ExtensionManager: Updating configuration:', newConfig);
-      this.config = { ...this.config, ...newConfig };
+      log.info('ExtensionManager: Updating configuration:', newConfig)
+      this.config = { ...this.config, ...newConfig }
     } catch (error) {
-      log.error('ExtensionManager: Configuration update failed:', error);
-      throw error;
+      log.error('ExtensionManager: Configuration update failed:', error)
+      throw error
     }
   }
 
   /**
    * Get system status and health information
-   * 
+   *
    * @returns {Object} System status
    */
-  getStatus() {
+  getStatus () {
     try {
       return {
         initialized: this.isInitialized,
         config: this.config,
         extensionCount: this.loadedExtensions.size,
         enabledCount: Array.from(this.loadedExtensions.values()).filter(ext => ext.enabled).length
-      };
+      }
     } catch (error) {
-      log.error('ExtensionManager: Status check failed:', error);
-      throw error;
+      log.error('ExtensionManager: Status check failed:', error)
+      throw error
     }
   }
 
   /**
    * Shutdown the extension system
    */
-  async shutdown() {
+  async shutdown () {
     try {
-      log.info('ExtensionManager: Shutting down extension system...');
+      log.info('ExtensionManager: Shutting down extension system...')
 
       if (this.isInitialized) {
         // Save final registry
-        await this._writeRegistry();
+        await this._writeRegistry()
 
         // Unload all extensions from Electron's system
         if (this.session) {
           try {
-            log.info('ExtensionManager: Unloading all extensions from Electron...');
+            log.info('ExtensionManager: Unloading all extensions from Electron...')
             for (const extension of this.loadedExtensions.values()) {
               if (extension.electronId) {
                 try {
-                  await this.session.removeExtension(extension.electronId);
-                  log.info(`ExtensionManager: Extension unloaded: ${extension.displayName || extension.name}`);
+                  await this.session.removeExtension(extension.electronId)
+                  log.info(`ExtensionManager: Extension unloaded: ${extension.displayName || extension.name}`)
                 } catch (error) {
-                  log.error(`ExtensionManager: Failed to unload extension ${extension.displayName || extension.name}:`, error);
+                  log.error(`ExtensionManager: Failed to unload extension ${extension.displayName || extension.name}:`, error)
                 }
               }
             }
           } catch (error) {
-            log.error('ExtensionManager: Failed to unload extensions from Electron:', error);
+            log.error('ExtensionManager: Failed to unload extensions from Electron:', error)
           }
         }
       }
 
-      this.isInitialized = false;
-      log.info('ExtensionManager: Extension system shutdown complete');
-
+      this.isInitialized = false
+      log.info('ExtensionManager: Extension system shutdown complete')
     } catch (error) {
-      log.error('ExtensionManager: Shutdown failed:', error);
-      throw error;
+      log.error('ExtensionManager: Shutdown failed:', error)
+      throw error
     }
   }
 
   /**
    * Read registry from file with validation
    */
-  async _readRegistry() {
-    return RegistryService.loadRegistry(this);
+  async _readRegistry () {
+    return RegistryService.loadRegistry(this)
   }
 
   /**
    * Write registry to file
    */
-  async _writeRegistry() {
-    return RegistryService.writeRegistry(this);
+  async _writeRegistry () {
+    return RegistryService.writeRegistry(this)
   }
 
   /**
    * Validate and clean registry by removing entries with missing directories
    * @returns {Object} Cleanup results
    */
-  async validateAndCleanRegistry() {
-    return RegistryService.validateAndClean(this);
+  async validateAndCleanRegistry () {
+    return RegistryService.validateAndClean(this)
   }
 
   /**
    * Get extension by ID, internal helper
    */
-  _getById(extensionId) {
-    return this.loadedExtensions.get(extensionId);
+  _getById (extensionId) {
+    return this.loadedExtensions.get(extensionId)
+  }
+
+  /**
+   * Resolve extension metadata by Electron extension ID.
+   *
+   * @param {string} electronId - Electron runtime extension ID
+   * @returns {Object|null} Extension metadata or null
+   */
+  getExtensionByElectronId (electronId) {
+    if (!electronId || typeof electronId !== 'string') return null
+    for (const extension of this.loadedExtensions.values()) {
+      if (extension && extension.electronId === electronId) {
+        return extension
+      }
+    }
+    return null
+  }
+
+  /**
+   * Check whether an extension can write to p2p protocols.
+   * Default is deny unless explicit permission is present.
+   *
+   * Accepted manifest permissions:
+   * - p2pWrite
+   * - p2pWriteAll
+   * - p2pWrite:<scheme> (for example p2pWrite:ipfs)
+   *
+   * @param {string} electronId - Electron runtime extension ID
+   * @param {string} scheme - Protocol scheme being written
+   * @returns {boolean} True when write is explicitly allowed
+   */
+  isP2PWriteAllowed (electronId, scheme) {
+    const extension = this.getExtensionByElectronId(electronId)
+    if (!extension || extension.enabled !== true) return false
+
+    const permissions = new Set(
+      Array.isArray(extension.manifest?.permissions) ? extension.manifest.permissions : []
+    )
+
+    const scopedPermission = `p2pWrite:${String(scheme || '').toLowerCase()}`
+    return (
+      permissions.has('p2pWrite') ||
+      permissions.has('p2pWriteAll') ||
+      permissions.has(scopedPermission)
+    )
   }
 
   /**
    * Generate secure extension ID using cryptographic hashing
    * Prevents path traversal attacks through malicious extension names
-   * 
+   *
    * @param {Object} manifest - Extension manifest object
    * @returns {string} Secure 32-character hexadecimal extension ID
    */
-  _generateSecureExtensionId(manifest) {
+  _generateSecureExtensionId (manifest) {
     // Delegate to utils to keep a single source of truth
-    try { return generateSecureExtensionId(manifest); } catch (e) {
-      log.error('ExtensionManager: Failed to generate secure extension ID:', e);
-      throw new Error('Failed to generate secure extension ID');
+    try { return generateSecureExtensionId(manifest) } catch (e) {
+      log.error('ExtensionManager: Failed to generate secure extension ID:', e)
+      throw new Error('Failed to generate secure extension ID')
     }
   }
 
   /**
    * Securely copy extension files with path validation and atomic operations
    * Prevents directory traversal and malicious file injection
-   * 
+   *
    * @param {string} sourcePath - Source directory path
    * @param {string} targetPath - Target directory path
    * @param {Object} manifest - Extension manifest for validation
    * @returns {Promise<void>}
    */
-  async _secureFileCopy(sourcePath, targetPath, manifest) {
+  async _secureFileCopy (sourcePath, targetPath, manifest) {
     try {
       // Validate source and target paths
-      const resolvedSource = path.resolve(sourcePath);
-      const resolvedTarget = path.resolve(targetPath);
+      const resolvedSource = path.resolve(sourcePath)
+      const resolvedTarget = path.resolve(targetPath)
 
       // Ensure target is within extensions directory (prevent directory traversal)
       if (!resolvedTarget.startsWith(this.extensionsBaseDir)) {
-        throw new Error('Invalid target path: outside extensions directory');
+        throw new Error('Invalid target path: outside extensions directory')
       }
 
       // Validate source directory exists and is readable
-      const sourceStats = await fs.stat(resolvedSource);
+      const sourceStats = await fs.stat(resolvedSource)
       if (!sourceStats.isDirectory()) {
-        throw new Error('Source must be a directory');
+        throw new Error('Source must be a directory')
       }
 
       // Basic file validation is now handled by ManifestValidator.validateExtension()
 
       // Use atomic operations: copy to temporary location first
-      const tempPath = `${resolvedTarget}.tmp.${Date.now()}`;
+      const tempPath = `${resolvedTarget}.tmp.${Date.now()}`
 
       try {
         // Copy to temporary location
-        await fs.cp(resolvedSource, tempPath, { recursive: true });
+        await fs.cp(resolvedSource, tempPath, { recursive: true })
 
         // Remove target if it exists
         try {
-          await fs.rm(resolvedTarget, { recursive: true, force: true });
+          await fs.rm(resolvedTarget, { recursive: true, force: true })
         } catch (error) {
           // Target might not exist, which is fine
         }
 
         // Atomic move from temp to final location
-        await fs.rename(tempPath, resolvedTarget);
+        await fs.rename(tempPath, resolvedTarget)
 
-        log.info(`ExtensionManager: Securely copied extension to: ${resolvedTarget}`);
-
+        log.info(`ExtensionManager: Securely copied extension to: ${resolvedTarget}`)
       } catch (error) {
         // Clean up temp directory on error
         try {
-          await fs.rm(tempPath, { recursive: true, force: true });
+          await fs.rm(tempPath, { recursive: true, force: true })
         } catch (cleanupError) {
-          log.warn('ExtensionManager: Failed to cleanup temp directory:', cleanupError);
+          log.warn('ExtensionManager: Failed to cleanup temp directory:', cleanupError)
         }
-        throw error;
+        throw error
       }
-
     } catch (error) {
-      log.error('ExtensionManager: Secure file copy failed:', error);
-      throw new Error(`Secure file copy failed: ${error.message}`);
+      log.error('ExtensionManager: Secure file copy failed:', error)
+      throw new Error(`Secure file copy failed: ${error.message}`)
     }
   }
 
@@ -1230,90 +1263,90 @@ class ExtensionManager {
   /**
    * Load extensions into Electron's extension system
    */
-  async _loadExtensionsIntoElectron() {
-    return LoaderService.loadExtensionsIntoElectron(this);
+  async _loadExtensionsIntoElectron () {
+    return LoaderService.loadExtensionsIntoElectron(this)
   }
 
   /**
    * Prepare extension from source path (directory or ZIP/CRX file)
    */
-  async _prepareExtension(sourcePath) {
-    const stats = await fs.stat(sourcePath);
-    if (stats.isDirectory()) { return (await import('./services/installers/directory.js')).prepareFromDirectory(this, sourcePath); }
-    return (await import('./services/installers/archive.js')).prepareFromArchive(this, sourcePath);
+  async _prepareExtension (sourcePath) {
+    const stats = await fs.stat(sourcePath)
+    if (stats.isDirectory()) { return (await import('./services/installers/directory.js')).prepareFromDirectory(this, sourcePath) }
+    return (await import('./services/installers/archive.js')).prepareFromArchive(this, sourcePath)
   }
 
   /**
    * Prepare extension from directory (secured)
    */
-  async _prepareFromDirectory(dirPath) { return (await import('./services/installers/directory.js')).prepareFromDirectory(this, dirPath); }
+  async _prepareFromDirectory (dirPath) { return (await import('./services/installers/directory.js')).prepareFromDirectory(this, dirPath) }
 
   /**
    * Prepare extension from ZIP/CRX archive
    */
-  async _prepareFromArchive(archivePath) {
-    return (await import('./services/installers/archive.js')).prepareFromArchive(this, archivePath);
+  async _prepareFromArchive (archivePath) {
+    return (await import('./services/installers/archive.js')).prepareFromArchive(this, archivePath)
   }
 
   /**
    * Save extension metadata (deprecated - use _writeRegistry)
    */
-  async _saveExtensionMetadata(extensionData) {
-    this.loadedExtensions.set(extensionData.id, extensionData);
-    await this._writeRegistry();
+  async _saveExtensionMetadata (extensionData) {
+    this.loadedExtensions.set(extensionData.id, extensionData)
+    await this._writeRegistry()
   }
 
   /**
    * Resolve i18n placeholders from _locales messages.json
    * Supports manifest.default_locale and app locale fallbacks.
    */
-  async _resolveManifestStrings(installedPath, manifest) {
-    try { const appLocale = (this.app && typeof this.app.getLocale === 'function') ? this.app.getLocale() : 'en'; return await resolveManifestStrings(installedPath, manifest, appLocale, 'en'); } catch (_) { return { name: manifest?.name, description: manifest?.description || '' }; }
+  async _resolveManifestStrings (installedPath, manifest) {
+    try { const appLocale = (this.app && typeof this.app.getLocale === 'function') ? this.app.getLocale() : 'en'; return await resolveManifestStrings(installedPath, manifest, appLocale, 'en') } catch (_) { return { name: manifest?.name, description: manifest?.description || '' } }
   }
 
   /**
    * Save all extension metadata (deprecated - use _writeRegistry)
    */
-  async _saveAllExtensionMetadata() {
-    await this._writeRegistry();
+  async _saveAllExtensionMetadata () {
+    await this._writeRegistry()
   }
 
   /**
    * Get the active webview and register it with the extension system
    * Uses the same reliable approach as bookmarks
-   * 
+   *
    * @param {Electron.BrowserWindow} window - Browser window
    * @returns {Promise<Electron.WebContents|null>} Active webview WebContents or null
    */
-  async _getAndRegisterActiveWebview(window) { return (await import('./services/browser-actions.js')).getAndRegisterActiveWebview(this, window); }
+  async _getAndRegisterActiveWebview (window) { return (await import('./services/browser-actions.js')).getAndRegisterActiveWebview(this, window) }
 
-  async _doesExtensionFileExist(root, rel) { return (await import('./services/browser-actions.js')).doesExtensionFileExist(root, rel); }
+  async _doesExtensionFileExist (root, rel) { return (await import('./services/browser-actions.js')).doesExtensionFileExist(root, rel) }
 
-  async _resolvePopupRelativePath(root, desiredRel) { return (await import('./services/browser-actions.js')).resolvePopupRelativePath(root, desiredRel); }
+  async _resolvePopupRelativePath (root, desiredRel) { return (await import('./services/browser-actions.js')).resolvePopupRelativePath(root, desiredRel) }
 
-  async _findFileByName(_dir, _name, _depth) { return null; }
+  async _findFileByName (_dir, _name, _depth) { return null }
 
-  _broadcastBrowserActionChanged() {
+  _broadcastBrowserActionChanged () {
     try {
-      const windows = BrowserWindow.getAllWindows();
+      const windows = BrowserWindow.getAllWindows()
       for (const win of windows) {
-        if (!win || win.isDestroyed()) continue;
-        const wc = win.webContents;
-        if (!wc || wc.isDestroyed()) continue;
-        wc.send('browser-action-changed', { t: Date.now() });
-        wc.send('refresh-browser-actions');
+        if (!win || win.isDestroyed()) continue
+        const wc = win.webContents
+        if (!wc || wc.isDestroyed()) continue
+        wc.send('browser-action-changed', { t: Date.now() })
+        wc.send('refresh-browser-actions')
       }
     } catch (_) { }
   }
 
-  _broadcastBrowserActionUpdated() {
+  _broadcastBrowserActionUpdated () {
     try {
-      const windows = BrowserWindow.getAllWindows();
+      const windows = BrowserWindow.getAllWindows()
       for (const win of windows) {
-        if (!win || win.isDestroyed()) continue;
-        const wc = win.webContents;
-        if (!wc || wc.isDestroyed()) continue;
-        wc.send('browser-action-updated', { t: Date.now() });
+        if (!win || win.isDestroyed()) continue
+        const wc = win.webContents
+        if (!wc || wc.isDestroyed()) continue
+        wc.send('browser-action-updated', { t: Date.now() })
       }
     } catch (_) { }
   }
@@ -1321,148 +1354,145 @@ class ExtensionManager {
   /**
    * Close all active extension popups
    */
-  closeAllPopups() {
+  closeAllPopups () {
     if (this.activePopups.size > 0) {
-      log.info(`[ExtensionManager] Closing ${this.activePopups.size} active popups`);
+      log.info(`[ExtensionManager] Closing ${this.activePopups.size} active popups`)
 
       for (const popup of this.activePopups) {
         try {
           if (!popup.isDestroyed()) {
-            popup.close();
+            popup.close()
           }
         } catch (error) {
-          log.warn('[ExtensionManager] Error closing popup:', error);
+          log.warn('[ExtensionManager] Error closing popup:', error)
         }
       }
 
-      this.activePopups.clear();
+      this.activePopups.clear()
     }
   }
 
   /**
    * Get list of pinned extension IDs
-   * 
+   *
    * @returns {Promise<Array<string>>} Array of pinned extension IDs
    */
-  async getPinnedExtensions() {
-    await this.initialize();
+  async getPinnedExtensions () {
+    await this.initialize()
 
     try {
-      const raw = await RegistryService.getPinned(this.extensionsBaseDir);
+      const raw = await RegistryService.getPinned(this.extensionsBaseDir)
       const filtered = Array.isArray(raw)
         ? raw.filter(id => {
-          const ext = this.loadedExtensions.get(id);
-          return !!(ext && ext.enabled);
+          const ext = this.loadedExtensions.get(id)
+          return !!(ext && ext.enabled)
         })
-        : [];
+        : []
       if (filtered.length !== raw.length) {
-        try { await RegistryService.setPinned(this.extensionsBaseDir, filtered); } catch (_) { }
+        try { await RegistryService.setPinned(this.extensionsBaseDir, filtered) } catch (_) { }
       }
-      return filtered;
+      return filtered
     } catch (error) {
-      log.warn('[ExtensionManager] Error reading pinned extensions:', error);
-      return [];
+      log.warn('[ExtensionManager] Error reading pinned extensions:', error)
+      return []
     }
   }
 
   /**
    * Pin extension to toolbar (max 6 extensions)
-   * 
+   *
    * @param {string} extensionId - Extension ID to pin
    * @returns {Promise<boolean>} Success status
    */
-  async pinExtension(extensionId) {
-    await this.initialize();
+  async pinExtension (extensionId) {
+    await this.initialize()
 
     try {
       // Validate extension exists and is enabled
-      const extension = this._getById(extensionId);
+      const extension = this._getById(extensionId)
       if (!extension) {
-        throw Object.assign(new Error(`Extension not found: ${extensionId}`), { code: ERR.E_INVALID_ID });
+        throw Object.assign(new Error(`Extension not found: ${extensionId}`), { code: ERR.E_INVALID_ID })
       }
 
       if (!extension.enabled) {
-        throw Object.assign(new Error('Cannot pin disabled extension'), { code: ERR.E_INVALID_STATE });
+        throw Object.assign(new Error('Cannot pin disabled extension'), { code: ERR.E_INVALID_STATE })
       }
 
       // Get current pinned extensions (auto-healed list)
-      const pinnedExtensions = await this.getPinnedExtensions();
+      const pinnedExtensions = await this.getPinnedExtensions()
 
       // Check if already pinned
       if (pinnedExtensions.includes(extensionId)) {
-        log.info(`[ExtensionManager] Extension ${extensionId} is already pinned`);
-        return true;
+        log.info(`[ExtensionManager] Extension ${extensionId} is already pinned`)
+        return true
       }
 
       // Check pin limit (max 6 extensions)
       if (pinnedExtensions.length >= 6) {
-        throw Object.assign(new Error('Maximum 6 extensions can be pinned'), { code: ERR.E_PIN_LIMIT });
+        throw Object.assign(new Error('Maximum 6 extensions can be pinned'), { code: ERR.E_PIN_LIMIT })
       }
 
       // Add to pinned list
-      pinnedExtensions.push(extensionId);
+      pinnedExtensions.push(extensionId)
 
       // Save pinned extensions
-      await RegistryService.setPinned(this.extensionsBaseDir, pinnedExtensions);
+      await RegistryService.setPinned(this.extensionsBaseDir, pinnedExtensions)
 
-      log.info(`[ExtensionManager] Extension ${extensionId} pinned successfully`);
-      this._broadcastBrowserActionChanged();
-      return true;
-
+      log.info(`[ExtensionManager] Extension ${extensionId} pinned successfully`)
+      this._broadcastBrowserActionChanged()
+      return true
     } catch (error) {
-      log.error('[ExtensionManager] Pin extension failed:', error);
-      throw error;
+      log.error('[ExtensionManager] Pin extension failed:', error)
+      throw error
     }
   }
 
   /**
    * Unpin extension from toolbar
-   * 
+   *
    * @param {string} extensionId - Extension ID to unpin
    * @returns {Promise<boolean>} Success status
    */
-  async unpinExtension(extensionId) {
-    await this.initialize();
+  async unpinExtension (extensionId) {
+    await this.initialize()
 
     try {
       // Get current pinned extensions (auto-healed list)
-      const pinnedExtensions = await this.getPinnedExtensions();
+      const pinnedExtensions = await this.getPinnedExtensions()
 
       // Check if extension is pinned
-      const pinnedIndex = pinnedExtensions.indexOf(extensionId);
+      const pinnedIndex = pinnedExtensions.indexOf(extensionId)
       if (pinnedIndex === -1) {
-        log.info(`[ExtensionManager] Extension ${extensionId} is not pinned`);
-        return true;
+        log.info(`[ExtensionManager] Extension ${extensionId} is not pinned`)
+        return true
       }
 
       // Remove from pinned list
-      pinnedExtensions.splice(pinnedIndex, 1);
+      pinnedExtensions.splice(pinnedIndex, 1)
 
       // Save pinned extensions
-      await RegistryService.setPinned(this.extensionsBaseDir, pinnedExtensions);
+      await RegistryService.setPinned(this.extensionsBaseDir, pinnedExtensions)
 
-      log.info(`[ExtensionManager] Extension ${extensionId} unpinned successfully`);
-      this._broadcastBrowserActionChanged();
-      return true;
-
+      log.info(`[ExtensionManager] Extension ${extensionId} unpinned successfully`)
+      this._broadcastBrowserActionChanged()
+      return true
     } catch (error) {
-      log.error('[ExtensionManager] Unpin extension failed:', error);
-      throw error;
+      log.error('[ExtensionManager] Unpin extension failed:', error)
+      throw error
     }
   }
 }
 
 // Create singleton instance
-const extensionManager = new ExtensionManager();
+const extensionManager = new ExtensionManager()
 
 // Export individual components for direct use if needed
 export {
   ManifestValidator
-};
+}
 
 // Export singleton manager instance as default
-export default extensionManager;
+export default extensionManager
 
 // Export manager instance with explicit name for clarity
-export { extensionManager };
-
+export { extensionManager }

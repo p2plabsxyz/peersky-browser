@@ -1,36 +1,36 @@
-import { setPinnedState, getPinnedApps, getAllApps } from "peersky://p2p/p2p-list.js";
+import { setPinnedState, getPinnedApps, getAllApps } from 'peersky://p2p/p2p-list.js'
 
 class P2PAppManager extends HTMLElement {
-  constructor() {
-    super();
-    this.attachShadow({ mode: 'open' });
-    this.statusMessage = "";
-    this.statusType = "info";
-    this.iconUploadTargetId = null;
+  constructor () {
+    super()
+    this.attachShadow({ mode: 'open' })
+    this.statusMessage = ''
+    this.statusType = 'info'
+    this.iconUploadTargetId = null
   }
 
-  escapeHTML(str) {
-    return String(str || "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
+  escapeHTML (str) {
+    return String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
   }
 
-  connectedCallback() {
-    this.render();
+  connectedCallback () {
+    this.render()
     // Listen for pinned apps changes from other windows
     if (window.electronAPI?.onPinnedAppsChanged) {
-      window.electronAPI.onPinnedAppsChanged(() => this.render());
+      window.electronAPI.onPinnedAppsChanged(() => this.render())
     }
   }
 
-  async render() {
-    if (this._rendering) return;
-    this._rendering = true;
+  async render () {
+    if (this._rendering) return
+    this._rendering = true
     try {
-      const p2pApps = await getAllApps();
+      const p2pApps = await getAllApps()
       const style = `
         <style>
           :host {
@@ -193,15 +193,15 @@ class P2PAppManager extends HTMLElement {
             opacity: 0.8;
           }
         </style>
-      `;
+      `
 
       // Get all pinned apps once
-      const pinnedIds = await getPinnedApps();
-      const pinnedStates = p2pApps.map(app => pinnedIds.includes(app.id));
+      const pinnedIds = await getPinnedApps()
+      const pinnedStates = p2pApps.map(app => pinnedIds.includes(app.id))
 
       const sorted = p2pApps
         .map((app, i) => ({ ...app, pinned: pinnedStates[i] }))
-        .sort((a, b) => a.name.localeCompare(b.name));
+        .sort((a, b) => a.name.localeCompare(b.name))
 
       let tableHtml = `
         <h2>P2P Apps</h2>
@@ -212,7 +212,7 @@ class P2PAppManager extends HTMLElement {
             <button class="icon-upload-btn" id="folder-upload-btn" style="padding: 6px 14px; font-size: 0.9rem;">Select Folder to Upload</button>
           </div>
         </div>
-        ${this.statusMessage ? `<div class="status ${this.escapeHTML(this.statusType)}">${this.escapeHTML(this.statusMessage)}</div>` : ""}
+        ${this.statusMessage ? `<div class="status ${this.escapeHTML(this.statusType)}">${this.escapeHTML(this.statusMessage)}</div>` : ''}
         <input id="icon-file-input" type="file" accept=".svg,image/svg+xml" style="display:none;" />
         <table>
           <thead>
@@ -225,27 +225,27 @@ class P2PAppManager extends HTMLElement {
             </tr>
           </thead>
           <tbody>
-      `;
+      `
 
       sorted.forEach(app => {
-        const btnLabel = app.pinned ? 'Unpin' : 'Pin';
-        const btnClass = app.pinned ? 'pin-btn pinned' : 'pin-btn';
+        const btnLabel = app.pinned ? 'Unpin' : 'Pin'
+        const btnClass = app.pinned ? 'pin-btn pinned' : 'pin-btn'
         tableHtml += `
           <tr>
             <td class="icon-cell"><img src="${this.escapeHTML(app.iconUrl)}" alt="${this.escapeHTML(app.name)} icon" /></td>
             <td><button class="${this.escapeHTML(btnClass)}" data-id="${this.escapeHTML(app.id)}" data-pinned="${app.pinned}">${this.escapeHTML(btnLabel)}</button></td>
             <td><a href="${this.escapeHTML(app.url)}">${this.escapeHTML(app.name)}</a></td>
             <td>
-              ${app.source === "user"
+              ${app.source === 'user'
                 ? `<button class="icon-upload-btn" data-upload-id="${this.escapeHTML(app.id)}">Upload SVG</button>
                    <button class="delete-btn" data-delete-id="${this.escapeHTML(app.id)}">Delete</button>`
-                : `<span class="builtin-label">Built-in</span>`
+                : '<span class="builtin-label">Built-in</span>'
               }
             </td>
             <td><a class="open-link" href="${this.escapeHTML(app.url)}">Open &#x2192;</a></td>
           </tr>
-        `;
-      });
+        `
+      })
 
       tableHtml += `
           </tbody>
@@ -257,261 +257,261 @@ class P2PAppManager extends HTMLElement {
         <div style="margin-top: 15px; font-size: 0.9em; color: var(--text-secondary);">
           To delete myapps, go to <a href="peersky://settings/search">Settings -&gt; Search</a> -&gt; Reset P2P Data.
         </div>
-      `;
+      `
 
-      this.shadowRoot.innerHTML = style + tableHtml;
+      this.shadowRoot.innerHTML = style + tableHtml
 
       // Attach event listeners to pin/unpin buttons
       this.shadowRoot.querySelectorAll('.pin-btn').forEach(btn => {
         btn.addEventListener('click', async (e) => {
-          const appId = e.target.getAttribute('data-id');
-          const currentlyPinned = e.target.getAttribute('data-pinned') === 'true';
-          await setPinnedState(appId, !currentlyPinned);
+          const appId = e.target.getAttribute('data-id')
+          const currentlyPinned = e.target.getAttribute('data-pinned') === 'true'
+          await setPinnedState(appId, !currentlyPinned)
           // Re-render manually to provide immediate feedback on the originating page
-          this.render();
-        });
-      });
+          this.render()
+        })
+      })
 
-      this.setupDragAndDrop();
-      this.setupIconUpload();
-      this.setupFolderUpload();
-      this.setupDelete();
-      this.setupUpdateButton();
+      this.setupDragAndDrop()
+      this.setupIconUpload()
+      this.setupFolderUpload()
+      this.setupDelete()
+      this.setupUpdateButton()
     } finally {
-      this._rendering = false;
+      this._rendering = false
     }
   }
 
-  setupUpdateButton() {
-    const updateBtn = this.shadowRoot.getElementById("update-apps-btn");
-    if (!updateBtn) return;
+  setupUpdateButton () {
+    const updateBtn = this.shadowRoot.getElementById('update-apps-btn')
+    if (!updateBtn) return
 
-    updateBtn.addEventListener("click", async () => {
-      const updateFn = window.electronAPI?.p2pApps?.updateSubmodules;
+    updateBtn.addEventListener('click', async () => {
+      const updateFn = window.electronAPI?.p2pApps?.updateSubmodules
       if (!updateFn) {
-        this.setStatus("Update API is unavailable on this page.", "error");
-        this.render();
-        return;
+        this.setStatus('Update API is unavailable on this page.', 'error')
+        this.render()
+        return
       }
 
-      updateBtn.disabled = true;
-      updateBtn.textContent = "Updating...";
-      this.setStatus("Updating P2P apps to latest versions...", "info");
-      this.render();
+      updateBtn.disabled = true
+      updateBtn.textContent = 'Updating...'
+      this.setStatus('Updating P2P apps to latest versions...', 'info')
+      this.render()
 
-      const result = await updateFn();
-      
+      const result = await updateFn()
+
       if (!result?.success) {
-        this.setStatus(result?.error || "Failed to update P2P apps.", "error");
-        updateBtn.disabled = false;
-        updateBtn.textContent = "Update All P2P Apps";
-        this.render();
-        return;
+        this.setStatus(result?.error || 'Failed to update P2P apps.', 'error')
+        updateBtn.disabled = false
+        updateBtn.textContent = 'Update All P2P Apps'
+        this.render()
+        return
       }
 
-      this.setStatus(result.message || "P2P apps updated successfully! Please restart the browser to see changes.", "info");
-      updateBtn.disabled = false;
-      updateBtn.textContent = "Update All P2P Apps";
-      this.render();
-    });
+      this.setStatus(result.message || 'P2P apps updated successfully! Please restart the browser to see changes.', 'info')
+      updateBtn.disabled = false
+      updateBtn.textContent = 'Update All P2P Apps'
+      this.render()
+    })
   }
 
-  setupDragAndDrop() {
-    const dropZone = this.shadowRoot.getElementById("drop-zone");
-    if (!dropZone) return;
+  setupDragAndDrop () {
+    const dropZone = this.shadowRoot.getElementById('drop-zone')
+    if (!dropZone) return
 
-    dropZone.addEventListener("dragover", (event) => {
-      event.preventDefault();
-      dropZone.classList.add("dragover");
-    });
-    dropZone.addEventListener("dragleave", () => {
-      dropZone.classList.remove("dragover");
-    });
-    dropZone.addEventListener("drop", async (event) => {
-      event.preventDefault();
-      dropZone.classList.remove("dragover");
+    dropZone.addEventListener('dragover', (event) => {
+      event.preventDefault()
+      dropZone.classList.add('dragover')
+    })
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('dragover')
+    })
+    dropZone.addEventListener('drop', async (event) => {
+      event.preventDefault()
+      dropZone.classList.remove('dragover')
 
-      this.setStatus("Processing dropped folder...", "info");
-      this.render();
+      this.setStatus('Processing dropped folder...', 'info')
+      this.render()
 
       try {
         if (event.dataTransfer.items && event.dataTransfer.items.length > 0) {
-          const item = event.dataTransfer.items[0];
-          const rootEntry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
-          
+          const item = event.dataTransfer.items[0]
+          const rootEntry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null
+
           if (rootEntry && rootEntry.isDirectory) {
-            const filesToUpload = [];
-            
-            const readEntry = async (entry, pathPrefix = "") => {
+            const filesToUpload = []
+
+            const readEntry = async (entry, pathPrefix = '') => {
               if (entry.isFile) {
                 return new Promise((resolve) => {
                   entry.file(async (file) => {
                     try {
-                      const arrayBuf = await file.arrayBuffer();
-                      filesToUpload.push({ path: pathPrefix + file.name, data: new Uint8Array(arrayBuf) });
+                      const arrayBuf = await file.arrayBuffer()
+                      filesToUpload.push({ path: pathPrefix + file.name, data: new Uint8Array(arrayBuf) })
                     } catch (e) {
-                      console.error("Failed to read dropped file", entry.name, e);
+                      console.error('Failed to read dropped file', entry.name, e)
                     }
-                    resolve();
-                  });
-                });
+                    resolve()
+                  })
+                })
               } else if (entry.isDirectory) {
-                const dirReader = entry.createReader();
-                const getEntries = () => new Promise((resolve, reject) => dirReader.readEntries(resolve, reject));
-                let entries = await getEntries();
+                const dirReader = entry.createReader()
+                const getEntries = () => new Promise((resolve, reject) => dirReader.readEntries(resolve, reject))
+                let entries = await getEntries()
                 while (entries.length > 0) {
                   for (const child of entries) {
-                    await readEntry(child, pathPrefix + entry.name + "/");
+                    await readEntry(child, pathPrefix + entry.name + '/')
                   }
-                  entries = await getEntries();
+                  entries = await getEntries()
                 }
               }
-            };
+            }
 
-            const dirReader = rootEntry.createReader();
-            const getEntries = () => new Promise((resolve, reject) => dirReader.readEntries(resolve, reject));
-            let topEntries = await getEntries();
+            const dirReader = rootEntry.createReader()
+            const getEntries = () => new Promise((resolve, reject) => dirReader.readEntries(resolve, reject))
+            let topEntries = await getEntries()
             while (topEntries.length > 0) {
               for (const child of topEntries) {
-                 await readEntry(child, ""); 
+                await readEntry(child, '')
               }
-              topEntries = await getEntries();
+              topEntries = await getEntries()
             }
 
             if (filesToUpload.length > 0 && window.electronAPI?.p2pApps?.importFolder) {
-              const importFn = window.electronAPI.p2pApps.importFolder;
-              const result = await importFn(rootEntry.name || "Local App", filesToUpload);
+              const importFn = window.electronAPI.p2pApps.importFolder
+              const result = await importFn(rootEntry.name || 'Local App', filesToUpload)
               if (result?.success) {
-                this.setStatus(`Imported folder app "${result.app?.name}". You can now pin it and upload an SVG icon.`, "info");
-                this.render();
-                return;
+                this.setStatus(`Imported folder app "${result.app?.name}". You can now pin it and upload an SVG icon.`, 'info')
+                this.render()
+                return
               } else {
-                this.setStatus(result.error || "Failed to import folder from drop.", "error");
-                this.render();
-                return;
+                this.setStatus(result.error || 'Failed to import folder from drop.', 'error')
+                this.render()
+                return
               }
             }
           }
         }
 
-        this.setStatus("Please drop a valid local folder containing an index.html file to add an app.", "error");
-        this.render();
+        this.setStatus('Please drop a valid local folder containing an index.html file to add an app.', 'error')
+        this.render()
       } catch (e) {
-        console.error("Error processing drop:", e);
-        this.setStatus("An error occurred during drag and drop.", "error");
-        this.render();
+        console.error('Error processing drop:', e)
+        this.setStatus('An error occurred during drag and drop.', 'error')
+        this.render()
       }
-    });
+    })
   }
 
-  setupIconUpload() {
-    const fileInput = this.shadowRoot.getElementById("icon-file-input");
-    if (!fileInput) return;
+  setupIconUpload () {
+    const fileInput = this.shadowRoot.getElementById('icon-file-input')
+    if (!fileInput) return
 
-    this.shadowRoot.querySelectorAll(".icon-upload-btn[data-upload-id]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        this.iconUploadTargetId = btn.getAttribute("data-upload-id");
-        fileInput.value = "";
-        fileInput.click();
-      });
-    });
+    this.shadowRoot.querySelectorAll('.icon-upload-btn[data-upload-id]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        this.iconUploadTargetId = btn.getAttribute('data-upload-id')
+        fileInput.value = ''
+        fileInput.click()
+      })
+    })
 
-    fileInput.addEventListener("change", async () => {
-      const file = fileInput.files?.[0];
-      const appId = this.iconUploadTargetId;
-      this.iconUploadTargetId = null;
-      if (!file || !appId) return;
-      if (!file.name.toLowerCase().endsWith(".svg")) {
-        this.setStatus("Please upload an SVG file.", "error");
-        return;
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files?.[0]
+      const appId = this.iconUploadTargetId
+      this.iconUploadTargetId = null
+      if (!file || !appId) return
+      if (!file.name.toLowerCase().endsWith('.svg')) {
+        this.setStatus('Please upload an SVG file.', 'error')
+        return
       }
-      const uploadFn = window.electronAPI?.p2pApps?.uploadIcon;
+      const uploadFn = window.electronAPI?.p2pApps?.uploadIcon
       if (!uploadFn) {
-        this.setStatus("Icon upload API is unavailable on this page.", "error");
-        return;
+        this.setStatus('Icon upload API is unavailable on this page.', 'error')
+        return
       }
-      const buffer = await file.arrayBuffer();
-      const result = await uploadFn(appId, file.name, buffer);
+      const buffer = await file.arrayBuffer()
+      const result = await uploadFn(appId, file.name, buffer)
       if (!result?.success) {
-        this.setStatus(result?.error || "Icon upload failed.", "error");
-        return;
+        this.setStatus(result?.error || 'Icon upload failed.', 'error')
+        return
       }
-      this.setStatus(`Icon updated for "${result.app?.name || appId}".`, "info");
-      this.render();
-    });
+      this.setStatus(`Icon updated for "${result.app?.name || appId}".`, 'info')
+      this.render()
+    })
   }
 
-  setupFolderUpload() {
-    const triggerBtn = this.shadowRoot.getElementById("folder-upload-btn");
-    if (!triggerBtn) return;
+  setupFolderUpload () {
+    const triggerBtn = this.shadowRoot.getElementById('folder-upload-btn')
+    if (!triggerBtn) return
 
-    triggerBtn.addEventListener("click", async () => {
-      const selectFn = window.electronAPI?.p2pApps?.selectAndImportFolder;
+    triggerBtn.addEventListener('click', async () => {
+      const selectFn = window.electronAPI?.p2pApps?.selectAndImportFolder
       if (!selectFn) {
-        this.setStatus("Select folder API is unavailable on this page.", "error");
-        this.render();
-        return;
+        this.setStatus('Select folder API is unavailable on this page.', 'error')
+        this.render()
+        return
       }
-      const result = await selectFn();
-      if (result?.canceled) return;
+      const result = await selectFn()
+      if (result?.canceled) return
       if (!result?.success) {
-        this.setStatus(result?.error || "Failed to import folder.", "error");
-        this.render();
-        return;
+        this.setStatus(result?.error || 'Failed to import folder.', 'error')
+        this.render()
+        return
       }
 
-      this.setStatus(`Imported folder app "${result.app?.name}". You can now pin it and upload an SVG icon.`, "info");
-      this.render();
-    });
+      this.setStatus(`Imported folder app "${result.app?.name}". You can now pin it and upload an SVG icon.`, 'info')
+      this.render()
+    })
   }
 
-  setupDelete() {
-    this.shadowRoot.querySelectorAll(".delete-btn").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        const appId = btn.getAttribute("data-delete-id");
-        if (!appId || !confirm("Are you sure you want to delete this app?")) return;
-        const removeFn = window.electronAPI?.p2pApps?.removeApp;
+  setupDelete () {
+    this.shadowRoot.querySelectorAll('.delete-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const appId = btn.getAttribute('data-delete-id')
+        if (!appId || !confirm('Are you sure you want to delete this app?')) return
+        const removeFn = window.electronAPI?.p2pApps?.removeApp
         if (!removeFn) {
-           this.setStatus("Remove API is unavailable.", "error"); 
-           return;
+          this.setStatus('Remove API is unavailable.', 'error')
+          return
         }
-        const result = await removeFn(appId);
+        const result = await removeFn(appId)
         if (!result.success) {
-           this.setStatus(result.error || "Failed to remove app.", "error"); 
-           return;
+          this.setStatus(result.error || 'Failed to remove app.', 'error')
+          return
         }
-        
+
         try {
-           await setPinnedState(appId, false);
+          await setPinnedState(appId, false)
         } catch (err) {
-           console.error("Failed to unpin app", err);
+          console.error('Failed to unpin app', err)
         }
-        this.setStatus("App deleted successfully.", "info");
-        this.render();
-      });
-    });
+        this.setStatus('App deleted successfully.', 'info')
+        this.render()
+      })
+    })
   }
 
-  isValidUrl(value) {
+  isValidUrl (value) {
     try {
-      const url = new URL(String(value || "").trim());
-      return ["peersky:", "ipfs:", "ipns:", "hyper:", "hs:", "web3:"].includes(url.protocol);
+      const url = new URL(String(value || '').trim())
+      return ['peersky:', 'ipfs:', 'ipns:', 'hyper:', 'hs:', 'web3:'].includes(url.protocol)
     } catch {
-      return false;
+      return false
     }
   }
 
-  setStatus(message, type = "info") {
-    this.statusMessage = message;
-    this.statusType = type;
+  setStatus (message, type = 'info') {
+    this.statusMessage = message
+    this.statusType = type
   }
 
-  inferFolderName(files) {
-    const first = files[0];
-    const rel = first?.webkitRelativePath || "";
-    const top = rel.split("/").filter(Boolean)[0];
-    return top || "Local App";
+  inferFolderName (files) {
+    const first = files[0]
+    const rel = first?.webkitRelativePath || ''
+    const top = rel.split('/').filter(Boolean)[0]
+    return top || 'Local App'
   }
 }
 
-customElements.define('p2p-app-manager', P2PAppManager);
+customElements.define('p2p-app-manager', P2PAppManager)

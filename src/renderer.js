@@ -1,94 +1,89 @@
 import {
-  IPFS_PREFIX,
-  IPNS_PREFIX,
-  HYPER_PREFIX,
-  WEB3_PREFIX,
-  handleURL,
-} from "./utils.js";
+  handleURL
+} from './utils.js'
 
-const chromiumNetErrors = require('chromium-net-errors');
+const chromiumNetErrors = require('chromium-net-errors')
 
-const { ipcRenderer } = require("electron");
+const { ipcRenderer } = require('electron')
 
-const DEFAULT_PAGE = "peersky://home";
-const isHomePage = (url) => url === "peersky://home" || url === "peersky://home/";
-let webviewContainer = null; // Will be set dynamically for tabs
-let tabBar; // Holds current tab bar component
-const nav = document.querySelector("#navbox");
-const findMenu = document.querySelector("#find");
-const pageTitle = document.querySelector("title");
+const DEFAULT_PAGE = 'peersky://home'
+const isHomePage = (url) => url === 'peersky://home' || url === 'peersky://home/'
+let webviewContainer = null // Will be set dynamically for tabs
+let tabBar // Holds current tab bar component
+const nav = document.querySelector('#navbox')
+const findMenu = document.querySelector('#find')
+const pageTitle = document.querySelector('title')
 
 // Listen for IPC messages from main process to add tabs
 ipcRenderer.on('add-tab-from-main', (event, url) => {
   if (tabBar && typeof tabBar.addTab === 'function') {
-    tabBar.addTab(url);
+    tabBar.addTab(url)
   }
-});
+})
 
 // Get initial URL from search params
-const searchParams = new URL(window.location.href).searchParams;
-const toNavigate = searchParams.has("url") ? searchParams.get("url") : DEFAULT_PAGE;
+const searchParams = new URL(window.location.href).searchParams
+const toNavigate = searchParams.has('url') ? searchParams.get('url') : DEFAULT_PAGE
 
-async function updateBookmarkIcon(currentUrl) {
-  if (!currentUrl) return;
+async function updateBookmarkIcon (currentUrl) {
+  if (!currentUrl) return
   try {
-    const bookmarks = await ipcRenderer.invoke("get-bookmarks");
+    const bookmarks = await ipcRenderer.invoke('get-bookmarks')
     const isBookmarked = bookmarks.some(
       (bookmark) => bookmark.url === currentUrl
-    );
-    nav?.setBookmarkState?.(isBookmarked);
+    )
+    nav?.setBookmarkState?.(isBookmarked)
   } catch (error) {
-    console.error("Failed to update bookmark icon:", error);
+    console.error('Failed to update bookmark icon:', error)
   }
 }
 
-function setupWebviewErrorHandling(webview) {
-  if (!webview || webview._errorHandlerInitialized) return;
-  webview._errorHandlerInitialized = true;
+function setupWebviewErrorHandling (webview) {
+  if (!webview || webview._errorHandlerInitialized) return
+  webview._errorHandlerInitialized = true
 
   const isLocalUrl = (value) => {
     try {
-      const { hostname } = new URL(value);
-      if (!hostname) return false;
-      if (hostname === "localhost" || hostname === "0.0.0.0") return true;
-      if (hostname.startsWith("127.")) return true;
-      if (hostname.startsWith("10.")) return true;
-      if (hostname.startsWith("192.168.")) return true;
-      if (hostname.startsWith("172.")) {
-        const second = Number(hostname.split(".")[1]);
-        return Number.isFinite(second) && second >= 16 && second <= 31;
+      const { hostname } = new URL(value)
+      if (!hostname) return false
+      if (hostname === 'localhost' || hostname === '0.0.0.0') return true
+      if (hostname.startsWith('127.')) return true
+      if (hostname.startsWith('10.')) return true
+      if (hostname.startsWith('192.168.')) return true
+      if (hostname.startsWith('172.')) {
+        const second = Number(hostname.split('.')[1])
+        return Number.isFinite(second) && second >= 16 && second <= 31
       }
-      return false;
+      return false
     } catch {
-      return false;
+      return false
     }
-  };
+  }
 
   const state = {
     isShowingError: false,
     lastFailedUrl: null,
     retryCounts: new Map()
-  };
+  }
 
   const handleFailLoad = (event) => {
+    const { errorCode, errorDescription, validatedURL, isMainFrame } = event
 
-    const { errorCode, errorDescription, validatedURL, isMainFrame } = event;
-    
-    if (!isMainFrame) return;
-    
+    if (!isMainFrame) return
+
     // Prevent error page loop
     if (validatedURL?.includes('error.html')) {
-      state.isShowingError = false;
-      return;
+      state.isShowingError = false
+      return
     }
-    
-    if (state.isShowingError && state.lastFailedUrl === validatedURL) return;
+
+    if (state.isShowingError && state.lastFailedUrl === validatedURL) return
 
     // ERR_ABORTED: navigation was cancelled, usually because another navigation
     // replaced it (redirect chains, OAuth). Not a terminal failure—do not show
     // an error page; the active navigation will emit its own result.
     if (errorCode === -3) {
-      return;
+      return
     }
 
     // Extension OAuth redirect host: Chrome resolves *.chromiumapp.org internally;
@@ -96,50 +91,50 @@ function setupWebviewErrorHandling(webview) {
     // the tab with peersky://error; return to the prior page (session is often already established).
     if (errorCode === -105 && validatedURL) {
       try {
-        const { hostname } = new URL(validatedURL);
+        const { hostname } = new URL(validatedURL)
         if (hostname.endsWith('.chromiumapp.org')) {
           setTimeout(() => {
             try {
               if (typeof webview.canGoBack === 'function' && webview.canGoBack()) {
-                webview.goBack();
+                webview.goBack()
               }
             } catch (_) { /* ignore */ }
-          }, 0);
-          return;
+          }, 0)
+          return
         }
       } catch (_) { /* ignore invalid URL */ }
     }
 
     if (errorCode === -102 && validatedURL && isLocalUrl(validatedURL)) {
-      const count = state.retryCounts.get(validatedURL) || 0;
+      const count = state.retryCounts.get(validatedURL) || 0
       if (count < 1) {
-        state.retryCounts.set(validatedURL, count + 1);
+        state.retryCounts.set(validatedURL, count + 1)
         setTimeout(() => {
           try {
             if (webview.src === validatedURL) {
-              webview.src = validatedURL;
+              webview.src = validatedURL
             }
           } catch (e) {}
-        }, 3000);
-        return;
+        }, 3000)
+        return
       }
     }
 
     // Get Chromium error details
-    let chromiumError = chromiumNetErrors.getErrorByCode(errorCode);
+    const chromiumError = chromiumNetErrors.getErrorByCode(errorCode)
     showErrorPage({
       code: String(errorCode),
       name: chromiumError.name,
       msg: errorDescription,
-      url: validatedURL,
-    });
-  };
+      url: validatedURL
+    })
+  }
 
-  function showErrorPage(errorInfo) {
-    if (state.isShowingError) return;
+  function showErrorPage (errorInfo) {
+    if (state.isShowingError) return
 
-    state.isShowingError = true;
-    state.lastFailedUrl = errorInfo.url;
+    state.isShowingError = true
+    state.lastFailedUrl = errorInfo.url
 
     const params = new URLSearchParams({
       code: errorInfo.code,
@@ -147,473 +142,472 @@ function setupWebviewErrorHandling(webview) {
       msg: errorInfo.msg,
       url: errorInfo.url,
       t: Date.now().toString()
-    });
+    })
 
-    const errorURL = `peersky://error.html?${params}`;
+    const errorURL = `peersky://error.html?${params}`
 
     try {
-      webview.src = errorURL;
-      setTimeout(() => { state.isShowingError = false; }, 1000);
+      webview.src = errorURL
+      setTimeout(() => { state.isShowingError = false }, 1000)
     } catch (e) {
-      state.isShowingError = false;
+      state.isShowingError = false
     }
   }
 
   const handleNavigate = (event) => {
-    const url = event.url || '';
+    const url = event.url || ''
     if (!url.includes('error.html')) {
-      state.isShowingError = false;
-      state.lastFailedUrl = null;
+      state.isShowingError = false
+      state.lastFailedUrl = null
       if (url) {
-        state.retryCounts.delete(url);
+        state.retryCounts.delete(url)
       }
     }
-  };
+  }
 
   const handleStartLoading = () => {
-    const currentSrc = webview.src;
+    const currentSrc = webview.src
     if (currentSrc && !currentSrc.includes('error.html') &&
         currentSrc !== state.lastFailedUrl) {
-      state.isShowingError = false;
+      state.isShowingError = false
     }
-  };
+  }
 
-  webview.addEventListener('did-fail-load', handleFailLoad);
-  webview.addEventListener('did-navigate', handleNavigate);
-  webview.addEventListener('did-start-loading', handleStartLoading);
+  webview.addEventListener('did-fail-load', handleFailLoad)
+  webview.addEventListener('did-navigate', handleNavigate)
+  webview.addEventListener('did-start-loading', handleStartLoading)
 }
 
-
-document.addEventListener("DOMContentLoaded", async () => {
+document.addEventListener('DOMContentLoaded', async () => {
   // Initialize theme on page load
   try {
-    const currentTheme = await ipcRenderer.invoke('settings-get', 'theme');
+    const currentTheme = await ipcRenderer.invoke('settings-get', 'theme')
     if (currentTheme) {
-      document.documentElement.setAttribute('data-theme', currentTheme);
-      
+      document.documentElement.setAttribute('data-theme', currentTheme)
+
       // Enable transitions after initial theme is loaded
       setTimeout(() => {
-        const urlDisplay = document.querySelector('#url');
+        const urlDisplay = document.querySelector('#url')
         if (urlDisplay) {
-          urlDisplay.classList.remove('transition-disabled');
+          urlDisplay.classList.remove('transition-disabled')
         }
-      }, 100);
+      }, 100)
     }
   } catch (error) {
-    console.error('Error loading theme:', error);
+    console.error('Error loading theme:', error)
   }
-  
+
   ipcRenderer.on('group-properties-updated', (_, groupId, properties) => {
-    console.log('Received group properties update:', groupId, properties);
+    console.log('Received group properties update:', groupId, properties)
     if (tabBar && typeof tabBar.updateGroupPropertiesFromExternal === 'function') {
-      tabBar.updateGroupPropertiesFromExternal(groupId, properties);
+      tabBar.updateGroupPropertiesFromExternal(groupId, properties)
     }
-  });
+  })
 
   ipcRenderer.on('check-has-tab', (event, tabId) => {
-    let hasTab = false;
+    let hasTab = false
     if (tabBar && typeof tabBar.hasTab === 'function') {
-      hasTab = tabBar.hasTab(tabId);
+      hasTab = tabBar.hasTab(tabId)
     }
-    event.returnValue = hasTab;
-  });
-  
+    event.returnValue = hasTab
+  })
+
   // Listen for theme changes from main process
   ipcRenderer.on('theme-changed', (event, newTheme) => {
-    document.documentElement.setAttribute('data-theme', newTheme);
+    document.documentElement.setAttribute('data-theme', newTheme)
 
-    reloadThemeCSS();
+    reloadThemeCSS()
 
     // Refresh tab bar styles if available
     if (tabBar && typeof tabBar.refreshGroupStyles === 'function') {
-      tabBar.refreshGroupStyles();
+      tabBar.refreshGroupStyles()
     }
 
     // Notify other components
     window.dispatchEvent(new CustomEvent('theme-reload', {
       detail: { theme: newTheme }
-    }));
-  });
+    }))
+  })
 
-  const titleBar = document.querySelector("#titlebar");
-  const verticalTabsEnabled = await ipcRenderer.invoke('settings-get', 'verticalTabs');
+  const titleBar = document.querySelector('#titlebar')
+  const verticalTabsEnabled = await ipcRenderer.invoke('settings-get', 'verticalTabs')
   if (verticalTabsEnabled) {
-    const { default: VerticalTabs } = await import('./pages/vertical-tabs.js');
-    tabBar = document.querySelector('#tabbar') || new VerticalTabs();
-    const keepExpanded = await ipcRenderer.invoke('settings-get', 'keepTabsExpanded');
+    const { default: VerticalTabs } = await import('./pages/vertical-tabs.js')
+    tabBar = document.querySelector('#tabbar') || new VerticalTabs()
+    const keepExpanded = await ipcRenderer.invoke('settings-get', 'keepTabsExpanded')
     if (keepExpanded) {
-      tabBar.updateKeepExpandedState(keepExpanded);
+      tabBar.updateKeepExpandedState(keepExpanded)
     }
     // IMPORTANT: append to body before creating / restoring tabs
     if (!tabBar.isConnected) {
-      document.body.appendChild(tabBar);
+      document.body.appendChild(tabBar)
     }
   } else {
-    tabBar = document.querySelector('#tabbar') || new TabBar();
+    tabBar = document.querySelector('#tabbar') || new TabBar()
     if (titleBar && !tabBar.isConnected) {
-      titleBar.connectTabBar(tabBar);
+      titleBar.connectTabBar(tabBar)
     } else if (!tabBar.isConnected) {
-      document.body.appendChild(tabBar);
+      document.body.appendChild(tabBar)
     }
   }
 
   // Create webview container AFTER tabBar is in DOM
-  webviewContainer = document.createElement("div");
-  webviewContainer.id = "webview-container";
-  webviewContainer.className = "webview-container";
-  document.body.appendChild(webviewContainer);
-  
+  webviewContainer = document.createElement('div')
+  webviewContainer.id = 'webview-container'
+  webviewContainer.className = 'webview-container'
+  document.body.appendChild(webviewContainer)
+
   // Mutation observer to catch webviews
   const webviewObserver = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
       mutation.addedNodes.forEach((node) => {
         if (node.tagName === 'WEBVIEW') {
-          setTimeout(() => setupWebviewErrorHandling(node), 0);
+          setTimeout(() => setupWebviewErrorHandling(node), 0)
         }
-      });
-    });
-  });
-  
-  webviewObserver.observe(webviewContainer, { 
-    childList: true, 
-    subtree: true 
-  });
-  
-  await tabBar.connectWebviewContainer(webviewContainer);
-  
+      })
+    })
+  })
+
+  webviewObserver.observe(webviewContainer, {
+    childList: true,
+    subtree: true
+  })
+
+  await tabBar.connectWebviewContainer(webviewContainer)
+
   // Setup error handling for all webviews
-  tabBar.addEventListener("tab-created", (e) => {
+  tabBar.addEventListener('tab-created', (e) => {
     if (e.detail?.webview) {
-      setupWebviewErrorHandling(e.detail.webview);
+      setupWebviewErrorHandling(e.detail.webview)
     }
-  });
-  
+  })
+
   if (tabBar.webviews?.size) {
-    tabBar.webviews.forEach(wv => setupWebviewErrorHandling(wv));
+    tabBar.webviews.forEach(wv => setupWebviewErrorHandling(wv))
   }
-  
-  ipcRenderer.on("remove-all-tempIcon", () => {
-    const navBox = document.querySelector("nav-box");
-    if (navBox && typeof navBox.removeAllTempIcon === "function") {
-      navBox.removeAllTempIcon();
-    }
-  });
 
-  ipcRenderer.on("remove-tempIcon", (_event, extensionId) => {
-    const navBox = document.querySelector("nav-box");
-    if (navBox && typeof navBox.removeTempIconForExtension === "function") {
-      navBox.removeTempIconForExtension(extensionId);
+  ipcRenderer.on('remove-all-tempIcon', () => {
+    const navBox = document.querySelector('nav-box')
+    if (navBox && typeof navBox.removeAllTempIcon === 'function') {
+      navBox.removeAllTempIcon()
     }
-  });
+  })
 
-  ipcRenderer.on("refresh-browser-actions", () => {
-    const navBox = document.querySelector("nav-box");
-    if (navBox && typeof navBox.renderBrowserActions === "function") {
-      navBox.renderBrowserActions();
+  ipcRenderer.on('remove-tempIcon', (_event, extensionId) => {
+    const navBox = document.querySelector('nav-box')
+    if (navBox && typeof navBox.removeTempIconForExtension === 'function') {
+      navBox.removeTempIconForExtension(extensionId)
     }
-  });
+  })
 
-  ipcRenderer.on("create-new-tab", async (_event, url) => {
-    if (tabBar && typeof tabBar.addTab === "function") {
-      tabBar.addTab(url);
+  ipcRenderer.on('refresh-browser-actions', () => {
+    const navBox = document.querySelector('nav-box')
+    if (navBox && typeof navBox.renderBrowserActions === 'function') {
+      navBox.renderBrowserActions()
+    }
+  })
+
+  ipcRenderer.on('create-new-tab', async (_event, url) => {
+    if (tabBar && typeof tabBar.addTab === 'function') {
+      tabBar.addTab(url)
     } else {
-      navigateTo(url);
+      navigateTo(url)
     }
-  });
+  })
 
   ipcRenderer.on('close-tab', (_, id) => {
     try {
       if (tabBar && typeof tabBar.closeTab === 'function') {
-        tabBar.closeTab(id);
+        tabBar.closeTab(id)
       }
     } catch (e) {
-      console.error('Error closing tab via IPC:', e);
+      console.error('Error closing tab via IPC:', e)
     }
-  });
+  })
 
   ipcRenderer.on('activate-tab', (_, id) => {
     try {
       if (tabBar && typeof tabBar.selectTab === 'function') {
-        tabBar.selectTab(id);
+        tabBar.selectTab(id)
       }
     } catch (e) {
-      console.error('Error activating tab via IPC:', e);
+      console.error('Error activating tab via IPC:', e)
     }
-  });
+  })
   ipcRenderer.on('group-action', (_, data) => {
     try {
       if (tabBar && typeof tabBar.handleGroupContextMenuAction === 'function') {
-        const { action, groupId } = data || {};
-        tabBar.handleGroupContextMenuAction(action, groupId);
+        const { action, groupId } = data || {}
+        tabBar.handleGroupContextMenuAction(action, groupId)
       }
     } catch (e) {
-      console.error('Error handling group action via IPC:', e);
+      console.error('Error handling group action via IPC:', e)
     }
-  });
+  })
   ipcRenderer.on('vertical-tabs-changed', async (_, enabled) => {
-    const oldBar = tabBar;
-    
+    const oldBar = tabBar
+
     // Clean up old webviews before creating new tab bar
     if (oldBar && oldBar.webviews) {
       oldBar.webviews.forEach((webview) => {
         if (webview && webview.parentNode) {
-          webview.remove();
+          webview.remove()
         }
-      });
-      oldBar.webviews.clear();
+      })
+      oldBar.webviews.clear()
     }
-    
+
     // Clear existing webviews from container
     if (webviewContainer) {
       while (webviewContainer.firstChild) {
-        webviewContainer.removeChild(webviewContainer.firstChild);
+        webviewContainer.removeChild(webviewContainer.firstChild)
       }
     }
-    
+
     // Remove old tab bar from DOM
     if (oldBar && oldBar.parentElement) {
-      oldBar.remove();
+      oldBar.remove()
     }
-    
+
     if (enabled) {
-      const { default: VerticalTabs } = await import('./pages/vertical-tabs.js');
-      tabBar = new VerticalTabs();
-      const keepExpanded = await ipcRenderer.invoke('settings-get', 'keepTabsExpanded');
+      const { default: VerticalTabs } = await import('./pages/vertical-tabs.js')
+      tabBar = new VerticalTabs()
+      const keepExpanded = await ipcRenderer.invoke('settings-get', 'keepTabsExpanded')
       if (keepExpanded) {
-        tabBar.updateKeepExpandedState(true);
+        tabBar.updateKeepExpandedState(true)
       }
-      document.body.appendChild(tabBar);
+      document.body.appendChild(tabBar)
     } else {
       if (process.platform === 'darwin' && titleBar && typeof titleBar.toggleDarwinCollapse === 'function') {
-        titleBar.toggleDarwinCollapse(false);
+        titleBar.toggleDarwinCollapse(false)
       }
-      tabBar = new TabBar();
+      tabBar = new TabBar()
       if (titleBar) {
-        titleBar.connectTabBar(tabBar);
+        titleBar.connectTabBar(tabBar)
       } else {
-        document.body.appendChild(tabBar);
+        document.body.appendChild(tabBar)
       }
     }
-    
+
     // Connect webview container and wait for tab restoration
-    await tabBar.connectWebviewContainer(webviewContainer);
-    
+    await tabBar.connectWebviewContainer(webviewContainer)
+
     // RE-ATTACH event listeners for the new tab bar
     if (webviewContainer && nav && tabBar) {
       // Remove old event listeners first
-      tabBar.removeEventListener("tab-selected", handleTabSelected);
-      tabBar.removeEventListener("tab-navigated", handleTabNavigated);
-      
+      tabBar.removeEventListener('tab-selected', handleTabSelected)
+      tabBar.removeEventListener('tab-navigated', handleTabNavigated)
+
       // Add fresh event listeners ( to prevent same url states in all tabs)
-      tabBar.addEventListener("tab-selected", handleTabSelected);
-      tabBar.addEventListener("tab-navigated", handleTabNavigated);
+      tabBar.addEventListener('tab-selected', handleTabSelected)
+      tabBar.addEventListener('tab-navigated', handleTabNavigated)
     }
-    
+
     // Force update URL input field after restoration is complete
     setTimeout(() => {
-      const activeTab = tabBar.getActiveTab();
-      const urlInput = nav.querySelector("#url");
+      const activeTab = tabBar.getActiveTab()
+      const urlInput = nav.querySelector('#url')
       if (activeTab && urlInput) {
         if (isHomePage(activeTab.url)) {
-          urlInput.value = "";
+          urlInput.value = ''
         } else {
-          urlInput.value = activeTab.url;
+          urlInput.value = activeTab.url
         }
-        
+
         // Also update the nav display
-        nav.setStyledUrl(isHomePage(activeTab.url) ? "" : activeTab.url);
+        nav.setStyledUrl(isHomePage(activeTab.url) ? '' : activeTab.url)
       }
-    }, 300);
-    
+    }, 300)
+
     // Force a layout update
     setTimeout(() => {
       if (tabBar.style) {
-        tabBar.style.display = 'none';
-        tabBar.offsetHeight; // Trigger reflow
-        tabBar.style.display = '';
+        tabBar.style.display = 'none'
+        tabBar.offsetHeight // eslint-disable-line no-unused-expressions
+        tabBar.style.display = ''
       }
-    }, 100);
-  });
-  
-  function handleTabSelected(e) {
-    const { tabId, url } = e.detail;
-    
+    }, 100)
+  })
+
+  function handleTabSelected (e) {
+    const { tabId, url } = e.detail
+
     // Hide peersky://home URL, show all others
     if (isHomePage(url)) {
-      nav.setStyledUrl("");
+      nav.setStyledUrl('')
     } else {
-      nav.setStyledUrl(url);
+      nav.setStyledUrl(url)
     }
-    
-    const tab = tabBar.tabs.find(t => t.id === tabId);
+
+    const tab = tabBar.tabs.find(t => t.id === tabId)
     if (tab) {
-      pageTitle.innerText = `${tab.title} - Peersky Browser`;
+      pageTitle.innerText = `${tab.title} - Peersky Browser`
     }
-    
-    updateNavigationButtons(tabBar);
-    
+
+    updateNavigationButtons(tabBar)
+
     // Update bookmark icon for the selected tab
     if (url) {
-      updateBookmarkIcon(url);
+      updateBookmarkIcon(url)
     }
   }
-  
-  function handleTabNavigated(e) {
-    const { tabId, url } = e.detail;
-    
+
+  function handleTabNavigated (e) {
+    const { tabId, url } = e.detail
+
     if (tabId === tabBar.activeTabId) {
       // Hide peersky://home URL, show all others
       if (isHomePage(url)) {
-        nav.setStyledUrl("");
+        nav.setStyledUrl('')
       } else {
-        nav.setStyledUrl(url);
+        nav.setStyledUrl(url)
       }
-      
-      setTimeout(() => updateNavigationButtons(tabBar), 100);
-      
+
+      setTimeout(() => updateNavigationButtons(tabBar), 100)
+
       // Update bookmark icon when active tab navigates
       if (url) {
-        updateBookmarkIcon(url);
+        updateBookmarkIcon(url)
       }
     }
-    
-    ipcRenderer.send("webview-did-navigate", url);
+
+    ipcRenderer.send('webview-did-navigate', url)
   }
   ipcRenderer.on('keep-tabs-expanded-changed', async (_, keepExpanded) => {
-    const verticalTabsElement = document.querySelector('.tabbar.vertical-tabs');
+    const verticalTabsElement = document.querySelector('.tabbar.vertical-tabs')
     if (verticalTabsElement && typeof verticalTabsElement.updateKeepExpandedState === 'function') {
-      verticalTabsElement.updateKeepExpandedState(keepExpanded);
+      verticalTabsElement.updateKeepExpandedState(keepExpanded)
     } else if (verticalTabsElement) {
       // Fallback for basic class toggle
       if (keepExpanded) {
-        verticalTabsElement.classList.add('keep-expanded');
+        verticalTabsElement.classList.add('keep-expanded')
       } else {
-        verticalTabsElement.classList.remove('keep-expanded');
+        verticalTabsElement.classList.remove('keep-expanded')
       }
     }
-  });
+  })
 
   ipcRenderer.on('hide-tab-components', () => {
     if (tabBar) {
-      tabBar.style.display = 'none';
+      tabBar.style.display = 'none'
     }
-  });
+  })
 
   ipcRenderer.on('load-tab-components', () => {
     if (tabBar) {
-      tabBar.style.display = '';
+      tabBar.style.display = ''
     }
-  });
-  
+  })
+
   if (!verticalTabsEnabled && titleBar && tabBar.parentElement !== titleBar) {
-    titleBar.connectTabBar(tabBar);
+    titleBar.connectTabBar(tabBar)
   }
 
   if (webviewContainer && nav && tabBar) {
     // Setup tab event handlers
-    tabBar.addEventListener("tab-selected", handleTabSelected);
-    tabBar.addEventListener("tab-navigated", handleTabNavigated);
-    
-    tabBar.addEventListener("tab-loading", (e) => {
-      const { tabId, isLoading } = e.detail;
-      
+    tabBar.addEventListener('tab-selected', handleTabSelected)
+    tabBar.addEventListener('tab-navigated', handleTabNavigated)
+
+    tabBar.addEventListener('tab-loading', (e) => {
+      const { tabId, isLoading } = e.detail
+
       if (tabId === tabBar.activeTabId) {
-        nav.setLoading(isLoading);
-        
+        nav.setLoading(isLoading)
+
         if (!isLoading) {
-          setTimeout(() => updateNavigationButtons(tabBar), 100);
+          setTimeout(() => updateNavigationButtons(tabBar), 100)
         }
       }
-    });
+    })
 
     // Add with other event listeners
-    tabBar.addEventListener("navigation-state-changed", () => {
-      updateNavigationButtons(tabBar);
-    });
-    
+    tabBar.addEventListener('navigation-state-changed', () => {
+      updateNavigationButtons(tabBar)
+    })
+
     // Check if we need to navigate to a specific URL initially
 
     // Setup error handling
-    tabBar.addEventListener("webview-created", (e) => {
-      if (e.detail.webview) setupWebviewErrorHandling(e.detail.webview);
-    });
+    tabBar.addEventListener('webview-created', (e) => {
+      if (e.detail.webview) setupWebviewErrorHandling(e.detail.webview)
+    })
 
     setTimeout(() => {
-      tabBar.webviews?.forEach((webview) => setupWebviewErrorHandling(webview));
-    }, 500);
+      tabBar.webviews?.forEach((webview) => setupWebviewErrorHandling(webview))
+    }, 500)
 
     if (toNavigate !== DEFAULT_PAGE) {
-      const firstTab = tabBar.tabs[0];
+      const firstTab = tabBar.tabs[0]
       if (firstTab) {
-        tabBar.updateTab(firstTab.id, { url: toNavigate });
+        tabBar.updateTab(firstTab.id, { url: toNavigate })
       }
     }
-    
+
     // Update URL input with active tab's URL and bookmark icon
-    const activeTab = tabBar.getActiveTab();
-    if (activeTab && nav.querySelector("#url")) {
+    const activeTab = tabBar.getActiveTab()
+    if (activeTab && nav.querySelector('#url')) {
       // Hide peersky://home URL, show all others
-      nav.querySelector("#url").value = isHomePage(activeTab.url) ? "" : activeTab.url;
+      nav.querySelector('#url').value = isHomePage(activeTab.url) ? '' : activeTab.url
       // Update bookmark icon for initial tab
       if (activeTab.url) {
-        updateBookmarkIcon(activeTab.url);
+        updateBookmarkIcon(activeTab.url)
       }
     }
 
     // Navigation Button Event Listeners
-    nav.addEventListener("back", () => tabBar.goBackActiveTab());
-    nav.addEventListener("forward", () => tabBar.goForwardActiveTab());
-    nav.addEventListener("reload", () => tabBar.reloadActiveTab());
-    nav.addEventListener("stop", () => tabBar.stopActiveTab());
-    nav.addEventListener("home", async () => {
-      await navigateTo("peersky://home");
+    nav.addEventListener('back', () => tabBar.goBackActiveTab())
+    nav.addEventListener('forward', () => tabBar.goForwardActiveTab())
+    nav.addEventListener('reload', () => tabBar.reloadActiveTab())
+    nav.addEventListener('stop', () => tabBar.stopActiveTab())
+    nav.addEventListener('home', async () => {
+      await navigateTo('peersky://home')
       // Hide peersky://home URL in address bar
-      nav.querySelector("#url").value = "";
-    });
-    
-    nav.addEventListener("navigate", async ({ detail }) => {
-      const { url } = detail;
-      await navigateTo(url);
-    });
-    
-    nav.addEventListener("new-window", () => {
-      ipcRenderer.send("new-window");
-    });
-    nav.addEventListener("toggle-bookmark", async () => {
-      const activeTab = tabBar.getActiveTab();
+      nav.querySelector('#url').value = ''
+    })
+
+    nav.addEventListener('navigate', async ({ detail }) => {
+      const { url } = detail
+      await navigateTo(url)
+    })
+
+    nav.addEventListener('new-window', () => {
+      ipcRenderer.send('new-window')
+    })
+    nav.addEventListener('toggle-bookmark', async () => {
+      const activeTab = tabBar.getActiveTab()
       if (!activeTab || !activeTab.url || activeTab.url.trim() === '') {
-        console.error("No active tab or URL available, cannot toggle bookmark.");
-        return;
+        console.error('No active tab or URL available, cannot toggle bookmark.')
+        return
       }
-      
-      const url = activeTab.url;
-      const bookmarks = await ipcRenderer.invoke("get-bookmarks");
-      const existingBookmark = bookmarks.find((b) => b.url === url);
+
+      const url = activeTab.url
+      const bookmarks = await ipcRenderer.invoke('get-bookmarks')
+      const existingBookmark = bookmarks.find((b) => b.url === url)
 
       if (existingBookmark) {
-        ipcRenderer.invoke("delete-bookmark", { url });
+        ipcRenderer.invoke('delete-bookmark', { url })
       } else {
         const title = activeTab.title || pageTitle.innerText
-          .replace(" - Peersky Browser", "")
-          .trim();
+          .replace(' - Peersky Browser', '')
+          .trim()
 
-        const parsedUrl = new URL(url);
-        const favicon = await getFavicon(parsedUrl, activeTab);
-        ipcRenderer.send("add-bookmark", { url, title, favicon });
+        const parsedUrl = new URL(url)
+        const favicon = await getFavicon(parsedUrl, activeTab)
+        ipcRenderer.send('add-bookmark', { url, title, favicon })
       }
 
-      setTimeout(() => updateBookmarkIcon(url), 100);
-    });
+      setTimeout(() => updateBookmarkIcon(url), 100)
+    })
 
-    async function getFavicon(parsedUrl, activeTab) {
-      const defaultFavicon = "peersky://static/assets/svg/globe.svg";
+    async function getFavicon (parsedUrl, activeTab) {
+      const defaultFavicon = 'peersky://static/assets/svg/globe.svg'
 
-      if (parsedUrl.protocol === "peersky:") {
-        return "peersky://static/assets/favicon.ico";
+      if (parsedUrl.protocol === 'peersky:') {
+        return 'peersky://static/assets/favicon.ico'
       }
 
       // Try to get favicon from the active tab's webview
-      const activeWebview = tabBar.getActiveWebview();
+      const activeWebview = tabBar.getActiveWebview()
       if (activeWebview) {
         try {
           const faviconFromWebview = await activeWebview.executeJavaScript(`
@@ -623,255 +617,244 @@ document.addEventListener("DOMContentLoaded", async () => {
               );
               return iconLink ? iconLink.href : null;
             })()
-          `);
-          
+          `)
+
           if (faviconFromWebview) {
             try {
-              const iconUrl = new URL(faviconFromWebview, parsedUrl.origin).href;
-              console.log("Using favicon from webview:", iconUrl);
-              const response = await fetch(iconUrl);
-              
+              const iconUrl = new URL(faviconFromWebview, parsedUrl.origin).href
+              console.log('Using favicon from webview:', iconUrl)
+              const response = await fetch(iconUrl)
+
               if (
                 response.ok &&
-                response.headers.get("content-type")?.startsWith("image")
+                response.headers.get('content-type')?.startsWith('image')
               ) {
-                return iconUrl;
+                return iconUrl
               }
             } catch (error) {
-              console.warn("Error fetching favicon from webview:", error);
+              console.warn('Error fetching favicon from webview:', error)
             }
           }
         } catch (error) {
-          console.warn("Error executing script in webview for favicon:", error);
+          console.warn('Error executing script in webview for favicon:', error)
         }
       }
 
       // Fallback to standard favicon.ico
       try {
-        const fallbackUrl = new URL("/favicon.ico", parsedUrl.origin).href;
-        const response = await fetch(fallbackUrl);
+        const fallbackUrl = new URL('/favicon.ico', parsedUrl.origin).href
+        const response = await fetch(fallbackUrl)
 
         if (
           response.ok &&
-          response.headers.get("content-type")?.startsWith("image")
+          response.headers.get('content-type')?.startsWith('image')
         ) {
-          return fallbackUrl;
+          return fallbackUrl
         }
       } catch (error) {
-        console.warn("Error fetching fallback favicon:", error);
+        console.warn('Error fetching fallback favicon:', error)
       }
 
-      return defaultFavicon;
+      return defaultFavicon
     }
 
     // Handle webview loading events to toggle refresh/stop button
     if (webviewContainer.webviewElement) {
       webviewContainer.webviewElement.addEventListener(
-        "did-start-loading",
+        'did-start-loading',
         () => {
-          nav.setLoading(true);
+          nav.setLoading(true)
         }
-      );
+      )
 
       webviewContainer.webviewElement.addEventListener(
-        "did-stop-loading",
+        'did-stop-loading',
         () => {
-          nav.setLoading(false);
-          updateNavigationButtons();
+          nav.setLoading(false)
+          updateNavigationButtons()
         }
-      );
+      )
 
-      webviewContainer.webviewElement.addEventListener("did-fail-load", () => {
-        nav.setLoading(false);
-        updateNavigationButtons();
-        const activeTab = tabBar.getActiveTab();
+      webviewContainer.webviewElement.addEventListener('did-fail-load', () => {
+        nav.setLoading(false)
+        updateNavigationButtons()
+        const activeTab = tabBar.getActiveTab()
         if (activeTab && activeTab.url) {
-          updateBookmarkIcon(activeTab.url);
+          updateBookmarkIcon(activeTab.url)
         }
-      });
+      })
 
-      webviewContainer.webviewElement.addEventListener("did-navigate", () => {
-        updateNavigationButtons();
-      });
+      webviewContainer.webviewElement.addEventListener('did-navigate', () => {
+        updateNavigationButtons()
+      })
     } else {
-      console.error("webviewElement not found in webviewContainer");
+      console.error('webviewElement not found in webviewContainer')
     }
 
-    const urlInput = nav.querySelector("#url");
+    const urlInput = nav.querySelector('#url')
     if (urlInput) {
-      urlInput.addEventListener("keypress", async (e) => {
-        if (e.key === "Enter") {
-          const rawURL = urlInput.value.trim();
-          await navigateTo(rawURL);
+      urlInput.addEventListener('keypress', async (e) => {
+        if (e.key === 'Enter') {
+          const rawURL = urlInput.value.trim()
+          await navigateTo(rawURL)
         }
-      });
+      })
     }
 
     // Update URL display and send navigation event
-    webviewContainer.addEventListener("did-navigate", (e) => {
+    webviewContainer.addEventListener('did-navigate', (e) => {
       if (nav) {
         // Hide peersky://home URL, show all others
         if (isHomePage(e.detail.url)) {
-          nav.setStyledUrl("");
+          nav.setStyledUrl('')
         } else {
-          nav.setStyledUrl(e.detail.url);
+          nav.setStyledUrl(e.detail.url)
         }
       }
-      ipcRenderer.send("webview-did-navigate", e.detail.url);
-      updateBookmarkIcon(e.detail.url);
-    });
+      ipcRenderer.send('webview-did-navigate', e.detail.url)
+      updateBookmarkIcon(e.detail.url)
+    })
 
     // Update page title
-    webviewContainer.addEventListener("page-title-updated", (e) => {
+    webviewContainer.addEventListener('page-title-updated', (e) => {
       pageTitle.innerText = e.detail.title
         ? `${e.detail.title} - Peersky Browser`
-        : "Peersky Browser";
-    });
+        : 'Peersky Browser'
+    })
 
     // Find Menu Event Listeners
-    findMenu.addEventListener("next", ({ detail }) => {
-      const webview = tabBar.getActiveWebview();
+    findMenu.addEventListener('next', ({ detail }) => {
+      const webview = tabBar.getActiveWebview()
       if (webview) {
         webview.executeJavaScript(
           `window.find("${detail.value}", ${detail.findNext})`
-        );
+        )
       }
-    });
+    })
 
-    findMenu.addEventListener("previous", ({ detail }) => {
-      const webview = tabBar.getActiveWebview();
+    findMenu.addEventListener('previous', ({ detail }) => {
+      const webview = tabBar.getActiveWebview()
       if (webview) {
         webview.executeJavaScript(
           `window.find("${detail.value}", ${detail.findNext}, true)`
-        );
+        )
       }
-    });
+    })
 
-    findMenu.addEventListener("hide", () => {
-      const webview = tabBar.getActiveWebview();
+    findMenu.addEventListener('hide', () => {
+      const webview = tabBar.getActiveWebview()
       if (webview) {
-        webview.focus();
+        webview.focus()
       }
-    });
+    })
 
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "t" && (e.ctrlKey || e.metaKey)) {
-        e.preventDefault();
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 't' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault()
         try {
           if (tabBar && typeof tabBar.addTab === 'function') {
-            tabBar.addTab();
+            tabBar.addTab()
           }
         } catch (error) {
-          console.error('Error adding tab:', error);
+          console.error('Error adding tab:', error)
         }
       }
-    });
+    })
 
     // Initial update of navigation buttons
-    updateNavigationButtons(tabBar);
+    updateNavigationButtons(tabBar)
   }
-});
+})
 
-async function navigateTo(url) {
+async function navigateTo (url) {
   try {
     // Process URL through handleURL to ensure proper formatting
-    const processedURL = await handleURL(url);
-    
+    const processedURL = await handleURL(url)
+
     // Check if we have tab functionality
-    const tabBar = document.querySelector("#tabbar");
+    const tabBar = document.querySelector('#tabbar')
     if (tabBar && typeof tabBar.navigateActiveTab === 'function') {
       // Use tab-based navigation
-      tabBar.navigateActiveTab(processedURL);
+      tabBar.navigateActiveTab(processedURL)
     } else if (webviewContainer && typeof webviewContainer.loadURL === 'function') {
       // Fallback to direct webview navigation
-      webviewContainer.loadURL(processedURL);
+      webviewContainer.loadURL(processedURL)
     } else {
-      console.error('No navigation method available');
+      console.error('No navigation method available')
     }
   } catch (error) {
-    console.error('Error processing URL:', error);
+    console.error('Error processing URL:', error)
     // Final fallback
-    const tabBar = document.querySelector("#tabbar");
+    const tabBar = document.querySelector('#tabbar')
     if (tabBar && typeof tabBar.navigateActiveTab === 'function') {
-      tabBar.navigateActiveTab(url);
+      tabBar.navigateActiveTab(url)
     } else if (webviewContainer && typeof webviewContainer.loadURL === 'function') {
-      webviewContainer.loadURL(url);
+      webviewContainer.loadURL(url)
     }
   }
 }
 
-function updateNavigationButtons(currentTabBar) {
-  if (!nav) return;
-  
-  const bar = currentTabBar || tabBar || document.querySelector("#tabbar") || document.querySelector("vertical-tabs");
-  if (!bar) return;
+function updateNavigationButtons (currentTabBar) {
+  if (!nav) return
+
+  const bar = currentTabBar || tabBar || document.querySelector('#tabbar') || document.querySelector('vertical-tabs')
+  if (!bar) return
 
   try {
-    const webview = bar.getActiveWebview();
-    const tab = (typeof bar.getActiveTab === 'function') ? bar.getActiveTab() : null;
-    
+    const webview = bar.getActiveWebview()
+    const tab = (typeof bar.getActiveTab === 'function') ? bar.getActiveTab() : null
+
     if (webview) {
-      let canGoBack = webview.canGoBack();
-      let canGoForward = webview.canGoForward();
-      
+      let canGoBack = webview.canGoBack()
+      let canGoForward = webview.canGoForward()
+
       // Fallback to saved navigation completely overriding native history
       if (tab && tab.savedNavigation && tab.savedNavigation.entries && tab.savedNavigation.entries.length > 0) {
-        canGoBack = tab.savedNavigation.activeIndex > 0;
-        canGoForward = tab.savedNavigation.activeIndex < tab.savedNavigation.entries.length - 1;
+        canGoBack = tab.savedNavigation.activeIndex > 0
+        canGoForward = tab.savedNavigation.activeIndex < tab.savedNavigation.entries.length - 1
       }
-      
-      nav.setNavigationButtons(canGoBack, canGoForward);
+
+      nav.setNavigationButtons(canGoBack, canGoForward)
     } else {
-      nav.setNavigationButtons(false, false);
+      nav.setNavigationButtons(false, false)
     }
   } catch (error) {
-    console.error('Error updating navigation buttons:', error);
-    nav.setNavigationButtons(false, false);
+    console.error('Error updating navigation buttons:', error)
+    nav.setNavigationButtons(false, false)
   }
 }
 
-function focusURLInput() {
-  try {
-    const urlInput = nav.querySelector("#url");
-    if (urlInput) {
-      urlInput.focus();
-    }
-  } catch (error) {
-    console.error('Error focusing URL input:', error);
-  }
-}
-
-document.addEventListener("keydown", (e) => {
-  if (e.key === "f" && (e.ctrlKey || e.metaKey)) {
-    e.preventDefault();
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'f' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault()
     try {
       if (findMenu && typeof findMenu.toggle === 'function') {
-        findMenu.toggle();
+        findMenu.toggle()
       }
     } catch (error) {
-      console.error('Error toggling find menu:', error);
+      console.error('Error toggling find menu:', error)
     }
   }
-});
+})
 
-function reloadThemeCSS() {
+function reloadThemeCSS () {
   // Reload CSS imports for theme files
-  const styleElements = document.querySelectorAll('style');
+  const styleElements = document.querySelectorAll('style')
   styleElements.forEach(style => {
-    const text = style.textContent || style.innerText;
+    const text = style.textContent || style.innerText
     if (text && text.includes('browser://theme/')) {
-      const newStyle = document.createElement('style');
-      newStyle.textContent = text;
-      style.parentNode.replaceChild(newStyle, style);
+      const newStyle = document.createElement('style')
+      newStyle.textContent = text
+      style.parentNode.replaceChild(newStyle, style)
     }
-  });
-  
+  })
+
   // Reload CSS links with cache busting
-  const linkElements = document.querySelectorAll('link[href*="browser://theme/"]');
+  const linkElements = document.querySelectorAll('link[href*="browser://theme/"]')
   linkElements.forEach(link => {
-    const href = link.href.split('?')[0];
-    link.href = `${href}?t=${Date.now()}`;
-  });
-  
-  console.log('Main window: Theme CSS reloaded');
+    const href = link.href.split('?')[0]
+    link.href = `${href}?t=${Date.now()}`
+  })
+
+  console.log('Main window: Theme CSS reloaded')
 }

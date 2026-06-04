@@ -1,25 +1,24 @@
-import { app, BrowserWindow } from "electron";
-import WindowManager from './window-manager.js';
-import { createLogger } from './logger.js';
-const log = createLogger('actions');
+import { app, BrowserWindow } from 'electron'
+import { createLogger } from './logger.js'
+const log = createLogger('actions')
 
-export function createActions(windowManager) {
+export function createActions (windowManager) {
   const actions = {
     OpenDevTools: {
-      label: "Open Dev Tools",
-      accelerator: "CommandOrControl+Shift+I",
+      label: 'Open Dev Tools',
+      accelerator: 'CommandOrControl+Shift+I',
       click: () => {
-        const focusedWindow = BrowserWindow.getFocusedWindow();
+        const focusedWindow = BrowserWindow.getFocusedWindow()
         if (focusedWindow) {
-          focusedWindow.webContents.openDevTools({ mode: "detach" });
+          focusedWindow.webContents.openDevTools({ mode: 'detach' })
         }
-      },
+      }
     },
     NewWindow: {
-      label: "New Window",
-      accelerator: "CommandOrControl+N",
+      label: 'New Window',
+      accelerator: 'CommandOrControl+N',
       click: () => {
-        const newWin = windowManager.open({ newWindow: true });
+        const newWin = windowManager.open({ newWindow: true })
         if (newWin && newWin.webContents) {
           newWin.webContents.once('did-finish-load', () => {
             newWin.webContents.executeJavaScript(`
@@ -30,16 +29,16 @@ export function createActions(windowManager) {
                   urlInput.select();
                 }
               }, 900);
-            `);
-          });
+            `)
+          })
         }
-      },
+      }
     },
     NewTab: {
-      label: "New Tab",
-      accelerator: "CommandOrControl+T",
+      label: 'New Tab',
+      accelerator: 'CommandOrControl+T',
       click: () => {
-        const focusedWindow = BrowserWindow.getFocusedWindow();
+        const focusedWindow = BrowserWindow.getFocusedWindow()
         if (focusedWindow) {
           focusedWindow.webContents.executeJavaScript(`{
             const tabBar = document.querySelector('#tabbar');
@@ -54,15 +53,15 @@ export function createActions(windowManager) {
                 }
               }, 150);
             }
-          }`);
+          }`)
         }
-      },
+      }
     },
     Forward: {
-      label: "Forward",
-      accelerator: "CommandOrControl+]",
+      label: 'Forward',
+      accelerator: 'CommandOrControl+]',
       click: () => {
-        const focusedWindow = BrowserWindow.getFocusedWindow();
+        const focusedWindow = BrowserWindow.getFocusedWindow()
         if (focusedWindow) {
           focusedWindow.webContents.executeJavaScript(`{
             const tabBar = document.querySelector('#tabbar');
@@ -75,15 +74,15 @@ export function createActions(windowManager) {
                 webview.goForward();
               }
             }
-          }`);
+          }`)
         }
-      },
+      }
     },
     Back: {
-      label: "Back",
-      accelerator: "CommandOrControl+[",
+      label: 'Back',
+      accelerator: 'CommandOrControl+[',
       click: () => {
-        const focusedWindow = BrowserWindow.getFocusedWindow();
+        const focusedWindow = BrowserWindow.getFocusedWindow()
         if (focusedWindow) {
           focusedWindow.webContents.executeJavaScript(`{
             const tabBar = document.querySelector('#tabbar');
@@ -96,15 +95,15 @@ export function createActions(windowManager) {
                 webview.goBack();
               }
             }
-          }`);
+          }`)
         }
-      },
+      }
     },
     FocusURLBar: {
-      label: "Focus URL Bar",
-      accelerator: "CommandOrControl+L",
+      label: 'Focus URL Bar',
+      accelerator: 'CommandOrControl+L',
       click: () => {
-        const focusedWindow = BrowserWindow.getFocusedWindow();
+        const focusedWindow = BrowserWindow.getFocusedWindow()
         if (focusedWindow) {
           focusedWindow.webContents.executeJavaScript(`
             function focusUrlBar() {
@@ -129,15 +128,15 @@ export function createActions(windowManager) {
                 }
               }, 50);
             }
-          `);
+          `)
         }
-      },
+      }
     },
     Reload: {
-      label: "Reload",
-      accelerator: "CommandOrControl+R",
+      label: 'Reload',
+      accelerator: 'CommandOrControl+R',
       click: () => {
-        const focusedWindow = BrowserWindow.getFocusedWindow();
+        const focusedWindow = BrowserWindow.getFocusedWindow()
         if (focusedWindow) {
           focusedWindow.webContents.executeJavaScript(`{
             const tabBar = document.querySelector('#tabbar');
@@ -168,15 +167,15 @@ export function createActions(windowManager) {
               }
             }
           }`)
-            .catch((err) => log.error("Reload action script failed:", err));
+            .catch((err) => log.error('Reload action script failed:', err))
         }
-      },
+      }
     },
     Print: {
-      label: "Print...",
-      accelerator: "CommandOrControl+P",
+      label: 'Print...',
+      accelerator: 'CommandOrControl+P',
       click: () => {
-        const focusedWindow = BrowserWindow.getFocusedWindow();
+        const focusedWindow = BrowserWindow.getFocusedWindow()
         if (focusedWindow) {
           focusedWindow.webContents.executeJavaScript(`
             (function() {
@@ -198,25 +197,25 @@ export function createActions(windowManager) {
               }
               return false;
             })()
-          `).catch(err => log.error('Print action failed:', err));
+          `).catch(err => log.error('Print action failed:', err))
         }
-      },
+      }
     },
     Minimize: {
-      label: "Minimize",
-      accelerator: "CommandOrControl+M",
+      label: 'Minimize',
+      accelerator: 'CommandOrControl+M',
       click: () => {
-        const focusedWindow = BrowserWindow.getFocusedWindow();
+        const focusedWindow = BrowserWindow.getFocusedWindow()
         if (focusedWindow) {
-          focusedWindow.minimize();
+          focusedWindow.minimize()
         }
-      },
+      }
     },
     Close: {
-      label: "Close",
-      accelerator: "CommandOrControl+W",
+      label: 'Close',
+      accelerator: 'CommandOrControl+W',
       click: () => {
-        const focusedWindow = BrowserWindow.getFocusedWindow();
+        const focusedWindow = BrowserWindow.getFocusedWindow()
         if (focusedWindow) {
           focusedWindow.webContents.executeJavaScript(`
             try {
@@ -234,26 +233,26 @@ export function createActions(windowManager) {
               window.close();
             }
           `).catch(error => {
-            log.error('Script execution failed in Close action:', error);
-          });
+            log.error('Script execution failed in Close action:', error)
+          })
         }
-      },
+      }
     },
     FullScreen: {
-      label: "Toggle Full Screen",
-      accelerator: "F11",
+      label: 'Toggle Full Screen',
+      accelerator: 'F11',
       click: () => {
-        const focusedWindow = BrowserWindow.getFocusedWindow();
+        const focusedWindow = BrowserWindow.getFocusedWindow()
         if (focusedWindow) {
-          focusedWindow.setFullScreen(!focusedWindow.isFullScreen());
+          focusedWindow.setFullScreen(!focusedWindow.isFullScreen())
         }
-      },
+      }
     },
     FindInPage: {
-      label: "Find in Page",
-      accelerator: "CommandOrControl+F",
+      label: 'Find in Page',
+      accelerator: 'CommandOrControl+F',
       click: () => {
-        const focusedWindow = BrowserWindow.getFocusedWindow();
+        const focusedWindow = BrowserWindow.getFocusedWindow()
         if (focusedWindow) {
           focusedWindow.webContents.executeJavaScript(`
             var findMenu = document.querySelector('find-menu');
@@ -266,15 +265,15 @@ export function createActions(windowManager) {
                 }
               }, 100); // Timeout to ensure the menu is visible and ready to receive focus
             }
-          `);
+          `)
         }
-      },
+      }
     },
     CloseTab: {
-      label: "Close Tab",
-      accelerator: "CommandOrControl+Shift+W",
+      label: 'Close Tab',
+      accelerator: 'CommandOrControl+Shift+W',
       click: () => {
-        const focusedWindow = BrowserWindow.getFocusedWindow();
+        const focusedWindow = BrowserWindow.getFocusedWindow()
         if (focusedWindow) {
           focusedWindow.webContents.executeJavaScript(`
             try {
@@ -289,18 +288,18 @@ export function createActions(windowManager) {
               console.error('Error closing tab:', error);
             }
           `).catch(error => {
-            log.error('Script execution failed:', error);
-          });
+            log.error('Script execution failed:', error)
+          })
         }
-      },
+      }
     },
     NextTab: {
-      label: "Next Tab",
-      accelerator: process.platform === "darwin"
-    ? "CommandOrControl+Option+Right"
-    : "CommandOrControl+Tab",
+      label: 'Next Tab',
+      accelerator: process.platform === 'darwin'
+        ? 'CommandOrControl+Option+Right'
+        : 'CommandOrControl+Tab',
       click: () => {
-        const focusedWindow = BrowserWindow.getFocusedWindow();
+        const focusedWindow = BrowserWindow.getFocusedWindow()
         if (focusedWindow) {
           focusedWindow.webContents.executeJavaScript(`
             try {
@@ -316,18 +315,18 @@ export function createActions(windowManager) {
               console.error('Error switching to next tab:', error);
             }
           `).catch(error => {
-            log.error('Script execution failed:', error);
-          });
+            log.error('Script execution failed:', error)
+          })
         }
-      },
+      }
     },
     PreviousTab: {
-      label: "Previous Tab",
-      accelerator: process.platform === "darwin"
-    ? "CommandOrControl+Option+Left"
-    : "CommandOrControl+Shift+Tab",
+      label: 'Previous Tab',
+      accelerator: process.platform === 'darwin'
+        ? 'CommandOrControl+Option+Left'
+        : 'CommandOrControl+Shift+Tab',
       click: () => {
-        const focusedWindow = BrowserWindow.getFocusedWindow();
+        const focusedWindow = BrowserWindow.getFocusedWindow()
         if (focusedWindow) {
           focusedWindow.webContents.executeJavaScript(`
             try {
@@ -343,133 +342,139 @@ export function createActions(windowManager) {
               console.error('Error switching to previous tab:', error);
             }
           `).catch(error => {
-            log.error('Script execution failed:', error);
-          });
+            log.error('Script execution failed:', error)
+          })
         }
-      },
-    },
-  };
+      }
+    }
+  }
 
-  return actions;
+  return actions
 }
 
-export function createMenuTemplate(windowManager) {
-    const actions = createActions(windowManager);
-    
-    const isMac = process.platform === 'darwin';
+export function createMenuTemplate (windowManager) {
+  const actions = createActions(windowManager)
 
-    const template = [
-        // { role: 'appMenu' }
-        ...(isMac ? [{
-            label: app.name,
-            submenu: [
-                { role: 'about' },
-                { type: 'separator' },
-                { role: 'services' },
-                { type: 'separator' },
-                { role: 'hide' },
-                { role: 'hideOthers' },
-                { role: 'unhide' },
-                { type: 'separator' },
-                { role: 'quit' }
+  const isMac = process.platform === 'darwin'
+
+  const template = [
+    // { role: 'appMenu' }
+    ...(isMac
+      ? [{
+          label: app.name,
+          submenu: [
+            { role: 'about' },
+            { type: 'separator' },
+            { role: 'services' },
+            { type: 'separator' },
+            { role: 'hide' },
+            { role: 'hideOthers' },
+            { role: 'unhide' },
+            { type: 'separator' },
+            { role: 'quit' }
+          ]
+        }]
+      : []),
+    // { role: 'fileMenu' }
+    {
+      label: 'File',
+      submenu: [
+        { ...actions.NewWindow },
+        { ...actions.NewTab },
+        { type: 'separator' },
+        { ...actions.Print },
+        { type: 'separator' },
+        { ...actions.CloseTab },
+        { ...actions.Close },
+        { type: 'separator' },
+        isMac ? { role: 'close' } : { role: 'quit' }
+      ]
+    },
+    // { role: 'editMenu' }
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        ...(isMac
+          ? [
+              { role: 'pasteAndMatchStyle' },
+              { role: 'delete' },
+              { role: 'selectAll' },
+              { type: 'separator' },
+              {
+                label: 'Speech',
+                submenu: [
+                  { role: 'startSpeaking' },
+                  { role: 'stopSpeaking' }
+                ]
+              }
             ]
-        }] : []),
-        // { role: 'fileMenu' }
+          : [
+              { role: 'delete' },
+              { type: 'separator' },
+              { role: 'selectAll' }
+            ]),
+        { type: 'separator' },
+        { ...actions.FindInPage }
+      ]
+    },
+    // { role: 'viewMenu' }
+    {
+      label: 'View',
+      submenu: [
+        { ...actions.Reload },
+        { type: 'separator' },
+        { ...actions.FullScreen },
+        { ...actions.OpenDevTools }
+      ]
+    },
+    // { role: 'windowMenu' }
+    {
+      label: 'Window',
+      submenu: [
+        { ...actions.Minimize },
+        { ...actions.NextTab },
+        { ...actions.PreviousTab },
+        ...(isMac
+          ? [
+              { type: 'separator' },
+              { role: 'front' },
+              { type: 'separator' },
+              { role: 'window' }
+            ]
+          : [
+              { ...actions.Close }
+            ])
+      ]
+    },
+    // { role: 'goMenu }
+    {
+      label: 'Go',
+      submenu: [
+        { ...actions.Back },
+        { ...actions.Forward },
+        { type: 'separator' },
+        { ...actions.FocusURLBar }
+      ]
+    },
+    {
+      role: 'help',
+      submenu: [
         {
-            label: 'File',
-            submenu: [
-                {...actions.NewWindow},
-                {...actions.NewTab},
-                { type: 'separator' },
-                {...actions.Print},
-                { type: 'separator' },
-                {...actions.CloseTab},
-                {...actions.Close},
-                { type: 'separator' },
-                isMac ? { role: 'close' } : { role: 'quit' }
-            ]
-        },
-        // { role: 'editMenu' }
-        {
-            label: 'Edit',
-            submenu: [
-                { role: 'undo' },
-                { role: 'redo' },
-                { type: 'separator' },
-                { role: 'cut' },
-                { role: 'copy' },
-                { role: 'paste' },
-                ...(isMac ? [
-                    { role: 'pasteAndMatchStyle' },
-                    { role: 'delete' },
-                    { role: 'selectAll' },
-                    { type: 'separator' },
-                    {
-                        label: 'Speech',
-                        submenu: [
-                            { role: 'startSpeaking' },
-                            { role: 'stopSpeaking' }
-                        ]
-                    }
-                ] : [
-                    { role: 'delete' },
-                    { type: 'separator' },
-                    { role: 'selectAll' }
-                ]),
-                { type: 'separator' },
-                {...actions.FindInPage}
-            ]
-        },
-        // { role: 'viewMenu' }
-        {
-            label: 'View',
-            submenu: [
-                {...actions.Reload},
-                { type: 'separator' },
-                {...actions.FullScreen},
-                {...actions.OpenDevTools}
-            ]
-        },
-        // { role: 'windowMenu' }
-        {
-            label: 'Window',
-            submenu: [
-                {...actions.Minimize},
-                {...actions.NextTab},
-                {...actions.PreviousTab},
-                ...(isMac ? [
-                    { type: 'separator' },
-                    { role: 'front' },
-                    { type: 'separator' },
-                    { role: 'window' }
-                ] : [
-                    {...actions.Close}
-                ])
-            ]
-        },
-        // { role: 'goMenu }
-        {
-            label: 'Go',
-            submenu: [
-                {...actions.Back},
-                {...actions.Forward},
-                { type: 'separator' },
-                {...actions.FocusURLBar}
-            ]
-        },
-        {
-            role: 'help',
-            submenu: [
-                {
-                    label: 'Learn More',
-                    click: async () => {
-                        const { shell } = require('electron');
-                        await shell.openExternal('https://peersky.xyz');
-                    }
-                }
-            ]
+          label: 'Learn More',
+          click: async () => {
+            const { shell } = require('electron')
+            await shell.openExternal('https://peersky.xyz')
+          }
         }
-    ];
+      ]
+    }
+  ]
 
-    return template;
+  return template
 }

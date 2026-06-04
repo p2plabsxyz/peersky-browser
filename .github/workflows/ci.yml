@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+      - develop
+      - "release/**"
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-15]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "lts/jod"
+          cache: "npm"
+
+      - name: Cache Electron download
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/electron
+            ~/Library/Caches/electron
+            ~\AppData\Local\electron\Cache
+          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            electron-${{ runner.os }}-
+
+      - name: Install dependencies
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          shell: bash
+          command: npm ci
+
+      - name: Ensure Electron binary
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 3
+          shell: bash
+          command: |
+            if ! node -e "require('electron')" 2>/dev/null; then
+              echo "Electron binary missing — running npm rebuild electron..."
+              npm rebuild electron
+            fi
+            node -e "console.log('Electron path:', require('electron'))"
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Run test suites
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 2
+          shell: bash
+          command: npm run test:p2p && npm run test:p2p:e2e && npm run test:extensions && npm run test:security
+
+      - name: Run integration test (Windows/macOS)
+        if: ${{ !startsWith(matrix.os, 'ubuntu') }}
+        run: npm run test:integration

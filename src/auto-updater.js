@@ -1,74 +1,75 @@
-import { app, dialog } from 'electron';
-import pkg from 'electron-updater';
-const { autoUpdater } = pkg;
-import log from 'electron-log';
-import settingsManager from './settings-manager.js';
+import { dialog } from 'electron'
+import pkg from 'electron-updater'
+import log from 'electron-log'
+const { autoUpdater } = pkg
+import settingsManager from './settings-manager.js'
+// import { app } from 'electron'
 
 // Uncomment while locally testing the AutoUpdater
 // Object.defineProperty(app, 'isPackaged', {
 //   value: true
 // });
 
-function setupAutoUpdater() {
+function setupAutoUpdater () {
   autoUpdater.setFeedURL({
     provider: 'github',
     repo: 'peersky-browser',
-    owner: 'p2plabsxyz',
-  });
+    owner: 'p2plabsxyz'
+  })
 
   // Allow pre-release updates
-  autoUpdater.allowPrerelease = true;
+  autoUpdater.allowPrerelease = true
 
   // Configure electron-log
-  log.transports.file.level = 'info';
-  log.transports.console.level = 'info';
-  autoUpdater.logger = log;
+  log.transports.file.level = 'info'
+  log.transports.console.level = 'info'
+  autoUpdater.logger = log
 
   autoUpdater.on('checking-for-update', () => {
-    log.info('Checking for update...');
-  });
+    log.info('Checking for update...')
+  })
 
   autoUpdater.on('update-available', (info) => {
-    log.info('Update available:', info);
-  });
+    log.info('Update available:', info)
+  })
 
   autoUpdater.on('update-not-available', (info) => {
-    log.info('Update not available:', info);
-  });
+    log.info('Update not available:', info)
+  })
 
   autoUpdater.on('download-progress', (progressObj) => {
-    log.info(`Download speed: ${progressObj.bytesPerSecond} - Downloaded ${progressObj.percent}%`);
-  });
+    log.info(`Download speed: ${progressObj.bytesPerSecond} - Downloaded ${progressObj.percent}%`)
+  })
 
   autoUpdater.on('update-downloaded', (info) => {
-    const message = `Version ${info.version} has been downloaded. Restart now to install it or select Later to postpone the update.`;
+    const message = `Version ${info.version} has been downloaded. Restart now to install it or select Later to postpone the update.`
     const response = dialog.showMessageBoxSync({
       type: 'info',
       buttons: ['Restart Now', 'Later'],
       title: 'Update Ready',
-      message: message,
-    });
+      message
+    })
     if (response === 0) {
-      autoUpdater.quitAndInstall();
+      autoUpdater.quitAndInstall()
     }
-  });
+  })
 
   autoUpdater.on('error', (error) => {
-    log.error('Auto-update error:', error);
-  });
+    log.error('Auto-update error:', error)
+  })
 
   const checkIfEnabled = () => {
     if (settingsManager.settings.autoUpdateEnabled !== false) {
-      autoUpdater.checkForUpdates();
+      autoUpdater.checkForUpdates()
     }
-  };
+  }
 
   // Initiate update check after 10 seconds on startup
-  setTimeout(checkIfEnabled, 10000);
+  setTimeout(checkIfEnabled, 10000)
 
   // Re-check every week
-  const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-  setInterval(checkIfEnabled, ONE_WEEK_MS);
+  const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000
+  setInterval(checkIfEnabled, ONE_WEEK_MS)
 }
 
-export { setupAutoUpdater };
+export { setupAutoUpdater }

@@ -1,19 +1,19 @@
-import { promises as fs } from "fs";
-import path from "path";
+import { promises as fs } from 'fs'
+import path from 'path'
 
-async function getUnzipper() {
+async function getUnzipper () {
   try {
     // eslint-disable-next-line import/no-extraneous-dependencies
-    const mod = await import("unzipper");
-    return mod;
+    const mod = await import('unzipper')
+    return mod
   } catch (_) {
-    return null;
+    return null
   }
 }
 
-function ensureInside(base, target) {
-  const rel = path.relative(base, target);
-  return rel && !rel.startsWith("..") && !path.isAbsolute(rel);
+function ensureInside (base, target) {
+  const rel = path.relative(base, target)
+  return rel && !rel.startsWith('..') && !path.isAbsolute(rel)
 }
 
 /**
@@ -21,29 +21,29 @@ function ensureInside(base, target) {
  * @param {string} zipFilePath
  * @param {string} destDir
  */
-export async function extractZipFile(zipFilePath, destDir) {
-  const unzipper = await getUnzipper();
-  if (!unzipper) throw new Error("Missing dependency 'unzipper'. Please install dependencies.");
-  await fs.mkdir(destDir, { recursive: true });
+export async function extractZipFile (zipFilePath, destDir) {
+  const unzipper = await getUnzipper()
+  if (!unzipper) throw new Error("Missing dependency 'unzipper'. Please install dependencies.")
+  await fs.mkdir(destDir, { recursive: true })
 
-  const directory = await unzipper.Open.file(zipFilePath);
+  const directory = await unzipper.Open.file(zipFilePath)
   for (const entry of directory.files) {
-    const filePath = path.join(destDir, entry.path);
+    const filePath = path.join(destDir, entry.path)
     if (!ensureInside(destDir, filePath)) {
-      throw new Error("ZIP contains illegal path traversal entries");
+      throw new Error('ZIP contains illegal path traversal entries')
     }
-    if (entry.type === "Directory") {
-      await fs.mkdir(filePath, { recursive: true });
+    if (entry.type === 'Directory') {
+      await fs.mkdir(filePath, { recursive: true })
     } else {
-      await fs.mkdir(path.dirname(filePath), { recursive: true });
-      const readStream = entry.stream();
-      const chunks = [];
+      await fs.mkdir(path.dirname(filePath), { recursive: true })
+      const readStream = entry.stream()
+      const chunks = []
       await new Promise((resolve, reject) => {
-        readStream.on("data", (c) => chunks.push(c));
-        readStream.on("error", reject);
-        readStream.on("end", resolve);
-      });
-      await fs.writeFile(filePath, Buffer.concat(chunks));
+        readStream.on('data', (c) => chunks.push(c))
+        readStream.on('error', reject)
+        readStream.on('end', resolve)
+      })
+      await fs.writeFile(filePath, Buffer.concat(chunks))
     }
   }
 }
@@ -53,29 +53,29 @@ export async function extractZipFile(zipFilePath, destDir) {
  * @param {Buffer} zipBuffer
  * @param {string} destDir
  */
-export async function extractZipBuffer(zipBuffer, destDir) {
-  const unzipper = await getUnzipper();
-  if (!unzipper) throw new Error("Missing dependency 'unzipper'. Please install dependencies.");
-  await fs.mkdir(destDir, { recursive: true });
+export async function extractZipBuffer (zipBuffer, destDir) {
+  const unzipper = await getUnzipper()
+  if (!unzipper) throw new Error("Missing dependency 'unzipper'. Please install dependencies.")
+  await fs.mkdir(destDir, { recursive: true })
 
-  const directory = await unzipper.Open.buffer(zipBuffer);
+  const directory = await unzipper.Open.buffer(zipBuffer)
   for (const entry of directory.files) {
-    const filePath = path.join(destDir, entry.path);
+    const filePath = path.join(destDir, entry.path)
     if (!ensureInside(destDir, filePath)) {
-      throw new Error("ZIP contains illegal path traversal entries");
+      throw new Error('ZIP contains illegal path traversal entries')
     }
-    if (entry.type === "Directory") {
-      await fs.mkdir(filePath, { recursive: true });
+    if (entry.type === 'Directory') {
+      await fs.mkdir(filePath, { recursive: true })
     } else {
-      await fs.mkdir(path.dirname(filePath), { recursive: true });
-      const readStream = entry.stream();
-      const chunks = [];
+      await fs.mkdir(path.dirname(filePath), { recursive: true })
+      const readStream = entry.stream()
+      const chunks = []
       await new Promise((resolve, reject) => {
-        readStream.on("data", (c) => chunks.push(c));
-        readStream.on("error", reject);
-        readStream.on("end", resolve);
-      });
-      await fs.writeFile(filePath, Buffer.concat(chunks));
+        readStream.on('data', (c) => chunks.push(c))
+        readStream.on('error', reject)
+        readStream.on('end', resolve)
+      })
+      await fs.writeFile(filePath, Buffer.concat(chunks))
     }
   }
 }

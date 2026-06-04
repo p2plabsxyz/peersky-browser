@@ -4,29 +4,29 @@
  */
 
 // Apply wallpaper from settings
-async function applyWallpaper() {
+async function applyWallpaper () {
   try {
-    const wallpaperUrl = await window.electronAPI?.getWallpaperUrl?.() || 'peersky://static/assets/wallpapers/defaults/ten_lakes.jpg';
-    document.body.style.backgroundImage = `url("${wallpaperUrl}")`;
-    console.log('Wallpaper applied:', wallpaperUrl);
+    const wallpaperUrl = await window.electronAPI?.getWallpaperUrl?.() || 'peersky://static/assets/wallpapers/defaults/ten_lakes.jpg'
+    document.body.style.backgroundImage = `url("${wallpaperUrl}")`
+    console.log('Wallpaper applied:', wallpaperUrl)
   } catch (error) {
-    console.error('Failed to apply wallpaper:', error);
-    document.body.style.backgroundImage = 'url("peersky://static/assets/wallpapers/defaults/ten_lakes.jpg")';
+    console.error('Failed to apply wallpaper:', error)
+    document.body.style.backgroundImage = 'url("peersky://static/assets/wallpapers/defaults/ten_lakes.jpg")'
   }
 }
 
 // Initialize wallpaper system
-function initializeWallpaper() {
+function initializeWallpaper () {
   // Listen for wallpaper changes
   window.electronAPI?.onWallpaperChanged?.(() => {
-    console.log('Wallpaper changed, reapplying...');
-    applyWallpaper();
-  });
-  
+    console.log('Wallpaper changed, reapplying...')
+    applyWallpaper()
+  })
+
   // Apply wallpaper when page loads
-  document.addEventListener('DOMContentLoaded', applyWallpaper);
-  window.addEventListener('load', applyWallpaper);
+  document.addEventListener('DOMContentLoaded', applyWallpaper)
+  window.addEventListener('load', applyWallpaper)
 }
 
 // Start wallpaper system
-initializeWallpaper();
+initializeWallpaper()
