@@ -369,11 +369,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // Initialize sidebar navigation
-  initializeSidebarNavigation();
-  
+  initializeSidebarNavigation()
+
   // Load and display app version
-  await loadAppVersion();
-  
+  await loadAppVersion()
+
   // Populate wallpaper dropdown from wallpaper/defaults/
   await populateWallpaperDropdown()
 
@@ -397,7 +397,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   const wallpaperFile = document.getElementById('wallpaper-file')
   const wallpaperBrowse = document.getElementById('wallpaper-browse')
   const wallpaperRemove = document.getElementById('wallpaper-remove')
-  const wallpaperPreview = document.getElementById('wallpaper-preview')
   const clearBrowserCacheBtn = document.getElementById('clear-browser-cache')
   const resetP2PBtn = document.getElementById('reset-p2p')
 
@@ -659,8 +658,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   })
 
   autoUpdateEnabled?.addEventListener('change', async (e) => {
-    await saveSettingToBackend('autoUpdateEnabled', e.target.checked);
-  });
+    await saveSettingToBackend('autoUpdateEnabled', e.target.checked)
+  })
 
   memorySaverEnabled?.addEventListener('change', async (e) => {
     const enabled = e.target.checked
@@ -696,6 +695,7 @@ function loadDefaultSettings () {
   if (keepTabsExpanded) keepTabsExpanded.checked = false
   if (wallpaperSelector) wallpaperSelector.value = 'ten_lakes'
 
+  const autoUpdateEnabled = document.getElementById('auto-update-enabled')
   const memorySaverEnabled = document.getElementById('memory-saver-enabled')
   if (autoUpdateEnabled) autoUpdateEnabled.checked = true
   if (memorySaverEnabled) memorySaverEnabled.checked = false
@@ -793,9 +793,9 @@ function populateFormFields (settings) {
   if (keepTabsExpanded && typeof settings.keepTabsExpanded === 'boolean') {
     keepTabsExpanded.checked = settings.keepTabsExpanded
   }
-  
+
   if (autoUpdateEnabled && typeof settings.autoUpdateEnabled === 'boolean') {
-    autoUpdateEnabled.checked = settings.autoUpdateEnabled;
+    autoUpdateEnabled.checked = settings.autoUpdateEnabled
   }
   if (memorySaverEnabled && typeof settings.memorySaverEnabled === 'boolean') {
     memorySaverEnabled.checked = settings.memorySaverEnabled
@@ -988,7 +988,7 @@ function initializeSidebarNavigation () {
   if (subpathMatch) {
     targetSection = subpathMatch[1]
   // Check for hash-based navigation (backward compatibility)
-  else if (currentPath.includes('#')) {
+  } else if (currentPath.includes('#')) {
     const hashSection = currentPath.replace('#', '')
     if (hashSection && ['general', 'appearance', 'search', 'tabs', 'extensions', 'archive'].includes(hashSection)) {
       targetSection = hashSection
@@ -1128,16 +1128,16 @@ function updateClearBtnLabel () {
 }
 
 // Load and display app version
-async function loadAppVersion() {
-  const versionElement = document.getElementById('app-version');
-  if (!versionElement) return;
-  
+async function loadAppVersion () {
+  const versionElement = document.getElementById('app-version')
+  if (!versionElement) return
+
   try {
-    const version = await settingsAPI.settings.getVersion();
-    versionElement.textContent = `v${version}`;
+    const version = await settingsAPI.settings.getVersion()
+    versionElement.textContent = `v${version}`
   } catch (error) {
-    console.error('Failed to load app version:', error);
-    versionElement.textContent = 'Unknown';
+    console.error('Failed to load app version:', error)
+    versionElement.textContent = 'Unknown'
   }
 }
 

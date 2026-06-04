@@ -1,8 +1,8 @@
 import { dialog } from 'electron'
 import pkg from 'electron-updater'
 import log from 'electron-log'
-const { autoUpdater } = pkg
 import settingsManager from './settings-manager.js'
+const { autoUpdater } = pkg
 // import { app } from 'electron'
 
 // Uncomment while locally testing the AutoUpdater

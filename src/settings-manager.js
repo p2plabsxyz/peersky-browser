@@ -488,7 +488,7 @@ class SettingsManager {
       return app.getVersion()
     })
 
-    ipcMain.handle("settings-clear-archive", async (event, cutoff) => {
+    ipcMain.handle('settings-clear-archive', async (event, cutoff) => {
       try {
         if (!cutoff || cutoff <= 0) {
           // Clear all
@@ -648,8 +648,8 @@ class SettingsManager {
       wallpaper: (v) => typeof v === 'string',
       wallpaperCustomPath: (v) => v === null || typeof v === 'string',
       pinnedP2PApps: (v) => v === null || (Array.isArray(v) && v.every(id => typeof id === 'string')),
-      autoUpdateEnabled: (v) => typeof v === "boolean",
-      memorySaverEnabled: (v) => typeof v === "boolean",
+      autoUpdateEnabled: (v) => typeof v === 'boolean',
+      memorySaverEnabled: (v) => typeof v === 'boolean',
       memorySaverExclusions: (v) => Array.isArray(v) && v.every(ex => typeof ex === 'string'),
       llm: (v) => {
         // Validate LLM settings object (simplified for Ollama-only)
