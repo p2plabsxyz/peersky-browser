@@ -67,6 +67,7 @@ const DEFAULT_SETTINGS = {
   extensionAutoUpdate: true,
   memorySaverEnabled: false,
   memorySaverExclusions: ['peersky://p2p/*'],
+  customDnsResolver: '',
   llm: {
     enabled: false,
     baseURL: 'http://127.0.0.1:11434/',
@@ -644,6 +645,7 @@ class SettingsManager {
       pinnedP2PApps: (v) => v === null || (Array.isArray(v) && v.every(id => typeof id === 'string')),
       memorySaverEnabled: (v) => typeof v === 'boolean',
       memorySaverExclusions: (v) => Array.isArray(v) && v.every(ex => typeof ex === 'string'),
+      customDnsResolver: (v) => v === '' || (typeof v === 'string' && v.length < 512),
       llm: (v) => {
         // Validate LLM settings object (simplified for Ollama-only)
         if (typeof v !== 'object' || v === null) return false

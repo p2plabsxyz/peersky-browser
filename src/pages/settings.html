@@ -48,6 +48,10 @@
           <img src="peersky://static/assets/svg/puzzle.svg" class="nav-icon" alt="Extensions Icon">
           <span>Extensions</span>
         </a>
+        <a href="#network" class="nav-item" data-section="network">
+          <img src="peersky://static/assets/svg/globe.svg" class="nav-icon" alt="Network Icon">
+          <span>Network</span>
+        </a>
         <a href="#archive" class="nav-item" data-section="archive">
           <img src="peersky://static/assets/svg/folder.svg" class="nav-icon" alt="Archive Icon">
           <span>Archive</span>
@@ -370,6 +374,23 @@
 
         <tabs-box style="width:100%;"></tabs-box>
       </div>
+      <!-- Network Section -->
+      <div id="network-section" class="settings-page">
+        <h1 class="section-title">Network</h1>
+
+        <section class="settings-section">
+          <div class="setting-row">
+            <div class="setting-label">Custom DNS resolver</div>
+            <div class="setting-control">
+              <input type="text" id="custom-dns-resolver" class="setting-input" placeholder="https://mozilla.cloudflare-dns.com/dns-query" value="">
+              <div class="setting-hint">
+                Leave empty to use default. Enter a DoH URL like <code>https://dns.google/dns-query</code> or <code>https://cloudflare-dns.com/dns-query</code>. Used for hyper:// DNS resolution.
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
       <!-- Archive Section -->
       <!-- TODO: Add pagination with search bar at top - if more than 10 rows then it will move to another page (we can have a reusable web component for this?) -->
       <div id="archive-section" class="settings-page">
