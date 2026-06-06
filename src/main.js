@@ -1,4 +1,4 @@
-import { app, session, protocol as globalProtocol, ipcMain, BrowserWindow, Menu, webContents } from 'electron' // eslint-disable-line no-unused-vars
+import { app, session, protocol as globalProtocol, ipcMain, BrowserWindow, Menu, webContents, shell } from 'electron' // eslint-disable-line no-unused-vars
 import { createLogger } from './logger.js'
 import fs from 'fs/promises'
 import path from 'path'
@@ -14,7 +14,7 @@ import { createHandler as createBittorrentHandler, setupBittorrentIpc, shutdownB
 import { ipfsOptions, hyperOptions } from './protocols/config.js'
 import { createMenuTemplate } from './actions.js'
 import WindowManager from './window-manager.js'
-import './settings-manager.js'
+import settingsManager from './settings-manager.js'
 import p2pAppRegistry from './p2p-app-registry.js'
 import { setWindowManager } from './context-menu.js'
 import { isBuiltInSearchEngine } from './search-engine.js'
@@ -260,10 +260,19 @@ app.whenReady().then(async () => {
   // Check for --new-window argument (from Windows taskbar jump list)
   const hasNewWindowArg = process.argv.includes('--new-window')
 
-  // Load saved windows or open a new one
-  await windowManager.openSavedWindows()
-  if (windowManager.all.length === 0 || hasNewWindowArg) {
-    windowManager.open({ isMainWindow: windowManager.all.length === 0 })
+  // Load settings and check if onboarding is completed
+  await settingsManager.loadSettings()
+  const onboardingCompleted = settingsManager.settings.onboardingCompleted
+
+  if (onboardingCompleted === false) {
+    log.info('Onboarding not completed, loading onboarding window')
+    windowManager.open({ url: 'peersky://onboarding', isMainWindow: true })
+  } else {
+    // Load saved windows or open a new one
+    await windowManager.openSavedWindows()
+    if (windowManager.all.length === 0 || hasNewWindowArg) {
+      windowManager.open({ isMainWindow: windowManager.all.length === 0 })
+    }
   }
 
   // Register shortcuts from menu template (NOTE: all these shortcuts works on a window only if a window is in focus)
@@ -871,6 +880,202 @@ ipcMain.handle('check-built-in-engine', (event, template) => {
 })
 
 setupP2pmdPdfExportIpc()
+
+// Onboarding IPC handlers
+ipcMain.handle('onboarding-import-data', async (event, dataStr) => {
+  try {
+    const importData = JSON.parse(dataStr)
+    if (!importData || typeof importData !== 'object') {
+      throw new Error('Invalid onboarding JSON data')
+    }
+
+    const userDataPath = app.getPath('userData')
+    const TABS_FILE = path.join(userDataPath, 'tabs.json')
+    const PERSIST_FILE = path.join(userDataPath, 'lastOpened.json')
+
+    const windowStates = []
+    const allTabsData = {}
+
+    if (importData.windows && Array.isArray(importData.windows) && importData.windows.length > 0) {
+      for (const win of importData.windows) {
+        const windowId = crypto.randomUUID()
+        let activeTabIndex = win.activeTabIndex || 0
+        if (!win.tabs || !win.tabs.length) {
+          win.tabs = [{ url: 'peersky://home' }]
+        }
+        if (activeTabIndex < 0 || activeTabIndex >= win.tabs.length) {
+          activeTabIndex = 0
+        }
+        const activeTab = win.tabs[activeTabIndex]
+
+        windowStates.push({
+          windowId,
+          url: activeTab.url,
+          position: [100, 100],
+          size: [1280, 800]
+        })
+
+        const mappedTabs = win.tabs.map((tab, idx) => {
+          let protocol = 'https:'
+          try {
+            const parsed = new URL(tab.url)
+            protocol = parsed.protocol
+          } catch (_) {}
+
+          return {
+            id: `tab-${idx}`,
+            url: tab.url || 'peersky://home',
+            title: tab.title || 'New Tab',
+            protocol,
+            isPinned: tab.pinned || false,
+            groupId: null,
+            isSuspended: false
+          }
+        })
+
+        allTabsData[windowId] = {
+          tabs: mappedTabs,
+          activeTabId: `tab-${activeTabIndex}`,
+          tabCounter: mappedTabs.length,
+          splitPairs: [],
+          tabGroups: []
+        }
+      }
+    } else {
+      // Default fallback window
+      const windowId = crypto.randomUUID()
+      windowStates.push({
+        windowId,
+        url: 'peersky://home',
+        position: [100, 100],
+        size: [1280, 800]
+      })
+
+      allTabsData[windowId] = {
+        tabs: [{
+          id: 'tab-0',
+          url: 'peersky://home',
+          title: 'Home',
+          protocol: 'peersky:',
+          isPinned: false,
+          groupId: null,
+          isSuspended: false
+        }],
+        activeTabId: 'tab-0',
+        tabCounter: 1,
+        splitPairs: [],
+        tabGroups: []
+      }
+    }
+
+    // Write session files atomically
+    await fs.writeFile(TABS_FILE + '.tmp', JSON.stringify(allTabsData, null, 2), 'utf-8')
+    await fs.rename(TABS_FILE + '.tmp', TABS_FILE)
+    await fs.writeFile(PERSIST_FILE + '.tmp', JSON.stringify(windowStates, null, 2), 'utf-8')
+    await fs.rename(PERSIST_FILE + '.tmp', PERSIST_FILE)
+
+    // Mark onboarding as completed
+    settingsManager.settings.onboardingCompleted = true
+    await settingsManager.saveSettings()
+
+    // Auto-install extensions in background
+    if (importData.extensions && Array.isArray(importData.extensions)) {
+      for (const ext of importData.extensions) {
+        if (ext.id && ext.type === 'extension') {
+          try {
+            log.info(`Auto-installing imported extension: ${ext.name} (${ext.id})`)
+            await extensionManager.installFromWebStore(ext.id)
+          } catch (err) {
+            log.warn(`Failed to auto-install extension ${ext.id}:`, err.message)
+          }
+        }
+      }
+    }
+
+    // Open restored windows
+    await windowManager.openSavedWindows()
+
+    // Close onboarding window
+    const onboardingWindow = BrowserWindow.fromWebContents(event.sender)
+    if (onboardingWindow) {
+      onboardingWindow.close()
+    }
+
+    return { success: true }
+  } catch (error) {
+    log.error('Failed to import onboarding data:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('onboarding-skip', async (event) => {
+  try {
+    settingsManager.settings.onboardingCompleted = true
+    await settingsManager.saveSettings()
+
+    // Open default home page
+    windowManager.open({ url: 'peersky://home', isMainWindow: true })
+
+    // Close onboarding window
+    const onboardingWindow = BrowserWindow.fromWebContents(event.sender)
+    if (onboardingWindow) {
+      onboardingWindow.close()
+    }
+
+    return { success: true }
+  } catch (error) {
+    log.error('Failed to skip onboarding:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('onboarding-restore-backup', async (event, backupContent) => {
+  try {
+    const parsed = JSON.parse(backupContent)
+    if (!parsed || typeof parsed !== 'object') {
+      throw new Error('Invalid JSON format')
+    }
+
+    // Merge settings
+    for (const key in parsed) {
+      if (settingsManager.validateSetting(key, parsed[key])) {
+        settingsManager.settings[key] = parsed[key]
+      }
+    }
+
+    settingsManager.settings.onboardingCompleted = true
+    await settingsManager.saveSettings()
+
+    // Open default home page
+    windowManager.open({ url: 'peersky://home', isMainWindow: true })
+
+    // Close onboarding window
+    const onboardingWindow = BrowserWindow.fromWebContents(event.sender)
+    if (onboardingWindow) {
+      onboardingWindow.close()
+    }
+
+    return { success: true }
+  } catch (error) {
+    log.error('Failed to restore settings backup:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('open-external-link', (_event, url) => {
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+      shell.openExternal(url)
+      return { success: true }
+    } else {
+      throw new Error('Only HTTP/HTTPS URLs are allowed')
+    }
+  } catch (err) {
+    log.error('Failed to open external link:', err)
+    return { success: false, error: err.message }
+  }
+})
 
 // Suppress the libp2p/utils queue stack-overflow that fires when the
 // kad-DHT provide operation runs. The provide still succeeds via HTTP

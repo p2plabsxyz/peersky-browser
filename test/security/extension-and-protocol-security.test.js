@@ -116,4 +116,10 @@ describe('Protocol and extension security guardrails', function () {
     expect(preload).to.match(/extensions\s*:\s*extensionAPI/)
     expect(preload).to.match(/External minimal API exposed \(no settings access\)/)
   })
+
+  it('has onboardingCompleted in settings defaults and validators', async function () {
+    const settingsJs = await readFile('src/settings-manager.js', 'utf8')
+    expect(settingsJs).to.match(/onboardingCompleted:\s*false/)
+    expect(settingsJs).to.match(/onboardingCompleted:\s*\([^)]*\)\s*=>\s*typeof\s+[a-zA-Z0-9_]+\s*===\s*['"]boolean['"]/)
+  })
 })

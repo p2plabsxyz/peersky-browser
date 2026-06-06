@@ -67,6 +67,7 @@ const DEFAULT_SETTINGS = {
   extensionAutoUpdate: true,
   memorySaverEnabled: false,
   memorySaverExclusions: ['peersky://p2p/*'],
+  onboardingCompleted: false,
   llm: {
     enabled: false,
     baseURL: 'http://127.0.0.1:11434/',
@@ -532,6 +533,11 @@ class SettingsManager {
       // Start with defaults
       this.settings = { ...DEFAULT_SETTINGS }
 
+      // Existing profiles upgrading to this version should bypass onboarding
+      if (loaded && Object.keys(loaded).length > 0 && !('onboardingCompleted' in loaded)) {
+        this.settings.onboardingCompleted = true
+      }
+
       // Merge loaded settings, handling nested objects properly
       for (const key in loaded) {
         if (key === 'llm' && typeof loaded[key] === 'object' && loaded[key] !== null) {
@@ -644,6 +650,7 @@ class SettingsManager {
       pinnedP2PApps: (v) => v === null || (Array.isArray(v) && v.every(id => typeof id === 'string')),
       memorySaverEnabled: (v) => typeof v === 'boolean',
       memorySaverExclusions: (v) => Array.isArray(v) && v.every(ex => typeof ex === 'string'),
+      onboardingCompleted: (v) => typeof v === 'boolean',
       llm: (v) => {
         // Validate LLM settings object (simplified for Ollama-only)
         if (typeof v !== 'object' || v === null) return false

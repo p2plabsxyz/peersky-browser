@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="script-src 'self' peersky:; object-src 'none'; style-src 'self' 'unsafe-inline' browser:;">
+  <link rel="icon" type="image/png" href="peersky://static/assets/logo.png" />
+  <style>
+    @import url("browser://theme/vars.css");
+    @import url("browser://theme/themes.css");
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      background: var(--settings-bg-primary);
+      color: var(--settings-text-primary);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      user-select: none;
+      overflow: hidden;
+    }
+
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    /* Step 1: Welcome */
+    .welcome-screen {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      opacity: 1;
+      transition: opacity 0.5s ease;
+      z-index: 10;
+    }
+
+    .welcome-screen.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .welcome-logo {
+      width: 56px;
+      height: 56px;
+      margin-bottom: 20px;
+      opacity: 0;
+      transform: scale(0.8);
+      animation: logoIn 0.6s ease forwards 0.2s;
+    }
+
+    .welcome-text {
+      font-size: 1.5rem;
+      font-weight: 600;
+      opacity: 0;
+      transform: translateY(8px);
+      animation: fadeUp 0.5s ease forwards 0.5s;
+    }
+
+    .welcome-sub {
+      font-size: 0.85rem;
+      color: var(--settings-text-secondary);
+      margin-top: 6px;
+      opacity: 0;
+      transform: translateY(8px);
+      animation: fadeUp 0.5s ease forwards 0.7s;
+    }
+
+    @keyframes logoIn {
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    @keyframes fadeUp {
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Step 2: Import */
+    .import-screen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+      max-width: 480px;
+      padding: 40px 24px;
+      opacity: 0;
+      transform: translateY(12px);
+      transition: opacity 0.5s ease, transform 0.5s ease;
+      pointer-events: none;
+    }
+
+    .import-screen.visible {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+
+    .hidden-screen {
+      display: none !important;
+    }
+
+    /* Header */
+    .onboarding-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 6px;
+      text-align: center;
+    }
+
+    .onboarding-subtitle {
+      font-size: 0.85rem;
+      color: var(--settings-text-secondary);
+      margin-bottom: 36px;
+      text-align: center;
+    }
+
+    /* Browser icon buttons */
+    .browser-row {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 36px;
+    }
+
+    .browser-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 140px;
+      height: 110px;
+      background: var(--settings-card-bg);
+      border: 1px solid var(--settings-border);
+      border-radius: 8px;
+      cursor: pointer;
+      color: var(--settings-text-primary);
+      font-size: 0.8rem;
+      font-weight: 400;
+      transition: border-color 0.15s ease;
+    }
+
+    .browser-btn:hover {
+      border-color: var(--settings-border-hover);
+    }
+
+    .browser-btn img {
+      width: 36px;
+      height: 36px;
+      filter: brightness(0) invert(1);
+    }
+
+    /* Drop zone */
+    .drop-zone {
+      width: 100%;
+      background: var(--settings-card-bg);
+      border: 1px dashed var(--settings-border);
+      border-radius: 8px;
+      padding: 24px;
+      cursor: pointer;
+      text-align: center;
+      transition: border-color 0.15s ease;
+      margin-bottom: 24px;
+    }
+
+    .drop-zone:hover,
+    .drop-zone.drag-over {
+      border-color: var(--settings-border-focus);
+    }
+
+    .drop-zone-icon {
+      width: 20px;
+      height: 20px;
+      margin-bottom: 8px;
+      opacity: 0.6;
+      filter: brightness(0) invert(1);
+    }
+
+    .drop-text {
+      font-size: 0.85rem;
+      color: var(--settings-text-primary);
+      margin-bottom: 2px;
+    }
+
+    .drop-subtext {
+      font-size: 0.75rem;
+      color: var(--settings-text-secondary);
+    }
+
+    #file-input {
+      display: none;
+    }
+
+    /* Status */
+    .status-msg {
+      display: none;
+      font-size: 0.8rem;
+      padding: 8px 12px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+      width: 100%;
+      text-align: left;
+    }
+
+    .status-msg.error {
+      background: rgba(229, 57, 53, 0.12);
+      border: 1px solid rgba(229, 57, 53, 0.25);
+      color: var(--settings-danger-color);
+    }
+
+    .status-msg.success {
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+      color: #34d399;
+    }
+
+    /* Skip button */
+    .skip-btn {
+      width: 100%;
+      height: 36px;
+      background: var(--browser-theme-primary-highlight);
+      color: #ffffff;
+      border: none;
+      border-radius: 6px;
+      font-weight: 500;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: filter 0.15s ease;
+      margin-bottom: 14px;
+    }
+
+    .skip-btn:hover {
+      filter: brightness(1.1);
+    }
+
+    /* Restore backup link */
+    .backup-link {
+      font-size: 0.78rem;
+      color: var(--settings-text-secondary);
+      cursor: pointer;
+      text-decoration: none;
+      transition: color 0.15s ease;
+    }
+
+    .backup-link:hover {
+      color: var(--settings-text-primary);
+      text-decoration: underline;
+    }
+
+    /* Section label */
+    .section-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--settings-text-secondary);
+      font-weight: 500;
+      margin-bottom: 10px;
+      width: 100%;
+      text-align: left;
+    }
+  </style>
+  <title>Welcome to Peersky</title>
+</head>
+<body>
+
+  <!-- Step 1: Welcome -->
+  <div class="welcome-screen" id="welcome-screen">
+    <img class="welcome-logo" src="peersky://static/assets/logo.png" alt="Peersky">
+    <div class="welcome-text">Welcome to Peersky</div>
+    <div class="welcome-sub">Your local-first p2p browser</div>
+  </div>
+
+  <!-- Step 2: Choose Path -->
+  <div class="import-screen" id="choose-path-screen">
+    <h1 class="onboarding-title">Restore Data</h1>
+    <p class="onboarding-subtitle">Import your tabs and extensions from another browser</p>
+
+    <div class="section-label">Select Browser</div>
+    <div class="browser-row">
+      <button class="browser-btn" id="chrome-btn">
+        <img src="peersky://static/assets/svg/browser-chrome.svg" alt="Chrome">
+        <span>Chrome / Edge</span>
+      </button>
+      <button class="browser-btn" id="firefox-btn">
+        <img src="peersky://static/assets/svg/browser-firefox.svg" alt="Firefox">
+        <span>Firefox</span>
+      </button>
+    </div>
+
+    <button class="skip-btn" id="skip-btn">Skip</button>
+    <a class="backup-link" id="backup-link">Restore a Peersky backup (.zip)</a>
+  </div>
+
+  <!-- Step 3: Import JSON -->
+  <div class="import-screen hidden-screen" id="import-json-screen">
+    <h1 class="onboarding-title" id="import-json-title">Import Data</h1>
+    <p class="onboarding-subtitle">Install the extension and upload your exported JSON</p>
+
+    <div class="section-label">Get Onboarding Extension</div>
+    <button class="skip-btn" id="extension-link-btn" style="margin-bottom: 24px;">Get Extension</button>
+
+    <div class="section-label">Import Exported JSON</div>
+    <div class="drop-zone" id="drop-zone">
+      <img class="drop-zone-icon" src="peersky://static/assets/svg/file-upload.svg" alt="Upload">
+      <div class="drop-text">Drop peersky-export.json here</div>
+      <div class="drop-subtext">or click to browse</div>
+    </div>
+    <input type="file" id="file-input" accept=".json">
+
+    <div class="status-msg" id="status-text"></div>
+
+    <a class="backup-link" id="back-btn" style="margin-top: 10px; display: inline-block;">&larr; Back to browser selection</a>
+  </div>
+
+  <script src="peersky://static/js/onboarding.js" defer></script>
+</body>
+</html>
