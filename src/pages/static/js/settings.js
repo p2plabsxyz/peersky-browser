@@ -662,6 +662,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   })
 
+  const dnsResolver = document.getElementById('custom-dns-resolver')
+  dnsResolver?.addEventListener('keydown', async (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      await saveSettingToBackend('customDnsResolver', dnsResolver.value.trim())
+    }
+  })
+
   // Initialize custom wallpaper UI state
   updateCustomWallpaperUI(false)
 
@@ -846,6 +854,11 @@ function populateFormFields (settings) {
     if (llmMemoryEnabled) {
       llmMemoryEnabled.checked = settings.llm.memoryEnabled || false
     }
+  }
+
+  const dnsResolver = document.getElementById('custom-dns-resolver')
+  if (dnsResolver && typeof settings.customDnsResolver === 'string') {
+    dnsResolver.value = settings.customDnsResolver
   }
 
   // Update custom dropdown displays after loading settings
