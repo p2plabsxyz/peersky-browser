@@ -23,8 +23,8 @@ setTimeout(() => {
 const api = window.electronAPI || {}
 const { importOnboardingData, skipOnboarding, openExternalLink } = api
 
-const CHROME_STORE_URL = 'https://chromewebstore.google.com/'
-const FIREFOX_ADDONS_URL = 'https://addons.mozilla.org/'
+const CHROME_STORE_URL = 'https://chromewebstore.google.com/detail/peersky-onboarding-extens/knegonpkagnjmkndlfhppgnpdmecklji'
+const FIREFOX_ADDONS_URL = 'https://addons.mozilla.org/en-US/firefox/addon/peersky-onboarding-extension/'
 
 let selectedExtensionUrl = ''
 
