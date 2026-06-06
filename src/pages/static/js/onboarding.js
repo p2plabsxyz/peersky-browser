@@ -53,7 +53,7 @@ document.getElementById('back-btn').addEventListener('click', () => {
   }, 500)
 })
 
-function showImportJsonScreen(title) {
+function showImportJsonScreen (title) {
   document.getElementById('import-json-title').innerText = title
   choosePathScreen.classList.remove('visible')
   setTimeout(() => {
