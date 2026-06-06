@@ -10,12 +10,13 @@
 
 // Welcome to Import screen animation
 const welcomeScreen = document.getElementById('welcome-screen')
-const importScreen = document.getElementById('import-screen')
+const choosePathScreen = document.getElementById('choose-path-screen')
+const importJsonScreen = document.getElementById('import-json-screen')
 
 setTimeout(() => {
   welcomeScreen.classList.add('hidden')
   setTimeout(() => {
-    importScreen.classList.add('visible')
+    choosePathScreen.classList.add('visible')
   }, 400)
 }, 2000)
 
@@ -25,13 +26,44 @@ const { importOnboardingData, skipOnboarding, openExternalLink } = api
 const CHROME_STORE_URL = 'https://chromewebstore.google.com/'
 const FIREFOX_ADDONS_URL = 'https://addons.mozilla.org/'
 
+let selectedExtensionUrl = ''
+
 document.getElementById('chrome-btn').addEventListener('click', () => {
-  if (openExternalLink) openExternalLink(CHROME_STORE_URL)
+  selectedExtensionUrl = CHROME_STORE_URL
+  showImportJsonScreen('Import from Chrome / Edge')
 })
 
 document.getElementById('firefox-btn').addEventListener('click', () => {
-  if (openExternalLink) openExternalLink(FIREFOX_ADDONS_URL)
+  selectedExtensionUrl = FIREFOX_ADDONS_URL
+  showImportJsonScreen('Import from Firefox')
 })
+
+document.getElementById('extension-link-btn').addEventListener('click', () => {
+  if (openExternalLink) openExternalLink(selectedExtensionUrl)
+})
+
+document.getElementById('back-btn').addEventListener('click', () => {
+  importJsonScreen.classList.remove('visible')
+  setTimeout(() => {
+    importJsonScreen.classList.add('hidden-screen')
+    choosePathScreen.classList.remove('hidden-screen')
+    setTimeout(() => {
+      choosePathScreen.classList.add('visible')
+    }, 50)
+  }, 500)
+})
+
+function showImportJsonScreen(title) {
+  document.getElementById('import-json-title').innerText = title
+  choosePathScreen.classList.remove('visible')
+  setTimeout(() => {
+    choosePathScreen.classList.add('hidden-screen')
+    importJsonScreen.classList.remove('hidden-screen')
+    setTimeout(() => {
+      importJsonScreen.classList.add('visible')
+    }, 50)
+  }, 500)
+}
 
 document.getElementById('skip-btn').addEventListener('click', async () => {
   if (skipOnboarding) await skipOnboarding()

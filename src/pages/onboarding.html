@@ -99,6 +99,10 @@
       pointer-events: auto;
     }
 
+    .hidden-screen {
+      display: none !important;
+    }
+
     /* Header */
     .onboarding-title {
       font-size: 1.25rem;
@@ -269,12 +273,12 @@
     <div class="welcome-sub">Your local-first p2p browser</div>
   </div>
 
-  <!-- Step 2: Import -->
-  <div class="import-screen" id="import-screen">
-    <h1 class="onboarding-title">Restore Tabs and Extensions</h1>
+  <!-- Step 2: Choose Path -->
+  <div class="import-screen" id="choose-path-screen">
+    <h1 class="onboarding-title">Restore Data</h1>
     <p class="onboarding-subtitle">Import your tabs and extensions from another browser</p>
 
-    <div class="section-label">Get Onboarding Extension</div>
+    <div class="section-label">Select Browser</div>
     <div class="browser-row">
       <button class="browser-btn" id="chrome-btn">
         <img src="peersky://static/assets/svg/browser-chrome.svg" alt="Chrome">
@@ -286,6 +290,18 @@
       </button>
     </div>
 
+    <button class="skip-btn" id="skip-btn">Skip</button>
+    <a class="backup-link" id="backup-link">Restore a Peersky backup (.zip)</a>
+  </div>
+
+  <!-- Step 3: Import JSON -->
+  <div class="import-screen hidden-screen" id="import-json-screen">
+    <h1 class="onboarding-title" id="import-json-title">Import Data</h1>
+    <p class="onboarding-subtitle">Install the extension and upload your exported JSON</p>
+
+    <div class="section-label">Get Onboarding Extension</div>
+    <button class="skip-btn" id="extension-link-btn" style="margin-bottom: 24px;">Get Extension</button>
+
     <div class="section-label">Import Exported JSON</div>
     <div class="drop-zone" id="drop-zone">
       <img class="drop-zone-icon" src="peersky://static/assets/svg/file-upload.svg" alt="Upload">
@@ -296,8 +312,7 @@
 
     <div class="status-msg" id="status-text"></div>
 
-    <button class="skip-btn" id="skip-btn">Skip</button>
-    <a class="backup-link" id="backup-link">Restore a Peersky backup (.zip)</a>
+    <a class="backup-link" id="back-btn" style="margin-top: 10px; display: inline-block;">&larr; Back to browser selection</a>
   </div>
 
   <script src="peersky://static/js/onboarding.js" defer></script>
