@@ -10,7 +10,7 @@
  * Security Model: Principle of least privilege with granular access control.
  */
 
-const { contextBridge, ipcRenderer } = require('electron')
+const { contextBridge, ipcRenderer, webUtils } = require('electron')
 
 // Context detection using window.location for immediate synchronous access
 const url = window.location.href
@@ -20,6 +20,7 @@ const isHome = url.startsWith('peersky://home')
 const isOnboarding = url.startsWith('peersky://onboarding')
 const isBookmarks = url.includes('peersky://bookmarks')
 const isDownloads = url.includes('peersky://downloads')
+const isBackup = url.startsWith('peersky://backup')
 const isTabsPage = url.includes('peersky://tabs')
 const isP2PPage = url.startsWith('peersky://p2p')
 const isUserP2PApp = url.startsWith('peersky://myapps')
@@ -307,7 +308,7 @@ if (isInternal || isP2P || isUserP2PApp || url.includes('agregore.mauve.moe')) {
   }
 }
 
-const context = { url, isSettings, isExtensions, isHome, isBookmarks, isDownloads, isTabsPage, isP2PPage, isInternal, isExternal }
+const context = { url, isSettings, isExtensions, isHome, isBookmarks, isDownloads, isBackup, isTabsPage, isP2PPage, isInternal, isExternal }
 
 console.log(`Unified-preload: Context detection - URL: ${url}`)
 console.log(`Unified-preload: isSettings: ${isSettings}, isExtensions: ${isExtensions}, isHome: ${isHome}, isBookmarks: ${isBookmarks}, isDownloads: ${isDownloads}, isP2PPage: ${isP2PPage}, isInternal: ${isInternal}, isExternal: ${isExternal}`)
@@ -456,6 +457,17 @@ const downloadsAPI = {
   cancel: (id) => ipcRenderer.send('download-cancel', id)
 }
 
+// Backup API - Available only to the dedicated backup page
+const backupAPI = {
+  create: () => ipcRenderer.invoke('backup-create'),
+  validate: () => ipcRenderer.invoke('backup-validate'),
+  restore: (zipPath) => ipcRenderer.invoke('backup-restore', zipPath),
+  restoreCid: (address) => ipcRenderer.invoke('backup-restore-cid', address),
+  upload: (zipPath, protocol) => ipcRenderer.invoke('backup-upload', { zipPath, protocol }),
+  relaunch: () => ipcRenderer.invoke('backup-relaunch'),
+  onProgress: (callback) => createEventListener('backup-progress', callback)
+}
+
 // Extension API - Available only to settings pages for security
 const extensionAPI = {
   listExtensions: () => ipcRenderer.invoke('extensions-list'),
@@ -538,9 +550,20 @@ try {
       importOnboardingData: (data) => ipcRenderer.invoke('onboarding-import-data', data),
       skipOnboarding: () => ipcRenderer.invoke('onboarding-skip'),
       restoreBackup: (backupContent) => ipcRenderer.invoke('onboarding-restore-backup', backupContent),
+      restoreZip: (zipPath) => ipcRenderer.invoke('onboarding-restore-zip', zipPath),
+      restoreCid: (address) => ipcRenderer.invoke('onboarding-restore-cid', address),
+      getPathForFile: (file) => webUtils.getPathForFile(file),
       openExternalLink: (url) => ipcRenderer.send('open-external-link', url)
     })
     console.log('Unified-preload: Onboarding electronAPI exposed')
+  } else if (isBackup) {
+    contextBridge.exposeInMainWorld('electronAPI', {
+      settings: settingsAPI,
+      onThemeChanged: (callback) => createEventListener('theme-changed', callback),
+      readCSS: cssAPI.readCSS,
+      backup: backupAPI
+    })
+    console.log('Unified-preload: Backup electronAPI exposed')
   } else if (isSettings) {
     // Settings pages get full electronAPI access (exactly what settings.js expects)
     contextBridge.exposeInMainWorld('electronAPI', {

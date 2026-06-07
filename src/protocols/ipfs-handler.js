@@ -18,6 +18,34 @@ import { enforceExtensionWritePolicy } from '../extensions/request-policy.js'
 
 const log = createLogger('protocols:ipfs')
 
+// Shared references to the running Helia node, set by the first createHandler.
+// Used by the backup feature to publish/fetch content without a second node.
+let sharedNode = null
+let sharedUnixFs = null
+
+// Publish a file to IPFS as a raw UnixFS byte stream and return its CID string.
+// The CID resolves directly via ipfs://<cid> (no directory wrapping).
+export async function ipfsPublishFile (filePath) {
+  if (!sharedUnixFs || !sharedNode) throw new Error('IPFS node is not ready yet')
+  const { createReadStream } = await import('fs')
+  const cid = await sharedUnixFs.addByteStream(createReadStream(filePath))
+  await sharedNode.pins.add(cid, { recursive: true }).catch((e) => {
+    log.warn(`Failed to pin backup CID ${cid.toString()}: ${e.message}`)
+  })
+  return cid.toString()
+}
+
+// Stream the content at a CID to destPath on disk. Memory stays O(chunk).
+export async function ipfsFetchToFile (cidStr, destPath) {
+  if (!sharedUnixFs) throw new Error('IPFS node is not ready yet')
+  const { createWriteStream } = await import('fs')
+  const { pipeline } = await import('stream/promises')
+  const { Readable } = await import('stream')
+  const cid = CID.parse(cidStr)
+  await pipeline(Readable.from(sharedUnixFs.cat(cid)), createWriteStream(destPath))
+  return destPath
+}
+
 const P2P_APP_NAMES = {
   editor: 'P2P Editor',
   p2pmd: 'P2P Markdown',
@@ -97,6 +125,8 @@ export async function createHandler (ipfsOptions, session, securityOptions = {})
     unixFileSystem = unixfs(node)
     name = ipns(node)
     dnsLinkResolver = dnsLink(node)
+    sharedNode = node
+    sharedUnixFs = unixFileSystem
   }
 
   await initializeIPFSNode()

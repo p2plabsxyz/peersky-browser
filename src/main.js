@@ -28,6 +28,9 @@ import { setupExtensionIpcHandlers } from './extensions/extensions-ipc.js'
 import { getBrowserSession, usePersist } from './session.js'
 import { setupPermissionHandler } from './permissions.js'
 import { setupP2pmdPdfExportIpc } from './pages/p2p/p2pmd/pdf-export-ipc.js'
+import { setupBackupIpc } from './backup/ipc.js'
+import backupManager from './backup/backup-manager.js'
+import { downloadBackupFromAddress } from './backup/p2p-backup.js'
 
 const log = createLogger('main')
 
@@ -170,6 +173,7 @@ app.whenReady().then(async () => {
   await setupProtocols(userSession)
   installExtensionWebRequestBridge(userSession)
   setupBittorrentIpc()
+  setupBackupIpc()
 
   userSession.on('will-download', (event, item, sessionWebContents) => {
     const downloadId = crypto.randomUUID()
@@ -1058,6 +1062,39 @@ ipcMain.handle('onboarding-restore-backup', async (event, backupContent) => {
     return { success: true }
   } catch (error) {
     log.error('Failed to restore settings backup:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+// Restore a full Peersky .zip backup during onboarding, then mark onboarding
+// complete and relaunch so the restored P2P data loads from a clean process.
+async function finishOnboardingRestore () {
+  settingsManager.settings.onboardingCompleted = true
+  await settingsManager.saveSettings()
+  backupManager.relaunch()
+}
+
+ipcMain.handle('onboarding-restore-zip', async (_event, zipPath) => {
+  try {
+    const res = await backupManager.restoreBackup(zipPath)
+    if (!res.success) return res
+    await finishOnboardingRestore()
+    return { success: true }
+  } catch (error) {
+    log.error('Onboarding zip restore failed:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('onboarding-restore-cid', async (_event, address) => {
+  try {
+    const zipPath = await downloadBackupFromAddress(address)
+    const res = await backupManager.restoreBackup(zipPath)
+    if (!res.success) return res
+    await finishOnboardingRestore()
+    return { success: true }
+  } catch (error) {
+    log.error('Onboarding CID restore failed:', error)
     return { success: false, error: error.message }
   }
 })

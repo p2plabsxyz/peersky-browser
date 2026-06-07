@@ -110,6 +110,44 @@ async function initializeHyperSDK (options) {
   return fetch
 }
 
+// Publish a file into a fresh writable Hyperdrive and return its shareable
+// hyper:// address. Used by the backup feature to share via a content address.
+export async function hyperPublishFile (filePath, fileName = 'backup.zip') {
+  const f = await initializeHyperSDK()
+  const driveName = `peersky-backup-${Date.now()}`
+
+  // Resolve the drive's public key (hypercore-fetch returns it for ?key=).
+  const keyResp = await f(`hyper://${driveName}/?key=${driveName}`, { method: 'POST' })
+  const keyText = await keyResp.text()
+  const match = keyText.match(/([0-9a-zA-Z]{52,64})/)
+  const driveKey = match ? match[1] : null
+  if (!driveKey) throw new Error('Could not resolve Hyperdrive key')
+
+  const { createReadStream } = await import('fs')
+  const body = createReadStream(filePath, { highWaterMark: 1024 * 1024 })
+  const putResp = await f(`hyper://${driveName}/${encodeURIComponent(fileName)}`, {
+    method: 'PUT',
+    body,
+    duplex: 'half'
+  })
+  if (!putResp.ok) throw new Error(`Hyperdrive write failed: ${putResp.status}`)
+
+  log.info(`Backup published to Hyperdrive: ${driveKey}`)
+  return { key: driveKey, fileName, address: `hyper://${driveKey}/${fileName}` }
+}
+
+// Stream a hyper:// file address to destPath on disk.
+export async function hyperFetchToFile (address, destPath) {
+  const f = await initializeHyperSDK()
+  const resp = await f(address)
+  if (!resp.ok || !resp.body) throw new Error(`Hyper fetch failed: ${resp.status}`)
+  const { createWriteStream } = await import('fs')
+  const { Readable } = await import('stream')
+  const { pipeline } = await import('stream/promises')
+  await pipeline(Readable.fromWeb(resp.body), createWriteStream(destPath))
+  return destPath
+}
+
 export async function createHandler (options, securityOptions = {}) {
   const { isExtensionWriteAllowed } = securityOptions
   await initializeHyperSDK(options)

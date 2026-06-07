@@ -261,6 +261,33 @@
       width: 100%;
       text-align: left;
     }
+
+    /* CID input row */
+    .cid-input {
+      width: 100%;
+      height: 36px;
+      padding: 0 12px;
+      background: var(--settings-card-bg);
+      border: 1px solid var(--settings-border);
+      border-radius: 6px;
+      color: var(--settings-text-primary);
+      font-size: 0.82rem;
+      user-select: text;
+      margin-bottom: 12px;
+    }
+
+    .cid-input:focus {
+      outline: none;
+      border-color: var(--settings-border-focus);
+    }
+
+    .divider-or {
+      width: 100%;
+      text-align: center;
+      font-size: 0.72rem;
+      color: var(--settings-text-secondary);
+      margin: 18px 0;
+    }
   </style>
   <title>Welcome to Peersky</title>
 </head>
@@ -313,6 +340,30 @@
     <div class="status-msg" id="status-text"></div>
 
     <a class="backup-link" id="back-btn" style="margin-top: 10px; display: inline-block;">&larr; Back to browser selection</a>
+  </div>
+
+  <!-- Step 4: Restore Backup -->
+  <div class="import-screen hidden-screen" id="restore-screen">
+    <h1 class="onboarding-title">Restore Backup</h1>
+    <p class="onboarding-subtitle">Bring back your tabs, identity and P2P data</p>
+
+    <div class="section-label">Restore from CID</div>
+    <input type="text" class="cid-input" id="cid-input" placeholder="ipfs://bafy... or a CID">
+    <button class="skip-btn" id="cid-restore-btn" style="margin-bottom: 4px;">Restore from CID</button>
+
+    <div class="divider-or">or</div>
+
+    <div class="section-label">Restore from local .zip</div>
+    <div class="drop-zone" id="zip-drop-zone">
+      <img class="drop-zone-icon" src="peersky://static/assets/svg/file-upload.svg" alt="Upload">
+      <div class="drop-text">Drop a peersky-backup.zip here</div>
+      <div class="drop-subtext">or click to browse</div>
+    </div>
+    <input type="file" id="zip-input" accept=".zip">
+
+    <div class="status-msg" id="restore-status"></div>
+
+    <a class="backup-link" id="restore-back-btn" style="margin-top: 10px; display: inline-block;">&larr; Back to browser selection</a>
   </div>
 
   <script src="peersky://static/js/onboarding.js" defer></script>
