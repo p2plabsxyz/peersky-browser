@@ -8,6 +8,7 @@ import fsExtra from 'fs-extra'
 import { createLogger } from '../logger.js'
 import { BACKUP_TARGETS, readManifest, verifyManifest } from './backup-core.js'
 import { suspendHyper, resumeHyper } from '../protocols/hyper-handler.js'
+import { suspendIPFS, resumeIPFS } from '../protocols/ipfs-handler.js'
 
 const log = createLogger('backup')
 
@@ -51,10 +52,11 @@ class BackupManager {
   // Create a .zip of persistent data at outPath. onProgress: ({processedBytes,...}).
   async createBackup (outPath, onProgress) {
     log.info(`Creating backup at ${outPath}`)
-    // Freeze the hyper corestore on disk so the worker copies a consistent
-    // RocksDB; otherwise live compaction yields a manifest that references
+    // Freeze the hyper corestore and IPFS on disk so the worker copies a consistent
+    // RocksDB/LevelDB; otherwise live compaction yields a manifest that references
     // SST files missing from the bundle. Always resumed, even on failure.
     await suspendHyper()
+    await suspendIPFS()
     try {
       const result = await runWorker({
         op: 'create',
@@ -66,6 +68,7 @@ class BackupManager {
       return result
     } finally {
       await resumeHyper().catch((err) => log.error(`Failed to resume hyper after backup: ${err.message}`))
+      await resumeIPFS().catch((err) => log.error(`Failed to resume IPFS after backup: ${err.message}`))
     }
   }
 

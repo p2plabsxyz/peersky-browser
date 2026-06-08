@@ -15,6 +15,8 @@ export const BACKUP_TARGETS = [
   { name: 'lastOpened.json', type: 'file' },
   { name: 'tabs.json', type: 'file' },
   { name: 'ensCache.json', type: 'file' },
+  { name: 'ipfsCache.json', type: 'file' },
+  { name: 'hyperCache.json', type: 'file' },
   { name: 'peersky-chat-rooms.json', type: 'file' },
   { name: 'peersky-ports.json', type: 'file' },
   { name: 'ipfs', type: 'dir' },

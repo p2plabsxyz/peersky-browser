@@ -15,7 +15,7 @@ import { enforceExtensionWritePolicy } from '../extensions/request-policy.js'
 const log = createLogger('protocols:hyper')
 
 // Single SDK and swarm for the app lifecycle (hyper:// browsing + chat share the same swarm).
-let sdk, fetch
+let sdk, fetch, savedSdkOptions
 
 // keep chunks smaller to avoid oversized blocks.
 const MAX_UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024
@@ -96,6 +96,9 @@ function getChunkedBody (req) {
 async function initializeHyperSDK (options) {
   if (sdk != null && fetch != null) return fetch
 
+  if (options) savedSdkOptions = options
+  else options = savedSdkOptions
+
   log.info('Initializing Hyper SDK...')
 
   sdk = await createSDK(options)
@@ -110,21 +113,19 @@ async function initializeHyperSDK (options) {
   return fetch
 }
 
-// Flush and suspend the corestore so its RocksDB state is frozen on disk.
-// Required before file-copying the hyper/ dir for a backup: a live store
-// compacts continuously, producing a torn copy whose MANIFEST references
-// SST files that are no longer present. No-op if the SDK is not running.
+// Close the corestore entirely so its RocksDB state is strictly frozen on disk.
 export async function suspendHyper () {
-  if (sdk == null || sdk.corestore == null) return
-  log.info('Suspending Hyper corestore for backup...')
-  await sdk.corestore.suspend()
+  if (sdk == null) return
+  log.info('Closing Hyper SDK entirely for backup...')
+  await sdk.close()
+  sdk = null
+  fetch = null
 }
 
 // Reopen the corestore after a backup copy completes.
 export async function resumeHyper () {
-  if (sdk == null || sdk.corestore == null) return
-  await sdk.corestore.resume()
-  log.info('Hyper corestore resumed after backup.')
+  log.info('Re-initializing Hyper SDK after backup...')
+  await initializeHyperSDK()
 }
 
 // Publish a file into a fresh writable Hyperdrive and return its shareable

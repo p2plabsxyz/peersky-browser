@@ -23,6 +23,20 @@ const log = createLogger('protocols:ipfs')
 let sharedNode = null
 let sharedUnixFs = null
 
+export async function suspendIPFS () {
+  if (sharedNode) {
+    log.info('Stopping IPFS node for backup...')
+    await sharedNode.stop()
+  }
+}
+
+export async function resumeIPFS () {
+  if (sharedNode) {
+    log.info('Resuming IPFS node after backup...')
+    await sharedNode.start()
+  }
+}
+
 // Publish a file to IPFS as a raw UnixFS byte stream and return its CID string.
 // The CID resolves directly via ipfs://<cid> (no directory wrapping).
 export async function ipfsPublishFile (filePath) {
