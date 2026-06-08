@@ -1071,6 +1071,7 @@ ipcMain.handle('onboarding-restore-backup', async (event, backupContent) => {
 async function finishOnboardingRestore () {
   settingsManager.settings.onboardingCompleted = true
   await settingsManager.saveSettings()
+  windowManager.setSkipSaveOnQuit(true)
   backupManager.relaunch()
 }
 

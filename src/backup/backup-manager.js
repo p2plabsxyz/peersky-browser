@@ -7,6 +7,7 @@ import { app } from 'electron'
 import fsExtra from 'fs-extra'
 import { createLogger } from '../logger.js'
 import { BACKUP_TARGETS, readManifest, verifyManifest } from './backup-core.js'
+import { suspendHyper, resumeHyper } from '../protocols/hyper-handler.js'
 
 const log = createLogger('backup')
 
@@ -17,7 +18,9 @@ function userDataDir () {
 }
 
 function timestamp () {
-  return new Date().toISOString().replace(/[:.]/g, '-').replace('T', '-').slice(0, 19)
+  const d = new Date()
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`
 }
 
 export function defaultBackupName () {
@@ -48,14 +51,22 @@ class BackupManager {
   // Create a .zip of persistent data at outPath. onProgress: ({processedBytes,...}).
   async createBackup (outPath, onProgress) {
     log.info(`Creating backup at ${outPath}`)
-    const result = await runWorker({
-      op: 'create',
-      userDataDir: userDataDir(),
-      outPath,
-      peerskyVersion: app.getVersion()
-    }, onProgress)
-    log.info(`Backup created: ${result.bytes} bytes`)
-    return result
+    // Freeze the hyper corestore on disk so the worker copies a consistent
+    // RocksDB; otherwise live compaction yields a manifest that references
+    // SST files missing from the bundle. Always resumed, even on failure.
+    await suspendHyper()
+    try {
+      const result = await runWorker({
+        op: 'create',
+        userDataDir: userDataDir(),
+        outPath,
+        peerskyVersion: app.getVersion()
+      }, onProgress)
+      log.info(`Backup created: ${result.bytes} bytes`)
+      return result
+    } finally {
+      await resumeHyper().catch((err) => log.error(`Failed to resume hyper after backup: ${err.message}`))
+    }
   }
 
   // Read the manifest from a backup zip for preview/validation before restoring.
@@ -87,8 +98,8 @@ class BackupManager {
         await fsExtra.copy(src, target, { overwrite: true })
       }
 
-      // Drop the hypercore-storage device file if an older bundle carried it.
-      // Its recorded inode/xattr never survive a restore, so the guard would
+      // Drop the hypercore-storage device file carried in the bundle. Its
+      // recorded inode/xattr never survive a copy, so the move-guard would
       // abort the process on next launch; it is rebuilt cleanly on open.
       await fs.rm(path.join(dest, 'hyper', 'CORESTORE'), { force: true }).catch(() => {})
 

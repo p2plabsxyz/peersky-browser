@@ -110,6 +110,23 @@ async function initializeHyperSDK (options) {
   return fetch
 }
 
+// Flush and suspend the corestore so its RocksDB state is frozen on disk.
+// Required before file-copying the hyper/ dir for a backup: a live store
+// compacts continuously, producing a torn copy whose MANIFEST references
+// SST files that are no longer present. No-op if the SDK is not running.
+export async function suspendHyper () {
+  if (sdk == null || sdk.corestore == null) return
+  log.info('Suspending Hyper corestore for backup...')
+  await sdk.corestore.suspend()
+}
+
+// Reopen the corestore after a backup copy completes.
+export async function resumeHyper () {
+  if (sdk == null || sdk.corestore == null) return
+  await sdk.corestore.resume()
+  log.info('Hyper corestore resumed after backup.')
+}
+
 // Publish a file into a fresh writable Hyperdrive and return its shareable
 // hyper:// address. Used by the backup feature to share via a content address.
 export async function hyperPublishFile (filePath, fileName = 'backup.zip') {
