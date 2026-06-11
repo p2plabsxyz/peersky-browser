@@ -124,6 +124,7 @@ export async function suspendHyper () {
 
 // Reopen the corestore after a backup copy completes.
 export async function resumeHyper () {
+  if (!savedSdkOptions) return
   log.info('Re-initializing Hyper SDK after backup...')
   await initializeHyperSDK()
 }

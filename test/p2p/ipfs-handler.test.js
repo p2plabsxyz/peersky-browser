@@ -92,7 +92,23 @@ async function loadIpfsHandlerModule (overrides = {}) {
 
   const CIDClass = overrides.CIDClass || DefaultFakeCID
 
-  const createNode = overrides.createNode || sinon.stub().resolves(overrides.node)
+  const testNode = overrides.node || {}
+  if (!testNode.pins) {
+    testNode.pins = {}
+  }
+  if (!testNode.pins.add || typeof testNode.pins.add.callsFake === 'function') {
+    testNode.pins.add = sinon.stub().callsFake(async function * (cid) {
+      yield cid
+    })
+  }
+  if (!testNode.libp2p) {
+    testNode.libp2p = {
+      getPeers: () => [],
+      contentRouting: { provide: sinon.stub().resolves() }
+    }
+  }
+
+  const createNode = overrides.createNode || sinon.stub().resolves(testNode)
   const unixfsFactory = overrides.unixfsFactory || sinon.stub().returns(overrides.unixfs)
   const ipnsFactory = overrides.ipnsFactory || sinon.stub().returns(overrides.name)
   const dnsFactory = overrides.dnsFactory || sinon.stub().returns(overrides.dns)

@@ -128,6 +128,7 @@ export async function createBackupZip (userDataDir, outPath, options = {}) {
       settled = true
       resolve({ filePath: outPath, bytes: archive.pointer(), manifest })
     })
+    output.on('error', fail)
     archive.on('warning', (err) => {
       if (err.code === 'ENOENT') return
       fail(err)
@@ -212,7 +213,7 @@ export async function verifyManifest (extractedDir, manifest) {
       ? `sha256:${await sha256Dir(abs)}`
       : `sha256:${await sha256File(abs)}`
     if (actual !== expected) {
-      console.warn(`Checksum mismatch for ${name} (expected ${expected}, got ${actual}). Bypassing error to allow restore.`)
+      throw new Error(`Checksum mismatch for ${name} (expected ${expected}, got ${actual})`)
     }
   }
   return true

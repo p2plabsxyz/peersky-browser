@@ -6,7 +6,7 @@ import { Worker } from 'worker_threads'
 import { app } from 'electron'
 import fsExtra from 'fs-extra'
 import { createLogger } from '../logger.js'
-import { BACKUP_TARGETS, readManifest, verifyManifest } from './backup-core.js'
+import { readManifest, verifyManifest } from './backup-core.js'
 import { suspendHyper, resumeHyper } from '../protocols/hyper-handler.js'
 import { suspendIPFS, resumeIPFS } from '../protocols/ipfs-handler.js'
 
@@ -92,12 +92,9 @@ class BackupManager {
       await verifyManifest(tempDir, manifest)
 
       for (const name of Object.keys(manifest.files)) {
-        const meta = BACKUP_TARGETS.find((t) => t.name === name)
         const src = path.join(tempDir, name)
         const target = path.join(dest, name)
-        if (meta.type === 'dir') {
-          await fs.rm(target, { recursive: true, force: true }).catch(() => {})
-        }
+        await fs.rm(target, { recursive: true, force: true }).catch(() => {})
         await fsExtra.copy(src, target, { overwrite: true })
       }
 
