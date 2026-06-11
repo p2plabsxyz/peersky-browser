@@ -39,7 +39,7 @@ export async function uploadBackup (zipPath, protocol = 'ipfs') {
   const cid = await ipfsPublishFile(zipPath)
   log.info(`Backup published to IPFS: ${cid}`)
   ipfsCache.push({
-    cid: cid,
+    cid,
     timestamp: Date.now(),
     url: `ipfs://${cid}/`,
     name: uploadName
@@ -65,7 +65,7 @@ export async function downloadBackupFromAddress (address) {
     } catch (e) {}
     log.info(`Fetching backup from Hyper: ${trimmed}`)
     await hyperFetchToFile(trimmed, dest)
-    
+
     if (hostname) {
       const existing = hyperCache.find(entry => entry.key === hostname)
       if (existing) {
@@ -83,17 +83,17 @@ export async function downloadBackupFromAddress (address) {
     }
     return dest
   }
-  
+
   const cid = parseIpfsAddress(trimmed)
   log.info(`Fetching backup from IPFS: ${cid}`)
   await ipfsFetchToFile(cid, dest)
-  
+
   const existingIpfs = ipfsCache.find(entry => entry.cid === cid)
   if (existingIpfs) {
     existingIpfs.timestamp = Date.now()
   } else {
     ipfsCache.push({
-      cid: cid,
+      cid,
       timestamp: Date.now(),
       url: `ipfs://${cid}/`,
       name: restoreName

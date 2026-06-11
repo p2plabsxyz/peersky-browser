@@ -139,7 +139,7 @@ export async function hyperPublishFile (filePath, fileName = 'backup.zip') {
   const keyResp = await f(`hyper://localhost/?key=${driveName}`, { method: 'POST' })
   const keyText = await keyResp.text()
   log.info(`hyperPublishFile ?key= status: ${keyResp.status}, text: ${keyText}`)
-  
+
   const match = keyText.match(/([0-9a-zA-Z]{52,64})/)
   const driveKey = match ? match[1] : null
   if (!driveKey) throw new Error(`Could not resolve Hyperdrive key. Response status: ${keyResp.status}, text: ${keyText}`)

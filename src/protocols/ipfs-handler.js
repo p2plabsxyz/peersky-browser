@@ -44,7 +44,9 @@ export async function ipfsPublishFile (filePath) {
   const { createReadStream } = await import('fs')
   const cid = await sharedUnixFs.addByteStream(createReadStream(filePath))
   try {
-    for await (const _ of sharedNode.pins.add(cid, { recursive: true })) {}
+    for await (const pinned of sharedNode.pins.add(cid, { recursive: true })) {
+      if (!pinned) continue
+    }
   } catch (e) {
     log.warn(`Failed to pin backup CID ${cid.toString()}: ${e.message}`)
   }
@@ -251,7 +253,9 @@ export async function createHandler (ipfsOptions, session, securityOptions = {})
       log.info(`Added all files in ${Date.now() - startTime}ms`)
 
       // Pin the root CID recursively
-      for await (const _ of node.pins.add(rootCid, { recursive: true })) {}
+      for await (const pinned of node.pins.add(rootCid, { recursive: true })) {
+        if (!pinned) continue
+      }
       log.info(`Pinned in ${Date.now() - startTime}ms`)
 
       const fileUrl = `ipfs://${rootCid.toString()}/`
