@@ -116,15 +116,17 @@ chooseBtn?.addEventListener('click', async () => {
 shareBtn?.addEventListener('click', async () => {
   if (!api) return
   setBusy(true)
-  showProgress('Uploading to IPFS...')
+  const protocolSelect = document.getElementById('backup-share-protocol')
+  const protocol = protocolSelect ? protocolSelect.value : 'ipfs'
+  showProgress(`Uploading to ${protocol.toUpperCase()}...`)
   statusBox.style.display = 'none'
   try {
-    const res = await api.uploadIpfs(lastCreatedPath || null)
+    const res = await api.upload(lastCreatedPath || null, protocol)
     if (res.canceled) return
     if (res.success) {
       cidValue.textContent = res.address
       cidRow.style.display = ''
-      showStatus('Uploaded to IPFS. Share this CID to restore on another device.', 'success')
+      showStatus(`Uploaded to ${protocol.toUpperCase()}. Share this address to restore on another device.`, 'success')
     } else {
       showStatus(`Upload failed: ${res.error}`, 'error')
     }
@@ -142,6 +144,38 @@ cidCopyBtn?.addEventListener('click', async () => {
     cidCopyBtn.textContent = 'Copied'
     setTimeout(() => { cidCopyBtn.textContent = 'Copy' }, 1500)
   } catch (_) {}
+})
+
+const cidInput = document.getElementById('backup-cid-input')
+const cidDownloadBtn = document.getElementById('backup-cid-download')
+
+cidDownloadBtn?.addEventListener('click', async () => {
+  if (!api || !cidInput.value.trim()) return
+  const ok = window.confirm(
+    'Restoring will overwrite your current tabs, P2P identities, and IPFS/Hyper ' +
+    'data with the backup contents. Peersky will restart. Continue?')
+  if (!ok) return
+
+  setBusy(true)
+  showProgress('Fetching backup from the network...')
+  statusBox.style.display = 'none'
+  try {
+    const res = await api.restoreCid(cidInput.value.trim())
+    if (res.success) {
+      hideProgress()
+      showStatus('Restore complete. Restart to apply the restored data.', 'success')
+      if (window.confirm('Restore complete. Restart Peersky now?')) {
+        await api.relaunch()
+      }
+    } else {
+      showStatus(`Restore failed: ${res.error}`, 'error')
+    }
+  } catch (err) {
+    showStatus(`Restore failed: ${err.message}`, 'error')
+  } finally {
+    hideProgress()
+    setBusy(false)
+  }
 })
 
 restoreBtn?.addEventListener('click', async () => {

@@ -95,17 +95,28 @@
         <section class="settings-section">
           <div class="setting-row tall-row">
             <div class="setting-label">
-              Restore backup
+              Restore backup from File
               <p class="setting-description">Replace current data with the contents
-                of a backup .zip. Existing IPFS and Hyper repositories are
+                of a local backup .zip. Existing IPFS and Hyper repositories are
                 overwritten and Peersky must restart to apply changes.</p>
             </div>
             <div class="setting-control">
-              <button type="button" id="backup-choose" class="btn btn-secondary">Choose Backup File</button>
+              <button type="button" id="backup-choose" class="btn btn-secondary">Choose File</button>
             </div>
           </div>
 
-          <div id="backup-manifest" class="setting-row" style="display: none;">
+          <div class="setting-row tall-row" style="border-top: 1px solid var(--settings-border); margin-top: 16px; padding-top: 16px;">
+            <div class="setting-label">
+              Restore backup from P2P
+              <p class="setting-description">Download and restore a backup using an IPFS CID or Hypercore address.</p>
+            </div>
+            <div class="setting-control" style="display: flex; gap: 8px;">
+              <input type="text" id="backup-cid-input" class="cid-input" placeholder="ipfs://... or hyper://..." style="width: 220px; margin-bottom: 0;">
+              <button type="button" id="backup-cid-download" class="btn btn-secondary">Download</button>
+            </div>
+          </div>
+
+          <div id="backup-manifest" class="setting-row" style="display: none; border-top: 1px solid var(--settings-border); margin-top: 16px; padding-top: 16px;">
             <div class="setting-label">
               Selected backup
               <p id="backup-manifest-details" class="setting-description"></p>

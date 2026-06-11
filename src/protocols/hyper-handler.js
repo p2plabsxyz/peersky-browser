@@ -135,15 +135,18 @@ export async function hyperPublishFile (filePath, fileName = 'backup.zip') {
   const driveName = `peersky-backup-${Date.now()}`
 
   // Resolve the drive's public key (hypercore-fetch returns it for ?key=).
-  const keyResp = await f(`hyper://${driveName}/?key=${driveName}`, { method: 'POST' })
+  // Use hyper://localhost/ as the host, which is the required format.
+  const keyResp = await f(`hyper://localhost/?key=${driveName}`, { method: 'POST' })
   const keyText = await keyResp.text()
+  log.info(`hyperPublishFile ?key= status: ${keyResp.status}, text: ${keyText}`)
+  
   const match = keyText.match(/([0-9a-zA-Z]{52,64})/)
   const driveKey = match ? match[1] : null
-  if (!driveKey) throw new Error('Could not resolve Hyperdrive key')
+  if (!driveKey) throw new Error(`Could not resolve Hyperdrive key. Response status: ${keyResp.status}, text: ${keyText}`)
 
   const { createReadStream } = await import('fs')
   const body = createReadStream(filePath, { highWaterMark: 1024 * 1024 })
-  const putResp = await f(`hyper://${driveName}/${encodeURIComponent(fileName)}`, {
+  const putResp = await f(`hyper://${driveKey}/${encodeURIComponent(fileName)}`, {
     method: 'PUT',
     body,
     duplex: 'half'
@@ -158,7 +161,12 @@ export async function hyperPublishFile (filePath, fileName = 'backup.zip') {
 export async function hyperFetchToFile (address, destPath) {
   const f = await initializeHyperSDK()
   const resp = await f(address)
-  if (!resp.ok || !resp.body) throw new Error(`Hyper fetch failed: ${resp.status}`)
+  if (!resp.ok || !resp.body) {
+    if (resp.status === 404) {
+      throw new Error(`Hyper fetch failed: 404. The file was not found at the address '${address}'. This typically means either the peer hosting the file is offline, or the file doesn't exist on that drive.`)
+    }
+    throw new Error(`Hyper fetch failed: ${resp.status}`)
+  }
   const { createWriteStream } = await import('fs')
   const { Readable } = await import('stream')
   const { pipeline } = await import('stream/promises')
