@@ -30,8 +30,9 @@ export const BACKUP_TARGETS = [
 const SKIP_NAMES = new Set(['LOCK', 'repo.lock', '.DS_Store', 'LOG', 'LOG.old'])
 
 function shouldSkipEntry (name) {
-  if (SKIP_NAMES.has(name)) return true
-  if (name.endsWith('.lock')) return true
+  const base = name.split('/').pop().split('\\').pop()
+  if (SKIP_NAMES.has(base)) return true
+  if (base.endsWith('.lock')) return true
   return false
 }
 
@@ -78,6 +79,37 @@ async function listDirFiles (dir, baseDir = dir) {
 // Compute a stable sha256 over a directory's files (sorted by relative path).
 async function sha256Dir (dir) {
   const files = (await listDirFiles(dir)).sort()
+  const hash = crypto.createHash('sha256')
+  for (const rel of files) {
+    hash.update(rel)
+    hash.update(await sha256File(path.join(dir, rel)))
+  }
+  return hash.digest('hex')
+}
+
+// Legacy compatibility for backups created before LOG and LOG.old were added to SKIP_NAMES
+async function listDirFilesOld (dir, baseDir = dir) {
+  const out = []
+  const entries = await fs.readdir(dir, { withFileTypes: true })
+  for (const entry of entries) {
+    const name = entry.name
+    const base = name.split('/').pop().split('\\').pop()
+    const OLD_SKIP_NAMES = new Set(['LOCK', 'repo.lock', '.DS_Store', 'CORESTORE'])
+    if (OLD_SKIP_NAMES.has(base)) continue
+    if (name.endsWith('.lock')) continue
+
+    const abs = path.join(dir, name)
+    if (entry.isDirectory()) {
+      out.push(...await listDirFilesOld(abs, baseDir))
+    } else if (entry.isFile()) {
+      out.push(path.relative(baseDir, abs).split(path.sep).join('/'))
+    }
+  }
+  return out
+}
+
+async function sha256DirOld (dir) {
+  const files = (await listDirFilesOld(dir)).sort()
   const hash = crypto.createHash('sha256')
   for (const rel of files) {
     hash.update(rel)
@@ -213,6 +245,12 @@ export async function verifyManifest (extractedDir, manifest) {
       ? `sha256:${await sha256Dir(abs)}`
       : `sha256:${await sha256File(abs)}`
     if (actual !== expected) {
+      if (meta.type === 'dir') {
+        const actualOld = `sha256:${await sha256DirOld(abs)}`
+        if (actualOld === expected) {
+          continue
+        }
+      }
       throw new Error(`Checksum mismatch for ${name} (expected ${expected}, got ${actual})`)
     }
   }

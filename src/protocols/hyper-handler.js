@@ -159,20 +159,41 @@ export async function hyperPublishFile (filePath, fileName = 'backup.zip') {
 }
 
 // Stream a hyper:// file address to destPath on disk.
-export async function hyperFetchToFile (address, destPath) {
+export async function hyperFetchToFile (address, destPath, onStatus) {
   const f = await initializeHyperSDK()
-  const resp = await f(address)
-  if (!resp.ok || !resp.body) {
-    if (resp.status === 404) {
-      throw new Error(`Hyper fetch failed: 404. The file was not found at the address '${address}'. This typically means either the peer hosting the file is offline, or the file doesn't exist on that drive.`)
+
+  // The Hyperswarm DHT needs time to discover the hosting peer, especially
+  // across different networks. Retry with backoff before giving up.
+  const MAX_ATTEMPTS = 5
+  const BASE_DELAY_MS = 3000
+  let lastError
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const resp = await f(address)
+    if (resp.ok && resp.body) {
+      const { createWriteStream } = await import('fs')
+      const { Readable } = await import('stream')
+      const { pipeline } = await import('stream/promises')
+      await pipeline(Readable.fromWeb(resp.body), createWriteStream(destPath))
+      return destPath
     }
-    throw new Error(`Hyper fetch failed: ${resp.status}`)
+
+    lastError = new Error(
+      resp.status === 404
+        ? `Hyper fetch failed: 404. The file was not found at the address '${address}'. This typically means either the peer hosting the file is offline, or the file doesn't exist on that drive.`
+        : `Hyper fetch failed: ${resp.status}`
+    )
+
+    if (attempt < MAX_ATTEMPTS) {
+      const delay = BASE_DELAY_MS * attempt
+      if (typeof onStatus === 'function') {
+        onStatus(`Attempt ${attempt} of ${MAX_ATTEMPTS} failed (status ${resp.status}). Retrying in ${delay / 1000}s...`)
+      }
+      log.info(`Hyper fetch attempt ${attempt}/${MAX_ATTEMPTS} returned ${resp.status}, retrying in ${delay}ms...`)
+      await new Promise(resolve => setTimeout(resolve, delay))
+    }
   }
-  const { createWriteStream } = await import('fs')
-  const { Readable } = await import('stream')
-  const { pipeline } = await import('stream/promises')
-  await pipeline(Readable.fromWeb(resp.body), createWriteStream(destPath))
-  return destPath
+  throw lastError
 }
 
 export async function createHandler (options, securityOptions = {}) {

@@ -553,7 +553,8 @@ try {
       restoreZip: (zipPath) => ipcRenderer.invoke('onboarding-restore-zip', zipPath),
       restoreCid: (address) => ipcRenderer.invoke('onboarding-restore-cid', address),
       getPathForFile: (file) => webUtils.getPathForFile(file),
-      openExternalLink: (url) => ipcRenderer.send('open-external-link', url)
+      openExternalLink: (url) => ipcRenderer.send('open-external-link', url),
+      onProgress: (callback) => createEventListener('backup-progress', callback)
     })
     console.log('Unified-preload: Onboarding electronAPI exposed')
   } else if (isBackup) {

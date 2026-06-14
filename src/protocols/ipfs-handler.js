@@ -53,14 +53,30 @@ export async function ipfsPublishFile (filePath) {
   return cid.toString()
 }
 
-// Stream the content at a CID to destPath on disk. Memory stays O(chunk).
-export async function ipfsFetchToFile (cidStr, destPath) {
+export async function ipfsFetchToFile (cidStr, destPath, onStatus) {
   if (!sharedUnixFs) throw new Error('IPFS node is not ready yet')
   const { createWriteStream } = await import('fs')
   const { pipeline } = await import('stream/promises')
   const { Readable } = await import('stream')
   const cid = CID.parse(cidStr)
-  await pipeline(Readable.from(sharedUnixFs.cat(cid)), createWriteStream(destPath))
+
+  let totalBytes = 0
+  const notify = (msg) => {
+    if (typeof onStatus === 'function') onStatus(msg)
+  }
+
+  async function * trackProgress (iterable) {
+    for await (const chunk of iterable) {
+      totalBytes += chunk.length
+      notify(`Downloading from IPFS... ${totalBytes} bytes received`)
+      yield chunk
+    }
+  }
+
+  await pipeline(
+    Readable.from(trackProgress(sharedUnixFs.cat(cid))),
+    createWriteStream(destPath)
+  )
   return destPath
 }
 

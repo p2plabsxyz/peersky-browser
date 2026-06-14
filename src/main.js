@@ -1075,9 +1075,13 @@ async function finishOnboardingRestore () {
   backupManager.relaunch()
 }
 
-ipcMain.handle('onboarding-restore-zip', async (_event, zipPath) => {
+ipcMain.handle('onboarding-restore-zip', async (event, zipPath) => {
   try {
-    const res = await backupManager.restoreBackup(zipPath)
+    const res = await backupManager.restoreBackup(zipPath, (data) => {
+      if (!event.sender.isDestroyed()) {
+        event.sender.send('backup-progress', { phase: 'restore', ...data })
+      }
+    })
     if (!res.success) return res
     await finishOnboardingRestore()
     return { success: true }
@@ -1087,10 +1091,18 @@ ipcMain.handle('onboarding-restore-zip', async (_event, zipPath) => {
   }
 })
 
-ipcMain.handle('onboarding-restore-cid', async (_event, address) => {
+ipcMain.handle('onboarding-restore-cid', async (event, address) => {
   try {
-    const zipPath = await downloadBackupFromAddress(address)
-    const res = await backupManager.restoreBackup(zipPath)
+    const zipPath = await downloadBackupFromAddress(address, (status) => {
+      if (!event.sender.isDestroyed()) {
+        event.sender.send('backup-progress', { phase: 'fetch', message: status.message })
+      }
+    })
+    const res = await backupManager.restoreBackup(zipPath, (data) => {
+      if (!event.sender.isDestroyed()) {
+        event.sender.send('backup-progress', { phase: 'restore', ...data })
+      }
+    })
     if (!res.success) return res
     await finishOnboardingRestore()
     return { success: true }

@@ -12,7 +12,11 @@ const log = createLogger('backup')
 export function parseIpfsAddress (input) {
   if (!input || typeof input !== 'string') throw new Error('A CID or ipfs:// link is required')
   let value = input.trim()
-  if (value.startsWith('ipfs://')) value = value.slice('ipfs://'.length)
+  if (value.startsWith('ipfs://')) {
+    value = value.slice('ipfs://'.length)
+  } else if (value.includes('://')) {
+    throw new Error('Only raw CIDs or ipfs:// links are supported')
+  }
   value = value.replace(/^\/+/, '').split('/')[0].split('?')[0]
   if (!value) throw new Error('Could not read a CID from the input')
   return value
@@ -49,10 +53,14 @@ export async function uploadBackup (zipPath, protocol = 'ipfs') {
 }
 
 // Download a backup from a CID/ipfs:// or hyper:// address to a temp .zip.
-export async function downloadBackupFromAddress (address) {
+// onStatus receives { message } updates for UI display.
+export async function downloadBackupFromAddress (address, onStatus) {
   const dest = path.join(os.tmpdir(), `peersky-cid-restore-${Date.now()}.zip`)
   let trimmed = (address || '').trim()
   const restoreName = 'Restored Backup ' + new Date().toLocaleString()
+  const notify = (message) => {
+    if (typeof onStatus === 'function') onStatus({ message })
+  }
 
   if (trimmed.startsWith('hyper://')) {
     let hostname = ''
@@ -63,8 +71,9 @@ export async function downloadBackupFromAddress (address) {
         trimmed = `hyper://${urlObj.hostname}/backup.zip`
       }
     } catch (e) {}
+    notify('Connecting to Hyper peer...')
     log.info(`Fetching backup from Hyper: ${trimmed}`)
-    await hyperFetchToFile(trimmed, dest)
+    await hyperFetchToFile(trimmed, dest, notify)
 
     if (hostname) {
       const existing = hyperCache.find(entry => entry.key === hostname)
@@ -85,8 +94,11 @@ export async function downloadBackupFromAddress (address) {
   }
 
   const cid = parseIpfsAddress(trimmed)
+  notify('Connecting to IPFS network...')
   log.info(`Fetching backup from IPFS: ${cid}`)
-  await ipfsFetchToFile(cid, dest)
+  notify('Downloading backup from IPFS...')
+  await ipfsFetchToFile(cid, dest, notify)
+  notify('Download complete, verifying...')
 
   const existingIpfs = ipfsCache.find(entry => entry.cid === cid)
   if (existingIpfs) {

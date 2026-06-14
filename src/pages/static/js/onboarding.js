@@ -101,6 +101,17 @@ function setRestoreStatus (msg, kind) {
   restoreStatus.style.display = 'block'
 }
 
+if (api && typeof api.onProgress === 'function') {
+  api.onProgress((data) => {
+    if (data.phase === 'fetch' && data.message) {
+      setRestoreStatus(data.message, 'success')
+    } else if (data.phase === 'restore' && data.totalBytes) {
+      const pct = Math.min(100, Math.round((data.processedBytes / data.totalBytes) * 100))
+      setRestoreStatus(`Restoring files... ${pct}%`, 'success')
+    }
+  })
+}
+
 function setRestoreBusy (busy) {
   cidRestoreBtn.disabled = busy
   zipDropZone.style.pointerEvents = busy ? 'none' : 'auto'

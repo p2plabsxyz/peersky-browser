@@ -83,14 +83,18 @@ class BackupManager {
   async restoreBackup (zipPath, onProgress) {
     const dest = userDataDir()
     const tempDir = path.join(os.tmpdir(), `peersky-restore-${Date.now()}`)
+    let resumeServices = true
     log.info(`Restoring backup from ${zipPath}`)
 
+    await suspendHyper()
+    await suspendIPFS()
     try {
       await runWorker({ op: 'extract', zipPath, destDir: tempDir }, onProgress)
 
       const manifest = await readManifest(zipPath)
       await verifyManifest(tempDir, manifest)
 
+      resumeServices = false
       for (const name of Object.keys(manifest.files)) {
         const src = path.join(tempDir, name)
         const target = path.join(dest, name)
@@ -107,6 +111,10 @@ class BackupManager {
       return { success: true, requiresRestart: true, manifest }
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {})
+      if (resumeServices) {
+        await resumeHyper().catch((err) => log.error(`Failed to resume hyper after failed restore: ${err.message}`))
+        await resumeIPFS().catch((err) => log.error(`Failed to resume IPFS after failed restore: ${err.message}`))
+      }
     }
   }
 

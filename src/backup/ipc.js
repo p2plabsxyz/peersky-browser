@@ -105,7 +105,11 @@ export function setupBackupIpc () {
 
   ipcMain.handle('backup-restore-cid', async (event, address) => {
     try {
-      const zipPath = await downloadBackupFromAddress(address)
+      const zipPath = await downloadBackupFromAddress(address, (status) => {
+        if (!event.sender.isDestroyed()) {
+          event.sender.send('backup-progress', { phase: 'fetch', message: status.message })
+        }
+      })
       const result = await backupManager.restoreBackup(zipPath, (data) => {
         if (!event.sender.isDestroyed()) {
           event.sender.send('backup-progress', { phase: 'restore', ...data })

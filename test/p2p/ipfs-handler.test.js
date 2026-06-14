@@ -96,7 +96,7 @@ async function loadIpfsHandlerModule (overrides = {}) {
   if (!testNode.pins) {
     testNode.pins = {}
   }
-  if (!testNode.pins.add || typeof testNode.pins.add.callsFake === 'function') {
+  if (!testNode.pins.add) {
     testNode.pins.add = sinon.stub().callsFake(async function * (cid) {
       yield cid
     })
@@ -212,7 +212,7 @@ describe('IPFS protocol handler', function () {
     })
 
     const node = {
-      pins: { add: sinon.stub().resolves() },
+      pins: { add: sinon.stub().callsFake(async function * (cid) { yield cid }) },
       libp2p: {
         getPeers: () => ['peer-a'],
         contentRouting: { provide: sinon.stub().returns(providePromise) }
@@ -671,7 +671,7 @@ describe('IPFS protocol handler', function () {
       ipfsCache,
       saveIpfsCache,
       node: {
-        pins: { add: sinon.stub() },
+        pins: { add: sinon.stub().callsFake(async function * (cid) { yield cid }) },
         libp2p: { getPeers: () => [], contentRouting: { provide: sinon.stub().resolves() } }
       },
       unixfs: { addAll, stat: sinon.stub(), cat: sinon.stub(), ls: sinon.stub() },
@@ -709,7 +709,7 @@ describe('IPFS protocol handler', function () {
       ipfsCache,
       saveIpfsCache,
       node: {
-        pins: { add: sinon.stub() },
+        pins: { add: sinon.stub().callsFake(async function * (cid) { yield cid }) },
         libp2p: { getPeers: () => [], contentRouting: { provide: sinon.stub().resolves() } }
       },
       unixfs: { addAll, stat: sinon.stub(), cat: sinon.stub(), ls: sinon.stub() },

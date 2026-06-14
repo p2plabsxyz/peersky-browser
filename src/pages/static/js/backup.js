@@ -61,6 +61,13 @@ if (api && typeof api.onProgress === 'function') {
       const pct = Math.min(100, Math.round((data.processedBytes / data.totalBytes) * 100))
       progressBar.value = pct
       progressLabel.textContent = `Compressing... ${pct}%`
+    } else if (data.phase === 'restore' && data.totalBytes) {
+      const pct = Math.min(100, Math.round((data.processedBytes / data.totalBytes) * 100))
+      progressBar.value = pct
+      progressLabel.textContent = `Restoring files... ${pct}%`
+    } else if (data.phase === 'fetch' && data.message) {
+      progressBar.removeAttribute('value')
+      progressLabel.textContent = data.message
     }
   })
 }
