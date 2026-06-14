@@ -1,6 +1,9 @@
 import { expect } from 'chai'
 import sinon from 'sinon'
 import esmock from 'esmock'
+import os from 'os'
+import path from 'path'
+import { mkdtemp, writeFile } from 'fs/promises'
 
 import { ensCache } from '../../src/protocols/config.js'
 
@@ -258,6 +261,45 @@ describe('IPFS protocol handler', function () {
     resolveProvide()
     const response = await responsePromise
     expect(response.statusCode).to.equal(200)
+  })
+
+  it('provides backup file CIDs after publishing them', async function () {
+    const cid = { toString: () => 'bafy-backup-file' }
+    const provide = sinon.stub().resolves()
+    const node = {
+      pins: { add: sinon.stub().callsFake(async function * (pinnedCid) { yield pinnedCid }) },
+      libp2p: {
+        getPeers: () => ['peer-a'],
+        contentRouting: { provide }
+      }
+    }
+    const addByteStream = sinon.stub().resolves(cid)
+
+    const { module } = await loadIpfsHandlerModule({
+      node,
+      unixfs: {
+        addByteStream,
+        addAll: sinon.stub(),
+        stat: sinon.stub(),
+        cat: sinon.stub(),
+        ls: sinon.stub()
+      },
+      name: { resolve: sinon.stub() },
+      dns: { resolve: sinon.stub() }
+    })
+
+    await module.createHandler({ repo: 'test-ipfs-backup-publish' }, { getBlobData: sinon.stub() })
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), 'peersky-ipfs-publish-'))
+    const filePath = path.join(tempDir, 'backup.zip')
+    await writeFile(filePath, 'backup-bytes')
+
+    const publishedCid = await module.ipfsPublishFile(filePath)
+
+    expect(publishedCid).to.equal('bafy-backup-file')
+    expect(addByteStream.calledOnce).to.equal(true)
+    expect(node.pins.add.calledWith(cid, { recursive: true })).to.equal(true)
+    expect(provide.calledOnce).to.equal(true)
+    expect(provide.firstCall.args[0]).to.equal(cid)
   })
 
   it('resolves ipns:// paths and serves content', async function () {
