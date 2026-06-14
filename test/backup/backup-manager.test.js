@@ -97,4 +97,20 @@ describe('backup-manager', function () {
     expect(stubs.resumeHyper.calledOnce).to.equal(true)
     expect(stubs.resumeIPFS.calledOnce).to.equal(true)
   })
+
+  it('surfaces worker errors during backup creation', async function () {
+    const { backupManager, stubs } = await loadBackupManager({ workerError: 'disk full' })
+
+    try {
+      await backupManager.createBackup('/tmp/backup.zip')
+      throw new Error('create should have failed')
+    } catch (error) {
+      expect(error.message).to.equal('disk full')
+    }
+
+    expect(stubs.suspendHyper.calledOnce).to.equal(true)
+    expect(stubs.suspendIPFS.calledOnce).to.equal(true)
+    expect(stubs.resumeHyper.calledOnce).to.equal(true)
+    expect(stubs.resumeIPFS.calledOnce).to.equal(true)
+  })
 })

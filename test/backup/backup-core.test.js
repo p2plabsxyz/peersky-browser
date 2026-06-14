@@ -150,4 +150,42 @@ describe('backup-core', function () {
     }
     expect(threw).to.equal(true)
   })
+
+  it('detects checksum mismatch when a file is tampered after extraction', async function () {
+    const userData = await makeTempDir('peersky-bk-tamper-')
+    await seedUserData(userData)
+
+    const outPath = path.join(await makeTempDir('peersky-bk-tamperout-'), 'backup.zip')
+    await createBackupZip(userData, outPath)
+    const manifest = await readManifest(outPath)
+
+    const dest = await makeTempDir('peersky-bk-tamperdest-')
+    await extractBackupZip(outPath, dest)
+
+    // Tamper with a file after extraction
+    await writeFile(path.join(dest, 'tabs.json'), '{"corrupted": true}')
+
+    let threw = false
+    try {
+      await verifyManifest(dest, manifest)
+    } catch (err) {
+      threw = true
+      expect(err.message).to.match(/checksum mismatch/i)
+      expect(err.message).to.include('tabs.json')
+    }
+    expect(threw).to.equal(true)
+  })
+
+  it('rejects manifest with invalid structure', async function () {
+    const dest = await makeTempDir('peersky-bk-badmanifest-')
+
+    let threw = false
+    try {
+      await verifyManifest(dest, null)
+    } catch (err) {
+      threw = true
+      expect(err.message).to.match(/invalid/i)
+    }
+    expect(threw).to.equal(true)
+  })
 })
