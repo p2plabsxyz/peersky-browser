@@ -24,6 +24,15 @@ function emitResult (payload) {
   console.log(`${RESULT_PREFIX}${JSON.stringify(payload)}`)
 }
 
+async function safeShutdownAndExit (code) {
+  try {
+    await withTimeout(extensionManager.shutdown(), 5000, 'shutdown')
+  } catch {
+  }
+  app.exit(code)
+  setTimeout(() => process.exit(code), 3000)
+}
+
 async function withTimeout (taskPromise, timeoutMs, label) {
   let timer = null
   const timeoutPromise = new Promise((_resolve, reject) => {
@@ -159,7 +168,18 @@ app.whenReady().then(async () => {
     const browserSession = session.defaultSession
     await ensureTestProtocols(browserSession)
 
-    await extensionManager.initialize({ app, session: browserSession })
+    try {
+      await withTimeout(
+        extensionManager.initialize({ app, session: browserSession }),
+        60000,
+        'extension manager initialization'
+      )
+    } catch (initError) {
+      if (args.mode === 'probe') {
+        throw new Error('Probe extension is not installed')
+      }
+      throw initError
+    }
 
     let extension = getProbeExtension()
     if (args.mode === 'install-and-probe' && !extension) {
@@ -172,8 +192,7 @@ app.whenReady().then(async () => {
         await extensionManager.uninstallExtension(extension.id)
       }
       emitResult({ ok: true, mode: args.mode, uninstalled: !!extension })
-      await extensionManager.shutdown()
-      app.exit(0)
+      await safeShutdownAndExit(0)
       return
     }
 
@@ -191,14 +210,9 @@ app.whenReady().then(async () => {
       probe
     })
 
-    await extensionManager.shutdown()
-    app.exit(0)
+    await safeShutdownAndExit(0)
   } catch (error) {
     emitResult({ ok: false, mode: args.mode, error: String(error && error.message ? error.message : error) })
-    try {
-      await extensionManager.shutdown()
-    } catch {
-    }
-    app.exit(1)
+    await safeShutdownAndExit(1)
   }
 })
