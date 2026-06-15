@@ -663,11 +663,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   })
 
   const dnsResolver = document.getElementById('custom-dns-resolver')
-  dnsResolver?.addEventListener('keydown', async (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      await saveSettingToBackend('customDnsResolver', dnsResolver.value.trim())
-    }
+  dnsResolver?.addEventListener('change', async () => {
+    await saveSettingToBackend('customDnsResolver', dnsResolver.value.trim())
   })
 
   // Initialize custom wallpaper UI state
