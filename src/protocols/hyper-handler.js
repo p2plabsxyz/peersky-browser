@@ -158,9 +158,32 @@ export async function hyperPublishFile (filePath, fileName = 'backup.zip') {
   return { key: driveKey, fileName, address: `hyper://${driveKey}/${fileName}` }
 }
 
+async function waitForDriveReady (url) {
+  if (!sdk) return
+  try {
+    const urlObj = new URL(url)
+    const hostname = urlObj.hostname
+    if (!hostname || hostname === 'localhost') return
+    const drive = await sdk.getDrive(`hyper://${hostname}/`)
+    if (drive.writable || drive.core.length > 0) return
+
+    log.info(`Waiting for peers for ${hostname}...`)
+    if (typeof drive.core.findingPeers === 'function') {
+      const finding = drive.core.findingPeers()
+      sdk.joinCore(drive.core)
+      await finding
+    }
+    await drive.update()
+    log.info(`Finished waiting for peers for ${hostname}, core length is now ${drive.core.length}`)
+  } catch (err) {
+    log.error(`Error waiting for peers for ${url}:`, err)
+  }
+}
+
 // Stream a hyper:// file address to destPath on disk.
 export async function hyperFetchToFile (address, destPath, onStatus) {
   const f = await initializeHyperSDK()
+  await waitForDriveReady(address)
 
   // The Hyperswarm DHT needs time to discover the hosting peer, especially
   // across different networks. Retry with backoff before giving up.
@@ -292,6 +315,7 @@ export async function createHandler (options, securityOptions = {}) {
 async function handleHyperRequest (req) {
   const { url, method = 'GET', headers } = req
   const fetchFn = await initializeHyperSDK()
+  await waitForDriveReady(url)
   const upperMethod = method.toUpperCase()
   const hasBody = upperMethod !== 'GET' && upperMethod !== 'HEAD'
 
