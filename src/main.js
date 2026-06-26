@@ -319,24 +319,61 @@ app.whenReady().then(async () => {
     ])
   }
 
-  // Initialize AutoUpdater after windowManager is ready
-  setupAutoUpdater()
+  // Initialize AutoUpdater after windowManager is ready. The callback saves the
+  // session before the updater quits; setQuitting(true) also stops the save from
+  // wiping the restore file if a window is already gone.
+  setupAutoUpdater(async () => {
+    windowManager.setQuitting(true)
+    windowManager.stopSaver()
+    await windowManager.saveCompleteState()
+  })
 })
 
 // Introduce a flag to prevent multiple 'before-quit' handling
 let isQuitting = false
+const SHUTDOWN_TIMEOUT_MS = 8000
+const FORCE_QUIT_TIMEOUT_MS = 15000
+
+function withTimeout (promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_resolve, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+    )
+  ])
+}
 
 app.on('before-quit', async (event) => {
   if (isQuitting) {
     return
   }
-  event.preventDefault() // Prevent the default quit behavior
+
+  if (app.isQuittingForUpdate) {
+    // Session was already saved before quitAndInstall. SIGKILL now, since
+    // process.exit hangs on p2p native handles.
+    log.info('[quit] Update install — exiting')
+    process.kill(process.pid, 'SIGKILL')
+    return
+  }
+
+  event.preventDefault() // Defer the quit so we can shut p2p services down cleanly.
 
   log.info('Before quit: Saving window states...')
 
   isQuitting = true // Set the quitting flag
 
   windowManager.setQuitting(true) // Inform WindowManager that quitting is happening
+
+  // Absolute watchdog: p2p services (libp2p / hyperswarm / holesail) hold native
+  // handles that can keep the process alive even after app.quit(), and Electron
+  // stops pumping JS timers once a graceful quit begins. Schedule the hard exit
+  // now, while the loop is still healthy, so the process is guaranteed to die
+  // (this is what lets Squirrel/electron-updater's installer swap the bundle).
+  const forceQuit = setTimeout(() => {
+    log.warn('[quit] Shutdown watchdog fired — force-exiting')
+    process.exit(0)
+  }, FORCE_QUIT_TIMEOUT_MS)
+  forceQuit.unref?.()
 
   // Shutdown BitTorrent — save state and kill worker before process exits
   try {
@@ -348,24 +385,22 @@ app.on('before-quit', async (event) => {
 
   // Shutdown extension system
   try {
-    await extensionManager.shutdown()
+    await withTimeout(extensionManager.shutdown(), SHUTDOWN_TIMEOUT_MS, 'Extension shutdown')
     log.info('Extension system shutdown successfully')
   } catch (error) {
     log.error('Error shutting down extension system:', error)
   }
 
-  windowManager
-    .saveOpened()
-    .then(() => {
-      log.info('Window states saved successfully.')
-      windowManager.stopSaver()
-      app.quit() // Proceed to quit the app
-    })
-    .catch((error) => {
-      log.error('Error saving window states on quit:', error)
-      windowManager.stopSaver()
-      app.quit() // Proceed to quit the app even if saving fails
-    })
+  try {
+    await withTimeout(windowManager.saveOpened(), SHUTDOWN_TIMEOUT_MS, 'Window state save')
+    log.info('Window states saved successfully.')
+  } catch (error) {
+    log.error('Error saving window states on quit:', error)
+  }
+
+  windowManager.stopSaver()
+  log.info('[quit] Shutdown complete — exiting')
+  process.exit(0)
 })
 
 async function setupProtocols (session) {
