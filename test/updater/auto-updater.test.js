@@ -30,7 +30,16 @@ async function withAppImage (value, fn) {
   }
 }
 
-async function loadAutoUpdater ({ isPackaged = true, version = '1.0.0', autoUpdateEnabled = true } = {}) {
+function makeNetFetch (response = { ok: false, status: 404 }) {
+  return sinon.stub().resolves({
+    ok: response.ok ?? false,
+    status: response.status ?? 404,
+    json: async () => response.body ?? null,
+    arrayBuffer: async () => new ArrayBuffer(0)
+  })
+}
+
+async function loadAutoUpdater ({ isPackaged = true, version = '1.0.0', autoUpdateEnabled = true, fetchResponse } = {}) {
   // Electron's native autoUpdater (macOS path).
   const autoUpdater = {
     setFeedURL: sinon.spy(),
@@ -39,37 +48,34 @@ async function loadAutoUpdater ({ isPackaged = true, version = '1.0.0', autoUpda
     on: sinon.spy()
   }
 
-  // electron-updater (Windows path). checkForUpdates() returns a Promise.
-  const winUpdater = {
-    on: sinon.spy(),
-    checkForUpdates: sinon.stub().resolves(),
-    quitAndInstall: sinon.spy(),
-    logger: null,
-    autoDownload: false,
-    autoInstallOnAppQuit: false
-  }
+  const netFetch = makeNetFetch(fetchResponse)
 
   const dialog = { showMessageBoxSync: sinon.stub().returns(1) }
 
   const app = {
     isPackaged,
-    getVersion: () => version
+    getVersion: () => version,
+    quit: sinon.spy(),
+    relaunch: sinon.spy()
   }
 
   const log = {
     info: sinon.spy(),
+    warn: sinon.spy(),
     error: sinon.spy(),
     transports: { file: {} }
   }
 
   const module = await esmock.strict('../../src/auto-updater.js', {
-    electron: { app, autoUpdater, dialog },
-    'electron-updater': { default: { autoUpdater: winUpdater } },
+    electron: { app, autoUpdater, dialog, net: { fetch: netFetch } },
     'electron-log': { default: log },
+    fs: await import('fs'),
+    path: await import('path'),
+    os: await import('os'),
     '../../src/settings-manager.js': { default: { settings: { autoUpdateEnabled } } }
   })
 
-  return { module, autoUpdater, winUpdater, dialog, app, log }
+  return { module, autoUpdater, netFetch, dialog, app, log }
 }
 
 describe('auto-updater', function () {
@@ -93,25 +99,27 @@ describe('auto-updater', function () {
     expect(log.info.calledWithMatch(/Dev mode/)).to.equal(true)
   })
 
-  it('uses electron-updater on Linux when running as an AppImage', async function () {
-    const { module, autoUpdater, winUpdater } = await loadAutoUpdater()
+  it('uses net.fetch updater on Linux when running as an AppImage', async function () {
+    clock = sinon.useFakeTimers()
+    const { module, autoUpdater, netFetch } = await loadAutoUpdater()
 
-    await withAppImage('/tmp/Peersky.AppImage', () =>
+    await withAppImage('/tmp/Peersky.AppImage', async () =>
       withPlatform('linux', () => module.setupAutoUpdater())
     )
 
     expect(autoUpdater.setFeedURL.called).to.equal(false)
-    expect(winUpdater.on.called).to.equal(true)
+    await clock.tickAsync(10000)
+    expect(netFetch.called).to.equal(true)
   })
 
   it('skips non-AppImage Linux builds (handled by the distro package manager)', async function () {
-    const { module, winUpdater, log } = await loadAutoUpdater()
+    const { module, netFetch, log } = await loadAutoUpdater()
 
     await withAppImage(undefined, () =>
       withPlatform('linux', () => module.setupAutoUpdater())
     )
 
-    expect(winUpdater.on.called).to.equal(false)
+    expect(netFetch.called).to.equal(false)
     expect(log.info.calledWithMatch(/package manager/)).to.equal(true)
   })
 
@@ -228,91 +236,69 @@ describe('auto-updater', function () {
     expect(autoUpdater.quitAndInstall.called).to.equal(false)
   })
 
-  describe('Windows (electron-updater)', function () {
-    it('uses electron-updater, not the native autoUpdater', async function () {
-      const { module, autoUpdater, winUpdater } = await loadAutoUpdater()
+  describe('Windows (net.fetch updater)', function () {
+    it('uses net.fetch, not the native autoUpdater', async function () {
+      clock = sinon.useFakeTimers()
+      const { module, autoUpdater, netFetch } = await loadAutoUpdater()
 
-      await withPlatform('win32', () => module.setupAutoUpdater())
+      withPlatform('win32', () => module.setupAutoUpdater())
 
       expect(autoUpdater.setFeedURL.called).to.equal(false)
       expect(autoUpdater.on.called).to.equal(false)
-      expect(winUpdater.on.called).to.equal(true)
-      expect(winUpdater.logger).to.not.equal(null)
-      expect(winUpdater.autoDownload).to.equal(true)
-    })
 
-    it('registers the expected electron-updater event handlers', async function () {
-      const { module, winUpdater } = await loadAutoUpdater()
-
-      await withPlatform('win32', () => module.setupAutoUpdater())
-
-      const events = winUpdater.on.getCalls().map((c) => c.args[0])
-      expect(events).to.include.members([
-        'checking-for-update',
-        'update-available',
-        'update-not-available',
-        'download-progress',
-        'update-downloaded',
-        'error'
-      ])
+      await clock.tickAsync(10000)
+      expect(netFetch.called).to.equal(true)
     })
 
     it('checks after a 10s startup delay, then on a 1h interval', async function () {
       clock = sinon.useFakeTimers()
-      const { module, winUpdater } = await loadAutoUpdater()
+      const { module, netFetch } = await loadAutoUpdater()
 
-      await withPlatform('win32', () => module.setupAutoUpdater())
+      withPlatform('win32', () => module.setupAutoUpdater())
 
-      expect(winUpdater.checkForUpdates.called).to.equal(false)
+      expect(netFetch.called).to.equal(false)
 
       await clock.tickAsync(10000)
-      expect(winUpdater.checkForUpdates.callCount).to.equal(1)
+      expect(netFetch.callCount).to.equal(1)
 
       await clock.tickAsync(60 * 60 * 1000)
-      expect(winUpdater.checkForUpdates.callCount).to.equal(2)
+      expect(netFetch.callCount).to.equal(2)
     })
 
-    it('logs and recovers if checkForUpdates rejects', async function () {
+    it('logs update-not-available when already on latest', async function () {
       clock = sinon.useFakeTimers()
-      const { module, winUpdater, log } = await loadAutoUpdater()
-      winUpdater.checkForUpdates = sinon.stub().rejects(new Error('boom'))
+      const { module, log } = await loadAutoUpdater({
+        version: '1.0.0',
+        fetchResponse: { ok: true, status: 200, body: { tag_name: 'v1.0.0', assets: [] } }
+      })
 
-      await withPlatform('win32', () => module.setupAutoUpdater())
-
+      withPlatform('win32', () => module.setupAutoUpdater())
       await clock.tickAsync(10000)
+
+      expect(log.info.calledWithMatch(/update-not-available/)).to.equal(true)
+    })
+
+    it('logs and recovers if net.fetch rejects', async function () {
+      clock = sinon.useFakeTimers()
+      const { module, netFetch, log } = await loadAutoUpdater()
+      netFetch.rejects(new Error('network error'))
+
+      withPlatform('win32', () => module.setupAutoUpdater())
+      await clock.tickAsync(10000)
+
       expect(log.error.calledWithMatch(/checkForUpdates failed/)).to.equal(true)
     })
 
-    it('prompts to restart and installs when the user accepts', async function () {
-      const { module, winUpdater, dialog } = await loadAutoUpdater()
-      dialog.showMessageBoxSync.returns(0) // user clicks "Restart Now"
+    it('logs warning when GitHub API returns non-200', async function () {
+      clock = sinon.useFakeTimers()
+      const { module, log } = await loadAutoUpdater({
+        fetchResponse: { ok: false, status: 403 }
+      })
 
-      await withPlatform('win32', () => module.setupAutoUpdater())
+      withPlatform('win32', () => module.setupAutoUpdater())
+      await clock.tickAsync(10000)
 
-      const downloadedHandler = winUpdater.on
-        .getCalls()
-        .find((c) => c.args[0] === 'update-downloaded').args[1]
-
-      await downloadedHandler({ version: '2.0.0', releaseName: '2.0.0' })
-
-      expect(dialog.showMessageBoxSync.calledOnce).to.equal(true)
-      expect(winUpdater.quitAndInstall.calledOnce).to.equal(true)
-    })
-
-    it('does not install when the user postpones', async function () {
-      const { module, winUpdater, dialog } = await loadAutoUpdater()
-      dialog.showMessageBoxSync.returns(1) // user clicks "Later"
-
-      await withPlatform('win32', () => module.setupAutoUpdater())
-
-      const downloadedHandler = winUpdater.on
-        .getCalls()
-        .find((c) => c.args[0] === 'update-downloaded').args[1]
-
-      await downloadedHandler({ version: '2.0.0', releaseName: '2.0.0' })
-
-      expect(dialog.showMessageBoxSync.calledOnce).to.equal(true)
-      expect(winUpdater.quitAndInstall.called).to.equal(false)
+      expect(log.warn.calledWithMatch(/GitHub API returned 403/)).to.equal(true)
     })
   })
 })

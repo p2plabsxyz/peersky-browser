@@ -1,6 +1,8 @@
-import { app, autoUpdater as nativeUpdater, dialog } from 'electron'
+import { app, autoUpdater as nativeUpdater, dialog, net } from 'electron'
 import log from 'electron-log'
-import electronUpdater from 'electron-updater'
+import fs from 'fs'
+import path from 'path'
+import os from 'os'
 import settingsManager from './settings-manager.js'
 
 const UPDATE_HOST = 'https://update.electronjs.org'
@@ -109,48 +111,99 @@ function setupMacUpdater (saveSession) {
   })
 }
 
-// Shared electron-updater path for Windows (NSIS) and Linux (AppImage); the
-// native autoUpdater can't consume either. electron-updater reads app-update.yml
-// plus the platform's latest-*.yml and handles the download + install.
-function setupElectronUpdater (saveSession) {
-  const { autoUpdater } = electronUpdater
-  autoUpdater.logger = log
-  autoUpdater.autoDownload = true
-  autoUpdater.autoInstallOnAppQuit = true
+// Windows (NSIS) and Linux: electron-updater uses Node.js HTTP (c-ares DNS)
+// which triggers the same native SIGSEGV crash as on macOS. Instead, we use
+// Electron's net.fetch() (Chromium networking, no c-ares) to check GitHub
+// releases, download the installer, and run it.
+function setupNativeNetUpdater (saveSession) {
+  const GITHUB_API = `https://api.github.com/repos/${UPDATE_REPO}/releases/latest`
+  const UA = `peersky-browser/${app.getVersion()} (${process.platform}: ${process.arch})`
 
-  autoUpdater.on('checking-for-update', () => {
+  async function checkAndUpdate () {
     log.info('[auto-updater] checking-for-update')
-  })
+    try {
+      const res = await net.fetch(GITHUB_API, {
+        headers: { 'User-Agent': UA, Accept: 'application/vnd.github.v3+json' }
+      })
+      if (!res.ok) {
+        log.warn(`[auto-updater] GitHub API returned ${res.status}`)
+        return
+      }
+      const release = await res.json()
+      const latest = release.tag_name?.replace(/^v/, '')
+      const current = app.getVersion()
+      if (!latest || latest === current) {
+        log.info('[auto-updater] update-not-available')
+        return
+      }
+      // Simple semver compare: split on dots and compare numerically
+      const isNewer = latest.localeCompare(current, undefined, { numeric: true, sensitivity: 'base' }) > 0
+      if (!isNewer) {
+        log.info('[auto-updater] update-not-available (latest:', latest, 'current:', current, ')')
+        return
+      }
+      log.info('[auto-updater] update-available:', latest)
 
-  autoUpdater.on('update-available', (info) => {
-    log.info('[auto-updater] update-available; downloading...', info?.version)
-  })
+      // Find the correct installer asset for this platform
+      let asset
+      if (process.platform === 'win32') {
+        asset = release.assets?.find(a =>
+          a.name.endsWith('.exe') && a.name.toLowerCase().includes('setup')
+        )
+      } else if (process.platform === 'linux') {
+        asset = release.assets?.find(a => a.name.endsWith('.AppImage'))
+      }
 
-  autoUpdater.on('update-not-available', () => {
-    log.info('[auto-updater] update-not-available')
-  })
+      if (!asset) {
+        log.warn('[auto-updater] No matching installer asset found in release')
+        return
+      }
 
-  autoUpdater.on('download-progress', (progress) => {
-    log.info(`[auto-updater] download ${progress?.percent?.toFixed(1) ?? 0}%`)
-  })
+      log.info('[auto-updater] downloading:', asset.name, `(${(asset.size / 1048576).toFixed(1)} MB)`)
 
-  autoUpdater.on('update-downloaded', async (info) => {
-    log.info('[auto-updater] update-downloaded:', info?.version)
-    if (promptRestart(info?.releaseName || info?.version)) {
-      await installUpdateAndQuit(() => autoUpdater.quitAndInstall(), saveSession)
-    }
-  })
+      // Download installer to temp dir using net.fetch (Chromium networking)
+      const dlRes = await net.fetch(asset.browser_download_url, {
+        headers: { 'User-Agent': UA }
+      })
+      if (!dlRes.ok) {
+        log.error(`[auto-updater] download failed: ${dlRes.status}`)
+        return
+      }
+      const tmpDir = path.join(os.tmpdir(), 'peersky-update')
+      fs.mkdirSync(tmpDir, { recursive: true })
+      const installerPath = path.join(tmpDir, asset.name)
+      const buffer = Buffer.from(await dlRes.arrayBuffer())
+      fs.writeFileSync(installerPath, buffer)
+      log.info('[auto-updater] update-downloaded:', installerPath)
 
-  autoUpdater.on('error', (err) => {
-    log.error('[auto-updater] error:', err?.message || err)
-  })
-
-  scheduleChecks(() => {
-    // electron-updater.checkForUpdates() returns a Promise, so guard with .catch().
-    autoUpdater.checkForUpdates().catch((err) => {
+      // Prompt user
+      if (promptRestart(`v${latest}`)) {
+        await installUpdateAndQuit(async () => {
+          if (process.platform === 'win32') {
+            // Launch the NSIS installer silently and quit
+            const { exec } = await import('child_process')
+            exec(`"${installerPath}" /S`, (err) => {
+              if (err) log.error('[auto-updater] installer launch failed:', err.message)
+            })
+            await new Promise(resolve => setTimeout(resolve, 1000))
+          } else if (process.platform === 'linux') {
+            // Replace the running AppImage with the downloaded one
+            const currentAppImage = process.env.APPIMAGE
+            if (currentAppImage) {
+              fs.copyFileSync(installerPath, currentAppImage)
+              fs.chmodSync(currentAppImage, 0o755)
+            }
+            app.relaunch()
+          }
+          app.quit()
+        }, saveSession)
+      }
+    } catch (err) {
       log.error('[auto-updater] checkForUpdates failed:', err?.message || err)
-    })
-  })
+    }
+  }
+
+  scheduleChecks(checkAndUpdate)
 }
 
 // Dev-only: run the popup -> quit -> relaunch path without a build or real
@@ -189,29 +242,19 @@ function setupAutoUpdater (saveSession) {
   log.transports.file.level = 'info'
 
   if (process.platform === 'win32') {
-    try {
-      setupElectronUpdater(saveSession)
-    } catch (err) {
-      log.error('[auto-updater] Windows updater init failed:', err?.message || err)
-    }
+    setupNativeNetUpdater(saveSession)
     return
   }
 
   if (process.platform === 'linux') {
-    // Only the AppImage build can auto-update: electron-updater swaps the running
-    // .AppImage in place. The deb/rpm/pacman/apk builds are owned by the system
-    // package manager, so they have no in-app update path — those users update
-    // through their distro. process.env.APPIMAGE is set only when running as an
-    // AppImage, which is how we tell the builds apart.
+    // Only the AppImage build can auto-update. The deb/rpm/pacman/apk builds
+    // are owned by the system package manager — those users update through
+    // their distro. process.env.APPIMAGE is set only when running as an AppImage.
     if (!process.env.APPIMAGE) {
       log.info('[auto-updater] Skipping: Linux non-AppImage build updates via the system package manager')
       return
     }
-    try {
-      setupElectronUpdater(saveSession)
-    } catch (err) {
-      log.error('[auto-updater] Linux (AppImage) updater init failed:', err?.message || err)
-    }
+    setupNativeNetUpdater(saveSession)
     return
   }
 
