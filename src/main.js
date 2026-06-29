@@ -368,7 +368,7 @@ app.on('before-quit', async (event) => {
   // handles that can keep the process alive even after app.quit(), and Electron
   // stops pumping JS timers once a graceful quit begins. Schedule the hard exit
   // now, while the loop is still healthy, so the process is guaranteed to die
-  // (this is what lets Squirrel/electron-updater's installer swap the bundle).
+  // (this is what lets the installer swap the bundle on update).
   const forceQuit = setTimeout(() => {
     log.warn('[quit] Shutdown watchdog fired — force-exiting')
     process.exit(0)
