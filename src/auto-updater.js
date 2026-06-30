@@ -28,11 +28,15 @@ function promptRestart (releaseName) {
   return response === 0
 }
 
-// SIGKILL can't be blocked, so the process dies even when p2p native modules
-// hang process.exit (which used to leave the app stuck in the dock on macOS).
+// Force-kill if before-quit never fires. SIGKILL works on macOS/Linux (real
+// POSIX signal); on Windows we use app.exit() which is Electron's hard exit.
 function forceKill () {
   log.warn('[auto-updater] before-quit did not fire; force-killing')
-  process.kill(process.pid, 'SIGKILL')
+  if (process.platform === 'win32') {
+    app.exit(0)
+  } else {
+    process.kill(process.pid, 'SIGKILL')
+  }
 }
 
 // Save the session before quitting: quitAndInstall destroys windows, and a save
@@ -180,12 +184,15 @@ function setupNativeNetUpdater (saveSession) {
       if (promptRestart(`v${latest}`)) {
         await installUpdateAndQuit(async () => {
           if (process.platform === 'win32') {
-            // Launch the NSIS installer silently and quit
-            const { exec } = await import('child_process')
-            exec(`"${installerPath}" /S`, (err) => {
-              if (err) log.error('[auto-updater] installer launch failed:', err.message)
+            // Launch the NSIS installer as a detached process so it survives
+            // after the app exits. The installer waits for file locks to
+            // release, then replaces the app files.
+            const { spawn } = await import('child_process')
+            const child = spawn(installerPath, ['/S', '--force-run'], {
+              detached: true,
+              stdio: 'ignore'
             })
-            await new Promise(resolve => setTimeout(resolve, 1000))
+            child.unref()
           } else if (process.platform === 'linux') {
             // Replace the running AppImage with the downloaded one
             const currentAppImage = process.env.APPIMAGE

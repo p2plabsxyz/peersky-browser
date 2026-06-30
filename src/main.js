@@ -349,10 +349,14 @@ app.on('before-quit', async (event) => {
   }
 
   if (app.isQuittingForUpdate) {
-    // Session was already saved before quitAndInstall. SIGKILL now, since
+    // Session was already saved before quitAndInstall. Hard-exit now, since
     // process.exit hangs on p2p native handles.
     log.info('[quit] Update install — exiting')
-    process.kill(process.pid, 'SIGKILL')
+    if (process.platform === 'win32') {
+      app.exit(0)
+    } else {
+      process.kill(process.pid, 'SIGKILL')
+    }
     return
   }
 
