@@ -35,7 +35,19 @@ function makeNetFetch (response = { ok: false, status: 404 }) {
     ok: response.ok ?? false,
     status: response.status ?? 404,
     json: async () => response.body ?? null,
-    arrayBuffer: async () => new ArrayBuffer(0)
+    arrayBuffer: async () => new ArrayBuffer(0),
+    body: {
+      getReader: () => {
+        let done = false
+        return {
+          read: async () => {
+            if (done) return { done: true, value: undefined }
+            done = true
+            return { done: false, value: new Uint8Array(0) }
+          }
+        }
+      }
+    }
   })
 }
 

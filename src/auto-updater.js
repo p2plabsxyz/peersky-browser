@@ -28,14 +28,14 @@ function promptRestart (releaseName) {
   return response === 0
 }
 
-// Force-kill if before-quit never fires. SIGKILL works on macOS/Linux (real
-// POSIX signal); on Windows we use app.exit() which is Electron's hard exit.
+// Force-kill if before-quit never fires. On macOS SIGKILL is safe (Squirrel
+// handles restart). On Windows/Linux we need app.exit() so app.relaunch() fires.
 function forceKill () {
   log.warn('[auto-updater] before-quit did not fire; force-killing')
-  if (process.platform === 'win32') {
-    app.exit(0)
-  } else {
+  if (process.platform === 'darwin') {
     process.kill(process.pid, 'SIGKILL')
+  } else {
+    app.exit(0)
   }
 }
 
@@ -176,8 +176,34 @@ function setupNativeNetUpdater (saveSession) {
       const tmpDir = path.join(os.tmpdir(), 'peersky-update')
       fs.mkdirSync(tmpDir, { recursive: true })
       const installerPath = path.join(tmpDir, asset.name)
-      const buffer = Buffer.from(await dlRes.arrayBuffer())
-      fs.writeFileSync(installerPath, buffer)
+
+      // Stream the download to disk instead of buffering the whole file in memory (installers are 300+ MB).
+      const total = asset.size || 0
+      let received = 0
+      let lastLoggedPct = 0
+      const reader = dlRes.body.getReader()
+      const fileStream = fs.createWriteStream(installerPath)
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          fileStream.write(Buffer.from(value))
+          received += value.length
+          if (total) {
+            const pct = Math.floor((received / total) * 100)
+            if (pct >= lastLoggedPct + 10) {
+              lastLoggedPct = pct
+              log.info(`[auto-updater] downloading: ${pct}%`)
+            }
+          }
+        }
+      } finally {
+        fileStream.end()
+        await new Promise((resolve, reject) => {
+          fileStream.on('finish', resolve)
+          fileStream.on('error', reject)
+        })
+      }
       log.info('[auto-updater] update-downloaded:', installerPath)
 
       // Prompt user
@@ -194,13 +220,26 @@ function setupNativeNetUpdater (saveSession) {
             })
             child.unref()
           } else if (process.platform === 'linux') {
-            // Replace the running AppImage with the downloaded one
+            // Replace the running AppImage with the downloaded one.
+            // Linux blocks overwriting a FUSE-mounted file (ETXTBSY),
+            // but allows renaming it — the kernel tracks by inode.
             const currentAppImage = process.env.APPIMAGE
             if (currentAppImage) {
+              const backupPath = currentAppImage + '.bak'
+              try {
+                if (fs.existsSync(backupPath)) fs.unlinkSync(backupPath)
+              } catch (_) {}
+              fs.renameSync(currentAppImage, backupPath)
               fs.copyFileSync(installerPath, currentAppImage)
               fs.chmodSync(currentAppImage, 0o755)
+              try {
+                fs.unlinkSync(backupPath)
+              } catch (_) {}
+              // app.relaunch() doesn't work reliably with FUSE-mounted AppImages.
+              // Spawn the new AppImage as a detached process instead.
+              const { spawn } = await import('child_process')
+              spawn(currentAppImage, [], { detached: true, stdio: 'ignore' }).unref()
             }
-            app.relaunch()
           }
           app.quit()
         }, saveSession)
@@ -261,6 +300,15 @@ function setupAutoUpdater (saveSession) {
       log.info('[auto-updater] Skipping: Linux non-AppImage build updates via the system package manager')
       return
     }
+    // Clean up leftover .bak from a previous update that couldn't delete
+    // it while the old AppImage was still FUSE-mounted.
+    try {
+      const bak = process.env.APPIMAGE + '.bak'
+      if (fs.existsSync(bak)) {
+        fs.unlinkSync(bak)
+        log.info('[auto-updater] Cleaned up leftover backup:', bak)
+      }
+    } catch (_) {}
     setupNativeNetUpdater(saveSession)
     return
   }

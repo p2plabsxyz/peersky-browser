@@ -352,10 +352,12 @@ app.on('before-quit', async (event) => {
     // Session was already saved before quitAndInstall. Hard-exit now, since
     // process.exit hangs on p2p native handles.
     log.info('[quit] Update install — exiting')
-    if (process.platform === 'win32') {
-      app.exit(0)
-    } else {
+    if (process.platform === 'darwin') {
+      // macOS: Squirrel handles restart externally, so SIGKILL is safe.
       process.kill(process.pid, 'SIGKILL')
+    } else {
+      // Windows/Linux: app.exit(0) allows app.relaunch() to fire.
+      app.exit(0)
     }
     return
   }
