@@ -135,13 +135,19 @@ describe('auto-updater', function () {
     expect(log.info.calledWithMatch(/package manager/)).to.equal(true)
   })
 
-  it('skips when disabled in user settings', async function () {
+  it('skips periodic checks when disabled in user settings but initializes updater', async function () {
+    clock = sinon.useFakeTimers()
     const { module, autoUpdater, log } = await loadAutoUpdater({ autoUpdateEnabled: false })
 
     withPlatform('darwin', () => module.setupAutoUpdater())
 
-    expect(autoUpdater.setFeedURL.called).to.equal(false)
-    expect(log.info.calledWithMatch(/disabled in user settings/)).to.equal(true)
+    // Updater is initialized (manual button works)
+    expect(autoUpdater.setFeedURL.called).to.equal(true)
+    expect(log.info.calledWithMatch(/manual check still available/)).to.equal(true)
+
+    // But no periodic checks are scheduled
+    clock.tick(10000)
+    expect(autoUpdater.checkForUpdates.called).to.equal(false)
   })
 
   it('configures a JSON feed URL pointing at the configured repo and version', async function () {
@@ -174,7 +180,7 @@ describe('auto-updater', function () {
     ])
   })
 
-  it('checks after a 10s startup delay, then on a 1h interval', async function () {
+  it('checks after a 10s startup delay, then on a 24h interval', async function () {
     clock = sinon.useFakeTimers()
     const { module, autoUpdater } = await loadAutoUpdater()
 
@@ -186,10 +192,10 @@ describe('auto-updater', function () {
     clock.tick(10000)
     expect(autoUpdater.checkForUpdates.callCount).to.equal(1)
 
-    clock.tick(60 * 60 * 1000)
+    clock.tick(24 * 60 * 60 * 1000)
     expect(autoUpdater.checkForUpdates.callCount).to.equal(2)
 
-    clock.tick(60 * 60 * 1000)
+    clock.tick(24 * 60 * 60 * 1000)
     expect(autoUpdater.checkForUpdates.callCount).to.equal(3)
   })
 
@@ -262,7 +268,7 @@ describe('auto-updater', function () {
       expect(netFetch.called).to.equal(true)
     })
 
-    it('checks after a 10s startup delay, then on a 1h interval', async function () {
+    it('checks after a 10s startup delay, then on a 24h interval', async function () {
       clock = sinon.useFakeTimers()
       const { module, netFetch } = await loadAutoUpdater()
 
@@ -273,7 +279,7 @@ describe('auto-updater', function () {
       await clock.tickAsync(10000)
       expect(netFetch.callCount).to.equal(1)
 
-      await clock.tickAsync(60 * 60 * 1000)
+      await clock.tickAsync(24 * 60 * 60 * 1000)
       expect(netFetch.callCount).to.equal(2)
     })
 
