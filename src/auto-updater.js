@@ -366,7 +366,16 @@ async function checkForUpdatesNow () {
       }
       const onNotAvail = () => cleanup('up-to-date')
       const onDownloaded = () => cleanup('update-available')
-      const onError = () => cleanup('error')
+      const onError = (err) => {
+        // Squirrel.Mac fires an error (instead of update-not-available) when
+        // update.electronjs.org returns 204 No Content (i.e. already on latest).
+        const msg = err?.message || String(err)
+        if (msg.includes('invalid response') || msg.includes('No update available')) {
+          cleanup('up-to-date')
+        } else {
+          cleanup('error')
+        }
+      }
       nativeUpdater.once('update-not-available', onNotAvail)
       nativeUpdater.once('update-downloaded', onDownloaded)
       nativeUpdater.once('error', onError)
