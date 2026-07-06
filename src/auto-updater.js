@@ -9,7 +9,7 @@ const UPDATE_HOST = 'https://update.electronjs.org'
 const UPDATE_REPO = 'p2plabsxyz/peersky-browser'
 const STARTUP_DELAY_MS = 10000
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000
-const FORCE_EXIT_TIMEOUT_MS = 3000
+const FORCE_EXIT_TIMEOUT_MS = 6000
 
 // Holds a reference to the check function so it can be triggered manually
 // from the Settings UI (via IPC). Set by setupMacUpdater / setupNativeNetUpdater.
@@ -224,15 +224,27 @@ function setupNativeNetUpdater (saveSession) {
       const doInstall = async () => {
         await installUpdateAndQuit(async () => {
           if (process.platform === 'win32') {
-            // Launch the NSIS installer as a detached process so it survives
-            // after the app exits. The installer waits for file locks to
-            // release, then replaces the app files.
+            // Launch NSIS installer via a hidden VBScript that polls until this
+            // process exits, avoiding file-lock errors during uninstall.
             const { spawn } = await import('child_process')
-            const child = spawn(installerPath, ['/S', '--force-run'], {
+            const pid = process.pid
+            const vbsPath = path.join(os.tmpdir(), 'peersky-update', 'install.vbs')
+            const vbsContent = [
+              'Set wmi = GetObject("winmgmts:")',
+              `pid = "${pid}"`,
+              'For i = 0 To 29',
+              '  Set procs = wmi.ExecQuery("SELECT ProcessId FROM Win32_Process WHERE ProcessId=" & pid)',
+              '  If procs.Count = 0 Then Exit For',
+              '  WScript.Sleep 1000',
+              'Next',
+              'WScript.Sleep 2000',
+              `CreateObject("WScript.Shell").Run """${installerPath}""" & " /S --force-run", 0, False`
+            ].join('\r\n') + '\r\n'
+            fs.writeFileSync(vbsPath, vbsContent)
+            spawn('wscript.exe', [vbsPath], {
               detached: true,
               stdio: 'ignore'
-            })
-            child.unref()
+            }).unref()
           } else if (process.platform === 'linux') {
             // Replace the running AppImage with the downloaded one.
             // Linux blocks overwriting a FUSE-mounted file (ETXTBSY),
