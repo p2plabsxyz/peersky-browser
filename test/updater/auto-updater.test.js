@@ -52,12 +52,32 @@ function makeNetFetch (response = { ok: false, status: 404 }) {
 }
 
 async function loadAutoUpdater ({ isPackaged = true, version = '1.0.0', autoUpdateEnabled = true, fetchResponse } = {}) {
-  // Electron's native autoUpdater (macOS path).
+  // Electron's native autoUpdater (macOS path) with EventEmitter-like support.
+  const listeners = {}
   const autoUpdater = {
     setFeedURL: sinon.spy(),
     checkForUpdates: sinon.spy(),
     quitAndInstall: sinon.spy(),
-    on: sinon.spy()
+    on: sinon.spy(function (event, handler) {
+      if (!listeners[event]) listeners[event] = []
+      listeners[event].push({ handler, once: false })
+    }),
+    once: sinon.spy(function (event, handler) {
+      if (!listeners[event]) listeners[event] = []
+      listeners[event].push({ handler, once: true })
+    }),
+    removeListener: sinon.spy(function (event, handler) {
+      if (listeners[event]) {
+        listeners[event] = listeners[event].filter(l => l.handler !== handler)
+      }
+    }),
+    emit: (event, ...args) => {
+      if (listeners[event]) {
+        const toCall = [...listeners[event]]
+        listeners[event] = listeners[event].filter(l => !l.once)
+        toCall.forEach(l => l.handler(...args))
+      }
+    }
   }
 
   const netFetch = makeNetFetch(fetchResponse)
@@ -252,6 +272,99 @@ describe('auto-updater', function () {
 
     expect(dialog.showMessageBoxSync.calledOnce).to.equal(true)
     expect(autoUpdater.quitAndInstall.called).to.equal(false)
+  })
+
+  describe('checkForUpdatesNow (manual check from Settings)', function () {
+    it('returns not-initialized when updater is not set up', async function () {
+      const { module } = await loadAutoUpdater({ isPackaged: false })
+
+      withPlatform('darwin', () => module.setupAutoUpdater())
+
+      const result = await module.checkForUpdatesNow()
+      expect(result).to.equal('not-initialized')
+    })
+
+    it('returns up-to-date on macOS when update-not-available fires', async function () {
+      const { module, autoUpdater } = await loadAutoUpdater()
+
+      withPlatform('darwin', () => module.setupAutoUpdater())
+
+      // Simulate Squirrel responding with no update
+      autoUpdater.checkForUpdates = sinon.spy(() => {
+        autoUpdater.emit('update-not-available')
+      })
+
+      const result = await withPlatform('darwin', () => module.checkForUpdatesNow())
+      expect(result).to.equal('up-to-date')
+    })
+
+    it('returns up-to-date on macOS when Squirrel fires invalid response error', async function () {
+      const { module, autoUpdater } = await loadAutoUpdater()
+
+      withPlatform('darwin', () => module.setupAutoUpdater())
+
+      // Simulate Squirrel error when already on latest (204 from update server)
+      autoUpdater.checkForUpdates = sinon.spy(() => {
+        autoUpdater.emit('error', new Error('Update check failed. The server sent an invalid response. Try again later.'))
+      })
+
+      const result = await withPlatform('darwin', () => module.checkForUpdatesNow())
+      expect(result).to.equal('up-to-date')
+    })
+
+    it('returns error on macOS for genuine errors', async function () {
+      const { module, autoUpdater } = await loadAutoUpdater()
+
+      withPlatform('darwin', () => module.setupAutoUpdater())
+
+      autoUpdater.checkForUpdates = sinon.spy(() => {
+        autoUpdater.emit('error', new Error('Network connection lost'))
+      })
+
+      const result = await withPlatform('darwin', () => module.checkForUpdatesNow())
+      expect(result).to.equal('error')
+    })
+
+    it('re-shows prompt from pending update when user previously clicked Later', async function () {
+      const { module, autoUpdater, dialog } = await loadAutoUpdater()
+      dialog.showMessageBoxSync.returns(1) // user clicks "Later"
+
+      withPlatform('darwin', () => module.setupAutoUpdater())
+
+      // Trigger update-downloaded so _pendingUpdate is stored
+      const downloadedHandler = autoUpdater.on
+        .getCalls()
+        .find((c) => c.args[0] === 'update-downloaded').args[1]
+      await downloadedHandler({}, 'notes', '2.0.0')
+
+      expect(dialog.showMessageBoxSync.callCount).to.equal(1)
+
+      // Now call checkForUpdatesNow - should re-show prompt without re-checking
+      dialog.showMessageBoxSync.returns(1) // still clicks Later
+      const result = await module.checkForUpdatesNow()
+
+      expect(result).to.equal('update-available')
+      expect(dialog.showMessageBoxSync.callCount).to.equal(2)
+      // Should NOT have called checkForUpdates again
+      expect(autoUpdater.checkForUpdates.called).to.equal(false)
+    })
+
+    it('returns up-to-date on Windows/Linux when already on latest', async function () {
+      clock = sinon.useFakeTimers()
+      const { module } = await loadAutoUpdater({
+        version: '1.0.0',
+        fetchResponse: { ok: true, status: 200, body: { tag_name: 'v1.0.0', assets: [] } }
+      })
+
+      withPlatform('win32', () => module.setupAutoUpdater())
+
+      // Wait for initial scheduled check to complete
+      await clock.tickAsync(10000)
+
+      // Manual check should return up-to-date
+      const result = await withPlatform('win32', () => module.checkForUpdatesNow())
+      expect(result).to.equal('up-to-date')
+    })
   })
 
   describe('Windows (net.fetch updater)', function () {
