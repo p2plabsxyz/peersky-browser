@@ -20,103 +20,30 @@ const log = createLogger('protocols:ipfs')
 
 // Shared references to the running Helia node, set by the first createHandler.
 // Used by the backup feature to publish/fetch content without a second node.
+import { _suspendIPFS, _resumeIPFS, _ipfsPublishFile, _ipfsFetchToFile, provideCidWithRetry } from '../backup/ipfs-backup.js'
+
 let sharedNode = null
 let sharedUnixFs = null
-
-async function provideCidWithRetry (node, cid, options = {}) {
-  const {
-    maxAttempts = 3,
-    retryDelayMs = 10_000,
-    timeoutMs,
-    label = cid.toString(),
-    startTime = Date.now()
-  } = options
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const peerCount = typeof node.libp2p.getPeers === 'function' ? node.libp2p.getPeers().length : 0
-    log.info(`Providing ${label} (attempt ${attempt}/${maxAttempts}, peers: ${peerCount})`)
-    try {
-      const provideOptions = timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : undefined
-      await node.libp2p.contentRouting.provide(cid, provideOptions)
-      log.info(`Provided ${label} in ${Date.now() - startTime}ms`)
-      return true
-    } catch (err) {
-      log.warn(`Provide attempt ${attempt} failed for ${label}: ${err.message}`)
-      if (attempt < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, retryDelayMs))
-      }
-    }
-  }
-
-  log.error(`Failed to provide ${label} after ${maxAttempts} attempts`)
-  return false
-}
+let isSuspended = false
 
 export async function suspendIPFS () {
-  if (sharedNode) {
-    log.info('Stopping IPFS node for backup...')
-    await sharedNode.stop()
-  }
+  isSuspended = true
+  await _suspendIPFS(sharedNode)
 }
 
 export async function resumeIPFS () {
-  if (sharedNode) {
-    log.info('Resuming IPFS node after backup...')
-    await sharedNode.start()
-  }
+  isSuspended = false
+  await _resumeIPFS(sharedNode)
 }
 
-// Publish a file to IPFS as a raw UnixFS byte stream and return its CID string.
-// The CID resolves directly via ipfs://<cid> (no directory wrapping).
 export async function ipfsPublishFile (filePath) {
-  if (!sharedUnixFs || !sharedNode) throw new Error('IPFS node is not ready yet')
-  const { createReadStream } = await import('fs')
-  const startTime = Date.now()
-  const cid = await sharedUnixFs.addByteStream(createReadStream(filePath))
-  try {
-    for await (const pinned of sharedNode.pins.add(cid, { recursive: true })) {
-      if (!pinned) continue
-    }
-  } catch (e) {
-    log.warn(`Failed to pin backup CID ${cid.toString()}: ${e.message}`)
-  }
-
-  provideCidWithRetry(sharedNode, cid, {
-    label: cid.toString(),
-    startTime,
-    timeoutMs: 60_000
-  }).catch((err) => {
-    log.warn(`Failed to provide backup CID ${cid.toString()}: ${err.message}`)
-  })
-
-  return cid.toString()
+  if (isSuspended) throw new Error('IPFS is currently suspended for backup')
+  return _ipfsPublishFile(sharedNode, sharedUnixFs, filePath)
 }
 
 export async function ipfsFetchToFile (cidStr, destPath, onStatus) {
-  if (!sharedUnixFs) throw new Error('IPFS node is not ready yet')
-  const { createWriteStream } = await import('fs')
-  const { pipeline } = await import('stream/promises')
-  const { Readable } = await import('stream')
-  const cid = CID.parse(cidStr)
-
-  let totalBytes = 0
-  const notify = (msg) => {
-    if (typeof onStatus === 'function') onStatus(msg)
-  }
-
-  async function * trackProgress (iterable) {
-    for await (const chunk of iterable) {
-      totalBytes += chunk.length
-      notify(`Downloading from IPFS... ${totalBytes} bytes received`)
-      yield chunk
-    }
-  }
-
-  await pipeline(
-    Readable.from(trackProgress(sharedUnixFs.cat(cid))),
-    createWriteStream(destPath)
-  )
-  return destPath
+  if (isSuspended) throw new Error('IPFS is currently suspended for backup')
+  return _ipfsFetchToFile(sharedUnixFs, cidStr, destPath, onStatus)
 }
 
 const P2P_APP_NAMES = {
@@ -191,6 +118,9 @@ export async function createHandler (ipfsOptions, session, securityOptions = {})
   let node, unixFileSystem, name, dnsLinkResolver
 
   async function initializeIPFSNode () {
+    if (sharedNode || sharedUnixFs) {
+      log.warn('IPFS node already initialized! Overwriting existing references...')
+    }
     log.info('Initializing IPFS node...')
     const startTime = Date.now()
     node = await createNode(ipfsOptions)
