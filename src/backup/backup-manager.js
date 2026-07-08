@@ -99,7 +99,15 @@ class BackupManager {
         const src = path.join(tempDir, name)
         const target = path.join(dest, name)
         await fs.rm(target, { recursive: true, force: true }).catch(() => {})
-        await fsExtra.copy(src, target, { overwrite: true })
+        await fsExtra.copy(src, target, {
+          overwrite: true,
+          filter: (srcPath) => {
+            const base = path.basename(srcPath)
+            if (base === 'LOCK' || base === 'repo.lock' || base === '.DS_Store' || base === 'LOG' || base === 'LOG.old') return false
+            if (base.endsWith('.lock')) return false
+            return true
+          }
+        })
       }
 
       // Drop the hypercore-storage device file carried in the bundle. Its
