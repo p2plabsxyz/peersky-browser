@@ -12,6 +12,8 @@ import { createLogger } from '../logger.js'
 import { hyperCache, saveHyperCache } from './config.js'
 import { enforceExtensionWritePolicy } from '../extensions/request-policy.js'
 
+import { _suspendHyper, _hyperPublishFile, _hyperFetchToFile } from '../backup/hyper-backup.js'
+
 const log = createLogger('protocols:hyper')
 
 // Single SDK and swarm for the app lifecycle (hyper:// browsing + chat share the same swarm).
@@ -112,8 +114,6 @@ async function initializeHyperSDK (options) {
   log.info('Hyper SDK initialized.')
   return fetch
 }
-
-import { _suspendHyper, _hyperPublishFile, _hyperFetchToFile } from '../backup/hyper-backup.js'
 
 // Close the corestore entirely so its RocksDB state is strictly frozen on disk.
 export async function suspendHyper () {

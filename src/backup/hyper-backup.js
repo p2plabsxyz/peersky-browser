@@ -31,7 +31,7 @@ export async function _hyperPublishFile (fetchFn, filePath, fileName = 'backup.z
     const match = keyText.match(/([0-9a-zA-Z]{52,64})/)
     driveKey = match ? match[1] : null
   }
-  
+
   if (!driveKey) throw new Error(`Could not resolve Hyperdrive key. Response status: ${keyResp.status}, text: ${keyText}`)
 
   const { createReadStream } = await import('fs')
@@ -57,7 +57,7 @@ export async function _hyperFetchToFile (fetchFn, waitForDriveReady, address, de
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     // Wait for drive readiness INSIDE the retry loop so peers are re-discovered
     await waitForDriveReady(address)
-    
+
     const resp = await fetchFn(address)
     if (resp.ok && resp.body) {
       const { createWriteStream } = await import('fs')

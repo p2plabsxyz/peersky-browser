@@ -15,12 +15,8 @@ import { peerIdFromString, peerIdFromCID } from '@libp2p/peer-id'
 import { ensCache, saveEnsCache, RPC_URL, ipfsCache, saveIpfsCache } from './config.js'
 import { JsonRpcProvider } from 'ethers'
 import { enforceExtensionWritePolicy } from '../extensions/request-policy.js'
-
-const log = createLogger('protocols:ipfs')
-
-// Shared references to the running Helia node, set by the first createHandler.
-// Used by the backup feature to publish/fetch content without a second node.
 import { _suspendIPFS, _resumeIPFS, _ipfsPublishFile, _ipfsFetchToFile, provideCidWithRetry } from '../backup/ipfs-backup.js'
+const log = createLogger('protocols:ipfs')
 
 let sharedNode = null
 let sharedUnixFs = null
