@@ -241,11 +241,6 @@
     "sinon": "^21.0.2",
     "standard": "^17.1.2"
   },
-  "overrides": {
-    "hypercore": "^11.33.1",
-    "corestore": "^7.10.1",
-    "hypercore-storage": "^3.1.1"
-  },
   "standard": {
     "env": [
       "mocha",

@@ -30,6 +30,8 @@ async function safeShutdownAndExit (code) {
   } catch {
   }
   app.exit(code)
+  // Electron's app.exit() sometimes fails to forcefully kill the process in headless CI environments.
+  // This process.exit fallback ensures the test runner doesn't hang indefinitely.
   setTimeout(() => process.exit(code), 3000)
 }
 
