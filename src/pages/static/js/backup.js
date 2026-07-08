@@ -173,6 +173,9 @@ cidDownloadBtn?.addEventListener('click', async () => {
       showStatus('Restore complete. Restart to apply the restored data.', 'success')
       if (window.confirm('Restore complete. Restart Peersky now?')) {
         await api.relaunch()
+      } else {
+        showStatus('Browser must restart to apply backup. Forcing restart in 5 seconds...', 'error')
+        setTimeout(() => api.relaunch(), 5000)
       }
     } else {
       showStatus(`Restore failed: ${res.error}`, 'error')
@@ -202,6 +205,9 @@ restoreBtn?.addEventListener('click', async () => {
       showStatus('Restore complete. Restart to apply the restored data.', 'success')
       if (window.confirm('Restore complete. Restart Peersky now?')) {
         await api.relaunch()
+      } else {
+        showStatus('Browser must restart to apply backup. Forcing restart in 5 seconds...', 'error')
+        setTimeout(() => api.relaunch(), 5000)
       }
     } else {
       showStatus(`Restore failed: ${res.error}`, 'error')
