@@ -1,6 +1,6 @@
 {
   "name": "peersky-browser",
-  "version": "1.0.0-beta.26",
+  "version": "1.0.0-beta.27",
   "description": "A minimal local-first p2p web browser: access, communicate, and publish offline.",
   "keywords": [
     "peersky",
@@ -17,7 +17,8 @@
   "repository": "https://github.com/p2plabsxyz/peersky-browser",
   "scripts": {
     "test": "npm run test:all",
-    "test:all": "npm run test:backup && npm run test:p2p && npm run test:p2p:e2e && npm run test:extensions && npm run test:security && npm run test:integration",
+    "test:all": "npm run test:backup && npm run test:p2p && npm run test:p2p:e2e && npm run test:extensions && npm run test:security && npm run test:updater && npm run test:integration",
+    "test:updater": "mocha \"test/updater/**/*.test.js\" --timeout 20000 --exit",
     "test:integration": "mocha \"test/integration/**/*.test.js\" --timeout 300000",
     "test:p2pmd:gutter:e2e": "mocha \"test/integration/p2pmd-gutter-sync.e2e.test.js\" --timeout 300000 --exit",
     "test:p2p": "mocha \"test/p2p/ipfs-handler.test.js\" \"test/p2p/hyper-handler.test.js\" \"test/p2p/hs-handler.test.js\" \"test/p2p/bittorrent-handler.test.js\" --timeout 20000 --exit",
@@ -29,8 +30,12 @@
     "coverage": "cross-env NODE_OPTIONS=--experimental-loader=@istanbuljs/esm-loader-hook nyc mocha \"test/p2p/ipfs-handler.test.js\" \"test/p2p/hyper-handler.test.js\" \"test/p2p/hs-handler.test.js\" \"test/p2p/bittorrent-handler.test.js\" \"test/extensions/**/*.test.js\" \"test/security/**/*.test.js\" --timeout 20000",
     "coverage:report": "nyc report --reporter=text-summary --reporter=html --reporter=lcov",
     "start": "electron .",
+    "start:test-update": "cross-env PEERSKY_TEST_UPDATE=1 electron .",
     "postinstall": "git submodule update --init --recursive --remote --merge && node scripts/postinstall.js",
     "build": "electron-builder build --publish never",
+    "build:dmg": "electron-builder build --mac dmg zip --publish never",
+    "build:mas": "electron-builder build --mac mas --publish never",
+    "release": "electron-builder build --mac dmg zip --publish always",
     "build-all": "electron-builder build -mwl",
     "lint": "standard",
     "lint:fix": "standard --fix"
@@ -60,19 +65,26 @@
     ],
     "mac": {
       "artifactName": "${name}-${version}-${os}-${arch}.${ext}",
+      "hardenedRuntime": true,
       "gatekeeperAssess": false,
-      "identity": null,
+      "entitlements": "buildResources/entitlements.mac.plist",
+      "entitlementsInherit": "buildResources/entitlements.mac.plist",
+      "notarize": true,
       "extendInfo": {
         "NSMicrophoneUsageDescription": "The current page is asking to use your microphone",
         "NSCameraUsageDescription": "The current page is asking to use your camera",
-        "NSLocationWhenInUseUsageDescription": "The current page is asking to access your location",
-        "com.apple.security.device.audio-input": true,
-        "com.apple.security.device.camera": true,
-        "com.apple.security.personal-information.location": true
+        "NSLocationWhenInUseUsageDescription": "The current page is asking to access your location"
       },
       "target": [
         {
-          "target": "default",
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
           "arch": [
             "x64",
             "arm64"
@@ -80,6 +92,20 @@
         }
       ],
       "icon": "./public/icon.icns"
+    },
+    "mas": {
+      "hardenedRuntime": false,
+      "entitlements": "buildResources/entitlements.mas.plist",
+      "entitlementsInherit": "buildResources/entitlements.mas.inherit.plist",
+      "target": [
+        {
+          "target": "mas",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
     },
     "win": {
       "target": [
@@ -181,7 +207,6 @@
     "electron-chrome-web-store": "^0.13.0",
     "electron-find": "^1.0.7",
     "electron-log": "^5.4.3",
-    "electron-updater": "^6.8.3",
     "ethers": "^6.13.4",
     "fs-extra": "^11.2.0",
     "helia": "^6.0.20",
