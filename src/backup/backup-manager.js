@@ -52,9 +52,8 @@ class BackupManager {
   // Create a .zip of persistent data at outPath. onProgress: ({processedBytes,...}).
   async createBackup (outPath, onProgress) {
     log.info(`Creating backup at ${outPath}`)
-    // Freeze the hyper corestore and IPFS on disk so the worker copies a consistent
-    // RocksDB/LevelDB; otherwise live compaction yields a manifest that references
-    // SST files missing from the bundle. Always resumed, even on failure.
+    // Suspend P2P stores so the worker sees a consistent snapshot on disk.
+    // Services are always resumed in the finally block, even on failure.
     await suspendHyper()
     await suspendIPFS()
     try {
@@ -77,9 +76,8 @@ class BackupManager {
     return readManifest(zipPath)
   }
 
-  // Restore a backup: extract to temp, verify checksums, then overwrite targets
-  // in userData. Existing ipfs/ and hyper/ dirs are removed first so old and new
-  // repositories never mix. A restart is required to re-init P2P nodes.
+  // Extract, verify, then overwrite userData targets from the backup bundle.
+  // A full app restart is required after restore to re-init P2P nodes.
   async restoreBackup (zipPath, onProgress) {
     const dest = userDataDir()
     const tempDir = path.join(os.tmpdir(), `peersky-restore-${Date.now()}`)
@@ -109,9 +107,8 @@ class BackupManager {
         })
       }
 
-      // Drop the hypercore-storage device file carried in the bundle. Its
-      // recorded inode/xattr never survive a copy, so the move-guard would
-      // abort the process on next launch; it is rebuilt cleanly on open.
+      // Drop CORESTORE — its inode/xattr never survive a copy and it is
+      // rebuilt cleanly on next launch.
       await fs.rm(path.join(dest, 'hyper', 'CORESTORE'), { force: true }).catch(() => {})
 
       resumeServices = false

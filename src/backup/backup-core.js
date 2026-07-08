@@ -8,9 +8,8 @@ export const BACKUP_VERSION = '1.0.0'
 
 export const MANIFEST_NAME = 'manifest.json'
 
-// Top-level entries copied into and restored from a backup bundle.
-// Files are optional and skipped when missing. Directories are streamed whole,
-// minus the lock/in-flight files listed in SKIP_NAMES.
+// Top-level entries backed up and restored. Files are optional;
+// directories are streamed whole minus the files listed in SKIP_NAMES.
 export const BACKUP_TARGETS = [
   { name: 'lastOpened.json', type: 'file' },
   { name: 'tabs.json', type: 'file' },
