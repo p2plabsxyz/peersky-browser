@@ -17,16 +17,15 @@ export async function _hyperPublishFile (fetchFn, filePath, fileName = 'backup.z
   const keyText = await keyResp.text()
   log.info(`hyperPublishFile ?key= status: ${keyResp.status}, text: ${keyText}`)
 
-  // Parse the key directly instead of using a brittle regex
+  // hypercore-fetch returns the key as a full hyper:// URL, e.g. hyper://key/
+  // Extract just the hostname (the actual key) from the response.
   let driveKey = null
   try {
-    const parsed = JSON.parse(keyText)
-    driveKey = parsed.key || keyText.trim()
-  } catch (e) {
-    driveKey = keyText.trim()
-  }
+    const url = new URL(keyText.trim())
+    if (url.protocol === 'hyper:') driveKey = url.hostname
+  } catch (e) {}
 
-  // Fallback to regex only if the parsed key is malformed
+  // Fallback: extract alphanumeric key via regex if URL parsing fails
   if (!driveKey || driveKey.length < 52) {
     const match = keyText.match(/([0-9a-zA-Z]{52,64})/)
     driveKey = match ? match[1] : null
