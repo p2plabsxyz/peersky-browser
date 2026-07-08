@@ -23,10 +23,8 @@ export const BACKUP_TARGETS = [
   { name: 'hyper', type: 'dir' }
 ]
 
-// Live database lock and in-flight files that must never enter the bundle.
-// The hypercore-storage device file (CORESTORE) is intentionally left in so
-// manifest hashes stay stable across versions; it is dropped on restore
-// instead, since its recorded inode/xattr never survive a copy anyway.
+// Skip live DB lock/log files. CORESTORE is left in to stabilize manifest
+// hashes, but is explicitly dropped during restore in backup-manager.js.
 const SKIP_NAMES = new Set(['LOCK', 'repo.lock', '.DS_Store', 'LOG', 'LOG.old'])
 
 function shouldSkipEntry (name) {
@@ -87,7 +85,8 @@ async function sha256Dir (dir) {
   return hash.digest('hex')
 }
 
-// Legacy compatibility for backups created before LOG and LOG.old were added to SKIP_NAMES
+// Legacy compatibility for backups created before LOG and LOG.old were added to SKIP_NAMES.
+// Safe to remove after version 2.0 when all users have re-created backups.
 async function listDirFilesOld (dir, baseDir = dir) {
   const out = []
   const entries = await fs.readdir(dir, { withFileTypes: true })
