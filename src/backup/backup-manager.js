@@ -94,7 +94,6 @@ class BackupManager {
       const manifest = await readManifest(zipPath)
       await verifyManifest(tempDir, manifest)
 
-      resumeServices = false
       for (const name of Object.keys(manifest.files)) {
         const src = path.join(tempDir, name)
         const target = path.join(dest, name)
@@ -114,6 +113,8 @@ class BackupManager {
       // recorded inode/xattr never survive a copy, so the move-guard would
       // abort the process on next launch; it is rebuilt cleanly on open.
       await fs.rm(path.join(dest, 'hyper', 'CORESTORE'), { force: true }).catch(() => {})
+
+      resumeServices = false
 
       log.info('Backup restored; restart required')
       return { success: true, requiresRestart: true, manifest }

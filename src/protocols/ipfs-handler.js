@@ -81,10 +81,12 @@ export async function ipfsPublishFile (filePath) {
     log.warn(`Failed to pin backup CID ${cid.toString()}: ${e.message}`)
   }
 
-  await provideCidWithRetry(sharedNode, cid, {
+  provideCidWithRetry(sharedNode, cid, {
     label: cid.toString(),
     startTime,
     timeoutMs: 60_000
+  }).catch((err) => {
+    log.warn(`Failed to provide backup CID ${cid.toString()}: ${err.message}`)
   })
 
   return cid.toString()

@@ -958,7 +958,7 @@ ipcMain.handle('onboarding-import-data', async (event, dataStr) => {
 
         windowStates.push({
           windowId,
-          url: activeTab.url,
+          url: activeTab && activeTab.url ? activeTab.url : 'peersky://home',
           position: [100, 100],
           size: [1280, 800]
         })
@@ -966,7 +966,7 @@ ipcMain.handle('onboarding-import-data', async (event, dataStr) => {
         const mappedTabs = win.tabs.map((tab, idx) => {
           let protocol = 'https:'
           try {
-            const parsed = new URL(tab.url)
+            const parsed = new URL(tab.url || 'peersky://home')
             protocol = parsed.protocol
           } catch (_) {}
 

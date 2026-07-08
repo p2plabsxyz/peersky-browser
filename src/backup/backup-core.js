@@ -145,20 +145,28 @@ export async function createBackupZip (userDataDir, outPath, options = {}) {
   await fs.mkdir(path.dirname(outPath), { recursive: true })
 
   return new Promise((resolve, reject) => {
-    const output = createWriteStream(outPath)
+    const tempPath = outPath + '.tmp'
+    const output = createWriteStream(tempPath)
     const archive = archiver('zip', { zlib: { level: 6 } })
 
     let settled = false
-    const fail = (err) => {
+    const fail = async (err) => {
       if (settled) return
       settled = true
+      await fs.rm(tempPath, { force: true }).catch(() => {})
       reject(err)
     }
 
-    output.on('close', () => {
+    output.on('close', async () => {
       if (settled) return
       settled = true
-      resolve({ filePath: outPath, bytes: archive.pointer(), manifest })
+      try {
+        await fs.rename(tempPath, outPath)
+        resolve({ filePath: outPath, bytes: archive.pointer(), manifest })
+      } catch (err) {
+        await fs.rm(tempPath, { force: true }).catch(() => {})
+        reject(err)
+      }
     })
     output.on('error', fail)
     archive.on('warning', (err) => {
