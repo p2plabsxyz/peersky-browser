@@ -191,7 +191,11 @@ app.whenReady().then(async () => {
 
     if (args.mode === 'uninstall') {
       if (extension) {
-        await extensionManager.uninstallExtension(extension.id)
+        await withTimeout(
+          extensionManager.uninstallExtension(extension.id),
+          30000,
+          'uninstall extension'
+        )
       }
       emitResult({ ok: true, mode: args.mode, uninstalled: !!extension })
       await safeShutdownAndExit(0)
