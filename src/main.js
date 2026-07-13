@@ -28,6 +28,7 @@ import { setupExtensionIpcHandlers } from './extensions/extensions-ipc.js'
 import { getBrowserSession, usePersist } from './session.js'
 import { setupPermissionHandler } from './permissions.js'
 import { setupP2pmdPdfExportIpc } from './pages/p2p/p2pmd/pdf-export-ipc.js'
+import { trackerBlocker } from './tracker-blocker.js'
 
 const log = createLogger('main')
 
@@ -168,7 +169,7 @@ app.whenReady().then(async () => {
   // Get consistent session for protocols and extensions
   const userSession = getBrowserSession()
   await setupProtocols(userSession)
-  installExtensionWebRequestBridge(userSession)
+  installExtensionWebRequestBridge(userSession, trackerBlocker)
   setupBittorrentIpc()
 
   userSession.on('will-download', (event, item, sessionWebContents) => {
@@ -255,6 +256,20 @@ app.whenReady().then(async () => {
     log.info('Extension IPC handlers registered')
   } catch (error) {
     log.error('Failed to initialize extension system:', error)
+  }
+
+  // Supplemental blocking when extension MV3 service workers fail to start in Electron.
+  try {
+    let ghosteryRulesRoot = null
+    for (const ext of extensionManager.loadedExtensions.values()) {
+      if (/ghostery/i.test(ext.displayName || ext.name || '')) {
+        ghosteryRulesRoot = ext.installedPath
+        break
+      }
+    }
+    await trackerBlocker.init(ghosteryRulesRoot)
+  } catch (error) {
+    log.error('Failed to initialize tracker blocker:', error)
   }
 
   // Check for --new-window argument (from Windows taskbar jump list)
@@ -459,7 +474,8 @@ async function setupProtocols (session) {
   sessionProtocol.handle('magnet', bittorrentProtocolHandler)
 }
 
-function installExtensionWebRequestBridge (session) {
+function installExtensionWebRequestBridge (session, blocker) {
+  const tb = blocker
   const shouldForwardToExtensions = (rawUrl) => {
     const url = typeof rawUrl === 'string' ? rawUrl : ''
     if (!url) return false
@@ -479,6 +495,7 @@ function installExtensionWebRequestBridge (session) {
       callback({}) // eslint-disable-line n/no-callback-literal
       return
     }
+
     let result = {}
     try {
       result =
@@ -488,6 +505,11 @@ function installExtensionWebRequestBridge (session) {
     } catch (e) {
       console.warn('[webRequest] onBeforeRequest extension dispatch failed:', e?.message)
     }
+
+    if (!result.cancel && !result.redirectUrl && tb?.shouldBlock(url)) {
+      result = { cancel: true }
+    }
+
     callback(result)
   })
 
