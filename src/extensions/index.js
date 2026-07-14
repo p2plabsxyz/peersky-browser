@@ -514,6 +514,7 @@ class ExtensionManager {
     }
 
     const removePreinstalledRecord = async (ext) => {
+      if (!ext?.id) return
       if (this.session && ext.electronId) {
         try { await this.session.removeExtension(ext.electronId) } catch (_) { }
       }
@@ -591,8 +592,6 @@ class ExtensionManager {
         extData.removable = false
         extData.source = 'preinstalled'
         await this._saveExtensionMetadata(extData)
-        this.loadedExtensions.set(extData.id, extData)
-        await this._writeRegistry()
         log.info('ExtensionManager: Preinstalled extension imported:', extData.displayName || extData.name)
       } catch (err) {
         const ref = entry && (entry.archive || entry.dir || entry.id || 'unknown')

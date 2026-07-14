@@ -26,7 +26,7 @@ const GHOSTERY_DEV_DIST = path.join(PREINSTALLED_DIR, 'ghostery-dist')
 const RULE_FILES = [
   'rule_resources/dnr-tracking.json',
   'rule_resources/dnr-ads.json',
-  'rule_resources/dnr-annoyances.json',
+  'rule_resources/dnr-annoyances.json'
 ]
 
 // Known bare TLD entries that appear in Ghostery's requestDomains but are
@@ -75,7 +75,7 @@ const MISSING_DOMAINS = new Set([
   'tapad.com',
   'sharethis.com',
   'addthis.com',
-  'addthisedge.com',
+  'addthisedge.com'
 ])
 
 // Safety whitelist: never block navigation to these well-known domains.
@@ -101,7 +101,7 @@ const SAFE_DOMAINS = new Set([
   'npmjs.com',
   'docs.npmjs.com',
   'nodejs.org',
-  'developer.mozilla.org',
+  'developer.mozilla.org'
 ])
 
 function resolveRulesRoot (rulesRoot) {
@@ -133,7 +133,7 @@ export class TrackerBlocker {
     for (const relPath of RULE_FILES) {
       const absPath = path.join(root, relPath)
       try {
-        const raw = fs.readFileSync(absPath, 'utf8')
+        const raw = await fs.promises.readFile(absPath, 'utf8')
         const rules = JSON.parse(raw)
         totalRules += rules.length
 
@@ -160,7 +160,7 @@ export class TrackerBlocker {
           // traffic—it only targets the ad path. We only extract patterns
           // where the full urlFilter matches a domain-level request.
           if (c.urlFilter) {
-            let uf = c.urlFilter.toLowerCase()
+            const uf = c.urlFilter.toLowerCase()
             if (uf.startsWith('||') && !uf.includes('*')) {
               // Check if this is a pure domain pattern (no path after domain)
               const afterHost = uf.slice(2) // remove leading ||
@@ -187,7 +187,7 @@ export class TrackerBlocker {
     }
 
     log.info(
-      `Loaded ${totalRules} rules, built blocklist with ${this.#blockedHosts.size} unique hosts in ${Date.now() - start}ms`,
+      `Loaded ${totalRules} rules, built blocklist with ${this.#blockedHosts.size} unique hosts in ${Date.now() - start}ms`
     )
 
     this.#initialized = true
@@ -210,12 +210,10 @@ export class TrackerBlocker {
     }
     if (!host) return false
 
-    // Exact match
-    if (this.#blockedHosts.has(host)) return true
-
-    // Safety check: never block safe domains (search engines, etc.)
-    // or their subdomains.
+    // Never block safelisted domains even if a DNR rule named them.
     if (SAFE_DOMAINS.has(host)) return false
+
+    if (this.#blockedHosts.has(host)) return true
 
     // Subdomain check: walk up the domain hierarchy.
     // Only match parent domains that themselves contain a dot
