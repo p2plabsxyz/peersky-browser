@@ -18,6 +18,7 @@ export const BACKUP_TARGETS = [
   { name: 'hyperCache.json', type: 'file' },
   { name: 'peersky-chat-rooms.json', type: 'file' },
   { name: 'peersky-ports.json', type: 'file' },
+  { name: 'peersky-devices.json', type: 'file' },
   { name: 'ipfs', type: 'dir' },
   { name: 'hyper', type: 'dir' }
 ]

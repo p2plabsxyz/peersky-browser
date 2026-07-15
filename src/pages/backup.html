@@ -95,6 +95,34 @@
         <section class="settings-section">
           <div class="setting-row tall-row">
             <div class="setting-label">
+              Identity transfer
+              <p class="setting-description">Create an encrypted identity transfer for one desktop or one mobile device. The target device public key must come from the device that will import this identity.</p>
+            </div>
+            <div class="setting-control" style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end;">
+              <select id="identity-device-type" class="cid-input" style="width: auto; margin-bottom: 0;">
+                <option value="mobile">Mobile</option>
+                <option value="desktop">Desktop</option>
+              </select>
+              <input type="text" id="identity-target-key" class="cid-input" placeholder="target encryption public key" style="width: 260px; margin-bottom: 0;">
+              <button type="button" id="identity-create" class="btn btn-secondary">Save Zip</button>
+              <button type="button" id="identity-upload-hyper" class="btn btn-secondary">Upload Hyper</button>
+            </div>
+          </div>
+
+          <div class="setting-row tall-row" style="border-top: 1px solid var(--settings-border); margin-top: 16px; padding-top: 16px;">
+            <div class="setting-label">
+              This device import key
+              <p id="identity-device-key" class="setting-description" style="user-select: text; word-break: break-all;">Loading...</p>
+            </div>
+            <div class="setting-control">
+              <button type="button" id="identity-key-copy" class="btn btn-secondary">Copy</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <div class="setting-row tall-row">
+            <div class="setting-label">
               Restore backup from File
               <p class="setting-description">Replace current data with the contents
                 of a local backup .zip. Existing IPFS and Hyper repositories are

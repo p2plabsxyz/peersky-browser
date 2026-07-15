@@ -62,6 +62,53 @@ verified against these checksums before any live data is touched.
 4. A restart is required. Confirm the prompt to relaunch Peersky and load the
    restored data.
 
+## Planned secure identity transfer
+
+The current backup flow is intentionally broad: a user can restore any valid
+backup file or P2P address as many times as they want. Identity transfer should
+be a separate pairing flow because `peersky-ports.json`, PeerChat keys, and
+Hyper/IPFS repositories can carry long-lived private identity material.
+
+The planned flow is:
+
+1. The importing device creates or loads a persistent device keypair and starts
+   a short-lived pairing session.
+2. Peersky renders the pairing session as a QR code for mobile scan, and as a
+   compact manual string for desktop/mobile fallback.
+3. The exporting device reads that QR/string, checks the signed
+   `peersky-devices.json` registry, and refuses identity export if that identity
+   already has a paired device of the requested type.
+4. The devices connect over a temporary Hyper/Hyperswarm rendezvous topic.
+5. Both devices derive a short verification code from the pairing transcript
+   and public keys. The user confirms that code before transfer.
+6. The exporting device creates an identity-only backup payload, encrypts it to
+   the importing device's public encryption key, signs the transfer metadata,
+   and uploads it to `hyper://`.
+7. The importing device downloads from `hyper://`, verifies the signature and
+   transcript, decrypts with its private key, imports atomically, and restarts.
+8. On success, the exporting device records the importing device public key in
+   `peersky-devices.json`.
+
+The device limit is cooperative, not a hard DRM mechanism. If a user can copy
+raw `userData` files or an unencrypted backup zip manually, software cannot
+cryptographically prevent them from duplicating the identity. The enforceable
+product rule is: Peersky's identity-transfer UI should only allow one imported
+desktop and one imported mobile per identity, unless the user revokes a paired
+device first.
+
+Useful implementation units:
+
+- `src/backup/device-keys.js` - persistent Ed25519 signing key and X25519/box
+  encryption key for this install.
+- `src/backup/device-registry.js` - signed `peersky-devices.json` with
+  `desktop` and `mobile` slots.
+- `src/backup/identity-transfer.js` - QR/manual string parsing, verification
+  code derivation, encrypted payload creation, and Hyper upload/download.
+- `src/backup/ipc.js` - IPC handlers for starting pairing, accepting a
+  pairing code, approving transfer, importing payload, and revoking devices.
+- `src/pages/backup.html` and `src/pages/static/js/backup.js` - a separate
+  "Identity transfer" section, distinct from regular backup/restore.
+
 ## Implementation notes
 
 - `src/backup/backup-core.js` - pure zip/extract/manifest logic (`archiver` for

@@ -7,6 +7,7 @@ import { app } from 'electron'
 import fsExtra from 'fs-extra'
 import { createLogger } from '../logger.js'
 import { readManifest, verifyManifest } from './backup-core.js'
+import { createIdentityTransferZip, decryptIdentityTransferZip, extractAndVerifyIdentityPayload, isIdentityTransferManifest } from './identity-transfer.js'
 import { suspendHyper, resumeHyper } from '../protocols/hyper-handler.js'
 import { suspendIPFS, resumeIPFS } from '../protocols/ipfs-handler.js'
 
@@ -71,6 +72,23 @@ class BackupManager {
     }
   }
 
+  async createIdentityTransferBackup (outPath, options = {}) {
+    log.info(`Creating identity transfer backup at ${outPath}`)
+    await suspendHyper()
+    await suspendIPFS()
+    try {
+      const result = await createIdentityTransferZip(userDataDir(), outPath, {
+        ...options,
+        peerskyVersion: app.getVersion()
+      })
+      log.info(`Identity transfer backup created: ${result.bytes} bytes`)
+      return result
+    } finally {
+      await resumeHyper().catch((err) => log.error(`Failed to resume hyper after identity transfer backup: ${err.message}`))
+      await resumeIPFS().catch((err) => log.error(`Failed to resume IPFS after identity transfer backup: ${err.message}`))
+    }
+  }
+
   // Read the manifest from a backup zip for preview/validation before restoring.
   async inspectBackup (zipPath) {
     return readManifest(zipPath)
@@ -90,10 +108,22 @@ class BackupManager {
       await runWorker({ op: 'extract', zipPath, destDir: tempDir }, onProgress)
 
       const manifest = await readManifest(zipPath)
-      await verifyManifest(tempDir, manifest)
+      let applyDir = tempDir
+      let applyManifest = manifest
+      let identityTransfer = null
 
-      for (const name of Object.keys(manifest.files)) {
-        const src = path.join(tempDir, name)
+      if (isIdentityTransferManifest(manifest)) {
+        const innerZipPath = path.join(tempDir, 'identity-transfer-inner.zip')
+        const innerDir = path.join(tempDir, 'identity-transfer-inner')
+        identityTransfer = await decryptIdentityTransferZip(dest, tempDir, manifest, innerZipPath)
+        applyManifest = await extractAndVerifyIdentityPayload(innerZipPath, innerDir)
+        applyDir = innerDir
+      } else {
+        await verifyManifest(tempDir, manifest)
+      }
+
+      for (const name of Object.keys(applyManifest.files)) {
+        const src = path.join(applyDir, name)
         const target = path.join(dest, name)
         await fs.rm(target, { recursive: true, force: true }).catch(() => {})
         await fsExtra.copy(src, target, {
@@ -114,7 +144,12 @@ class BackupManager {
       resumeServices = false
 
       log.info('Backup restored; restart required')
-      return { success: true, requiresRestart: true, manifest }
+      return {
+        success: true,
+        requiresRestart: true,
+        manifest: applyManifest,
+        identityTransfer
+      }
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {})
       if (resumeServices) {

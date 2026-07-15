@@ -466,6 +466,9 @@ const backupAPI = {
   restore: (zipPath) => ipcRenderer.invoke('backup-restore', zipPath),
   restoreCid: (address) => ipcRenderer.invoke('backup-restore-cid', address),
   upload: (zipPath, protocol) => ipcRenderer.invoke('backup-upload', { zipPath, protocol }),
+  getDeviceInfo: () => ipcRenderer.invoke('backup-device-info'),
+  createIdentityTransfer: (targetDeviceType, targetEncryptionPublicKey) => ipcRenderer.invoke('backup-identity-create', { targetDeviceType, targetEncryptionPublicKey }),
+  uploadIdentityTransferHyper: (targetDeviceType, targetEncryptionPublicKey) => ipcRenderer.invoke('backup-identity-upload-hyper', { targetDeviceType, targetEncryptionPublicKey }),
   relaunch: () => ipcRenderer.invoke('backup-relaunch'),
   onProgress: (callback) => createEventListener('backup-progress', callback)
 }

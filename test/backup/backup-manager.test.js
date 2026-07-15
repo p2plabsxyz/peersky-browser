@@ -16,6 +16,8 @@ async function loadBackupManager (options = {}) {
   const copy = sinon.stub().resolves()
   const readManifest = sinon.stub().resolves(manifest)
   const verifyManifest = options.verifyManifest || sinon.stub().resolves()
+  const createBackupZip = sinon.stub().resolves({})
+  const extractBackupZip = sinon.stub().resolves()
   const backupCorePath = path.join(process.cwd(), 'src/backup/backup-core.js')
   const hyperHandlerPath = path.join(process.cwd(), 'src/protocols/hyper-handler.js')
   const ipfsHandlerPath = path.join(process.cwd(), 'src/protocols/ipfs-handler.js')
@@ -45,7 +47,14 @@ async function loadBackupManager (options = {}) {
     },
     worker_threads: { Worker: FakeWorker },
     'fs-extra': { default: { copy } },
-    [backupCorePath]: { readManifest, verifyManifest },
+    [backupCorePath]: {
+      BACKUP_VERSION: '1.0.0',
+      MANIFEST_NAME: 'manifest.json',
+      createBackupZip,
+      extractBackupZip,
+      readManifest,
+      verifyManifest
+    },
     [hyperHandlerPath]: { suspendHyper, resumeHyper },
     [ipfsHandlerPath]: { suspendIPFS, resumeIPFS }
   }

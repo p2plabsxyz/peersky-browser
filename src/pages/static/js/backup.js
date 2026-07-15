@@ -15,6 +15,12 @@ const shareBtn = document.getElementById('backup-share')
 const cidRow = document.getElementById('backup-cid-row')
 const cidValue = document.getElementById('backup-cid-value')
 const cidCopyBtn = document.getElementById('backup-cid-copy')
+const identityDeviceType = document.getElementById('identity-device-type')
+const identityTargetKey = document.getElementById('identity-target-key')
+const identityCreateBtn = document.getElementById('identity-create')
+const identityUploadHyperBtn = document.getElementById('identity-upload-hyper')
+const identityDeviceKey = document.getElementById('identity-device-key')
+const identityKeyCopyBtn = document.getElementById('identity-key-copy')
 
 let selectedZipPath = null
 let lastCreatedPath = null
@@ -53,6 +59,18 @@ function setBusy (busy) {
   if (chooseBtn) chooseBtn.disabled = busy
   if (restoreBtn) restoreBtn.disabled = busy
   if (shareBtn) shareBtn.disabled = busy
+  if (identityCreateBtn) identityCreateBtn.disabled = busy
+  if (identityUploadHyperBtn) identityUploadHyperBtn.disabled = busy
+}
+
+async function loadDeviceInfo () {
+  if (!api || !identityDeviceKey || typeof api.getDeviceInfo !== 'function') return
+  const res = await api.getDeviceInfo()
+  if (res.success) {
+    identityDeviceKey.textContent = res.device.encryptionPublicKey
+  } else {
+    identityDeviceKey.textContent = `Could not load device key: ${res.error}`
+  }
 }
 
 if (api && typeof api.onProgress === 'function') {
@@ -153,6 +171,57 @@ cidCopyBtn?.addEventListener('click', async () => {
   } catch (_) {}
 })
 
+identityKeyCopyBtn?.addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(identityDeviceKey.textContent || '')
+    identityKeyCopyBtn.textContent = 'Copied'
+    setTimeout(() => { identityKeyCopyBtn.textContent = 'Copy' }, 1500)
+  } catch (_) {}
+})
+
+identityCreateBtn?.addEventListener('click', async () => {
+  if (!api || !identityTargetKey.value.trim()) return
+  setBusy(true)
+  showProgress('Creating encrypted identity transfer...')
+  statusBox.style.display = 'none'
+  try {
+    const res = await api.createIdentityTransfer(identityDeviceType.value, identityTargetKey.value.trim())
+    if (res.canceled) return
+    if (res.success) {
+      showStatus(`Identity transfer saved (${formatBytes(res.bytes)}): ${res.filePath}`, 'success')
+    } else {
+      showStatus(`Identity transfer failed: ${res.error}`, 'error')
+    }
+  } catch (err) {
+    showStatus(`Identity transfer failed: ${err.message}`, 'error')
+  } finally {
+    hideProgress()
+    setBusy(false)
+  }
+})
+
+identityUploadHyperBtn?.addEventListener('click', async () => {
+  if (!api || !identityTargetKey.value.trim()) return
+  setBusy(true)
+  showProgress('Uploading encrypted identity transfer to Hyper...')
+  statusBox.style.display = 'none'
+  try {
+    const res = await api.uploadIdentityTransferHyper(identityDeviceType.value, identityTargetKey.value.trim())
+    if (res.success) {
+      cidValue.textContent = res.address
+      cidRow.style.display = ''
+      showStatus('Encrypted identity transfer uploaded to Hyper.', 'success')
+    } else {
+      showStatus(`Identity transfer upload failed: ${res.error}`, 'error')
+    }
+  } catch (err) {
+    showStatus(`Identity transfer upload failed: ${err.message}`, 'error')
+  } finally {
+    hideProgress()
+    setBusy(false)
+  }
+})
+
 const cidInput = document.getElementById('backup-cid-input')
 const cidDownloadBtn = document.getElementById('backup-cid-download')
 
@@ -218,4 +287,8 @@ restoreBtn?.addEventListener('click', async () => {
     hideProgress()
     setBusy(false)
   }
+})
+
+loadDeviceInfo().catch((err) => {
+  if (identityDeviceKey) identityDeviceKey.textContent = `Could not load device key: ${err.message}`
 })

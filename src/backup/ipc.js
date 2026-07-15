@@ -3,6 +3,8 @@ import { ipcMain, dialog, app, BrowserWindow } from 'electron'
 import { createLogger } from '../logger.js'
 import backupManager, { defaultBackupName } from './backup-manager.js'
 import { uploadBackup, downloadBackupFromAddress } from './p2p-backup.js'
+import { getDeviceKeys, getPublicDeviceInfo } from './device-keys.js'
+import { loadDeviceRegistry } from './device-registry.js'
 
 const log = createLogger('backup')
 
@@ -99,6 +101,59 @@ export function setupBackupIpc () {
       return { success: true, ...res }
     } catch (error) {
       log.error(`Backup upload failed: ${error.message}`)
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('backup-device-info', async () => {
+    try {
+      const keys = await getDeviceKeys(app.getPath('userData'))
+      const registry = await loadDeviceRegistry(app.getPath('userData')).catch(() => null)
+      return { success: true, device: getPublicDeviceInfo(keys), registry }
+    } catch (error) {
+      log.error(`Backup device info failed: ${error.message}`)
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('backup-identity-create', async (event, payload = {}) => {
+    try {
+      const { targetDeviceType, targetEncryptionPublicKey } = payload
+      const win = ownerWindow(event)
+      const saveOptions = {
+        title: 'Save Peersky Identity Transfer',
+        defaultPath: path.join(app.getPath('downloads'), `peersky-identity-${Date.now()}.zip`),
+        filters: [{ name: 'Zip Archives', extensions: ['zip'] }]
+      }
+      const { canceled, filePath } = win
+        ? await dialog.showSaveDialog(win, saveOptions)
+        : await dialog.showSaveDialog(saveOptions)
+
+      if (canceled || !filePath) return { canceled: true }
+
+      const result = await backupManager.createIdentityTransferBackup(filePath, {
+        targetDeviceType,
+        targetEncryptionPublicKey
+      })
+      return { success: true, filePath: result.filePath, bytes: result.bytes, manifest: result.manifest }
+    } catch (error) {
+      log.error(`Identity transfer create failed: ${error.message}`)
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('backup-identity-upload-hyper', async (_event, payload = {}) => {
+    try {
+      const { targetDeviceType, targetEncryptionPublicKey } = payload
+      const outPath = path.join(app.getPath('temp'), `peersky-identity-${Date.now()}.zip`)
+      const result = await backupManager.createIdentityTransferBackup(outPath, {
+        targetDeviceType,
+        targetEncryptionPublicKey
+      })
+      const upload = await uploadBackup(result.filePath, 'hyper')
+      return { success: true, filePath: result.filePath, bytes: result.bytes, manifest: result.manifest, ...upload }
+    } catch (error) {
+      log.error(`Identity transfer Hyper upload failed: ${error.message}`)
       return { success: false, error: error.message }
     }
   })
