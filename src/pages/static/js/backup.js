@@ -189,7 +189,6 @@ identityKeyCopyBtn?.addEventListener('click', async () => {
 identityCreateBtn?.addEventListener('click', async () => {
   if (!api || !identityTargetKey.value.trim()) return
 
-
   setBusy(true)
   showProgress('Creating encrypted identity transfer...')
   statusBox.style.display = 'none'
@@ -211,7 +210,6 @@ identityCreateBtn?.addEventListener('click', async () => {
 
 identityUploadHyperBtn?.addEventListener('click', async () => {
   if (!api || !identityTargetKey.value.trim()) return
-
 
   setBusy(true)
   showProgress('Uploading encrypted identity transfer to Hyper...')

@@ -98,8 +98,6 @@ export function decodePairingString (str) {
   return JSON.parse(Buffer.from(str, 'base64').toString('utf-8'))
 }
 
-
-
 function generateTOTP (secretHex) {
   const secret = Buffer.from(secretHex, 'hex')
   const time = Math.floor(Date.now() / 60000) // 1 minute window
@@ -197,8 +195,6 @@ export async function createIdentityTransferZip (userDataDir, outPath, options =
 
     const result = await writeWrapperZip(outPath, manifest, payloadPath)
     created = true
-
-
 
     return result
   } finally {

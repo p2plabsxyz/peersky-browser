@@ -113,7 +113,6 @@ export async function reserveDeviceSlot (userDataDir, keys, identityId, deviceTy
     throw new Error('Only the registry owner can pair new devices for this identity')
   }
 
-
   registry.devices[normalizedType] = {
     encryptionPublicKey: targetEncryptionPublicKey,
     pairedAt: new Date().toISOString()
@@ -126,8 +125,6 @@ export async function reserveDeviceSlot (userDataDir, keys, identityId, deviceTy
 export async function assertIdentityImportAllowed (userDataDir, transfer) {
   const registry = await loadDeviceRegistry(userDataDir)
   if (!registry || registry.identityId !== transfer.identityId) return true
-
-
 
   return true
 }
