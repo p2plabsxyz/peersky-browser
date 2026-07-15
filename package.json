@@ -221,6 +221,7 @@
     "mime-types": "^2.1.35",
     "multiformats": "^13.3.2",
     "parse-torrent": "^11.0.19",
+    "qrcode": "^1.5.4",
     "scoped-fs": "^1.4.1",
     "unzipper": "^0.10.14",
     "web3protocol": "^0.6.3",

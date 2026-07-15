@@ -113,10 +113,6 @@ export async function reserveDeviceSlot (userDataDir, keys, identityId, deviceTy
     throw new Error('Only the registry owner can pair new devices for this identity')
   }
 
-  const current = registry.devices[normalizedType]
-  if (current && current.encryptionPublicKey !== targetEncryptionPublicKey) {
-    throw new Error(`This identity already has a paired ${normalizedType} device`)
-  }
 
   registry.devices[normalizedType] = {
     encryptionPublicKey: targetEncryptionPublicKey,
@@ -131,10 +127,7 @@ export async function assertIdentityImportAllowed (userDataDir, transfer) {
   const registry = await loadDeviceRegistry(userDataDir)
   if (!registry || registry.identityId !== transfer.identityId) return true
 
-  const current = registry.devices[transfer.targetDeviceType]
-  if (current && current.encryptionPublicKey !== transfer.targetEncryptionPublicKey) {
-    throw new Error(`This identity already has a paired ${transfer.targetDeviceType} device`)
-  }
+
 
   return true
 }

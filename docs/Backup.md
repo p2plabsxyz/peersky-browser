@@ -62,39 +62,22 @@ verified against these checksums before any live data is touched.
 4. A restart is required. Confirm the prompt to relaunch Peersky and load the
    restored data.
 
-## Planned secure identity transfer
+## Secure identity transfer
 
-The current backup flow is intentionally broad: a user can restore any valid
-backup file or P2P address as many times as they want. Identity transfer should
-be a separate pairing flow because `peersky-ports.json`, PeerChat keys, and
-Hyper/IPFS repositories can carry long-lived private identity material.
+The current backup flow is broad: a user can restore any valid
+backup file or P2P address as many times as they want. Identity transfer is
+a separate flow because `peersky-ports.json`, PeerChat keys, and
+Hyper/IPFS repositories carry long-lived private identity material.
 
-The planned flow is:
+The implemented flow is:
 
-1. The importing device creates or loads a persistent device keypair and starts
-   a short-lived pairing session.
-2. Peersky renders the pairing session as a QR code for mobile scan, and as a
-   compact manual string for desktop/mobile fallback.
-3. The exporting device reads that QR/string, checks the signed
-   `peersky-devices.json` registry, and refuses identity export if that identity
-   already has a paired device of the requested type.
-4. The devices connect over a temporary Hyper/Hyperswarm rendezvous topic.
-5. Both devices derive a short verification code from the pairing transcript
-   and public keys. The user confirms that code before transfer.
-6. The exporting device creates an identity-only backup payload, encrypts it to
-   the importing device's public encryption key, signs the transfer metadata,
-   and uploads it to `hyper://`.
-7. The importing device downloads from `hyper://`, verifies the signature and
-   transcript, decrypts with its private key, imports atomically, and restarts.
-8. On success, the exporting device records the importing device public key in
-   `peersky-devices.json`.
-
-The device limit is cooperative, not a hard DRM mechanism. If a user can copy
-raw `userData` files or an unencrypted backup zip manually, software cannot
-cryptographically prevent them from duplicating the identity. The enforceable
-product rule is: Peersky's identity-transfer UI should only allow one imported
-desktop and one imported mobile per identity, unless the user revokes a paired
-device first.
+1. The importing device (e.g., a mobile phone) locates its persistent device keypair, specifically its public encryption key, on the `peersky://backup` page.
+2. The exporting device user enters that target encryption key into the Identity Transfer section.
+3. The exporting device reads the signed `peersky-devices.json` registry. It enforces a cooperative limit of **1 mobile device**. If a mobile slot is already occupied, it will be silently overwritten by the new target key. **Desktop devices are unlimited**.
+4. The exporting device creates an identity-only backup payload, encrypts it to the importing device's public encryption key, signs the transfer metadata, and uploads it to `hyper://`.
+5. A QR code containing the resulting `hyper://` URL is displayed on the exporting device.
+6. The importing device downloads from the `hyper://` URL (e.g., by scanning the QR code), verifies the signature, decrypts the payload with its private key, imports atomically, and restarts.
+7. The importing device assumes ownership of the identity registry (to manage future pairs) and clears its device slot upon restore.
 
 Useful implementation units:
 
@@ -102,10 +85,8 @@ Useful implementation units:
   encryption key for this install.
 - `src/backup/device-registry.js` - signed `peersky-devices.json` with
   `desktop` and `mobile` slots.
-- `src/backup/identity-transfer.js` - QR/manual string parsing, verification
-  code derivation, encrypted payload creation, and Hyper upload/download.
-- `src/backup/ipc.js` - IPC handlers for starting pairing, accepting a
-  pairing code, approving transfer, importing payload, and revoking devices.
+- `src/backup/identity-transfer.js` - encrypted payload creation and limit enforcement.
+- `src/backup/ipc.js` - IPC handlers for creating the encrypted zip, uploading, and fetching.
 - `src/pages/backup.html` and `src/pages/static/js/backup.js` - a separate
   "Identity transfer" section, distinct from regular backup/restore.
 

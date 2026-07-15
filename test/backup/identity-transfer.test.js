@@ -62,7 +62,7 @@ describe('identity-transfer', function () {
     expect(ports.room.seed).to.equal('secret')
   })
 
-  it('rejects creating a second transfer for the same device slot', async function () {
+  it('allows overwriting a device slot when generating a new transfer', async function () {
     const source = await makeTempDir('peersky-id-limit-src-')
     const targetA = await makeTempDir('peersky-id-limit-a-')
     const targetB = await makeTempDir('peersky-id-limit-b-')
@@ -72,23 +72,16 @@ describe('identity-transfer', function () {
     const targetBInfo = getPublicDeviceInfo(await getDeviceKeys(targetB))
 
     await createIdentityTransferZip(source, path.join(await makeTempDir('peersky-id-limit-out-a-'), 'identity.zip'), {
-      targetDeviceType: 'desktop',
+      targetDeviceType: 'mobile',
       targetEncryptionPublicKey: targetAInfo.encryptionPublicKey
     })
 
-    let threw = false
-    try {
-      await createIdentityTransferZip(source, path.join(await makeTempDir('peersky-id-limit-out-b-'), 'identity.zip'), {
-        targetDeviceType: 'desktop',
-        targetEncryptionPublicKey: targetBInfo.encryptionPublicKey
-      })
-    } catch (error) {
-      threw = true
-      expect(error.message).to.match(/already has a paired desktop/i)
-    }
-    expect(threw).to.equal(true)
+    await createIdentityTransferZip(source, path.join(await makeTempDir('peersky-id-limit-out-b-'), 'identity.zip'), {
+      targetDeviceType: 'mobile',
+      targetEncryptionPublicKey: targetBInfo.encryptionPublicKey
+    })
 
     const registry = await loadDeviceRegistry(source)
-    expect(registry.devices.desktop.encryptionPublicKey).to.equal(targetAInfo.encryptionPublicKey)
+    expect(registry.devices.mobile.encryptionPublicKey).to.equal(targetBInfo.encryptionPublicKey)
   })
 })

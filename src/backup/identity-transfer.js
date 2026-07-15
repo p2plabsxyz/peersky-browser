@@ -78,11 +78,47 @@ export function isIdentityTransferManifest (manifest) {
   return manifest && manifest.kind === IDENTITY_TRANSFER_KIND
 }
 
+export async function createPairingSession (userDataDir, deviceType) {
+  const keys = await getDeviceKeys(userDataDir)
+  const publicInfo = getPublicDeviceInfo(keys)
+  const topic = toHex(crypto.randomBytes(32))
+  return {
+    deviceType: normalizeDeviceType(deviceType),
+    signingPublicKey: publicInfo.signingPublicKey,
+    encryptionPublicKey: publicInfo.encryptionPublicKey,
+    topic
+  }
+}
+
+export function encodePairingString (session) {
+  return Buffer.from(JSON.stringify(session)).toString('base64')
+}
+
+export function decodePairingString (str) {
+  return JSON.parse(Buffer.from(str, 'base64').toString('utf-8'))
+}
+
+
+
+function generateTOTP (secretHex) {
+  const secret = Buffer.from(secretHex, 'hex')
+  const time = Math.floor(Date.now() / 60000) // 1 minute window
+  const timeBuffer = Buffer.alloc(8)
+  timeBuffer.writeBigUInt64BE(BigInt(time))
+  const hmac = crypto.createHmac('sha1', secret)
+  hmac.update(timeBuffer)
+  const hash = hmac.digest()
+  const offset = hash[hash.length - 1] & 0xf
+  const code = (hash.readUInt32BE(offset) & 0x7fffffff) % 1000000
+  return String(code).padStart(6, '0')
+}
+
 export function deriveVerificationCode (transfer) {
-  const hash = crypto.createHash('sha256')
-  hash.update(canonicalJson(transferBody(transfer)))
-  const value = hash.digest().readUInt32BE(0) % 1000000
-  return String(value).padStart(6, '0')
+  return generateTOTP(transfer.channel)
+}
+
+export function verifyOTP (token, transfer) {
+  return generateTOTP(transfer.channel) === token
 }
 
 export function verifyIdentityTransferSignature (transfer) {
@@ -123,7 +159,8 @@ export async function createIdentityTransferZip (userDataDir, outPath, options =
     const innerZip = path.join(tempDir, 'identity.zip')
     const payloadPath = path.join(tempDir, IDENTITY_PAYLOAD_NAME)
     await createBackupZip(userDataDir, innerZip, {
-      peerskyVersion: options.peerskyVersion || ''
+      peerskyVersion: options.peerskyVersion || '',
+      isIdentityTransfer: true
     })
 
     const contentKey = crypto.randomBytes(32)
@@ -160,6 +197,9 @@ export async function createIdentityTransferZip (userDataDir, outPath, options =
 
     const result = await writeWrapperZip(outPath, manifest, payloadPath)
     created = true
+
+
+
     return result
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {})

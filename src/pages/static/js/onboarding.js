@@ -21,7 +21,7 @@ setTimeout(() => {
 }, 2000)
 
 const api = window.electronAPI || {}
-const { importOnboardingData, skipOnboarding, openExternalLink, restoreZip, restoreCid } = api
+const { importOnboardingData, skipOnboarding, openExternalLink, restoreZip, restoreCid, getDeviceInfo } = api
 const restoreScreen = document.getElementById('restore-screen')
 
 const CHROME_STORE_URL = 'https://chromewebstore.google.com/detail/peersky-onboarding-extens/knegonpkagnjmkndlfhppgnpdmecklji'
@@ -256,3 +256,33 @@ function showSuccess (msg) {
   statusText.textContent = msg
   statusText.style.display = 'block'
 }
+
+// Load and display device key for Identity Transfer
+const identityDeviceKey = document.getElementById('identity-device-key')
+const identityKeyCopyBtn = document.getElementById('identity-key-copy')
+
+async function loadDeviceInfo () {
+  if (!getDeviceInfo || !identityDeviceKey) return
+  try {
+    const res = await getDeviceInfo()
+    if (res.success) {
+      identityDeviceKey.textContent = res.device.encryptionPublicKey
+    } else {
+      identityDeviceKey.textContent = `Could not load device key: ${res.error}`
+    }
+  } catch (err) {
+    identityDeviceKey.textContent = `Could not load device key: ${err.message}`
+  }
+}
+
+identityKeyCopyBtn?.addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(identityDeviceKey.textContent || '')
+    const oldText = identityKeyCopyBtn.textContent
+    identityKeyCopyBtn.textContent = 'Copied'
+    setTimeout(() => { identityKeyCopyBtn.textContent = oldText }, 1500)
+  } catch (_) {}
+})
+
+// Initialize device info on load
+loadDeviceInfo()

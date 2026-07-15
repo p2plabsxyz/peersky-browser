@@ -559,6 +559,7 @@ try {
       restoreCid: (address) => ipcRenderer.invoke('onboarding-restore-cid', address),
       getPathForFile: (file) => webUtils.getPathForFile(file),
       openExternalLink: (url) => ipcRenderer.invoke('open-external-link', url),
+      getDeviceInfo: () => ipcRenderer.invoke('backup-device-info'),
       onProgress: (callback) => createEventListener('backup-progress', callback)
     })
     console.log('Unified-preload: Onboarding electronAPI exposed')

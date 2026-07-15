@@ -62,9 +62,6 @@
               <button type="button" id="backup-create" class="btn btn-primary">Create Backup</button>
             </div>
           </div>
-        </section>
-
-        <section class="settings-section">
           <div class="setting-row tall-row">
             <div class="setting-label">
               Share via P2P
@@ -72,19 +69,23 @@
                 CID you can share. Anyone can restore it from the onboarding screen
                 or below.<br><br><strong>Note:</strong> Since this uses P2P networks, the device that uploaded the backup (or another peer) must remain online for others to download it.</p>
             </div>
-            <div class="setting-control">
-              <select id="backup-share-protocol" class="cid-input" style="width: auto; margin-right: 8px;">
+            <div class="setting-control" style="display: flex; gap: 8px; align-items: center;">
+              <select id="backup-share-protocol" class="cid-input" style="width: auto; margin-bottom: 0; height: 34px; box-sizing: border-box;">
                 <option value="ipfs">IPFS</option>
                 <option value="hyper">Hypercore</option>
               </select>
-              <button type="button" id="backup-share" class="btn btn-secondary">Upload</button>
+              <button type="button" id="backup-share" class="btn btn-secondary" style="height: 34px; box-sizing: border-box; margin: 0;">Upload</button>
             </div>
           </div>
 
-          <div id="backup-cid-row" class="setting-row" style="display: none;">
+        </section>
+        
+        <section id="backup-cid-section" class="settings-section" style="display: none;">
+          <div id="backup-cid-row" class="setting-row">
             <div class="setting-label">
               Backup CID
               <p id="backup-cid-value" class="setting-description" style="user-select: text; word-break: break-all;"></p>
+              <img id="backup-qr-code" style="display: none; margin-top: 12px; border-radius: 4px;" alt="QR Code" width="160" height="160" />
             </div>
             <div class="setting-control">
               <button type="button" id="backup-cid-copy" class="btn btn-secondary">Copy</button>
@@ -98,18 +99,18 @@
               Identity transfer
               <p class="setting-description">Create an encrypted identity transfer for one desktop or one mobile device. The target device public key must come from the device that will import this identity.</p>
             </div>
-            <div class="setting-control" style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end;">
-              <select id="identity-device-type" class="cid-input" style="width: auto; margin-bottom: 0;">
+            <div class="setting-control" style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; align-items: center;">
+              <select id="identity-device-type" class="cid-input" style="width: auto; margin-bottom: 0; height: 34px; box-sizing: border-box;">
                 <option value="mobile">Mobile</option>
                 <option value="desktop">Desktop</option>
               </select>
-              <input type="text" id="identity-target-key" class="cid-input" placeholder="target encryption public key" style="width: 260px; margin-bottom: 0;">
-              <button type="button" id="identity-create" class="btn btn-secondary">Save Zip</button>
-              <button type="button" id="identity-upload-hyper" class="btn btn-secondary">Upload Hyper</button>
+              <input type="text" id="identity-target-key" class="cid-input" placeholder="target encryption public key" style="width: 260px; margin-bottom: 0; height: 34px; box-sizing: border-box;">
+              <button type="button" id="identity-create" class="btn btn-secondary" style="height: 34px; box-sizing: border-box; margin: 0;">Save Zip</button>
+              <button type="button" id="identity-upload-hyper" class="btn btn-secondary" style="height: 34px; box-sizing: border-box; margin: 0;">Upload Hyper</button>
             </div>
           </div>
 
-          <div class="setting-row tall-row" style="border-top: 1px solid var(--settings-border); margin-top: 16px; padding-top: 16px;">
+          <div class="setting-row tall-row">
             <div class="setting-label">
               This device import key
               <p id="identity-device-key" class="setting-description" style="user-select: text; word-break: break-all;">Loading...</p>
@@ -133,18 +134,21 @@
             </div>
           </div>
 
-          <div class="setting-row tall-row" style="border-top: 1px solid var(--settings-border); margin-top: 16px; padding-top: 16px;">
+          <div class="setting-row tall-row">
             <div class="setting-label">
               Restore backup from P2P
               <p class="setting-description">Download and restore a backup using an IPFS CID or Hypercore address.</p>
             </div>
-            <div class="setting-control" style="display: flex; gap: 8px;">
-              <input type="text" id="backup-cid-input" class="cid-input" placeholder="ipfs://... or hyper://..." style="width: 220px; margin-bottom: 0;">
-              <button type="button" id="backup-cid-download" class="btn btn-secondary">Download</button>
+            <div class="setting-control" style="display: flex; gap: 8px; align-items: center;">
+              <input type="text" id="backup-cid-input" class="cid-input" placeholder="ipfs://... or hyper://..." style="width: 220px; margin-bottom: 0; height: 34px; box-sizing: border-box;">
+              <button type="button" id="backup-cid-download" class="btn btn-secondary" style="height: 34px; box-sizing: border-box; margin: 0;">Download</button>
             </div>
           </div>
 
-          <div id="backup-manifest" class="setting-row" style="display: none; border-top: 1px solid var(--settings-border); margin-top: 16px; padding-top: 16px;">
+        </section>
+
+        <section id="backup-manifest-section" class="settings-section" style="display: none;">
+          <div id="backup-manifest" class="setting-row">
             <div class="setting-label">
               Selected backup
               <p id="backup-manifest-details" class="setting-description"></p>

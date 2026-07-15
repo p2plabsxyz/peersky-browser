@@ -5,14 +5,14 @@ const api = window.electronAPI && window.electronAPI.backup
 const createBtn = document.getElementById('backup-create')
 const chooseBtn = document.getElementById('backup-choose')
 const restoreBtn = document.getElementById('backup-restore')
-const manifestRow = document.getElementById('backup-manifest')
+const manifestRow = document.getElementById('backup-manifest-section')
 const manifestDetails = document.getElementById('backup-manifest-details')
 const progressBox = document.getElementById('backup-progress')
 const progressBar = document.getElementById('backup-progress-bar')
 const progressLabel = document.getElementById('backup-progress-label')
 const statusBox = document.getElementById('backup-status')
 const shareBtn = document.getElementById('backup-share')
-const cidRow = document.getElementById('backup-cid-row')
+const cidRow = document.getElementById('backup-cid-section')
 const cidValue = document.getElementById('backup-cid-value')
 const cidCopyBtn = document.getElementById('backup-cid-copy')
 const identityDeviceType = document.getElementById('identity-device-type')
@@ -150,6 +150,13 @@ shareBtn?.addEventListener('click', async () => {
     if (res.canceled) return
     if (res.success) {
       cidValue.textContent = res.address
+      const qrImg = document.getElementById('backup-qr-code')
+      if (qrImg && res.qrDataUrl) {
+        qrImg.src = res.qrDataUrl
+        qrImg.style.display = 'block'
+      } else if (qrImg) {
+        qrImg.style.display = 'none'
+      }
       cidRow.style.display = ''
       showStatus(`Uploaded to ${protocol.toUpperCase()}. Share this address to restore on another device.`, 'success')
     } else {
@@ -181,6 +188,8 @@ identityKeyCopyBtn?.addEventListener('click', async () => {
 
 identityCreateBtn?.addEventListener('click', async () => {
   if (!api || !identityTargetKey.value.trim()) return
+
+
   setBusy(true)
   showProgress('Creating encrypted identity transfer...')
   statusBox.style.display = 'none'
@@ -202,6 +211,8 @@ identityCreateBtn?.addEventListener('click', async () => {
 
 identityUploadHyperBtn?.addEventListener('click', async () => {
   if (!api || !identityTargetKey.value.trim()) return
+
+
   setBusy(true)
   showProgress('Uploading encrypted identity transfer to Hyper...')
   statusBox.style.display = 'none'
@@ -209,6 +220,13 @@ identityUploadHyperBtn?.addEventListener('click', async () => {
     const res = await api.uploadIdentityTransferHyper(identityDeviceType.value, identityTargetKey.value.trim())
     if (res.success) {
       cidValue.textContent = res.address
+      const qrImg = document.getElementById('backup-qr-code')
+      if (qrImg && res.qrDataUrl) {
+        qrImg.src = res.qrDataUrl
+        qrImg.style.display = 'block'
+      } else if (qrImg) {
+        qrImg.style.display = 'none'
+      }
       cidRow.style.display = ''
       showStatus('Encrypted identity transfer uploaded to Hyper.', 'success')
     } else {

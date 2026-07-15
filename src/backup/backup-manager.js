@@ -10,6 +10,8 @@ import { readManifest, verifyManifest } from './backup-core.js'
 import { createIdentityTransferZip, decryptIdentityTransferZip, extractAndVerifyIdentityPayload, isIdentityTransferManifest } from './identity-transfer.js'
 import { suspendHyper, resumeHyper } from '../protocols/hyper-handler.js'
 import { suspendIPFS, resumeIPFS } from '../protocols/ipfs-handler.js'
+import { getDeviceKeys, getPublicDeviceInfo } from './device-keys.js'
+import { loadDeviceRegistry, saveDeviceRegistry } from './device-registry.js'
 
 const log = createLogger('backup')
 
@@ -140,6 +142,21 @@ class BackupManager {
       // Drop CORESTORE — its inode/xattr never survive a copy and it is
       // rebuilt cleanly on next launch.
       await fs.rm(path.join(dest, 'hyper', 'CORESTORE'), { force: true }).catch(() => {})
+
+      // If this was an Identity Transfer, assume ownership of the registry.
+      // This allows the restoring device (Desktop or Mobile) to manage the identity going forward.
+      if (identityTransfer) {
+        const slotType = identityTransfer.transfer.targetDeviceType
+        const keys = await getDeviceKeys(dest)
+        const publicInfo = getPublicDeviceInfo(keys)
+        const registry = await loadDeviceRegistry(dest)
+        if (registry) {
+          registry.ownerSigningPublicKey = publicInfo.signingPublicKey
+          registry.devices[slotType] = null
+          await saveDeviceRegistry(dest, registry, keys.signing.secretKey)
+          log.info(`Assumed ownership of identity registry (cleared ${slotType} slot)`)
+        }
+      }
 
       resumeServices = false
 

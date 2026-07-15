@@ -5,6 +5,7 @@ import backupManager, { defaultBackupName } from './backup-manager.js'
 import { uploadBackup, downloadBackupFromAddress } from './p2p-backup.js'
 import { getDeviceKeys, getPublicDeviceInfo } from './device-keys.js'
 import { loadDeviceRegistry } from './device-registry.js'
+import QRCode from 'qrcode'
 
 const log = createLogger('backup')
 
@@ -98,7 +99,11 @@ export function setupBackupIpc () {
         target = result.filePaths[0]
       }
       const res = await uploadBackup(target, protocol)
-      return { success: true, ...res }
+      let qrDataUrl = null
+      if (res.address) {
+        qrDataUrl = await QRCode.toDataURL(res.address)
+      }
+      return { success: true, qrDataUrl, ...res }
     } catch (error) {
       log.error(`Backup upload failed: ${error.message}`)
       return { success: false, error: error.message }
@@ -151,7 +156,11 @@ export function setupBackupIpc () {
         targetEncryptionPublicKey
       })
       const upload = await uploadBackup(result.filePath, 'hyper')
-      return { success: true, filePath: result.filePath, bytes: result.bytes, manifest: result.manifest, ...upload }
+      let qrDataUrl = null
+      if (upload.address) {
+        qrDataUrl = await QRCode.toDataURL(upload.address)
+      }
+      return { success: true, filePath: result.filePath, bytes: result.bytes, manifest: result.manifest, qrDataUrl, ...upload }
     } catch (error) {
       log.error(`Identity transfer Hyper upload failed: ${error.message}`)
       return { success: false, error: error.message }
