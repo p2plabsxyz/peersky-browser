@@ -152,7 +152,7 @@ class BackupManager {
         const registry = await loadDeviceRegistry(dest)
         if (registry) {
           registry.ownerSigningPublicKey = publicInfo.signingPublicKey
-          registry.devices[slotType] = null
+          registry.devices[slotType] = slotType === 'desktop' ? [] : null
           await saveDeviceRegistry(dest, registry, keys.signing.secretKey)
           log.info(`Assumed ownership of identity registry (cleared ${slotType} slot)`)
         }

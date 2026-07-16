@@ -188,7 +188,9 @@ export function setupBackupIpc () {
 
   ipcMain.handle('backup-relaunch', async () => {
     const { windowManager } = await import('../main.js')
-    windowManager.setSkipSaveOnQuit(true)
+    if (windowManager) {
+      windowManager.setSkipSaveOnQuit(true)
+    }
     backupManager.relaunch()
     return { success: true }
   })

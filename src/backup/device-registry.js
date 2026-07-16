@@ -100,7 +100,7 @@ export async function reserveDeviceSlot (userDataDir, keys, identityId, deviceTy
     identityId,
     ownerSigningPublicKey: publicInfo.signingPublicKey,
     devices: {
-      desktop: null,
+      desktop: [],
       mobile: null
     },
     updatedAt: null
@@ -113,10 +113,24 @@ export async function reserveDeviceSlot (userDataDir, keys, identityId, deviceTy
     throw new Error('Only the registry owner can pair new devices for this identity')
   }
 
-  registry.devices[normalizedType] = {
-    encryptionPublicKey: targetEncryptionPublicKey,
-    pairedAt: new Date().toISOString()
+  // migrate legacy single-desktop to array
+  if (registry.devices.desktop && !Array.isArray(registry.devices.desktop)) {
+    registry.devices.desktop = [registry.devices.desktop]
   }
+  if (!registry.devices.desktop) registry.devices.desktop = []
+
+  if (normalizedType === 'desktop') {
+    registry.devices.desktop.push({
+      encryptionPublicKey: targetEncryptionPublicKey,
+      pairedAt: new Date().toISOString()
+    })
+  } else {
+    registry.devices.mobile = {
+      encryptionPublicKey: targetEncryptionPublicKey,
+      pairedAt: new Date().toISOString()
+    }
+  }
+
   registry.updatedAt = new Date().toISOString()
 
   return saveDeviceRegistry(userDataDir, registry, keys.signing.secretKey)

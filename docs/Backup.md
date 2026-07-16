@@ -15,11 +15,13 @@ peersky-backup-{timestamp}.zip
   lastOpened.json          # window geometry / last session
   tabs.json                # open tabs across windows
   ensCache.json            # ENS resolution cache
-  peersky-chat-rooms.json  # PeerChat rooms, keys, profiles
-  peersky-ports.json       # P2P app (Holesail) identity seeds
+  ipfsCache.json           # IPFS address cache
+  hyperCache.json          # Hypercore address cache
   ipfs/                    # full IPFS (Helia) repository
   hyper/                   # full Hypercore storage
 ```
+
+*Note: Identity-sensitive files (chat rooms, ports, device registry) are explicitly EXCLUDED from standard backups. They are only included when performing an "Identity Transfer".*
 
 Live database lock and in-flight files (`LOCK`, `repo.lock`, `*.lock`) are
 excluded from the bundle.
