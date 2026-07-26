@@ -31,7 +31,8 @@ export async function computeIdentityId (userDataDir) {
     try {
       const data = await fs.readFile(path.join(userDataDir, name))
       hash.update(name)
-      hash.update(data)
+      // Do not hash the mutable file contents which would invalidate the identityId on any change
+      // hash.update(data)
       found = true
     } catch (error) {
       if (error.code !== 'ENOENT') throw error
@@ -101,13 +102,14 @@ export async function reserveDeviceSlot (userDataDir, keys, identityId, deviceTy
     ownerSigningPublicKey: publicInfo.signingPublicKey,
     devices: {
       desktop: [],
-      mobile: null
+      mobile: []
     },
     updatedAt: null
   }
 
   if (registry.identityId !== identityId) {
-    throw new Error('Device registry belongs to a different identity')
+    console.warn(`Identity ID changed from ${registry.identityId} to ${identityId}. Updating registry.`)
+    registry.identityId = identityId
   }
   if (registry.ownerSigningPublicKey !== publicInfo.signingPublicKey) {
     throw new Error('Only the registry owner can pair new devices for this identity')
@@ -119,16 +121,22 @@ export async function reserveDeviceSlot (userDataDir, keys, identityId, deviceTy
   }
   if (!registry.devices.desktop) registry.devices.desktop = []
 
+  // migrate legacy single-mobile to array
+  if (registry.devices.mobile && !Array.isArray(registry.devices.mobile)) {
+    registry.devices.mobile = [registry.devices.mobile]
+  }
+  if (!registry.devices.mobile) registry.devices.mobile = []
+
   if (normalizedType === 'desktop') {
     registry.devices.desktop.push({
       encryptionPublicKey: targetEncryptionPublicKey,
       pairedAt: new Date().toISOString()
     })
   } else {
-    registry.devices.mobile = {
+    registry.devices.mobile.push({
       encryptionPublicKey: targetEncryptionPublicKey,
       pairedAt: new Date().toISOString()
-    }
+    })
   }
 
   registry.updatedAt = new Date().toISOString()
