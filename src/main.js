@@ -506,8 +506,13 @@ function installExtensionWebRequestBridge (session, blocker) {
       console.warn('[webRequest] onBeforeRequest extension dispatch failed:', e?.message)
     }
 
-    if (!result.cancel && !result.redirectUrl && tb?.shouldBlock(url)) {
+    if (!result.cancel && !result.redirectUrl && !result.redirectURL && tb?.shouldBlock(url)) {
       result = { cancel: true }
+    }
+
+    // Electron expects redirectURL
+    if (result.redirectUrl && !result.redirectURL) {
+      result = { ...result, redirectURL: result.redirectUrl }
     }
 
     callback(result)
@@ -576,6 +581,18 @@ function installExtensionWebRequestBridge (session, blocker) {
       callback(result)
     }
   )
+
+  session.webRequest.onBeforeRedirect({ urls: ['<all_urls>'] }, async (details) => {
+    const url = details?.url || ''
+    if (!shouldForwardToExtensions(url)) {
+      return
+    }
+    try {
+      await extensionManager.electronChromeExtensions?.notifyWebRequestOnBeforeRedirect(details)
+    } catch (e) {
+      console.warn('[webRequest] onBeforeRedirect extension dispatch failed:', e?.message)
+    }
+  })
 
   session.webRequest.onResponseStarted({ urls: ['<all_urls>'] }, async (details) => {
     const url = details?.url || ''
