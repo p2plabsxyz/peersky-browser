@@ -3,12 +3,20 @@
  *
  * Loads Ghostery's DNR rule files and provides a shouldBlock() check that
  * can be called from within the existing webRequest.onBeforeRequest handler
- * (in main.js) to block tracker requests that Ghostery's DNR rules don't
- * cover (because the MV3 service worker cannot start in Electron 41).
+ * (in main.js) to block tracker requests when Ghostery's MV3 DNR path cannot
+ * run in Electron.
  *
  * This MUST NOT register a separate webRequest handler — doing so would
  * override the existing extension bridge handler's results. Instead, the
  * caller integrates shouldBlock() into the existing handler flow.
+ *
+ * TODO(peersky): Remove this file and its wiring (https://github.com/p2plabsxyz/peersky-browser/pull/206/)
+ * This workaround is required because Electron does not
+ * support chrome.declarativeNetRequest — the API Ghostery MV3 uses for
+ * rule-based blocking. This is NOT specific to Electron 41; the API is
+ * absent in all Electron versions as of v45 nightly (July 2026).
+ * Re-evaluate when Electron adds declarativeNetRequest support.
+ * Tracking: https://github.com/electron/electron/issues/52265
  */
 
 import fs from 'fs'
@@ -78,26 +86,19 @@ const MISSING_DOMAINS = new Set([
   'addthisedge.com'
 ])
 
-// Safety whitelist: never block navigation to these well-known domains.
-// This prevents accidentally blocking major sites due to overly broad
-// urlFilter extraction from Ghostery's DNR rules (e.g., a rule like
-// ||duckduckgo.com/ads^ should only block the ad path, not the entire domain).
-const SAFE_DOMAINS = new Set([
+// First-party hosts we refuse to wholesale-block when a Ghostery urlFilter
+// names the whole domain (e.g. ||duckduckgo.com/ads^ must not ban duckduckgo.com).
+// Intentionally excludes large surveillance platforms.
+const NEVER_BLOCK_HOSTS = new Set([
   'duckduckgo.com',
-  'google.com',
-  'bing.com',
-  'search.yahoo.com',
   'search.brave.com',
   'ecosia.org',
-  'yandex.com',
   'startpage.com',
   'swisscows.com',
   'searx.be',
   'en.wikipedia.org',
   'github.com',
   'stackoverflow.com',
-  'reddit.com',
-  'youtube.com',
   'npmjs.com',
   'docs.npmjs.com',
   'nodejs.org',
@@ -117,15 +118,21 @@ function resolveRulesRoot (rulesRoot) {
 export class TrackerBlocker {
   #blockedHosts = new Set()
   #initialized = false
+  #initPromise = null
 
   /**
    * Load Ghostery DNR rules and build the hostname blocklist.
    * @param {string|null|undefined} rulesRoot - Installed Ghostery extension path
    * @returns {Promise<TrackerBlocker>}
    */
-  async init (rulesRoot) {
-    if (this.#initialized) return this
+  init (rulesRoot) {
+    if (this.#initialized) return Promise.resolve(this)
+    if (this.#initPromise) return this.#initPromise
+    this.#initPromise = this.#doInit(rulesRoot)
+    return this.#initPromise
+  }
 
+  async #doInit (rulesRoot) {
     const root = resolveRulesRoot(rulesRoot)
     const start = Date.now()
     let totalRules = 0
@@ -169,7 +176,7 @@ export class TrackerBlocker {
               // e.g. ||google-analytics.com^  — no /path
               if (endCh === '^' && !afterHost.slice(0, -1).includes('/')) {
                 const dom = afterHost.replace(/[\^]+$/, '')
-                if (dom.includes('.') && !dom.startsWith('.') && !BARE_TLDS.has(dom) && !SAFE_DOMAINS.has(dom)) {
+                if (dom.includes('.') && !dom.startsWith('.') && !BARE_TLDS.has(dom) && !NEVER_BLOCK_HOSTS.has(dom)) {
                   this.#blockedHosts.add(dom)
                 }
               }
@@ -210,20 +217,20 @@ export class TrackerBlocker {
     }
     if (!host) return false
 
-    // Never block safelisted domains even if a DNR rule named them.
-    if (SAFE_DOMAINS.has(host)) return false
+    // Never wholesale-block first-party hosts from NEVER_BLOCK_HOSTS.
+    if (NEVER_BLOCK_HOSTS.has(host)) return false
 
     if (this.#blockedHosts.has(host)) return true
 
     // Subdomain check: walk up the domain hierarchy.
     // Only match parent domains that themselves contain a dot
     // (prevents accidentally matching bare TLDs like "com" or "net").
-    // Also skip any parent domain that is a safe domain.
+    // Also skip any parent domain that is a never-block host.
     let rest = host
     while (rest.includes('.')) {
       const dotIndex = rest.indexOf('.')
       rest = rest.slice(dotIndex + 1)
-      if (rest.includes('.') && !SAFE_DOMAINS.has(rest) && this.#blockedHosts.has(rest)) return true
+      if (rest.includes('.') && !NEVER_BLOCK_HOSTS.has(rest) && this.#blockedHosts.has(rest)) return true
     }
 
     return false
