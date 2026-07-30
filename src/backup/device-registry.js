@@ -29,7 +29,7 @@ export async function computeIdentityId (userDataDir) {
 
   for (const name of names) {
     try {
-      const data = await fs.readFile(path.join(userDataDir, name))
+      await fs.readFile(path.join(userDataDir, name))
       hash.update(name)
       // Do not hash the mutable file contents which would invalidate the identityId on any change
       // hash.update(data)
