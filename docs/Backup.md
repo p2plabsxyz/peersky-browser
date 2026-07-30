@@ -73,12 +73,12 @@ Hyper/IPFS repositories carry long-lived private identity material.
 
 The implemented flow is:
 
-1. The importing device (e.g., a mobile phone) locates its persistent device keypair, specifically its public encryption key, on the `peersky://backup` page.
-2. The exporting device user enters that target encryption key into the Identity Transfer section.
-3. The exporting device reads the signed `peersky-devices.json` registry. It enforces a cooperative limit of **1 mobile device**. If a mobile slot is already occupied, it will be silently overwritten by the new target key. **Desktop devices are unlimited**.
-4. The exporting device creates an identity-only backup payload, encrypts it to the importing device's public encryption key, signs the transfer metadata, and uploads it to `hyper://`.
-5. A QR code containing the resulting `hyper://` URL is displayed on the exporting device.
-6. The importing device downloads from the `hyper://` URL (e.g., by scanning the QR code), verifies the signature, decrypts the payload with its private key, imports atomically, and restarts.
+1. The importing device (e.g., a mobile phone) locates its persistent device keypair and displays its public encryption key as a QR code (e.g., on PeerSky Mobile's "Link Device" screen).
+2. The exporting device (Desktop) uses the **Scan QR** button to activate the local webcam via `jsQR` and scans the importing device's public key (or the user manually enters it).
+3. The exporting device reads the signed `peersky-devices.json` registry. Mobile slots can be safely overwritten.
+4. The exporting device creates an identity-only backup payload, encrypts it securely to the importing device's public encryption key using Sodium sealed boxes, signs the transfer metadata, and uploads it to `hyper://`.
+5. A QR code containing the resulting `hyper://` URL is displayed on the exporting device (Desktop).
+6. The importing device (Mobile) scans the Desktop's `hyper://` QR code using its camera, downloads the payload, verifies the signature, decrypts the payload with its private key, imports atomically, and restarts.
 7. The importing device assumes ownership of the identity registry (to manage future pairs) and clears its device slot upon restore.
 
 Useful implementation units:

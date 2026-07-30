@@ -97,16 +97,22 @@
           <div class="setting-row tall-row">
             <div class="setting-label">
               Identity transfer
-              <p class="setting-description">Create an encrypted identity transfer for a desktop or mobile device. The target device public key must come from the device that will import this identity.</p>
+              <p class="setting-description">Create an encrypted identity transfer for PeerSky Mobile or Desktop. Enter the 64-character encryption key shown on the receiving device (or scan Mobile QR code). Click "Upload Hyper" to generate a transfer QR code for PeerSky Mobile.</p>
             </div>
             <div class="setting-control" style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; align-items: center;">
               <select id="identity-device-type" class="cid-input" style="width: auto; margin-bottom: 0; height: 34px; box-sizing: border-box;">
                 <option value="mobile">Mobile</option>
                 <option value="desktop">Desktop</option>
               </select>
+              <button type="button" id="identity-scan-qr" class="btn btn-secondary" style="height: 34px; box-sizing: border-box; margin: 0;">Scan QR</button>
               <input type="text" id="identity-target-key" class="cid-input" placeholder="target encryption public key" style="width: 260px; margin-bottom: 0; height: 34px; box-sizing: border-box;">
               <button type="button" id="identity-create" class="btn btn-secondary" style="height: 34px; box-sizing: border-box; margin: 0;">Save Zip</button>
               <button type="button" id="identity-upload-hyper" class="btn btn-secondary" style="height: 34px; box-sizing: border-box; margin: 0;">Upload Hyper</button>
+            </div>
+            
+            <div id="qr-scanner-container" style="display: none; width: 100%; margin-top: 16px; text-align: center; background: #000; border-radius: 8px; overflow: hidden; position: relative;">
+              <video id="qr-scanner-video" style="width: 100%; max-width: 400px; max-height: 300px; display: block; margin: 0 auto;"></video>
+              <button type="button" id="qr-scanner-cancel" class="btn btn-secondary" style="position: absolute; bottom: 16px; right: 16px;">Cancel</button>
             </div>
           </div>
 
@@ -115,9 +121,13 @@
               This device import key
               <p id="identity-device-key" class="setting-description" style="user-select: text; word-break: break-all;">Loading...</p>
             </div>
-            <div class="setting-control">
+            <div class="setting-control" style="display: flex; gap: 8px; align-items: center;">
               <button type="button" id="identity-key-copy" class="btn btn-secondary">Copy</button>
             </div>
+          </div>
+          <div id="device-key-qr-container" style="display: none; padding: 12px; text-align: center;">
+            <p class="setting-description" style="margin-bottom: 8px;">Scan with PeerSky Mobile or another desktop instance to import identity to this device:</p>
+            <img id="device-key-qr-code" style="border-radius: 8px; width: 180px; height: 180px; object-fit: contain; background: white; padding: 8px; box-sizing: border-box;" alt="Device Key QR Code" />
           </div>
         </section>
 
@@ -174,6 +184,7 @@
   </div>
 </div>
 
+<script src="peersky://static/js/vendor/jsqr/jsQR.js" defer></script>
 <script src="peersky://static/js/backup.js" defer></script>
 </body>
 </html>

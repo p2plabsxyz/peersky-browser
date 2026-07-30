@@ -68,6 +68,12 @@ async function loadDeviceInfo () {
   const res = await api.getDeviceInfo()
   if (res.success) {
     identityDeviceKey.textContent = res.device.encryptionPublicKey
+    const deviceQrImg = document.getElementById('device-key-qr-code')
+    const deviceQrContainer = document.getElementById('device-key-qr-container')
+    if (deviceQrImg && deviceQrContainer && res.qrDataUrl) {
+      deviceQrImg.src = res.qrDataUrl
+      deviceQrContainer.style.display = 'block'
+    }
   } else {
     identityDeviceKey.textContent = `Could not load device key: ${res.error}`
   }
@@ -186,6 +192,68 @@ identityKeyCopyBtn?.addEventListener('click', async () => {
   } catch (_) {}
 })
 
+const identityScanQrBtn = document.getElementById('identity-scan-qr')
+const qrScannerContainer = document.getElementById('qr-scanner-container')
+const qrScannerVideo = document.getElementById('qr-scanner-video')
+const qrScannerCancel = document.getElementById('qr-scanner-cancel')
+let qrScannerStream = null
+let qrScannerAnimationFrame = null
+
+function stopQrScanner () {
+  if (qrScannerAnimationFrame) cancelAnimationFrame(qrScannerAnimationFrame)
+  if (qrScannerStream) {
+    qrScannerStream.getTracks().forEach((track) => track.stop())
+    qrScannerStream = null
+  }
+  if (qrScannerContainer) qrScannerContainer.style.display = 'none'
+}
+
+qrScannerCancel?.addEventListener('click', stopQrScanner)
+
+identityScanQrBtn?.addEventListener('click', async () => {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showStatus('Camera access is not supported by your system.', 'error')
+    return
+  }
+
+  try {
+    qrScannerStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+    qrScannerVideo.srcObject = qrScannerStream
+    qrScannerVideo.setAttribute('playsinline', true)
+    qrScannerVideo.play()
+    qrScannerContainer.style.display = 'block'
+
+    const canvasElement = document.createElement('canvas')
+    const canvas = canvasElement.getContext('2d')
+
+    const tick = () => {
+      if (qrScannerVideo.readyState === qrScannerVideo.HAVE_ENOUGH_DATA) {
+        canvasElement.height = qrScannerVideo.videoHeight
+        canvasElement.width = qrScannerVideo.videoWidth
+        canvas.drawImage(qrScannerVideo, 0, 0, canvasElement.width, canvasElement.height)
+
+        const imageData = canvas.getImageData(0, 0, canvasElement.width, canvasElement.height)
+        const code = window.jsQR(imageData.data, imageData.width, imageData.height, {
+          inversionAttempts: 'dontInvert'
+        })
+
+        if (code && code.data && code.data.length === 64) {
+          identityTargetKey.value = code.data
+          stopQrScanner()
+          showStatus('Successfully scanned Mobile Key!', 'success')
+          return
+        }
+      }
+      qrScannerAnimationFrame = requestAnimationFrame(tick)
+    }
+
+    qrScannerAnimationFrame = requestAnimationFrame(tick)
+  } catch (err) {
+    showStatus(`Camera error: ${err.message}`, 'error')
+    stopQrScanner()
+  }
+})
+
 identityCreateBtn?.addEventListener('click', async () => {
   if (!api || !identityTargetKey.value.trim()) return
 
@@ -226,7 +294,7 @@ identityUploadHyperBtn?.addEventListener('click', async () => {
         qrImg.style.display = 'none'
       }
       cidRow.style.display = ''
-      showStatus('Encrypted identity transfer uploaded to Hyper.', 'success')
+      showStatus('Encrypted identity transfer uploaded to Hyper. Scan the QR code below with PeerSky Mobile (Settings > Link Device) to restore identity automatically.', 'success')
     } else {
       showStatus(`Identity transfer upload failed: ${res.error}`, 'error')
     }

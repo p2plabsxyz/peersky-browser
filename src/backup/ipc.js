@@ -114,7 +114,12 @@ export function setupBackupIpc () {
     try {
       const keys = await getDeviceKeys(app.getPath('userData'))
       const registry = await loadDeviceRegistry(app.getPath('userData')).catch(() => null)
-      return { success: true, device: getPublicDeviceInfo(keys), registry }
+      const device = getPublicDeviceInfo(keys)
+      let qrDataUrl = null
+      if (device && device.encryptionPublicKey) {
+        qrDataUrl = await QRCode.toDataURL(device.encryptionPublicKey)
+      }
+      return { success: true, device, registry, qrDataUrl }
     } catch (error) {
       log.error(`Backup device info failed: ${error.message}`)
       return { success: false, error: error.message }

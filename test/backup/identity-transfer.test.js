@@ -82,6 +82,8 @@ describe('identity-transfer', function () {
     })
 
     const registry = await loadDeviceRegistry(source)
-    expect(registry.devices.mobile.encryptionPublicKey).to.equal(targetBInfo.encryptionPublicKey)
+    const mobileDevices = registry.devices.mobile
+    const lastDevice = Array.isArray(mobileDevices) ? mobileDevices[mobileDevices.length - 1] : mobileDevices
+    expect(lastDevice.encryptionPublicKey).to.equal(targetBInfo.encryptionPublicKey)
   })
 })

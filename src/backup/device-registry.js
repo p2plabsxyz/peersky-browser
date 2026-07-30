@@ -133,10 +133,10 @@ export async function reserveDeviceSlot (userDataDir, keys, identityId, deviceTy
       pairedAt: new Date().toISOString()
     })
   } else {
-    registry.devices.mobile.push({
+    registry.devices.mobile = [{
       encryptionPublicKey: targetEncryptionPublicKey,
       pairedAt: new Date().toISOString()
-    })
+    }]
   }
 
   registry.updatedAt = new Date().toISOString()
