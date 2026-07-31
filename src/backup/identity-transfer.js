@@ -129,8 +129,21 @@ export function verifyIdentityTransferSignature (transfer) {
 }
 
 export async function createIdentityTransferZip (userDataDir, outPath, options = {}) {
+  let targetKeyHex = options.targetEncryptionPublicKey
+  let targetNonce = null
+
+  if (targetKeyHex && targetKeyHex.startsWith('peersky-identity:')) {
+    const withoutScheme = targetKeyHex.slice('peersky-identity:'.length)
+    const [pathPart, queryPart] = withoutScheme.split('?')
+    targetKeyHex = pathPart
+    if (queryPart) {
+      const params = new URLSearchParams(queryPart)
+      targetNonce = params.get('nonce')
+    }
+  }
+
   const targetDeviceType = normalizeDeviceType(options.targetDeviceType)
-  const targetEncryptionPublicKey = toHex(decodeEncryptionPublicKey(options.targetEncryptionPublicKey))
+  const targetEncryptionPublicKey = toHex(decodeEncryptionPublicKey(targetKeyHex))
   const expiresInMs = Number.isFinite(options.expiresInMs) ? options.expiresInMs : 10 * 60 * 1000
   const keys = await getDeviceKeys(userDataDir)
   const publicInfo = getPublicDeviceInfo(keys)
@@ -158,7 +171,8 @@ export async function createIdentityTransferZip (userDataDir, outPath, options =
     const payloadPath = path.join(tempDir, IDENTITY_PAYLOAD_NAME)
     await createBackupZip(userDataDir, innerZip, {
       peerskyVersion: options.peerskyVersion || '',
-      isIdentityTransfer: true
+      isIdentityTransfer: true,
+      targetDeviceType
     })
 
     const contentKey = crypto.randomBytes(32)
@@ -175,7 +189,7 @@ export async function createIdentityTransferZip (userDataDir, outPath, options =
       targetDeviceType,
       targetEncryptionPublicKey,
       channel: toHex(crypto.randomBytes(32)),
-      nonce: toHex(crypto.randomBytes(16)),
+      nonce: targetNonce || toHex(crypto.randomBytes(16)),
       issuedAt,
       expiresAt: issuedAt + expiresInMs,
       encryptedKey: toHex(encryptedKey),

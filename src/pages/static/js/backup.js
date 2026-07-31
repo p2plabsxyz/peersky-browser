@@ -237,11 +237,13 @@ identityScanQrBtn?.addEventListener('click', async () => {
           inversionAttempts: 'dontInvert'
         })
 
-        if (code && code.data && code.data.length === 64) {
-          identityTargetKey.value = code.data
-          stopQrScanner()
-          showStatus('Successfully scanned Mobile Key!', 'success')
-          return
+        if (code && code.data) {
+          if (code.data.length === 64 || code.data.startsWith('peersky-identity:')) {
+            identityTargetKey.value = code.data
+            stopQrScanner()
+            showStatus('Successfully scanned Mobile Key!', 'success')
+            return
+          }
         }
       }
       qrScannerAnimationFrame = requestAnimationFrame(tick)

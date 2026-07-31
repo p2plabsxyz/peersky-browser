@@ -27,6 +27,14 @@ export const IDENTITY_BACKUP_TARGETS = [
   { name: 'peersky-devices.json', type: 'file' }
 ]
 
+export const MOBILE_IDENTITY_BACKUP_TARGETS = [
+  { name: 'lastOpened.json', type: 'file' },
+  { name: 'tabs.json', type: 'file' },
+  { name: 'hyper', type: 'dir' },
+  { name: 'peersky-chat-rooms.json', type: 'file' },
+  { name: 'peersky-ports.json', type: 'file' }
+]
+
 // Skip live DB lock/log files. CORESTORE is left in to stabilize manifest
 // hashes, but is explicitly dropped during restore in backup-manager.js.
 const SKIP_NAMES = new Set(['LOCK', 'repo.lock', '.DS_Store', 'LOG', 'LOG.old'])
@@ -122,9 +130,12 @@ async function sha256DirOld (dir) {
 }
 
 // Build the manifest describing which targets are present and their checksums.
-export async function buildManifest (userDataDir, peerskyVersion = '', isIdentityTransfer = false) {
+export async function buildManifest (userDataDir, peerskyVersion = '', isIdentityTransfer = false, targetDeviceType = 'desktop') {
   const files = {}
-  const targets = isIdentityTransfer ? IDENTITY_BACKUP_TARGETS : STANDARD_BACKUP_TARGETS
+  let targets = STANDARD_BACKUP_TARGETS
+  if (isIdentityTransfer) {
+    targets = targetDeviceType === 'mobile' ? MOBILE_IDENTITY_BACKUP_TARGETS : IDENTITY_BACKUP_TARGETS
+  }
   for (const target of targets) {
     const abs = path.join(userDataDir, target.name)
     if (!(await pathExists(abs))) continue
@@ -143,9 +154,9 @@ export async function buildManifest (userDataDir, peerskyVersion = '', isIdentit
 // Stream all present targets plus a manifest into a single .zip at outPath.
 // onProgress receives { processedBytes, totalBytes, entries } updates.
 export async function createBackupZip (userDataDir, outPath, options = {}) {
-  const { peerskyVersion = '', isIdentityTransfer = false, onProgress } = options
+  const { peerskyVersion = '', isIdentityTransfer = false, targetDeviceType = 'desktop', onProgress } = options
 
-  const manifest = await buildManifest(userDataDir, peerskyVersion, isIdentityTransfer)
+  const manifest = await buildManifest(userDataDir, peerskyVersion, isIdentityTransfer, targetDeviceType)
   await fs.mkdir(path.dirname(outPath), { recursive: true })
 
   return new Promise((resolve, reject) => {
@@ -193,7 +204,10 @@ export async function createBackupZip (userDataDir, outPath, options = {}) {
     archive.append(JSON.stringify(manifest, null, 2), { name: MANIFEST_NAME })
 
     for (const target of Object.keys(manifest.files)) {
-      const targets = isIdentityTransfer ? IDENTITY_BACKUP_TARGETS : STANDARD_BACKUP_TARGETS
+      let targets = STANDARD_BACKUP_TARGETS
+      if (isIdentityTransfer) {
+        targets = targetDeviceType === 'mobile' ? MOBILE_IDENTITY_BACKUP_TARGETS : IDENTITY_BACKUP_TARGETS
+      }
       const meta = targets.find((t) => t.name === target)
       const abs = path.join(userDataDir, target)
       if (meta.type === 'dir') {
