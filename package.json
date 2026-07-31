@@ -17,7 +17,7 @@
   "repository": "https://github.com/p2plabsxyz/peersky-browser",
   "scripts": {
     "test": "npm run test:all",
-    "test:all": "npm run test:p2p && npm run test:p2p:e2e && npm run test:extensions && npm run test:security && npm run test:updater && npm run test:integration",
+    "test:all": "npm run test:p2p && npm run test:p2p:e2e && npm run test:extensions && npm run test:security && npm run test:llm && npm run test:updater && npm run test:integration",
     "test:updater": "mocha \"test/updater/**/*.test.js\" --timeout 20000 --exit",
     "test:integration": "mocha \"test/integration/**/*.test.js\" --timeout 300000",
     "test:p2pmd:gutter:e2e": "mocha \"test/integration/p2pmd-gutter-sync.e2e.test.js\" --timeout 300000 --exit",
@@ -26,7 +26,8 @@
     "test:p2p:e2e": "rimraf .test-e2e-data && cross-env NODE_ENV=test PEERSKY_TEST_USERDATA=.test-e2e-data mocha --file ./test/setup.js \"test/p2p/p2p-e2e.test.js\" --timeout 120000 --exit",
     "test:extensions": "mocha \"test/extensions/**/*.test.js\" --timeout 20000",
     "test:security": "mocha \"test/security/**/*.test.js\" --timeout 20000",
-    "coverage": "cross-env NODE_OPTIONS=--experimental-loader=@istanbuljs/esm-loader-hook nyc mocha \"test/p2p/ipfs-handler.test.js\" \"test/p2p/hyper-handler.test.js\" \"test/p2p/hs-handler.test.js\" \"test/p2p/bittorrent-handler.test.js\" \"test/extensions/**/*.test.js\" \"test/security/**/*.test.js\" --timeout 20000",
+    "test:llm": "mocha \"test/llm/**/*.test.js\" --timeout 20000 --exit",
+    "coverage": "cross-env NODE_OPTIONS=--experimental-loader=@istanbuljs/esm-loader-hook nyc mocha \"test/p2p/ipfs-handler.test.js\" \"test/p2p/hyper-handler.test.js\" \"test/p2p/hs-handler.test.js\" \"test/p2p/bittorrent-handler.test.js\" \"test/extensions/**/*.test.js\" \"test/security/**/*.test.js\" \"test/llm/**/*.test.js\" --timeout 20000",
     "coverage:report": "nyc report --reporter=text-summary --reporter=html --reporter=lcov",
     "start": "electron .",
     "start:test-update": "cross-env PEERSKY_TEST_UPDATE=1 electron .",
