@@ -1,7 +1,7 @@
 // Handles LLM API with streaming support for chat and completion
 import settingsManager from './settings-manager.js'
 import { ipcMain, dialog, shell } from 'electron'
-import { Agent } from 'undici'
+import { Agent, fetch as undiciFetch } from 'undici'
 
 let isInitialized = false
 let initializedModel = null // Track which model we initialized with
@@ -652,7 +652,7 @@ async function * stream (url, data = {}, errorMessage = 'Request failed', apiKey
   }
 
   try {
-    const response = await fetch(url, {
+    const response = await undiciFetch(url, {
       method: 'POST',
       headers,
       body: JSON.stringify(data),
@@ -711,7 +711,7 @@ async function post (url, data, errorMessage = 'Request failed', parseBody = tru
     headers.Authorization = `Bearer ${apiKey}`
   }
 
-  const response = await fetch(url, {
+  const response = await undiciFetch(url, {
     method: 'POST',
     headers,
     body: JSON.stringify(data),
