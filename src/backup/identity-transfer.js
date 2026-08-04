@@ -208,6 +208,7 @@ export async function createIdentityTransferZip (userDataDir, outPath, options =
     }
 
     const result = await writeWrapperZip(outPath, manifest, payloadPath)
+    result.verificationCode = deriveVerificationCode(transfer)
     created = true
 
     return result

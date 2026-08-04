@@ -165,7 +165,7 @@ export function setupBackupIpc () {
       if (upload.address) {
         qrDataUrl = await QRCode.toDataURL(upload.address)
       }
-      return { success: true, filePath: result.filePath, bytes: result.bytes, manifest: result.manifest, qrDataUrl, ...upload }
+      return { success: true, filePath: result.filePath, bytes: result.bytes, manifest: result.manifest, verificationCode: result.verificationCode, qrDataUrl, ...upload }
     } catch (error) {
       log.error(`Identity transfer Hyper upload failed: ${error.message}`)
       return { success: false, error: error.message }
