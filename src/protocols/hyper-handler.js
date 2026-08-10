@@ -2,6 +2,7 @@ import { Readable } from 'stream'
 import path from 'path'
 import { app, safeStorage } from 'electron'
 import { create as createSDK } from 'hyper-sdk'
+import HyperswarmLAN from 'hyperswarm-lan'
 import makeHyperFetch from 'hypercore-fetch'
 import {
   initChat,
@@ -19,6 +20,11 @@ let sdk, fetch
 
 // keep chunks smaller to avoid oversized blocks.
 const MAX_UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024
+
+function getLANOptions () {
+  const port = Number.parseInt(process.env.PEERSKY_LAN_PORT || '', 10)
+  return Number.isInteger(port) && port > 0 && port <= 65535 ? { port } : {}
+}
 
 function isWebReadableStream (body) {
   return body && typeof body.getReader === 'function'
@@ -99,6 +105,10 @@ async function initializeHyperSDK (options) {
   log.info('Initializing Hyper SDK...')
 
   sdk = await createSDK(options)
+  const lan = await HyperswarmLAN.attachHyperSDK(sdk, getLANOptions())
+  lan.on?.('warning', (error) => log.warn(`[LAN] ${error.message}`))
+  lan.on?.('error', (error) => log.error(`[LAN] ${error.message}`))
+  log.info(`[LAN] Listening on ${lan.host || '0.0.0.0'}:${lan.port}`)
   fetch = makeHyperFetch({ sdk, writable: true })
 
   initChat(sdk, {

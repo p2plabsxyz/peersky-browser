@@ -10,6 +10,7 @@ describe('Hyper protocol handler', function () {
   async function loadHyperModule ({ fetchImpl, chatResponse, chatReject, throwOnFetch } = {}) {
     const sdk = { id: 'sdk-test' }
     const createSDK = sinon.stub().resolves(sdk)
+    const attachHyperSDK = sinon.stub().resolves({ id: 'lan-test' })
 
     const fetchStub = sinon.stub().callsFake(async (url, options) => {
       if (throwOnFetch) {
@@ -42,6 +43,9 @@ describe('Hyper protocol handler', function () {
       'hyper-sdk': {
         create: createSDK
       },
+      'hyperswarm-lan': {
+        default: { attachHyperSDK }
+      },
       'hypercore-fetch': {
         default: hyperFetchFactory
       },
@@ -52,8 +56,32 @@ describe('Hyper protocol handler', function () {
       }
     })
 
-    return { module, createSDK, fetchStub, hyperFetchFactory, initChat, handleChatRequest, sdk }
+    return { module, createSDK, attachHyperSDK, fetchStub, hyperFetchFactory, initChat, handleChatRequest, sdk }
   }
+
+  it('attaches LAN discovery before initializing chat', async function () {
+    const { module, attachHyperSDK, initChat, sdk } = await loadHyperModule()
+
+    await module.createHandler({ storage: 'test-lan' })
+
+    expect(attachHyperSDK.calledOnceWithExactly(sdk, {})).to.equal(true)
+    expect(attachHyperSDK.calledBefore(initChat)).to.equal(true)
+  })
+
+  it('uses PEERSKY_LAN_PORT for additional local instances', async function () {
+    const previousPort = process.env.PEERSKY_LAN_PORT
+    process.env.PEERSKY_LAN_PORT = '49800'
+
+    try {
+      const { module, attachHyperSDK, sdk } = await loadHyperModule()
+      await module.createHandler({ storage: 'test-lan-port' })
+
+      expect(attachHyperSDK.calledOnceWithExactly(sdk, { port: 49800 })).to.equal(true)
+    } finally {
+      if (previousPort === undefined) delete process.env.PEERSKY_LAN_PORT
+      else process.env.PEERSKY_LAN_PORT = previousPort
+    }
+  })
 
   it('routes chat namespace to chat handler', async function () {
     const { module, handleChatRequest, sdk } = await loadHyperModule({
