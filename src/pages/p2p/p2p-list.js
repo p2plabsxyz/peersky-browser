@@ -3,6 +3,7 @@ const builtInP2PApps = [
   { id: "chat", name: "PeerChat", icon: "chat.svg", url: "peersky://p2p/peerchat/" },
   { id: "editor", name: "PeerPad", icon: "file-code.svg", url: "peersky://p2p/peerpad/" },
   { id: "p2pmd", name: "P2P Markdown", icon: "markdown.svg", url: "peersky://p2p/p2pmd/" },
+  { id: "pot-luck", name: "Pot Luck", icon: "box.svg", url: "peersky://p2p/pot-luck/" },
   { id: "reader", name: "Social Reader", icon: "people.svg", url: "https://reader.distributed.press/" },
   { id: "upload", name: "Upload", icon: "file-upload.svg", url: "peersky://p2p/upload/" },
   { id: "wiki", name: "Wiki", icon: "wikipedia.svg", url: "peersky://p2p/wiki/" }

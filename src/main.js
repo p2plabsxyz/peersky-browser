@@ -8,6 +8,7 @@ import { createHandler as createBrowserThemeHandler } from './protocols/theme-ha
 import { createHandler as createIPFSHandler } from './protocols/ipfs-handler.js'
 import { createHandler as createHyperHandler } from './protocols/hyper-handler.js'
 import { createHandler as createHSHandler } from './protocols/hs-handler.js'
+import { createHandler as createSillyHandler } from './protocols/silly-handler.js'
 import { createHandler as createWeb3Handler } from './protocols/web3-handler.js'
 import { createHandler as createFileHandler } from './protocols/file-handler.js'
 import { createHandler as createBittorrentHandler, setupBittorrentIpc, shutdownBittorrent } from './protocols/bittorrent-handler.js'
@@ -151,6 +152,7 @@ globalProtocol.registerSchemesAsPrivileged([
   { scheme: 'pubsub', privileges: P2P_PROTOCOL },
   { scheme: 'hyper', privileges: P2P_PROTOCOL },
   { scheme: 'hs', privileges: P2P_PROTOCOL },
+  { scheme: 'silly', privileges: P2P_PROTOCOL },
   { scheme: 'web3', privileges: WEB3_PROTOCOL },
   { scheme: 'file', privileges: FILE_PROTOCOL },
   { scheme: 'bittorrent', privileges: P2P_PROTOCOL },
@@ -461,6 +463,9 @@ async function setupProtocols (session) {
 
   const hsProtocolHandler = await createHSHandler()
   sessionProtocol.handle('hs', hsProtocolHandler)
+
+  const sillyProtocolHandler = await createSillyHandler()
+  sessionProtocol.handle('silly', sillyProtocolHandler)
 
   const web3ProtocolHandler = await createWeb3Handler()
   sessionProtocol.handle('web3', web3ProtocolHandler)

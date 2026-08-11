@@ -27,6 +27,86 @@ const renderers = {}
 const eventMaze = {}
 const reactiveFunctions = {}
 
+// --- native silly:// room transport -------------------------------------
+// linkState(link, id)/broadcastElf(link, knowledge, mergeStr) mirror
+// plan1's plan98.js API exactly, so ported elves never touch silly://,
+// fetch, or EventSource directly. plan98.js relays through a dedicated
+// always-on geckos/WebRTC signaling server; here it goes through
+// silly-handler.js — the same relay logic (vendored from plan1's
+// storage.mjs, QuickJS-sandboxed merge and all) but running inside this
+// peersky instance's own main process, reached via a deterministic
+// Holesail key derived from link+id (no directory server, no generated-URL
+// exchange — whichever peer answers first is the host).
+
+export let PLAN98_NODE_ID
+try {
+  PLAN98_NODE_ID = self.crypto.randomUUID()
+} catch (e) {
+  PLAN98_NODE_ID = uuidv4()
+}
+
+const _elfRooms = {} // link -> Promise<{ docUrl, eventSource }>
+
+export function linkState (link, id) {
+  if (_elfRooms[link]) return _elfRooms[link]
+
+  const pending = (async () => {
+    const res = await fetch(`silly://relay?elf=${encodeURIComponent(link)}&id=${encodeURIComponent(id)}&action=linkState`, { method: 'POST' })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || 'linkState failed')
+
+    const docUrl = data.docUrl
+
+    // pull cached state immediately, mirroring plan98.js's stateCache event
+    try {
+      const stateRes = await fetch(`${docUrl}/state`)
+      if (stateRes.ok) {
+        const cached = await stateRes.json()
+        if (cached) store.set(link, cached, (s, p) => ({ ...s, ...p }))
+      }
+    } catch (e) {}
+
+    const eventSource = new EventSource(`${docUrl}/events`)
+    eventSource.addEventListener('update', (event) => {
+      try {
+        const payload = JSON.parse(event.data)
+        if (payload.senderId === PLAN98_NODE_ID) return
+        const merge = new Function('state', 'payload', `return (${payload.nuance})(state, payload)`)
+        store.set(link, payload.knowledge, merge)
+      } catch (e) {
+        console.warn('linkState update failed', e)
+      }
+    })
+
+    return { docUrl, eventSource }
+  })()
+
+  _elfRooms[link] = pending
+  return pending
+}
+
+const _MERGE_SPREAD = '(state, payload) => ({ ...state, ...payload })'
+
+function _udpUpload (link, knowledge, mergeStr = _MERGE_SPREAD) {
+  const pending = _elfRooms[link]
+  if (!pending) return
+  pending.then((room) => {
+    fetch(`${room.docUrl}/upload`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        senderId: PLAN98_NODE_ID,
+        knowledge: knowledge ?? learn(link),
+        nuance: mergeStr
+      })
+    }).catch((e) => console.warn('broadcastElf failed', e))
+  })
+}
+
+// Pass an explicit knowledge slice and optional merge string (whisper pattern).
+export function broadcastElf (link, knowledge, mergeStr) { _udpUpload(link, knowledge, mergeStr) }
+// ------------------------------------------------------------------------
+
 function addRenderer (link, compositor, lifeCycle) {
   if (!reactiveFunctions[link]) {
     reactiveFunctions[link] = {}
@@ -253,7 +333,11 @@ export default function Self (link, initialState = {}) {
     put: teach.bind(this, link),
     post: teach.bind(this, link),
     patch: teach.bind(this, link),
-    delete: teach.bind(this, link)
+    delete: teach.bind(this, link),
+
+    // whisper only touches local state — it never reaches broadcastElf/the
+    // network. Use it for connection status, UI-only flags, etc.
+    whisper: teach.bind(this, link)
   }
 }
 
