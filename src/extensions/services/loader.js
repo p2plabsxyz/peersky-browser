@@ -13,15 +13,17 @@ export async function loadExtensionsIntoElectron (manager) {
   }
   try {
     for (const extension of manager.loadedExtensions.values()) {
-      if (extension.enabled && extension.installedPath) {
-        try {
-          console.log(`ExtensionManager: Loading extension into Electron: ${extension.displayName || extension.name}`)
-          const electronExtension = await manager.session.loadExtension(extension.installedPath, { allowFileAccess: false })
-          extension.electronId = electronExtension.id
-          console.log(`ExtensionManager: Extension loaded successfully: ${extension.displayName || extension.name} (${electronExtension.id})`)
-        } catch (error) {
-          console.error(`ExtensionManager: Failed to load extension ${extension.displayName || extension.name}:`, error)
+      if (!extension.enabled || !extension.installedPath) continue
+      try {
+        if (extension.electronId && manager.session.getExtension?.(extension.electronId)) {
+          continue
         }
+        console.log(`ExtensionManager: Loading extension into Electron: ${extension.displayName || extension.name}`)
+        const electronExtension = await manager.session.loadExtension(extension.installedPath, { allowFileAccess: false })
+        extension.electronId = electronExtension.id
+        console.log(`ExtensionManager: Extension loaded successfully: ${extension.displayName || extension.name} (${electronExtension.id})`)
+      } catch (error) {
+        console.error(`ExtensionManager: Failed to load extension ${extension.displayName || extension.name}:`, error)
       }
     }
     await RegistryService.writeRegistry(manager)
