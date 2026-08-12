@@ -9,7 +9,7 @@ export async function _suspendHyper (sdk, onSuspend) {
   if (onSuspend) onSuspend()
 }
 
-export async function _hyperPublishFile (fetchFn, filePath, fileName = 'backup.zip') {
+export async function _hyperPublishFile (fetchFn, sdk, filePath, fileName = 'backup.zip') {
   const driveName = `peersky-backup-${Date.now()}`
 
   // Request a new hyperdrive key from hypercore-fetch
@@ -41,6 +41,20 @@ export async function _hyperPublishFile (fetchFn, filePath, fileName = 'backup.z
     duplex: 'half'
   })
   if (!putResp.ok) throw new Error(`Hyperdrive write failed: ${putResp.status}`)
+
+  // Flush swarm announcement so the drive is discoverable before returning
+  if (sdk) {
+    try {
+      const drive = await sdk.getDrive(`hyper://${driveKey}/`)
+      sdk.joinCore(drive.core)
+      if (sdk.swarm && typeof sdk.swarm.flush === 'function') {
+        await sdk.swarm.flush()
+      }
+      log.info(`Swarm announcement flushed for drive ${driveKey}`)
+    } catch (err) {
+      log.error(`Failed to flush swarm announcement for ${driveKey}:`, err)
+    }
+  }
 
   log.info(`Backup published to Hyperdrive: ${driveKey}`)
   return { key: driveKey, fileName, address: `hyper://${driveKey}/${fileName}` }

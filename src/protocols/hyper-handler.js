@@ -134,7 +134,7 @@ export async function resumeHyper () {
 // hyper:// address. Used by the backup feature to share via a content address.
 export async function hyperPublishFile (filePath, fileName = 'backup.zip') {
   const f = await initializeHyperSDK()
-  return _hyperPublishFile(f, filePath, fileName)
+  return _hyperPublishFile(f, sdk, filePath, fileName)
 }
 
 async function waitForDriveReady (url) {
