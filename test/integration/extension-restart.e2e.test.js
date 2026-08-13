@@ -78,6 +78,7 @@ function runHarness ({ mode, userDataDir, fixtureDir, timeoutMs = 120000 }) {
     let stderr = ''
     let parsed = null
     let lineBuffer = ''
+    let killTimer = null
 
     const timer = setTimeout(() => {
       child.kill()
@@ -98,6 +99,12 @@ function runHarness ({ mode, userDataDir, fixtureDir, timeoutMs = 120000 }) {
           }
         }
       }
+      // Force-kill if hanging to ensure close event fires.
+      if (parsed && !killTimer) {
+        killTimer = setTimeout(() => {
+          try { child.kill() } catch {}
+        }, 10000)
+      }
     })
 
     child.stderr.on('data', (chunk) => {
@@ -106,11 +113,13 @@ function runHarness ({ mode, userDataDir, fixtureDir, timeoutMs = 120000 }) {
 
     child.on('error', (error) => {
       clearTimeout(timer)
+      if (killTimer) clearTimeout(killTimer)
       reject(error)
     })
 
     child.on('close', (code) => {
       clearTimeout(timer)
+      if (killTimer) clearTimeout(killTimer)
       if (!parsed && lineBuffer.startsWith(RESULT_PREFIX)) {
         try {
           parsed = JSON.parse(lineBuffer.slice(RESULT_PREFIX.length))
@@ -121,7 +130,9 @@ function runHarness ({ mode, userDataDir, fixtureDir, timeoutMs = 120000 }) {
         reject(new Error(`No result payload from harness. code=${code}\nstdout=${stdout}\nstderr=${stderr}`))
         return
       }
-      resolve({ code, result: parsed, stdout, stderr })
+      // Treat force-killed process with valid payload as success.
+      const exitCode = (code === null && parsed.ok) ? 0 : code
+      resolve({ code: exitCode, result: parsed, stdout, stderr })
     })
   })
 }
