@@ -25,6 +25,10 @@ function emitResult (payload) {
 }
 
 async function safeShutdownAndExit (code) {
+  // Give Node.js a moment to flush stdout pipe to parent process
+  // before we trigger shutdown, in case app.exit() deadlocks.
+  await new Promise(resolve => setTimeout(resolve, 500))
+  
   try {
     await withTimeout(extensionManager.shutdown(), 5000, 'shutdown')
   } catch {
