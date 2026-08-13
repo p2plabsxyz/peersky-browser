@@ -149,7 +149,7 @@ async function waitForDriveReady (url) {
     log.info(`Waiting for peers for ${hostname}...`)
     if (typeof drive.core.findingPeers === 'function') {
       const finding = drive.core.findingPeers()
-      sdk.joinCore(drive.core)
+      await sdk.joinCore(drive.core)
       await finding
     }
     await drive.update()

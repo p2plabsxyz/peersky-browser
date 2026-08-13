@@ -46,7 +46,7 @@ export async function _hyperPublishFile (fetchFn, sdk, filePath, fileName = 'bac
   if (sdk) {
     try {
       const drive = await sdk.getDrive(`hyper://${driveKey}/`)
-      sdk.joinCore(drive.core)
+      await sdk.joinCore(drive.core)
       if (sdk.swarm && typeof sdk.swarm.flush === 'function') {
         await sdk.swarm.flush()
       }
