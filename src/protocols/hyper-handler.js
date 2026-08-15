@@ -109,6 +109,34 @@ async function initializeHyperSDK (options) {
   lan.on?.('warning', (error) => log.warn(`[LAN] ${error.message}`))
   lan.on?.('error', (error) => log.error(`[LAN] ${error.message}`))
   log.info(`[LAN] Listening on ${lan.host || '0.0.0.0'}:${lan.port}`)
+
+  // Detect WiFi / network changes and cycle the LAN discovery layer.
+  // The global DHT handles cross-network connectivity independently;
+  // this ensures mDNS re-advertises on the new local subnet.
+  let lastKnownIP = lan.host
+  let cycling = false
+  const NETWORK_CHECK_MS = 10_000
+  setInterval(() => {
+    if (cycling || lan.destroyed) return
+    try {
+      const currentIP = HyperDHTmDNS.selectLocalIPv4()
+      if (currentIP === lastKnownIP) return
+      log.info(`[LAN] Network change detected: ${lastKnownIP} → ${currentIP}`)
+      lastKnownIP = currentIP
+      cycling = true
+      lan.suspend()
+        .then(() => lan.resume())
+        .then(() => {
+          lastKnownIP = lan.host
+          log.info(`[LAN] Restarted discovery on ${lan.host}:${lan.port}`)
+        })
+        .catch((err) => log.warn(`[LAN] Network change recovery failed: ${err.message}`))
+        .finally(() => { cycling = false })
+    } catch {
+      // No usable interface (e.g. WiFi disconnected momentarily) — ignore
+    }
+  }, NETWORK_CHECK_MS).unref()
+
   fetch = makeHyperFetch({ sdk, writable: true })
 
   initChat(sdk, {
