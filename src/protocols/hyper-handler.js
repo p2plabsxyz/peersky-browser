@@ -110,9 +110,9 @@ async function initializeHyperSDK (options) {
   lan.on?.('error', (error) => log.error(`[LAN] ${error.message}`))
   log.info(`[LAN] Listening on ${lan.host || '0.0.0.0'}:${lan.port}`)
 
-  // Detect WiFi / network changes and cycle the LAN discovery layer.
-  // The global DHT handles cross-network connectivity independently;
-  // this ensures mDNS re-advertises on the new local subnet.
+  // Detect WiFi / network changes and cycle both discovery layers. The SDK
+  // wrapper resumes the global DHT and LAN mDNS swarm without losing joined
+  // room topics or recreating the SDK's persistent storage.
   let lastKnownIP = lan.host
   let cycling = false
   const NETWORK_CHECK_MS = 10_000
@@ -124,8 +124,8 @@ async function initializeHyperSDK (options) {
       log.info(`[LAN] Network change detected: ${lastKnownIP} → ${currentIP}`)
       lastKnownIP = currentIP
       cycling = true
-      lan.suspend()
-        .then(() => lan.resume())
+      sdk.suspend()
+        .then(() => sdk.resume())
         .then(() => {
           lastKnownIP = lan.host
           log.info(`[LAN] Restarted discovery on ${lan.host}:${lan.port}`)
