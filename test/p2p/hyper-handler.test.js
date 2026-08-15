@@ -43,7 +43,7 @@ describe('Hyper protocol handler', function () {
       'hyper-sdk': {
         create: createSDK
       },
-      'hyperswarm-lan': {
+      'hyperdht-mdns': {
         default: { attachHyperSDK }
       },
       'hypercore-fetch': {

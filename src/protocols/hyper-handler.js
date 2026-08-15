@@ -2,7 +2,7 @@ import { Readable } from 'stream'
 import path from 'path'
 import { app, safeStorage } from 'electron'
 import { create as createSDK } from 'hyper-sdk'
-import HyperswarmLAN from 'hyperswarm-lan'
+import HyperDHTmDNS from 'hyperdht-mdns'
 import makeHyperFetch from 'hypercore-fetch'
 import {
   initChat,
@@ -105,7 +105,7 @@ async function initializeHyperSDK (options) {
   log.info('Initializing Hyper SDK...')
 
   sdk = await createSDK(options)
-  const lan = await HyperswarmLAN.attachHyperSDK(sdk, getLANOptions())
+  const lan = await HyperDHTmDNS.attachHyperSDK(sdk, getLANOptions())
   lan.on?.('warning', (error) => log.warn(`[LAN] ${error.message}`))
   lan.on?.('error', (error) => log.error(`[LAN] ${error.message}`))
   log.info(`[LAN] Listening on ${lan.host || '0.0.0.0'}:${lan.port}`)

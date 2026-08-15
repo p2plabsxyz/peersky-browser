@@ -217,7 +217,7 @@
     "hypercore-fetch": "^10.1.0",
     "hyperdht": "^6.27.0",
     "hyperswarm": "^4.14.0",
-    "hyperswarm-lan": "file:../hyperswarm-lan",
+    "hyperdht-mdns": "file:../hyperdht-mdns",
     "jquery": "^3.7.1",
     "libp2p": "^3.1.3",
     "mime-types": "^2.1.35",
