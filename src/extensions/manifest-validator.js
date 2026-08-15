@@ -136,7 +136,9 @@ class ManifestValidator {
         power: { risk: 'low', description: 'Override power management' },
         'system.cpu': { risk: 'low', description: 'CPU information' },
         'system.memory': { risk: 'low', description: 'Memory information' },
-        'system.storage': { risk: 'low', description: 'Storage information' }
+        'system.storage': { risk: 'low', description: 'Storage information' },
+        // Hosts extension UI beside page content; does not grant host access by itself.
+        sidePanel: { risk: 'low', description: 'Side panel UI hosting' }
       },
 
       // Medium risk permissions (require justification)
@@ -355,6 +357,21 @@ class ManifestValidator {
         result.riskScore += 25
         continue
       }
+
+      const assessment = this.assessPermission(permission)
+      result.permissionDetails.push(assessment)
+
+      // Known safe/medium permissions are classified; do not treat as unknown noise.
+      // permissionConfig blocked/dangerous that are not also in policy still fall
+      // through as unclassified so policy remains the install gate.
+      if (assessment.category === 'safe') {
+        continue
+      }
+      if (assessment.category === 'medium') {
+        result.riskScore += 5
+        continue
+      }
+
       // Default: unknown permissions as medium warning
       result.warnings.push(`Unknown or unclassified permission: ${permission}`)
       result.riskScore += 10
