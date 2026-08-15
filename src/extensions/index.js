@@ -502,20 +502,44 @@ class ExtensionManager {
     }
 
     const entries = Array.isArray(manifest.extensions) ? manifest.extensions : []
-    const desiredIds = new Set(entries.map(e => e.id))
+    const desiredIds = new Set(entries.map(e => e.id).filter(Boolean))
+
+    const matchesPreinstalledEntry = (ext, entry) => {
+      if (entry.id && ext.id === entry.id) return true
+      if (entry.name && (ext.displayName === entry.name || ext.name === entry.name)) return true
+      if (entry.name && /ghostery/i.test(entry.name) && /ghostery/i.test(ext.displayName || ext.name || '')) {
+        return true
+      }
+      return false
+    }
+
+    const removePreinstalledRecord = async (ext) => {
+      if (!ext?.id) return
+      if (this.session && ext.electronId) {
+        try { await this.session.removeExtension(ext.electronId) } catch (_) { }
+      }
+      const extPath = path.join(this.extensionsBaseDir, ext.id)
+      await fs.rm(extPath, { recursive: true, force: true })
+      this.loadedExtensions.delete(ext.id)
+    }
+
+    const findExistingPreinstalled = (entry) => {
+      for (const ext of this.loadedExtensions.values()) {
+        if (matchesPreinstalledEntry(ext, entry)) return ext
+      }
+      return null
+    }
 
     // Prune removed preinstalled
     const toPrune = Array.from(this.loadedExtensions.values())
       .filter(ext => (ext.source === 'preinstalled' || ext.isSystem === true))
-      .filter(ext => !desiredIds.has(ext.id))
+      .filter(ext => {
+        if (desiredIds.has(ext.id)) return false
+        return !entries.some(entry => matchesPreinstalledEntry(ext, entry))
+      })
     for (const ext of toPrune) {
       try {
-        if (this.session && ext.electronId) {
-          try { await this.session.removeExtension(ext.electronId) } catch (_) { }
-        }
-        const extPath = path.join(this.extensionsBaseDir, ext.id)
-        await fs.rm(extPath, { recursive: true, force: true })
-        this.loadedExtensions.delete(ext.id)
+        await removePreinstalledRecord(ext)
         await this._writeRegistry()
         log.info('ExtensionManager: Pruned removed preinstalled extension:', ext.displayName || ext.name)
       } catch (err) {
@@ -523,10 +547,10 @@ class ExtensionManager {
       }
     }
 
-    // Install missing preinstalled
+    // Install missing preinstalled (or refresh when bundled version changes)
     for (const entry of entries) {
       try {
-        if (this.loadedExtensions.has(entry.id)) continue
+        const existing = findExistingPreinstalled(entry)
         const sourceRef = typeof entry.archive === 'string' && entry.archive.length ? entry.archive : entry.dir
         if (!sourceRef) {
           log.warn('ExtensionManager: Preinstalled entry missing source reference')
@@ -534,39 +558,40 @@ class ExtensionManager {
         }
 
         const sourcePath = path.join(preDir, sourceRef)
-        let stat
+        let sourceStat
         try {
-          stat = await fs.stat(sourcePath)
+          sourceStat = await fs.stat(sourcePath)
         } catch (statErr) {
           log.warn('ExtensionManager: Preinstalled source missing:', sourceRef, statErr.message || statErr)
           continue
         }
 
+        if (existing) {
+          const preinstallVersionMatch = !entry.version ||
+            String(existing.preinstallVersion || '') === String(entry.version)
+          if (preinstallVersionMatch) continue
+          await removePreinstalledRecord(existing)
+        } else if (entry.id && this.loadedExtensions.has(entry.id)) {
+          continue
+        }
+
         let extData
-        if (stat.isDirectory()) {
+        if (sourceStat.isDirectory()) {
           extData = await this._prepareFromDirectory(sourcePath)
         } else {
           extData = await this._prepareFromArchive(sourcePath)
         }
 
-        // Respect ID from postinstall manifest
         if (entry.id) {
           extData.id = entry.id
+        }
+        if (entry.version) {
+          extData.preinstallVersion = entry.version
         }
         extData.isSystem = true
         extData.removable = false
         extData.source = 'preinstalled'
         await this._saveExtensionMetadata(extData)
-        if (this.session && extData.enabled) {
-          try {
-            const electronExtension = await this.session.loadExtension(extData.installedPath, { allowFileAccess: false })
-            extData.electronId = electronExtension.id
-          } catch (loadErr) {
-            log.warn('ExtensionManager: Failed to load preinstalled extension:', loadErr.message)
-          }
-        }
-        this.loadedExtensions.set(extData.id, extData)
-        await this._writeRegistry()
         log.info('ExtensionManager: Preinstalled extension imported:', extData.displayName || extData.name)
       } catch (err) {
         const ref = entry && (entry.archive || entry.dir || entry.id || 'unknown')
