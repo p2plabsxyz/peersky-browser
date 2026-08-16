@@ -185,6 +185,10 @@ Validation & security
 - Optional permission prompts (`chrome.permissions.request`) are currently blocked; calls reject with `E_INVALID_STATE` so extensions must declare needed hosts up front.
 - Runtime host-permission reviews are manual today—disable the extension or uninstall if the warning set looks unsafe.
 
+### Side panel
+
+`chrome.sidePanel` docks a panel beside the page (options, behavior, open/close, per-tab enablement). Toolbar click opens the panel when `openPanelOnActionClick` is true; when false (e.g. WebBrain), the extension can still call `setOptions` then `open` from its action handler. Agent / `chrome.debugger` flows are not supported.
+
 ## 7. File Reference
 
 | File | Purpose |
