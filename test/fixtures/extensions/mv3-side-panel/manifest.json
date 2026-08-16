@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "MV3 Side Panel Probe",
+  "version": "1.0.0",
+  "description": "Minimal MV3 fixture for chrome.sidePanel open/options coverage.",
+  "permissions": ["sidePanel"],
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "action": {
+    "default_title": "Open side panel"
+  },
+  "background": {
+    "service_worker": "sw.js"
+  }
+}
