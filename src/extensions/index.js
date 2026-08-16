@@ -84,8 +84,12 @@ class ExtensionManager {
     this.popupToOpener = new Map()
     this.popupToExtensionId = new Map()
 
-    // windowId → { extensionId, path, tabId, url }
+    // windowId → currently visible panel
     this.activeSidePanels = new Map()
+    // `${windowId}:${tabId}` → tab-scoped open intent
+    this.sidePanelOpenByTab = new Map()
+    // windowId → global open intent
+    this.sidePanelOpenGlobal = new Map()
 
     // Paths (set in initialize)
     this.extensionsBaseDir = null

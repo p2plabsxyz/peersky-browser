@@ -25,6 +25,16 @@ function panelUrl (extension, path) {
   return `chrome-extension://${extension.id}/${rel}`
 }
 
+function tabKey (windowId, tabId) {
+  return `${windowId}:${tabId}`
+}
+
+function ensureMaps (manager) {
+  if (!manager.activeSidePanels) manager.activeSidePanels = new Map()
+  if (!manager.sidePanelOpenByTab) manager.sidePanelOpenByTab = new Map()
+  if (!manager.sidePanelOpenGlobal) manager.sidePanelOpenGlobal = new Map()
+}
+
 function getElectronExtension (manager, extension) {
   const id = extension?.electronId || extension?.id
   if (!id || !manager.session) return null
@@ -51,6 +61,63 @@ function resolvePanelPath (manager, extension, tabId) {
     : null
 }
 
+function resolveTitle (manager, extensionId, fallback) {
+  try {
+    for (const ext of manager.loadedExtensions.values()) {
+      if (ext.electronId === extensionId || ext.id === extensionId) {
+        return ext.displayName || ext.name || fallback
+      }
+    }
+  } catch (_) {}
+  return fallback
+}
+
+function isEnabledForTab (manager, extensionId, tabId) {
+  const api = manager.electronChromeExtensions?.api?.sidePanel
+  if (!api || typeof api.getResolvedOptions !== 'function') return true
+  const opts = api.getResolvedOptions(extensionId, tabId)
+  return opts?.enabled !== false
+}
+
+function resolvePathForTab (manager, extensionId, tabId, fallbackPath) {
+  const api = manager.electronChromeExtensions?.api?.sidePanel
+  if (api && typeof api.getResolvedOptions === 'function') {
+    const opts = api.getResolvedOptions(extensionId, tabId)
+    if (typeof opts?.path === 'string' && opts.path) return opts.path.replace(/^\//, '')
+  }
+  return fallbackPath
+}
+
+function showPanel (manager, win, state) {
+  ensureMaps(manager)
+  const path = String(state.path || '').replace(/^\//, '')
+  const url = state.url || `chrome-extension://${state.extensionId}/${path}`
+  const title = resolveTitle(manager, state.extensionId, state.extensionId)
+
+  manager.activeSidePanels.set(win.id, {
+    extensionId: state.extensionId,
+    path,
+    tabId: typeof state.tabId === 'number' ? state.tabId : null,
+    url
+  })
+
+  win.webContents.send('extensions-side-panel-open', {
+    extensionId: state.extensionId,
+    path,
+    tabId: typeof state.tabId === 'number' ? state.tabId : null,
+    url,
+    title,
+    width: PANEL_WIDTH
+  })
+}
+
+function hidePanel (manager, win) {
+  if (!win || win.isDestroyed()) return
+  ensureMaps(manager)
+  manager.activeSidePanels.delete(win.id)
+  win.webContents.send('extensions-side-panel-close', {})
+}
+
 /**
  * If the extension set openPanelOnActionClick, open/toggle the docked panel.
  * Returns true when the click was handled (caller should skip popup/onClicked).
@@ -65,11 +132,13 @@ export async function tryOpenSidePanelOnActionClick (manager, extension, window,
   if (!behavior?.openPanelOnActionClick) return false
   if (!window || window.isDestroyed()) return false
 
-  const existing = manager.activeSidePanels?.get(window.id)
+  ensureMaps(manager)
+  const existing = manager.activeSidePanels.get(window.id)
   if (existing && existing.extensionId === electronId) {
     await closeSidePanel(manager, {
       extension: { id: electronId },
-      windowId: window.id
+      windowId: window.id,
+      tabId: existing.tabId != null ? existing.tabId : undefined
     })
     return true
   }
@@ -106,34 +175,23 @@ export async function openSidePanel (manager, details = {}) {
     throw new Error('No browser window available for side panel')
   }
 
-  const url = panelUrl(extension, path)
-  let title = extension.name || extension.id
-  try {
-    for (const ext of manager.loadedExtensions.values()) {
-      if (ext.electronId === extension.id || ext.id === extension.id) {
-        title = ext.displayName || ext.name || title
-        break
-      }
-    }
-  } catch (_) {}
-
-  if (!manager.activeSidePanels) manager.activeSidePanels = new Map()
-  manager.activeSidePanels.set(win.id, {
+  ensureMaps(manager)
+  const rel = String(path).replace(/^\//, '')
+  const url = panelUrl(extension, rel)
+  const record = {
     extensionId: extension.id,
-    path: String(path).replace(/^\//, ''),
-    tabId: typeof tabId === 'number' ? tabId : null,
-    url
-  })
-
-  win.webContents.send('extensions-side-panel-open', {
-    extensionId: extension.id,
-    path: String(path).replace(/^\//, ''),
-    tabId: typeof tabId === 'number' ? tabId : null,
+    path: rel,
     url,
-    title,
-    width: PANEL_WIDTH
-  })
+    tabId: typeof tabId === 'number' ? tabId : null
+  }
 
+  if (typeof tabId === 'number') {
+    manager.sidePanelOpenByTab.set(tabKey(win.id, tabId), record)
+  } else {
+    manager.sidePanelOpenGlobal.set(win.id, record)
+  }
+
+  showPanel(manager, win, record)
   log.info(`Side panel open: ${extension.id} → ${url} (window ${win.id})`)
 }
 
@@ -141,8 +199,10 @@ export async function closeSidePanel (manager, details = {}) {
   const { windowId, tabId } = details
   let win = findBrowserWindow(windowId)
 
+  ensureMaps(manager)
+
   if ((!win || win.isDestroyed()) && typeof tabId === 'number') {
-    for (const [id, state] of (manager.activeSidePanels || [])) {
+    for (const [id, state] of manager.activeSidePanels) {
       if (state.tabId === tabId) {
         win = BrowserWindow.fromId(id)
         break
@@ -152,15 +212,78 @@ export async function closeSidePanel (manager, details = {}) {
 
   if (!win || win.isDestroyed()) return
 
-  if (manager.activeSidePanels) manager.activeSidePanels.delete(win.id)
-  win.webContents.send('extensions-side-panel-close', {
-    extensionId: details.extension?.id || null,
-    tabId: typeof tabId === 'number' ? tabId : null
-  })
+  if (typeof tabId === 'number') {
+    manager.sidePanelOpenByTab.delete(tabKey(win.id, tabId))
+  } else {
+    manager.sidePanelOpenGlobal.delete(win.id)
+  }
+
+  const visible = manager.activeSidePanels.get(win.id)
+  const shouldHide =
+    !visible ||
+    (typeof tabId === 'number'
+      ? visible.tabId === tabId
+      : visible.tabId == null || details.extension?.id === visible.extensionId)
+
+  if (shouldHide) hidePanel(manager, win)
   log.info(`Side panel close (window ${win.id})`)
 }
 
+/** Re-apply tab/global open intent after the active tab changes. */
+export function syncSidePanelForActiveTab (manager, window, tabId) {
+  if (!window || window.isDestroyed() || typeof tabId !== 'number') return
+  ensureMaps(manager)
+
+  const byTab = manager.sidePanelOpenByTab.get(tabKey(window.id, tabId))
+  if (byTab) {
+    if (!isEnabledForTab(manager, byTab.extensionId, tabId)) {
+      hidePanel(manager, window)
+      return
+    }
+    const path = resolvePathForTab(manager, byTab.extensionId, tabId, byTab.path)
+    showPanel(manager, window, {
+      ...byTab,
+      path,
+      url: `chrome-extension://${byTab.extensionId}/${path}`,
+      tabId
+    })
+    return
+  }
+
+  const global = manager.sidePanelOpenGlobal.get(window.id)
+  if (global) {
+    if (!isEnabledForTab(manager, global.extensionId, tabId)) {
+      hidePanel(manager, window)
+      return
+    }
+    const path = resolvePathForTab(manager, global.extensionId, tabId, global.path)
+    showPanel(manager, window, {
+      ...global,
+      path,
+      url: `chrome-extension://${global.extensionId}/${path}`,
+      tabId: null
+    })
+    return
+  }
+
+  if (manager.activeSidePanels.has(window.id)) {
+    hidePanel(manager, window)
+  }
+}
+
 export function clearSidePanelState (manager, windowId) {
-  if (!manager.activeSidePanels) return
+  ensureMaps(manager)
+  const visible = manager.activeSidePanels.get(windowId)
   manager.activeSidePanels.delete(windowId)
+
+  if (visible && typeof visible.tabId === 'number') {
+    manager.sidePanelOpenByTab.delete(tabKey(windowId, visible.tabId))
+  } else if (visible) {
+    manager.sidePanelOpenGlobal.delete(windowId)
+  }
+
+  // Drop any leftover per-tab intents for a destroyed window.
+  for (const key of [...manager.sidePanelOpenByTab.keys()]) {
+    if (key.startsWith(`${windowId}:`)) manager.sidePanelOpenByTab.delete(key)
+  }
 }

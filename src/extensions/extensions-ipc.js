@@ -23,7 +23,7 @@
 import electron from 'electron'
 import { ERR, validateInstallSource, sha256Hex } from './util.js'
 import path from 'path'
-import { clearSidePanelState } from './services/side-panel.js'
+import { clearSidePanelState, syncSidePanelForActiveTab } from './services/side-panel.js'
 const { ipcMain, BrowserWindow, dialog, app } = electron
 
 // Simple in-memory rate limiter for install attempts per sender WebContents
@@ -499,6 +499,14 @@ export function setupExtensionIpcHandlers (extensionManager) {
             try { ece.selectTab(webviewContents, senderWindow) } catch (_) { }
           }
         } catch (_) { /* ignore for now */ }
+
+        try {
+          if (senderWindow && !senderWindow.isDestroyed()) {
+            syncSidePanelForActiveTab(extensionManager, senderWindow, webContentsId)
+          }
+        } catch (syncErr) {
+          console.warn('[ExtensionIPC] side panel tab sync failed:', syncErr?.message || syncErr)
+        }
 
         return { success: true }
       } catch (error) {

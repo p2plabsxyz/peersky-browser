@@ -30,7 +30,7 @@ function ensureSidePanel () {
     <div class="extension-side-panel-body"></div>
   `
   sidePanelEl.querySelector('.extension-side-panel-close').addEventListener('click', () => {
-    closeExtensionSidePanel()
+    closeExtensionSidePanel({ notify: true })
   })
   document.body.appendChild(sidePanelEl)
   return sidePanelEl
@@ -64,11 +64,13 @@ function openExtensionSidePanel ({ url, title, width }) {
   document.body.classList.add('extension-side-panel-open')
 }
 
-function closeExtensionSidePanel () {
+function closeExtensionSidePanel ({ notify = false } = {}) {
   if (sidePanelEl) sidePanelEl.classList.remove('open')
   document.body.classList.remove('extension-side-panel-open')
   document.documentElement.style.removeProperty('--extension-side-panel-width')
-  try { ipcRenderer.send('extensions-side-panel-closed') } catch (_) {}
+  if (notify) {
+    try { ipcRenderer.send('extensions-side-panel-closed') } catch (_) {}
+  }
 }
 
 // Listen for IPC messages from main process to add tabs
@@ -362,7 +364,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   })
 
   ipcRenderer.on('extensions-side-panel-close', () => {
-    closeExtensionSidePanel()
+    // Main owns open-intent; don't echo closed or tab-scoped state is wiped on switch.
+    closeExtensionSidePanel({ notify: false })
   })
 
   ipcRenderer.on('refresh-browser-actions', () => {
