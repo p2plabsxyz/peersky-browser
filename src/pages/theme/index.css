@@ -625,6 +625,78 @@ find-menu {
   display: flex;
 }
 
+body.extension-side-panel-open .webview-container {
+  right: var(--extension-side-panel-width, 380px);
+  width: auto;
+}
+
+.extension-side-panel {
+  position: fixed;
+  top: 88px;
+  right: 0;
+  bottom: 0;
+  width: var(--extension-side-panel-width, 380px);
+  z-index: 30;
+  display: none;
+  flex-direction: column;
+  background: var(--settings-bg-secondary, #27272a);
+  border-left: 1px solid var(--settings-border, #3f3f46);
+  color: var(--peersky-nav-button-hover, #e5e7eb);
+}
+
+.extension-side-panel.open {
+  display: flex;
+}
+
+.extension-side-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 36px;
+  padding: 0 8px 0 12px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--settings-border, #3f3f46);
+  -webkit-app-region: no-drag;
+}
+
+.extension-side-panel-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.extension-side-panel-close {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 18px;
+  line-height: 1;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.extension-side-panel-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.extension-side-panel-body {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.extension-side-panel-webview {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: flex;
+}
+
 .tab-webview {
   width: 100%;
   height: 100%;
@@ -1261,6 +1333,11 @@ find-menu {
   margin-left: 48px !important; /* Updated to match collapsed width */
   width: calc(100% - 48px) !important;
   transition: margin-left 0.3s ease, width 0.3s ease !important;
+}
+
+body.extension-side-panel-open.vertical-tabs-layout .webview-container {
+  width: auto !important;
+  right: var(--extension-side-panel-width, 380px) !important;
 }
 
 /* Add smooth transitions for the layout changes */

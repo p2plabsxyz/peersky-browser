@@ -42,6 +42,7 @@ import { resolveManifestStrings } from './utils/strings.js'
 import * as RegistryService from './services/registry.js'
 import * as LoaderService from './services/loader.js'
 import * as BrowserActions from './services/browser-actions.js'
+import * as SidePanelService from './services/side-panel.js'
 import { installExtensionPopupGuards as installPopupGuards } from './services/popup-guards.js'
 import { openUrlInPeerskyTab } from './services/open-url-in-browser-tab.js'
 import * as WebStoreService from './services/webstore.js'
@@ -82,6 +83,9 @@ class ExtensionManager {
     this.activePopups = new Set()
     this.popupToOpener = new Map()
     this.popupToExtensionId = new Map()
+
+    // windowId → { extensionId, path, tabId, url }
+    this.activeSidePanels = new Map()
 
     // Paths (set in initialize)
     this.extensionsBaseDir = null
@@ -411,6 +415,14 @@ class ExtensionManager {
             } catch (err) {
               log.error('[ExtensionManager] removeWindow impl failed:', err)
             }
+          },
+
+          openSidePanel: async (details) => {
+            await SidePanelService.openSidePanel(this, details)
+          },
+
+          closeSidePanel: async (details) => {
+            await SidePanelService.closeSidePanel(this, details)
           }
         })
         log.info('ExtensionManager: ElectronChromeExtensions initialized')

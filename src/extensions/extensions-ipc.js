@@ -23,6 +23,7 @@
 import electron from 'electron'
 import { ERR, validateInstallSource, sha256Hex } from './util.js'
 import path from 'path'
+import { clearSidePanelState } from './services/side-panel.js'
 const { ipcMain, BrowserWindow, dialog, app } = electron
 
 // Simple in-memory rate limiter for install attempts per sender WebContents
@@ -846,6 +847,16 @@ export function setupExtensionIpcHandlers (extensionManager) {
           error: error.message,
           results: []
         }
+      }
+    })
+
+    ipcMain.on('extensions-side-panel-closed', (event) => {
+      try {
+        const win = BrowserWindow.fromWebContents(event.sender)
+        if (!win || win.isDestroyed()) return
+        clearSidePanelState(extensionManager, win.id)
+      } catch (error) {
+        console.warn('[ExtensionIPC] extensions-side-panel-closed failed:', error?.message || error)
       }
     })
 
