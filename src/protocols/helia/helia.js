@@ -58,11 +58,11 @@ export async function createNode() {
     addresses: {
       listen: [
         '/ip4/0.0.0.0/tcp/0',
-        '/ip4/0.0.0.0/tcp/0/ws',
-        '/ip4/0.0.0.0/udp/0/webrtc-direct',
+        '/ip4/0.0.0.0/tcp/4002/ws',
+        '/ip4/0.0.0.0/udp/4003/webrtc-direct',
         '/ip6/::/tcp/0',
-        '/ip6/::/tcp/0/ws',
-        '/ip6/::/udp/0/webrtc-direct',
+        '/ip6/::/tcp/4002/ws',
+        '/ip6/::/udp/4003/webrtc-direct',
         '/p2p-circuit'
       ],
     },
