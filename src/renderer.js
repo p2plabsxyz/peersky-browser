@@ -36,6 +36,16 @@ function ensureSidePanel () {
   return sidePanelEl
 }
 
+function reportSidePanelGuest () {
+  if (!sidePanelWebview) return
+  try {
+    const id = sidePanelWebview.getWebContentsId?.()
+    if (typeof id === 'number') {
+      ipcRenderer.send('extensions-side-panel-webview', id)
+    }
+  } catch (_) {}
+}
+
 function openExtensionSidePanel ({ url, title, width }) {
   if (!url) return
   const panel = ensureSidePanel()
@@ -52,12 +62,17 @@ function openExtensionSidePanel ({ url, title, width }) {
     sidePanelWebview.className = 'extension-side-panel-webview'
     sidePanelWebview.setAttribute('webpreferences', 'contextIsolation=yes,nativeWindowOpen=yes,sandbox=yes')
     sidePanelWebview.setAttribute('allowpopups', '')
+    sidePanelWebview.addEventListener('did-attach', reportSidePanelGuest)
+    sidePanelWebview.addEventListener('dom-ready', reportSidePanelGuest)
     body.appendChild(sidePanelWebview)
   }
 
   const current = sidePanelWebview.getAttribute('src')
   if (current !== url) {
     sidePanelWebview.setAttribute('src', url)
+  } else {
+    // Already loaded; still exclude from ECE in case attach raced ahead of open intent.
+    reportSidePanelGuest()
   }
 
   panel.classList.add('open')

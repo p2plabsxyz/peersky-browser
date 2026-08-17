@@ -635,17 +635,23 @@ body.extension-side-panel-open .webview-container {
   top: 88px;
   right: 0;
   bottom: 0;
-  width: var(--extension-side-panel-width, 380px);
+  width: 0;
   z-index: 30;
-  display: none;
+  display: flex;
   flex-direction: column;
+  visibility: hidden;
+  pointer-events: none;
+  overflow: hidden;
   background: var(--settings-bg-secondary, #27272a);
-  border-left: 1px solid var(--settings-border, #3f3f46);
+  border-left: 1px solid transparent;
   color: var(--peersky-nav-button-hover, #e5e7eb);
 }
 
 .extension-side-panel.open {
-  display: flex;
+  width: var(--extension-side-panel-width, 380px);
+  visibility: visible;
+  pointer-events: auto;
+  border-left-color: var(--settings-border, #3f3f46);
 }
 
 .extension-side-panel-header {

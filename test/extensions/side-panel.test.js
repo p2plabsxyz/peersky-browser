@@ -17,6 +17,8 @@ function makeManager (overrides = {}) {
     activeSidePanels: new Map(),
     sidePanelOpenByTab: new Map(),
     sidePanelOpenGlobal: new Map(),
+    sidePanelGuestIds: new Set(),
+    _registeredTabs: new Set(),
     loadedExtensions: new Map([
       ['ext-1', {
         id: 'ext-1',
@@ -39,7 +41,17 @@ function makeManager (overrides = {}) {
           getResolvedOptions: sinon.stub().returns({ enabled: true, path: 'sidepanel.html' }),
           getResolvedPanelBehavior: sinon.stub().returns({ openPanelOnActionClick: false })
         }
-      }
+      },
+      ctx: {
+        store: {
+          tabs: new Set(),
+          windowToActiveTab: new Map(),
+          lastFocusedWindowId: null
+        }
+      },
+      addTab: sinon.spy(),
+      removeTab: sinon.spy(),
+      selectTab: sinon.spy()
     },
     ...overrides
   }
@@ -49,9 +61,19 @@ describe('side panel host service', function () {
   let SidePanel
   let BrowserWindow
   let win
+  let pageTab
+  let webContentsApi
 
   beforeEach(async function () {
     win = makeWindow(7)
+    pageTab = {
+      id: 42,
+      isDestroyed: () => false,
+      getURL: () => 'https://example.com/'
+    }
+    webContentsApi = {
+      fromId: sinon.stub().callsFake((id) => (id === pageTab.id ? pageTab : null))
+    }
     BrowserWindow = {
       fromId: sinon.stub().callsFake((id) => (id === win.id ? win : null)),
       getFocusedWindow: sinon.stub().returns(win),
@@ -59,7 +81,7 @@ describe('side panel host service', function () {
     }
 
     SidePanel = await esmock('../../src/extensions/services/side-panel.js', {
-      electron: { BrowserWindow }
+      electron: { BrowserWindow, webContents: webContentsApi }
     })
   })
 
@@ -85,6 +107,21 @@ describe('side panel host service', function () {
     expect(win.webContents.send.calledWith('extensions-side-panel-open')).to.equal(true)
     const payload = win.webContents.send.firstCall.args[1]
     expect(payload.url).to.equal('chrome-extension://ext-1/sidepanel.html')
+  })
+
+  it('openSidePanel pins the page tab as the active ECE tab', async function () {
+    const manager = makeManager()
+    await SidePanel.openSidePanel(manager, {
+      extension: { id: 'ext-1', name: 'Side Panel Fixture' },
+      path: 'sidepanel.html',
+      tabId: 42,
+      windowId: win.id
+    })
+
+    const store = manager.electronChromeExtensions.ctx.store
+    expect(store.lastFocusedWindowId).to.equal(7)
+    expect(store.windowToActiveTab.get(win)).to.equal(pageTab)
+    expect(manager.electronChromeExtensions.selectTab.calledWith(pageTab, win)).to.equal(true)
   })
 
   it('openSidePanel without tabId records global intent', async function () {
@@ -119,7 +156,7 @@ describe('side panel host service', function () {
     expect(win.webContents.send.calledWith('extensions-side-panel-close')).to.equal(true)
   })
 
-  it('syncSidePanelForActiveTab restores a previously opened tab panel', async function () {
+  it('syncSidePanelForActiveTab restores a previously opened tab panel without clearing intent', async function () {
     const manager = makeManager()
     await SidePanel.openSidePanel(manager, {
       extension: { id: 'ext-1', name: 'Side Panel Fixture' },
@@ -133,6 +170,7 @@ describe('side panel host service', function () {
     SidePanel.syncSidePanelForActiveTab(manager, win, 42)
 
     expect(manager.activeSidePanels.get(7).tabId).to.equal(42)
+    expect(manager.sidePanelOpenByTab.has('7:42')).to.equal(true)
     expect(win.webContents.send.calledWith('extensions-side-panel-open')).to.equal(true)
   })
 
@@ -215,5 +253,54 @@ describe('side panel host service', function () {
 
     expect(manager.activeSidePanels.has(7)).to.equal(false)
     expect(manager.sidePanelOpenByTab.has('7:42')).to.equal(false)
+  })
+
+  it('isSidePanelGuest matches tracked guest ids and panel urls', async function () {
+    const manager = makeManager()
+    await SidePanel.openSidePanel(manager, {
+      extension: { id: 'ext-1', name: 'Side Panel Fixture' },
+      path: 'sidepanel.html',
+      tabId: 42,
+      windowId: win.id
+    })
+
+    const guest = {
+      id: 900,
+      isDestroyed: () => false,
+      getURL: () => 'chrome-extension://ext-1/sidepanel.html'
+    }
+    expect(SidePanel.isSidePanelGuest(manager, win, guest)).to.equal(true)
+
+    manager.sidePanelGuestIds.add(901)
+    const tracked = {
+      id: 901,
+      isDestroyed: () => false,
+      getURL: () => 'about:blank'
+    }
+    expect(SidePanel.isSidePanelGuest(manager, win, tracked)).to.equal(true)
+
+    const page = {
+      id: 42,
+      isDestroyed: () => false,
+      getURL: () => 'https://example.com/'
+    }
+    expect(SidePanel.isSidePanelGuest(manager, win, page)).to.equal(false)
+  })
+
+  it('registerSidePanelGuest excludes the guest from ECE tabs', function () {
+    const manager = makeManager()
+    const guest = {
+      id: 900,
+      isDestroyed: () => false,
+      once: sinon.spy()
+    }
+    webContentsApi.fromId.callsFake((id) => (id === 900 ? guest : id === 42 ? pageTab : null))
+    manager._registeredTabs.add(900)
+
+    SidePanel.registerSidePanelGuest(manager, 900)
+
+    expect(manager.sidePanelGuestIds.has(900)).to.equal(true)
+    expect(manager._registeredTabs.has(900)).to.equal(false)
+    expect(manager.electronChromeExtensions.removeTab.calledWith(guest)).to.equal(true)
   })
 })

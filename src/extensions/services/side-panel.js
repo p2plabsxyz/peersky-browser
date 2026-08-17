@@ -1,7 +1,7 @@
 import electron from 'electron'
 import { createLogger } from '../../logger.js'
 
-const { BrowserWindow } = electron
+const { BrowserWindow, webContents } = electron
 const log = createLogger('extensions')
 
 const PANEL_WIDTH = 380
@@ -33,6 +33,7 @@ function ensureMaps (manager) {
   if (!manager.activeSidePanels) manager.activeSidePanels = new Map()
   if (!manager.sidePanelOpenByTab) manager.sidePanelOpenByTab = new Map()
   if (!manager.sidePanelOpenGlobal) manager.sidePanelOpenGlobal = new Map()
+  if (!manager.sidePanelGuestIds) manager.sidePanelGuestIds = new Set()
 }
 
 function getElectronExtension (manager, extension) {
@@ -88,27 +89,132 @@ function resolvePathForTab (manager, extensionId, tabId, fallbackPath) {
   return fallbackPath
 }
 
+/** Keep tabs.getCurrent / debugger aimed at the left page, not the panel guest. */
+function pinPageTab (manager, win, tabId) {
+  if (!win || win.isDestroyed() || typeof tabId !== 'number') return
+  const ece = manager.electronChromeExtensions
+  const store = ece?.ctx?.store
+  if (!ece || !store) return
+
+  let tab
+  try {
+    tab = webContents.fromId(tabId)
+  } catch (_) {
+    return
+  }
+  if (!tab || tab.isDestroyed()) return
+
+  try {
+    store.lastFocusedWindowId = win.id
+    if (!store.tabs?.has?.(tab)) {
+      try { ece.addTab(tab, win) } catch (_) {}
+    }
+    try { store.windowToActiveTab?.set?.(win, tab) } catch (_) {}
+    try { ece.selectTab?.(tab, win) } catch (_) {}
+  } catch (err) {
+    log.warn(`Side panel: failed to pin page tab ${tabId}:`, err?.message || err)
+  }
+}
+
+/**
+ * True when this webContents is (or will be) the docked side panel guest,
+ * and must never be registered as an ECE browser tab.
+ */
+export function isSidePanelGuest (manager, window, guest) {
+  if (!manager || !guest || guest.isDestroyed?.()) return false
+  ensureMaps(manager)
+
+  if (typeof guest.id === 'number' && manager.sidePanelGuestIds.has(guest.id)) {
+    return true
+  }
+
+  const winId = window?.id
+  if (typeof winId !== 'number') return false
+
+  let url = ''
+  try {
+    url = guest.getURL?.() || ''
+  } catch (_) {
+    return false
+  }
+  if (!url.startsWith('chrome-extension://')) return false
+
+  const active = manager.activeSidePanels.get(winId)
+  if (active?.url) {
+    const base = active.url.split('#')[0]
+    if (url === active.url || url === base || url.startsWith(`${base}#`)) return true
+  }
+  if (active?.extensionId && active?.path) {
+    const expected = `chrome-extension://${active.extensionId}/${String(active.path).replace(/^\//, '')}`
+    if (url === expected || url.startsWith(`${expected}#`)) return true
+  }
+
+  for (const record of manager.sidePanelOpenByTab.values()) {
+    if (!record?.url) continue
+    const base = record.url.split('#')[0]
+    if (url === record.url || url === base || url.startsWith(`${base}#`)) return true
+  }
+  const global = manager.sidePanelOpenGlobal.get(winId)
+  if (global?.url) {
+    const base = global.url.split('#')[0]
+    if (url === global.url || url === base || url.startsWith(`${base}#`)) return true
+  }
+
+  return false
+}
+
+/** Record panel guest id and drop it from ECE if it was already registered. */
+export function registerSidePanelGuest (manager, webContentsId) {
+  if (typeof webContentsId !== 'number') return
+  ensureMaps(manager)
+  manager.sidePanelGuestIds.add(webContentsId)
+
+  const ece = manager.electronChromeExtensions
+  let guest
+  try {
+    guest = webContents.fromId(webContentsId)
+  } catch (_) {
+    guest = null
+  }
+
+  if (guest && !guest.isDestroyed()) {
+    try {
+      ece?.removeTab?.(guest)
+    } catch (_) {}
+  }
+  manager._registeredTabs?.delete?.(webContentsId)
+
+  try {
+    guest?.once?.('destroyed', () => {
+      manager.sidePanelGuestIds?.delete(webContentsId)
+    })
+  } catch (_) {}
+}
+
 function showPanel (manager, win, state) {
   ensureMaps(manager)
   const path = String(state.path || '').replace(/^\//, '')
   const url = state.url || `chrome-extension://${state.extensionId}/${path}`
   const title = resolveTitle(manager, state.extensionId, state.extensionId)
+  const tabId = typeof state.tabId === 'number' ? state.tabId : null
 
   manager.activeSidePanels.set(win.id, {
     extensionId: state.extensionId,
     path,
-    tabId: typeof state.tabId === 'number' ? state.tabId : null,
+    tabId,
     url
   })
 
   win.webContents.send('extensions-side-panel-open', {
     extensionId: state.extensionId,
     path,
-    tabId: typeof state.tabId === 'number' ? state.tabId : null,
+    tabId,
     url,
     title,
     width: PANEL_WIDTH
   })
+
+  if (tabId != null) pinPageTab(manager, win, tabId)
 }
 
 function hidePanel (manager, win) {

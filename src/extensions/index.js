@@ -90,6 +90,8 @@ class ExtensionManager {
     this.sidePanelOpenByTab = new Map()
     // windowId → global open intent
     this.sidePanelOpenGlobal = new Map()
+    // webContents ids of docked side panel guests (never ECE tabs)
+    this.sidePanelGuestIds = new Set()
 
     // Paths (set in initialize)
     this.extensionsBaseDir = null
@@ -879,6 +881,11 @@ class ExtensionManager {
     if (this.electronChromeExtensions) {
       if (!webContents) return // avoid registering shell UI or popups as tabs
       try {
+        if (SidePanelService.isSidePanelGuest(this, window, webContents)) {
+          SidePanelService.registerSidePanelGuest(this, webContents.id)
+          return
+        }
+
         // Skip if this webContents is already registered to avoid duplicate
         // addTab() calls which can trigger spurious navigations/reloads
         if (!this._registeredTabs) this._registeredTabs = new Set()
@@ -887,10 +894,25 @@ class ExtensionManager {
         this._registeredTabs.add(wcId)
         webContents.once('destroyed', () => {
           this._registeredTabs?.delete(wcId)
+          this.sidePanelGuestIds?.delete(wcId)
         })
 
         this.electronChromeExtensions.addTab(webContents, window)
         log.info(`[ExtensionManager] Registered webContents ${webContents.id} with extension system`)
+
+        // Side panel guests often attach before getURL() is set; drop them if they
+        // later navigate to the docked panel URL.
+        const dropIfSidePanel = () => {
+          if (SidePanelService.isSidePanelGuest(this, window, webContents)) {
+            SidePanelService.registerSidePanelGuest(this, webContents.id)
+            try { webContents.removeListener('did-navigate', dropIfSidePanel) } catch (_) {}
+            try { webContents.removeListener('did-frame-navigate', dropIfSidePanel) } catch (_) {}
+          }
+        }
+        try {
+          webContents.on('did-navigate', dropIfSidePanel)
+          webContents.on('did-frame-navigate', dropIfSidePanel)
+        } catch (_) {}
       } catch (error) {
         log.error('[ExtensionManager] Failed to register window:', error)
       }

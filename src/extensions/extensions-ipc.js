@@ -23,7 +23,7 @@
 import electron from 'electron'
 import { ERR, validateInstallSource, sha256Hex } from './util.js'
 import path from 'path'
-import { clearSidePanelState, syncSidePanelForActiveTab } from './services/side-panel.js'
+import { clearSidePanelState, syncSidePanelForActiveTab, registerSidePanelGuest } from './services/side-panel.js'
 const { ipcMain, BrowserWindow, dialog, app } = electron
 
 // Simple in-memory rate limiter for install attempts per sender WebContents
@@ -855,6 +855,15 @@ export function setupExtensionIpcHandlers (extensionManager) {
           error: error.message,
           results: []
         }
+      }
+    })
+
+    ipcMain.on('extensions-side-panel-webview', (event, webContentsId) => {
+      try {
+        if (typeof webContentsId !== 'number') return
+        registerSidePanelGuest(extensionManager, webContentsId)
+      } catch (error) {
+        console.warn('[ExtensionIPC] extensions-side-panel-webview failed:', error?.message || error)
       }
     })
 
