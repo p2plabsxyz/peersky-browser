@@ -105,37 +105,45 @@ async function initializeHyperSDK (options) {
   log.info('Initializing Hyper SDK...')
 
   sdk = await createSDK(options)
-  const lan = await HyperDHTmDNS.attachHyperSDK(sdk, getLANOptions())
-  lan.on?.('warning', (error) => log.warn(`[LAN] ${error.message}`))
-  lan.on?.('error', (error) => log.error(`[LAN] ${error.message}`))
-  log.info(`[LAN] Listening on ${lan.host || '0.0.0.0'}:${lan.port}`)
+  
+  let lan = null
+  try {
+    lan = await HyperDHTmDNS.attachHyperSDK(sdk, getLANOptions())
+    lan.on('warning', (error) => log.warn(`[LAN] ${error.message}`))
+    lan.on('error', (error) => log.error(`[LAN] ${error.message}`))
+    log.info(`[LAN] Listening on ${lan.host || '0.0.0.0'}:${lan.port}`)
+  } catch (err) {
+    log.warn(`[LAN] Local discovery unavailable, continuing without it: ${err.message}`)
+  }
 
-  // Detect WiFi / network changes and cycle both discovery layers. The SDK
-  // wrapper resumes the global DHT and LAN mDNS swarm without losing joined
-  // room topics or recreating the SDK's persistent storage.
-  let lastKnownIP = lan.host
-  let cycling = false
-  const NETWORK_CHECK_MS = 10_000
-  setInterval(() => {
-    if (cycling || lan.destroyed) return
-    try {
-      const currentIP = HyperDHTmDNS.selectLocalIPv4()
-      if (currentIP === lastKnownIP) return
-      log.info(`[LAN] Network change detected: ${lastKnownIP} → ${currentIP}`)
-      lastKnownIP = currentIP
-      cycling = true
-      sdk.suspend()
-        .then(() => sdk.resume())
-        .then(() => {
+  if (lan) {
+    let lastKnownIP = lan.host
+    let cycling = false
+    const NETWORK_CHECK_MS = 10_000
+    setInterval(async () => {
+      if (cycling || lan.destroyed) return
+      try {
+        const currentIP = HyperDHTmDNS.selectLocalIPv4()
+        if (currentIP === lastKnownIP) return
+        log.info(`[LAN] Network change detected: ${lastKnownIP} -> ${currentIP}`)
+        lastKnownIP = currentIP
+        cycling = true
+        
+        try {
+          await lan.destroy()
+          lan = await HyperDHTmDNS.attachHyperSDK(sdk, getLANOptions())
           lastKnownIP = lan.host
           log.info(`[LAN] Restarted discovery on ${lan.host}:${lan.port}`)
-        })
-        .catch((err) => log.warn(`[LAN] Network change recovery failed: ${err.message}`))
-        .finally(() => { cycling = false })
-    } catch {
-      // No usable interface (e.g. WiFi disconnected momentarily) — ignore
-    }
-  }, NETWORK_CHECK_MS).unref()
+        } catch (err) {
+          log.warn(`[LAN] Network change recovery failed: ${err.message}`)
+        } finally {
+          cycling = false
+        }
+      } catch {
+        // No usable interface, ignore
+      }
+    }, NETWORK_CHECK_MS).unref()
+  }
 
   fetch = makeHyperFetch({ sdk, writable: true })
 

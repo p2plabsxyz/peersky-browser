@@ -1,16 +1,29 @@
 import { expect } from 'chai'
 import sinon from 'sinon'
 import esmock from 'esmock'
+import { EventEmitter } from 'events'
 
 describe('Hyper protocol handler', function () {
   afterEach(function () {
     sinon.restore()
   })
 
-  async function loadHyperModule ({ fetchImpl, chatResponse, chatReject, throwOnFetch } = {}) {
-    const sdk = { id: 'sdk-test' }
+  async function loadHyperModule ({ fetchImpl, chatResponse, chatReject, throwOnFetch, lanReject } = {}) {
+    const sdk = { id: 'sdk-test', suspend: sinon.stub().resolves(), resume: sinon.stub().resolves() }
     const createSDK = sinon.stub().resolves(sdk)
-    const attachHyperSDK = sinon.stub().resolves({ id: 'lan-test' })
+    
+    const lanMock = new EventEmitter()
+    lanMock.id = 'lan-test'
+    lanMock.host = '127.0.0.1'
+    lanMock.port = 49799
+    lanMock.destroy = sinon.stub().resolves()
+
+    const attachHyperSDK = sinon.stub()
+    if (lanReject) {
+      attachHyperSDK.rejects(new Error('LAN bind failed'))
+    } else {
+      attachHyperSDK.resolves(lanMock)
+    }
 
     const fetchStub = sinon.stub().callsFake(async (url, options) => {
       if (throwOnFetch) {
@@ -167,5 +180,24 @@ describe('Hyper protocol handler', function () {
       scheme: 'hyper',
       method: 'PUT'
     })
+  })
+
+  it('continues initialization if LAN discovery fails to bind', async function () {
+    const { module, initChat, sdk } = await loadHyperModule({ lanReject: true })
+    
+    await module.createHandler({ storage: 'test-lan-fail' })
+    
+    expect(initChat.calledOnce).to.equal(true)
+    expect(initChat.firstCall.args[0]).to.equal(sdk)
+  })
+
+  it('wires up LAN error events correctly', async function () {
+    const { module, attachHyperSDK } = await loadHyperModule()
+    
+    await module.createHandler({ storage: 'test-lan-events' })
+    
+    const lanMock = await attachHyperSDK.firstCall.returnValue
+    expect(lanMock.listenerCount('error')).to.equal(1)
+    expect(lanMock.listenerCount('warning')).to.equal(1)
   })
 })
