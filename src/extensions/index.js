@@ -982,25 +982,20 @@ class ExtensionManager {
           try {
             const extensionOrigin = `chrome-extension://${extensionId}`
             log.info(`ExtensionManager: Clearing storage data for: ${extensionOrigin}`)
-            await Promise.race([
-              this.session.clearStorageData({
-                origin: extensionOrigin,
-                storages: [
-                  'cookies',
-                  'localstorage',
-                  'indexdb',
-                  'filesystem',
-                  'serviceworkers',
-                  'cachestorage',
-                  'websql',
-                  'shadercache'
-                ],
-                quotas: ['persistent', 'temporary']
-              }),
-              new Promise((resolve, reject) => {
-                setTimeout(() => reject(new Error('clearStorageData timed out')), 15000)
-              })
-            ])
+            await this.session.clearStorageData({
+              origin: extensionOrigin,
+              storages: [
+                'cookies',
+                'localstorage',
+                'indexdb',
+                'filesystem',
+                'serviceworkers',
+                'cachestorage',
+                'websql',
+                'shadercache'
+              ],
+              quotas: ['persistent', 'temporary']
+            })
             // Flush storage to ensure changes are written
             if (this.session.flushStorageData) {
               await this.session.flushStorageData()

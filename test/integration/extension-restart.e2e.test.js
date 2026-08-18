@@ -79,17 +79,9 @@ function runHarness ({ mode, userDataDir, fixtureDir, timeoutMs = 120000 }) {
     let parsed = null
     let lineBuffer = ''
 
-    let exitGrace = null
-    const finishTimeout = (err) => {
-      child.kill()
-      if (parsed) {
-        resolve({ code: null, result: parsed, stdout, stderr })
-        return
-      }
-      reject(err)
-    }
     const timer = setTimeout(() => {
-      finishTimeout(new Error(`Harness timeout in mode ${mode}`))
+      child.kill()
+      reject(new Error(`Harness timeout in mode ${mode}`))
     }, timeoutMs)
 
     child.stdout.on('data', (chunk) => {
@@ -102,11 +94,6 @@ function runHarness ({ mode, userDataDir, fixtureDir, timeoutMs = 120000 }) {
         if (line.startsWith(RESULT_PREFIX)) {
           try {
             parsed = JSON.parse(line.slice(RESULT_PREFIX.length))
-            // Windows often keeps the Electron process alive after the payload
-            // (session/LevelDB). Don't wait the full timeout once we have a result.
-            if (!exitGrace) {
-              exitGrace = setTimeout(() => child.kill(), 15000)
-            }
           } catch {
           }
         }
@@ -119,13 +106,11 @@ function runHarness ({ mode, userDataDir, fixtureDir, timeoutMs = 120000 }) {
 
     child.on('error', (error) => {
       clearTimeout(timer)
-      if (exitGrace) clearTimeout(exitGrace)
       reject(error)
     })
 
     child.on('close', (code) => {
       clearTimeout(timer)
-      if (exitGrace) clearTimeout(exitGrace)
       if (!parsed && lineBuffer.startsWith(RESULT_PREFIX)) {
         try {
           parsed = JSON.parse(lineBuffer.slice(RESULT_PREFIX.length))
