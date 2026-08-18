@@ -25,6 +25,12 @@ function panelUrl (extension, path) {
   return `chrome-extension://${extension.id}/${rel}`
 }
 
+function urlMatchesPanel (url, panelUrlValue) {
+  if (!url || !panelUrlValue) return false
+  const base = panelUrlValue.split('#')[0]
+  return url === panelUrlValue || url === base || url.startsWith(`${base}#`)
+}
+
 function tabKey (windowId, tabId) {
   return `${windowId}:${tabId}`
 }
@@ -140,25 +146,19 @@ export function isSidePanelGuest (manager, window, guest) {
   if (!url.startsWith('chrome-extension://')) return false
 
   const active = manager.activeSidePanels.get(winId)
-  if (active?.url) {
-    const base = active.url.split('#')[0]
-    if (url === active.url || url === base || url.startsWith(`${base}#`)) return true
-  }
+  if (urlMatchesPanel(url, active?.url)) return true
   if (active?.extensionId && active?.path) {
     const expected = `chrome-extension://${active.extensionId}/${String(active.path).replace(/^\//, '')}`
-    if (url === expected || url.startsWith(`${expected}#`)) return true
+    if (urlMatchesPanel(url, expected)) return true
   }
 
-  for (const record of manager.sidePanelOpenByTab.values()) {
-    if (!record?.url) continue
-    const base = record.url.split('#')[0]
-    if (url === record.url || url === base || url.startsWith(`${base}#`)) return true
+  const prefix = `${winId}:`
+  for (const [key, record] of manager.sidePanelOpenByTab.entries()) {
+    if (!key.startsWith(prefix)) continue
+    if (urlMatchesPanel(url, record?.url)) return true
   }
   const global = manager.sidePanelOpenGlobal.get(winId)
-  if (global?.url) {
-    const base = global.url.split('#')[0]
-    if (url === global.url || url === base || url.startsWith(`${base}#`)) return true
-  }
+  if (urlMatchesPanel(url, global?.url)) return true
 
   return false
 }

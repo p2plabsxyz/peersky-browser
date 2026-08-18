@@ -54,7 +54,6 @@ function openExtensionSidePanel ({ url, title, width }) {
   if (titleEl) titleEl.textContent = title || ''
 
   const panelWidth = typeof width === 'number' && width > 0 ? width : 380
-  panel.style.width = `${panelWidth}px`
   document.documentElement.style.setProperty('--extension-side-panel-width', `${panelWidth}px`)
 
   if (!sidePanelWebview) {

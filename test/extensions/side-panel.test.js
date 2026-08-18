@@ -287,6 +287,24 @@ describe('side panel host service', function () {
     expect(SidePanel.isSidePanelGuest(manager, win, page)).to.equal(false)
   })
 
+  it('isSidePanelGuest ignores panel urls from another window', function () {
+    const manager = makeManager()
+    manager.sidePanelOpenByTab.set('8:99', {
+      extensionId: 'ext-1',
+      path: 'sidepanel.html',
+      url: 'chrome-extension://ext-1/sidepanel.html',
+      tabId: 99
+    })
+
+    const guest = {
+      id: 500,
+      isDestroyed: () => false,
+      getURL: () => 'chrome-extension://ext-1/sidepanel.html'
+    }
+    expect(SidePanel.isSidePanelGuest(manager, win, guest)).to.equal(false)
+    expect(SidePanel.isSidePanelGuest(manager, makeWindow(8), guest)).to.equal(true)
+  })
+
   it('registerSidePanelGuest excludes the guest from ECE tabs', function () {
     const manager = makeManager()
     const guest = {
