@@ -8,10 +8,9 @@ import fsExtra from 'fs-extra'
 import { createLogger } from '../logger.js'
 import { readManifest, verifyManifest } from './backup-core.js'
 import { createIdentityTransferZip, decryptIdentityTransferZip, extractAndVerifyIdentityPayload, isIdentityTransferManifest } from './identity-transfer.js'
+import { decryptEncryptedBackupZip, isEncryptedBackupManifest } from './encrypted-backup.js'
 import { suspendHyper, resumeHyper } from '../protocols/hyper-handler.js'
 import { suspendIPFS, resumeIPFS } from '../protocols/ipfs-handler.js'
-import { getDeviceKeys, getPublicDeviceInfo } from './device-keys.js'
-import { loadDeviceRegistry, saveDeviceRegistry } from './device-registry.js'
 
 const log = createLogger('backup')
 
@@ -25,6 +24,70 @@ function timestamp () {
   const d = new Date()
   const pad = (n) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`
+}
+
+function shouldCopyRestorePath (srcPath) {
+  const base = path.basename(srcPath)
+  if (base === 'LOCK' || base === 'repo.lock' || base === '.DS_Store' || base === 'LOG' || base === 'LOG.old' || base === 'CORESTORE') return false
+  return !base.endsWith('.lock')
+}
+
+async function pathExists (filePath) {
+  try {
+    await fs.access(filePath)
+    return true
+  } catch {
+    return false
+  }
+}
+
+export async function applyRestoreTransaction (dest, applyDir, names) {
+  const token = `${process.pid}-${Date.now()}`
+  const stagingRoot = path.join(dest, `.peersky-restore-stage-${token}`)
+  const previousRoot = path.join(dest, `.peersky-restore-previous-${token}`)
+  const swapped = []
+
+  await fs.mkdir(stagingRoot, { recursive: true })
+  await fs.mkdir(previousRoot, { recursive: true })
+
+  try {
+    for (const name of names) {
+      await fsExtra.copy(path.join(applyDir, name), path.join(stagingRoot, name), {
+        overwrite: false,
+        errorOnExist: true,
+        filter: shouldCopyRestorePath
+      })
+    }
+
+    for (const name of names) {
+      const target = path.join(dest, name)
+      const staged = path.join(stagingRoot, name)
+      const previous = path.join(previousRoot, name)
+      const hadPrevious = await pathExists(target)
+
+      if (hadPrevious) await fs.rename(target, previous)
+      try {
+        await fs.rename(staged, target)
+        swapped.push({ name, hadPrevious })
+      } catch (error) {
+        if (hadPrevious) await fs.rename(previous, target)
+        throw error
+      }
+    }
+  } catch (error) {
+    for (const item of swapped.reverse()) {
+      const target = path.join(dest, item.name)
+      const previous = path.join(previousRoot, item.name)
+      await fs.rm(target, { recursive: true, force: true })
+      if (item.hadPrevious) await fs.rename(previous, target)
+    }
+    await fs.rm(previousRoot, { recursive: true, force: true })
+    throw error
+  } finally {
+    await fs.rm(stagingRoot, { recursive: true, force: true }).catch(() => {})
+  }
+
+  await fs.rm(previousRoot, { recursive: true, force: true })
 }
 
 export function defaultBackupName () {
@@ -53,7 +116,7 @@ function runWorker (data, onProgress) {
 
 class BackupManager {
   // Create a .zip of persistent data at outPath. onProgress: ({processedBytes,...}).
-  async createBackup (outPath, onProgress) {
+  async createBackup (outPath, passphrase, onProgress) {
     log.info(`Creating backup at ${outPath}`)
     // Suspend P2P stores so the worker sees a consistent snapshot on disk.
     // Services are always resumed in the finally block, even on failure.
@@ -64,7 +127,8 @@ class BackupManager {
         op: 'create',
         userDataDir: userDataDir(),
         outPath,
-        peerskyVersion: app.getVersion()
+        peerskyVersion: app.getVersion(),
+        passphrase
       }, onProgress)
       log.info(`Backup created: ${result.bytes} bytes`)
       return result
@@ -98,7 +162,7 @@ class BackupManager {
 
   // Extract, verify, then overwrite userData targets from the backup bundle.
   // A full app restart is required after restore to re-init P2P nodes.
-  async restoreBackup (zipPath, onProgress) {
+  async restoreBackup (zipPath, onProgress, options = {}) {
     const dest = userDataDir()
     const tempDir = path.join(os.tmpdir(), `peersky-restore-${Date.now()}`)
     let resumeServices = true
@@ -120,43 +184,17 @@ class BackupManager {
         identityTransfer = await decryptIdentityTransferZip(dest, tempDir, manifest, innerZipPath)
         applyManifest = await extractAndVerifyIdentityPayload(innerZipPath, innerDir)
         applyDir = innerDir
+      } else if (isEncryptedBackupManifest(manifest)) {
+        const innerZipPath = path.join(tempDir, 'encrypted-backup-inner.zip')
+        const innerDir = path.join(tempDir, 'encrypted-backup-inner')
+        await decryptEncryptedBackupZip(tempDir, manifest, innerZipPath, options.passphrase)
+        applyManifest = await extractAndVerifyIdentityPayload(innerZipPath, innerDir)
+        applyDir = innerDir
       } else {
         await verifyManifest(tempDir, manifest)
       }
 
-      for (const name of Object.keys(applyManifest.files)) {
-        const src = path.join(applyDir, name)
-        const target = path.join(dest, name)
-        await fs.rm(target, { recursive: true, force: true }).catch(() => {})
-        await fsExtra.copy(src, target, {
-          overwrite: true,
-          filter: (srcPath) => {
-            const base = path.basename(srcPath)
-            if (base === 'LOCK' || base === 'repo.lock' || base === '.DS_Store' || base === 'LOG' || base === 'LOG.old') return false
-            if (base.endsWith('.lock')) return false
-            return true
-          }
-        })
-      }
-
-      // Drop CORESTORE — its inode/xattr never survive a copy and it is
-      // rebuilt cleanly on next launch.
-      await fs.rm(path.join(dest, 'hyper', 'CORESTORE'), { force: true }).catch(() => {})
-
-      // If this was an Identity Transfer, assume ownership of the registry.
-      // This allows the restoring device (Desktop or Mobile) to manage the identity going forward.
-      if (identityTransfer) {
-        const slotType = identityTransfer.transfer.targetDeviceType
-        const keys = await getDeviceKeys(dest)
-        const publicInfo = getPublicDeviceInfo(keys)
-        const registry = await loadDeviceRegistry(dest)
-        if (registry) {
-          registry.ownerSigningPublicKey = publicInfo.signingPublicKey
-          registry.devices[slotType] = slotType === 'desktop' ? [] : null
-          await saveDeviceRegistry(dest, registry, keys.signing.secretKey)
-          log.info(`Assumed ownership of identity registry (cleared ${slotType} slot)`)
-        }
-      }
+      await applyRestoreTransaction(dest, applyDir, Object.keys(applyManifest.files))
 
       resumeServices = false
 

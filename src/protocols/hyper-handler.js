@@ -1,5 +1,7 @@
 import { Readable } from 'stream'
 import path from 'path'
+import os from 'os'
+import { promises as fs } from 'fs'
 import { app, safeStorage } from 'electron'
 import { create as createSDK } from 'hyper-sdk'
 import makeHyperFetch from 'hypercore-fetch'
@@ -18,6 +20,7 @@ const log = createLogger('protocols:hyper')
 
 // Single SDK and swarm for the app lifecycle (hyper:// browsing + chat share the same swarm).
 let sdk, fetch, savedSdkOptions
+const ephemeralPublishers = new Set()
 
 // keep chunks smaller to avoid oversized blocks.
 const MAX_UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024
@@ -132,7 +135,31 @@ export async function resumeHyper () {
 
 // Publish a file into a fresh writable Hyperdrive and return its shareable
 // hyper:// address. Used by the backup feature to share via a content address.
-export async function hyperPublishFile (filePath, fileName = 'backup.zip') {
+export async function hyperPublishFile (filePath, fileName = 'backup.zip', options = {}) {
+  if (options.ephemeral) {
+    const storage = await fs.mkdtemp(path.join(os.tmpdir(), 'peersky-transfer-hyper-'))
+    let publisher
+    try {
+      const publisherSdk = await createSDK({ ...(savedSdkOptions || {}), storage })
+      const publisherFetch = await makeHyperFetch({ sdk: publisherSdk, writable: true })
+      const result = await _hyperPublishFile(publisherFetch, publisherSdk, filePath, fileName)
+      const cleanup = async () => {
+        if (!publisher || !ephemeralPublishers.delete(publisher)) return
+        clearTimeout(publisher.timer)
+        await publisherSdk.close().catch(() => {})
+        await fs.rm(storage, { recursive: true, force: true }).catch(() => {})
+      }
+      const ttlMs = Math.max(1000, Number(options.ttlMs) || 10 * 60 * 1000)
+      publisher = { sdk: publisherSdk, storage, cleanup, timer: setTimeout(cleanup, ttlMs) }
+      publisher.timer.unref()
+      ephemeralPublishers.add(publisher)
+      return result
+    } catch (error) {
+      if (publisher) await publisher.cleanup()
+      else await fs.rm(storage, { recursive: true, force: true }).catch(() => {})
+      throw error
+    }
+  }
   const f = await initializeHyperSDK()
   return _hyperPublishFile(f, sdk, filePath, fileName)
 }

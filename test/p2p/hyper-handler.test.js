@@ -1,6 +1,9 @@
 import { expect } from 'chai'
 import sinon from 'sinon'
 import esmock from 'esmock'
+import os from 'os'
+import path from 'path'
+import { mkdtemp, rm, writeFile } from 'fs/promises'
 
 describe('Hyper protocol handler', function () {
   afterEach(function () {
@@ -8,7 +11,13 @@ describe('Hyper protocol handler', function () {
   })
 
   async function loadHyperModule ({ fetchImpl, chatResponse, chatReject, throwOnFetch } = {}) {
-    const sdk = { id: 'sdk-test' }
+    const sdk = {
+      id: 'sdk-test',
+      close: sinon.stub().resolves(),
+      getDrive: sinon.stub().resolves({ core: {} }),
+      joinCore: sinon.stub().resolves(),
+      swarm: { flush: sinon.stub().resolves() }
+    }
     const createSDK = sinon.stub().resolves(sdk)
 
     const fetchStub = sinon.stub().callsFake(async (url, options) => {
@@ -30,7 +39,7 @@ describe('Hyper protocol handler', function () {
         chatResponse || new Response('chat-ok', { status: 200, headers: { 'Content-Type': 'text/plain' } })
       )
     }
-    const hyperFetchFactory = sinon.stub().returns(fetchStub)
+    const hyperFetchFactory = sinon.stub().resolves(fetchStub)
 
     const module = await esmock('../../src/protocols/hyper-handler.js', {
       electron: {
@@ -139,5 +148,29 @@ describe('Hyper protocol handler', function () {
       scheme: 'hyper',
       method: 'PUT'
     })
+  })
+
+  it('awaits the fetch factory for ephemeral Hyper uploads', async function () {
+    const key = 'a'.repeat(52)
+    const { module, hyperFetchFactory } = await loadHyperModule({
+      fetchImpl: async (url, options) => {
+        if (options?.method === 'POST') return new Response(`hyper://${key}/`)
+        return new Response('', { status: 200 })
+      }
+    })
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), 'peersky-hyper-upload-test-'))
+    const filePath = path.join(tempDir, 'backup.zip')
+    await writeFile(filePath, 'sealed backup')
+
+    try {
+      const result = await module.hyperPublishFile(filePath, 'backup.zip', {
+        ephemeral: true,
+        ttlMs: 1000
+      })
+      expect(result.address).to.equal(`hyper://${key}/backup.zip`)
+      expect(hyperFetchFactory.calledOnce).to.equal(true)
+    } finally {
+      await rm(tempDir, { recursive: true, force: true })
+    }
   })
 })

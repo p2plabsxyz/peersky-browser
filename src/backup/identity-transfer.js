@@ -2,15 +2,17 @@ import { promises as fs, createReadStream, createWriteStream } from 'fs'
 import path from 'path'
 import os from 'os'
 import crypto from 'crypto'
-import { pipeline } from 'stream/promises'
 import archiver from 'archiver'
 import hypercoreCrypto from 'hypercore-crypto'
 import { BACKUP_VERSION, MANIFEST_NAME, createBackupZip, extractBackupZip, readManifest, verifyManifest } from './backup-core.js'
+import { decryptFile, encryptFile } from './crypto-file.js'
 import { decodeEncryptionPublicKey, getDeviceKeys, getPublicDeviceInfo } from './device-keys.js'
-import { DEVICE_REGISTRY_FILE, assertIdentityImportAllowed, canonicalJson, computeIdentityId, normalizeDeviceType, reserveDeviceSlot } from './device-registry.js'
+import { canonicalJson, computeIdentityId, normalizeDeviceType } from './identity-metadata.js'
 
 export const IDENTITY_TRANSFER_KIND = 'peersky-identity-transfer'
 export const IDENTITY_PAYLOAD_NAME = 'identity-payload.bin'
+export const MAX_MOBILE_TRANSFER_BYTES = 50 * 1024 * 1024
+const MAX_TRANSFER_TTL_MS = 15 * 60 * 1000
 
 function toHex (buf) {
   return Buffer.from(buf).toString('hex')
@@ -28,31 +30,30 @@ async function sha256File (filePath) {
 
 async function writeWrapperZip (outPath, manifest, payloadPath) {
   await fs.mkdir(path.dirname(outPath), { recursive: true })
-
-  return new Promise((resolve, reject) => {
-    const output = createWriteStream(outPath)
-    const archive = archiver('zip', { zlib: { level: 6 } })
-
-    output.on('close', () => resolve({ filePath: outPath, bytes: archive.pointer(), manifest }))
+  const tempPath = outPath + '.tmp'
+  const output = createWriteStream(tempPath)
+  const archive = archiver('zip', { zlib: { level: 6 } })
+  const completed = new Promise((resolve, reject) => {
+    output.on('close', resolve)
     output.on('error', reject)
     archive.on('error', reject)
-    archive.pipe(output)
-    archive.append(JSON.stringify(manifest, null, 2), { name: MANIFEST_NAME })
-    archive.file(payloadPath, { name: IDENTITY_PAYLOAD_NAME })
-    archive.finalize().catch(reject)
   })
-}
 
-async function encryptFile (inputPath, outputPath, key, iv) {
-  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv)
-  await pipeline(createReadStream(inputPath), cipher, createWriteStream(outputPath))
-  return cipher.getAuthTag()
-}
+  archive.pipe(output)
+  archive.append(JSON.stringify(manifest, null, 2), { name: MANIFEST_NAME })
+  archive.file(payloadPath, { name: IDENTITY_PAYLOAD_NAME })
 
-async function decryptFile (inputPath, outputPath, key, iv, authTag) {
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv)
-  decipher.setAuthTag(authTag)
-  await pipeline(createReadStream(inputPath), decipher, createWriteStream(outputPath))
+  try {
+    await archive.finalize()
+    await completed
+    await fs.rename(tempPath, outPath)
+    return { filePath: outPath, bytes: archive.pointer(), manifest }
+  } catch (error) {
+    archive.abort()
+    output.destroy()
+    await fs.rm(tempPath, { force: true }).catch(() => {})
+    throw error
+  }
 }
 
 function transferBody (transfer) {
@@ -81,91 +82,87 @@ export function isIdentityTransferManifest (manifest) {
 export async function createPairingSession (userDataDir, deviceType) {
   const keys = await getDeviceKeys(userDataDir)
   const publicInfo = getPublicDeviceInfo(keys)
-  const topic = toHex(crypto.randomBytes(32))
   return {
     deviceType: normalizeDeviceType(deviceType),
     signingPublicKey: publicInfo.signingPublicKey,
     encryptionPublicKey: publicInfo.encryptionPublicKey,
-    topic
+    nonce: toHex(crypto.randomBytes(16))
   }
 }
 
 export function encodePairingString (session) {
-  return Buffer.from(JSON.stringify(session)).toString('base64')
+  const params = new URLSearchParams({
+    deviceType: normalizeDeviceType(session.deviceType),
+    nonce: session.nonce
+  })
+  return `peersky-identity:${session.encryptionPublicKey}?${params}`
 }
 
 export function decodePairingString (str) {
-  return JSON.parse(Buffer.from(str, 'base64').toString('utf-8'))
-}
+  if (typeof str !== 'string' || !str.startsWith('peersky-identity:')) {
+    throw new Error('Use the device pairing code shown by the receiving device')
+  }
+  const withoutScheme = str.slice('peersky-identity:'.length)
+  const [encryptionPublicKey, query = ''] = withoutScheme.split('?')
+  const params = new URLSearchParams(query)
+  const nonce = params.get('nonce')
+  const declaredType = params.get('deviceType')
+  const deviceType = declaredType || (nonce ? 'mobile' : null)
 
-function generateTOTP (secretHex) {
-  const secret = Buffer.from(secretHex, 'hex')
-  const time = Math.floor(Date.now() / 60000) // 1 minute window
-  const timeBuffer = Buffer.alloc(8)
-  timeBuffer.writeBigUInt64BE(BigInt(time))
-  const hmac = crypto.createHmac('sha1', secret)
-  hmac.update(timeBuffer)
-  const hash = hmac.digest()
-  const offset = hash[hash.length - 1] & 0xf
-  const code = (hash.readUInt32BE(offset) & 0x7fffffff) % 1000000
-  return String(code).padStart(6, '0')
+  if (!nonce || !/^[0-9a-f]{32}$/i.test(nonce)) {
+    throw new Error('Pairing payload has an invalid nonce')
+  }
+  return {
+    deviceType: normalizeDeviceType(deviceType),
+    encryptionPublicKey: toHex(decodeEncryptionPublicKey(encryptionPublicKey)),
+    nonce: nonce.toLowerCase()
+  }
 }
 
 export function deriveVerificationCode (transfer) {
-  return generateTOTP(transfer.channel)
+  if (!/^[0-9a-f]{64}$/i.test(transfer.sourceSigningPublicKey) ||
+      !/^[0-9a-f]{64}$/i.test(transfer.targetEncryptionPublicKey) ||
+      !/^[0-9a-f]{32}$/i.test(transfer.nonce)) {
+    throw new Error('Identity transfer has invalid verification fields')
+  }
+  const input = Buffer.concat([
+    Buffer.from(transfer.sourceSigningPublicKey, 'hex'),
+    Buffer.from(transfer.targetEncryptionPublicKey, 'hex'),
+    Buffer.from(transfer.nonce, 'hex')
+  ])
+  return crypto.createHash('sha256').update(input).digest('hex').slice(0, 6).toUpperCase()
 }
 
 export function verifyOTP (token, transfer) {
-  return generateTOTP(transfer.channel) === token
+  return deriveVerificationCode(transfer) === token
 }
 
 export function verifyIdentityTransferSignature (transfer) {
-  const message = Buffer.from(canonicalJson(transferBody(transfer)))
-  return hypercoreCrypto.verify(
-    message,
-    Buffer.from(transfer.signature, 'hex'),
-    Buffer.from(transfer.sourceSigningPublicKey, 'hex')
-  )
+  try {
+    const message = Buffer.from(canonicalJson(transferBody(transfer)))
+    return hypercoreCrypto.verify(
+      message,
+      Buffer.from(transfer.signature, 'hex'),
+      Buffer.from(transfer.sourceSigningPublicKey, 'hex')
+    )
+  } catch {
+    return false
+  }
 }
 
 export async function createIdentityTransferZip (userDataDir, outPath, options = {}) {
-  let targetKeyHex = options.targetEncryptionPublicKey
-  let targetNonce = null
-
-  if (targetKeyHex && targetKeyHex.startsWith('peersky-identity:')) {
-    const withoutScheme = targetKeyHex.slice('peersky-identity:'.length)
-    const [pathPart, queryPart] = withoutScheme.split('?')
-    targetKeyHex = pathPart
-    if (queryPart) {
-      const params = new URLSearchParams(queryPart)
-      targetNonce = params.get('nonce')
-    }
-  }
-
-  const targetDeviceType = normalizeDeviceType(options.targetDeviceType)
-  const targetEncryptionPublicKey = toHex(decodeEncryptionPublicKey(targetKeyHex))
+  const pairing = decodePairingString(options.targetPairingPayload || options.targetEncryptionPublicKey)
+  const targetDeviceType = pairing.deviceType
+  const targetEncryptionPublicKey = pairing.encryptionPublicKey
   const expiresInMs = Number.isFinite(options.expiresInMs) ? options.expiresInMs : 10 * 60 * 1000
+  if (expiresInMs <= 0 || expiresInMs > MAX_TRANSFER_TTL_MS) {
+    throw new Error('Identity transfer expiry must be between 1 ms and 15 minutes')
+  }
   const keys = await getDeviceKeys(userDataDir)
   const publicInfo = getPublicDeviceInfo(keys)
   const identityId = await computeIdentityId(userDataDir)
-  const registryPath = path.join(userDataDir, DEVICE_REGISTRY_FILE)
-  let previousRegistry = null
-  let hadRegistry = true
-
-  try {
-    previousRegistry = await fs.readFile(registryPath)
-  } catch (error) {
-    if (error.code === 'ENOENT') {
-      hadRegistry = false
-    } else {
-      throw error
-    }
-  }
-
-  await reserveDeviceSlot(userDataDir, keys, identityId, targetDeviceType, targetEncryptionPublicKey)
 
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'peersky-identity-transfer-'))
-  let created = false
   try {
     const innerZip = path.join(tempDir, 'identity.zip')
     const payloadPath = path.join(tempDir, IDENTITY_PAYLOAD_NAME)
@@ -189,7 +186,7 @@ export async function createIdentityTransferZip (userDataDir, outPath, options =
       targetDeviceType,
       targetEncryptionPublicKey,
       channel: toHex(crypto.randomBytes(32)),
-      nonce: targetNonce || toHex(crypto.randomBytes(16)),
+      nonce: pairing.nonce,
       issuedAt,
       expiresAt: issuedAt + expiresInMs,
       encryptedKey: toHex(encryptedKey),
@@ -208,19 +205,15 @@ export async function createIdentityTransferZip (userDataDir, outPath, options =
     }
 
     const result = await writeWrapperZip(outPath, manifest, payloadPath)
+    const mobileLimit = options.maxMobileTransferBytes || MAX_MOBILE_TRANSFER_BYTES
+    if (targetDeviceType === 'mobile' && result.bytes > mobileLimit) {
+      await fs.rm(outPath, { force: true })
+      throw new Error(`Mobile identity transfer is ${result.bytes} bytes; PeerSky Mobile accepts at most ${mobileLimit} bytes. Remove large Hyper data before linking this phone.`)
+    }
     result.verificationCode = deriveVerificationCode(transfer)
-    created = true
-
     return result
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {})
-    if (!created) {
-      if (hadRegistry) {
-        await fs.writeFile(registryPath, previousRegistry).catch(() => {})
-      } else {
-        await fs.rm(registryPath, { force: true }).catch(() => {})
-      }
-    }
   }
 }
 
@@ -233,9 +226,20 @@ export async function decryptIdentityTransferZip (userDataDir, extractedDir, man
   if (!transfer || typeof transfer !== 'object') {
     throw new Error('Identity transfer metadata is missing')
   }
-  if (Date.now() > transfer.expiresAt) {
+  if (typeof transfer.issuedAt !== 'number' || typeof transfer.expiresAt !== 'number') {
+    throw new Error('Identity transfer is missing timestamps')
+  }
+  const now = Date.now()
+  if (now > transfer.expiresAt) {
     throw new Error('Identity transfer has expired')
   }
+  if (now < transfer.issuedAt - 60000) {
+    throw new Error('Identity transfer is issued in the future')
+  }
+  if (transfer.expiresAt - transfer.issuedAt > MAX_TRANSFER_TTL_MS) {
+    throw new Error('Identity transfer TTL exceeds maximum allowed duration')
+  }
+  normalizeDeviceType(transfer.targetDeviceType)
   if (!verifyIdentityTransferSignature(transfer)) {
     throw new Error('Identity transfer signature is invalid')
   }
@@ -245,8 +249,6 @@ export async function decryptIdentityTransferZip (userDataDir, extractedDir, man
   if (transfer.targetEncryptionPublicKey !== publicInfo.encryptionPublicKey) {
     throw new Error('Identity transfer is encrypted for a different device')
   }
-
-  await assertIdentityImportAllowed(userDataDir, transfer)
 
   const payloadPath = path.join(extractedDir, IDENTITY_PAYLOAD_NAME)
   const actualHash = await sha256File(payloadPath)

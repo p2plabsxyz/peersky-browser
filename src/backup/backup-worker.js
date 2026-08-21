@@ -1,5 +1,6 @@
 import { parentPort, workerData } from 'worker_threads'
-import { createBackupZip, extractBackupZip } from './backup-core.js'
+import { extractBackupZip } from './backup-core.js'
+import { createEncryptedBackupZip } from './encrypted-backup.js'
 
 // Worker entry: runs heavy zip/extract IO off the main process event loop.
 // workerData: { op, ...args }. Progress and result are posted to parentPort.
@@ -7,9 +8,10 @@ async function run () {
   const { op } = workerData
 
   if (op === 'create') {
-    const { userDataDir, outPath, peerskyVersion } = workerData
-    const result = await createBackupZip(userDataDir, outPath, {
+    const { userDataDir, outPath, peerskyVersion, passphrase } = workerData
+    const result = await createEncryptedBackupZip(userDataDir, outPath, {
       peerskyVersion,
+      passphrase,
       onProgress: (data) => parentPort.postMessage({ type: 'progress', data })
     })
     return { filePath: result.filePath, bytes: result.bytes, manifest: result.manifest }

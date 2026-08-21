@@ -4,6 +4,9 @@ import { ipfsPublishFile, ipfsFetchToFile } from '../protocols/ipfs-handler.js'
 import { hyperPublishFile, hyperFetchToFile } from '../protocols/hyper-handler.js'
 import { createLogger } from '../logger.js'
 import { ipfsCache, hyperCache, saveIpfsCache, saveHyperCache } from '../protocols/config.js'
+import { readManifest } from './backup-core.js'
+import { isEncryptedBackupManifest } from './encrypted-backup.js'
+import { isIdentityTransferManifest } from './identity-transfer.js'
 
 const log = createLogger('backup')
 
@@ -24,20 +27,26 @@ export function parseIpfsAddress (input) {
 
 // Publish a backup zip to a P2P network and return its content address.
 // protocol: 'ipfs' (default) returns a CID, 'hyper' returns a hyper:// URL.
-export async function uploadBackup (zipPath, protocol = 'ipfs') {
+export async function uploadBackup (zipPath, protocol = 'ipfs', options = {}) {
+  const manifest = await readManifest(zipPath)
+  if (!isEncryptedBackupManifest(manifest) && !isIdentityTransferManifest(manifest)) {
+    throw new Error('Refusing to publish an unencrypted backup')
+  }
   const uploadName = 'Backup ' + new Date().toLocaleString()
 
   if (protocol === 'hyper') {
-    const res = await hyperPublishFile(zipPath)
+    const res = await hyperPublishFile(zipPath, 'backup.zip', options)
     log.info(`Backup published to Hyper: ${res.address}`)
-    hyperCache.push({
-      name: uploadName,
-      key: res.key,
-      url: res.address,
-      timestamp: Date.now(),
-      type: 'drive'
-    })
-    saveHyperCache()
+    if (!options.ephemeral) {
+      hyperCache.push({
+        name: uploadName,
+        key: res.key,
+        url: res.address,
+        timestamp: Date.now(),
+        type: 'drive'
+      })
+      saveHyperCache()
+    }
     return { protocol: 'hyper', key: res.key, address: res.address }
   }
   const cid = await ipfsPublishFile(zipPath)

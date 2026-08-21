@@ -461,14 +461,13 @@ const downloadsAPI = {
 
 // Backup API - Available only to the dedicated backup page
 const backupAPI = {
-  create: () => ipcRenderer.invoke('backup-create'),
+  create: (passphrase) => ipcRenderer.invoke('backup-create', { passphrase }),
   validate: () => ipcRenderer.invoke('backup-validate'),
-  restore: (zipPath) => ipcRenderer.invoke('backup-restore', zipPath),
-  restoreCid: (address) => ipcRenderer.invoke('backup-restore-cid', address),
-  upload: (zipPath, protocol) => ipcRenderer.invoke('backup-upload', { zipPath, protocol }),
+  restore: (zipPath, passphrase) => ipcRenderer.invoke('backup-restore', { zipPath, passphrase }),
+  restoreCid: (address, passphrase) => ipcRenderer.invoke('backup-restore-cid', { address, passphrase }),
   getDeviceInfo: () => ipcRenderer.invoke('backup-device-info'),
-  createIdentityTransfer: (targetDeviceType, targetEncryptionPublicKey) => ipcRenderer.invoke('backup-identity-create', { targetDeviceType, targetEncryptionPublicKey }),
-  uploadIdentityTransferHyper: (targetDeviceType, targetEncryptionPublicKey) => ipcRenderer.invoke('backup-identity-upload-hyper', { targetDeviceType, targetEncryptionPublicKey }),
+  createIdentityTransfer: (targetPairingPayload) => ipcRenderer.invoke('backup-identity-create', { targetPairingPayload }),
+  uploadIdentityTransferHyper: (targetPairingPayload) => ipcRenderer.invoke('backup-identity-upload-hyper', { targetPairingPayload }),
   relaunch: () => ipcRenderer.invoke('backup-relaunch'),
   onProgress: (callback) => createEventListener('backup-progress', callback)
 }
@@ -555,8 +554,8 @@ try {
       importOnboardingData: (data) => ipcRenderer.invoke('onboarding-import-data', data),
       skipOnboarding: () => ipcRenderer.invoke('onboarding-skip'),
       restoreBackup: (backupContent) => ipcRenderer.invoke('onboarding-restore-backup', backupContent),
-      restoreZip: (zipPath) => ipcRenderer.invoke('onboarding-restore-zip', zipPath),
-      restoreCid: (address) => ipcRenderer.invoke('onboarding-restore-cid', address),
+      restoreZip: (zipPath, passphrase) => ipcRenderer.invoke('onboarding-restore-zip', { zipPath, passphrase }),
+      restoreCid: (address, passphrase) => ipcRenderer.invoke('onboarding-restore-cid', { address, passphrase }),
       getPathForFile: (file) => webUtils.getPathForFile(file),
       openExternalLink: (url) => ipcRenderer.invoke('open-external-link', url),
       getDeviceInfo: () => ipcRenderer.invoke('backup-device-info'),

@@ -79,6 +79,7 @@ async function seedUserData (dir) {
   await writeFile(path.join(dir, 'ipfs', 'libp2p-key'), 'fake-key')
   await mkdir(path.join(dir, 'hyper'), { recursive: true })
   await writeFile(path.join(dir, 'hyper', 'core'), 'hyper-core-content')
+  await writeFile(path.join(dir, 'hyper', 'LOCK'), 'locked')
   // Lock files that must be excluded from the bundle
   await writeFile(path.join(dir, 'ipfs', 'LOCK'), 'locked')
   await writeFile(path.join(dir, 'ipfs', 'repo.lock'), 'locked')
@@ -98,7 +99,8 @@ describe('backup-core', function () {
     expect(info.isFile()).to.equal(true)
     expect(info.size).to.be.greaterThan(0)
     expect(result.manifest.peerskyVersion).to.equal('9.9.9')
-    expect(Object.keys(result.manifest.files)).to.include.members(['tabs.json', 'ipfs', 'hyper'])
+    expect(Object.keys(result.manifest.files)).to.include.members(['tabs.json', 'hyper'])
+    expect(result.manifest.files).not.to.have.property('ipfs')
 
     const manifest = await readManifest(outPath)
     expect(manifest.files).to.deep.equal(result.manifest.files)
@@ -111,8 +113,13 @@ describe('backup-core', function () {
     const originalTab = await readFile(path.join(userData, 'tabs.json'), 'utf-8')
     expect(restoredTab).to.equal(originalTab)
 
-    const restoredBlock = await readFile(path.join(dest, 'ipfs', 'blocks', 'block-a'), 'utf-8')
-    expect(restoredBlock).to.equal('block-a-content')
+    let ipfsExists = true
+    try {
+      await stat(path.join(dest, 'ipfs'))
+    } catch {
+      ipfsExists = false
+    }
+    expect(ipfsExists).to.equal(false)
   })
 
   it('excludes lock files from the manifest and bundle', async function () {
@@ -120,7 +127,7 @@ describe('backup-core', function () {
     await seedUserData(userData)
 
     const manifest = await buildManifest(userData, '1.0.0')
-    expect(manifest.files).to.have.property('ipfs')
+    expect(manifest.files).not.to.have.property('ipfs')
 
     const outPath = path.join(await makeTempDir('peersky-bk-lockout-'), 'backup.zip')
     await createBackupZip(userData, outPath, {})
@@ -129,7 +136,7 @@ describe('backup-core', function () {
 
     let lockExists = true
     try {
-      await stat(path.join(dest, 'ipfs', 'LOCK'))
+      await stat(path.join(dest, 'hyper', 'LOCK'))
     } catch {
       lockExists = false
     }

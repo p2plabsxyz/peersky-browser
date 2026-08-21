@@ -11,11 +11,10 @@ const progressBox = document.getElementById('backup-progress')
 const progressBar = document.getElementById('backup-progress-bar')
 const progressLabel = document.getElementById('backup-progress-label')
 const statusBox = document.getElementById('backup-status')
-const shareBtn = document.getElementById('backup-share')
+const identityTransferStatus = document.getElementById('identity-transfer-status')
 const cidRow = document.getElementById('backup-cid-section')
 const cidValue = document.getElementById('backup-cid-value')
 const cidCopyBtn = document.getElementById('backup-cid-copy')
-const identityDeviceType = document.getElementById('identity-device-type')
 const identityTargetKey = document.getElementById('identity-target-key')
 const identityCreateBtn = document.getElementById('identity-create')
 const identityUploadHyperBtn = document.getElementById('identity-upload-hyper')
@@ -23,7 +22,7 @@ const identityDeviceKey = document.getElementById('identity-device-key')
 const identityKeyCopyBtn = document.getElementById('identity-key-copy')
 
 let selectedZipPath = null
-let lastCreatedPath = null
+let selectedManifest = null
 
 function formatBytes (bytes) {
   if (!bytes || bytes < 1024) return `${bytes || 0} B`
@@ -43,6 +42,11 @@ function showStatus (message, kind) {
   statusBox.style.display = 'block'
 }
 
+function showIdentityTransferStatus (message) {
+  identityTransferStatus.textContent = message
+  identityTransferStatus.style.display = 'block'
+}
+
 function showProgress (label) {
   progressLabel.textContent = label
   progressBar.removeAttribute('value')
@@ -58,24 +62,89 @@ function setBusy (busy) {
   if (createBtn) createBtn.disabled = busy
   if (chooseBtn) chooseBtn.disabled = busy
   if (restoreBtn) restoreBtn.disabled = busy
-  if (shareBtn) shareBtn.disabled = busy
   if (identityCreateBtn) identityCreateBtn.disabled = busy
   if (identityUploadHyperBtn) identityUploadHyperBtn.disabled = busy
+}
+
+function requestPassphrase ({ confirmation, description }) {
+  const dialog = document.getElementById('backup-passphrase-dialog')
+  const form = document.getElementById('backup-passphrase-form')
+  const input = document.getElementById('backup-passphrase-input')
+  const confirmInput = document.getElementById('backup-passphrase-confirm')
+  const confirmRow = document.getElementById('backup-passphrase-confirm-row')
+  const descriptionNode = document.getElementById('backup-passphrase-description')
+  const errorNode = document.getElementById('backup-passphrase-error')
+  const cancel = document.getElementById('backup-passphrase-cancel')
+
+  input.value = ''
+  confirmInput.value = ''
+  confirmRow.style.display = confirmation ? '' : 'none'
+  descriptionNode.textContent = description
+  errorNode.textContent = ''
+
+  return new Promise((resolve) => {
+    const finish = (value) => {
+      form.removeEventListener('submit', submit)
+      cancel.removeEventListener('click', cancelRequest)
+      dialog.removeEventListener('cancel', cancelDialog)
+      if (dialog.open) dialog.close()
+      input.value = ''
+      confirmInput.value = ''
+      resolve(value)
+    }
+    const submit = (event) => {
+      event.preventDefault()
+      if (input.value.length < 12 && confirmation) {
+        errorNode.textContent = 'Backup passphrase must be at least 12 characters.'
+        return
+      }
+      if (confirmation && input.value !== confirmInput.value) {
+        errorNode.textContent = 'Backup passphrases do not match.'
+        return
+      }
+      finish(input.value)
+    }
+    const cancelRequest = () => finish(null)
+    const cancelDialog = (event) => {
+      event.preventDefault()
+      finish(null)
+    }
+    form.addEventListener('submit', submit)
+    cancel.addEventListener('click', cancelRequest)
+    dialog.addEventListener('cancel', cancelDialog)
+    dialog.showModal()
+    input.focus()
+  })
+}
+
+function requestNewPassphrase () {
+  return requestPassphrase({
+    confirmation: true,
+    description: 'Use at least 12 characters. This passphrase cannot be recovered.'
+  })
+}
+
+function requestRestorePassphrase () {
+  if (!selectedManifest || selectedManifest.kind !== 'peersky-encrypted-backup') return undefined
+  return requestPassphrase({
+    confirmation: false,
+    description: 'Enter the passphrase used when this backup was created.'
+  })
 }
 
 async function loadDeviceInfo () {
   if (!api || !identityDeviceKey || typeof api.getDeviceInfo !== 'function') return
   const res = await api.getDeviceInfo()
   if (res.success) {
-    identityDeviceKey.textContent = res.device.encryptionPublicKey
+    identityDeviceKey.textContent = res.pairingPayload
     const deviceQrImg = document.getElementById('device-key-qr-code')
     const deviceQrContainer = document.getElementById('device-key-qr-container')
-    if (deviceQrImg && deviceQrContainer && res.qrDataUrl) {
-      deviceQrImg.src = res.qrDataUrl
+    if (deviceQrImg && deviceQrContainer && res.pairingPayload) {
+      deviceQrImg.setAttribute('src', res.pairingPayload)
       deviceQrContainer.style.display = 'block'
     }
   } else {
-    identityDeviceKey.textContent = `Could not load device key: ${res.error}`
+    identityDeviceKey.textContent = `Could not load device pairing code: ${res.error}`
   }
 }
 
@@ -102,10 +171,11 @@ createBtn?.addEventListener('click', async () => {
   showProgress('Preparing backup...')
   statusBox.style.display = 'none'
   try {
-    const res = await api.create()
+    const passphrase = await requestNewPassphrase()
+    if (passphrase === null) return
+    const res = await api.create(passphrase)
     if (res.canceled) return
     if (res.success) {
-      lastCreatedPath = res.filePath
       showStatus(`Backup saved (${formatBytes(res.bytes)}): ${res.filePath}`, 'success')
     } else {
       showStatus(`Backup failed: ${res.error}`, 'error')
@@ -128,51 +198,22 @@ chooseBtn?.addEventListener('click', async () => {
       showStatus(`Invalid backup: ${res.error}`, 'error')
       manifestRow.style.display = 'none'
       selectedZipPath = null
+      selectedManifest = null
       return
     }
     selectedZipPath = res.zipPath
-    const entries = Object.keys(res.manifest.files || {})
+    selectedManifest = res.manifest
+    const entries = res.manifest.contents || Object.keys(res.manifest.files || {})
     const created = res.manifest.createdAt
       ? new Date(res.manifest.createdAt).toLocaleString()
       : 'unknown'
     manifestDetails.textContent =
       `Created ${created} (Peersky ${res.manifest.peerskyVersion || 'unknown'}). ` +
-      `Contains: ${entries.join(', ') || 'no recognized entries'}.`
+      `${res.manifest.kind === 'peersky-encrypted-backup' ? 'Passphrase encrypted. ' : ''}` +
+      `Contains: ${entries.join(', ') || 'encrypted payload'}.`
     manifestRow.style.display = ''
   } catch (err) {
     showStatus(`Could not read backup: ${err.message}`, 'error')
-  }
-})
-
-shareBtn?.addEventListener('click', async () => {
-  if (!api) return
-  setBusy(true)
-  const protocolSelect = document.getElementById('backup-share-protocol')
-  const protocol = protocolSelect ? protocolSelect.value : 'ipfs'
-  showProgress(`Uploading to ${protocol.toUpperCase()}...`)
-  statusBox.style.display = 'none'
-  try {
-    const res = await api.upload(lastCreatedPath || null, protocol)
-    if (res.canceled) return
-    if (res.success) {
-      cidValue.textContent = res.address
-      const qrImg = document.getElementById('backup-qr-code')
-      if (qrImg && res.qrDataUrl) {
-        qrImg.src = res.qrDataUrl
-        qrImg.style.display = 'block'
-      } else if (qrImg) {
-        qrImg.style.display = 'none'
-      }
-      cidRow.style.display = ''
-      showStatus(`Uploaded to ${protocol.toUpperCase()}. Share this address to restore on another device.`, 'success')
-    } else {
-      showStatus(`Upload failed: ${res.error}`, 'error')
-    }
-  } catch (err) {
-    showStatus(`Upload failed: ${err.message}`, 'error')
-  } finally {
-    hideProgress()
-    setBusy(false)
   }
 })
 
@@ -238,10 +279,10 @@ identityScanQrBtn?.addEventListener('click', async () => {
         })
 
         if (code && code.data) {
-          if (code.data.length === 64 || code.data.startsWith('peersky-identity:')) {
+          if (code.data.startsWith('peersky-identity:')) {
             identityTargetKey.value = code.data
             stopQrScanner()
-            showStatus('Successfully scanned Mobile Key!', 'success')
+            showStatus('Successfully scanned the receiving device pairing code.', 'success')
             return
           }
         }
@@ -263,7 +304,7 @@ identityCreateBtn?.addEventListener('click', async () => {
   showProgress('Creating encrypted identity transfer...')
   statusBox.style.display = 'none'
   try {
-    const res = await api.createIdentityTransfer(identityDeviceType.value, identityTargetKey.value.trim())
+    const res = await api.createIdentityTransfer(identityTargetKey.value.trim())
     if (res.canceled) return
     if (res.success) {
       showStatus(`Identity transfer saved (${formatBytes(res.bytes)}): ${res.filePath}`, 'success')
@@ -284,19 +325,21 @@ identityUploadHyperBtn?.addEventListener('click', async () => {
   setBusy(true)
   showProgress('Uploading encrypted identity transfer to Hyper...')
   statusBox.style.display = 'none'
+  identityTransferStatus.style.display = 'none'
+  cidRow.style.display = 'none'
   try {
-    const res = await api.uploadIdentityTransferHyper(identityDeviceType.value, identityTargetKey.value.trim())
+    const res = await api.uploadIdentityTransferHyper(identityTargetKey.value.trim())
     if (res.success) {
       cidValue.textContent = res.address
       const qrImg = document.getElementById('backup-qr-code')
-      if (qrImg && res.qrDataUrl) {
-        qrImg.src = res.qrDataUrl
+      if (qrImg && res.address) {
+        qrImg.setAttribute('src', res.address)
         qrImg.style.display = 'block'
       } else if (qrImg) {
         qrImg.style.display = 'none'
       }
       cidRow.style.display = ''
-      showStatus(`Encrypted identity transfer uploaded to Hyper.\n\nVERIFICATION CODE: ${res.verificationCode}\n\nScan the QR code below with PeerSky Mobile (Settings > Link Device) to restore identity automatically. Ensure the Verification Code matches exactly!`, 'success')
+      showIdentityTransferStatus(`Encrypted identity transfer uploaded to Hyper.\n\nVERIFICATION CODE: ${res.verificationCode}\n\nScan the QR code below with PeerSky Mobile (Settings > Link Device) to restore identity automatically. Ensure the verification code matches exactly.`)
     } else {
       showStatus(`Identity transfer upload failed: ${res.error}`, 'error')
     }
@@ -309,6 +352,7 @@ identityUploadHyperBtn?.addEventListener('click', async () => {
 })
 
 const cidInput = document.getElementById('backup-cid-input')
+const cidPassphrase = document.getElementById('backup-cid-passphrase')
 const cidDownloadBtn = document.getElementById('backup-cid-download')
 
 cidDownloadBtn?.addEventListener('click', async () => {
@@ -322,7 +366,7 @@ cidDownloadBtn?.addEventListener('click', async () => {
   showProgress('Fetching backup from the network...')
   statusBox.style.display = 'none'
   try {
-    const res = await api.restoreCid(cidInput.value.trim())
+    const res = await api.restoreCid(cidInput.value.trim(), cidPassphrase.value || undefined)
     if (res.success) {
       hideProgress()
       showStatus('Restore complete. Restart to apply the restored data.', 'success')
@@ -354,7 +398,9 @@ restoreBtn?.addEventListener('click', async () => {
   showProgress('Restoring backup...')
   statusBox.style.display = 'none'
   try {
-    const res = await api.restore(selectedZipPath)
+    const passphrase = await requestRestorePassphrase()
+    if (passphrase === null) return
+    const res = await api.restore(selectedZipPath, passphrase)
     if (res.success) {
       hideProgress()
       showStatus('Restore complete. Restart to apply the restored data.', 'success')
@@ -376,5 +422,5 @@ restoreBtn?.addEventListener('click', async () => {
 })
 
 loadDeviceInfo().catch((err) => {
-  if (identityDeviceKey) identityDeviceKey.textContent = `Could not load device key: ${err.message}`
+  if (identityDeviceKey) identityDeviceKey.textContent = `Could not load device pairing code: ${err.message}`
 })

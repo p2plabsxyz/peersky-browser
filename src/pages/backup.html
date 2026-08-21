@@ -22,11 +22,22 @@
       padding: 10px 14px;
       border-radius: 6px;
       font-size: 0.9em;
-      word-break: break-all;
+      overflow-wrap: anywhere;
+      white-space: pre-line;
     }
     .backup-status.success { background: rgba(40, 167, 69, 0.15); }
     .backup-status.error { background: rgba(220, 53, 69, 0.15); }
     .backup-status.info { background: rgba(120, 120, 120, 0.15); }
+    .backup-passphrase-dialog {
+      color: var(--settings-text-primary);
+      background: var(--settings-card-bg);
+      border: 1px solid var(--settings-border);
+      border-radius: 8px;
+      width: min(420px, calc(100vw - 32px));
+    }
+    .backup-passphrase-dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
+    .backup-passphrase-dialog input { width: 100%; box-sizing: border-box; margin: 8px 0; }
+    .backup-passphrase-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
   </style>
   <title>Backup & Restore</title>
 </head>
@@ -54,58 +65,25 @@
           <div class="setting-row tall-row">
             <div class="setting-label">
               Create backup
-              <p class="setting-description">Bundle your tabs, window layout, P2P
-                identities, PeerChat rooms, and IPFS/Hyper repositories into a
-                single .zip file.</p>
+              <p class="setting-description">Create a passphrase-encrypted bundle of
+                your tabs, window layout, P2P identity, PeerChat rooms, and Hyper
+                repository. The refetchable IPFS repository is not included.</p>
             </div>
             <div class="setting-control">
               <button type="button" id="backup-create" class="btn btn-primary">Create Backup</button>
             </div>
           </div>
-          <div class="setting-row tall-row">
-            <div class="setting-label">
-              Share via P2P
-              <p class="setting-description">Upload a backup .zip to IPFS/Hypercore and get a
-                CID you can share. Anyone can restore it from the onboarding screen
-                or below.<br><br><strong>Note:</strong> Since this uses P2P networks, the device that uploaded the backup (or another peer) must remain online for others to download it.</p>
-            </div>
-            <div class="setting-control" style="display: flex; gap: 8px; align-items: center;">
-              <select id="backup-share-protocol" class="cid-input" style="width: auto; margin-bottom: 0; height: 34px; box-sizing: border-box;">
-                <option value="ipfs">IPFS</option>
-                <option value="hyper">Hypercore</option>
-              </select>
-              <button type="button" id="backup-share" class="btn btn-secondary" style="height: 34px; box-sizing: border-box; margin: 0;">Upload</button>
-            </div>
-          </div>
-
         </section>
         
-        <section id="backup-cid-section" class="settings-section" style="display: none;">
-          <div id="backup-cid-row" class="setting-row" style="border-bottom: none;">
-            <div class="setting-label">
-              Backup CID
-              <p id="backup-cid-value" class="setting-description" style="user-select: text; word-break: break-all;"></p>
-            </div>
-            <div class="setting-control">
-              <button type="button" id="backup-cid-copy" class="btn btn-secondary">Copy</button>
-            </div>
-          </div>
-          <img id="backup-qr-code" style="display: none; margin: 0 auto 24px auto; border-radius: 8px; width: 220px; height: 220px; object-fit: contain; background: white; padding: 12px; box-sizing: border-box;" alt="QR Code" />
-        </section>
-
         <section class="settings-section">
           <div class="setting-row tall-row">
             <div class="setting-label">
               Identity transfer
-              <p class="setting-description">Create an encrypted identity transfer for PeerSky Mobile or Desktop. Enter the 64-character encryption key shown on the receiving device (or scan Mobile QR code). Click "Upload Hyper" to generate a transfer QR code for PeerSky Mobile.</p>
+              <p class="setting-description">Scan or paste the device pairing code shown by the receiving device. The code identifies whether it is Mobile or Desktop. Upload Hyper creates a sealed, short-lived transfer for that device.</p>
             </div>
             <div class="setting-control" style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; align-items: center;">
-              <select id="identity-device-type" class="cid-input" style="width: auto; margin-bottom: 0; height: 34px; box-sizing: border-box;">
-                <option value="mobile">Mobile</option>
-                <option value="desktop">Desktop</option>
-              </select>
               <button type="button" id="identity-scan-qr" class="btn btn-secondary" style="height: 34px; box-sizing: border-box; margin: 0;">Scan QR</button>
-              <input type="text" id="identity-target-key" class="cid-input" placeholder="target encryption public key" style="width: 260px; margin-bottom: 0; height: 34px; box-sizing: border-box;">
+              <input type="text" id="identity-target-key" class="cid-input" aria-label="Receiving device pairing code" placeholder="Receiving device pairing code" style="width: 300px; margin-bottom: 0; height: 34px; box-sizing: border-box;">
               <button type="button" id="identity-create" class="btn btn-secondary" style="height: 34px; box-sizing: border-box; margin: 0;">Save Zip</button>
               <button type="button" id="identity-upload-hyper" class="btn btn-secondary" style="height: 34px; box-sizing: border-box; margin: 0;">Upload Hyper</button>
             </div>
@@ -118,7 +96,7 @@
 
           <div class="setting-row tall-row">
             <div class="setting-label">
-              This device import key
+              This device pairing code
               <p id="identity-device-key" class="setting-description" style="user-select: text; word-break: break-all;">Loading...</p>
             </div>
             <div class="setting-control" style="display: flex; gap: 8px; align-items: center;">
@@ -126,9 +104,24 @@
             </div>
           </div>
           <div id="device-key-qr-container" style="display: none; padding: 12px; text-align: center;">
-            <p class="setting-description" style="margin-bottom: 8px;">Scan with PeerSky Mobile or another desktop instance to import identity to this device:</p>
-            <img id="device-key-qr-code" style="border-radius: 8px; width: 180px; height: 180px; object-fit: contain; background: white; padding: 8px; box-sizing: border-box;" alt="Device Key QR Code" />
+            <p class="setting-description" style="margin: 0 auto 8px; text-align: center;">Scan with PeerSky Mobile or another desktop instance to import identity to this device:</p>
+            <qr-code id="device-key-qr-code" style="pointer-events: none; width: 180px; height: 180px; background: white; padding: 8px; box-sizing: border-box;" data-bg="white" data-fg="black"></qr-code>
           </div>
+        </section>
+
+        <div id="identity-transfer-status" class="backup-status success" style="display: none;"></div>
+
+        <section id="backup-cid-section" class="settings-section" style="display: none;">
+          <div id="backup-cid-row" class="setting-row" style="border-bottom: none;">
+            <div class="setting-label">
+              Identity transfer address
+              <p id="backup-cid-value" class="setting-description" style="user-select: text; word-break: break-all;"></p>
+            </div>
+            <div class="setting-control">
+              <button type="button" id="backup-cid-copy" class="btn btn-secondary">Copy</button>
+            </div>
+          </div>
+          <qr-code id="backup-qr-code" style="display: none; pointer-events: none; margin: 0 auto 24px auto; width: 220px; height: 220px; background: white; padding: 12px; box-sizing: border-box;" data-bg="white" data-fg="black"></qr-code>
         </section>
 
         <section class="settings-section">
@@ -136,8 +129,8 @@
             <div class="setting-label">
               Restore backup from File
               <p class="setting-description">Replace current data with the contents
-                of a local backup .zip. Existing IPFS and Hyper repositories are
-                overwritten and Peersky must restart to apply changes.</p>
+                of a local backup .zip. Encrypted backups require their passphrase.
+                Existing data is swapped only after a complete staged copy.</p>
             </div>
             <div class="setting-control">
               <button type="button" id="backup-choose" class="btn btn-secondary">Choose File</button>
@@ -147,10 +140,11 @@
           <div class="setting-row tall-row">
             <div class="setting-label">
               Restore backup from P2P
-              <p class="setting-description">Download and restore a backup using an IPFS CID or Hypercore address.</p>
+              <p class="setting-description">Download and restore an encrypted backup or device-sealed identity transfer using an IPFS CID or Hypercore address.</p>
             </div>
             <div class="setting-control" style="display: flex; gap: 8px; align-items: center;">
               <input type="text" id="backup-cid-input" class="cid-input" placeholder="ipfs://... or hyper://..." style="width: 220px; margin-bottom: 0; height: 34px; box-sizing: border-box;">
+              <input type="password" id="backup-cid-passphrase" class="cid-input" placeholder="passphrase, if encrypted" style="width: 180px; margin-bottom: 0; height: 34px; box-sizing: border-box;">
               <button type="button" id="backup-cid-download" class="btn btn-secondary" style="height: 34px; box-sizing: border-box; margin: 0;">Download</button>
             </div>
           </div>
@@ -184,7 +178,25 @@
   </div>
 </div>
 
+<dialog id="backup-passphrase-dialog" class="backup-passphrase-dialog">
+  <form id="backup-passphrase-form">
+    <h2 id="backup-passphrase-title">Backup passphrase</h2>
+    <p id="backup-passphrase-description" class="setting-description"></p>
+    <input id="backup-passphrase-input" class="cid-input" type="password" autocomplete="new-password" required>
+    <div id="backup-passphrase-confirm-row">
+      <label for="backup-passphrase-confirm">Confirm passphrase</label>
+      <input id="backup-passphrase-confirm" class="cid-input" type="password" autocomplete="new-password">
+    </div>
+    <p id="backup-passphrase-error" class="setting-description" style="color: #dc3545;"></p>
+    <div class="backup-passphrase-actions">
+      <button id="backup-passphrase-cancel" type="button" class="btn btn-secondary">Cancel</button>
+      <button type="submit" class="btn btn-primary">Continue</button>
+    </div>
+  </form>
+</dialog>
+
 <script src="peersky://static/js/vendor/jsqr/jsQR.js" defer></script>
+<script src="peersky://static/elves/qr-code.js" type="module"></script>
 <script src="peersky://static/js/backup.js" defer></script>
 </body>
 </html>

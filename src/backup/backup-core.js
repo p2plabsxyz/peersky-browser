@@ -2,37 +2,35 @@ import { promises as fs, createWriteStream, createReadStream } from 'fs'
 import path from 'path'
 import crypto from 'crypto'
 import archiver from 'archiver'
+import { Transform } from 'stream'
+import { finished } from 'stream/promises'
 
 // Backup bundle format version. Bumped only on incompatible layout changes.
 export const BACKUP_VERSION = '1.0.0'
 
 export const MANIFEST_NAME = 'manifest.json'
 
-// Top-level entries backed up and restored. Files are optional;
-// directories are streamed whole minus the files listed in SKIP_NAMES.
 export const STANDARD_BACKUP_TARGETS = [
   { name: 'lastOpened.json', type: 'file' },
   { name: 'tabs.json', type: 'file' },
   { name: 'ensCache.json', type: 'file' },
   { name: 'ipfsCache.json', type: 'file' },
   { name: 'hyperCache.json', type: 'file' },
-  { name: 'ipfs', type: 'dir' },
-  { name: 'hyper', type: 'dir' }
-]
-
-export const IDENTITY_BACKUP_TARGETS = [
-  ...STANDARD_BACKUP_TARGETS,
+  { name: 'hyper', type: 'dir' },
   { name: 'peersky-chat-rooms.json', type: 'file' },
   { name: 'peersky-ports.json', type: 'file' },
-  { name: 'peersky-devices.json', type: 'file' }
+  { name: 'peersky-identity.json', type: 'file' }
 ]
+
+export const IDENTITY_BACKUP_TARGETS = STANDARD_BACKUP_TARGETS
 
 export const MOBILE_IDENTITY_BACKUP_TARGETS = [
   { name: 'lastOpened.json', type: 'file' },
   { name: 'tabs.json', type: 'file' },
   { name: 'hyper', type: 'dir' },
   { name: 'peersky-chat-rooms.json', type: 'file' },
-  { name: 'peersky-ports.json', type: 'file' }
+  { name: 'peersky-ports.json', type: 'file' },
+  { name: 'peersky-identity.json', type: 'file' }
 ]
 
 // Skip live DB lock/log files. CORESTORE is left in to stabilize manifest
@@ -97,6 +95,13 @@ async function sha256Dir (dir) {
   return hash.digest('hex')
 }
 
+function selectTargets (isIdentityTransfer, targetDeviceType) {
+  if (!isIdentityTransfer) return STANDARD_BACKUP_TARGETS
+  return targetDeviceType === 'mobile'
+    ? MOBILE_IDENTITY_BACKUP_TARGETS
+    : IDENTITY_BACKUP_TARGETS
+}
+
 // Legacy compatibility for backups created before LOG and LOG.old were added to SKIP_NAMES.
 // Safe to remove after version 2.0 when all users have re-created backups.
 async function listDirFilesOld (dir, baseDir = dir) {
@@ -132,10 +137,7 @@ async function sha256DirOld (dir) {
 // Build the manifest describing which targets are present and their checksums.
 export async function buildManifest (userDataDir, peerskyVersion = '', isIdentityTransfer = false, targetDeviceType = 'desktop') {
   const files = {}
-  let targets = STANDARD_BACKUP_TARGETS
-  if (isIdentityTransfer) {
-    targets = targetDeviceType === 'mobile' ? MOBILE_IDENTITY_BACKUP_TARGETS : IDENTITY_BACKUP_TARGETS
-  }
+  const targets = selectTargets(isIdentityTransfer, targetDeviceType)
   for (const target of targets) {
     const abs = path.join(userDataDir, target.name)
     if (!(await pathExists(abs))) continue
@@ -151,74 +153,95 @@ export async function buildManifest (userDataDir, peerskyVersion = '', isIdentit
   }
 }
 
+async function appendHashedFile (archive, sourcePath, archivePath) {
+  const hash = crypto.createHash('sha256')
+  const hashingStream = new Transform({
+    transform (chunk, encoding, callback) {
+      hash.update(chunk)
+      callback(null, chunk)
+    }
+  })
+  const source = createReadStream(sourcePath)
+  source.on('error', (error) => hashingStream.destroy(error))
+  source.pipe(hashingStream)
+  archive.append(hashingStream, { name: archivePath })
+  await finished(hashingStream)
+  return hash.digest('hex')
+}
+
 // Stream all present targets plus a manifest into a single .zip at outPath.
 // onProgress receives { processedBytes, totalBytes, entries } updates.
 export async function createBackupZip (userDataDir, outPath, options = {}) {
   const { peerskyVersion = '', isIdentityTransfer = false, targetDeviceType = 'desktop', onProgress } = options
-
-  const manifest = await buildManifest(userDataDir, peerskyVersion, isIdentityTransfer, targetDeviceType)
+  const targets = selectTargets(isIdentityTransfer, targetDeviceType)
+  const manifest = {
+    version: BACKUP_VERSION,
+    peerskyVersion,
+    createdAt: new Date().toISOString(),
+    files: {}
+  }
   await fs.mkdir(path.dirname(outPath), { recursive: true })
-
-  return new Promise((resolve, reject) => {
-    const tempPath = outPath + '.tmp'
-    const output = createWriteStream(tempPath)
-    const archive = archiver('zip', { zlib: { level: 6 } })
-
-    let settled = false
-    const fail = async (err) => {
-      if (settled) return
-      settled = true
-      await fs.rm(tempPath, { force: true }).catch(() => {})
-      reject(err)
-    }
-
-    output.on('close', async () => {
-      if (settled) return
-      settled = true
-      try {
-        await fs.rename(tempPath, outPath)
-        resolve({ filePath: outPath, bytes: archive.pointer(), manifest })
-      } catch (err) {
-        await fs.rm(tempPath, { force: true }).catch(() => {})
-        reject(err)
-      }
+  const tempPath = outPath + '.tmp'
+  const output = createWriteStream(tempPath)
+  const archive = archiver('zip', { zlib: { level: 6 } })
+  const completed = new Promise((resolve, reject) => {
+    output.on('close', resolve)
+    output.on('error', reject)
+    archive.on('warning', (error) => {
+      if (error.code !== 'ENOENT') reject(error)
     })
-    output.on('error', fail)
-    archive.on('warning', (err) => {
-      if (err.code === 'ENOENT') return
-      fail(err)
-    })
-    archive.on('error', fail)
-    if (typeof onProgress === 'function') {
-      archive.on('progress', (data) => {
-        onProgress({
-          processedBytes: data.fs.processedBytes,
-          totalBytes: data.fs.totalBytes,
-          entries: data.entries
-        })
+    archive.on('error', reject)
+  })
+
+  if (typeof onProgress === 'function') {
+    archive.on('progress', (data) => {
+      onProgress({
+        processedBytes: data.fs.processedBytes,
+        totalBytes: data.fs.totalBytes,
+        entries: data.entries
       })
-    }
+    })
+  }
 
-    archive.pipe(output)
+  archive.pipe(output)
+
+  try {
+    for (const target of targets) {
+      const abs = path.join(userDataDir, target.name)
+      if (!(await pathExists(abs))) continue
+
+      if (target.type === 'file') {
+        const digest = await appendHashedFile(archive, abs, target.name)
+        manifest.files[target.name] = `sha256:${digest}`
+        continue
+      }
+
+      const dirHash = crypto.createHash('sha256')
+      const files = (await listDirFiles(abs)).sort()
+      if (files.length === 0) archive.append('', { name: `${target.name}/` })
+      for (const rel of files) {
+        const digest = await appendHashedFile(
+          archive,
+          path.join(abs, rel),
+          `${target.name}/${rel}`
+        )
+        dirHash.update(rel)
+        dirHash.update(digest)
+      }
+      manifest.files[target.name] = `sha256:${dirHash.digest('hex')}`
+    }
 
     archive.append(JSON.stringify(manifest, null, 2), { name: MANIFEST_NAME })
-
-    for (const target of Object.keys(manifest.files)) {
-      let targets = STANDARD_BACKUP_TARGETS
-      if (isIdentityTransfer) {
-        targets = targetDeviceType === 'mobile' ? MOBILE_IDENTITY_BACKUP_TARGETS : IDENTITY_BACKUP_TARGETS
-      }
-      const meta = targets.find((t) => t.name === target)
-      const abs = path.join(userDataDir, target)
-      if (meta.type === 'dir') {
-        archive.directory(abs, target, (entry) => (shouldSkipEntry(entry.name) ? false : entry))
-      } else {
-        archive.file(abs, { name: target })
-      }
-    }
-
-    archive.finalize().catch(fail)
-  })
+    await archive.finalize()
+    await completed
+    await fs.rename(tempPath, outPath)
+    return { filePath: outPath, bytes: archive.pointer(), manifest }
+  } catch (error) {
+    archive.abort()
+    output.destroy()
+    await fs.rm(tempPath, { force: true }).catch(() => {})
+    throw error
+  }
 }
 
 // Read and parse the manifest from a backup .zip without extracting everything.

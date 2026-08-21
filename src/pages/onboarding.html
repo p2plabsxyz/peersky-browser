@@ -354,6 +354,7 @@
     <div class="divider-or">or</div>
 
     <div class="section-label">Restore from local .zip</div>
+    <input type="password" class="cid-input" id="backup-passphrase" placeholder="Backup passphrase (not needed for identity transfer)">
     <div class="drop-zone" id="zip-drop-zone">
       <img class="drop-zone-icon" src="peersky://static/assets/svg/file-upload.svg" alt="Upload">
       <div class="drop-text">Drop a peersky-backup.zip here</div>
@@ -362,7 +363,7 @@
     <input type="file" id="zip-input" accept=".zip">
 
     <div class="divider-or"></div>
-    <div class="section-label">This device import key</div>
+    <div class="section-label">This device pairing code</div>
     <div class="status-msg" id="identity-device-key" style="display:block; background: var(--settings-card-bg); border: 1px solid var(--settings-border); color: var(--settings-text-primary); user-select: text; word-break: break-all; margin-bottom: 6px;">Loading...</div>
     <button class="skip-btn" id="identity-key-copy" style="margin-bottom: 14px;">Copy Key</button>
 

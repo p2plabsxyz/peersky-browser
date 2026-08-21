@@ -1,12 +1,13 @@
 import { expect } from 'chai'
 import os from 'os'
 import path from 'path'
-import { mkdtemp, mkdir, readFile, writeFile } from 'fs/promises'
+import { mkdtemp, mkdir, readFile, stat, writeFile } from 'fs/promises'
 
 import { getDeviceKeys, getPublicDeviceInfo } from '../../src/backup/device-keys.js'
-import { loadDeviceRegistry } from '../../src/backup/device-registry.js'
+import { computeIdentityId } from '../../src/backup/identity-metadata.js'
 import {
   createIdentityTransferZip,
+  decodePairingString,
   decryptIdentityTransferZip,
   deriveVerificationCode,
   extractAndVerifyIdentityPayload
@@ -24,6 +25,10 @@ async function seedIdentityData (dir) {
   await writeFile(path.join(dir, 'hyper', 'core'), 'core-data')
 }
 
+function mobilePairingPayload (publicKey, nonce = '0123456789abcdef0123456789abcdef') {
+  return `peersky-identity:${publicKey}?nonce=${nonce}&deviceType=mobile`
+}
+
 describe('identity-transfer', function () {
   this.timeout(20000)
 
@@ -37,8 +42,7 @@ describe('identity-transfer', function () {
     const outPath = path.join(await makeTempDir('peersky-id-out-'), 'identity.zip')
 
     const created = await createIdentityTransferZip(source, outPath, {
-      targetDeviceType: 'mobile',
-      targetEncryptionPublicKey: targetInfo.encryptionPublicKey,
+      targetPairingPayload: mobilePairingPayload(targetInfo.encryptionPublicKey),
       peerskyVersion: 'test'
     })
 
@@ -56,34 +60,62 @@ describe('identity-transfer', function () {
 
     const payloadDir = await makeTempDir('peersky-id-payload-')
     const innerManifest = await extractAndVerifyIdentityPayload(innerZip, payloadDir)
-    expect(Object.keys(innerManifest.files)).to.include.members(['peersky-ports.json', 'peersky-devices.json'])
+    expect(Object.keys(innerManifest.files)).to.include.members(['peersky-ports.json', 'peersky-identity.json'])
 
     const ports = JSON.parse(await readFile(path.join(payloadDir, 'peersky-ports.json'), 'utf-8'))
     expect(ports.room.seed).to.equal('secret')
   })
 
-  it('allows overwriting a device slot when generating a new transfer', async function () {
-    const source = await makeTempDir('peersky-id-limit-src-')
-    const targetA = await makeTempDir('peersky-id-limit-a-')
-    const targetB = await makeTempDir('peersky-id-limit-b-')
+  it('derives the same verification code as PeerSky Mobile', function () {
+    const transfer = {
+      sourceSigningPublicKey: '11'.repeat(32),
+      targetEncryptionPublicKey: '22'.repeat(32),
+      nonce: '33'.repeat(16)
+    }
+    expect(deriveVerificationCode(transfer)).to.equal('BE0D93')
+    expect(deriveVerificationCode(transfer)).to.match(/^[0-9A-F]{6}$/)
+  })
+
+  it('takes device type from the receiver pairing payload', function () {
+    const payload = mobilePairingPayload('44'.repeat(32))
+    expect(decodePairingString(payload)).to.deep.include({
+      deviceType: 'mobile',
+      encryptionPublicKey: '44'.repeat(32)
+    })
+    expect(() => decodePairingString('44'.repeat(32))).to.throw(/device pairing code/i)
+  })
+
+  it('stores a stable random identity id', async function () {
+    const source = await makeTempDir('peersky-id-stable-')
+    const first = await computeIdentityId(source)
+    const second = await computeIdentityId(source)
+    expect(first).to.equal(second)
+    expect(first).to.match(/^[0-9a-f]{64}$/)
+  })
+
+  it('rejects a mobile transfer that exceeds the receiver limit', async function () {
+    const source = await makeTempDir('peersky-id-size-src-')
+    const target = await makeTempDir('peersky-id-size-target-')
     await seedIdentityData(source)
+    const targetInfo = getPublicDeviceInfo(await getDeviceKeys(target))
+    const outPath = path.join(await makeTempDir('peersky-id-size-out-'), 'identity.zip')
 
-    const targetAInfo = getPublicDeviceInfo(await getDeviceKeys(targetA))
-    const targetBInfo = getPublicDeviceInfo(await getDeviceKeys(targetB))
-
-    await createIdentityTransferZip(source, path.join(await makeTempDir('peersky-id-limit-out-a-'), 'identity.zip'), {
-      targetDeviceType: 'mobile',
-      targetEncryptionPublicKey: targetAInfo.encryptionPublicKey
-    })
-
-    await createIdentityTransferZip(source, path.join(await makeTempDir('peersky-id-limit-out-b-'), 'identity.zip'), {
-      targetDeviceType: 'mobile',
-      targetEncryptionPublicKey: targetBInfo.encryptionPublicKey
-    })
-
-    const registry = await loadDeviceRegistry(source)
-    const mobileDevices = registry.devices.mobile
-    const lastDevice = Array.isArray(mobileDevices) ? mobileDevices[mobileDevices.length - 1] : mobileDevices
-    expect(lastDevice.encryptionPublicKey).to.equal(targetBInfo.encryptionPublicKey)
+    let error
+    try {
+      await createIdentityTransferZip(source, outPath, {
+        targetPairingPayload: mobilePairingPayload(targetInfo.encryptionPublicKey),
+        maxMobileTransferBytes: 100
+      })
+    } catch (caught) {
+      error = caught
+    }
+    expect(error?.message).to.match(/accepts at most 100 bytes/i)
+    let exists = true
+    try {
+      await stat(outPath)
+    } catch {
+      exists = false
+    }
+    expect(exists).to.equal(false)
   })
 })

@@ -2,25 +2,27 @@ import { expect } from 'chai'
 import { EventEmitter } from 'events'
 import os from 'os'
 import path from 'path'
-import { mkdtemp } from 'fs/promises'
+import { mkdtemp, mkdir, readFile, writeFile } from 'fs/promises'
 import sinon from 'sinon'
 import esmock from 'esmock'
 
 async function loadBackupManager (options = {}) {
   const userData = await mkdtemp(path.join(os.tmpdir(), 'peersky-bm-'))
-  const manifest = options.manifest || { files: { 'tabs.json': 'sha256:test', ipfs: 'sha256:test', hyper: 'sha256:test' } }
+  const manifest = options.manifest || { files: { 'tabs.json': 'sha256:test', hyper: 'sha256:test' } }
   const suspendHyper = sinon.stub().resolves()
   const resumeHyper = sinon.stub().resolves()
   const suspendIPFS = sinon.stub().resolves()
   const resumeIPFS = sinon.stub().resolves()
-  const copy = sinon.stub().resolves()
+  const copy = options.copy || sinon.stub().callsFake(async (_src, dest) => {
+    await mkdir(dest, { recursive: true })
+  })
   const readManifest = sinon.stub().resolves(manifest)
   const verifyManifest = options.verifyManifest || sinon.stub().resolves()
-  const createBackupZip = sinon.stub().resolves({})
-  const extractBackupZip = sinon.stub().resolves()
   const backupCorePath = path.join(process.cwd(), 'src/backup/backup-core.js')
   const hyperHandlerPath = path.join(process.cwd(), 'src/protocols/hyper-handler.js')
   const ipfsHandlerPath = path.join(process.cwd(), 'src/protocols/ipfs-handler.js')
+  const identityTransferPath = path.join(process.cwd(), 'src/backup/identity-transfer.js')
+  const encryptedBackupPath = path.join(process.cwd(), 'src/backup/encrypted-backup.js')
 
   class FakeWorker extends EventEmitter {
     constructor () {
@@ -48,12 +50,18 @@ async function loadBackupManager (options = {}) {
     worker_threads: { Worker: FakeWorker },
     'fs-extra': { default: { copy } },
     [backupCorePath]: {
-      BACKUP_VERSION: '1.0.0',
-      MANIFEST_NAME: 'manifest.json',
-      createBackupZip,
-      extractBackupZip,
       readManifest,
       verifyManifest
+    },
+    [identityTransferPath]: {
+      createIdentityTransferZip: sinon.stub(),
+      decryptIdentityTransferZip: sinon.stub(),
+      extractAndVerifyIdentityPayload: sinon.stub(),
+      isIdentityTransferManifest: sinon.stub().returns(false)
+    },
+    [encryptedBackupPath]: {
+      decryptEncryptedBackupZip: sinon.stub(),
+      isEncryptedBackupManifest: sinon.stub().returns(false)
     },
     [hyperHandlerPath]: { suspendHyper, resumeHyper },
     [ipfsHandlerPath]: { suspendIPFS, resumeIPFS }
@@ -63,6 +71,7 @@ async function loadBackupManager (options = {}) {
 
   return {
     backupManager: module.default,
+    userData,
     stubs: {
       copy,
       readManifest,
@@ -121,5 +130,54 @@ describe('backup-manager', function () {
     expect(stubs.suspendIPFS.calledOnce).to.equal(true)
     expect(stubs.resumeHyper.calledOnce).to.equal(true)
     expect(stubs.resumeIPFS.calledOnce).to.equal(true)
+  })
+
+  it('preserves live data when staging the restore fails', async function () {
+    const copy = sinon.stub().rejects(new Error('disk full'))
+    const { backupManager, userData } = await loadBackupManager({
+      copy,
+      manifest: { files: { 'tabs.json': 'sha256:test' } }
+    })
+    await writeFile(path.join(userData, 'tabs.json'), 'live tabs')
+
+    let error
+    try {
+      await backupManager.restoreBackup('/tmp/backup.zip')
+    } catch (caught) {
+      error = caught
+    }
+
+    expect(error?.message).to.equal('disk full')
+    expect(await readFile(path.join(userData, 'tabs.json'), 'utf-8')).to.equal('live tabs')
+  })
+
+  it('rolls back earlier swaps when a later rename fails', async function () {
+    const copy = sinon.stub().callsFake(async (_src, dest) => {
+      if (dest.endsWith('tabs.json')) {
+        await writeFile(dest, 'restored tabs')
+      }
+    })
+    const { backupManager, userData } = await loadBackupManager({
+      copy,
+      manifest: {
+        files: {
+          'tabs.json': 'sha256:test',
+          'lastOpened.json': 'sha256:test'
+        }
+      }
+    })
+    await writeFile(path.join(userData, 'tabs.json'), 'live tabs')
+    await writeFile(path.join(userData, 'lastOpened.json'), 'live window')
+
+    let error
+    try {
+      await backupManager.restoreBackup('/tmp/backup.zip')
+    } catch (caught) {
+      error = caught
+    }
+
+    expect(error?.code).to.equal('ENOENT')
+    expect(await readFile(path.join(userData, 'tabs.json'), 'utf-8')).to.equal('live tabs')
+    expect(await readFile(path.join(userData, 'lastOpened.json'), 'utf-8')).to.equal('live window')
   })
 })

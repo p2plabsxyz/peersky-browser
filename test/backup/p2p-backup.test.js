@@ -6,6 +6,9 @@ import path from 'path'
 const ipfsHandlerPath = path.join(process.cwd(), 'src/protocols/ipfs-handler.js')
 const hyperHandlerPath = path.join(process.cwd(), 'src/protocols/hyper-handler.js')
 const configPath = path.join(process.cwd(), 'src/protocols/config.js')
+const backupCorePath = path.join(process.cwd(), 'src/backup/backup-core.js')
+const encryptedBackupPath = path.join(process.cwd(), 'src/backup/encrypted-backup.js')
+const identityTransferPath = path.join(process.cwd(), 'src/backup/identity-transfer.js')
 
 function buildMocks (overrides = {}) {
   const ipfsCache = overrides.ipfsCache || []
@@ -20,11 +23,19 @@ function buildMocks (overrides = {}) {
     address: 'hyper://abc123def456/backup.zip'
   })
   const hyperFetchToFile = overrides.hyperFetchToFile || sinon.stub().resolves('/tmp/out.zip')
+  const readManifest = overrides.readManifest || sinon.stub().resolves({ kind: 'peersky-identity-transfer' })
 
   const mocks = {
     [ipfsHandlerPath]: { ipfsPublishFile, ipfsFetchToFile },
     [hyperHandlerPath]: { hyperPublishFile, hyperFetchToFile },
-    [configPath]: { ipfsCache, hyperCache, saveIpfsCache, saveHyperCache }
+    [configPath]: { ipfsCache, hyperCache, saveIpfsCache, saveHyperCache },
+    [backupCorePath]: { readManifest },
+    [encryptedBackupPath]: {
+      isEncryptedBackupManifest: (manifest) => manifest?.kind === 'peersky-encrypted-backup'
+    },
+    [identityTransferPath]: {
+      isIdentityTransferManifest: (manifest) => manifest?.kind === 'peersky-identity-transfer'
+    }
   }
 
   return {
@@ -36,6 +47,7 @@ function buildMocks (overrides = {}) {
       hyperFetchToFile,
       saveIpfsCache,
       saveHyperCache,
+      readManifest,
       ipfsCache,
       hyperCache
     }
@@ -103,6 +115,21 @@ describe('p2p-backup', function () {
   })
 
   describe('uploadBackup', function () {
+    it('rejects a plaintext backup before publishing', async function () {
+      const readManifest = sinon.stub().resolves({ version: '1.0.0', files: {} })
+      const { mod, stubs } = await loadModule({ readManifest })
+
+      let error
+      try {
+        await mod.uploadBackup('/tmp/plain.zip')
+      } catch (caught) {
+        error = caught
+      }
+      expect(error?.message).to.match(/unencrypted/i)
+      expect(stubs.ipfsPublishFile.called).to.equal(false)
+      expect(stubs.hyperPublishFile.called).to.equal(false)
+    })
+
     it('publishes to IPFS by default and wires cache', async function () {
       const { mod, stubs } = await loadModule()
       const result = await mod.uploadBackup('/tmp/backup.zip')
@@ -131,6 +158,19 @@ describe('p2p-backup', function () {
       expect(stubs.hyperCache[0].key).to.equal('abc123def456')
       expect(stubs.hyperCache[0].type).to.equal('drive')
       expect(stubs.saveHyperCache.calledOnce).to.equal(true)
+    })
+
+    it('does not retain ephemeral transfer drives in the Hyper cache', async function () {
+      const { mod, stubs } = await loadModule()
+      await mod.uploadBackup('/tmp/identity.zip', 'hyper', { ephemeral: true, ttlMs: 1000 })
+
+      expect(stubs.hyperPublishFile.calledWith(
+        '/tmp/identity.zip',
+        'backup.zip',
+        { ephemeral: true, ttlMs: 1000 }
+      )).to.equal(true)
+      expect(stubs.hyperCache).to.have.length(0)
+      expect(stubs.saveHyperCache.called).to.equal(false)
     })
   })
 

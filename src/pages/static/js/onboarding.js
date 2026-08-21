@@ -94,6 +94,7 @@ const cidInput = document.getElementById('cid-input')
 const cidRestoreBtn = document.getElementById('cid-restore-btn')
 const zipDropZone = document.getElementById('zip-drop-zone')
 const zipInput = document.getElementById('zip-input')
+const backupPassphrase = document.getElementById('backup-passphrase')
 
 function setRestoreStatus (msg, kind) {
   restoreStatus.className = `status-msg ${kind}`
@@ -127,7 +128,7 @@ cidRestoreBtn.addEventListener('click', async () => {
   setRestoreBusy(true)
   setRestoreStatus('Fetching backup from the network...', 'success')
   try {
-    const res = await restoreCid(address)
+    const res = await restoreCid(address, backupPassphrase.value || undefined)
     if (res.success) setRestoreStatus('Restored. Restarting...', 'success')
     else setRestoreStatus(res.error || 'Restore failed.', 'error')
   } catch (err) {
@@ -178,7 +179,7 @@ async function handleZipFile (file) {
   setRestoreBusy(true)
   setRestoreStatus('Restoring backup...', 'success')
   try {
-    const res = await restoreZip(zipPath)
+    const res = await restoreZip(zipPath, backupPassphrase.value || undefined)
     if (res.success) setRestoreStatus('Restored. Restarting...', 'success')
     else setRestoreStatus(res.error || 'Restore failed.', 'error')
   } catch (err) {
@@ -266,12 +267,12 @@ async function loadDeviceInfo () {
   try {
     const res = await getDeviceInfo()
     if (res.success) {
-      identityDeviceKey.textContent = res.device.encryptionPublicKey
+      identityDeviceKey.textContent = res.pairingPayload
     } else {
-      identityDeviceKey.textContent = `Could not load device key: ${res.error}`
+      identityDeviceKey.textContent = `Could not load device pairing code: ${res.error}`
     }
   } catch (err) {
-    identityDeviceKey.textContent = `Could not load device key: ${err.message}`
+    identityDeviceKey.textContent = `Could not load device pairing code: ${err.message}`
   }
 }
 

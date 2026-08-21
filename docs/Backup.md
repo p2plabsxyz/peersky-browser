@@ -1,115 +1,110 @@
-# Backup & Restore
+# Backup and Restore
 
-Peersky can bundle its persistent application data into a single portable `.zip`
-file and restore it later, on the same machine or a different one. The feature
-lives at `peersky://backup` (linked from the Settings sidebar).
+Peersky creates passphrase-encrypted local backups and device-sealed identity
+transfers. Both flows are available from `peersky://backup`.
 
-## What is included
+## Local backups
 
-The backup bundle contains the following top-level entries from the app's
-`userData` directory. JSON files are skipped when absent.
+A local backup contains:
 
 ```
-peersky-backup-{timestamp}.zip
-  manifest.json            # format version, Peersky version, createdAt, per-entry checksums
-  lastOpened.json          # window geometry / last session
-  tabs.json                # open tabs across windows
-  ensCache.json            # ENS resolution cache
-  ipfsCache.json           # IPFS address cache
-  hyperCache.json          # Hypercore address cache
-  ipfs/                    # full IPFS (Helia) repository
-  hyper/                   # full Hypercore storage
+manifest.json
+backup-payload.bin
 ```
 
-*Note: Identity-sensitive files (chat rooms, ports, device registry) are explicitly EXCLUDED from standard backups. They are only included when performing an "Identity Transfer".*
+`backup-payload.bin` is an AES-256-GCM encrypted zip. Its key is derived from
+the user passphrase with scrypt. The encrypted inner zip can contain:
 
-Live database lock and in-flight files (`LOCK`, `repo.lock`, `*.lock`) are
-excluded from the bundle.
-
-## manifest.json
-
-```json
-{
-  "version": "1.0.0",
-  "peerskyVersion": "1.0.0-beta.26",
-  "createdAt": "2026-06-07T12:00:00.000Z",
-  "files": {
-    "tabs.json": "sha256:...",
-    "ipfs": "sha256:...",
-    "hyper": "sha256:..."
-  }
-}
+```
+lastOpened.json
+tabs.json
+ensCache.json
+ipfsCache.json
+hyperCache.json
+hyper/
+peersky-chat-rooms.json
+peersky-ports.json
+peersky-identity.json
 ```
 
-Each file entry is a sha256 of the file; each directory entry is a sha256 over
-its files (sorted by relative path). On restore the extracted contents are
-verified against these checksums before any live data is touched.
+The `hyper/` corestore contains secret keys for writable Hypercores, so every
+local backup is encrypted. The `ipfs/` repository is not backed up. It contains
+the libp2p private key and a refetchable blockstore; excluding it avoids copying
+private key material and large cache data.
 
-## Creating a backup
+The passphrase is not stored by Peersky and cannot be recovered. A passphrase
+must contain at least 12 characters.
 
-1. Open `peersky://backup` and click **Create Backup**.
-2. Choose where to save the `.zip` (defaults to the Downloads folder).
-3. The bundle is written by a background worker thread so the UI stays
-   responsive; a progress bar shows compression progress.
+## Consistent archives
 
-## Restoring a backup
+Hyper and IPFS services are suspended during creation. Each file is hashed
+while its bytes are streamed into the inner archive. The manifest therefore
+describes the bytes that were actually archived rather than an earlier read of
+the live file.
 
-1. Open `peersky://backup` and click **Choose Backup File**.
-2. The selected bundle's manifest is shown (creation date, Peersky version,
-   contents). Click **Restore** and confirm.
-3. The bundle is extracted to a temporary directory and verified against its
-   manifest. Existing `ipfs/` and `hyper/` directories are removed first so old
-   and new repositories never mix, then the backup contents overwrite the
-   matching entries in `userData`.
-4. A restart is required. Confirm the prompt to relaunch Peersky and load the
-   restored data.
+Lock and transient database files named `LOCK`, `repo.lock`, `*.lock`, `LOG`,
+and `LOG.old` are excluded.
 
-## Secure identity transfer
+## Restore safety
 
-The current backup flow is broad: a user can restore any valid
-backup file or P2P address as many times as they want. Identity transfer is
-a separate flow because `peersky-ports.json`, PeerChat keys, and
-Hyper/IPFS repositories carry long-lived private identity material.
+Peersky extracts and verifies the complete payload before changing live data.
+Every target is then copied to a staging directory on the same filesystem. The
+live targets are renamed into a rollback directory and staged targets are
+renamed into place. If a swap fails, already swapped targets are rolled back.
+Old data is removed only after every target has been swapped successfully.
 
-The implemented flow is:
+A restart is required after a successful restore so Hyper and IPFS reopen from
+a clean process.
 
-1. The importing device (e.g., a mobile phone) locates its persistent device keypair and displays its public encryption key as a QR code (e.g., on PeerSky Mobile's "Link Device" screen).
-2. The exporting device (Desktop) uses the **Scan QR** button to activate the local webcam via `jsQR` and scans the importing device's public key (or the user manually enters it).
-3. The exporting device reads the signed `peersky-devices.json` registry. Mobile slots can be safely overwritten.
-4. The exporting device creates an identity-only backup payload, encrypts it securely to the importing device's public encryption key using Sodium sealed boxes, signs the transfer metadata, and uploads it to `hyper://`.
-5. A QR code containing the resulting `hyper://` URL is displayed on the exporting device (Desktop).
-6. The importing device (Mobile) scans the Desktop's `hyper://` QR code using its camera, downloads the payload, verifies the signature, decrypts the payload with its private key, imports atomically, and restarts.
-7. The importing device assumes ownership of the identity registry (to manage future pairs) and clears its device slot upon restore.
+## Identity transfer
 
-Useful implementation units:
+Identity transfer is intended for moving the identity to a specific receiving
+device:
 
-- `src/backup/device-keys.js` - persistent Ed25519 signing key and X25519/box
-  encryption key for this install.
-- `src/backup/device-registry.js` - signed `peersky-devices.json` with
-  `desktop` and `mobile` slots.
-- `src/backup/identity-transfer.js` - encrypted payload creation and limit enforcement.
-- `src/backup/ipc.js` - IPC handlers for creating the encrypted zip, uploading, and fetching.
-- `src/pages/backup.html` and `src/pages/static/js/backup.js` - a separate
-  "Identity transfer" section, distinct from regular backup/restore.
+1. The receiver displays a `peersky-identity:` device pairing code containing its
+   encryption public key, nonce, and device type.
+2. Desktop scans or pastes that complete code. The sender cannot choose the
+   receiver type in the UI.
+3. Desktop creates an identity payload and encrypts a random content key to the
+   receiver with a Sodium sealed box. The payload uses AES-256-GCM.
+4. Desktop signs the transfer metadata and publishes the sealed zip to a
+   temporary Hyperdrive.
+5. Both devices show the first six uppercase hexadecimal characters of:
 
-## Implementation notes
+   `sha256(sourceSigningPublicKey || targetEncryptionPublicKey || nonce)`
 
-- `src/backup/backup-core.js` - pure zip/extract/manifest logic (`archiver` for
-  writing, `unzipper` for reading), with zip-slip path-traversal protection.
-- `src/backup/backup-worker.js` - `worker_threads` entry that runs create and
-  extract off the main process event loop.
-- `src/backup/backup-manager.js` - orchestrates the worker, verifies manifests,
-  performs the restore overwrite, and triggers the relaunch.
-- `src/backup/ipc.js` - `setupBackupIpc()` registers the `backup-create`,
-  `backup-validate`, `backup-restore`, and `backup-relaunch` IPC handlers and
-  forwards `backup-progress` events to the renderer.
+6. The user compares this code before confirming the restore.
 
-### Live-snapshot limitation
+The transfer signature is self-signed because its public key travels in the
+same transfer. The matching verification code is the authentication step that
+binds the displayed desktop key to the receiver session.
 
-Backups are created while the app is running. The IPFS (LevelDB) and Hypercore
-repositories are streamed live (best-effort snapshot), matching how the existing
-"Reset P2P Data" action manipulates these directories in place. Lock files are
-skipped, but a backup taken during heavy P2P write activity may capture a
-slightly inconsistent repository. For the most consistent backup, avoid active
-uploads/downloads while creating one. Restored repositories always re-open from
-a clean process because a restart is enforced.
+Mobile currently reads at most 50 MB for a transfer response. Desktop checks
+the completed sealed archive before upload and reports a clear error when it is
+too large.
+
+Identity transfer creates an independent copy of the identity. There is no
+claimed one-mobile limit or cryptographic revocation mechanism. Removing a
+device from a local registry could not revoke keys already copied to that
+device, so the old registry and slot enforcement have been removed.
+
+The temporary Hyper publisher uses storage outside the normal `hyper/`
+corestore and is closed and deleted when the transfer expires. Transfer drives
+therefore do not accumulate in later backups.
+
+## P2P publishing
+
+The general "Share via P2P" action is not available. `uploadBackup` verifies
+the wrapper manifest and refuses to publish plaintext backup zips. The remaining
+UI upload path is the device-sealed identity transfer described above.
+
+## Implementation
+
+- `src/backup/backup-core.js`: archive streaming, checksums, extraction, and
+  zip path validation.
+- `src/backup/encrypted-backup.js`: passphrase-encrypted local backup wrapper.
+- `src/backup/identity-transfer.js`: receiver-sealed identity transfer and
+  verification code derivation.
+- `src/backup/backup-manager.js`: service suspension and transactional restore.
+- `src/backup/p2p-backup.js`: encrypted-wrapper upload gate and P2P download.
+- `src/backup/ipc.js`: backup page IPC handlers.
