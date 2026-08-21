@@ -28,7 +28,6 @@ import { setupExtensionIpcHandlers } from './extensions/extensions-ipc.js'
 import { getBrowserSession, usePersist } from './session.js'
 import { setupPermissionHandler } from './permissions.js'
 import { setupP2pmdPdfExportIpc } from './pages/p2p/p2pmd/pdf-export-ipc.js'
-import { trackerBlocker } from './tracker-blocker.js'
 
 const log = createLogger('main')
 
@@ -169,7 +168,7 @@ app.whenReady().then(async () => {
   // Get consistent session for protocols and extensions
   const userSession = getBrowserSession()
   await setupProtocols(userSession)
-  installExtensionWebRequestBridge(userSession, trackerBlocker)
+  installExtensionWebRequestBridge(userSession)
   setupBittorrentIpc()
 
   userSession.on('will-download', (event, item, sessionWebContents) => {
@@ -256,20 +255,6 @@ app.whenReady().then(async () => {
     log.info('Extension IPC handlers registered')
   } catch (error) {
     log.error('Failed to initialize extension system:', error)
-  }
-
-  // Supplemental blocking when extension MV3 service workers fail to start in Electron.
-  try {
-    let ghosteryRulesRoot = null
-    for (const ext of extensionManager.loadedExtensions.values()) {
-      if (/ghostery/i.test(ext.displayName || ext.name || '')) {
-        ghosteryRulesRoot = ext.installedPath
-        break
-      }
-    }
-    await trackerBlocker.init(ghosteryRulesRoot)
-  } catch (error) {
-    log.error('Failed to initialize tracker blocker:', error)
   }
 
   // Check for --new-window argument (from Windows taskbar jump list)
@@ -474,8 +459,7 @@ async function setupProtocols (session) {
   sessionProtocol.handle('magnet', bittorrentProtocolHandler)
 }
 
-function installExtensionWebRequestBridge (session, blocker) {
-  const tb = blocker
+function installExtensionWebRequestBridge (session) {
   // Loopback carries the browser's own plumbing: the p2p gateways and local
   // servers backing peersky:// pages. Chromium sets no initiator on requests
   // from those pages, so a content blocker sees origin-less traffic and can
@@ -512,10 +496,6 @@ function installExtensionWebRequestBridge (session, blocker) {
         )) ?? {}
     } catch (e) {
       console.warn('[webRequest] onBeforeRequest extension dispatch failed:', e?.message)
-    }
-
-    if (!result.cancel && !result.redirectUrl && !result.redirectURL && tb?.shouldBlock(url)) {
-      result = { cancel: true }
     }
 
     // Electron expects redirectURL
