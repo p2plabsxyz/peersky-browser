@@ -4,6 +4,7 @@ import path from 'path'
 import { mkdtemp, mkdir, readFile, stat, writeFile } from 'fs/promises'
 
 import { getDeviceKeys, getPublicDeviceInfo } from '../../src/backup/device-keys.js'
+import { validateUploadEnvelope } from '../../src/backup/backup-envelope.js'
 import { computeIdentityId } from '../../src/backup/identity-metadata.js'
 import {
   createIdentityTransferZip,
@@ -48,6 +49,7 @@ describe('identity-transfer', function () {
 
     expect(created.bytes).to.be.greaterThan(0)
     expect(created.manifest.kind).to.equal('peersky-identity-transfer')
+    expect((await validateUploadEnvelope(outPath)).kind).to.equal('peersky-identity-transfer')
 
     const extracted = await makeTempDir('peersky-id-wrapper-')
     await extractBackupZip(outPath, extracted)
@@ -117,5 +119,26 @@ describe('identity-transfer', function () {
       exists = false
     }
     expect(exists).to.equal(false)
+  })
+
+  it('rejects highly compressible mobile data by uncompressed size', async function () {
+    const source = await makeTempDir('peersky-id-compressed-src-')
+    const target = await makeTempDir('peersky-id-compressed-target-')
+    await mkdir(path.join(source, 'hyper'), { recursive: true })
+    await writeFile(path.join(source, 'hyper', 'compressible'), Buffer.alloc(4096))
+    const targetInfo = getPublicDeviceInfo(await getDeviceKeys(target))
+    const outPath = path.join(await makeTempDir('peersky-id-compressed-out-'), 'identity.zip')
+
+    let error
+    try {
+      await createIdentityTransferZip(source, outPath, {
+        targetPairingPayload: mobilePairingPayload(targetInfo.encryptionPublicKey),
+        maxMobileTransferBytes: 1024
+      })
+    } catch (caught) {
+      error = caught
+    }
+
+    expect(error?.message).to.match(/expands to .* accepts at most 1024 bytes/i)
   })
 })

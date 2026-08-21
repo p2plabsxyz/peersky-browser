@@ -79,9 +79,9 @@ The transfer signature is self-signed because its public key travels in the
 same transfer. The matching verification code is the authentication step that
 binds the displayed desktop key to the receiver session.
 
-Mobile currently reads at most 50 MB for a transfer response. Desktop checks
-the completed sealed archive before upload and reports a clear error when it is
-too large.
+Mobile currently reads at most 50 MB for a transfer response and for the total
+uncompressed inner zip. Desktop checks both limits before upload and reports a
+clear error when either limit is exceeded.
 
 Identity transfer creates an independent copy of the identity. There is no
 claimed one-mobile limit or cryptographic revocation mechanism. Removing a
@@ -94,9 +94,10 @@ therefore do not accumulate in later backups.
 
 ## P2P publishing
 
-The general "Share via P2P" action is not available. `uploadBackup` verifies
-the wrapper manifest and refuses to publish plaintext backup zips. The remaining
-UI upload path is the device-sealed identity transfer described above.
+The general "Share via P2P" action is not available. `uploadBackup` requires a
+valid encrypted wrapper, rejects unexpected files, and verifies the encrypted
+payload checksum before publishing. The remaining UI upload path is the
+device-sealed identity transfer described above.
 
 ## Implementation
 

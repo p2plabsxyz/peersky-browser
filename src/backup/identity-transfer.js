@@ -150,6 +150,36 @@ export function verifyIdentityTransferSignature (transfer) {
   }
 }
 
+export function validateIdentityTransferManifest (manifest) {
+  if (!isIdentityTransferManifest(manifest) || manifest.version !== BACKUP_VERSION) {
+    throw new Error('Invalid identity transfer manifest')
+  }
+
+  const transfer = manifest.identityTransfer
+  if (!transfer || transfer.version !== 1 ||
+      !/^[0-9a-f]{64}$/i.test(transfer.identityId || '') ||
+      !/^[0-9a-f]{64}$/i.test(transfer.sourceEncryptionPublicKey || '') ||
+      !/^[0-9a-f]{64}$/i.test(transfer.channel || '') ||
+      !/^[0-9a-f]{160}$/i.test(transfer.encryptedKey || '') ||
+      !/^[0-9a-f]{24}$/i.test(transfer.iv || '') ||
+      !/^[0-9a-f]{32}$/i.test(transfer.authTag || '') ||
+      !/^[0-9a-f]{64}$/i.test(transfer.payloadSha256 || '') ||
+      !/^[0-9a-f]{128}$/i.test(transfer.signature || '')) {
+    throw new Error('Identity transfer encryption metadata is invalid')
+  }
+  if (typeof transfer.issuedAt !== 'number' || typeof transfer.expiresAt !== 'number' ||
+      transfer.expiresAt <= transfer.issuedAt ||
+      transfer.expiresAt - transfer.issuedAt > MAX_TRANSFER_TTL_MS) {
+    throw new Error('Identity transfer timestamps are invalid')
+  }
+  normalizeDeviceType(transfer.targetDeviceType)
+  deriveVerificationCode(transfer)
+  if (!verifyIdentityTransferSignature(transfer)) {
+    throw new Error('Identity transfer signature is invalid')
+  }
+  return true
+}
+
 export async function createIdentityTransferZip (userDataDir, outPath, options = {}) {
   const pairing = decodePairingString(options.targetPairingPayload || options.targetEncryptionPublicKey)
   const targetDeviceType = pairing.deviceType
@@ -166,11 +196,15 @@ export async function createIdentityTransferZip (userDataDir, outPath, options =
   try {
     const innerZip = path.join(tempDir, 'identity.zip')
     const payloadPath = path.join(tempDir, IDENTITY_PAYLOAD_NAME)
-    await createBackupZip(userDataDir, innerZip, {
+    const mobileLimit = options.maxMobileTransferBytes || MAX_MOBILE_TRANSFER_BYTES
+    const inner = await createBackupZip(userDataDir, innerZip, {
       peerskyVersion: options.peerskyVersion || '',
       isIdentityTransfer: true,
       targetDeviceType
     })
+    if (targetDeviceType === 'mobile' && inner.uncompressedBytes > mobileLimit) {
+      throw new Error(`Mobile identity transfer expands to ${inner.uncompressedBytes} bytes; PeerSky Mobile accepts at most ${mobileLimit} bytes. Remove large Hyper data before linking this phone.`)
+    }
 
     const contentKey = crypto.randomBytes(32)
     const iv = crypto.randomBytes(12)
@@ -205,7 +239,6 @@ export async function createIdentityTransferZip (userDataDir, outPath, options =
     }
 
     const result = await writeWrapperZip(outPath, manifest, payloadPath)
-    const mobileLimit = options.maxMobileTransferBytes || MAX_MOBILE_TRANSFER_BYTES
     if (targetDeviceType === 'mobile' && result.bytes > mobileLimit) {
       await fs.rm(outPath, { force: true })
       throw new Error(`Mobile identity transfer is ${result.bytes} bytes; PeerSky Mobile accepts at most ${mobileLimit} bytes. Remove large Hyper data before linking this phone.`)

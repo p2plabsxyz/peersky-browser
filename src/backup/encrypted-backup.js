@@ -78,6 +78,20 @@ export function isEncryptedBackupManifest (manifest) {
   return manifest && manifest.kind === ENCRYPTED_BACKUP_KIND
 }
 
+export function validateEncryptedBackupManifest (manifest) {
+  if (!isEncryptedBackupManifest(manifest) || manifest.version !== BACKUP_VERSION) {
+    throw new Error('Invalid encrypted backup manifest')
+  }
+  validateEncryptionMetadata(manifest.encryption)
+  if (!/^[0-9a-f]{64}$/i.test(manifest.payloadSha256 || '')) {
+    throw new Error('Encrypted backup payload hash is invalid')
+  }
+  if (!Array.isArray(manifest.contents) || manifest.contents.some((name) => typeof name !== 'string' || !name)) {
+    throw new Error('Encrypted backup contents are invalid')
+  }
+  return true
+}
+
 export async function createEncryptedBackupZip (userDataDir, outPath, options = {}) {
   validatePassphrase(options.passphrase, true)
   await computeIdentityId(userDataDir)

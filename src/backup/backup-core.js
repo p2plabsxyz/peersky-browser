@@ -155,9 +155,11 @@ export async function buildManifest (userDataDir, peerskyVersion = '', isIdentit
 
 async function appendHashedFile (archive, sourcePath, archivePath) {
   const hash = crypto.createHash('sha256')
+  let bytes = 0
   const hashingStream = new Transform({
     transform (chunk, encoding, callback) {
       hash.update(chunk)
+      bytes += chunk.length
       callback(null, chunk)
     }
   })
@@ -166,7 +168,7 @@ async function appendHashedFile (archive, sourcePath, archivePath) {
   source.pipe(hashingStream)
   archive.append(hashingStream, { name: archivePath })
   await finished(hashingStream)
-  return hash.digest('hex')
+  return { bytes, digest: hash.digest('hex') }
 }
 
 // Stream all present targets plus a manifest into a single .zip at outPath.
@@ -206,12 +208,14 @@ export async function createBackupZip (userDataDir, outPath, options = {}) {
   archive.pipe(output)
 
   try {
+    let uncompressedBytes = 0
     for (const target of targets) {
       const abs = path.join(userDataDir, target.name)
       if (!(await pathExists(abs))) continue
 
       if (target.type === 'file') {
-        const digest = await appendHashedFile(archive, abs, target.name)
+        const { bytes, digest } = await appendHashedFile(archive, abs, target.name)
+        uncompressedBytes += bytes
         manifest.files[target.name] = `sha256:${digest}`
         continue
       }
@@ -220,22 +224,25 @@ export async function createBackupZip (userDataDir, outPath, options = {}) {
       const files = (await listDirFiles(abs)).sort()
       if (files.length === 0) archive.append('', { name: `${target.name}/` })
       for (const rel of files) {
-        const digest = await appendHashedFile(
+        const { bytes, digest } = await appendHashedFile(
           archive,
           path.join(abs, rel),
           `${target.name}/${rel}`
         )
+        uncompressedBytes += bytes
         dirHash.update(rel)
         dirHash.update(digest)
       }
       manifest.files[target.name] = `sha256:${dirHash.digest('hex')}`
     }
 
-    archive.append(JSON.stringify(manifest, null, 2), { name: MANIFEST_NAME })
+    const manifestBytes = Buffer.from(JSON.stringify(manifest, null, 2))
+    uncompressedBytes += manifestBytes.length
+    archive.append(manifestBytes, { name: MANIFEST_NAME })
     await archive.finalize()
     await completed
     await fs.rename(tempPath, outPath)
-    return { filePath: outPath, bytes: archive.pointer(), manifest }
+    return { filePath: outPath, bytes: archive.pointer(), uncompressedBytes, manifest }
   } catch (error) {
     archive.abort()
     output.destroy()

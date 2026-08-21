@@ -98,6 +98,7 @@ describe('backup-core', function () {
     const info = await stat(outPath)
     expect(info.isFile()).to.equal(true)
     expect(info.size).to.be.greaterThan(0)
+    expect(result.uncompressedBytes).to.be.greaterThan(0)
     expect(result.manifest.peerskyVersion).to.equal('9.9.9')
     expect(Object.keys(result.manifest.files)).to.include.members(['tabs.json', 'hyper'])
     expect(result.manifest.files).not.to.have.property('ipfs')

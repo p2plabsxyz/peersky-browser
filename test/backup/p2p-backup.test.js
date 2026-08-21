@@ -6,9 +6,7 @@ import path from 'path'
 const ipfsHandlerPath = path.join(process.cwd(), 'src/protocols/ipfs-handler.js')
 const hyperHandlerPath = path.join(process.cwd(), 'src/protocols/hyper-handler.js')
 const configPath = path.join(process.cwd(), 'src/protocols/config.js')
-const backupCorePath = path.join(process.cwd(), 'src/backup/backup-core.js')
-const encryptedBackupPath = path.join(process.cwd(), 'src/backup/encrypted-backup.js')
-const identityTransferPath = path.join(process.cwd(), 'src/backup/identity-transfer.js')
+const backupEnvelopePath = path.join(process.cwd(), 'src/backup/backup-envelope.js')
 
 function buildMocks (overrides = {}) {
   const ipfsCache = overrides.ipfsCache || []
@@ -23,19 +21,13 @@ function buildMocks (overrides = {}) {
     address: 'hyper://abc123def456/backup.zip'
   })
   const hyperFetchToFile = overrides.hyperFetchToFile || sinon.stub().resolves('/tmp/out.zip')
-  const readManifest = overrides.readManifest || sinon.stub().resolves({ kind: 'peersky-identity-transfer' })
+  const validateUploadEnvelope = overrides.validateUploadEnvelope || sinon.stub().resolves({ kind: 'peersky-identity-transfer' })
 
   const mocks = {
     [ipfsHandlerPath]: { ipfsPublishFile, ipfsFetchToFile },
     [hyperHandlerPath]: { hyperPublishFile, hyperFetchToFile },
     [configPath]: { ipfsCache, hyperCache, saveIpfsCache, saveHyperCache },
-    [backupCorePath]: { readManifest },
-    [encryptedBackupPath]: {
-      isEncryptedBackupManifest: (manifest) => manifest?.kind === 'peersky-encrypted-backup'
-    },
-    [identityTransferPath]: {
-      isIdentityTransferManifest: (manifest) => manifest?.kind === 'peersky-identity-transfer'
-    }
+    [backupEnvelopePath]: { validateUploadEnvelope }
   }
 
   return {
@@ -47,7 +39,7 @@ function buildMocks (overrides = {}) {
       hyperFetchToFile,
       saveIpfsCache,
       saveHyperCache,
-      readManifest,
+      validateUploadEnvelope,
       ipfsCache,
       hyperCache
     }
@@ -116,8 +108,8 @@ describe('p2p-backup', function () {
 
   describe('uploadBackup', function () {
     it('rejects a plaintext backup before publishing', async function () {
-      const readManifest = sinon.stub().resolves({ version: '1.0.0', files: {} })
-      const { mod, stubs } = await loadModule({ readManifest })
+      const validateUploadEnvelope = sinon.stub().rejects(new Error('Refusing to publish an unencrypted backup'))
+      const { mod, stubs } = await loadModule({ validateUploadEnvelope })
 
       let error
       try {
@@ -128,6 +120,15 @@ describe('p2p-backup', function () {
       expect(error?.message).to.match(/unencrypted/i)
       expect(stubs.ipfsPublishFile.called).to.equal(false)
       expect(stubs.hyperPublishFile.called).to.equal(false)
+    })
+
+    it('validates the complete encrypted envelope before publishing', async function () {
+      const { mod, stubs } = await loadModule()
+
+      await mod.uploadBackup('/tmp/backup.zip')
+
+      expect(stubs.validateUploadEnvelope.calledOnceWithExactly('/tmp/backup.zip')).to.equal(true)
+      expect(stubs.ipfsPublishFile.calledOnce).to.equal(true)
     })
 
     it('publishes to IPFS by default and wires cache', async function () {
