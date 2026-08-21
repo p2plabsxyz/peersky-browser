@@ -95,50 +95,22 @@ describe('identity-transfer', function () {
     expect(first).to.match(/^[0-9a-f]{64}$/)
   })
 
-  it('rejects a mobile transfer that exceeds the receiver limit', async function () {
+  it('does not apply a mobile-specific transfer size limit', async function () {
     const source = await makeTempDir('peersky-id-size-src-')
     const target = await makeTempDir('peersky-id-size-target-')
     await seedIdentityData(source)
+    await writeFile(
+      path.join(source, 'hyper', 'large-core'),
+      Buffer.alloc(50 * 1024 * 1024 + 1)
+    )
     const targetInfo = getPublicDeviceInfo(await getDeviceKeys(target))
     const outPath = path.join(await makeTempDir('peersky-id-size-out-'), 'identity.zip')
 
-    let error
-    try {
-      await createIdentityTransferZip(source, outPath, {
-        targetPairingPayload: mobilePairingPayload(targetInfo.encryptionPublicKey),
-        maxMobileTransferBytes: 100
-      })
-    } catch (caught) {
-      error = caught
-    }
-    expect(error?.message).to.match(/accepts at most 100 bytes/i)
-    let exists = true
-    try {
-      await stat(outPath)
-    } catch {
-      exists = false
-    }
-    expect(exists).to.equal(false)
-  })
+    const created = await createIdentityTransferZip(source, outPath, {
+      targetPairingPayload: mobilePairingPayload(targetInfo.encryptionPublicKey)
+    })
 
-  it('rejects highly compressible mobile data by uncompressed size', async function () {
-    const source = await makeTempDir('peersky-id-compressed-src-')
-    const target = await makeTempDir('peersky-id-compressed-target-')
-    await mkdir(path.join(source, 'hyper'), { recursive: true })
-    await writeFile(path.join(source, 'hyper', 'compressible'), Buffer.alloc(4096))
-    const targetInfo = getPublicDeviceInfo(await getDeviceKeys(target))
-    const outPath = path.join(await makeTempDir('peersky-id-compressed-out-'), 'identity.zip')
-
-    let error
-    try {
-      await createIdentityTransferZip(source, outPath, {
-        targetPairingPayload: mobilePairingPayload(targetInfo.encryptionPublicKey),
-        maxMobileTransferBytes: 1024
-      })
-    } catch (caught) {
-      error = caught
-    }
-
-    expect(error?.message).to.match(/expands to .* accepts at most 1024 bytes/i)
+    expect(created.bytes).to.be.greaterThan(100)
+    expect((await stat(outPath)).size).to.equal(created.bytes)
   })
 })

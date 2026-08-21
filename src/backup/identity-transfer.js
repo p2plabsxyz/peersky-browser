@@ -11,7 +11,6 @@ import { canonicalJson, computeIdentityId, normalizeDeviceType } from './identit
 
 export const IDENTITY_TRANSFER_KIND = 'peersky-identity-transfer'
 export const IDENTITY_PAYLOAD_NAME = 'identity-payload.bin'
-export const MAX_MOBILE_TRANSFER_BYTES = 50 * 1024 * 1024
 const MAX_TRANSFER_TTL_MS = 15 * 60 * 1000
 
 function toHex (buf) {
@@ -196,15 +195,11 @@ export async function createIdentityTransferZip (userDataDir, outPath, options =
   try {
     const innerZip = path.join(tempDir, 'identity.zip')
     const payloadPath = path.join(tempDir, IDENTITY_PAYLOAD_NAME)
-    const mobileLimit = options.maxMobileTransferBytes || MAX_MOBILE_TRANSFER_BYTES
-    const inner = await createBackupZip(userDataDir, innerZip, {
+    await createBackupZip(userDataDir, innerZip, {
       peerskyVersion: options.peerskyVersion || '',
       isIdentityTransfer: true,
       targetDeviceType
     })
-    if (targetDeviceType === 'mobile' && inner.uncompressedBytes > mobileLimit) {
-      throw new Error(`Mobile identity transfer expands to ${inner.uncompressedBytes} bytes; PeerSky Mobile accepts at most ${mobileLimit} bytes. Remove large Hyper data before linking this phone.`)
-    }
 
     const contentKey = crypto.randomBytes(32)
     const iv = crypto.randomBytes(12)
@@ -239,10 +234,6 @@ export async function createIdentityTransferZip (userDataDir, outPath, options =
     }
 
     const result = await writeWrapperZip(outPath, manifest, payloadPath)
-    if (targetDeviceType === 'mobile' && result.bytes > mobileLimit) {
-      await fs.rm(outPath, { force: true })
-      throw new Error(`Mobile identity transfer is ${result.bytes} bytes; PeerSky Mobile accepts at most ${mobileLimit} bytes. Remove large Hyper data before linking this phone.`)
-    }
     result.verificationCode = deriveVerificationCode(transfer)
     return result
   } finally {

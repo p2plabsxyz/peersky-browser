@@ -79,9 +79,9 @@ The transfer signature is self-signed because its public key travels in the
 same transfer. The matching verification code is the authentication step that
 binds the displayed desktop key to the receiver session.
 
-Mobile currently reads at most 50 MB for a transfer response and for the total
-uncompressed inner zip. Desktop checks both limits before upload and reports a
-clear error when either limit is exceeded.
+Identity transfers do not have an application-defined size limit on desktop or
+mobile. Available memory, storage, and the underlying ZIP format still determine
+the largest transfer a device can process.
 
 Identity transfer creates an independent copy of the identity. There is no
 claimed one-mobile limit or cryptographic revocation mechanism. Removing a
