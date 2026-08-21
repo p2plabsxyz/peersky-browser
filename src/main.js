@@ -476,14 +476,22 @@ async function setupProtocols (session) {
 
 function installExtensionWebRequestBridge (session, blocker) {
   const tb = blocker
+  // Loopback carries the browser's own plumbing: the p2p gateways and local
+  // servers backing peersky:// pages. Chromium sets no initiator on requests
+  // from those pages, so a content blocker sees origin-less traffic and can
+  // cancel it, breaking the browser itself. Internal transport is not the
+  // extension's to filter.
+  const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]'])
+
   const shouldForwardToExtensions = (rawUrl) => {
     const url = typeof rawUrl === 'string' ? rawUrl : ''
     if (!url) return false
     if (url.startsWith('file://')) return false
     if (url.startsWith('chrome-extension://')) return false
     try {
-      const proto = new URL(url).protocol
-      return proto === 'http:' || proto === 'https:' || proto === 'ws:' || proto === 'wss:' || proto === 'ftp:'
+      const { protocol, hostname } = new URL(url)
+      if (LOOPBACK_HOSTS.has(hostname)) return false
+      return protocol === 'http:' || protocol === 'https:' || protocol === 'ws:' || protocol === 'wss:' || protocol === 'ftp:'
     } catch (_) {
       return false
     }
