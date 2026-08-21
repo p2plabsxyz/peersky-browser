@@ -26,6 +26,17 @@ function getLANOptions () {
   return Number.isInteger(port) && port > 0 && port <= 65535 ? { port } : {}
 }
 
+function wireLANEvents (instance) {
+  instance.on('warning', (error) => log.warn(`[LAN] ${error.message}`))
+  instance.on('error', (error) => log.error(`[LAN] ${error.message}`))
+  return instance
+}
+
+async function attachLANDiscovery (activeSdk) {
+  const instance = await HyperDHTmDNS.attachHyperSDK(activeSdk, getLANOptions())
+  return wireLANEvents(instance)
+}
+
 function isWebReadableStream (body) {
   return body && typeof body.getReader === 'function'
 }
@@ -105,12 +116,10 @@ async function initializeHyperSDK (options) {
   log.info('Initializing Hyper SDK...')
 
   sdk = await createSDK(options)
-  
+
   let lan = null
   try {
-    lan = await HyperDHTmDNS.attachHyperSDK(sdk, getLANOptions())
-    lan.on('warning', (error) => log.warn(`[LAN] ${error.message}`))
-    lan.on('error', (error) => log.error(`[LAN] ${error.message}`))
+    lan = await attachLANDiscovery(sdk)
     log.info(`[LAN] Listening on ${lan.host || '0.0.0.0'}:${lan.port}`)
   } catch (err) {
     log.warn(`[LAN] Local discovery unavailable, continuing without it: ${err.message}`)
@@ -121,20 +130,23 @@ async function initializeHyperSDK (options) {
     let cycling = false
     const NETWORK_CHECK_MS = 10_000
     setInterval(async () => {
-      if (cycling || lan.destroyed) return
+      if (cycling) return
       try {
         const currentIP = HyperDHTmDNS.selectLocalIPv4()
         if (currentIP === lastKnownIP) return
         log.info(`[LAN] Network change detected: ${lastKnownIP} -> ${currentIP}`)
-        lastKnownIP = currentIP
         cycling = true
-        
+
         try {
-          await lan.destroy()
-          lan = await HyperDHTmDNS.attachHyperSDK(sdk, getLANOptions())
-          lastKnownIP = lan.host
-          log.info(`[LAN] Restarted discovery on ${lan.host}:${lan.port}`)
+          const previous = lan
+          lan = null
+          if (previous && !previous.destroyed) await previous.destroy()
+          const next = await attachLANDiscovery(sdk)
+          lan = next
+          lastKnownIP = next.host
+          log.info(`[LAN] Restarted discovery on ${next.host}:${next.port}`)
         } catch (err) {
+          lan = null
           log.warn(`[LAN] Network change recovery failed: ${err.message}`)
         } finally {
           cycling = false
