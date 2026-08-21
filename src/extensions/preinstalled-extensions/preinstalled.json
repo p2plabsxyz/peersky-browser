@@ -25,6 +25,12 @@
       "archive": "consent-autodeny-v1.0.0.zip"
     },
     {
+      "name": "uBlock Origin development build",
+      "version": "1.72.2.900",
+      "url": "https://github.com/p2plabsxyz/uBlock-mv3/releases/download/v{version}/ublock-origin-chromium-v{version}.zip",
+      "archive": "ublock-origin-chromium-v1.72.2.900.zip"
+    },
+    {
       "name": "Wayback Machine",
       "version": "1.1.0",
       "url": "https://github.com/p2plabsxyz/wayback-machine-extension/releases/download/v{version}/wayback-machine-v{version}.zip",
