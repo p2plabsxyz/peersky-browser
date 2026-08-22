@@ -64,7 +64,7 @@ describe('Hyper protocol handler', function () {
       'hyper-sdk': {
         create: createSDK
       },
-      'hyperdht-mdns': {
+      '@p2plabs/hyperdht-mdns': {
         default: {
           attachHyperSDK,
           selectLocalIPv4: sinon.stub().returns(currentIP)

@@ -2,7 +2,7 @@ import { Readable } from 'stream'
 import path from 'path'
 import { app, safeStorage } from 'electron'
 import { create as createSDK } from 'hyper-sdk'
-import HyperDHTmDNS from 'hyperdht-mdns'
+import HyperDHTmDNS from '@p2plabs/hyperdht-mdns'
 import makeHyperFetch from 'hypercore-fetch'
 import {
   initChat,
