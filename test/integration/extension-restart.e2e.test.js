@@ -81,8 +81,8 @@ function runHarness ({ mode, userDataDir, fixtureDir, timeoutMs = 120000 }) {
     let killTimer = null
 
     const timer = setTimeout(() => {
-      child.kill()
-      reject(new Error(`Harness timeout in mode ${mode}`))
+      try { child.kill() } catch {}
+      reject(new Error(`Harness timeout in mode ${mode}\nstdout=${stdout}\nstderr=${stderr}`))
     }, timeoutMs)
 
     child.stdout.on('data', (chunk) => {

@@ -176,7 +176,11 @@ app.whenReady().then(async () => {
 
     try {
       await withTimeout(
-        extensionManager.initialize({ app, session: browserSession }),
+        extensionManager.initialize({
+          app,
+          session: browserSession,
+          installPreinstalled: false
+        }),
         60000,
         'extension manager initialization'
       )
@@ -189,7 +193,11 @@ app.whenReady().then(async () => {
 
     let extension = getProbeExtension()
     if (args.mode === 'install-and-probe' && !extension) {
-      const installResult = await extensionManager.installExtension(path.resolve(args.fixture))
+      const installResult = await withTimeout(
+        extensionManager.installExtension(path.resolve(args.fixture)),
+        30000,
+        'probe extension installation'
+      )
       extension = installResult.extension
     }
 

@@ -94,6 +94,7 @@ class ExtensionManager {
    * @param {Object} options - Configuration options
    * @param {Electron.App} options.app - Electron app instance
    * @param {Electron.Session} options.session - Electron session for extension loading
+   * @param {boolean} [options.installPreinstalled=true] - Import bundled extensions
    */
   async initialize (options) {
     if (this.initializationPromise) {
@@ -464,11 +465,12 @@ class ExtensionManager {
       // Load registry
       await this._readRegistry()
 
-      // Install bundled preinstalled extensions (one-time import)
-      try {
-        await this._installBundledPreinstalled()
-      } catch (err) {
-        log.warn('ExtensionManager: Preinstalled import skipped:', err.message || err)
+      if (options.installPreinstalled !== false) {
+        try {
+          await this._installBundledPreinstalled()
+        } catch (err) {
+          log.warn('ExtensionManager: Preinstalled import skipped:', err.message || err)
+        }
       }
 
       // Load enabled extensions
