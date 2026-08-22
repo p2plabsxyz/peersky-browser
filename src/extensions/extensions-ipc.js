@@ -23,6 +23,7 @@
 import electron from 'electron'
 import { ERR, validateInstallSource, sha256Hex } from './util.js'
 import path from 'path'
+import { clearSidePanelState, syncSidePanelForActiveTab, registerSidePanelGuest } from './services/side-panel.js'
 const { ipcMain, BrowserWindow, dialog, app } = electron
 
 // Simple in-memory rate limiter for install attempts per sender WebContents
@@ -499,6 +500,14 @@ export function setupExtensionIpcHandlers (extensionManager) {
           }
         } catch (_) { /* ignore for now */ }
 
+        try {
+          if (senderWindow && !senderWindow.isDestroyed()) {
+            syncSidePanelForActiveTab(extensionManager, senderWindow, webContentsId)
+          }
+        } catch (syncErr) {
+          console.warn('[ExtensionIPC] side panel tab sync failed:', syncErr?.message || syncErr)
+        }
+
         return { success: true }
       } catch (error) {
         console.error('[ExtensionIPC] extensions-pin-active-webview failed:', error)
@@ -846,6 +855,25 @@ export function setupExtensionIpcHandlers (extensionManager) {
           error: error.message,
           results: []
         }
+      }
+    })
+
+    ipcMain.on('extensions-side-panel-webview', (event, webContentsId) => {
+      try {
+        if (typeof webContentsId !== 'number') return
+        registerSidePanelGuest(extensionManager, webContentsId)
+      } catch (error) {
+        console.warn('[ExtensionIPC] extensions-side-panel-webview failed:', error?.message || error)
+      }
+    })
+
+    ipcMain.on('extensions-side-panel-closed', (event) => {
+      try {
+        const win = BrowserWindow.fromWebContents(event.sender)
+        if (!win || win.isDestroyed()) return
+        clearSidePanelState(extensionManager, win.id)
+      } catch (error) {
+        console.warn('[ExtensionIPC] extensions-side-panel-closed failed:', error?.message || error)
       }
     })
 

@@ -948,6 +948,7 @@ class PeerskyWindow {
       this.window.webContents.on('did-attach-webview', (_event, webviewWebContents) => {
         try {
           if (webviewWebContents && !webviewWebContents.isDestroyed()) {
+            // addWindow skips side-panel guests (see SidePanelService.isSidePanelGuest).
             extensionManager.addWindow(this.window, webviewWebContents)
           }
         } catch (e) {

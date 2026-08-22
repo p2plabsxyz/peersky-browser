@@ -93,6 +93,18 @@ describe('Protocol and extension security guardrails', function () {
     })
 
     expect(dangerousResult.warnings.join(' ')).to.contain('High-risk host permission')
+
+    const sidePanelResult = validator.validatePermissions(['sidePanel', 'storage'])
+    expect(sidePanelResult.allowed).to.equal(true)
+    expect(sidePanelResult.warnings.join(' ')).to.not.contain('sidePanel')
+    expect(sidePanelResult.permissionDetails.find((d) => d.permission === 'sidePanel').category)
+      .to.equal('safe')
+
+    // permissionConfig classifies debugger as blocked even when policy does not
+    // list it — wording must use the assessed category, not "unknown".
+    const debuggerResult = validator.validatePermissions(['debugger'])
+    expect(debuggerResult.warnings.join(' ')).to.contain('Blocked permission: debugger')
+    expect(debuggerResult.warnings.join(' ')).to.not.contain('Unknown or unclassified permission: debugger')
   })
 
   it('rejects traversal patterns in extension install paths', async function () {

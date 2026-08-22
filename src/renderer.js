@@ -10,9 +10,97 @@ const DEFAULT_PAGE = 'peersky://home'
 const isHomePage = (url) => url === 'peersky://home' || url === 'peersky://home/'
 let webviewContainer = null // Will be set dynamically for tabs
 let tabBar // Holds current tab bar component
+let sidePanelEl = null
+let sidePanelWebview = null
 const nav = document.querySelector('#navbox')
 const findMenu = document.querySelector('#find')
 const pageTitle = document.querySelector('title')
+
+function ensureSidePanel () {
+  if (sidePanelEl) return sidePanelEl
+
+  sidePanelEl = document.createElement('aside')
+  sidePanelEl.id = 'extension-side-panel'
+  sidePanelEl.className = 'extension-side-panel'
+  sidePanelEl.innerHTML = `
+    <div class="extension-side-panel-header">
+      <span class="extension-side-panel-title"></span>
+      <button type="button" class="extension-side-panel-close" aria-label="Close side panel">×</button>
+    </div>
+    <div class="extension-side-panel-body"></div>
+  `
+  sidePanelEl.querySelector('.extension-side-panel-close').addEventListener('click', () => {
+    closeExtensionSidePanel({ notify: true })
+  })
+  document.body.appendChild(sidePanelEl)
+  return sidePanelEl
+}
+
+function reportSidePanelGuest () {
+  if (!sidePanelWebview) return
+  try {
+    const id = sidePanelWebview.getWebContentsId?.()
+    if (typeof id === 'number') {
+      ipcRenderer.send('extensions-side-panel-webview', id)
+    }
+  } catch (_) {}
+}
+
+function openExtensionSidePanel ({ url, title, width }) {
+  if (!url) return
+  const panel = ensureSidePanel()
+  const body = panel.querySelector('.extension-side-panel-body')
+  const titleEl = panel.querySelector('.extension-side-panel-title')
+  if (titleEl) titleEl.textContent = title || ''
+
+  const panelWidth = typeof width === 'number' && width > 0 ? width : 380
+  document.documentElement.style.setProperty('--extension-side-panel-width', `${panelWidth}px`)
+
+  if (!sidePanelWebview) {
+    sidePanelWebview = document.createElement('webview')
+    sidePanelWebview.className = 'extension-side-panel-webview'
+    sidePanelWebview.setAttribute('webpreferences', 'contextIsolation=yes,nativeWindowOpen=yes,sandbox=yes')
+    sidePanelWebview.setAttribute('allowpopups', '')
+    sidePanelWebview.addEventListener('did-attach', reportSidePanelGuest)
+    sidePanelWebview.addEventListener('dom-ready', reportSidePanelGuest)
+    body.appendChild(sidePanelWebview)
+  }
+
+  const current = sidePanelWebview.getAttribute('src')
+  if (current !== url) {
+    sidePanelWebview.setAttribute('src', url)
+  } else {
+    // Already loaded; still exclude from ECE in case attach raced ahead of open intent.
+    reportSidePanelGuest()
+  }
+
+  panel.classList.add('open')
+  document.body.classList.add('extension-side-panel-open')
+}
+
+function closeExtensionSidePanel ({ notify = false } = {}) {
+  if (sidePanelEl) sidePanelEl.classList.remove('open')
+  document.body.classList.remove('extension-side-panel-open')
+  document.documentElement.style.removeProperty('--extension-side-panel-width')
+
+  // Tear down the guest so the extension page cannot keep running (timers,
+  // network, etc.) after the panel is hidden. Next open recreates it lazily.
+  if (sidePanelWebview) {
+    try {
+      sidePanelWebview.removeAttribute('src')
+    } catch (_) {}
+    try {
+      sidePanelWebview.remove()
+    } catch (_) {}
+    sidePanelWebview = null
+  }
+  const body = sidePanelEl?.querySelector('.extension-side-panel-body')
+  if (body) body.replaceChildren()
+
+  if (notify) {
+    try { ipcRenderer.send('extensions-side-panel-closed') } catch (_) {}
+  }
+}
 
 // Listen for IPC messages from main process to add tabs
 ipcRenderer.on('add-tab-from-main', (event, url) => {
@@ -298,6 +386,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (navBox && typeof navBox.removeTempIconForExtension === 'function') {
       navBox.removeTempIconForExtension(extensionId)
     }
+  })
+
+  ipcRenderer.on('extensions-side-panel-open', (_event, payload) => {
+    openExtensionSidePanel(payload || {})
+  })
+
+  ipcRenderer.on('extensions-side-panel-close', () => {
+    // Main owns open-intent; don't echo closed or tab-scoped state is wiped on switch.
+    closeExtensionSidePanel({ notify: false })
   })
 
   ipcRenderer.on('refresh-browser-actions', () => {
