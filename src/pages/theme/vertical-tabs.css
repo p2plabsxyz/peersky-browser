@@ -258,6 +258,12 @@ body:has(.tabbar.vertical-tabs.expanded) .webview-container {
   width: calc(100% - 200px);
 }
 
+body.extension-side-panel-open:has(.tabbar.vertical-tabs) .webview-container,
+body.extension-side-panel-open:has(.tabbar.vertical-tabs.expanded) .webview-container {
+  width: auto;
+  right: var(--extension-side-panel-width, 380px);
+}
+
 /* Loading indicator for vertical tabs */
 .tabbar.vertical-tabs .tab.loading .tab-favicon::after {
   content: '';
