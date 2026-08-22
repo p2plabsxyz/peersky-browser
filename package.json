@@ -197,7 +197,7 @@
     "@libp2p/mplex": "^12.0.11",
     "@libp2p/tls": "^3.0.10",
     "@p2plabs/hyperdht-mdns": "^1.0.0",
-    "@p2plabs/peersky-chrome-extensions": "^1.2.0",
+    "@p2plabs/peersky-chrome-extensions": "^1.3.0",
     "b4a": "^1.6.7",
     "blockstore-level": "^3.0.2",
     "chromium-net-errors": "^13.0.0",

@@ -42,6 +42,7 @@ import { resolveManifestStrings } from './utils/strings.js'
 import * as RegistryService from './services/registry.js'
 import * as LoaderService from './services/loader.js'
 import * as BrowserActions from './services/browser-actions.js'
+import * as SidePanelService from './services/side-panel.js'
 import { installExtensionPopupGuards as installPopupGuards } from './services/popup-guards.js'
 import { openUrlInPeerskyTab } from './services/open-url-in-browser-tab.js'
 import * as WebStoreService from './services/webstore.js'
@@ -82,6 +83,15 @@ class ExtensionManager {
     this.activePopups = new Set()
     this.popupToOpener = new Map()
     this.popupToExtensionId = new Map()
+
+    // windowId → currently visible panel
+    this.activeSidePanels = new Map()
+    // `${windowId}:${tabId}` → tab-scoped open intent
+    this.sidePanelOpenByTab = new Map()
+    // windowId → global open intent
+    this.sidePanelOpenGlobal = new Map()
+    // webContents ids of docked side panel guests (never ECE tabs)
+    this.sidePanelGuestIds = new Set()
 
     // Paths (set in initialize)
     this.extensionsBaseDir = null
@@ -411,6 +421,14 @@ class ExtensionManager {
             } catch (err) {
               log.error('[ExtensionManager] removeWindow impl failed:', err)
             }
+          },
+
+          openSidePanel: async (details) => {
+            await SidePanelService.openSidePanel(this, details)
+          },
+
+          closeSidePanel: async (details) => {
+            await SidePanelService.closeSidePanel(this, details)
           }
         })
         log.info('ExtensionManager: ElectronChromeExtensions initialized')
@@ -860,6 +878,11 @@ class ExtensionManager {
     if (this.electronChromeExtensions) {
       if (!webContents) return // avoid registering shell UI or popups as tabs
       try {
+        if (SidePanelService.isSidePanelGuest(this, window, webContents)) {
+          SidePanelService.registerSidePanelGuest(this, webContents.id)
+          return
+        }
+
         // Skip if this webContents is already registered to avoid duplicate
         // addTab() calls which can trigger spurious navigations/reloads
         if (!this._registeredTabs) this._registeredTabs = new Set()
@@ -868,10 +891,25 @@ class ExtensionManager {
         this._registeredTabs.add(wcId)
         webContents.once('destroyed', () => {
           this._registeredTabs?.delete(wcId)
+          this.sidePanelGuestIds?.delete(wcId)
         })
 
         this.electronChromeExtensions.addTab(webContents, window)
         log.info(`[ExtensionManager] Registered webContents ${webContents.id} with extension system`)
+
+        // Side panel guests often attach before getURL() is set; drop them if they
+        // later navigate to the docked panel URL.
+        const dropIfSidePanel = () => {
+          if (SidePanelService.isSidePanelGuest(this, window, webContents)) {
+            SidePanelService.registerSidePanelGuest(this, webContents.id)
+            try { webContents.removeListener('did-navigate', dropIfSidePanel) } catch (_) {}
+            try { webContents.removeListener('did-frame-navigate', dropIfSidePanel) } catch (_) {}
+          }
+        }
+        try {
+          webContents.on('did-navigate', dropIfSidePanel)
+          webContents.on('did-frame-navigate', dropIfSidePanel)
+        } catch (_) {}
       } catch (error) {
         log.error('[ExtensionManager] Failed to register window:', error)
       }

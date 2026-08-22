@@ -2,6 +2,7 @@
 
 import { app, Menu, webContents } from 'electron'
 import { registerPopupForStabilization, consumeRecentFocusClose } from './popup-guards.js'
+import { tryOpenSidePanelOnActionClick } from './side-panel.js'
 import { createLogger } from '../../logger.js'
 
 const log = createLogger('extensions')
@@ -123,11 +124,16 @@ export async function clickBrowserAction (manager, actionId, window) {
     try {
       log.info(`ExtensionManager: Triggering browser action click for ${extension.displayName || extension.name}`)
 
-      // Get and register the active webview to ensure proper tab context
       const activeWebview = await getAndRegisterActiveWebview(manager, window)
       const activeTab = activeWebview || window.webContents
 
       pinECEWindowFocus(manager, window, activeTab)
+
+      // openPanelOnActionClick: open/toggle panel and skip onClicked.
+      // Extensions like WebBrain leave this false and open via sidePanel.open() from onClicked.
+      if (await tryOpenSidePanelOnActionClick(manager, extension, window, activeTab)) {
+        return
+      }
 
       // Method 1: Use activateExtension if available (preferred for extensions without popups)
       if (manager.electronChromeExtensions.activateExtension) {
@@ -235,6 +241,18 @@ export async function openBrowserAction (manager, actionId, window, anchorRect) 
       log.warn(`ExtensionManager: Extension ${actionId} has no browser action`)
       return { success: false, error: 'No browser action found' }
     }
+
+    const activeWebview = await getAndRegisterActiveWebview(manager, window)
+    const activeTab = activeWebview || window.webContents
+    pinECEWindowFocus(manager, window, activeTab)
+
+    if (await tryOpenSidePanelOnActionClick(manager, extension, window, activeTab)) {
+      if (window && !window.isDestroyed() && window.webContents && !window.webContents.isDestroyed()) {
+        window.webContents.send('remove-tempIcon', actionId)
+      }
+      return { success: true, sidePanel: true }
+    }
+
     if (!action.default_popup) {
       log.info(`ExtensionManager: Extension ${extension.displayName || extension.name} has no popup, triggering click instead`)
       await clickBrowserAction(manager, actionId, window)
