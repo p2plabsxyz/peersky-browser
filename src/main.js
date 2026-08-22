@@ -172,7 +172,7 @@ app.whenReady().then(async () => {
   // Get consistent session for protocols and extensions
   const userSession = getBrowserSession()
   await setupProtocols(userSession)
-  installExtensionWebRequestBridge(userSession, trackerBlocker)
+  installExtensionWebRequestBridge(userSession)
   setupBittorrentIpc()
   setupBackupIpc()
 
@@ -260,20 +260,6 @@ app.whenReady().then(async () => {
     log.info('Extension IPC handlers registered')
   } catch (error) {
     log.error('Failed to initialize extension system:', error)
-  }
-
-  // Supplemental blocking when extension MV3 service workers fail to start in Electron.
-  try {
-    let ghosteryRulesRoot = null
-    for (const ext of extensionManager.loadedExtensions.values()) {
-      if (/ghostery/i.test(ext.displayName || ext.name || '')) {
-        ghosteryRulesRoot = ext.installedPath
-        break
-      }
-    }
-    await trackerBlocker.init(ghosteryRulesRoot)
-  } catch (error) {
-    log.error('Failed to initialize tracker blocker:', error)
   }
 
   // Check for --new-window argument (from Windows taskbar jump list)
@@ -487,16 +473,23 @@ async function setupProtocols (session) {
   sessionProtocol.handle('magnet', bittorrentProtocolHandler)
 }
 
-function installExtensionWebRequestBridge (session, blocker) {
-  const tb = blocker
+function installExtensionWebRequestBridge (session) {
+  // Loopback carries the browser's own plumbing: the p2p gateways and local
+  // servers backing peersky:// pages. Chromium sets no initiator on requests
+  // from those pages, so a content blocker sees origin-less traffic and can
+  // cancel it, breaking the browser itself. Internal transport is not the
+  // extension's to filter.
+  const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]'])
+
   const shouldForwardToExtensions = (rawUrl) => {
     const url = typeof rawUrl === 'string' ? rawUrl : ''
     if (!url) return false
     if (url.startsWith('file://')) return false
     if (url.startsWith('chrome-extension://')) return false
     try {
-      const proto = new URL(url).protocol
-      return proto === 'http:' || proto === 'https:' || proto === 'ws:' || proto === 'wss:' || proto === 'ftp:'
+      const { protocol, hostname } = new URL(url)
+      if (LOOPBACK_HOSTS.has(hostname)) return false
+      return protocol === 'http:' || protocol === 'https:' || protocol === 'ws:' || protocol === 'wss:' || protocol === 'ftp:'
     } catch (_) {
       return false
     }
@@ -517,10 +510,6 @@ function installExtensionWebRequestBridge (session, blocker) {
         )) ?? {}
     } catch (e) {
       console.warn('[webRequest] onBeforeRequest extension dispatch failed:', e?.message)
-    }
-
-    if (!result.cancel && !result.redirectUrl && !result.redirectURL && tb?.shouldBlock(url)) {
-      result = { cancel: true }
     }
 
     // Electron expects redirectURL
