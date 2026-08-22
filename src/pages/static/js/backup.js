@@ -339,7 +339,7 @@ identityUploadHyperBtn?.addEventListener('click', async () => {
         qrImg.style.display = 'none'
       }
       cidRow.style.display = ''
-      showIdentityTransferStatus(`Encrypted identity transfer uploaded to Hyper.\n\nVERIFICATION CODE: ${res.verificationCode}\n\nScan the QR code below with PeerSky Mobile (Settings > Link Device) to restore identity automatically. Ensure the verification code matches exactly.`)
+      showIdentityTransferStatus(`Encrypted identity transfer uploaded to Hyper.\n\nVERIFICATION CODE: ${res.verificationCode}\n\nScan the QR code below with PeerSky Mobile (Settings > Link Device) to restore identity automatically.\n\nNote: Ensure the verification code matches exactly.`)
     } else {
       showStatus(`Identity transfer upload failed: ${res.error}`, 'error')
     }

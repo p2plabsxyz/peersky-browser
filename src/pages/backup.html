@@ -28,6 +28,7 @@
     .backup-status.success { background: rgba(40, 167, 69, 0.15); }
     .backup-status.error { background: rgba(220, 53, 69, 0.15); }
     .backup-status.info { background: rgba(120, 120, 120, 0.15); }
+    #identity-transfer-status { margin-bottom: 12px; }
     .backup-passphrase-dialog {
       color: var(--settings-text-primary);
       background: var(--settings-card-bg);
@@ -68,6 +69,7 @@
               <p class="setting-description">Create a passphrase-encrypted bundle of
                 your tabs, window layout, P2P identity, PeerChat rooms, and Hyper
                 repository. The refetchable IPFS repository is not included.</p>
+              <p class="setting-description" style="margin-top: 6px;">Note: Since this uses P2P networks, the device that uploaded the backup (or another peer) must remain online for others to download it.</p>
             </div>
             <div class="setting-control">
               <button type="button" id="backup-create" class="btn btn-primary">Create Backup</button>
@@ -104,8 +106,8 @@
             </div>
           </div>
           <div id="device-key-qr-container" style="display: none; padding: 12px; text-align: center;">
-            <p class="setting-description" style="margin: 0 auto 8px; text-align: center;">Scan with PeerSky Mobile or another desktop instance to import identity to this device:</p>
-            <qr-code id="device-key-qr-code" style="pointer-events: none; width: 180px; height: 180px; background: white; padding: 8px; box-sizing: border-box;" data-bg="white" data-fg="black"></qr-code>
+            <p class="setting-description" style="margin: 0 auto 8px; text-align: center; width: 100%; max-width: none;">Scan with PeerSky Mobile or another desktop instance to import identity to this device:</p>
+            <qr-code id="device-key-qr-code" style="pointer-events: none; width: 180px; height: 180px; background: white; padding: 8px; box-sizing: border-box; margin: 0 auto;" data-bg="white" data-fg="black"></qr-code>
           </div>
         </section>
 
