@@ -25,10 +25,10 @@
       "archive": "consent-autodeny-v1.0.0.zip"
     },
     {
-      "name": "Ghostery - Tracker Ad Block",
-      "version": "1.2.0",
-      "url": "https://github.com/p2plabsxyz/ghostery-extension/releases/download/v{version}/ghostery-chromium-v{version}.zip",
-      "archive": "ghostery-chromium-v1.2.0.zip"
+      "name": "uBlock Origin MV3",
+      "version": "1.72.2.900",
+      "url": "https://github.com/p2plabsxyz/uBlock-mv3/releases/download/v{version}/ublock-origin-chromium-v{version}.zip",
+      "archive": "ublock-origin-chromium-v1.72.2.900.zip"
     },
     {
       "name": "Wayback Machine",
