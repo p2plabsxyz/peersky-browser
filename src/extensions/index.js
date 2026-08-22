@@ -525,9 +525,6 @@ class ExtensionManager {
     const matchesPreinstalledEntry = (ext, entry) => {
       if (entry.id && ext.id === entry.id) return true
       if (entry.name && (ext.displayName === entry.name || ext.name === entry.name)) return true
-      if (entry.name && /ghostery/i.test(entry.name) && /ghostery/i.test(ext.displayName || ext.name || '')) {
-        return true
-      }
       return false
     }
 
