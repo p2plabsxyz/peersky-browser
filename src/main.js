@@ -31,7 +31,6 @@ import { setupP2pmdPdfExportIpc } from './pages/p2p/p2pmd/pdf-export-ipc.js'
 import { setupBackupIpc } from './backup/ipc.js'
 import backupManager from './backup/backup-manager.js'
 import { downloadBackupFromAddress } from './backup/p2p-backup.js'
-import { trackerBlocker } from './tracker-blocker.js'
 
 const log = createLogger('main')
 

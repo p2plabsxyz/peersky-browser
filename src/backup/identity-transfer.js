@@ -105,14 +105,12 @@ export function decodePairingString (str) {
   const [encryptionPublicKey, query = ''] = withoutScheme.split('?')
   const params = new URLSearchParams(query)
   const nonce = params.get('nonce')
-  const declaredType = params.get('deviceType')
-  const deviceType = declaredType || (nonce ? 'mobile' : null)
 
   if (!nonce || !/^[0-9a-f]{32}$/i.test(nonce)) {
     throw new Error('Pairing payload has an invalid nonce')
   }
   return {
-    deviceType: normalizeDeviceType(deviceType),
+    deviceType: normalizeDeviceType(params.get('deviceType')),
     encryptionPublicKey: toHex(decodeEncryptionPublicKey(encryptionPublicKey)),
     nonce: nonce.toLowerCase()
   }

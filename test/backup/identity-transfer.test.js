@@ -84,6 +84,9 @@ describe('identity-transfer', function () {
       deviceType: 'mobile',
       encryptionPublicKey: '44'.repeat(32)
     })
+    expect(() => decodePairingString(
+      `peersky-identity:${'44'.repeat(32)}?nonce=${'55'.repeat(16)}`
+    )).to.throw(/device type/i)
     expect(() => decodePairingString('44'.repeat(32))).to.throw(/device pairing code/i)
   })
 
