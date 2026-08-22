@@ -82,6 +82,21 @@ function closeExtensionSidePanel ({ notify = false } = {}) {
   if (sidePanelEl) sidePanelEl.classList.remove('open')
   document.body.classList.remove('extension-side-panel-open')
   document.documentElement.style.removeProperty('--extension-side-panel-width')
+
+  // Tear down the guest so the extension page cannot keep running (timers,
+  // network, etc.) after the panel is hidden. Next open recreates it lazily.
+  if (sidePanelWebview) {
+    try {
+      sidePanelWebview.removeAttribute('src')
+    } catch (_) {}
+    try {
+      sidePanelWebview.remove()
+    } catch (_) {}
+    sidePanelWebview = null
+  }
+  const body = sidePanelEl?.querySelector('.extension-side-panel-body')
+  if (body) body.replaceChildren()
+
   if (notify) {
     try { ipcRenderer.send('extensions-side-panel-closed') } catch (_) {}
   }

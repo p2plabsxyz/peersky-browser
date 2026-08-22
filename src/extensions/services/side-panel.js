@@ -7,10 +7,14 @@ const log = createLogger('extensions')
 const PANEL_WIDTH = 380
 
 function findBrowserWindow (windowId) {
+  // Explicit windowId: resolve that window only — never fall back to focused /
+  // any-window, or open({ windowId }) can dock into a different window.
   if (typeof windowId === 'number') {
     const win = BrowserWindow.fromId(windowId)
     if (win && !win.isDestroyed()) return win
+    return null
   }
+
   const focused = BrowserWindow.getFocusedWindow()
   if (focused && !focused.isDestroyed()) return focused
   return BrowserWindow.getAllWindows().find((w) => {
@@ -99,8 +103,7 @@ function resolvePathForTab (manager, extensionId, tabId, fallbackPath) {
 function pinPageTab (manager, win, tabId) {
   if (!win || win.isDestroyed() || typeof tabId !== 'number') return
   const ece = manager.electronChromeExtensions
-  const store = ece?.ctx?.store
-  if (!ece || !store) return
+  if (!ece) return
 
   let tab
   try {
@@ -111,12 +114,19 @@ function pinPageTab (manager, win, tabId) {
   if (!tab || tab.isDestroyed()) return
 
   try {
+    // Prefer the public shell hook (shell#11). Fall back only for older builds.
+    if (typeof ece.focusTab === 'function') {
+      ece.focusTab(tab, win)
+      return
+    }
+    const store = ece?.ctx?.store
+    if (!store) return
     store.lastFocusedWindowId = win.id
     if (!store.tabs?.has?.(tab)) {
       try { ece.addTab(tab, win) } catch (_) {}
     }
     try { store.windowToActiveTab?.set?.(win, tab) } catch (_) {}
-    try { ece.selectTab?.(tab, win) } catch (_) {}
+    try { ece.selectTab?.(tab) } catch (_) {}
   } catch (err) {
     log.warn(`Side panel: failed to pin page tab ${tabId}:`, err?.message || err)
   }
@@ -137,6 +147,12 @@ export function isSidePanelGuest (manager, window, guest) {
   const winId = window?.id
   if (typeof winId !== 'number') return false
 
+  // URL fallback is only for the attach race while a panel is open for this
+  // window. Without that gate, a normal tab on sidepanel.html would match and
+  // be excluded from ECE's tab list.
+  const active = manager.activeSidePanels.get(winId)
+  if (!active) return false
+
   let url = ''
   try {
     url = guest.getURL?.() || ''
@@ -145,20 +161,11 @@ export function isSidePanelGuest (manager, window, guest) {
   }
   if (!url.startsWith('chrome-extension://')) return false
 
-  const active = manager.activeSidePanels.get(winId)
-  if (urlMatchesPanel(url, active?.url)) return true
-  if (active?.extensionId && active?.path) {
+  if (urlMatchesPanel(url, active.url)) return true
+  if (active.extensionId && active.path) {
     const expected = `chrome-extension://${active.extensionId}/${String(active.path).replace(/^\//, '')}`
     if (urlMatchesPanel(url, expected)) return true
   }
-
-  const prefix = `${winId}:`
-  for (const [key, record] of manager.sidePanelOpenByTab.entries()) {
-    if (!key.startsWith(prefix)) continue
-    if (urlMatchesPanel(url, record?.url)) return true
-  }
-  const global = manager.sidePanelOpenGlobal.get(winId)
-  if (urlMatchesPanel(url, global?.url)) return true
 
   return false
 }
@@ -277,6 +284,9 @@ export async function openSidePanel (manager, details = {}) {
   }
 
   const win = findBrowserWindow(windowId)
+  if (typeof windowId === 'number' && (!win || win.isDestroyed())) {
+    throw new Error(`No window with id: ${windowId}`)
+  }
   if (!win || win.isDestroyed()) {
     throw new Error('No browser window available for side panel')
   }
@@ -377,6 +387,13 @@ export function syncSidePanelForActiveTab (manager, window, tabId) {
   }
 }
 
+/**
+ * Clear visible + open-intent state for a window.
+ *
+ * Used when the user closes the panel (✕). Matching Chrome, close is
+ * window-global: dismissing the panel drops open intent for every tab in that
+ * window, not only the tab that was visible.
+ */
 export function clearSidePanelState (manager, windowId) {
   ensureMaps(manager)
   const visible = manager.activeSidePanels.get(windowId)
@@ -388,8 +405,9 @@ export function clearSidePanelState (manager, windowId) {
     manager.sidePanelOpenGlobal.delete(windowId)
   }
 
-  // Drop any leftover per-tab intents for a destroyed window.
+  // Window-global close: drop remaining per-tab open intents for this window.
   for (const key of [...manager.sidePanelOpenByTab.keys()]) {
     if (key.startsWith(`${windowId}:`)) manager.sidePanelOpenByTab.delete(key)
   }
+  manager.sidePanelOpenGlobal.delete(windowId)
 }

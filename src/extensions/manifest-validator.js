@@ -363,7 +363,8 @@ class ManifestValidator {
 
       // Known safe/medium permissions are classified; do not treat as unknown noise.
       // permissionConfig blocked/dangerous that are not also in policy still fall
-      // through as unclassified so policy remains the install gate.
+      // through here so policy remains the install gate — but report the assessed
+      // category rather than calling them "unknown".
       if (assessment.category === 'safe') {
         continue
       }
@@ -371,8 +372,18 @@ class ManifestValidator {
         result.riskScore += 5
         continue
       }
+      if (assessment.category === 'dangerous') {
+        result.warnings.push(`Dangerous permission: ${permission}`)
+        result.riskScore += 25
+        continue
+      }
+      if (assessment.category === 'blocked') {
+        result.warnings.push(`Blocked permission: ${permission}`)
+        result.riskScore += 60
+        continue
+      }
 
-      // Default: unknown permissions as medium warning
+      // Truly unknown / experimental permissions
       result.warnings.push(`Unknown or unclassified permission: ${permission}`)
       result.riskScore += 10
     }

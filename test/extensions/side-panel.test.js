@@ -49,6 +49,7 @@ function makeManager (overrides = {}) {
           lastFocusedWindowId: null
         }
       },
+      focusTab: sinon.spy(),
       addTab: sinon.spy(),
       removeTab: sinon.spy(),
       selectTab: sinon.spy()
@@ -118,10 +119,24 @@ describe('side panel host service', function () {
       windowId: win.id
     })
 
+    expect(manager.electronChromeExtensions.focusTab.calledWith(pageTab, win)).to.equal(true)
+  })
+
+  it('openSidePanel falls back to ctx.store when focusTab is unavailable', async function () {
+    const manager = makeManager()
+    delete manager.electronChromeExtensions.focusTab
+
+    await SidePanel.openSidePanel(manager, {
+      extension: { id: 'ext-1', name: 'Side Panel Fixture' },
+      path: 'sidepanel.html',
+      tabId: 42,
+      windowId: win.id
+    })
+
     const store = manager.electronChromeExtensions.ctx.store
     expect(store.lastFocusedWindowId).to.equal(7)
     expect(store.windowToActiveTab.get(win)).to.equal(pageTab)
-    expect(manager.electronChromeExtensions.selectTab.calledWith(pageTab, win)).to.equal(true)
+    expect(manager.electronChromeExtensions.selectTab.calledWith(pageTab)).to.equal(true)
   })
 
   it('openSidePanel without tabId records global intent', async function () {
@@ -287,13 +302,37 @@ describe('side panel host service', function () {
     expect(SidePanel.isSidePanelGuest(manager, win, page)).to.equal(false)
   })
 
-  it('isSidePanelGuest ignores panel urls from another window', function () {
+  it('isSidePanelGuest ignores panel urls when no panel is open for the window', function () {
     const manager = makeManager()
-    manager.sidePanelOpenByTab.set('8:99', {
+    manager.sidePanelOpenByTab.set('7:42', {
       extensionId: 'ext-1',
       path: 'sidepanel.html',
       url: 'chrome-extension://ext-1/sidepanel.html',
-      tabId: 99
+      tabId: 42
+    })
+
+    const guest = {
+      id: 500,
+      isDestroyed: () => false,
+      getURL: () => 'chrome-extension://ext-1/sidepanel.html'
+    }
+    // Intent alone must not exclude a normal tab that happens to load the panel URL.
+    expect(SidePanel.isSidePanelGuest(manager, win, guest)).to.equal(false)
+  })
+
+  it('isSidePanelGuest ignores panel urls from another window', async function () {
+    const manager = makeManager()
+    const other = makeWindow(8)
+    BrowserWindow.fromId.callsFake((id) => {
+      if (id === win.id) return win
+      if (id === other.id) return other
+      return null
+    })
+    await SidePanel.openSidePanel(manager, {
+      extension: { id: 'ext-1', name: 'Side Panel Fixture' },
+      path: 'sidepanel.html',
+      tabId: 99,
+      windowId: other.id
     })
 
     const guest = {
@@ -302,7 +341,22 @@ describe('side panel host service', function () {
       getURL: () => 'chrome-extension://ext-1/sidepanel.html'
     }
     expect(SidePanel.isSidePanelGuest(manager, win, guest)).to.equal(false)
-    expect(SidePanel.isSidePanelGuest(manager, makeWindow(8), guest)).to.equal(true)
+    expect(SidePanel.isSidePanelGuest(manager, other, guest)).to.equal(true)
+  })
+
+  it('openSidePanel throws when an explicit windowId cannot be resolved', async function () {
+    const manager = makeManager()
+    let message = ''
+    try {
+      await SidePanel.openSidePanel(manager, {
+        extension: { id: 'ext-1', name: 'Side Panel Fixture' },
+        path: 'sidepanel.html',
+        windowId: 999999
+      })
+    } catch (err) {
+      message = String(err?.message || err)
+    }
+    expect(message).to.match(/No window with id: 999999/)
   })
 
   it('registerSidePanelGuest excludes the guest from ECE tabs', function () {
