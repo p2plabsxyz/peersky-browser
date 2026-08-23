@@ -4,6 +4,7 @@ import os from 'os'
 import { promises as fs } from 'fs'
 import { app, safeStorage } from 'electron'
 import { create as createSDK } from 'hyper-sdk'
+import HyperDHTmDNS from '@p2plabs/hyperdht-mdns'
 import makeHyperFetch from 'hypercore-fetch'
 import {
   initChat,
@@ -24,6 +25,22 @@ const ephemeralPublishers = new Set()
 
 // keep chunks smaller to avoid oversized blocks.
 const MAX_UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024
+
+function getLANOptions () {
+  const port = Number.parseInt(process.env.PEERSKY_LAN_PORT || '', 10)
+  return Number.isInteger(port) && port > 0 && port <= 65535 ? { port } : {}
+}
+
+function wireLANEvents (instance) {
+  instance.on('warning', (error) => log.warn(`[LAN] ${error.message}`))
+  instance.on('error', (error) => log.error(`[LAN] ${error.message}`))
+  return instance
+}
+
+async function attachLANDiscovery (activeSdk) {
+  const instance = await HyperDHTmDNS.attachHyperSDK(activeSdk, getLANOptions())
+  return wireLANEvents(instance)
+}
 
 function isWebReadableStream (body) {
   return body && typeof body.getReader === 'function'
@@ -107,6 +124,47 @@ async function initializeHyperSDK (options) {
   log.info('Initializing Hyper SDK...')
 
   sdk = await createSDK(options)
+
+  let lan = null
+  try {
+    lan = await attachLANDiscovery(sdk)
+    log.info(`[LAN] Listening on ${lan.host || '0.0.0.0'}:${lan.port}`)
+  } catch (err) {
+    log.warn(`[LAN] Local discovery unavailable, continuing without it: ${err.message}`)
+  }
+
+  if (lan) {
+    let lastKnownIP = lan.host
+    let cycling = false
+    const NETWORK_CHECK_MS = 10_000
+    setInterval(async () => {
+      if (cycling) return
+      try {
+        const currentIP = HyperDHTmDNS.selectLocalIPv4()
+        if (currentIP === lastKnownIP) return
+        log.info(`[LAN] Network change detected: ${lastKnownIP} -> ${currentIP}`)
+        cycling = true
+
+        try {
+          const previous = lan
+          lan = null
+          if (previous && !previous.destroyed) await previous.destroy()
+          const next = await attachLANDiscovery(sdk)
+          lan = next
+          lastKnownIP = next.host
+          log.info(`[LAN] Restarted discovery on ${next.host}:${next.port}`)
+        } catch (err) {
+          lan = null
+          log.warn(`[LAN] Network change recovery failed: ${err.message}`)
+        } finally {
+          cycling = false
+        }
+      } catch {
+        // No usable interface, ignore
+      }
+    }, NETWORK_CHECK_MS).unref()
+  }
+
   fetch = makeHyperFetch({ sdk, writable: true })
 
   initChat(sdk, {
