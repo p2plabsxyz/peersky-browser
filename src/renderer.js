@@ -526,8 +526,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     }, 100)
   })
 
+  function updateOnboardingVisibility (url) {
+    const isOb = url && url.startsWith('peersky://onboarding')
+    if (nav) nav.style.display = isOb ? 'none' : ''
+    if (tabBar) tabBar.style.display = isOb ? 'none' : ''
+  }
+
   function handleTabSelected (e) {
     const { tabId, url } = e.detail
+
+    updateOnboardingVisibility(url)
 
     // Hide peersky://home URL, show all others
     if (isHomePage(url)) {
@@ -553,6 +561,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const { tabId, url } = e.detail
 
     if (tabId === tabBar.activeTabId) {
+      updateOnboardingVisibility(url)
+
       // Hide peersky://home URL, show all others
       if (isHomePage(url)) {
         nav.setStyledUrl('')

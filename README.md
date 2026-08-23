@@ -167,6 +167,12 @@
   - [x] Provide metadata (e.g., creation date, content type) to improve navigation and usability.
   - [x] Ability to download all the hashes of published data in a .json file.
 
+- [x] Backup & Restore (peersky://backup):
+
+  - [x] Create offline `.zip` backups containing tabs, window layout, ENS cache, and full IPFS/Hypercore data.
+  - [x] Upload backups to IPFS or Hypercore to share and restore via a P2P CID.
+  - [x] **Note**: When restoring a backup from a P2P CID, the original device (or another peer) must remain online to serve the data.
+
 ## Development
 
 

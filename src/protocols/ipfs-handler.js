@@ -15,8 +15,32 @@ import { peerIdFromString, peerIdFromCID } from '@libp2p/peer-id'
 import { ensCache, saveEnsCache, RPC_URL, ipfsCache, saveIpfsCache } from './config.js'
 import { JsonRpcProvider } from 'ethers'
 import { enforceExtensionWritePolicy } from '../extensions/request-policy.js'
-
+import { _suspendIPFS, _resumeIPFS, _ipfsPublishFile, _ipfsFetchToFile, provideCidWithRetry } from '../backup/ipfs-backup.js'
 const log = createLogger('protocols:ipfs')
+
+let sharedNode = null
+let sharedUnixFs = null
+let isSuspended = false
+
+export async function suspendIPFS () {
+  isSuspended = true
+  await _suspendIPFS(sharedNode)
+}
+
+export async function resumeIPFS () {
+  isSuspended = false
+  await _resumeIPFS(sharedNode)
+}
+
+export async function ipfsPublishFile (filePath) {
+  if (isSuspended) throw new Error('IPFS is currently suspended for backup')
+  return _ipfsPublishFile(sharedNode, sharedUnixFs, filePath)
+}
+
+export async function ipfsFetchToFile (cidStr, destPath, onStatus) {
+  if (isSuspended) throw new Error('IPFS is currently suspended for backup')
+  return _ipfsFetchToFile(sharedUnixFs, cidStr, destPath, onStatus)
+}
 
 const P2P_APP_NAMES = {
   editor: 'P2P Editor',
@@ -90,6 +114,9 @@ export async function createHandler (ipfsOptions, session, securityOptions = {})
   let node, unixFileSystem, name, dnsLinkResolver
 
   async function initializeIPFSNode () {
+    if (sharedNode || sharedUnixFs) {
+      log.warn('IPFS node already initialized! Overwriting existing references...')
+    }
     log.info('Initializing IPFS node...')
     const startTime = Date.now()
     node = await createNode(ipfsOptions)
@@ -97,6 +124,8 @@ export async function createHandler (ipfsOptions, session, securityOptions = {})
     unixFileSystem = unixfs(node)
     name = ipns(node)
     dnsLinkResolver = dnsLink(node)
+    sharedNode = node
+    sharedUnixFs = unixFileSystem
   }
 
   await initializeIPFSNode()
@@ -205,7 +234,9 @@ export async function createHandler (ipfsOptions, session, securityOptions = {})
       log.info(`Added all files in ${Date.now() - startTime}ms`)
 
       // Pin the root CID recursively
-      await node.pins.add(rootCid, { recursive: true })
+      for await (const pinned of node.pins.add(rootCid, { recursive: true })) {
+        if (!pinned) continue
+      }
       log.info(`Pinned in ${Date.now() - startTime}ms`)
 
       const fileUrl = `ipfs://${rootCid.toString()}/`
@@ -269,31 +300,14 @@ export async function createHandler (ipfsOptions, session, securityOptions = {})
           Location: fileUrl,
           'Content-Type': 'text/plain'
         }
-      });
+      })
 
       // Provide the root CID to the DHT in the background with retry.
       // On fresh startup the DHT routing table may be empty; retry after
       // a short delay to give bootstrap peers time to connect.
-      (async () => {
-        const maxAttempts = 3
-        const retryDelayMs = 10_000
-        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-          const peerCount = node.libp2p.getPeers().length
-          log.info(`Providing ${rootCid} (attempt ${attempt}/${maxAttempts}, peers: ${peerCount})`)
-          try {
-            await node.libp2p.contentRouting.provide(rootCid)
-            log.info(`Provided ${rootCid} in ${Date.now() - startTime}ms`)
-            break
-          } catch (err) {
-            log.warn(`Provide attempt ${attempt} failed: ${err.message}`)
-            if (attempt < maxAttempts) {
-              await new Promise(resolve => setTimeout(resolve, retryDelayMs))
-            } else {
-              log.error(`Failed to provide ${rootCid} after ${maxAttempts} attempts`)
-            }
-          }
-        }
-      })()
+      provideCidWithRetry(node, rootCid, { startTime }).catch((err) => {
+        log.error(`Failed to run provide loop for ${rootCid}: ${err.message}`)
+      })
 
       return response
     } catch (e) {

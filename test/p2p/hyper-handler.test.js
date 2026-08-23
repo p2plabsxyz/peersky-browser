@@ -1,6 +1,9 @@
 import { expect } from 'chai'
 import sinon from 'sinon'
 import esmock from 'esmock'
+import os from 'os'
+import path from 'path'
+import { mkdtemp, rm, writeFile } from 'fs/promises'
 import { EventEmitter } from 'events'
 
 describe('Hyper protocol handler', function () {
@@ -9,7 +12,15 @@ describe('Hyper protocol handler', function () {
   })
 
   async function loadHyperModule ({ fetchImpl, chatResponse, chatReject, throwOnFetch, lanReject, lanAttachResults, currentIP = '127.0.0.1' } = {}) {
-    const sdk = { id: 'sdk-test', suspend: sinon.stub().resolves(), resume: sinon.stub().resolves() }
+    const sdk = {
+      id: 'sdk-test',
+      close: sinon.stub().resolves(),
+      getDrive: sinon.stub().resolves({ core: {} }),
+      joinCore: sinon.stub().resolves(),
+      swarm: { flush: sinon.stub().resolves() },
+      suspend: sinon.stub().resolves(),
+      resume: sinon.stub().resolves()
+    }
     const createSDK = sinon.stub().resolves(sdk)
 
     const lanMock = new EventEmitter()
@@ -52,7 +63,7 @@ describe('Hyper protocol handler', function () {
         chatResponse || new Response('chat-ok', { status: 200, headers: { 'Content-Type': 'text/plain' } })
       )
     }
-    const hyperFetchFactory = sinon.stub().returns(fetchStub)
+    const hyperFetchFactory = sinon.stub().resolves(fetchStub)
 
     const module = await esmock('../../src/protocols/hyper-handler.js', {
       electron: {
@@ -239,6 +250,30 @@ describe('Hyper protocol handler', function () {
       method: 'PUT'
     })
   })
+
+  it('awaits the fetch factory for ephemeral Hyper uploads', async function () {
+    const key = 'a'.repeat(52)
+    const { module, hyperFetchFactory } = await loadHyperModule({
+      fetchImpl: async (url, options) => {
+        if (options?.method === 'POST') return new Response(`hyper://${key}/`)
+        return new Response('', { status: 200 })
+      }
+    })
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), 'peersky-hyper-upload-test-'))
+    const filePath = path.join(tempDir, 'backup.zip')
+    await writeFile(filePath, 'sealed backup')
+
+    try {
+      const result = await module.hyperPublishFile(filePath, 'backup.zip', {
+        ephemeral: true,
+        ttlMs: 1000
+      })
+      expect(result.address).to.equal(`hyper://${key}/backup.zip`)
+      expect(hyperFetchFactory.calledOnce).to.equal(true)
+    } finally {
+      await rm(tempDir, { recursive: true, force: true })
+    }
+  })    
 
   it('continues initialization if LAN discovery fails to bind', async function () {
     const { module, initChat, sdk } = await loadHyperModule({ lanReject: true })

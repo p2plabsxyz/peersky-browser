@@ -1,5 +1,7 @@
 import { Readable } from 'stream'
 import path from 'path'
+import os from 'os'
+import { promises as fs } from 'fs'
 import { app, safeStorage } from 'electron'
 import { create as createSDK } from 'hyper-sdk'
 import HyperDHTmDNS from '@p2plabs/hyperdht-mdns'
@@ -13,10 +15,13 @@ import { createLogger } from '../logger.js'
 import { hyperCache, saveHyperCache } from './config.js'
 import { enforceExtensionWritePolicy } from '../extensions/request-policy.js'
 
+import { _suspendHyper, _hyperPublishFile, _hyperFetchToFile } from '../backup/hyper-backup.js'
+
 const log = createLogger('protocols:hyper')
 
 // Single SDK and swarm for the app lifecycle (hyper:// browsing + chat share the same swarm).
-let sdk, fetch
+let sdk, fetch, savedSdkOptions
+const ephemeralPublishers = new Set()
 
 // keep chunks smaller to avoid oversized blocks.
 const MAX_UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024
@@ -113,6 +118,9 @@ function getChunkedBody (req) {
 async function initializeHyperSDK (options) {
   if (sdk != null && fetch != null) return fetch
 
+  if (options) savedSdkOptions = options
+  else options = savedSdkOptions
+
   log.info('Initializing Hyper SDK...')
 
   sdk = await createSDK(options)
@@ -166,6 +174,80 @@ async function initializeHyperSDK (options) {
 
   log.info('Hyper SDK initialized.')
   return fetch
+}
+
+// Close the corestore entirely so its RocksDB state is strictly frozen on disk.
+export async function suspendHyper () {
+  await _suspendHyper(sdk, () => {
+    sdk = null
+    fetch = null
+  })
+}
+
+// Reopen the corestore after a backup copy completes.
+export async function resumeHyper () {
+  if (!savedSdkOptions) return
+  log.info('Re-initializing Hyper SDK after backup...')
+  await initializeHyperSDK()
+}
+
+// Publish a file into a fresh writable Hyperdrive and return its shareable
+// hyper:// address. Used by the backup feature to share via a content address.
+export async function hyperPublishFile (filePath, fileName = 'backup.zip', options = {}) {
+  if (options.ephemeral) {
+    const storage = await fs.mkdtemp(path.join(os.tmpdir(), 'peersky-transfer-hyper-'))
+    let publisher
+    try {
+      const publisherSdk = await createSDK({ ...(savedSdkOptions || {}), storage })
+      const publisherFetch = await makeHyperFetch({ sdk: publisherSdk, writable: true })
+      const result = await _hyperPublishFile(publisherFetch, publisherSdk, filePath, fileName)
+      const cleanup = async () => {
+        if (!publisher || !ephemeralPublishers.delete(publisher)) return
+        clearTimeout(publisher.timer)
+        await publisherSdk.close().catch(() => {})
+        await fs.rm(storage, { recursive: true, force: true }).catch(() => {})
+      }
+      const ttlMs = Math.max(1000, Number(options.ttlMs) || 10 * 60 * 1000)
+      publisher = { sdk: publisherSdk, storage, cleanup, timer: setTimeout(cleanup, ttlMs) }
+      publisher.timer.unref()
+      ephemeralPublishers.add(publisher)
+      return result
+    } catch (error) {
+      if (publisher) await publisher.cleanup()
+      else await fs.rm(storage, { recursive: true, force: true }).catch(() => {})
+      throw error
+    }
+  }
+  const f = await initializeHyperSDK()
+  return _hyperPublishFile(f, sdk, filePath, fileName)
+}
+
+async function waitForDriveReady (url) {
+  if (!sdk) return
+  try {
+    const urlObj = new URL(url)
+    const hostname = urlObj.hostname
+    if (!hostname || hostname === 'localhost') return
+    const drive = await sdk.getDrive(`hyper://${hostname}/`)
+    if (drive.writable || drive.core.length > 0) return
+
+    log.info(`Waiting for peers for ${hostname}...`)
+    if (typeof drive.core.findingPeers === 'function') {
+      const finding = drive.core.findingPeers()
+      await sdk.joinCore(drive.core)
+      await finding
+    }
+    await drive.update()
+    log.info(`Finished waiting for peers for ${hostname}, core length is now ${drive.core.length}`)
+  } catch (err) {
+    log.error(`Error waiting for peers for ${url}:`, err)
+  }
+}
+
+// Stream a hyper:// file address to destPath on disk.
+export async function hyperFetchToFile (address, destPath, onStatus) {
+  const f = await initializeHyperSDK()
+  return _hyperFetchToFile(f, waitForDriveReady, address, destPath, onStatus)
 }
 
 export async function createHandler (options, securityOptions = {}) {

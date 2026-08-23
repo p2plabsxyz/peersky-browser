@@ -50,6 +50,7 @@ class WindowManager {
     this.shutdownInProgress = false
     this.finalSaveCompleted = false
     this.saveQueue = Promise.resolve()
+    this.skipSaveOnQuit = false
     this.registerListeners()
 
     // Treat Ctrl+C / SIGTERM as explicit quits in dev:
@@ -316,6 +317,10 @@ class WindowManager {
     this.isQuitting = flag
   }
 
+  setSkipSaveOnQuit (flag) {
+    this.skipSaveOnQuit = flag
+  }
+
   addBookmark (newBookmark) {
     if (!newBookmark || !newBookmark.url) {
       log.error('Invalid bookmark data provided.')
@@ -542,6 +547,11 @@ class WindowManager {
   }
 
   async saveCompleteState () {
+    if (this.skipSaveOnQuit) {
+      log.info('Skipping saveCompleteState because skipSaveOnQuit is true.')
+      return
+    }
+
     // Save both window positions/sizes and tab data
     const savePromises = [
       this.saveWindowStates(),

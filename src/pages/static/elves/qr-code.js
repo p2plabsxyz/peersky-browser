@@ -22,6 +22,7 @@ $.draw(target => {
 })
 
 async function generate (target, code, { fg, bg }) {
+  if (!code) return
   if (target.code === code) return
   target.code = code
   await sleep(1) // get this off the bifrost
@@ -40,6 +41,22 @@ async function generate (target, code, { fg, bg }) {
 
   $.teach({ [code]: `<img src="${dataURL}" alt="code" />` })
 }
+
+const observer = new MutationObserver((mutations) => {
+  for (const mutation of mutations) {
+    const target = mutation.target
+    if (!(target instanceof HTMLElement) || target.tagName !== 'QR-CODE') continue
+    target.code = null
+    const { fg = 'saddlebrown', bg = 'lemonchiffon' } = target.dataset
+    generate(target, target.getAttribute('src'), { fg, bg })
+  }
+})
+
+observer.observe(document.documentElement, {
+  attributes: true,
+  attributeFilter: ['src'],
+  subtree: true
+})
 
 $.when('click', '.portal', (event) => {
   const link = event.target.closest($.link)
