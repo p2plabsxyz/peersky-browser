@@ -273,7 +273,7 @@ describe('Hyper protocol handler', function () {
     } finally {
       await rm(tempDir, { recursive: true, force: true })
     }
-  })    
+  })
 
   it('continues initialization if LAN discovery fails to bind', async function () {
     const { module, initChat, sdk } = await loadHyperModule({ lanReject: true })
