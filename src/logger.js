@@ -3,6 +3,12 @@ import log from 'electron-log'
 log.transports.console.format = '[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{scope}] [{level}] {text}'
 log.transports.file.level = false
 
+// This logger is main-process only; nothing in the renderers reads it. Left on,
+// electron-log forwards every line to every window, and once a window's render
+// frame is disposed each forward makes Electron print a stack trace of its own.
+// The transport is absent outside Electron, so tests must not trip over it.
+if (log.transports.ipc) log.transports.ipc.level = false
+
 const logEnv = process.env.PEERSKY_LOGS || '*'
 const scopes = logEnv.split(',').map(s => s.trim()).filter(Boolean)
 

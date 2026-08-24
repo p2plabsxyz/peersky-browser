@@ -46,6 +46,7 @@ import * as SidePanelService from './services/side-panel.js'
 import { installExtensionPopupGuards as installPopupGuards } from './services/popup-guards.js'
 import { openUrlInPeerskyTab } from './services/open-url-in-browser-tab.js'
 import * as WebStoreService from './services/webstore.js'
+import { sendToWindows } from './services/broadcast.js'
 import { createLogger } from '../logger.js'
 const { BrowserWindow, webContents } = electron // eslint-disable-line no-unused-vars
 
@@ -1388,29 +1389,23 @@ class ExtensionManager {
 
   async _findFileByName (_dir, _name, _depth) { return null }
 
-  _broadcastBrowserActionChanged () {
+  /**
+   * @param {string} channel
+   * @param {any} [payload]
+   */
+  _broadcastToWindows (channel, payload) {
     try {
-      const windows = BrowserWindow.getAllWindows()
-      for (const win of windows) {
-        if (!win || win.isDestroyed()) continue
-        const wc = win.webContents
-        if (!wc || wc.isDestroyed()) continue
-        wc.send('browser-action-changed', { t: Date.now() })
-        wc.send('refresh-browser-actions')
-      }
+      sendToWindows(BrowserWindow.getAllWindows(), channel, payload)
     } catch (_) { }
   }
 
+  _broadcastBrowserActionChanged () {
+    this._broadcastToWindows('browser-action-changed', { t: Date.now() })
+    this._broadcastToWindows('refresh-browser-actions')
+  }
+
   _broadcastBrowserActionUpdated () {
-    try {
-      const windows = BrowserWindow.getAllWindows()
-      for (const win of windows) {
-        if (!win || win.isDestroyed()) continue
-        const wc = win.webContents
-        if (!wc || wc.isDestroyed()) continue
-        wc.send('browser-action-updated', { t: Date.now() })
-      }
-    } catch (_) { }
+    this._broadcastToWindows('browser-action-updated', { t: Date.now() })
   }
 
   /**
