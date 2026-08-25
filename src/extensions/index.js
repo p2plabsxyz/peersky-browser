@@ -48,6 +48,9 @@ import { openUrlInPeerskyTab } from './services/open-url-in-browser-tab.js'
 import * as WebStoreService from './services/webstore.js'
 import { sendToWindows } from './services/broadcast.js'
 import { createLogger } from '../logger.js'
+
+// Window for collapsing a burst of browser-action updates into one broadcast.
+const BROWSER_ACTION_COALESCE_MS = 100
 const { BrowserWindow, webContents } = electron // eslint-disable-line no-unused-vars
 
 const log = createLogger('extensions')
@@ -1404,8 +1407,22 @@ class ExtensionManager {
     this._broadcastToWindows('refresh-browser-actions')
   }
 
+  /**
+   * Badge updates arrive per tab on every page load, and each one fans out to
+   * every window, which then re-lists every extension's action. Coalescing a
+   * burst into one broadcast keeps that proportional to activity rather than to
+   * extensions × windows × updates.
+   */
   _broadcastBrowserActionUpdated () {
-    this._broadcastToWindows('browser-action-updated', { t: Date.now() })
+    if (this._browserActionUpdateTimer) return
+
+    this._browserActionUpdateTimer = setTimeout(() => {
+      this._browserActionUpdateTimer = null
+      this._broadcastToWindows('browser-action-updated', { t: Date.now() })
+    }, BROWSER_ACTION_COALESCE_MS)
+
+    // Never hold the process open on a pending badge refresh.
+    this._browserActionUpdateTimer.unref?.()
   }
 
   /**
