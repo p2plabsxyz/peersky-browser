@@ -27,8 +27,22 @@ const ROOT = path.resolve(import.meta.dirname, '..')
 const SPEC_GLOB = 'test/**/*.test.js'
 const DEFAULT_TIMEOUT = 20000
 const COUNTS = /^\s*(\d+)\s+(passing|failing|pending)\b/gm
+/** Mocha colours its epilogue, which would otherwise hide the counts. */
+// eslint-disable-next-line no-control-regex
+const ANSI = /\u001b\[[0-9;]*m/g
 /** Quoted or bare tokens that name a spec file or a glob over spec files. */
 const SPEC_ARGS = /"([^"]+\.test\.js)"|'([^']+\.test\.js)'|(\S+\.test\.js)/g
+
+// Honour the NO_COLOR/FORCE_COLOR conventions; otherwise follow the terminal.
+const useColour = process.env.NO_COLOR
+  ? false
+  : Boolean(process.env.FORCE_COLOR) || Boolean(process.stdout.isTTY)
+
+const paint = (code, text) => (useColour ? `\u001b[${code}m${text}\u001b[0m` : text)
+const green = (text) => paint(32, text)
+const red = (text) => paint(31, text)
+const yellow = (text) => paint(33, text)
+const bold = (text) => paint(1, text)
 
 const normalize = (p) => path.relative(ROOT, path.resolve(ROOT, p)).split(path.sep).join('/')
 
@@ -69,7 +83,7 @@ async function findOrphanSpecs (covered) {
 
 function parseCounts (output) {
   const totals = { passing: 0, failing: 0, pending: 0 }
-  for (const [, count, kind] of output.matchAll(COUNTS)) totals[kind] += Number(count)
+  for (const [, n, kind] of output.replace(ANSI, '').matchAll(COUNTS)) totals[kind] += Number(n)
   return totals
 }
 
@@ -95,8 +109,14 @@ function runSuite ({ suite, files, implicit }) {
       ? ['npx', ['mocha', ...files, '--timeout', String(DEFAULT_TIMEOUT), '--exit']]
       : ['npm', ['run', `test:${suite}`]]
 
+    // Output is piped so the counts can be read, which makes mocha see a
+    // non-TTY and drop its colours. FORCE_COLOR puts the ticks and crosses back.
+    const env = { ...process.env }
+    if (useColour) env.FORCE_COLOR ??= '1'
+
     const child = spawn(command, args, {
       cwd: ROOT,
+      env,
       shell: process.platform === 'win32',
       stdio: ['inherit', 'pipe', 'pipe']
     })
@@ -123,6 +143,8 @@ function runSuite ({ suite, files, implicit }) {
 }
 
 const pad = (value, width) => String(value).padEnd(width)
+/** Pad first, then paint: escape codes would otherwise count toward the width. */
+const count = (value, colour) => (value > 0 ? colour(pad(value, 7)) : pad(value, 7))
 
 function printSummary (results) {
   const total = results.reduce(
@@ -141,23 +163,30 @@ function printSummary (results) {
   process.stdout.write(`${pad('SUITE', width)}${pad('PASS', 7)}${pad('FAIL', 7)}${pad('SKIP', 7)}RESULT\n`)
   process.stdout.write(`${'-'.repeat(width + 34)}\n`)
   for (const r of results) {
-    const status = r.crashed ? 'CRASH' : r.code === 0 ? 'ok' : 'FAILED'
+    const status = r.crashed ? red('CRASH') : r.code === 0 ? green('ok') : red('FAILED')
     process.stdout.write(
-      `${pad(r.implicit ? `${r.suite} *` : r.suite, width)}${pad(r.passing, 7)}${pad(r.failing, 7)}${pad(r.pending, 7)}${status}\n`
+      pad(r.implicit ? `${r.suite} *` : r.suite, width) +
+        count(r.passing, green) +
+        count(r.failing, red) +
+        count(r.pending, yellow) +
+        `${status}\n`
     )
   }
   process.stdout.write(`${'-'.repeat(width + 34)}\n`)
   process.stdout.write(
-    `${pad('TOTAL', width)}${pad(total.passing, 7)}${pad(total.failing, 7)}${pad(total.pending, 7)}\n`
+    bold(pad('TOTAL', width)) +
+      count(total.passing, green) +
+      count(total.failing, red) +
+      count(total.pending, yellow) +
+      '\n'
   )
 
   const broken = results.filter((r) => r.code !== 0)
   if (broken.length === 0) {
-    process.stdout.write(`\nAll ${results.length} suites passed — ${total.passing} tests.\n`)
+    process.stdout.write(`\n${green(`All ${results.length} suites passed — ${total.passing} tests.`)}\n`)
   } else {
-    process.stdout.write(
-      `\n${broken.length} of ${results.length} suites failed: ${broken.map((r) => `test:${r.suite}`).join(', ')}\n`
-    )
+    const names = broken.map((r) => `test:${r.suite}`).join(', ')
+    process.stdout.write(`\n${red(`${broken.length} of ${results.length} suites failed: ${names}`)}\n`)
   }
 
   const auto = results.filter((r) => r.implicit)
