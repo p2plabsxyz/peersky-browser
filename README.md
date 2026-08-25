@@ -199,16 +199,10 @@ npm start
 ```
 
 ### Build
-  After development of the browser, run the following command. This will create a production build.
+  After development of the browser, run the following command. This will create a production build for the platform you are on.
 
 ```bash
 npm run build
-# For Intel and Silicon macs
-```
-
-```bash
-npm run build-all
-# For macOS, Linux, and Windows
 ```
 
 Now, the `dist` folder will appear in the root directory.
