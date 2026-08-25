@@ -103,8 +103,10 @@ export async function listBrowserActions (manager, window) {
       })
     }
   }
+  // Every badge or icon update makes each window re-list, so this runs far too
+  // often to log at info level.
   if (actions.length > 0) {
-    log.info(`ExtensionManager: Found ${actions.length} browser actions`)
+    log.debug(`ExtensionManager: Found ${actions.length} browser actions`)
   }
   return actions
 }
