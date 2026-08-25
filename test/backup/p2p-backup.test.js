@@ -48,7 +48,7 @@ function buildMocks (overrides = {}) {
 
 async function loadModule (overrides = {}) {
   const { mocks, stubs } = buildMocks(overrides)
-  const mod = await esmock.strict('../../src/backup/p2p-backup.js', mocks, mocks)
+  const mod = await esmock.strict('../../src/backup/p2p-backup.js', mocks)
   return { mod, stubs }
 }
 

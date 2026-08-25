@@ -81,15 +81,15 @@ async function loadWindowManager (userDataPath) {
     safeStorage: {}
   }
 
-  const { default: WindowManager } = await esmock.strict(
-    '../../src/window-manager.js',
-    {
-      '../../src/extensions/index.js': { default: { addWindow: () => {}, removeWindow: () => {} } },
-      '../../src/context-menu.js': { attachContextMenus: () => {}, setWindowManager: () => {} },
-      '../../src/session.js': { getPartition: () => 'persist:peersky', usePersist: () => true }
-    },
-    { electron }
-  )
+  // All of these are direct imports of window-manager, so they belong in the
+  // local map. esmock's global map (third argument) resolves module ids with
+  // native separators and misdetects ESM as CJS on Windows.
+  const { default: WindowManager } = await esmock.strict('../../src/window-manager.js', {
+    electron,
+    '../../src/extensions/index.js': { default: { addWindow: () => {}, removeWindow: () => {} } },
+    '../../src/context-menu.js': { attachContextMenus: () => {}, setWindowManager: () => {} },
+    '../../src/session.js': { getPartition: () => 'persist:peersky', usePersist: () => true }
+  })
   return WindowManager
 }
 

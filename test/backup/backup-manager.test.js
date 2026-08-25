@@ -67,7 +67,7 @@ async function loadBackupManager (options = {}) {
     [ipfsHandlerPath]: { suspendIPFS, resumeIPFS }
   }
 
-  const module = await esmock.strict('../../src/backup/backup-manager.js', mocks, mocks)
+  const module = await esmock.strict('../../src/backup/backup-manager.js', mocks)
 
   return {
     backupManager: module.default,
