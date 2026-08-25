@@ -1,18 +1,41 @@
 # Testing Guide
 
-Peersky Browser has **40 tests** across 5 suites (unit, E2E, extensions, security, integration). All tests verify protocol handlers, P2P networking, file sync, extension lifecycle, and security policies.
+Peersky Browser has **186 tests** across 8 suites. They cover protocol handlers, P2P networking and file sync, backup and identity transfer, extension lifecycle, security policies, LLM streaming, and the auto-updater.
 
 ## Running Tests
 
 ```bash
-npm test                    # All tests (~8 min)
-npm run test:p2p            # Unit only (~2s)
+npm test                    # Every suite + combined tally (~8 min)
+npm run test:ci             # Everything except integration (what CI runs)
+npm run test:p2p            # Protocol handler units (~15s)
 npm run test:p2p:e2e        # E2E sync (~2-3 min)
-npm run test:extensions     # Extension lifecycle (~10s)
-npm run test:security       # Security policies (~5s)
+npm run test:backup         # Backup / restore / identity transfer (~2s)
+npm run test:extensions     # Extension lifecycle (~1s)
+npm run test:security       # Security policies (~1s)
+npm run test:llm            # LLM streaming + dispatcher contract (~1s)
+npm run test:updater        # Auto-updater (~1s)
 npm run test:integration    # App restart (~5+ min)
-npm run test:coverage       # Coverage report
+npm run coverage            # Coverage report
 ```
+
+`npm test` and `npm run test:ci` go through `test/run-tests.mjs`, which runs
+each suite as its own mocha process and prints one table at the end:
+
+```
+SUITE        PASS   FAIL   SKIP   RESULT
+-----------------------------------------------
+p2p          58     0      0      ok
+backup       42     0      0      ok
+...
+-----------------------------------------------
+TOTAL        186    0      0
+```
+
+It does not stop at the first failure, so one run shows the whole picture. A
+suite that dies before mocha prints its epilogue is reported as `CRASH` rather
+than counted as zero, and the run exits non-zero naming what failed.
+
+Pass suite names to run a subset: `node test/run-tests.mjs backup llm`.
 
 Run single test:
 ```bash
@@ -23,11 +46,16 @@ npx mocha test/p2p/ipfs-handler.test.js --grep "CID norm" --timeout 20000
 ## Test Architecture
 
 ### Files
+- `test/run-tests.mjs` — Suite runner and combined tally (not a spec)
 - `test/setup.js` — Polyfill `Promise.withResolvers` for Node.js <22
 - `test/p2p/*.test.js` — Unit & E2E tests with mocked/real nodes
-- `test/extensions/` — Extension lifecycle tests
+- `test/backup/` — Archive, encryption, restore, identity transfer
+- `test/extensions/` — Extension lifecycle, browser-action broadcast, CRX parsing
 - `test/security/` — Write policy & manifest validation
+- `test/llm/` — Streaming and dispatcher contract
+- `test/updater/` — Auto-updater states
 - `test/integration/` — Real Electron app restart
+- `test/fixtures/` — Shared fixtures (no specs)
 
 ### Key Components
 - **esmock** — Isolates handlers with mocked dependencies (no filesystem, network, or libp2p calls)
@@ -36,7 +64,7 @@ npx mocha test/p2p/ipfs-handler.test.js --grep "CID norm" --timeout 20000
 
 ## Test Coverage
 
-### Unit Tests (17 tests)
+### Protocol Unit Tests — `test:p2p` (58 tests)
 - **CID**: v0→v1 normalization
 - **PeerId**: `Qm...` (base58) → peerIdFromString, `bafz...` (base32 CID) → peerIdFromCID
 - **ENS**: `ipfs-ns` codec (serve CID), `ipns-ns` codec (route via IPNS), fallback (strip prefix)
@@ -44,24 +72,38 @@ npx mocha test/p2p/ipfs-handler.test.js --grep "CID norm" --timeout 20000
 - **MIME detection**: By extension + HTML sniffing (first 512 bytes)
 - **Upload cache**: Metadata tracking with timestamp/URL/name
 
-### E2E Tests (12 tests)
+### E2E Tests — `test:p2p:e2e` (12 tests)
 - Protocol initialization (IPFS & Hyper)
 - File upload & DHT discovery (local + delegated routing)
 - Directory serving & index.html auto-serve
 - File content round-trip verification
 - libdatachannel error suppression (non-fatal WebRTC teardown errors)
 
-### Extension Tests (3 tests)
+### Extension Tests — `test:extensions` (32 tests)
 - Install/update/uninstall lifecycle
 - Service worker reload & state persistence
 
-### Security Tests (5 tests)
+### Security Tests — `test:security` (6 tests)
 - GET always allowed, POST/PUT/PATCH require `p2pWrite` permission
 - Dangerous permissions blocked (nativeMessaging, debugger, desktopCapture)
 - Path traversal protection (`../` rejected)
 - Extension detection via `chrome-extension://` in referrer
 
-### Integration Tests (3 tests)
+### Backup Tests — `test:backup` (42 tests)
+- Archive streaming, SHA-256 manifests, zip-slip path validation
+- Passphrase-encrypted wrapper (scrypt + AES-256-GCM)
+- Transactional restore: staging, swap, rollback on failure
+- Receiver-sealed identity transfer and verification-code derivation
+
+### LLM Tests — `test:llm` (11 tests)
+- Streaming response parsing, including malformed chunks
+- undici dispatcher contract: the Agent must not reach global fetch
+
+### Updater Tests — `test:updater` (22 tests)
+- Manual check, pending update, and already-latest states
+- Squirrel error handling and install restart
+
+### Integration Tests — `test:integration` (3 tests)
 - Real Electron app restart with extension persistence
 - Service worker survives restart
 
@@ -94,7 +136,7 @@ npx mocha test/extensions/*.test.js --reporter spec
 
 ### Coverage Report (nyc)
 ```bash
-npm run test:coverage     # Generate NYC coverage report
+npm run coverage          # Generate NYC coverage report
 # Opens coverage/index.html with line/branch/function/statement coverage
 # Config: .nycrc.json or package.json nyc field
 # Includes: src/protocols/*.js, test/p2p/*.js
@@ -103,9 +145,41 @@ npm run test:coverage     # Generate NYC coverage report
 
 ## Adding New Tests
 
-1. **Choose suite**: Unit (mocked) → `test/p2p/*-handler.test.js`, E2E (real) → `test/p2p/p2p-e2e.test.js`, Security → `test/security/`, Integration → `test/integration/`
-2. **Write test** using `callHandler(handler, request)` wrapper & `expect()` assertions
-3. **Run & verify**: `npx mocha test/p2p/ipfs-handler.test.js --grep "name" --timeout 20000`
-4. **Update this guide** if demonstrating new behavior
+1. **Choose a suite**: mocked handler → `test/p2p/*-handler.test.js`, real nodes →
+   `test/p2p/p2p-e2e.test.js`, backup → `test/backup/`, extensions →
+   `test/extensions/`, security → `test/security/`, integration → `test/integration/`
+2. **Write the test** using the `callHandler(handler, request)` wrapper and `expect()`
+3. **Run it**: `npx mocha test/p2p/ipfs-handler.test.js --grep "name" --timeout 20000`
+4. **Update this guide** if it demonstrates new behaviour
+
+### Adding a whole new suite
+
+Adding a file to an existing directory needs no wiring — the suite's glob picks
+it up and the count rolls into the total.
+
+A **new directory** also runs with no wiring. `test/run-tests.mjs` runs any spec
+no `test:*` script claims, grouped per directory, with default flags
+(`--timeout 20000 --exit`). It appears in the table marked `*`:
+
+```
+settings *   2      0      0      ok
+
+* auto-discovered (settings) — add a test:<name> script to control its flags.
+```
+
+Add a `test:<name>` script when the defaults are not right — a longer timeout,
+env vars, or a pre-step like `rimraf`. Once the script exists it takes over, and
+the `*` disappears.
+
+Two rules the runner applies so this stays predictable:
+
+- **Explicit scripts win.** Only specs nothing else claims are auto-discovered,
+  so `test/p2p/p2p-e2e.test.js` keeps running through `test:p2p:e2e` with its
+  env and clean data dir rather than being picked up bare.
+- **Subsumed suites are skipped.** A script whose specs are a subset of another's
+  (`test:p2p:bt` inside `test:p2p`) is not run twice. It still works on its own.
+
+Auto-discovery only applies to a full run. Naming suites
+(`node test/run-tests.mjs backup llm`) runs exactly those.
 
 

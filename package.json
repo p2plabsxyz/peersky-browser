@@ -17,7 +17,7 @@
   "repository": "https://github.com/p2plabsxyz/peersky-browser",
   "scripts": {
     "test": "npm run test:all",
-    "test:all": "npm run test:backup && npm run test:p2p && npm run test:p2p:e2e && npm run test:extensions && npm run test:security && npm run test:updater && npm run test:integration",
+    "test:all": "node test/run-tests.mjs",
     "test:updater": "mocha \"test/updater/**/*.test.js\" --timeout 20000 --exit",
     "test:integration": "mocha \"test/integration/**/*.test.js\" --timeout 300000",
     "test:p2pmd:gutter:e2e": "mocha \"test/integration/p2pmd-gutter-sync.e2e.test.js\" --timeout 300000 --exit",
@@ -39,7 +39,8 @@
     "release": "electron-builder build --mac dmg zip --publish always",
     "build-all": "electron-builder build -mwl",
     "lint": "standard",
-    "lint:fix": "standard --fix"
+    "lint:fix": "standard --fix",
+    "test:ci": "node test/run-tests.mjs backup p2p p2p:e2e extensions security llm updater"
   },
   "build": {
     "npmRebuild": true,
