@@ -1,12 +1,14 @@
 import { expect } from 'chai'
 import sinon from 'sinon'
 import esmock from 'esmock'
-import path from 'path'
 
-const ipfsHandlerPath = path.join(process.cwd(), 'src/protocols/ipfs-handler.js')
-const hyperHandlerPath = path.join(process.cwd(), 'src/protocols/hyper-handler.js')
-const configPath = path.join(process.cwd(), 'src/protocols/config.js')
-const backupEnvelopePath = path.join(process.cwd(), 'src/backup/backup-envelope.js')
+// Relative specifiers, not absolute paths: path.join yields native separators,
+// and esmock fails to detect an ESM module behind a Windows path, falling back
+// to a CommonJS wrapper that expects a default export.
+const ipfsHandlerPath = '../../src/protocols/ipfs-handler.js'
+const hyperHandlerPath = '../../src/protocols/hyper-handler.js'
+const configPath = '../../src/protocols/config.js'
+const backupEnvelopePath = '../../src/backup/backup-envelope.js'
 
 function buildMocks (overrides = {}) {
   const ipfsCache = overrides.ipfsCache || []

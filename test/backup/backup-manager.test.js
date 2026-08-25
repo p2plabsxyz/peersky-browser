@@ -18,11 +18,14 @@ async function loadBackupManager (options = {}) {
   })
   const readManifest = sinon.stub().resolves(manifest)
   const verifyManifest = options.verifyManifest || sinon.stub().resolves()
-  const backupCorePath = path.join(process.cwd(), 'src/backup/backup-core.js')
-  const hyperHandlerPath = path.join(process.cwd(), 'src/protocols/hyper-handler.js')
-  const ipfsHandlerPath = path.join(process.cwd(), 'src/protocols/ipfs-handler.js')
-  const identityTransferPath = path.join(process.cwd(), 'src/backup/identity-transfer.js')
-  const encryptedBackupPath = path.join(process.cwd(), 'src/backup/encrypted-backup.js')
+  // Relative specifiers, not absolute paths: path.join yields native separators,
+  // and esmock fails to detect an ESM module behind a Windows path, falling back
+  // to a CommonJS wrapper that expects a default export.
+  const backupCorePath = '../../src/backup/backup-core.js'
+  const hyperHandlerPath = '../../src/protocols/hyper-handler.js'
+  const ipfsHandlerPath = '../../src/protocols/ipfs-handler.js'
+  const identityTransferPath = '../../src/backup/identity-transfer.js'
+  const encryptedBackupPath = '../../src/backup/encrypted-backup.js'
 
   class FakeWorker extends EventEmitter {
     constructor () {
