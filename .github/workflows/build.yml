@@ -79,7 +79,7 @@ jobs:
           timeout_minutes: 5
           max_attempts: 2
           shell: bash
-          command: npm run test:p2p && npm run test:p2p:e2e && npm run test:extensions && npm run test:security
+          command: npm run test:ci
 
       - name: Run integration test (Windows/macOS)
         if: ${{ !startsWith(matrix.os, 'ubuntu') }}
