@@ -1,6 +1,6 @@
 # Testing Guide
 
-Peersky Browser has **230 tests** across 9 suites. They cover protocol handlers, P2P networking and file sync, backup and identity transfer, extension lifecycle, security policies, LLM streaming, the auto-updater, and performance regressions.
+Peersky Browser has **234 tests** across 9 suites. They cover protocol handlers, P2P networking and file sync, backup and identity transfer, extension lifecycle, security policies, LLM streaming, the auto-updater, and performance regressions.
 
 ## Running Tests
 
@@ -66,13 +66,16 @@ npx mocha test/p2p/ipfs-handler.test.js --grep "CID norm" --timeout 20000
 
 ## Test Coverage
 
-### Protocol Unit Tests — `test:p2p` (58 tests)
+### Protocol Unit Tests — `test:p2p` (62 tests)
 - **CID**: v0→v1 normalization
 - **PeerId**: `Qm...` (base58) → peerIdFromString, `bafz...` (base32 CID) → peerIdFromCID
 - **ENS**: `ipfs-ns` codec (serve CID), `ipns-ns` codec (route via IPNS), fallback (strip prefix)
 - **Upload naming**: Single file → filename, directory → folder name, multiple → parent dir
 - **MIME detection**: By extension + HTML sniffing (first 512 bytes)
 - **Upload cache**: Metadata tracking with timestamp/URL/name
+- **p2pmd rooms**: an encrypted holesail seed survives a restart, an
+  undecryptable one falls back to the room key rather than failing, and a failed
+  request answers with its reason instead of dropping the connection
 
 ### E2E Tests — `test:p2p:e2e` (12 tests)
 - Protocol initialization (IPFS & Hyper)

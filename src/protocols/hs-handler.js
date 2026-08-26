@@ -84,8 +84,6 @@ function savePortsToFile () {
   }
 }
 
-loadPortsFromFile()
-
 // SECURITY: CORS headers for local HTTP server responses
 // Note: Electron custom protocols (peersky://, bt://, ipfs://, hyper://) don't send Origin headers
 // Security is enforced via hostname validation (urlObj.hostname !== "p2pmd") in protocol handler
@@ -130,6 +128,21 @@ function encryptSeed (seed) {
   return seed // Fallback to plain text if encryption unavailable
 }
 
+/** A seed is 32 bytes, stored as hex. Rooms saved before seeds were encrypted hold this shape. */
+const PLAINTEXT_SEED = /^[0-9a-f]{64}$/i
+
+/**
+ * Recover a stored seed, or null when it cannot be recovered.
+ *
+ * Returning the stored value unchanged on failure used to look like a harmless
+ * fallback, but the stored value is ciphertext: it went on to be read as hex,
+ * producing a short buffer that made holesail assert and took the whole rehost
+ * request down with it. A seed that cannot be decrypted is no seed, and the
+ * caller re-hosts from the room key instead, which keeps the same room URL.
+ *
+ * The one value worth passing through is a seed written before seeds were
+ * encrypted, which is already the plaintext hex the caller wants.
+ */
 function decryptSeed (encryptedSeed) {
   if (!encryptedSeed) return null
   try {
@@ -137,10 +150,27 @@ function decryptSeed (encryptedSeed) {
       const buffer = Buffer.from(encryptedSeed, 'base64')
       return safeStorage.decryptString(buffer)
     }
+    log.warn('[p2pmd] Seed decryption unavailable; re-hosting from the room key instead')
   } catch (err) {
     log.error('[p2pmd] Failed to decrypt seed:', err.message)
   }
-  return encryptedSeed // Fallback if decryption fails
+  return PLAINTEXT_SEED.test(encryptedSeed) ? encryptedSeed : null
+}
+
+/**
+ * A stored seed as the 32 bytes holesail requires, or null.
+ *
+ * Anything else is dropped rather than passed on: holesail asserts on a
+ * wrong-sized seed, and that assertion is not catchable by the caller.
+ */
+function toSeedBuffer (seed) {
+  if (!seed || typeof seed !== 'string') return null
+  const buffer = Buffer.from(seed, 'hex')
+  if (buffer.length !== 32) {
+    log.warn('[p2pmd] Ignoring a stored seed that is not 32 bytes; re-hosting from the room key')
+    return null
+  }
+  return buffer
 }
 
 // SECURITY: Redact sensitive data for logging
@@ -1673,8 +1703,19 @@ function getResponseHost (session) {
   return '127.0.0.1'
 }
 
+let portsLoaded = false
+
 export async function createHandler () {
-  return async function protocolHandler (req) {
+  // Deliberately not at import time: seeds are encrypted with safeStorage, and
+  // safeStorage.isEncryptionAvailable() is false until the app is ready. Reading
+  // the file before then skipped decryption silently and stored ciphertext where
+  // a seed was expected, which only surfaced later as a failed rehost.
+  if (!portsLoaded) {
+    portsLoaded = true
+    loadPortsFromFile()
+  }
+
+  const handleRequest = async (req) => {
     const { url, method } = req
     const urlObj = new URL(url)
     const action = urlObj.searchParams.get('action')
@@ -1784,7 +1825,7 @@ export async function createHandler () {
 
       // Use localhost for holesail and restore original seed for same room URL
       const savedReHostEntry = roomPorts.get(key) || null
-      const savedSeedBuffer = savedReHostEntry?.seed ? Buffer.from(savedReHostEntry.seed, 'hex') : null
+      const savedSeedBuffer = toSeedBuffer(savedReHostEntry?.seed)
       const holesailServer = new Holesail({
         server: true,
         secure,
@@ -1998,5 +2039,17 @@ export async function createHandler () {
     }
 
     return buildJsonResponse(404, { error: 'Unknown action' })
+  }
+
+  return async function protocolHandler (req) {
+    try {
+      return await handleRequest(req)
+    } catch (error) {
+      // Without this the promise rejects, Electron drops the connection, and the
+      // page sees an opaque "Failed to fetch" with the real reason reaching only
+      // the main process log. Answer with the reason instead.
+      log.error('[p2pmd] request failed:', error)
+      return buildJsonResponse(500, { error: error?.message || 'Internal error' })
+    }
   }
 }
