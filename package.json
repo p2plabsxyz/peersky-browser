@@ -76,7 +76,11 @@
       "extendInfo": {
         "NSMicrophoneUsageDescription": "The current page is asking to use your microphone",
         "NSCameraUsageDescription": "The current page is asking to use your camera",
-        "NSLocationWhenInUseUsageDescription": "The current page is asking to access your location"
+        "NSLocationWhenInUseUsageDescription": "The current page is asking to access your location",
+        "NSLocalNetworkUsageDescription": "Peersky finds peers on your local network so pages and messages keep working without internet access.",
+        "NSBonjourServices": [
+          "_hyperdht-mdns._udp"
+        ]
       },
       "target": [
         {
