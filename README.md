@@ -245,6 +245,7 @@ npm run test:extensions   # Extension lifecycle tests
 npm run test:security     # Security and isolation tests
 npm run test:llm          # LLM streaming and dispatcher contract
 npm run test:updater      # Auto-updater tests
+npm run test:perf         # Performance regression tests
 npm run test:integration  # Real app restart tests (5+ min)
 ```
 

@@ -8,6 +8,10 @@ const navBoxIPC = (() => {
 // webUtils for getting file paths from dropped files (Electron 25+)
 const { webUtils } = require('electron')
 
+// Window in which repeated "the browser actions changed" signals collapse into
+// one toolbar render.
+const BROWSER_ACTIONS_RENDER_COALESCE_MS = 16
+
 class NavBox extends HTMLElement {
   constructor () {
     super()
@@ -193,6 +197,21 @@ class NavBox extends HTMLElement {
     return null
   }
 
+  /**
+   * Ask for a toolbar re-render.
+   *
+   * A single change reaches the window on two channels (browser-action-changed
+   * and refresh-browser-actions), and each render rebuilds the toolbar DOM and
+   * makes two IPC calls. Collapsing them means one render per change.
+   */
+  scheduleBrowserActionsRender () {
+    if (this._browserActionsRenderTimer) return
+    this._browserActionsRenderTimer = setTimeout(() => {
+      this._browserActionsRenderTimer = null
+      this.renderBrowserActions()
+    }, BROWSER_ACTIONS_RENDER_COALESCE_MS)
+  }
+
   async renderBrowserActions () {
     console.log('[NavBox] renderBrowserActions() called')
     const container = this.querySelector('#extension-icons')
@@ -202,9 +221,12 @@ class NavBox extends HTMLElement {
     }
 
     try {
-      // Get browser actions from extension system via direct IPC
-      const actionsResult = await navBoxIPC.invoke('extensions-list-browser-actions')
-      const pinnedResult = await navBoxIPC.invoke('extensions-get-pinned')
+      // Independent lookups: asking for them one after another doubled the
+      // time the toolbar spends empty on every window open.
+      const [actionsResult, pinnedResult] = await Promise.all([
+        navBoxIPC.invoke('extensions-list-browser-actions'),
+        navBoxIPC.invoke('extensions-get-pinned')
+      ])
 
       if (actionsResult?.success && actionsResult.actions?.length > 0) {
         const allActions = actionsResult.actions
@@ -385,8 +407,22 @@ class NavBox extends HTMLElement {
         bottom: rect.bottom
       }
 
+      // Tell the main process which webview is active instead of making it ask
+      // us back: that round-trip sat in front of every popup open.
+      let activeWebContentsId = null
+      try {
+        const tabBar = document.querySelector('#tabbar')
+        const activeWebview = tabBar?.getActiveWebview?.()
+        const wcId = activeWebview?.getWebContentsId?.()
+        if (Number.isInteger(wcId)) activeWebContentsId = wcId
+      } catch (_) { }
+
       // Try to open popup first, fall back to click if no popup
-      const result = await navBoxIPC.invoke('extensions-open-browser-action-popup', { actionId: extensionId, anchorRect })
+      const result = await navBoxIPC.invoke('extensions-open-browser-action-popup', {
+        actionId: extensionId,
+        anchorRect,
+        activeWebContentsId
+      })
 
       if (!result?.success) {
         // Clean up temp icon if this was from dropdown
@@ -855,7 +891,7 @@ class NavBox extends HTMLElement {
     if (window.electronAPI?.extensions?.onBrowserActionChanged) {
       window.electronAPI.extensions.onBrowserActionChanged(() => {
         console.log('NavBox: Browser actions changed, refreshing...')
-        this.renderBrowserActions()
+        this.scheduleBrowserActionsRender()
       })
     }
 

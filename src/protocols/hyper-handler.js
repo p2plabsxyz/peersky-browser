@@ -119,12 +119,40 @@ function getChunkedBody (req) {
   return Readable.from(chunkAsyncIterable(iterable, MAX_UPLOAD_CHUNK_BYTES))
 }
 
-async function initializeHyperSDK (options) {
-  if (sdk != null && fetch != null) return fetch
+// Memoised boot. Without it a burst of hyper:// requests arriving while the SDK
+// is still coming up would each start their own corestore.
+let sdkStarting = null
 
+// True while a backup has closed the corestore to freeze it on disk. The SDK
+// now boots on demand, so requests arriving mid-backup have to be refused
+// rather than allowed to reopen the store underneath the copy.
+let isSuspended = false
+
+function initializeHyperSDK (options) {
+  if (sdk != null && fetch != null) return Promise.resolve(fetch)
   if (options) savedSdkOptions = options
-  else options = savedSdkOptions
+  if (!sdkStarting) {
+    sdkStarting = startHyperSDK(savedSdkOptions).catch((err) => {
+      sdkStarting = null
+      throw err
+    })
+  }
+  return sdkStarting
+}
 
+/**
+ * Boot the Hyper SDK if it is not up yet. Exported so startup can warm it in
+ * the background once the first window is on screen.
+ *
+ * @returns {Promise<void>}
+ */
+export async function warmupHyper () {
+  if (isSuspended) return
+  if (!savedSdkOptions && sdk == null) return
+  await initializeHyperSDK()
+}
+
+async function startHyperSDK (options) {
   log.info('Initializing Hyper SDK...')
 
   sdk = await createSDK(options)
@@ -182,14 +210,17 @@ async function initializeHyperSDK (options) {
 
 // Close the corestore entirely so its RocksDB state is strictly frozen on disk.
 export async function suspendHyper () {
+  isSuspended = true
   await _suspendHyper(sdk, () => {
     sdk = null
     fetch = null
+    sdkStarting = null
   })
 }
 
 // Reopen the corestore after a backup copy completes.
 export async function resumeHyper () {
+  isSuspended = false
   if (!savedSdkOptions) return
   log.info('Re-initializing Hyper SDK after backup...')
   await initializeHyperSDK()
@@ -254,11 +285,29 @@ export async function hyperFetchToFile (address, destPath, onStatus) {
   return _hyperFetchToFile(f, waitForDriveReady, address, destPath, onStatus)
 }
 
+/**
+ * Build the hyper:// protocol handler.
+ *
+ * @param {object} options - hyper-sdk options.
+ * @param {object} [securityOptions]
+ * @param {Function} [securityOptions.isExtensionWriteAllowed]
+ * @param {boolean} [securityOptions.lazy] - Start the SDK on the first hyper://
+ *   request instead of before this resolves. The browser passes this so the
+ *   first window paints without waiting on the swarm.
+ */
 export async function createHandler (options, securityOptions = {}) {
-  const { isExtensionWriteAllowed } = securityOptions
-  await initializeHyperSDK(options)
+  const { isExtensionWriteAllowed, lazy = false } = securityOptions
+  if (options) savedSdkOptions = options
+  if (!lazy) await initializeHyperSDK(options)
 
   return async function protocolHandler (req) {
+    if (isSuspended) {
+      return new Response('Hyper is unavailable while a backup is in progress', {
+        status: 503,
+        headers: { 'Content-Type': 'text/plain' }
+      })
+    }
+    await initializeHyperSDK()
     const { url, method } = req
     const urlObj = new URL(url)
     const protocol = urlObj.protocol.replace(':', '')

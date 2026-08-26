@@ -25,8 +25,10 @@ describe('Protocol and extension security guardrails', function () {
 
     const ipfsHandlerJs = await readFile('src/protocols/ipfs-handler.js', 'utf8')
     expect(ipfsHandlerJs).to.match(/enforceExtensionWritePolicy/)
+    // The options object may carry more than the policy hook (eg lazy startup);
+    // what matters is that the write policy is still wired into the handler.
     expect(mainJs).to.match(
-      /createIPFSHandler\(\s*ipfsOptions\s*,\s*session\s*,\s*\{\s*isExtensionWriteAllowed\s*\}\s*\)/
+      /createIPFSHandler\(\s*ipfsOptions\s*,\s*session\s*,\s*\{[^}]*\bisExtensionWriteAllowed\b[^}]*\}\s*\)/
     )
   })
 

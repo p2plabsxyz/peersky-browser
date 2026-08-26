@@ -47,6 +47,7 @@ import { installExtensionPopupGuards as installPopupGuards } from './services/po
 import { openUrlInPeerskyTab } from './services/open-url-in-browser-tab.js'
 import * as WebStoreService from './services/webstore.js'
 import { sendToWindows } from './services/broadcast.js'
+import { createPendingTabs } from './services/pending-tabs.js'
 import { createLogger } from '../logger.js'
 
 // Window for collapsing a burst of browser-action updates into one broadcast.
@@ -100,6 +101,9 @@ class ExtensionManager {
     // Paths (set in initialize)
     this.extensionsBaseDir = null
     this.extensionsRegistryFile = null
+
+    // Tabs that attached before the extension host came up
+    this.pendingTabs = createPendingTabs()
   }
 
   /**
@@ -495,6 +499,10 @@ class ExtensionManager {
         }
       }
 
+      // Tabs that attached while this was still booting are registered now, so
+      // extensions can target them without waiting for a navigation.
+      this._flushPendingTabRegistrations()
+
       // Load enabled extensions
       await this._loadExtensionsIntoElectron()
 
@@ -867,11 +875,14 @@ class ExtensionManager {
    * @param {string} actionId - Browser action identifier
    * @param {Object} window - Window instance
    * @param {Object} anchorRect - Anchor rectangle for popup positioning
+   * @param {Object} [options]
+   * @param {number|null} [options.activeWebContentsId] - Active tab as the
+   *   renderer already knows it, so the click path need not ask it back.
    * @returns {Promise<Object>} Success result
    */
-  async openBrowserActionPopup (actionId, window, anchorRect = {}) {
+  async openBrowserActionPopup (actionId, window, anchorRect = {}, options = {}) {
     await this.initialize()
-    return BrowserActions.openBrowserAction(this, actionId, window, anchorRect)
+    return BrowserActions.openBrowserAction(this, actionId, window, anchorRect, options)
   }
 
   /**
@@ -881,47 +892,75 @@ class ExtensionManager {
    * @param {Electron.WebContents} webContents - WebContents to register as tab
    */
   addWindow (window, webContents) {
-    if (this.electronChromeExtensions) {
-      if (!webContents) return // avoid registering shell UI or popups as tabs
-      try {
+    if (!this.electronChromeExtensions) {
+      // The extension host boots alongside the first windows, so tabs can
+      // attach before it exists; hold them until it is up. See pending-tabs.js.
+      // A call with no webContents is the shell window registering itself,
+      // which was never a tab and needs no queueing.
+      if (webContents && !this.pendingTabs.add(window, webContents)) {
+        log.warn('[ExtensionManager] Could not queue tab for the extension host')
+      }
+      return
+    }
+    if (!webContents) return // avoid registering shell UI or popups as tabs
+    try {
+      if (SidePanelService.isSidePanelGuest(this, window, webContents)) {
+        SidePanelService.registerSidePanelGuest(this, webContents.id)
+        return
+      }
+
+      // Skip if this webContents is already registered to avoid duplicate
+      // addTab() calls which can trigger spurious navigations/reloads
+      if (!this._registeredTabs) this._registeredTabs = new Set()
+      const wcId = webContents.id
+      if (this._registeredTabs.has(wcId)) return
+      this._registeredTabs.add(wcId)
+      webContents.once('destroyed', () => {
+        this._registeredTabs?.delete(wcId)
+        this.sidePanelGuestIds?.delete(wcId)
+      })
+
+      this.electronChromeExtensions.addTab(webContents, window)
+      log.info(`[ExtensionManager] Registered webContents ${webContents.id} with extension system`)
+
+      // Side panel guests often attach before getURL() is set; drop them if they
+      // later navigate to the docked panel URL.
+      const dropIfSidePanel = () => {
         if (SidePanelService.isSidePanelGuest(this, window, webContents)) {
           SidePanelService.registerSidePanelGuest(this, webContents.id)
-          return
+          try { webContents.removeListener('did-navigate', dropIfSidePanel) } catch (_) {}
+          try { webContents.removeListener('did-frame-navigate', dropIfSidePanel) } catch (_) {}
         }
-
-        // Skip if this webContents is already registered to avoid duplicate
-        // addTab() calls which can trigger spurious navigations/reloads
-        if (!this._registeredTabs) this._registeredTabs = new Set()
-        const wcId = webContents.id
-        if (this._registeredTabs.has(wcId)) return
-        this._registeredTabs.add(wcId)
-        webContents.once('destroyed', () => {
-          this._registeredTabs?.delete(wcId)
-          this.sidePanelGuestIds?.delete(wcId)
-        })
-
-        this.electronChromeExtensions.addTab(webContents, window)
-        log.info(`[ExtensionManager] Registered webContents ${webContents.id} with extension system`)
-
-        // Side panel guests often attach before getURL() is set; drop them if they
-        // later navigate to the docked panel URL.
-        const dropIfSidePanel = () => {
-          if (SidePanelService.isSidePanelGuest(this, window, webContents)) {
-            SidePanelService.registerSidePanelGuest(this, webContents.id)
-            try { webContents.removeListener('did-navigate', dropIfSidePanel) } catch (_) {}
-            try { webContents.removeListener('did-frame-navigate', dropIfSidePanel) } catch (_) {}
-          }
-        }
-        try {
-          webContents.on('did-navigate', dropIfSidePanel)
-          webContents.on('did-frame-navigate', dropIfSidePanel)
-        } catch (_) {}
-      } catch (error) {
-        log.error('[ExtensionManager] Failed to register window:', error)
       }
-    } else {
-      log.warn('[ExtensionManager] ElectronChromeExtensions not available')
+      try {
+        webContents.on('did-navigate', dropIfSidePanel)
+        webContents.on('did-frame-navigate', dropIfSidePanel)
+      } catch (_) {}
+    } catch (error) {
+      log.error('[ExtensionManager] Failed to register window:', error)
     }
+  }
+
+  /**
+   * Register every tab that attached before the extension host existed.
+   */
+  _flushPendingTabRegistrations () {
+    const pending = this.pendingTabs.drain()
+    if (pending.length === 0) return
+    log.info(`[ExtensionManager] Registering ${pending.length} tab(s) that attached during startup`)
+    for (const { window, webContents } of pending) {
+      this.addWindow(window, webContents)
+    }
+  }
+
+  /**
+   * Tell every window to re-read the browser action list.
+   *
+   * Windows that opened before the extensions finished loading rendered an
+   * empty toolbar; this is what fills it in.
+   */
+  refreshBrowserActions () {
+    this._broadcastBrowserActionChanged()
   }
 
   /**

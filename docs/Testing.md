@@ -1,6 +1,6 @@
 # Testing Guide
 
-Peersky Browser has **193 tests** across 8 suites. They cover protocol handlers, P2P networking and file sync, backup and identity transfer, extension lifecycle, security policies, LLM streaming, and the auto-updater.
+Peersky Browser has **237 tests** across 9 suites. They cover protocol handlers, P2P networking and file sync, backup and identity transfer, extension lifecycle, security policies, LLM streaming, the auto-updater, and performance regressions.
 
 ## Running Tests
 
@@ -14,6 +14,7 @@ npm run test:extensions     # Extension lifecycle (~1s)
 npm run test:security       # Security policies (~1s)
 npm run test:llm            # LLM streaming + dispatcher contract (~1s)
 npm run test:updater        # Auto-updater (~1s)
+npm run test:perf           # Performance regressions (~5s)
 npm run test:integration    # App restart (~5+ min)
 npm run coverage            # Coverage report
 ```
@@ -54,6 +55,7 @@ npx mocha test/p2p/ipfs-handler.test.js --grep "CID norm" --timeout 20000
 - `test/security/` — Write policy & manifest validation
 - `test/llm/` — Streaming and dispatcher contract
 - `test/updater/` — Auto-updater states
+- `test/perf/` — Performance regressions (see `test/perf/README.md`)
 - `test/integration/` — Real Electron app restart
 - `test/fixtures/` — Shared fixtures (no specs)
 
@@ -105,6 +107,23 @@ npx mocha test/p2p/ipfs-handler.test.js --grep "CID norm" --timeout 20000
 - Manual check, pending update, and already-latest states
 - Squirrel error handling and install restart
 
+### Performance Tests — `test:perf` (44 tests)
+
+These pin the *work* the browser does on its hot paths — renderer round-trips,
+disk stats, node boots, state writes — rather than wall-clock times, which vary
+too much across machines to assert on. Each one guards a shape that was slow
+once, so re-introducing it fails the build.
+
+- p2p backends (Helia, hyper-sdk, the WebTorrent worker) do not start before the
+  first window can paint, and a burst of requests starts exactly one of each
+- Extensions load into the session together, and a tab that attaches while the
+  extension host is still booting is queued rather than lost
+- A drag-sized burst of window/tab events writes the session once, not once per
+  event, and the last request in a burst is never dropped
+- Internal assets resolve once and revalidate (304) instead of being re-read,
+  and `browser://theme` no longer stamps a fresh ETag per request
+- Opening an extension popup costs no renderer round-trip and no directory scan
+
 ### Integration Tests — `test:integration` (3 tests)
 - Real Electron app restart with extension persistence
 - Service worker survives restart
@@ -128,6 +147,13 @@ ls -la .test-e2e-data/  # View test data after run
 ### Verbose Logging
 ```bash
 DEBUG_P2P=1 npm run test:p2p:e2e
+```
+
+The app's own console transport is set to `info`. Hot-path lines (per session
+save, per badge update) are logged at `debug`, so raise the level to see them:
+
+```bash
+PEERSKY_LOG_LEVEL=debug npm start
 ```
 
 ### Extension Test Issues

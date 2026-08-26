@@ -399,8 +399,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   ipcRenderer.on('refresh-browser-actions', () => {
     const navBox = document.querySelector('nav-box')
-    if (navBox && typeof navBox.renderBrowserActions === 'function') {
-      navBox.renderBrowserActions()
+    // Coalesced: a single change also arrives on 'browser-action-changed'.
+    if (navBox && typeof navBox.scheduleBrowserActionsRender === 'function') {
+      navBox.scheduleBrowserActionsRender()
     }
   })
 

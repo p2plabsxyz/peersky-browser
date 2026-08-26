@@ -395,7 +395,7 @@ export function setupExtensionIpcHandlers (extensionManager) {
     })
 
     // Handle browser action popup
-    ipcMain.handle('extensions-open-browser-action-popup', async (event, { actionId, anchorRect }) => {
+    ipcMain.handle('extensions-open-browser-action-popup', async (event, { actionId, anchorRect, activeWebContentsId }) => {
       try {
         if (!actionId || typeof actionId !== 'string') {
           throw Object.assign(new Error('Invalid action ID'), { code: ERR.E_INVALID_ID })
@@ -419,7 +419,14 @@ export function setupExtensionIpcHandlers (extensionManager) {
             }
           : { x: 100, y: 40, width: 20, height: 20, left: 100, top: 40, right: 120, bottom: 60 }
 
-        const result = await extensionManager.openBrowserActionPopup(actionId, senderWindow, safeRect)
+        // The renderer knows which webview is active; taking its word for it
+        // (after the ownership check inside the extension system) saves a
+        // round-trip back into the renderer on every click.
+        const hintedId = Number.isInteger(activeWebContentsId) ? activeWebContentsId : null
+
+        const result = await extensionManager.openBrowserActionPopup(actionId, senderWindow, safeRect, {
+          activeWebContentsId: hintedId
+        })
         return result || { success: true }
       } catch (error) {
         console.error('ExtensionIPC: extensions-open-browser-action-popup failed:', error)

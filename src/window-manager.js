@@ -8,6 +8,7 @@ import { attachContextMenus } from './context-menu.js'
 import { randomUUID } from 'crypto'
 import { getPartition } from './session.js'
 import extensionManager from './extensions/index.js'
+import { createCoalescedTask } from './coalesce.js'
 
 const log = createLogger('window-manager')
 
@@ -18,6 +19,16 @@ const BOOKMARKS_FILE = path.join(USER_DATA_PATH, 'bookmarks.json')
 const PERSIST_FILE = path.join(USER_DATA_PATH, 'lastOpened.json')
 
 const DEFAULT_SAVE_INTERVAL = 30 * 1000
+
+// Quiet period before a requested session save actually runs, and the longest a
+// continuous burst (a window drag, a fast series of tab edits) may defer it.
+// A save costs one renderer round-trip per window plus two JSON writes, so it
+// must not track raw event frequency.
+const SAVE_DEBOUNCE_MS = 400
+const SAVE_MAX_WAIT_MS = 2000
+
+// A wedged renderer must not hold up the whole snapshot.
+const TAB_STATE_TIMEOUT_MS = 2000
 const cssPath = path.join(__dirname, 'pages', 'theme')
 const cssFS = new ScopedFS(cssPath)
 
@@ -40,6 +51,26 @@ ipcMain.handle('peersky-read-css', async (_event, name) => {
   }
 })
 
+/**
+ * Reject if a renderer round-trip has not answered in time, so one unresponsive
+ * window cannot stall a whole session snapshot.
+ *
+ * @template T
+ * @param {Promise<T>} promise
+ * @param {number} ms
+ * @returns {Promise<T>}
+ */
+function withTimeout (promise, ms) {
+  let timer
+  return Promise.race([
+    promise,
+    new Promise((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error(`Renderer did not respond within ${ms}ms`)), ms)
+      timer.unref?.()
+    })
+  ]).finally(() => clearTimeout(timer))
+}
+
 class WindowManager {
   constructor () {
     this.windows = new Set()
@@ -51,6 +82,16 @@ class WindowManager {
     this.finalSaveCompleted = false
     this.saveQueue = Promise.resolve()
     this.skipSaveOnQuit = false
+
+    // High-frequency triggers go through this instead of calling saveOpened
+    // directly; see SAVE_DEBOUNCE_MS.
+    this.pendingSave = createCoalescedTask({
+      run: () => this.saveOpened(),
+      waitMs: SAVE_DEBOUNCE_MS,
+      maxWaitMs: SAVE_MAX_WAIT_MS,
+      onError: (error) => log.error('Error in coalesced session save:', error)
+    })
+
     this.registerListeners()
 
     // Treat Ctrl+C / SIGTERM as explicit quits in dev:
@@ -289,9 +330,7 @@ class WindowManager {
 
     // Handle save-state events from renderer (tabs/windows changed)
     ipcMain.on('save-state', () => {
-      if (!this.isQuitting && !this.shutdownInProgress) {
-        this.saveOpened()
-      }
+      this.requestSave()
     })
   }
 
@@ -428,14 +467,16 @@ class WindowManager {
       w.window && !w.window.isDestroyed() && !w.window.webContents.isDestroyed()
     )
 
-    log.info(`Getting tabs from ${validWindows.length} windows`)
+    log.debug(`Getting tabs from ${validWindows.length} windows`)
 
-    for (const peerskyWin of validWindows) {
+    // One renderer round-trip per window, run together: with several windows
+    // open, doing these in sequence made every save as slow as the sum of them.
+    await Promise.all(validWindows.map(async (peerskyWin) => {
       const win = peerskyWin.window
 
       try {
         const windowId = peerskyWin.windowId
-        const tabsData = await win.webContents.executeJavaScript(`
+        const tabsData = await withTimeout(win.webContents.executeJavaScript(`
         (() => {
           try {
             const tabBar = document.querySelector('tab-bar, vertical-tabs');
@@ -453,16 +494,16 @@ class WindowManager {
             return null;
           }
         })()
-      `)
+      `), TAB_STATE_TIMEOUT_MS)
 
         if (tabsData && tabsData.tabs) {
           results[windowId] = tabsData
-          log.info(`Got ${tabsData.tabs.length} tabs from window ${windowId}`)
+          log.debug(`Got ${tabsData.tabs.length} tabs from window ${windowId}`)
         }
       } catch (e) {
         log.error(`Failed to read tabs from window ${peerskyWin.windowId}:`, e.message)
       }
-    }
+    }))
 
     return Object.keys(results).length > 0 ? results : null
   }
@@ -480,8 +521,8 @@ class WindowManager {
       )
 
       // Only save if not shutting down and not closing the last window
-      if (!this.isQuitting && !this.shutdownInProgress && !wasLastWindow) {
-        this.saveOpened()
+      if (!wasLastWindow) {
+        this.requestSave()
       }
     })
 
@@ -498,24 +539,11 @@ class WindowManager {
       }
     })
 
-    // Only save on move/resize if not shutting down
-    window.window.on('move', () => {
-      if (!this.isQuitting && !this.shutdownInProgress) {
-        this.saveOpened()
-      }
-    })
-
-    window.window.on('resize', () => {
-      if (!this.isQuitting && !this.shutdownInProgress) {
-        this.saveOpened()
-      }
-    })
-
-    window.webContents.on('did-navigate', () => {
-      if (!this.isQuitting && !this.shutdownInProgress) {
-        this.saveOpened()
-      }
-    })
+    // A drag emits move events continuously and a resize emits one per frame;
+    // both are coalesced so the snapshot cost does not track the event rate.
+    window.window.on('move', () => this.requestSave())
+    window.window.on('resize', () => this.requestSave())
+    window.webContents.on('did-navigate', () => this.requestSave())
 
     return window
   }
@@ -562,7 +590,7 @@ class WindowManager {
   }
 
   async saveWindowStates () {
-    log.info(`Starting saveWindowStates with ${this.windows.size} windows`)
+    log.debug(`Starting saveWindowStates with ${this.windows.size} windows`)
 
     // Filter out destroyed windows BEFORE starting async operations
     const validWindows = Array.from(this.windows).filter(window => {
@@ -575,7 +603,7 @@ class WindowManager {
       }
     })
 
-    log.info(`Found ${validWindows.length} valid windows to save`)
+    log.debug(`Found ${validWindows.length} valid windows to save`)
 
     // If there are no live windows…
     if (validWindows.length === 0) {
@@ -600,15 +628,15 @@ class WindowManager {
       return
     }
 
-    const windowStates = []
-
-    // Save each window's state with individual error handling
-    for (const window of validWindows) {
+    // One round-trip per window for the active URL, run together for the same
+    // reason as getTabs(). Promise.all keeps the results in window order;
+    // windows that could not be read come back as null and are dropped below.
+    const collected = await Promise.all(validWindows.map(async (window) => {
       try {
         // Double-check window is still valid
         if (window.window.isDestroyed() || window.window.webContents.isDestroyed()) {
-          log.info(`Window ${window.id} was destroyed during save, skipping`)
-          continue
+          log.debug(`Window ${window.id} was destroyed during save, skipping`)
+          return null
         }
 
         // Get window properties synchronously to avoid race conditions
@@ -616,21 +644,18 @@ class WindowManager {
         const size = window.window.getSize()
         const windowId = window.windowId
 
-        // Get URL with timeout
-        const urlPromise = window.getURL()
-        const timeoutPromise = new Promise((_resolve, reject) => {
-          setTimeout(() => reject(new Error('URL fetch timeout')), 2000)
-        })
+        const url = await withTimeout(window.getURL(), TAB_STATE_TIMEOUT_MS)
 
-        const url = await Promise.race([urlPromise, timeoutPromise])
-
-        windowStates.push({ windowId, url, position, size })
-        log.info(`Saved state for window ${windowId}: ${url}`)
+        log.debug(`Saved state for window ${windowId}: ${url}`)
+        return { windowId, url, position, size }
       } catch (error) {
         log.error(`Error saving window ${window.id}:`, error.message)
         // Continue with other windows
+        return null
       }
-    }
+    }))
+
+    const windowStates = collected.filter(Boolean)
 
     // If, for some reason, we ended up with nothing, also clear the file
     // TODO: If this happens during app quit/shutdown, we probably should NOT clear
@@ -652,7 +677,7 @@ class WindowManager {
       const tempPath = PERSIST_FILE + '.tmp'
       await fs.outputJson(tempPath, windowStates, { spaces: 2 })
       await fs.move(tempPath, PERSIST_FILE, { overwrite: true })
-      log.info(`Successfully saved ${windowStates.length} window states to ${PERSIST_FILE}`)
+      log.debug(`Successfully saved ${windowStates.length} window states to ${PERSIST_FILE}`)
     } catch (error) {
       log.error('Error writing window states to file:', error)
       throw error
@@ -660,7 +685,7 @@ class WindowManager {
   }
 
   async saveAllTabsData () {
-    log.info('Starting saveAllTabsData...')
+    log.debug('Starting saveAllTabsData...')
 
     try {
       const allTabsData = await this.getTabs()
@@ -688,17 +713,34 @@ class WindowManager {
 
       const windowCount = Object.keys(allTabsData).length
 
-      log.info(`Saving tabs for ${windowCount} windows...`)
+      log.debug(`Saving tabs for ${windowCount} windows...`)
 
       const tempPath = TABS_FILE + '.tmp'
       await fs.outputJson(tempPath, allTabsData, { spaces: 2 })
       await fs.move(tempPath, TABS_FILE, { overwrite: true })
 
-      log.info(`Successfully saved tabs data to ${TABS_FILE} (${windowCount} windows)`)
+      log.debug(`Successfully saved tabs data to ${TABS_FILE} (${windowCount} windows)`)
     } catch (error) {
       log.error('Error writing tabs data to file:', error)
       throw error
     }
+  }
+
+  /**
+   * Ask for a session save. Bursts collapse into one run; the last request in a
+   * burst is always the one that gets written.
+   */
+  requestSave () {
+    if (this.isQuitting || this.shutdownInProgress) return
+    this.pendingSave.schedule()
+  }
+
+  /**
+   * Run a coalesced save that is still waiting, if any. Used on the way out so
+   * the last edits before a quit are not lost to the debounce window.
+   */
+  async flushPendingSave () {
+    return this.pendingSave.flush()
   }
 
   async saveOpened (forceSave = false) {
@@ -879,6 +921,9 @@ class WindowManager {
   }
 
   stopSaver () {
+    // Drop any coalesced save still waiting: shutdown does its own final save,
+    // and a late one could overwrite it with a half-torn-down window list.
+    this.pendingSave.cancel()
     if (this.saverTimer) {
       clearInterval(this.saverTimer)
       this.saverTimer = null
@@ -975,8 +1020,8 @@ class PeerskyWindow {
     // Define the listener function
     this.navigateListener = (_event, url) => {
       this.currentURL = url
-      log.info(`Navigation detected in window ${this.id}: ${url}`)
-      windowManager.saveOpened()
+      log.debug(`Navigation detected in window ${this.id}: ${url}`)
+      windowManager.requestSave()
     }
 
     // Listen for navigation events from renderer

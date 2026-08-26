@@ -1,3 +1,8 @@
+// Quiet period before a tab-state write actually runs. Short enough that a
+// crash loses nothing a user would notice, long enough to collapse the burst of
+// calls a single tab action produces.
+const TAB_STATE_SAVE_DEBOUNCE_MS = 150
+
 class TabBar extends HTMLElement {
   constructor () {
     super()
@@ -5,6 +10,7 @@ class TabBar extends HTMLElement {
     this.activeTabId = null
     this.tabCounter = 0
     this.webviews = new Map() // Store webviews by tab ID
+    this._tabsStateTimer = null // Pending coalesced saveTabsState write
     this.webviewContainer = null // Will be set by connectWebviewContainer
     this.pinnedTabs = new Set() // Track pinned tabs
     this.tabGroups = new Map() // Store tab groups
@@ -46,6 +52,9 @@ class TabBar extends HTMLElement {
   }
 
   disconnectedCallback () {
+    // Write out anything the coalescing window was still holding, rather than
+    // dropping the last edits along with the timer.
+    if (this._tabsStateTimer) this.flushTabsState()
     // Cleanup Memory Saver listeners and intervals
     if (this._memorySaverInterval) {
       clearInterval(this._memorySaverInterval)
@@ -492,8 +501,34 @@ class TabBar extends HTMLElement {
     }
   }
 
-  // Save current tabs state to localStorage
+  /**
+   * Persist the tab state.
+   *
+   * A single user action (open, close, drag, navigate) fans out into several
+   * calls, and each one JSON-serialises every window's tabs and writes them to
+   * localStorage on the UI thread, then wakes the main process to snapshot the
+   * session. Coalescing a burst into one write keeps tab interactions smooth;
+   * the main process reads live in-memory state via getTabsStateForSaving(), so
+   * nothing downstream depends on the write having already landed.
+   */
   saveTabsState () {
+    if (this._tabsStateTimer) return
+    this._tabsStateTimer = setTimeout(() => {
+      this._tabsStateTimer = null
+      this.writeTabsStateNow()
+    }, TAB_STATE_SAVE_DEBOUNCE_MS)
+  }
+
+  /** Write immediately, cancelling any coalesced write. */
+  flushTabsState () {
+    if (this._tabsStateTimer) {
+      clearTimeout(this._tabsStateTimer)
+      this._tabsStateTimer = null
+    }
+    this.writeTabsStateNow()
+  }
+
+  writeTabsStateNow () {
     try {
       const tabsData = this.getTabsStateForSaving()
       if (!tabsData) {
@@ -827,17 +862,17 @@ class TabBar extends HTMLElement {
     this.selectTab(tabId, true)
     this.saveTabsState()
 
-    // Focus address bar for new tabs
-    setTimeout(() => {
-      const urlInput = document.getElementById('url')
-      if (urlInput) {
-        if (url === 'peersky://home') {
-          urlInput.value = ''
-        }
-        urlInput.focus()
-        urlInput.select()
+    // Focus the address bar straight away so a new tab is typeable at once.
+    // This used to wait 400ms for the new webview to stop stealing focus on
+    // dom-ready; the webview now leaves the address bar alone instead.
+    const urlInput = document.getElementById('url')
+    if (urlInput) {
+      if (url === 'peersky://home') {
+        urlInput.value = ''
       }
-    }, 400)
+      urlInput.focus()
+      urlInput.select()
+    }
 
     return tabId
   }
@@ -881,7 +916,12 @@ class TabBar extends HTMLElement {
       // Ensure this webview is visible if it's the active tab
       if (this.activeTabId === tabId) {
         webview.style.display = 'flex'
-        webview.focus()
+        // Never pull focus out of the address bar: on a new tab the user is
+        // already typing there by the time the webview finishes loading.
+        const urlInput = document.getElementById('url')
+        if (!urlInput || document.activeElement !== urlInput) {
+          webview.focus()
+        }
       }
 
       let currentWcId
@@ -1631,15 +1671,15 @@ class TabBar extends HTMLElement {
 
   // Setup handler to save tabs when browser closes
   setupBrowserCloseHandler () {
-    // Save on window beforeunload
+    // Save on window beforeunload — flush, since there is no later chance.
     window.addEventListener('beforeunload', () => {
-      this.saveTabsState()
+      this.flushTabsState()
     })
 
     // Save on visibility change (when app loses focus)
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') {
-        this.saveTabsState()
+        this.flushTabsState()
       }
     })
   }
