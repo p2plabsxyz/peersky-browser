@@ -1,6 +1,6 @@
 # Testing Guide
 
-Peersky Browser has **234 tests** across 9 suites. They cover protocol handlers, P2P networking and file sync, backup and identity transfer, extension lifecycle, security policies, LLM streaming, the auto-updater, and performance regressions.
+Peersky Browser has **261 tests** across 9 suites. They cover protocol handlers, P2P networking and file sync, backup and identity transfer, extension lifecycle, security policies, LLM streaming, the auto-updater, and performance regressions.
 
 ## Running Tests
 
@@ -88,7 +88,7 @@ npx mocha test/p2p/ipfs-handler.test.js --grep "CID norm" --timeout 20000
 - Install/update/uninstall lifecycle
 - Service worker reload & state persistence
 
-### Security Tests — `test:security` (6 tests)
+### Security Tests — `test:security` (33 tests)
 - GET always allowed, POST/PUT/PATCH require `p2pWrite` permission
 - Dangerous permissions blocked (nativeMessaging, debugger, desktopCapture)
 - Path traversal protection (`../` rejected)

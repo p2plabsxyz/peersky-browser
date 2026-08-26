@@ -241,7 +241,7 @@ class WindowManager {
                 try {
                   const tabBar = document.querySelector('#tabbar');
                   if (tabBar && tabBar.tabs) {
-                    return tabBar.tabs.some(tab => tab.id === '${id}');
+                    return tabBar.tabs.some(tab => tab.id === ${JSON.stringify(id)});
                   }
                   return false;
                 } catch (error) {

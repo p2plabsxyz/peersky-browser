@@ -125,7 +125,10 @@ describe('Protocol and extension security guardrails', function () {
   it('keeps extension API scoped and external pages minimal in preload', async function () {
     const preload = await readFile('src/pages/unified-preload.js', 'utf8')
 
-    expect(preload).to.match(/const\s+isExtensions\s*=\s*url\.startsWith\(\s*['"]peersky:\/\/extensions['"]\s*\)/)
+    // Scheme and host, never a substring of the href. See preload-page-context.test.js.
+    expect(preload).to.match(/const\s+isExtensions\s*=\s*isPeerskyPage\(\s*['"]extensions['"]\s*\)/)
+    expect(preload).to.not.match(/url\.includes\(\s*['"]peersky:\/\//)
+    expect(preload).to.not.match(/url\.includes\(\s*['"]agregore/)
     expect(preload).to.match(/const\s+isExternal\s*=\s*!isInternal/)
     expect(preload).to.match(/extensions\s*:\s*extensionAPI/)
     expect(preload).to.match(/External minimal API exposed \(no settings access\)/)

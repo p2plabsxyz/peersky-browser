@@ -362,12 +362,12 @@ export function attachContextMenus (browserWindow, windowManager) {
   // Ensure window.open from overlays (e.g., extension popups rendered in this webContents) opens as a tab
   browserWindow.webContents.setWindowOpenHandler(({ url }) => {
     try {
-      const escapedUrl = url.replace(/'/g, "\\'")
+      const urlLiteral = JSON.stringify(url)
       browserWindow.webContents
         .executeJavaScript(`
           const tabBar = document.querySelector('#tabbar');
           if (tabBar && typeof tabBar.addTab === 'function') {
-            tabBar.addTab('${escapedUrl}', 'New Tab');
+            tabBar.addTab(${urlLiteral}, 'New Tab');
             return true;
           } else {
             return false;
@@ -444,18 +444,18 @@ export function attachContextMenus (browserWindow, windowManager) {
         // If explicitly no opener requested, prefer tab UX instead of popup
         if (hasNoOpener) {
           try {
-            const escapedUrlNo = (url || '').replace(/'/g, "\\'")
+            const urlLiteralNo = JSON.stringify(url || '')
             browserWindow.webContents
               .executeJavaScript(`
                 (function() {
                   const tabBar = document.querySelector('tab-bar');
                   if (tabBar && typeof tabBar.addTab === 'function') {
-                    tabBar.addTab('${escapedUrlNo}');
+                    tabBar.addTab(${urlLiteralNo});
                     return true;
                   }
                   const oldTabBar = document.querySelector('#tabbar');
                   if (oldTabBar && typeof oldTabBar.addTab === 'function') {
-                    oldTabBar.addTab('${escapedUrlNo}');
+                    oldTabBar.addTab(${urlLiteralNo});
                     return true;
                   }
                   return false;
@@ -477,18 +477,18 @@ export function attachContextMenus (browserWindow, windowManager) {
         if (!isSafePopupUrl(url)) {
           // Preserve previous behavior for unsafe schemes: re-route to tab/window
           try {
-            const escapedUrl = (url || '').replace(/'/g, "\\'")
+            const urlLiteral = JSON.stringify(url || '')
             browserWindow.webContents
               .executeJavaScript(`
                 (function() {
                   const tabBar = document.querySelector('tab-bar');
                   if (tabBar && typeof tabBar.addTab === 'function') {
-                    tabBar.addTab('${escapedUrl}');
+                    tabBar.addTab(${urlLiteral});
                     return true;
                   }
                   const oldTabBar = document.querySelector('#tabbar');
                   if (oldTabBar && typeof oldTabBar.addTab === 'function') {
-                    oldTabBar.addTab('${escapedUrl}');
+                    oldTabBar.addTab(${urlLiteral});
                     return true;
                   }
                   return false;
@@ -517,18 +517,18 @@ export function attachContextMenus (browserWindow, windowManager) {
 
         if (!hasPopupFeatures && !isAboutBlank && disposition !== 'new-window') {
           try {
-            const escapedUrl = (url || '').replace(/'/g, "\\'")
+            const urlLiteral = JSON.stringify(url || '')
             browserWindow.webContents
               .executeJavaScript(`
                 (function() {
                   const tabBar = document.querySelector('tab-bar');
                   if (tabBar && typeof tabBar.addTab === 'function') {
-                    tabBar.addTab('${escapedUrl}');
+                    tabBar.addTab(${urlLiteral});
                     return true;
                   }
                   const oldTabBar = document.querySelector('#tabbar');
                   if (oldTabBar && typeof oldTabBar.addTab === 'function') {
-                    oldTabBar.addTab('${escapedUrl}');
+                    oldTabBar.addTab(${urlLiteral});
                     return true;
                   }
                   return false;
