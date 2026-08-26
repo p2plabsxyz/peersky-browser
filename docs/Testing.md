@@ -1,6 +1,6 @@
 # Testing Guide
 
-Peersky Browser has **261 tests** across 9 suites. They cover protocol handlers, P2P networking and file sync, backup and identity transfer, extension lifecycle, security policies, LLM streaming, the auto-updater, and performance regressions.
+Peersky Browser has **291 tests** across 9 suites. They cover protocol handlers, P2P networking and file sync, backup and identity transfer, extension lifecycle, security policies, LLM streaming, the auto-updater, and performance regressions.
 
 ## Running Tests
 
@@ -104,7 +104,7 @@ npx mocha test/p2p/ipfs-handler.test.js --grep "CID norm" --timeout 20000
 - Streaming response parsing, including malformed chunks
 - undici dispatcher contract: the Agent must not reach global fetch
 
-### Updater Tests — `test:updater` (22 tests)
+### Updater Tests — `test:updater` (52 tests)
 - Manual check, pending update, and already-latest states
 - Squirrel error handling and install restart
 

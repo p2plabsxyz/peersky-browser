@@ -4,6 +4,7 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import settingsManager from './settings-manager.js'
+import { isNewerVersion } from './version-compare.js'
 
 const UPDATE_HOST = 'https://update.electronjs.org'
 const UPDATE_REPO = 'p2plabsxyz/peersky-browser'
@@ -154,9 +155,7 @@ function setupNativeNetUpdater (saveSession) {
         log.info('[auto-updater] update-not-available')
         return
       }
-      // Simple semver compare: split on dots and compare numerically
-      const isNewer = latest.localeCompare(current, undefined, { numeric: true, sensitivity: 'base' }) > 0
-      if (!isNewer) {
+      if (!isNewerVersion(latest, current)) {
         log.info('[auto-updater] update-not-available (latest:', latest, 'current:', current, ')')
         return
       }
