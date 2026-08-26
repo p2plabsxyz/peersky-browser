@@ -12,6 +12,7 @@ import {
   CHAT_STORAGE
 } from '../pages/p2p/peerchat/p2p.js'
 import { createLogger } from '../logger.js'
+import { guardLANTopicLimit } from './lan-discovery-guard.js'
 import { hyperCache, saveHyperCache } from './config.js'
 import { enforceExtensionWritePolicy } from '../extensions/request-policy.js'
 
@@ -39,6 +40,9 @@ function wireLANEvents (instance) {
 
 async function attachLANDiscovery (activeSdk) {
   const instance = await HyperDHTmDNS.attachHyperSDK(activeSdk, getLANOptions())
+  // A full mDNS advertisement must not fail the hyper:// request that
+  // triggered it. See lan-discovery-guard.js.
+  guardLANTopicLimit(instance, { onSkip: (message) => log.warn(`[LAN] ${message}`) })
   return wireLANEvents(instance)
 }
 
