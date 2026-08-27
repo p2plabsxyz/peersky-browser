@@ -191,11 +191,20 @@ export function registerSidePanelGuest (manager, webContentsId) {
   }
   manager._registeredTabs?.delete?.(webContentsId)
 
-  try {
-    guest?.once?.('destroyed', () => {
-      manager.sidePanelGuestIds?.delete(webContentsId)
-    })
-  } catch (_) {}
+  // Bind cleanup once. This runs again on every side panel dom-ready and every
+  // extension action click, which otherwise stacks a listener each time.
+  if (!manager._sidePanelCleanupBound) manager._sidePanelCleanupBound = new Set()
+  if (guest && !manager._sidePanelCleanupBound.has(webContentsId)) {
+    manager._sidePanelCleanupBound.add(webContentsId)
+    try {
+      guest.once?.('destroyed', () => {
+        manager.sidePanelGuestIds?.delete(webContentsId)
+        manager._sidePanelCleanupBound?.delete(webContentsId)
+      })
+    } catch (_) {
+      manager._sidePanelCleanupBound.delete(webContentsId)
+    }
+  }
 }
 
 function showPanel (manager, win, state) {
