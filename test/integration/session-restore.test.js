@@ -60,6 +60,14 @@ function makeWindow ({ windowId, url, position, size, tabs }) {
   }
 }
 
+/** A window whose renderer never answers, so the save times out on it. */
+function makeUnresponsiveWindow ({ windowId, url, position = [0, 0], size = [1200, 800] }) {
+  const win = makeWindow({ windowId, url, position, size, tabs: null })
+  win.getURL = () => new Promise(() => {})
+  win.window.webContents.executeJavaScript = () => new Promise(() => {})
+  return win
+}
+
 async function loadWindowManager (userDataPath) {
   const electron = {
     app: {
@@ -301,6 +309,63 @@ describe('Session restore across restart', function () {
       expect(byId['win-horizontal'].savedTabs).to.deep.equal(byId['win-vertical'].savedTabs)
       expect(byId['win-vertical'].savedTabs.tabs.map((t) => t.url)).to.deep.equal(urls)
       expect(byId['win-vertical'].x).to.equal(500)
+    })
+  })
+
+  describe('a busy main process must not wipe the session', function () {
+    // The renderer round-trip has a 2s timeout. When the main process is pegged,
+    // as it was by a libp2p DHT spin, every window misses it and the save used
+    // to conclude there were no tabs and clear both files.
+    this.timeout(30000)
+
+    it('keeps both files when no window answers in time', async function () {
+      const saved = new WindowManager()
+      await saveSession(saved, fourWindows())
+      const windowsBefore = await readJson('lastOpened.json')
+      const tabsBefore = await readJson('tabs.json')
+      expect(windowsBefore).to.have.lengthOf(4)
+
+      const stalled = new WindowManager()
+      await saveSession(stalled, [
+        makeUnresponsiveWindow({ windowId: 'win-a', url: HOME }),
+        makeUnresponsiveWindow({ windowId: 'win-b', url: 'hyper://chat/' })
+      ])
+
+      expect(await readJson('lastOpened.json'), 'window state was wiped').to.deep.equal(windowsBefore)
+      expect(await readJson('tabs.json'), 'tabs were wiped').to.deep.equal(tabsBefore)
+    })
+
+    it('keeps the tabs of windows that did answer, and drops nothing else', async function () {
+      const manager = new WindowManager()
+      const [good] = fourWindows()
+      await saveSession(manager, [good, makeUnresponsiveWindow({ windowId: 'win-b', url: 'hyper://chat/' })])
+
+      const windows = await readJson('lastOpened.json')
+      const tabs = await readJson('tabs.json')
+      expect(windows.map(w => w.windowId)).to.deep.equal(['win-a'])
+      expect(Object.keys(tabs)).to.deep.equal(['win-a'])
+    })
+
+    it('still clears the files when the windows are genuinely gone', async function () {
+      const manager = new WindowManager()
+      await saveSession(manager, fourWindows())
+      expect(await readJson('lastOpened.json')).to.have.lengthOf(4)
+
+      const empty = new WindowManager()
+      await saveSession(empty, [])
+
+      expect(await readJson('lastOpened.json'), 'a real empty session should clear').to.deep.equal([])
+    })
+
+    it('reports how many windows failed', async function () {
+      const manager = new WindowManager()
+      const [good] = fourWindows()
+      manager.windows = new Set([good, makeUnresponsiveWindow({ windowId: 'win-b', url: HOME })])
+
+      const { results, failed, attempted } = await manager.collectTabs()
+      expect(attempted).to.equal(2)
+      expect(failed).to.equal(1)
+      expect(Object.keys(results)).to.deep.equal(['win-a'])
     })
   })
 

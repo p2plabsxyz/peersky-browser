@@ -462,7 +462,17 @@ class WindowManager {
   }
 
   async getTabs () {
+    const { results } = await this.collectTabs()
+    return Object.keys(results).length > 0 ? results : null
+  }
+
+  /**
+   * Read every window's tab state, reporting how many failed to answer so
+   * callers can tell an empty session from an unreadable one.
+   */
+  async collectTabs () {
     const results = {}
+    let failed = 0
     const validWindows = Array.from(this.windows).filter(w =>
       w.window && !w.window.isDestroyed() && !w.window.webContents.isDestroyed()
     )
@@ -501,11 +511,12 @@ class WindowManager {
           log.debug(`Got ${tabsData.tabs.length} tabs from window ${windowId}`)
         }
       } catch (e) {
+        failed++
         log.error(`Failed to read tabs from window ${peerskyWin.windowId}:`, e.message)
       }
     }))
 
-    return Object.keys(results).length > 0 ? results : null
+    return { results, failed, attempted: validWindows.length }
   }
 
   open (options = {}) {
@@ -657,19 +668,11 @@ class WindowManager {
 
     const windowStates = collected.filter(Boolean)
 
-    // If, for some reason, we ended up with nothing, also clear the file
-    // TODO: If this happens during app quit/shutdown, we probably should NOT clear
-    // the existing file. Match the earlier logic where (isQuitting || shutdownInProgress). keeps the last good snapshot instead of wiping it.
+    // Windows are open but none answered. A renderer that timed out is not a
+    // window without state, and overwriting the file here loses the session
+    // because the main process was busy.
     if (windowStates.length === 0) {
-      log.warn('No window states collected during save – clearing window state file.')
-      try {
-        const tempPath = PERSIST_FILE + '.tmp'
-        await fs.outputJson(tempPath, [], { spaces: 2 })
-        await fs.move(tempPath, PERSIST_FILE, { overwrite: true })
-        log.info(`Wrote empty window state to ${PERSIST_FILE}`)
-      } catch (error) {
-        log.error('Error clearing window state file:', error)
-      }
+      log.warn(`Keeping window state file: none of the ${validWindows.length} open window(s) reported a URL.`)
       return
     }
 
@@ -688,7 +691,8 @@ class WindowManager {
     log.debug('Starting saveAllTabsData...')
 
     try {
-      const allTabsData = await this.getTabs()
+      const { results, failed } = await this.collectTabs()
+      const allTabsData = Object.keys(results).length > 0 ? results : null
       const TABS_FILE = path.join(USER_DATA_PATH, 'tabs.json')
 
       // 🔑 If there are no tabs/windows, clear the tabs file
@@ -696,6 +700,13 @@ class WindowManager {
         // Same logic as window states: if we're quitting, do NOT clear the file.
         if (this.isQuitting || this.shutdownInProgress) {
           log.warn('No tabs data to save during quit – leaving tabs file untouched.')
+          return
+        }
+
+        // Same reasoning as the window state file: a window that did not answer
+        // is not a window without tabs.
+        if (failed > 0) {
+          log.warn(`Keeping tabs file: ${failed} window(s) did not report their tabs.`)
           return
         }
 
