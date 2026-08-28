@@ -4,8 +4,8 @@
 [submodule "src/pages/p2p/peerpad"]
 	path = src/pages/p2p/peerpad
 	url = https://github.com/p2plabsxyz/peerpad
-[submodule "src/pages/p2p/upload"]
-	path = src/pages/p2p/upload
+[submodule "src/pages/p2p/hyperdrive"]
+	path = src/pages/p2p/hyperdrive
 	url = https://github.com/p2plabsxyz/upload
 [submodule "src/pages/p2p/p2pmd"]
 	path = src/pages/p2p/p2pmd

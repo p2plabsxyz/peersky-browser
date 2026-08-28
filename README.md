@@ -76,7 +76,7 @@
 
   - [x] `peersky://p2p/peerchat/`
     - Peer-to-peer messaging over Hyper
-  - [x] `peersky://p2p/upload/`
+  - [x] `peersky://p2p/hyperdrive/`
     - Decentralized file storage
   - [x] `peersky://p2p/peerpad/`
     - Build and publish websites

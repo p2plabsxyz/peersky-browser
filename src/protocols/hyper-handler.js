@@ -14,17 +14,23 @@ import {
 import { createLogger } from '../logger.js'
 import { hyperCache, saveHyperCache } from './config.js'
 import { enforceExtensionWritePolicy } from '../extensions/request-policy.js'
+import {
+  getExistingNamedDrive,
+  HYPERDRIVE_PRIVATE_DRIVE_NAME,
+  resolveHyperdriveUploadTarget
+} from './hyper-drive-visibility.js'
 
 import { _suspendHyper, _hyperPublishFile, _hyperFetchToFile } from '../backup/hyper-backup.js'
 
 const log = createLogger('protocols:hyper')
 
 // Single SDK and swarm for the app lifecycle (hyper:// browsing + chat share the same swarm).
-let sdk, fetch, savedSdkOptions
+let sdk, fetch, privateSdk, privateFetch, privateDriveHostname, savedSdkOptions
 const ephemeralPublishers = new Set()
 
 // keep chunks smaller to avoid oversized blocks.
 const MAX_UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024
+const MAX_HYPERDRIVE_NAME_LENGTH = 255
 
 function getLANOptions () {
   const port = Number.parseInt(process.env.PEERSKY_LAN_PORT || '', 10)
@@ -165,7 +171,7 @@ async function initializeHyperSDK (options) {
     }, NETWORK_CHECK_MS).unref()
   }
 
-  fetch = makeHyperFetch({ sdk, writable: true })
+  fetch = await makeHyperFetch({ sdk, writable: true })
 
   initChat(sdk, {
     safeStorage,
@@ -176,12 +182,96 @@ async function initializeHyperSDK (options) {
   return fetch
 }
 
+function getPrivateSDKOptions (options) {
+  const { corestore, dnsCache, swarm, ...isolatedOptions } = options || {}
+  const storage = isolatedOptions.storage || path.join(app.getPath('userData'), 'hyper')
+  return {
+    ...isolatedOptions,
+    storage: path.join(path.dirname(storage), `${path.basename(storage)}-private`),
+    autoJoin: false,
+    doReplicate: false
+  }
+}
+
+function rememberPrivateDrive (drive) {
+  try {
+    privateDriveHostname = new URL(drive.url).hostname
+  } catch {
+    privateDriveHostname = null
+  }
+}
+
+function formatHyperUrlForLog (value) {
+  try {
+    const parsed = new URL(value)
+    if (privateDriveHostname && parsed.hostname === privateDriveHostname) {
+      return `hyper://[private]${parsed.pathname}`
+    }
+  } catch {}
+  return value
+}
+
+function isValidHyperdriveName (value) {
+  if (typeof value !== 'string') return false
+  const characters = Array.from(value)
+  return characters.length <= MAX_HYPERDRIVE_NAME_LENGTH &&
+    !characters.some((character) => {
+      const code = character.codePointAt(0)
+      return code <= 31 || (code >= 127 && code <= 159)
+    })
+}
+
+async function initializePrivateHyperSDK (options) {
+  if (privateSdk != null && privateFetch != null) return privateFetch
+
+  const privateOptions = getPrivateSDKOptions(options || savedSdkOptions)
+  const openedSdk = await createSDK(privateOptions)
+  try {
+    const openedFetch = await makeHyperFetch({ sdk: openedSdk, writable: true })
+    const existingDrive = await getExistingNamedDrive(openedSdk, {
+      driveName: HYPERDRIVE_PRIVATE_DRIVE_NAME,
+      autoJoin: false
+    })
+    if (existingDrive) rememberPrivateDrive(existingDrive)
+    privateSdk = openedSdk
+    privateFetch = openedFetch
+    return privateFetch
+  } catch (error) {
+    await openedSdk.close().catch(() => {})
+    throw error
+  }
+}
+
+async function getHyperRequestContext (url) {
+  await initializePrivateHyperSDK()
+  const hostname = new URL(url).hostname
+  if (privateDriveHostname && hostname === privateDriveHostname) {
+    return { sdk: privateSdk, fetch: privateFetch, private: true }
+  }
+  return { sdk, fetch: await initializeHyperSDK(), private: false }
+}
+
 // Close the corestore entirely so its RocksDB state is strictly frozen on disk.
 export async function suspendHyper () {
-  await _suspendHyper(sdk, () => {
-    sdk = null
-    fetch = null
-  })
+  const results = await Promise.allSettled([
+    _suspendHyper(privateSdk, () => {
+      privateSdk = null
+      privateFetch = null
+      privateDriveHostname = null
+    }),
+    _suspendHyper(sdk, () => {
+      sdk = null
+      fetch = null
+    })
+  ])
+  const failure = results.find((result) => result.status === 'rejected')
+  if (!failure) return
+
+  await Promise.allSettled([
+    initializeHyperSDK(),
+    initializePrivateHyperSDK()
+  ])
+  throw failure.reason
 }
 
 // Reopen the corestore after a backup copy completes.
@@ -189,6 +279,7 @@ export async function resumeHyper () {
   if (!savedSdkOptions) return
   log.info('Re-initializing Hyper SDK after backup...')
   await initializeHyperSDK()
+  await initializePrivateHyperSDK()
 }
 
 // Publish a file into a fresh writable Hyperdrive and return its shareable
@@ -246,13 +337,15 @@ async function waitForDriveReady (url) {
 
 // Stream a hyper:// file address to destPath on disk.
 export async function hyperFetchToFile (address, destPath, onStatus) {
-  const f = await initializeHyperSDK()
-  return _hyperFetchToFile(f, waitForDriveReady, address, destPath, onStatus)
+  const context = await getHyperRequestContext(address)
+  const prepare = context.private ? async () => {} : waitForDriveReady
+  return _hyperFetchToFile(context.fetch, prepare, address, destPath, onStatus)
 }
 
 export async function createHandler (options, securityOptions = {}) {
   const { isExtensionWriteAllowed } = securityOptions
   await initializeHyperSDK(options)
+  await initializePrivateHyperSDK(options)
 
   return async function protocolHandler (req) {
     const { url, method } = req
@@ -260,23 +353,52 @@ export async function createHandler (options, securityOptions = {}) {
     const protocol = urlObj.protocol.replace(':', '')
     const pathname = urlObj.pathname
 
-    log.info(`Handling request: ${method} ${url}`)
-
     // Intercept Hyperdrive key generation/retrieval
-    if (method === 'POST' && urlObj.searchParams.has('key')) {
-      const keyName = urlObj.searchParams.get('key')
+    const isKeyRequest = method === 'POST' && urlObj.searchParams.has('key')
+    const keyName = isKeyRequest ? urlObj.searchParams.get('key') : null
+    if (isKeyRequest && !isValidHyperdriveName(keyName)) {
+      return new Response('Hyperdrive name is invalid or too long.', {
+        status: 400,
+        headers: { 'Content-Type': 'text/plain' }
+      })
+    }
+
+    log.info(`Handling request: ${method} ${formatHyperUrlForLog(url)}`)
+
+    if (isKeyRequest) {
       try {
-        const fetchFn = await initializeHyperSDK()
-        const resp = await fetchFn(url, {
-          method,
-          headers: req.headers,
-          body: getChunkedBody(req),
-          duplex: 'half'
-        })
+        let resp
+        const visibility = urlObj.searchParams.get('visibility')
+        if (visibility !== null) {
+          const target = resolveHyperdriveUploadTarget(visibility)
+          if (!target) {
+            return new Response('Visibility must be public or private.', {
+              status: 400,
+              headers: { 'Content-Type': 'text/plain' }
+            })
+          }
+          const targetSdk = visibility === 'private' ? privateSdk : sdk
+          const drive = await targetSdk.getDrive(target.driveName, {
+            autoJoin: target.autoJoin
+          })
+          if (visibility === 'private') rememberPrivateDrive(drive)
+          resp = new Response(drive.url, {
+            status: 200,
+            headers: { 'Content-Type': 'text/plain' }
+          })
+        } else {
+          const fetchFn = await initializeHyperSDK()
+          resp = await fetchFn(url, {
+            method,
+            headers: req.headers,
+            body: getChunkedBody(req),
+            duplex: 'half'
+          })
+        }
         if (resp.status === 200) {
           const buffer = await resp.arrayBuffer()
           const driveKeyStr = Buffer.from(buffer).toString()
-          log.info('Extracted raw key response:', driveKeyStr)
+          log.info('Extracted raw key response:', formatHyperUrlForLog(driveKeyStr))
 
           const match = driveKeyStr.match(/([0-9a-zA-Z]{52,64})/)
           if (match) {
@@ -291,14 +413,14 @@ export async function createHandler (options, securityOptions = {}) {
                 type: 'drive'
               })
               saveHyperCache()
-              log.info(`Logged Hyperdrive to cache: ${keyName} (${driveKey})`)
+              log.info(`Logged Hyperdrive to cache: ${keyName} (${visibility === 'private' ? 'private' : driveKey})`)
             } else {
               existingEntry.timestamp = timestamp
               if (keyName && (existingEntry.name === 'Drive' || !existingEntry.name)) {
                 existingEntry.name = keyName
               }
               saveHyperCache()
-              log.info(`Updated Hyperdrive in cache: ${keyName} (${driveKey})`)
+              log.info(`Updated Hyperdrive in cache: ${keyName} (${visibility === 'private' ? 'private' : driveKey})`)
             }
           }
           return new Response(buffer, {
@@ -345,12 +467,12 @@ export async function createHandler (options, securityOptions = {}) {
 // Handle general hyper:// requests (not chat API).
 async function handleHyperRequest (req) {
   const { url, method = 'GET', headers } = req
-  const fetchFn = await initializeHyperSDK()
+  const { fetch: fetchFn } = await getHyperRequestContext(url)
   const upperMethod = method.toUpperCase()
   const hasBody = upperMethod !== 'GET' && upperMethod !== 'HEAD'
 
   try {
-    log.info(`[handleHyperRequest] Fetching: ${method} ${url}`)
+    log.info(`[handleHyperRequest] Fetching: ${method} ${formatHyperUrlForLog(url)}`)
     const resp = await fetchFn(url, {
       method,
       headers,
