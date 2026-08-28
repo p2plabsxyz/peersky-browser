@@ -1218,6 +1218,15 @@ class NavBox extends HTMLElement {
     const urlInput = this.querySelector('#url')
     if (urlInput && result.url) {
       urlInput.value = result.url
+      // A search debounced before this keypress would otherwise land after the
+      // dropdown closes and reopen it over the page.
+      if (this._autocompleteDebounceTimer) {
+        clearTimeout(this._autocompleteDebounceTimer)
+        this._autocompleteDebounceTimer = null
+      }
+      this._autocompleteResults = []
+      this._autocompleteQuery = ''
+      this._autocompleteSelectedIndex = -1
       this._hideAutocomplete()
 
       // Dispatch navigate event
