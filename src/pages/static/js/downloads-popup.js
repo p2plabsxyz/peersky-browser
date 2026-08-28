@@ -78,7 +78,9 @@ export class DownloadsPopup {
   handleProgress (data) {
     this.activeDownloads.set(data.id, data)
 
-    if (!this.isVisible && data.percent === 0 && data.state === 'progressing') {
+    // Only the window that started the download opens the panel; the others
+    // still track progress for an already-open popup.
+    if (data.isOrigin && !this.isVisible && data.percent === 0 && data.state === 'progressing') {
       const navBox = document.querySelector('nav-box')
       const dlBtn =
         navBox?.shadowRoot?.querySelector('#downloads') ||
