@@ -210,9 +210,12 @@ export function attachContextMenus (browserWindow, windowManager) {
             label: 'Save Image As...',
             click: async () => {
               try {
-                // Extract filename from URL
-                const urlPath = new URL(params.srcURL).pathname
-                const defaultName = path.basename(urlPath) || 'image.png'
+                // Search results serve images through a proxy that keeps the
+                // real URL in a query parameter, so take the name from that.
+                const src = new URL(params.srcURL)
+                const nested = src.searchParams.get('u') || src.searchParams.get('url')
+                const target = nested?.startsWith('http') ? new URL(nested) : src
+                const defaultName = decodeURIComponent(path.basename(target.pathname)) || 'image.png'
 
                 // Show save dialog
                 const result = await dialog.showSaveDialog(browserWindow, {
