@@ -1292,6 +1292,9 @@ class TabBar extends HTMLElement {
 
   // Update the selectTab method to handle display properly
   selectTab (tabId, isNewTab = false) {
+    // The find bar belongs to the tab it was opened over; addTab selects too.
+    // Focus must stay put: activeTabId still points at the outgoing tab here.
+    if (tabId !== this.activeTabId) document.querySelector('#find')?.hide?.({ restoreFocus: false })
     if (this.activeTabId) {
       const currentActive = document.getElementById(this.activeTabId)
       if (currentActive) currentActive.classList.remove('active')

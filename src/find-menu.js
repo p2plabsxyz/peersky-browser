@@ -10,6 +10,9 @@ class FindMenu extends HTMLElement {
     this.isPdf = false // Track if current document is PDF
     this.wrappingBackward = false // Tracks if we're wrapping around to the end
     this.updateTimeout = null
+    this.searchTimeout = null
+    this.sessionWebview = null
+    this._resizeListener = null
 
     this.tabGroups = new Map() // Store group metadata
     this.tabGroupAssignments = new Map() // Map tab IDs to group IDs
@@ -45,14 +48,18 @@ class FindMenu extends HTMLElement {
     // Setup webview navigation events to detect PDFs
     this.setupWebviewNavigationListener()
 
-    this.input.addEventListener('input', (e) => {
+    this.input.addEventListener('input', () => {
       const { value } = this
+      clearTimeout(this.searchTimeout)
       if (!value) {
         this.stopFindInPage('clearSelection')
         return
       }
 
-      this.findInWebview(value, { forward: true })
+      // A superseded request never reports, so search once typing settles.
+      this.searchTimeout = setTimeout(() => {
+        this.findInWebview(value, { forward: true })
+      }, 120)
     })
 
     this.input.addEventListener('keydown', ({ keyCode, shiftKey }) => {
@@ -123,66 +130,48 @@ class FindMenu extends HTMLElement {
     }
   }
 
-  // fix (orignal code)
+  // Rebind per search: binding once on connect missed every tab opened later.
   setupFoundInPageListener () {
-    // Get the webview element
     const webview = this.getWebviewElement()
-    if (!webview) return
+    if (!webview || webview === this._boundWebview) return
 
-    // Listen for found-in-page events
-    webview.addEventListener('found-in-page', (event) => {
+    if (this._boundWebview && this._onFoundInPage) {
+      this._boundWebview.removeEventListener('found-in-page', this._onFoundInPage)
+    }
+    this._boundWebview = webview
+    this._onFoundInPage = (event) => {
       const { requestId, matches, activeMatchOrdinal } = event.result
-      console.log('found-in-page', requestId, matches, activeMatchOrdinal)
-
-      // Ensure this is a response to our current request
       if (requestId !== this.currentRequestId) return
 
-      // updates the match count display only if
-      // 1. matchesCount is 0 (first search) or
-      // 2. search value has changed
-      if (this.matchesCount === 0 || this.currentSearchValue !== this.input.value) {
-        this.matchesCount = matches || 0
-      }
-      if (matches > 0) {
-        this.currentMatchIndex = activeMatchOrdinal
-        if (this.currentMatchIndex > this.matchesCount) {
-          console.log('wrapping', this.currentMatchIndex, this.matchesCount)
-          this.currentMatchIndex = 1
-        } else if (this.currentMatchIndex < 1 && this.matchesCount > 0) {
-          this.currentMatchIndex = this.matchesCount
-        }
-      } else {
-        this.currentMatchIndex = 0
-      }
-
-      if (this.matchesCount > 0) {
-        this.matchCountDisplay.textContent = `${this.currentMatchIndex} of ${this.matchesCount}`
-      } else {
-        this.matchCountDisplay.textContent = 'No matches'
-      }
-    })
+      this.matchesCount = matches || 0
+      this.currentMatchIndex = this.matchesCount ? activeMatchOrdinal : 0
+      this.matchCountDisplay.textContent = this.matchesCount
+        ? `${this.currentMatchIndex} of ${this.matchesCount}`
+        : 'No matches'
+    }
+    webview.addEventListener('found-in-page', this._onFoundInPage)
   }
 
   findInWebview (value, options = {}) {
     const webview = this.getWebviewElement()
     if (!webview) return
+    clearTimeout(this.searchTimeout)
+    this.setupFoundInPageListener()
 
-    // If search value changed, reset the search
-    if (value !== this.currentSearchValue) {
-      this.stopFindInPage('clearSelection')
+    // findNext:false steps through an existing session; only a repeat query on
+    // the same guest has one, anything else must open a session with true.
+    const canStep = value === this.currentSearchValue && webview === this.sessionWebview
+    if (!canStep) {
       this.currentSearchValue = value
-      options.findNext = false
-
-      // Reset counters when starting a new search
+      this.sessionWebview = webview
       this.matchesCount = 0
       this.currentMatchIndex = 0
     }
 
-    // Use Electron's findInPage API for both HTML and PDF content
     try {
       this.currentRequestId = webview.findInPage(value, {
         forward: options.forward !== false,
-        findNext: options.findNext || false,
+        findNext: !(canStep && options.findNext === true),
         matchCase: this.matchCase
       })
     } catch (error) {
@@ -191,11 +180,14 @@ class FindMenu extends HTMLElement {
   }
 
   stopFindInPage (action = 'keepSelection') {
+    clearTimeout(this.searchTimeout)
     const webview = this.getWebviewElement()
     if (webview) {
-      webview.stopFindInPage(action)
+      // Throws when the guest is not dom-ready; nothing to stop in that case.
+      try { webview.stopFindInPage(action) } catch (error) {}
       if (action === 'clearSelection') {
         this.currentSearchValue = ''
+        this.sessionWebview = null
         this.matchCountDisplay.textContent = ''
         this.matchesCount = 0
         this.currentMatchIndex = 0
@@ -232,12 +224,35 @@ class FindMenu extends HTMLElement {
     this.stopFindInPage('clearSelection')
   }
 
+  /** Anchor under the address bar, the way the toolbar popups anchor to their button. */
+  anchorToToolbar () {
+    const nav = document.querySelector('#navbox') || document.querySelector('nav-box')
+    const anchor = nav?.querySelector('.url-bar-wrapper') || nav
+    const rect = anchor?.getBoundingClientRect()
+    // Toolbar not measurable yet: keep the CSS fallback instead of pinning to 0,0.
+    if (!rect || !rect.width || !rect.height) return
+
+    const margin = 8
+    let right = Math.round(window.innerWidth - rect.right)
+    const { width } = this.getBoundingClientRect()
+    if (width) right = Math.min(right, Math.round(window.innerWidth - width - margin))
+
+    this.style.top = `${Math.ceil(Math.max(rect.bottom + margin, nav.getBoundingClientRect().bottom))}px`
+    this.style.right = `${Math.max(right, margin)}px`
+  }
+
   get value () {
     return this.input.value
   }
 
   show () {
+    // Unhide first: a display:none element measures as a zero rect.
     this.classList.toggle('hidden', false)
+    this.anchorToToolbar()
+    if (!this._resizeListener) {
+      this._resizeListener = () => this.anchorToToolbar()
+      window.addEventListener('resize', this._resizeListener)
+    }
     // Check content type when showing search
     this.detectContentType()
     setTimeout(() => {
@@ -245,22 +260,20 @@ class FindMenu extends HTMLElement {
     }, 10)
   }
 
-  hide () {
+  hide ({ restoreFocus = true } = {}) {
+    if (this.classList.contains('hidden')) return
     this.stopFindInPage('clearSelection')
     this.classList.toggle('hidden', true)
-    this.dispatchEvent(new CustomEvent('hide'))
+    if (this._resizeListener) {
+      window.removeEventListener('resize', this._resizeListener)
+      this._resizeListener = null
+    }
+    this.dispatchEvent(new CustomEvent('hide', { detail: { restoreFocus } }))
   }
 
   toggle () {
-    const isHidden = this.classList.contains('hidden')
-    this.classList.toggle('hidden')
-    if (isHidden) {
-      this.detectContentType()
-      this.focus()
-    } else {
-      this.stopFindInPage('clearSelection')
-      this.dispatchEvent(new CustomEvent('hide'))
-    }
+    if (this.classList.contains('hidden')) this.show()
+    else this.hide()
   }
 
   focus () {

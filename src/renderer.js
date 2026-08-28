@@ -849,7 +849,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     })
 
-    findMenu.addEventListener('hide', () => {
+    findMenu.addEventListener('hide', ({ detail }) => {
+      if (detail?.restoreFocus === false) return
       const webview = tabBar.getActiveWebview()
       if (webview) {
         webview.focus()
