@@ -3,8 +3,9 @@ import { createLogger } from '../logger.js'
 import { fileURLToPath } from 'url'
 import mime from 'mime-types'
 import ScopedFS from 'scoped-fs'
-import { app } from 'electron'
-import { createReadStream, promises as fsPromises } from 'fs'
+import { app, net } from 'electron'
+import { randomUUID } from 'crypto'
+import fsSync, { createReadStream, promises as fsPromises } from 'fs'
 import { Readable } from 'stream'
 import extensionManager from '../extensions/index.js'
 import { resolveFileCached, respondWithFile } from './static-file.js'
@@ -262,6 +263,68 @@ async function handleUserP2PAppAsset (assetPath) {
   }
 }
 
+// PDFs the browser decided to open in the bundled viewer. The viewer asks for
+// them by id rather than by URL, so this never becomes a general URL fetcher
+// reachable from any peersky:// page. Persisted because a restored tab keeps
+// its viewer URL, and its id has to still resolve after a restart.
+const PDF_SOURCES_FILE = path.join(app.getPath('userData'), 'pdf-sources.json')
+const PDF_SOURCES_LIMIT = 32
+const pdfSources = new Map(loadPdfSources())
+
+function loadPdfSources () {
+  try {
+    const raw = JSON.parse(fsSync.readFileSync(PDF_SOURCES_FILE, 'utf8'))
+    return Array.isArray(raw) ? raw.filter((e) => Array.isArray(e) && e.length === 2) : []
+  } catch (_) {
+    return []
+  }
+}
+
+function savePdfSources () {
+  try {
+    fsSync.writeFileSync(PDF_SOURCES_FILE, JSON.stringify([...pdfSources]), { mode: 0o600 })
+  } catch (error) {
+    log.warn(`Could not persist PDF sources: ${error.message}`)
+  }
+}
+
+/**
+ * Register a PDF for the viewer and return its opaque id.
+ *
+ * @param {string} url
+ * @returns {string}
+ */
+export function registerPdfSource (url) {
+  for (const [id, known] of pdfSources) {
+    if (known === url) return id
+  }
+  const id = randomUUID()
+  pdfSources.set(id, url)
+  while (pdfSources.size > PDF_SOURCES_LIMIT) pdfSources.delete(pdfSources.keys().next().value)
+  savePdfSources()
+  return id
+}
+
+async function handlePdfSource (id) {
+  const url = pdfSources.get(id)
+  if (!url) return new Response('Unknown PDF', { status: 404 })
+  try {
+    const upstream = await net.fetch(url)
+    if (!upstream.ok) return new Response(`Upstream ${upstream.status}`, { status: upstream.status })
+    return new Response(upstream.body, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Length': upstream.headers.get('content-length') ?? '',
+        'Access-Control-Allow-Origin': '*'
+      }
+    })
+  } catch (error) {
+    log.error(`PDF fetch failed: ${error.message}`)
+    return new Response('Could not fetch the PDF', { status: 502 })
+  }
+}
+
 export async function createHandler () {
   return async function protocolHandler (request) {
     const { url } = request
@@ -272,6 +335,7 @@ export async function createHandler () {
 
     if (!filePath || filePath === 'home' || filePath === '/') filePath = 'home'
     if (filePath === 'history' || filePath.startsWith('history/')) return handleHistory()
+    if (filePath.startsWith('pdf-source/')) return handlePdfSource(filePath.slice('pdf-source/'.length))
     if (filePath.startsWith('wallpaper/')) return handleWallpaper(filePath.slice(10))
     if (filePath.startsWith('extension-icon/')) {
       const iconPath = filePath.slice(15) // Remove 'extension-icon/'
@@ -291,7 +355,7 @@ export async function createHandler () {
       const { resolvedPath, stat } = await resolveFile(filePath)
       const format = path.extname(resolvedPath)
 
-      if (!['', '.html', '.js', '.css', '.json', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.woff2', '.woff', '.ttf', '.mp3', '.mp4', '.webm', '.ogg'].includes(format)) {
+      if (!['', '.html', '.js', '.mjs', '.css', '.json', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.woff2', '.woff', '.ttf', '.mp3', '.mp4', '.webm', '.ogg'].includes(format)) {
         throw new Error('Unsupported file type')
       }
 

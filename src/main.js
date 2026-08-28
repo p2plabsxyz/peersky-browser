@@ -3,7 +3,7 @@ import { createLogger } from './logger.js'
 import fs from 'fs/promises'
 import path from 'path'
 import crypto from 'crypto'
-import { createHandler as createBrowserHandler } from './protocols/peersky-protocol.js'
+import { createHandler as createBrowserHandler, registerPdfSource } from './protocols/peersky-protocol.js'
 import { createHandler as createBrowserThemeHandler } from './protocols/theme-handler.js'
 import { createHandler as createIPFSHandler, warmupIPFS } from './protocols/ipfs-handler.js'
 import { createHandler as createHyperHandler, warmupHyper } from './protocols/hyper-handler.js'
@@ -567,6 +567,29 @@ function warmP2PBackends () {
   }
 }
 
+/**
+ * Send PDFs to the bundled viewer. Chromium's PDF plugin does not instantiate
+ * inside a <webview>, so the tab would otherwise render blank.
+ */
+function openPdfInViewer (details) {
+  if (details?.resourceType !== 'mainFrame' || typeof details.webContentsId !== 'number') return
+  if (details.url.startsWith('peersky://')) return
+
+  const header = Object.entries(details.responseHeaders || {})
+    .find(([name]) => name.toLowerCase() === 'content-type')?.[1]
+  const contentType = String(Array.isArray(header) ? header[0] : header || '').toLowerCase()
+  if (!contentType.startsWith('application/pdf')) return
+
+  const guest = webContents.fromId(details.webContentsId)
+  if (!guest || guest.isDestroyed()) return
+  const id = registerPdfSource(details.url)
+  const name = encodeURIComponent(details.url.split('/').pop() || 'PDF')
+  const viewer = `peersky://pdf-viewer/?id=${id}&name=${name}`
+  setImmediate(() => {
+    if (!guest.isDestroyed()) guest.loadURL(viewer).catch(() => {})
+  })
+}
+
 function installExtensionWebRequestBridge (session) {
   // Loopback carries the browser's own plumbing: the p2p gateways and local
   // servers backing peersky:// pages. Chromium sets no initiator on requests
@@ -656,6 +679,7 @@ function installExtensionWebRequestBridge (session) {
     { urls: ['<all_urls>'] },
     async (details, callback) => {
       const url = details?.url || ''
+      openPdfInViewer(details)
       if (!shouldForwardToExtensions(url)) {
         callback({}) // eslint-disable-line n/no-callback-literal
         return
