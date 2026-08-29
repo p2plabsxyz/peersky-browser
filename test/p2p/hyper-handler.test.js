@@ -89,6 +89,7 @@ describe('Hyper protocol handler', function () {
     })
     const hyperCache = []
     const saveHyperCache = sinon.stub()
+    const rememberPrivateHyperdrive = sinon.stub().resolves()
 
     const module = await esmock('../../src/protocols/hyper-handler.js', {
       electron: {
@@ -113,6 +114,9 @@ describe('Hyper protocol handler', function () {
         hyperCache,
         saveHyperCache
       },
+      '../../src/protocols/private-hyperdrive-registry.js': {
+        rememberPrivateHyperdrive
+      },
       '../../src/pages/p2p/peerchat/p2p.js': {
         initChat,
         handleChatRequest,
@@ -133,7 +137,8 @@ describe('Hyper protocol handler', function () {
       sdk,
       privateSdk,
       hyperCache,
-      saveHyperCache
+      saveHyperCache,
+      rememberPrivateHyperdrive
     }
   }
 
@@ -334,7 +339,7 @@ describe('Hyper protocol handler', function () {
   })
 
   it('does not persist private drive keys in the shared Hyper cache', async function () {
-    const { module, hyperCache, saveHyperCache } = await loadHyperModule()
+    const { module, hyperCache, saveHyperCache, rememberPrivateHyperdrive } = await loadHyperModule()
     const handler = await module.createHandler({ storage: 'test-private-cache' })
 
     const response = await handler(new Request(
@@ -345,6 +350,8 @@ describe('Hyper protocol handler', function () {
     expect(response.status).to.equal(200)
     expect(hyperCache).to.deep.equal([])
     expect(saveHyperCache.called).to.equal(false)
+    expect(rememberPrivateHyperdrive.calledOnce).to.equal(true)
+    expect(rememberPrivateHyperdrive.firstCall.args[1]).to.include({ name: 'private-file' })
   })
 
   it('rejects unsupported upload visibility before opening a drive', async function () {

@@ -80,6 +80,13 @@ async function seedUserData (dir) {
   await mkdir(path.join(dir, 'hyper'), { recursive: true })
   await writeFile(path.join(dir, 'hyper', 'core'), 'hyper-core-content')
   await writeFile(path.join(dir, 'hyper', 'LOCK'), 'locked')
+  await mkdir(path.join(dir, 'hyper-private'), { recursive: true })
+  await writeFile(path.join(dir, 'hyper-private', 'private-core'), 'private-hyper-content')
+  await writeFile(path.join(dir, 'privateHyperdrives.json'), JSON.stringify([{
+    name: 'private-file.txt',
+    url: `hyper://${'a'.repeat(52)}/`,
+    timestamp: 1
+  }]))
   // Lock files that must be excluded from the bundle
   await writeFile(path.join(dir, 'ipfs', 'LOCK'), 'locked')
   await writeFile(path.join(dir, 'ipfs', 'repo.lock'), 'locked')
@@ -102,6 +109,8 @@ describe('backup-core', function () {
     expect(result.manifest.peerskyVersion).to.equal('9.9.9')
     expect(Object.keys(result.manifest.files)).to.include.members(['tabs.json', 'hyper'])
     expect(result.manifest.files).not.to.have.property('ipfs')
+    expect(result.manifest.files).not.to.have.property('hyper-private')
+    expect(result.manifest.files).not.to.have.property('privateHyperdrives.json')
 
     const manifest = await readManifest(outPath)
     expect(manifest.files).to.deep.equal(result.manifest.files)
@@ -121,6 +130,38 @@ describe('backup-core', function () {
       ipfsExists = false
     }
     expect(ipfsExists).to.equal(false)
+  })
+
+  it('includes private Hyperdrive data only when explicitly requested', async function () {
+    const userData = await makeTempDir('peersky-bk-private-src-')
+    await seedUserData(userData)
+    const outPath = path.join(await makeTempDir('peersky-bk-private-out-'), 'backup.zip')
+
+    const result = await createBackupZip(userData, outPath, { includePrivate: true })
+
+    expect(result.manifest.files).to.have.property('hyper-private')
+    expect(result.manifest.files).to.have.property('privateHyperdrives.json')
+
+    const dest = await makeTempDir('peersky-bk-private-dest-')
+    await extractBackupZip(outPath, dest)
+    await verifyManifest(dest, result.manifest)
+    expect(await readFile(path.join(dest, 'hyper-private', 'private-core'), 'utf8'))
+      .to.equal('private-hyper-content')
+  })
+
+  it('allows identity transfers to explicitly exclude private Hyperdrive data', async function () {
+    const userData = await makeTempDir('peersky-bk-private-transfer-src-')
+    await seedUserData(userData)
+    const outPath = path.join(await makeTempDir('peersky-bk-private-transfer-out-'), 'backup.zip')
+
+    const result = await createBackupZip(userData, outPath, {
+      isIdentityTransfer: true,
+      targetDeviceType: 'mobile',
+      includePrivate: false
+    })
+
+    expect(result.manifest.files).not.to.have.property('hyper-private')
+    expect(result.manifest.files).not.to.have.property('privateHyperdrives.json')
   })
 
   it('excludes lock files from the manifest and bundle', async function () {

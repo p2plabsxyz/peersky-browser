@@ -20,9 +20,16 @@ const identityCreateBtn = document.getElementById('identity-create')
 const identityUploadHyperBtn = document.getElementById('identity-upload-hyper')
 const identityDeviceKey = document.getElementById('identity-device-key')
 const identityKeyCopyBtn = document.getElementById('identity-key-copy')
+const backupIncludePrivate = document.getElementById('backup-include-private')
+const identityIncludePrivate = document.getElementById('identity-include-private')
+const backupPrivateWarning = document.getElementById('backup-private-warning')
+const identityPrivateWarning = document.getElementById('identity-private-warning')
+const privateHyperdriveStatus = document.getElementById('private-hyperdrive-status')
+const privateHyperdriveList = document.getElementById('private-hyperdrive-list')
 
 let selectedZipPath = null
 let selectedManifest = null
+let privateHyperdriveCount = null
 
 function formatBytes (bytes) {
   if (!bytes || bytes < 1024) return `${bytes || 0} B`
@@ -64,7 +71,64 @@ function setBusy (busy) {
   if (restoreBtn) restoreBtn.disabled = busy
   if (identityCreateBtn) identityCreateBtn.disabled = busy
   if (identityUploadHyperBtn) identityUploadHyperBtn.disabled = busy
+  if (backupIncludePrivate) backupIncludePrivate.disabled = busy
+  if (identityIncludePrivate) identityIncludePrivate.disabled = busy
 }
+
+function exclusionMessage () {
+  if (privateHyperdriveCount === null) {
+    return 'Private upload count unavailable; private uploads are not included.'
+  }
+  const noun = privateHyperdriveCount === 1 ? 'upload' : 'uploads'
+  return `${privateHyperdriveCount} private ${noun} not included.`
+}
+
+function updatePrivateWarnings () {
+  for (const [checkbox, warning] of [
+    [backupIncludePrivate, backupPrivateWarning],
+    [identityIncludePrivate, identityPrivateWarning]
+  ]) {
+    if (!checkbox || !warning) continue
+    const excluded = !checkbox.checked && (privateHyperdriveCount === null || privateHyperdriveCount > 0)
+    warning.textContent = excluded ? exclusionMessage() : ''
+    warning.hidden = !excluded
+  }
+}
+
+async function loadPrivateHyperdrives () {
+  if (!api || typeof api.listPrivateHyperdrives !== 'function') return
+  const response = await api.listPrivateHyperdrives()
+  privateHyperdriveList.replaceChildren()
+  if (!response.success) {
+    privateHyperdriveCount = null
+    privateHyperdriveStatus.textContent = `Could not list private uploads: ${response.error}`
+    updatePrivateWarnings()
+    return
+  }
+
+  const items = Array.isArray(response.items) ? response.items : []
+  privateHyperdriveCount = items.length
+  privateHyperdriveStatus.textContent = items.length === 0
+    ? 'No private uploads on this device.'
+    : `${items.length} private ${items.length === 1 ? 'upload' : 'uploads'} on this device.`
+
+  for (const item of items) {
+    const row = document.createElement('li')
+    const link = document.createElement('a')
+    link.href = item.url
+    link.target = '_blank'
+    link.rel = 'noopener noreferrer'
+    link.textContent = item.name
+    row.appendChild(link)
+    const created = new Date(item.timestamp)
+    if (!Number.isNaN(created.getTime())) row.append(` - ${created.toLocaleString()}`)
+    privateHyperdriveList.appendChild(row)
+  }
+  updatePrivateWarnings()
+}
+
+backupIncludePrivate?.addEventListener('change', updatePrivateWarnings)
+identityIncludePrivate?.addEventListener('change', updatePrivateWarnings)
 
 function requestPassphrase ({ confirmation, description }) {
   const dialog = document.getElementById('backup-passphrase-dialog')
@@ -173,7 +237,7 @@ createBtn?.addEventListener('click', async () => {
   try {
     const passphrase = await requestNewPassphrase()
     if (passphrase === null) return
-    const res = await api.create(passphrase)
+    const res = await api.create(passphrase, backupIncludePrivate?.checked === true)
     if (res.canceled) return
     if (res.success) {
       showStatus(`Backup saved (${formatBytes(res.bytes)}): ${res.filePath}`, 'success')
@@ -304,7 +368,10 @@ identityCreateBtn?.addEventListener('click', async () => {
   showProgress('Creating encrypted identity transfer...')
   statusBox.style.display = 'none'
   try {
-    const res = await api.createIdentityTransfer(identityTargetKey.value.trim())
+    const res = await api.createIdentityTransfer(
+      identityTargetKey.value.trim(),
+      identityIncludePrivate?.checked !== false
+    )
     if (res.canceled) return
     if (res.success) {
       showStatus(`Identity transfer saved (${formatBytes(res.bytes)}): ${res.filePath}`, 'success')
@@ -328,7 +395,10 @@ identityUploadHyperBtn?.addEventListener('click', async () => {
   identityTransferStatus.style.display = 'none'
   cidRow.style.display = 'none'
   try {
-    const res = await api.uploadIdentityTransferHyper(identityTargetKey.value.trim())
+    const res = await api.uploadIdentityTransferHyper(
+      identityTargetKey.value.trim(),
+      identityIncludePrivate?.checked !== false
+    )
     if (res.success) {
       cidValue.textContent = res.address
       const qrImg = document.getElementById('backup-qr-code')
@@ -423,4 +493,10 @@ restoreBtn?.addEventListener('click', async () => {
 
 loadDeviceInfo().catch((err) => {
   if (identityDeviceKey) identityDeviceKey.textContent = `Could not load device pairing code: ${err.message}`
+})
+
+loadPrivateHyperdrives().catch((err) => {
+  privateHyperdriveCount = null
+  if (privateHyperdriveStatus) privateHyperdriveStatus.textContent = `Could not list private uploads: ${err.message}`
+  updatePrivateWarnings()
 })

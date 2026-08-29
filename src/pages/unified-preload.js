@@ -461,13 +461,14 @@ const downloadsAPI = {
 
 // Backup API - Available only to the dedicated backup page
 const backupAPI = {
-  create: (passphrase) => ipcRenderer.invoke('backup-create', { passphrase }),
+  create: (passphrase, includePrivate = false) => ipcRenderer.invoke('backup-create', { passphrase, includePrivate }),
   validate: () => ipcRenderer.invoke('backup-validate'),
   restore: (zipPath, passphrase) => ipcRenderer.invoke('backup-restore', { zipPath, passphrase }),
   restoreCid: (address, passphrase) => ipcRenderer.invoke('backup-restore-cid', { address, passphrase }),
   getDeviceInfo: () => ipcRenderer.invoke('backup-device-info'),
-  createIdentityTransfer: (targetPairingPayload) => ipcRenderer.invoke('backup-identity-create', { targetPairingPayload }),
-  uploadIdentityTransferHyper: (targetPairingPayload) => ipcRenderer.invoke('backup-identity-upload-hyper', { targetPairingPayload }),
+  listPrivateHyperdrives: () => ipcRenderer.invoke('backup-private-hyperdrives'),
+  createIdentityTransfer: (targetPairingPayload, includePrivate = true) => ipcRenderer.invoke('backup-identity-create', { targetPairingPayload, includePrivate }),
+  uploadIdentityTransferHyper: (targetPairingPayload, includePrivate = true) => ipcRenderer.invoke('backup-identity-upload-hyper', { targetPairingPayload, includePrivate }),
   relaunch: () => ipcRenderer.invoke('backup-relaunch'),
   onProgress: (callback) => createEventListener('backup-progress', callback)
 }

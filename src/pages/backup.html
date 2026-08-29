@@ -39,6 +39,11 @@
     .backup-passphrase-dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
     .backup-passphrase-dialog input { width: 100%; box-sizing: border-box; margin: 8px 0; }
     .backup-passphrase-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+    .private-backup-option { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+    .private-backup-warning { color: #dc3545; font-weight: 600; }
+    #private-hyperdrive-list { margin: 10px 0 0; padding-left: 20px; }
+    #private-hyperdrive-list li { margin: 6px 0; overflow-wrap: anywhere; }
+    #private-hyperdrive-list a { color: var(--settings-link-color, #4da3ff); }
   </style>
   <title>Backup & Restore</title>
 </head>
@@ -70,6 +75,11 @@
                 your tabs, window layout, P2P identity, PeerChat rooms, and Hyper
                 repository. The refetchable IPFS repository is not included.</p>
               <p class="setting-description" style="margin-top: 6px;">Note: Since this uses P2P networks, the device that uploaded the backup (or another peer) must remain online for others to download it.</p>
+              <label class="private-backup-option" for="backup-include-private">
+                <input type="checkbox" id="backup-include-private">
+                Include private Hyperdrive uploads
+              </label>
+              <p id="backup-private-warning" class="setting-description private-backup-warning" hidden></p>
             </div>
             <div class="setting-control">
               <button type="button" id="backup-create" class="btn btn-primary">Create Backup</button>
@@ -82,6 +92,11 @@
             <div class="setting-label">
               Identity transfer
               <p class="setting-description">Scan or paste the device pairing code shown by the receiving device. The code identifies whether it is Mobile or Desktop. Upload Hyper creates a sealed, short-lived transfer for that device.</p>
+              <label class="private-backup-option" for="identity-include-private">
+                <input type="checkbox" id="identity-include-private" checked>
+                Include private Hyperdrive uploads
+              </label>
+              <p id="identity-private-warning" class="setting-description private-backup-warning" hidden></p>
             </div>
             <div class="setting-control" style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; align-items: center;">
               <button type="button" id="identity-scan-qr" class="btn btn-secondary" style="height: 34px; box-sizing: border-box; margin: 0;">Scan QR</button>
@@ -112,6 +127,17 @@
         </section>
 
         <div id="identity-transfer-status" class="backup-status success" style="display: none;"></div>
+
+        <section class="settings-section">
+          <div class="setting-row tall-row">
+            <div class="setting-label">
+              Private Hyperdrive uploads
+              <p class="setting-description">These uploads stay on this device unless you explicitly include them in a backup or identity transfer.</p>
+              <p id="private-hyperdrive-status" class="setting-description">Loading...</p>
+              <ul id="private-hyperdrive-list"></ul>
+            </div>
+          </div>
+        </section>
 
         <section id="backup-cid-section" class="settings-section" style="display: none;">
           <div id="backup-cid-row" class="setting-row" style="border-bottom: none;">

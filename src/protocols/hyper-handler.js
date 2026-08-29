@@ -17,6 +17,7 @@ import { createLogger } from '../logger.js'
 import { hyperCache, saveHyperCache } from './config.js'
 import { enforceExtensionWritePolicy } from '../extensions/request-policy.js'
 import { resolveHyperdriveUploadTarget } from './hyper-drive-visibility.js'
+import { rememberPrivateHyperdrive } from './private-hyperdrive-registry.js'
 
 import { _suspendHyper, _hyperPublishFile, _hyperFetchToFile } from '../backup/hyper-backup.js'
 
@@ -392,7 +393,14 @@ export async function createHandler (options, securityOptions = {}) {
           const drive = await targetSdk.getDrive(target.driveName, {
             autoJoin: target.autoJoin
           })
-          if (visibility === 'private') rememberPrivateDrive(drive)
+          if (visibility === 'private') {
+            rememberPrivateDrive(drive)
+            await rememberPrivateHyperdrive(app.getPath('userData'), {
+              name: keyName,
+              url: drive.url,
+              timestamp: Date.now()
+            })
+          }
           resp = new Response(drive.url, {
             status: 200,
             headers: { 'Content-Type': 'text/plain' }
