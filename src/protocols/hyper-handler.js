@@ -401,7 +401,7 @@ export async function createHandler (options, securityOptions = {}) {
           log.info('Extracted raw key response:', formatHyperUrlForLog(driveKeyStr))
 
           const match = driveKeyStr.match(/([0-9a-zA-Z]{52,64})/)
-          if (match) {
+          if (match && visibility !== 'private') {
             const driveKey = match[1]
             const timestamp = Date.now()
             const existingEntry = hyperCache.find(entry => entry.key === driveKey)

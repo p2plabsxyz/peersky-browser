@@ -82,6 +82,8 @@ describe('Hyper protocol handler', function () {
     const hyperFetchFactory = sinon.stub().callsFake(async ({ sdk: targetSdk }) => {
       return targetSdk === privateSdk ? privateFetchStub : fetchStub
     })
+    const hyperCache = []
+    const saveHyperCache = sinon.stub()
 
     const module = await esmock('../../src/protocols/hyper-handler.js', {
       electron: {
@@ -102,6 +104,10 @@ describe('Hyper protocol handler', function () {
       'hypercore-fetch': {
         default: hyperFetchFactory
       },
+      '../../src/protocols/config.js': {
+        hyperCache,
+        saveHyperCache
+      },
       '../../src/pages/p2p/peerchat/p2p.js': {
         initChat,
         handleChatRequest,
@@ -120,7 +126,9 @@ describe('Hyper protocol handler', function () {
       handleChatRequest,
       lanMock,
       sdk,
-      privateSdk
+      privateSdk,
+      hyperCache,
+      saveHyperCache
     }
   }
 
@@ -283,6 +291,20 @@ describe('Hyper protocol handler', function () {
 
     expect(privateFetchStub.callCount).to.equal(2)
     expect(fetchStub.called).to.equal(false)
+  })
+
+  it('does not persist private drive keys in the shared Hyper cache', async function () {
+    const { module, hyperCache, saveHyperCache } = await loadHyperModule()
+    const handler = await module.createHandler({ storage: 'test-private-cache' })
+
+    const response = await handler(new Request(
+      'hyper://localhost/?key=private-file&visibility=private',
+      { method: 'POST' }
+    ))
+
+    expect(response.status).to.equal(200)
+    expect(hyperCache).to.deep.equal([])
+    expect(saveHyperCache.called).to.equal(false)
   })
 
   it('rejects unsupported upload visibility before opening a drive', async function () {
