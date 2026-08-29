@@ -15,6 +15,11 @@ describe('Hyper protocol handler', function () {
     const createMockSdk = (id) => ({
       id,
       close: sinon.stub().resolves(),
+      corestore: {
+        storage: {
+          hasCore: sinon.stub().resolves(false)
+        }
+      },
       getDrive: sinon.stub().callsFake(async (name) => ({
         core: {},
         url: `hyper://${String(name).replace(/[^a-z0-9]/gi, '').padEnd(52, 'a').slice(0, 52)}/`
@@ -256,9 +261,30 @@ describe('Hyper protocol handler', function () {
 
     expect(publicResponse.status).to.equal(200)
     expect(privateResponse.status).to.equal(200)
-    expect(sdk.getDrive.calledWithExactly('hyperdrive-public', { autoJoin: true })).to.equal(true)
-    expect(privateSdk.getDrive.calledWithExactly('hyperdrive-private', { autoJoin: false })).to.equal(true)
-    expect(sdk.getDrive.calledWith('hyperdrive-private')).to.equal(false)
+    expect(sdk.getDrive.calledWithExactly('public-file', { autoJoin: true })).to.equal(true)
+    expect(privateSdk.getDrive.calledWithExactly('private-file', { autoJoin: false })).to.equal(true)
+    expect(sdk.getDrive.calledWith('private-file')).to.equal(false)
+  })
+
+  it('uses a distinct Hyperdrive for each upload name', async function () {
+    const { module, sdk, privateSdk } = await loadHyperModule()
+    const handler = await module.createHandler({ storage: 'test-per-upload-drives' })
+
+    for (const name of ['first-file', 'second-file']) {
+      await handler(new Request(
+        `hyper://localhost/?key=${name}&visibility=public`,
+        { method: 'POST' }
+      ))
+      await handler(new Request(
+        `hyper://localhost/?key=${name}&visibility=private`,
+        { method: 'POST' }
+      ))
+    }
+
+    expect(sdk.getDrive.calledWithExactly('first-file', { autoJoin: true })).to.equal(true)
+    expect(sdk.getDrive.calledWithExactly('second-file', { autoJoin: true })).to.equal(true)
+    expect(privateSdk.getDrive.calledWithExactly('first-file', { autoJoin: false })).to.equal(true)
+    expect(privateSdk.getDrive.calledWithExactly('second-file', { autoJoin: false })).to.equal(true)
   })
 
   it('keeps the private runtime outside LAN discovery and Corestore replication', async function () {
@@ -290,6 +316,20 @@ describe('Hyper protocol handler', function () {
     await handler(new Request(privateFileUrl))
 
     expect(privateFetchStub.callCount).to.equal(2)
+    expect(fetchStub.called).to.equal(false)
+  })
+
+  it('restores private routing from the isolated Corestore after restart', async function () {
+    const { module, fetchStub, privateFetchStub, privateSdk } = await loadHyperModule()
+    privateSdk.corestore.storage.hasCore.resolves(true)
+    const handler = await module.createHandler({ storage: 'test-private-restore' })
+
+    const response = await handler(new Request(
+      `hyper://${'a'.repeat(52)}/private-file.txt`
+    ))
+
+    expect(response.status).to.equal(200)
+    expect(privateFetchStub.calledOnce).to.equal(true)
     expect(fetchStub.called).to.equal(false)
   })
 

@@ -6,6 +6,8 @@ import { app, safeStorage } from 'electron'
 import { create as createSDK } from 'hyper-sdk'
 import HyperDHTmDNS from '@p2plabs/hyperdht-mdns'
 import makeHyperFetch from 'hypercore-fetch'
+import hypercoreCrypto from 'hypercore-crypto'
+import z32 from 'z32'
 import {
   initChat,
   handleChatRequest as handleChatRequestP2P,
@@ -14,18 +16,15 @@ import {
 import { createLogger } from '../logger.js'
 import { hyperCache, saveHyperCache } from './config.js'
 import { enforceExtensionWritePolicy } from '../extensions/request-policy.js'
-import {
-  getExistingNamedDrive,
-  HYPERDRIVE_PRIVATE_DRIVE_NAME,
-  resolveHyperdriveUploadTarget
-} from './hyper-drive-visibility.js'
+import { resolveHyperdriveUploadTarget } from './hyper-drive-visibility.js'
 
 import { _suspendHyper, _hyperPublishFile, _hyperFetchToFile } from '../backup/hyper-backup.js'
 
 const log = createLogger('protocols:hyper')
 
 // Single SDK and swarm for the app lifecycle (hyper:// browsing + chat share the same swarm).
-let sdk, fetch, privateSdk, privateFetch, privateDriveHostname, savedSdkOptions
+let sdk, fetch, privateSdk, privateFetch, savedSdkOptions
+const privateDriveHostnames = new Set()
 const ephemeralPublishers = new Set()
 
 // keep chunks smaller to avoid oversized blocks.
@@ -195,16 +194,32 @@ function getPrivateSDKOptions (options) {
 
 function rememberPrivateDrive (drive) {
   try {
-    privateDriveHostname = new URL(drive.url).hostname
-  } catch {
-    privateDriveHostname = null
-  }
+    privateDriveHostnames.add(new URL(drive.url).hostname)
+  } catch {}
+}
+
+function decodeHyperdriveKey (hostname) {
+  try {
+    if (hostname.length === 52) return z32.decode(hostname)
+    if (/^[0-9a-f]{64}$/i.test(hostname)) return Buffer.from(hostname, 'hex')
+  } catch {}
+  return null
+}
+
+async function isStoredPrivateDrive (hostname) {
+  if (privateDriveHostnames.has(hostname)) return true
+  const key = decodeHyperdriveKey(hostname)
+  if (!key || !privateSdk) return false
+  const discoveryKey = hypercoreCrypto.discoveryKey(key)
+  if (!await privateSdk.corestore.storage.hasCore(discoveryKey)) return false
+  privateDriveHostnames.add(hostname)
+  return true
 }
 
 function formatHyperUrlForLog (value) {
   try {
     const parsed = new URL(value)
-    if (privateDriveHostname && parsed.hostname === privateDriveHostname) {
+    if (privateDriveHostnames.has(parsed.hostname)) {
       return `hyper://[private]${parsed.pathname}`
     }
   } catch {}
@@ -228,11 +243,6 @@ async function initializePrivateHyperSDK (options) {
   const openedSdk = await createSDK(privateOptions)
   try {
     const openedFetch = await makeHyperFetch({ sdk: openedSdk, writable: true })
-    const existingDrive = await getExistingNamedDrive(openedSdk, {
-      driveName: HYPERDRIVE_PRIVATE_DRIVE_NAME,
-      autoJoin: false
-    })
-    if (existingDrive) rememberPrivateDrive(existingDrive)
     privateSdk = openedSdk
     privateFetch = openedFetch
     return privateFetch
@@ -245,7 +255,7 @@ async function initializePrivateHyperSDK (options) {
 async function getHyperRequestContext (url) {
   await initializePrivateHyperSDK()
   const hostname = new URL(url).hostname
-  if (privateDriveHostname && hostname === privateDriveHostname) {
+  if (await isStoredPrivateDrive(hostname)) {
     return { sdk: privateSdk, fetch: privateFetch, private: true }
   }
   return { sdk, fetch: await initializeHyperSDK(), private: false }
@@ -257,7 +267,7 @@ export async function suspendHyper () {
     _suspendHyper(privateSdk, () => {
       privateSdk = null
       privateFetch = null
-      privateDriveHostname = null
+      privateDriveHostnames.clear()
     }),
     _suspendHyper(sdk, () => {
       sdk = null
@@ -363,6 +373,7 @@ export async function createHandler (options, securityOptions = {}) {
       })
     }
 
+    if (!isKeyRequest) await isStoredPrivateDrive(urlObj.hostname)
     log.info(`Handling request: ${method} ${formatHyperUrlForLog(url)}`)
 
     if (isKeyRequest) {
@@ -370,7 +381,7 @@ export async function createHandler (options, securityOptions = {}) {
         let resp
         const visibility = urlObj.searchParams.get('visibility')
         if (visibility !== null) {
-          const target = resolveHyperdriveUploadTarget(visibility)
+          const target = resolveHyperdriveUploadTarget(visibility, keyName)
           if (!target) {
             return new Response('Visibility must be public or private.', {
               status: 400,
