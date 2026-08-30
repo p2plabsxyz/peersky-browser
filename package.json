@@ -234,6 +234,9 @@
     "webtorrent": "^3.0.21",
     "yjs": "^13.6.27"
   },
+  "overrides": {
+    "bare-dgram": "1.0.1"
+  },
   "devDependencies": {
     "@istanbuljs/esm-loader-hook": "^0.3.0",
     "chai": "^6.2.2",
