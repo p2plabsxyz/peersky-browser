@@ -53,8 +53,18 @@ class NavBox extends HTMLElement {
     const urlInput = this.querySelector('#url')
     if (!urlInput) return
 
-    // Simple URL display for input element
-    urlInput.value = url || ''
+    urlInput.value = this._formatUrlForDisplay(url || '')
+  }
+
+  _formatUrlForDisplay (url) {
+    try {
+      const parsed = new URL(url)
+      const isHttp = parsed.protocol === 'https:' || parsed.protocol === 'http:'
+      if (isHttp && parsed.pathname === '/') {
+        return parsed.origin + parsed.search + parsed.hash
+      }
+    } catch {}
+    return url
   }
 
   buildNavBox () {
@@ -631,6 +641,13 @@ class NavBox extends HTMLElement {
     }
     document.addEventListener('mousedown', this._outsideClickListener)
 
+    this._qrBlurListener = () => this.hideQrCodePopup()
+    window.addEventListener('blur', this._qrBlurListener)
+    this._qrKeyListener = (e) => {
+      if (e.key === 'Escape') this.hideQrCodePopup()
+    }
+    document.addEventListener('keydown', this._qrKeyListener)
+
     this._resizeListener = () => {
       this._positionQrPopup()
     }
@@ -670,6 +687,15 @@ class NavBox extends HTMLElement {
     if (this._outsideClickListener) {
       document.removeEventListener('mousedown', this._outsideClickListener)
       this._outsideClickListener = null
+    }
+
+    if (this._qrBlurListener) {
+      window.removeEventListener('blur', this._qrBlurListener)
+      this._qrBlurListener = null
+    }
+    if (this._qrKeyListener) {
+      document.removeEventListener('keydown', this._qrKeyListener)
+      this._qrKeyListener = null
     }
 
     if (this._resizeListener) {

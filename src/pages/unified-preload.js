@@ -841,6 +841,10 @@ window.addEventListener('DOMContentLoaded', async () => {
   try {
     // Initialize theme on page load for internal pages
     if (isInternal) {
+      ipcRenderer.on('theme-changed', (_event, theme) => {
+        if (theme) document.documentElement.setAttribute('data-theme', theme)
+      })
+
       // Disable transitions temporarily for non-settings internal pages
       if (!isSettings) {
         document.body.classList.add('transition-disabled')
