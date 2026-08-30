@@ -3,6 +3,19 @@ import sinon from 'sinon'
 
 import { isWindowSendable, sendToWindows } from '../../src/extensions/services/broadcast.js'
 
+/** Minimal stand-in for the manager's coalescing, mirroring index.js. */
+function makeCoalescer (broadcast, windowMs) {
+  let timer = null
+  return () => {
+    if (timer) return
+    timer = setTimeout(() => {
+      timer = null
+      broadcast()
+    }, windowMs)
+    timer.unref?.()
+  }
+}
+
 /**
  * A window whose WebContents outlives its render frame: isDestroyed() reports
  * false while touching mainFrame throws. This is what Electron leaves behind
@@ -81,6 +94,49 @@ describe('Broadcasting to browser windows', function () {
 
     expect(sent).to.equal(1)
     expect(live.__send.calledOnce).to.equal(true)
+  })
+
+  describe('coalescing browser-action updates', function () {
+    let clock
+    beforeEach(function () { clock = sinon.useFakeTimers() })
+    afterEach(function () { clock.restore() })
+
+    it('collapses a burst of updates into a single broadcast', function () {
+      const broadcast = sinon.stub()
+      const schedule = makeCoalescer(broadcast, 100)
+
+      // What a page load with several extensions updating badges looks like.
+      for (let i = 0; i < 40; i += 1) schedule()
+      expect(broadcast.called).to.equal(false)
+
+      clock.tick(100)
+      expect(broadcast.calledOnce).to.equal(true)
+    })
+
+    it('broadcasts again for a later burst', function () {
+      const broadcast = sinon.stub()
+      const schedule = makeCoalescer(broadcast, 100)
+
+      schedule()
+      clock.tick(100)
+      expect(broadcast.callCount).to.equal(1)
+
+      schedule()
+      schedule()
+      clock.tick(100)
+      expect(broadcast.callCount).to.equal(2)
+    })
+
+    it('does not broadcast before the window elapses', function () {
+      const broadcast = sinon.stub()
+      const schedule = makeCoalescer(broadcast, 100)
+
+      schedule()
+      clock.tick(99)
+      expect(broadcast.called).to.equal(false)
+      clock.tick(1)
+      expect(broadcast.calledOnce).to.equal(true)
+    })
   })
 
   it('handles a missing window list without throwing', function () {

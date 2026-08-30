@@ -14,31 +14,41 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron')
 
 // Context detection using window.location for immediate synchronous access
 const url = window.location.href
-const isSettings = url.startsWith('peersky://settings')
-const isExtensions = url.startsWith('peersky://extensions')
-const isHome = url.startsWith('peersky://home')
-const isOnboarding = url.startsWith('peersky://onboarding')
-const isBookmarks = url.includes('peersky://bookmarks')
-const isDownloads = url.includes('peersky://downloads')
-const isBackup = url.startsWith('peersky://backup')
-const isTabsPage = url.includes('peersky://tabs')
-const isP2PPage = url.startsWith('peersky://p2p')
-const isUserP2PApp = url.startsWith('peersky://myapps')
-const isInternal = (url.startsWith('peersky://') && !isUserP2PApp) || url.startsWith('file://') || url.includes('agregore.mauve.moe')
+
+// Scheme and host only: a page picks its own query string and fragment, so a
+// substring of the href proves nothing about which page it is.
+function parseLocation (href) {
+  try {
+    const { protocol, hostname } = new URL(href)
+    return { protocol, hostname }
+  } catch (_) {
+    return { protocol: '', hostname: '' }
+  }
+}
+
+const { protocol: pageProtocol, hostname: pageHost } = parseLocation(url)
+
+const isPeerskyPage = (name) => pageProtocol === 'peersky:' && pageHost === name
+
+const isSettings = isPeerskyPage('settings')
+const isExtensions = isPeerskyPage('extensions')
+const isHome = isPeerskyPage('home')
+const isOnboarding = isPeerskyPage('onboarding')
+const isBookmarks = isPeerskyPage('bookmarks')
+const isDownloads = isPeerskyPage('downloads')
+const isBackup = isPeerskyPage('backup')
+const isTabsPage = isPeerskyPage('tabs')
+const isP2PPage = isPeerskyPage('p2p')
+const isUserP2PApp = isPeerskyPage('myapps')
+const isTrustedExternalHost = pageHost === 'agregore.mauve.moe'
+const isInternal = (pageProtocol === 'peersky:' && !isUserP2PApp) || pageProtocol === 'file:' || isTrustedExternalHost
 const isExternal = !isInternal
 
+const isP2P = ['hyper:', 'ipfs:', 'ipns:', 'hs:'].includes(pageProtocol)
+
+const isBitTorrent = ['bt:', 'bittorrent:', 'magnet:'].includes(pageProtocol)
+
 console.log('Unified-preload: URL detection', { url, isInternal, isExternal })
-
-const isP2P =
-  url.startsWith('hyper://') ||
-  url.startsWith('ipfs://') ||
-  url.startsWith('ipns://') ||
-  url.startsWith('hs://')
-
-const isBitTorrent =
-  url.startsWith('bt://') ||
-  url.startsWith('bittorrent://') ||
-  url.startsWith('magnet:')
 
 // Expose minimal API for BitTorrent pages to open files in new tabs
 // Note: window.open() doesn't work for file:// URLs from custom protocols due to Electron security
@@ -49,7 +59,7 @@ if (isBitTorrent) {
 }
 
 // Expose LLM API for internal pages, P2P apps, and trusted domains
-if (isInternal || isP2P || isUserP2PApp || url.includes('agregore.mauve.moe')) {
+if (isInternal || isP2P || isUserP2PApp) {
   console.log('Unified-preload: Exposing LLM API for page:', url)
   // Iterator management for streaming
   const iteratorMaps = new Map()
@@ -831,6 +841,10 @@ window.addEventListener('DOMContentLoaded', async () => {
   try {
     // Initialize theme on page load for internal pages
     if (isInternal) {
+      ipcRenderer.on('theme-changed', (_event, theme) => {
+        if (theme) document.documentElement.setAttribute('data-theme', theme)
+      })
+
       // Disable transitions temporarily for non-settings internal pages
       if (!isSettings) {
         document.body.classList.add('transition-disabled')

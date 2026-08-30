@@ -1,6 +1,6 @@
 # Testing Guide
 
-Peersky Browser has **186 tests** across 8 suites. They cover protocol handlers, P2P networking and file sync, backup and identity transfer, extension lifecycle, security policies, LLM streaming, and the auto-updater.
+Peersky Browser has **291 tests** across 9 suites. They cover protocol handlers, P2P networking and file sync, backup and identity transfer, extension lifecycle, security policies, LLM streaming, the auto-updater, and performance regressions.
 
 ## Running Tests
 
@@ -14,6 +14,7 @@ npm run test:extensions     # Extension lifecycle (~1s)
 npm run test:security       # Security policies (~1s)
 npm run test:llm            # LLM streaming + dispatcher contract (~1s)
 npm run test:updater        # Auto-updater (~1s)
+npm run test:perf           # Performance regressions (~5s)
 npm run test:integration    # App restart (~5+ min)
 npm run coverage            # Coverage report
 ```
@@ -54,6 +55,7 @@ npx mocha test/p2p/ipfs-handler.test.js --grep "CID norm" --timeout 20000
 - `test/security/` — Write policy & manifest validation
 - `test/llm/` — Streaming and dispatcher contract
 - `test/updater/` — Auto-updater states
+- `test/perf/` — Performance regressions (see `test/perf/README.md`)
 - `test/integration/` — Real Electron app restart
 - `test/fixtures/` — Shared fixtures (no specs)
 
@@ -64,13 +66,16 @@ npx mocha test/p2p/ipfs-handler.test.js --grep "CID norm" --timeout 20000
 
 ## Test Coverage
 
-### Protocol Unit Tests — `test:p2p` (58 tests)
+### Protocol Unit Tests — `test:p2p` (62 tests)
 - **CID**: v0→v1 normalization
 - **PeerId**: `Qm...` (base58) → peerIdFromString, `bafz...` (base32 CID) → peerIdFromCID
 - **ENS**: `ipfs-ns` codec (serve CID), `ipns-ns` codec (route via IPNS), fallback (strip prefix)
 - **Upload naming**: Single file → filename, directory → folder name, multiple → parent dir
 - **MIME detection**: By extension + HTML sniffing (first 512 bytes)
 - **Upload cache**: Metadata tracking with timestamp/URL/name
+- **p2pmd rooms**: an encrypted holesail seed survives a restart, an
+  undecryptable one falls back to the room key rather than failing, and a failed
+  request answers with its reason instead of dropping the connection
 
 ### E2E Tests — `test:p2p:e2e` (12 tests)
 - Protocol initialization (IPFS & Hyper)
@@ -83,7 +88,7 @@ npx mocha test/p2p/ipfs-handler.test.js --grep "CID norm" --timeout 20000
 - Install/update/uninstall lifecycle
 - Service worker reload & state persistence
 
-### Security Tests — `test:security` (6 tests)
+### Security Tests — `test:security` (33 tests)
 - GET always allowed, POST/PUT/PATCH require `p2pWrite` permission
 - Dangerous permissions blocked (nativeMessaging, debugger, desktopCapture)
 - Path traversal protection (`../` rejected)
@@ -99,9 +104,26 @@ npx mocha test/p2p/ipfs-handler.test.js --grep "CID norm" --timeout 20000
 - Streaming response parsing, including malformed chunks
 - undici dispatcher contract: the Agent must not reach global fetch
 
-### Updater Tests — `test:updater` (22 tests)
+### Updater Tests — `test:updater` (52 tests)
 - Manual check, pending update, and already-latest states
 - Squirrel error handling and install restart
+
+### Performance Tests — `test:perf` (44 tests)
+
+These pin the *work* the browser does on its hot paths — renderer round-trips,
+disk stats, node boots, state writes — rather than wall-clock times, which vary
+too much across machines to assert on. Each one guards a shape that was slow
+once, so re-introducing it fails the build.
+
+- p2p backends (Helia, hyper-sdk, the WebTorrent worker) do not start before the
+  first window can paint, and a burst of requests starts exactly one of each
+- Extensions load into the session together, and a tab that attaches while the
+  extension host is still booting is queued rather than lost
+- A drag-sized burst of window/tab events writes the session once, not once per
+  event, and the last request in a burst is never dropped
+- Internal assets resolve once and revalidate (304) instead of being re-read,
+  and `browser://theme` no longer stamps a fresh ETag per request
+- Opening an extension popup costs no renderer round-trip and no directory scan
 
 ### Integration Tests — `test:integration` (3 tests)
 - Real Electron app restart with extension persistence
@@ -126,6 +148,13 @@ ls -la .test-e2e-data/  # View test data after run
 ### Verbose Logging
 ```bash
 DEBUG_P2P=1 npm run test:p2p:e2e
+```
+
+The app's own console transport is set to `info`. Hot-path lines (per session
+save, per badge update) are logged at `debug`, so raise the level to see them:
+
+```bash
+PEERSKY_LOG_LEVEL=debug npm start
 ```
 
 ### Extension Test Issues

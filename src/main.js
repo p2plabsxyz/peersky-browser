@@ -5,12 +5,12 @@ import path from 'path'
 import crypto from 'crypto'
 import { createHandler as createBrowserHandler } from './protocols/peersky-protocol.js'
 import { createHandler as createBrowserThemeHandler } from './protocols/theme-handler.js'
-import { createHandler as createIPFSHandler } from './protocols/ipfs-handler.js'
-import { createHandler as createHyperHandler } from './protocols/hyper-handler.js'
+import { createHandler as createIPFSHandler, warmupIPFS } from './protocols/ipfs-handler.js'
+import { createHandler as createHyperHandler, warmupHyper } from './protocols/hyper-handler.js'
 import { createHandler as createHSHandler } from './protocols/hs-handler.js'
 import { createHandler as createWeb3Handler } from './protocols/web3-handler.js'
 import { createHandler as createFileHandler } from './protocols/file-handler.js'
-import { createHandler as createBittorrentHandler, setupBittorrentIpc, shutdownBittorrent } from './protocols/bittorrent-handler.js'
+import { createHandler as createBittorrentHandler, setupBittorrentIpc, shutdownBittorrent, warmupBittorrent } from './protocols/bittorrent-handler.js'
 import { ipfsOptions, hyperOptions } from './protocols/config.js'
 import { createMenuTemplate } from './actions.js'
 import WindowManager from './window-manager.js'
@@ -160,23 +160,57 @@ globalProtocol.registerSchemesAsPrivileged([
   { scheme: 'magnet', privileges: MAGNET_PROTOCOL }
 ])
 
+/**
+ * The shell window's webContents id behind a download, given whatever started
+ * it. Downloads usually come from a webview guest, whose owning window has to
+ * be resolved through its host.
+ *
+ * @param {Electron.WebContents} [wc]
+ * @returns {number|null}
+ */
+function shellWebContentsIdFor (wc) {
+  if (!wc || wc.isDestroyed?.()) return null
+  try {
+    const direct = BrowserWindow.fromWebContents(wc)
+    if (direct && !direct.isDestroyed()) return direct.webContents.id
+    const host = wc.hostWebContents
+    if (host && !host.isDestroyed()) return host.id
+  } catch (_) { }
+  return null
+}
+
 app.whenReady().then(async () => {
+  const bootStartedAt = Date.now()
   windowManager = new WindowManager()
-  await p2pAppRegistry.init()
-  p2pAppRegistry.setupIpc()
 
   // Set the WindowManager instance in context-menu.js
   setWindowManager(windowManager)
 
   // Get consistent session for protocols and extensions
   const userSession = getBrowserSession()
-  await setupProtocols(userSession)
+
+  // Everything the first window needs before it can paint, run together rather
+  // than one after another. Each of these is independent: protocol handlers,
+  // the p2p app registry behind peersky:// app pages, the settings that decide
+  // onboarding vs. restore, and the permission handler.
+  await Promise.all([
+    setupProtocols(userSession),
+    p2pAppRegistry.init(),
+    settingsManager.loadSettings(),
+    setupPermissionHandler(userSession)
+  ])
+
+  p2pAppRegistry.setupIpc()
   installExtensionWebRequestBridge(userSession)
   setupBittorrentIpc()
   setupBackupIpc()
 
   userSession.on('will-download', (event, item, sessionWebContents) => {
     const downloadId = crypto.randomUUID()
+    // The shell window that started this download. Progress goes to every
+    // window so an open popup or the downloads page stays current, but only
+    // this one may pop the panel open.
+    const originWindowWcId = shellWebContentsIdFor(sessionWebContents)
 
     activeDownloadItems.set(downloadId, item)
 
@@ -197,7 +231,7 @@ app.whenReady().then(async () => {
       trustedUIWebContents.forEach((id) => {
         const wc = webContents.fromId(id)
         if (wc && !wc.isDestroyed()) {
-          wc.send('download-progress', data)
+          wc.send('download-progress', { ...data, isOrigin: id === originWindowWcId })
         } else {
           trustedUIWebContents.delete(id)
         }
@@ -246,26 +280,26 @@ app.whenReady().then(async () => {
     })
   })
 
-  await setupPermissionHandler(userSession)
+  // The extension system loads every installed extension into the session, one
+  // at a time, which is the slowest thing at startup and nothing the first
+  // paint depends on. Let it run alongside window creation. Registrations that
+  // arrive before it finishes are queued by ExtensionManager.addWindow and
+  // flushed once the extension host exists, so a webview that attaches during
+  // this window is not lost.
+  const extensionsInitializing = extensionManager.initialize({ app, session: userSession })
 
-  // Initialize extension system
-  try {
-    log.info('Initializing extension system...')
-    await extensionManager.initialize({ app, session: userSession })
-    log.info('Extension system initialized successfully')
+  // Registered now, not when initialize() resolves: the first window asks for
+  // its browser actions the moment it loads, and every handler already waits on
+  // initialize() itself. Registering them late made those calls reject.
+  setupExtensionIpcHandlers(extensionManager)
 
-    // Setup extension IPC handlers
-    setupExtensionIpcHandlers(extensionManager)
-    log.info('Extension IPC handlers registered')
-  } catch (error) {
-    log.error('Failed to initialize extension system:', error)
-  }
+  const extensionsReady = extensionsInitializing
+    .then(() => log.info(`Extension system initialized in ${Date.now() - bootStartedAt}ms`))
+    .catch((error) => log.error('Failed to initialize extension system:', error))
 
   // Check for --new-window argument (from Windows taskbar jump list)
   const hasNewWindowArg = process.argv.includes('--new-window')
 
-  // Load settings and check if onboarding is completed
-  await settingsManager.loadSettings()
   const onboardingCompleted = settingsManager.settings.onboardingCompleted
 
   if (onboardingCompleted === false) {
@@ -305,6 +339,31 @@ app.whenReady().then(async () => {
   }
 
   windowManager.startSaver()
+
+  log.info(`First window opened ${Date.now() - bootStartedAt}ms after app ready`)
+
+  // The shell is on screen now. Boot the p2p stack behind it, and only once the
+  // first window has actually painted so the warm-up never competes with it.
+  const firstWindow = windowManager.all[0]
+  let warmupStarted = false
+  const startWarmup = () => {
+    if (warmupStarted) return
+    warmupStarted = true
+    warmP2PBackends()
+    extensionsReady.then(() => {
+      // Windows that opened while extensions were still loading show no browser
+      // actions until they are told to look again.
+      extensionManager.refreshBrowserActions()
+    })
+  }
+  const firstWebContents = firstWindow?.window?.webContents
+  if (firstWebContents && !firstWebContents.isDestroyed() && firstWebContents.isLoading()) {
+    firstWebContents.once('did-finish-load', startWarmup)
+    // A window that never finishes loading must not strand the p2p stack.
+    setTimeout(startWarmup, 5000).unref?.()
+  } else {
+    startWarmup()
+  }
 
   // Setup dock/taskbar menu for "New Window" option
   if (process.platform === 'darwin') {
@@ -415,6 +474,8 @@ app.on('before-quit', async (event) => {
   }
 
   try {
+    // Run any coalesced save that is still waiting, then take the final snapshot.
+    await withTimeout(windowManager.flushPendingSave(), SHUTDOWN_TIMEOUT_MS, 'Pending state flush')
     await withTimeout(windowManager.saveOpened(), SHUTDOWN_TIMEOUT_MS, 'Window state save')
     log.info('Window states saved successfully.')
   } catch (error) {
@@ -426,10 +487,20 @@ app.on('before-quit', async (event) => {
   process.exit(0)
 })
 
+/**
+ * Register every scheme the browser serves.
+ *
+ * The p2p backends (Helia, hyper-sdk, the WebTorrent worker) are started
+ * lazily: each takes seconds to come up, and nothing on the first screen needs
+ * them. Their handlers are registered here so a p2p:// URL entered a moment
+ * later still resolves — it just starts the backend on the way through — and
+ * warmP2PBackends() boots them in the background once the UI is up.
+ */
 async function setupProtocols (session) {
   const { protocol: sessionProtocol } = session
   const isExtensionWriteAllowed = ({ extensionId, scheme }) =>
     extensionManager.isP2PWriteAllowed(extensionId, scheme)
+  const lazy = true
 
   app.setAsDefaultProtocolClient('peersky')
   app.setAsDefaultProtocolClient('file')
@@ -443,33 +514,57 @@ async function setupProtocols (session) {
   app.setAsDefaultProtocolClient('bt')
   app.setAsDefaultProtocolClient('magnet')
 
-  const browserProtocolHandler = await createBrowserHandler()
+  const [
+    browserProtocolHandler,
+    browserThemeHandler,
+    ipfsProtocolHandler,
+    hyperProtocolHandler,
+    hsProtocolHandler,
+    web3ProtocolHandler,
+    fileProtocolHandler,
+    bittorrentProtocolHandler
+  ] = await Promise.all([
+    createBrowserHandler(),
+    createBrowserThemeHandler(),
+    createIPFSHandler(ipfsOptions, session, { isExtensionWriteAllowed, lazy }),
+    createHyperHandler(hyperOptions, { isExtensionWriteAllowed, lazy }),
+    createHSHandler(),
+    createWeb3Handler(),
+    createFileHandler(),
+    createBittorrentHandler({ lazy })
+  ])
+
   sessionProtocol.handle('peersky', browserProtocolHandler)
-
-  const browserThemeHandler = await createBrowserThemeHandler()
   sessionProtocol.handle('browser', browserThemeHandler)
-
-  const ipfsProtocolHandler = await createIPFSHandler(ipfsOptions, session, { isExtensionWriteAllowed })
   sessionProtocol.handle('ipfs', ipfsProtocolHandler)
   sessionProtocol.handle('ipns', ipfsProtocolHandler)
   sessionProtocol.handle('pubsub', ipfsProtocolHandler)
-
-  const hyperProtocolHandler = await createHyperHandler(hyperOptions, { isExtensionWriteAllowed })
   sessionProtocol.handle('hyper', hyperProtocolHandler)
-
-  const hsProtocolHandler = await createHSHandler()
   sessionProtocol.handle('hs', hsProtocolHandler)
-
-  const web3ProtocolHandler = await createWeb3Handler()
   sessionProtocol.handle('web3', web3ProtocolHandler)
-
-  const fileProtocolHandler = await createFileHandler()
   sessionProtocol.handle('file', fileProtocolHandler)
-
-  const bittorrentProtocolHandler = await createBittorrentHandler()
   sessionProtocol.handle('bittorrent', bittorrentProtocolHandler)
   sessionProtocol.handle('bt', bittorrentProtocolHandler)
   sessionProtocol.handle('magnet', bittorrentProtocolHandler)
+}
+
+/**
+ * Bring the p2p backends up in the background, after the UI is interactive.
+ *
+ * A user who opens a p2p:// URL straight away does not wait for this — the
+ * protocol handlers start whatever they need themselves. This only means the
+ * common case (opening one a few seconds in) finds the swarm already joined.
+ */
+function warmP2PBackends () {
+  for (const [label, warm] of [
+    ['IPFS', warmupIPFS],
+    ['Hyper', warmupHyper],
+    ['BitTorrent', warmupBittorrent]
+  ]) {
+    Promise.resolve()
+      .then(warm)
+      .catch((error) => log.warn(`${label} warm-up failed, will retry on first use:`, error?.message || error))
+  }
 }
 
 function installExtensionWebRequestBridge (session) {

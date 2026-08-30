@@ -420,6 +420,79 @@ describe('auto-updater', function () {
       expect(log.error.calledWithMatch(/checkForUpdates failed/)).to.equal(true)
     })
 
+    it('offers the first stable release to a beta user', async function () {
+      clock = sinon.useFakeTimers()
+      const { module, log } = await loadAutoUpdater({
+        version: '1.0.0-beta.28',
+        fetchResponse: {
+          ok: true,
+          status: 200,
+          body: {
+            tag_name: 'v1.0.0',
+            assets: [{ name: 'Peersky-Browser-Setup-1.0.0.exe', size: 1024, browser_download_url: 'https://example.test/setup.exe' }]
+          }
+        }
+      })
+
+      withPlatform('win32', () => module.setupAutoUpdater())
+      await clock.tickAsync(10000)
+
+      expect(log.info.calledWithMatch(/update-available/), 'a beta user was not offered the stable release').to.equal(true)
+    })
+
+    it('does not offer a prerelease to a stable user', async function () {
+      clock = sinon.useFakeTimers()
+      const { module, log } = await loadAutoUpdater({
+        version: '1.0.0',
+        fetchResponse: {
+          ok: true,
+          status: 200,
+          body: {
+            tag_name: 'v1.0.0-beta.29',
+            assets: [{ name: 'Peersky-Browser-Setup-1.0.0-beta.29.exe', size: 1024, browser_download_url: 'https://example.test/setup.exe' }]
+          }
+        }
+      })
+
+      withPlatform('win32', () => module.setupAutoUpdater())
+      await clock.tickAsync(10000)
+
+      expect(log.info.calledWithMatch(/update-not-available/), 'a stable user was offered a downgrade').to.equal(true)
+    })
+
+    it('still offers a newer beta between prereleases', async function () {
+      clock = sinon.useFakeTimers()
+      const { module, log } = await loadAutoUpdater({
+        version: '1.0.0-beta.28',
+        fetchResponse: {
+          ok: true,
+          status: 200,
+          body: {
+            tag_name: 'v1.0.0-beta.29',
+            assets: [{ name: 'Peersky-Browser-Setup-1.0.0-beta.29.exe', size: 1024, browser_download_url: 'https://example.test/setup.exe' }]
+          }
+        }
+      })
+
+      withPlatform('win32', () => module.setupAutoUpdater())
+      await clock.tickAsync(10000)
+
+      expect(log.info.calledWithMatch(/update-available/)).to.equal(true)
+    })
+
+    it('ignores a release whose tag is not a version', async function () {
+      clock = sinon.useFakeTimers()
+      const { module, log } = await loadAutoUpdater({
+        version: '1.0.0-beta.28',
+        fetchResponse: { ok: true, status: 200, body: { tag_name: 'nightly', assets: [] } }
+      })
+
+      withPlatform('win32', () => module.setupAutoUpdater())
+      await clock.tickAsync(10000)
+
+      expect(log.info.calledWithMatch(/update-not-available/)).to.equal(true)
+    })
+
     it('logs warning when GitHub API returns non-200', async function () {
       clock = sinon.useFakeTimers()
       const { module, log } = await loadAutoUpdater({

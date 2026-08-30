@@ -27,9 +27,12 @@ async function getAvailablePort () {
 class FakeHolesail {
   static rooms = new Map()
   static nextKey = 1
+  /** seed hex -> room key, so a seed identifies a room the way it does for real. */
+  static seedToKey = new Map()
 
   static reset () {
     FakeHolesail.rooms.clear()
+    FakeHolesail.seedToKey.clear()
     FakeHolesail.nextKey = 1
   }
 
@@ -52,11 +55,17 @@ class FakeHolesail {
   async ready () {
     if (this.options.server) {
       const port = Number(this.options.port || await getAvailablePort())
+      // Re-hosting with a known seed returns to the same room, which is the whole
+      // reason the seed is persisted.
+      const suppliedSeedHex = this.seed ? Buffer.from(this.seed).toString('hex') : null
+      const keyFromSeed = suppliedSeedHex ? FakeHolesail.seedToKey.get(suppliedSeedHex) : null
       const key =
-        typeof this.options.key === 'string' && this.options.key.length > 0
+        keyFromSeed ||
+        (typeof this.options.key === 'string' && this.options.key.length > 0
           ? this.options.key
-          : `hs://room-${FakeHolesail.nextKey++}`
+          : `hs://room-${FakeHolesail.nextKey++}`)
       const seedValue = this.seed || Buffer.from(`seed-${key}`.padEnd(32, '0').slice(0, 32))
+      FakeHolesail.seedToKey.set(Buffer.from(seedValue).toString('hex'), key)
       this.info = {
         url: key,
         key: `key-${key}`,
@@ -89,10 +98,50 @@ class FakeHolesail {
   async close () {}
 }
 
-async function loadHsHandler (userDataDir) {
+/**
+ * safeStorage as it behaves in production: encryption is available, and what
+ * comes back out of encryptString is not the plaintext.
+ *
+ * The default mock below reports encryption as unavailable, which stores seeds
+ * as plaintext hex that round-trips by accident. Real runs encrypt, and the
+ * ciphertext then has to survive a restart.
+ */
+const encryptingSafeStorage = {
+  isEncryptionAvailable: () => true,
+  encryptString: (value) => Buffer.concat([Buffer.from('ENC:'), Buffer.from(String(value))]),
+  decryptString: (buffer) => {
+    const text = Buffer.from(buffer).toString()
+    if (!text.startsWith('ENC:')) throw new Error('cannot decrypt')
+    return text.slice(4)
+  }
+}
+
+/** safeStorage that can encrypt but never decrypt, e.g. after a keychain reset. */
+const undecryptableSafeStorage = {
+  isEncryptionAvailable: () => true,
+  encryptString: (value) => Buffer.concat([Buffer.from('ENC:'), Buffer.from(String(value))]),
+  decryptString: () => { throw new Error('keychain unavailable') }
+}
+
+/**
+ * safeStorage as it actually behaves at startup: unavailable until the app is
+ * ready. Import the module first, then flip it, to reproduce the window the
+ * handler used to read the ports file in.
+ */
+function deferredSafeStorage () {
+  let ready = false
+  return {
+    becomeReady () { ready = true },
+    isEncryptionAvailable: () => ready,
+    encryptString: encryptingSafeStorage.encryptString,
+    decryptString: encryptingSafeStorage.decryptString
+  }
+}
+
+async function importHsHandler (userDataDir, safeStorage) {
   fs.mkdirSync(userDataDir, { recursive: true })
 
-  const module = await esmock('../../src/protocols/hs-handler.js', {
+  return esmock('../../src/protocols/hs-handler.js', {
     holesail: {
       default: FakeHolesail
     },
@@ -103,14 +152,17 @@ async function loadHsHandler (userDataDir) {
         // return the same fixture dir for any path key.
         getPath: (_pathType) => userDataDir
       },
-      safeStorage: {
+      safeStorage: safeStorage || {
         isEncryptionAvailable: () => false,
         encryptString: (value) => Buffer.from(String(value)),
         decryptString: (buffer) => Buffer.from(buffer).toString()
       }
     }
   })
+}
 
+async function loadHsHandler (userDataDir, safeStorage) {
+  const module = await importHsHandler(userDataDir, safeStorage)
   const handler = await module.createHandler()
   return { handler }
 }
@@ -321,6 +373,84 @@ describe('HS protocol handler', function () {
       await protocolPost(handler, 'close', {})
     } catch {}
     fs.rmSync(userDataDir, { recursive: true, force: true })
+  })
+
+  describe('rehosting a room after a restart', function () {
+    /**
+     * Seeds are encrypted with safeStorage, and safeStorage is unavailable until
+     * the app is ready. Reading the ports file at import time therefore skipped
+     * decryption and stored ciphertext where a seed belonged; the next rehost fed
+     * that to holesail as hex, which asserted, took the request down with it, and
+     * surfaced in the page as an opaque "Failed to fetch".
+     */
+    it('recovers an encrypted seed written by the previous run', async function () {
+      const { handler: first } = await loadHsHandler(userDataDir, encryptingSafeStorage)
+      const { data: room } = await protocolPost(first, 'create', { secure: false, udp: false })
+      expect(room.key, 'room was not created').to.be.a('string')
+      await protocolPost(first, 'close', {})
+
+      // What is on disk must be ciphertext, or this test proves nothing.
+      const ports = JSON.parse(fs.readFileSync(path.join(userDataDir, 'peersky-ports.json'), 'utf8'))
+      const stored = ports[room.key]
+      expect(stored, 'the room was not persisted').to.be.an('object')
+      expect(stored.seed, 'the seed was stored unencrypted').to.match(/^RU5D/)
+
+      // A second load is a restart: the file is re-read from scratch.
+      const { handler: restarted } = await loadHsHandler(userDataDir, encryptingSafeStorage)
+      const { response, data } = await protocolPost(restarted, 'rehost', { key: room.key })
+
+      expect(response.status, `rehost failed: ${data.error}`).to.equal(200)
+      expect(data.key, 'the room URL changed across the restart').to.equal(room.key)
+      await protocolPost(restarted, 'close', {})
+    })
+
+    it('does not read the ports file before safeStorage can decrypt', async function () {
+      const { handler: first } = await loadHsHandler(userDataDir, encryptingSafeStorage)
+      const { data: room } = await protocolPost(first, 'create', { secure: false, udp: false })
+      await protocolPost(first, 'close', {})
+
+      // The restart, in the order it really happens: the module is imported while
+      // encryption is still unavailable, and only then does the app become ready.
+      const storage = deferredSafeStorage()
+      const restarted = await importHsHandler(userDataDir, storage)
+      storage.becomeReady()
+      const handler = await restarted.createHandler()
+
+      const { response, data } = await protocolPost(handler, 'rehost', { key: room.key })
+      expect(response.status, `rehost failed: ${data.error}`).to.equal(200)
+      expect(data.key, 'the seed was read before it could be decrypted').to.equal(room.key)
+      await protocolPost(handler, 'close', {})
+    })
+
+    it('still rehosts when the stored seed cannot be decrypted', async function () {
+      const { handler: first } = await loadHsHandler(userDataDir, encryptingSafeStorage)
+      const { data: room } = await protocolPost(first, 'create', { secure: false, udp: false })
+      await protocolPost(first, 'close', {})
+
+      // Keychain reset, different machine, corrupted entry: the seed is gone, but
+      // the room key is not, and hosting from the key keeps the same URL.
+      const { handler: restarted } = await loadHsHandler(userDataDir, undecryptableSafeStorage)
+      const { response, data } = await protocolPost(restarted, 'rehost', { key: room.key })
+
+      expect(response.status, `rehost failed: ${data.error}`).to.equal(200)
+      expect(data.key).to.equal(room.key)
+      await protocolPost(restarted, 'close', {})
+    })
+  })
+
+  it('answers with the reason when a request fails instead of dropping the connection', async function () {
+    // An unhandled rejection here reaches the page as "Failed to fetch", with the
+    // cause visible only in the main process log.
+    const response = await handler(new Request('hs://p2pmd?action=rehost', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{ not json'
+    }))
+
+    expect(response.status).to.equal(500)
+    const data = await response.json()
+    expect(data.error, 'the failure carried no reason').to.be.a('string')
+    expect(data.error.length).to.be.greaterThan(0)
   })
 
   it('keeps peer edits when host disconnects and reconnects', async function () {

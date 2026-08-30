@@ -405,3 +405,13 @@ code {
 .split-view-divider.dragging {
   cursor: col-resize !important;
 }
+
+/* Transparent theme: popups float over page content, where a see-through
+   background is unreadable. Use the dark theme's surfaces for them. */
+[data-theme="transparent"] .url-autocomplete-dropdown {
+  background-color: #27272a;
+}
+
+[data-theme="transparent"] .qr-popup {
+  background-color: #18181b;
+}
