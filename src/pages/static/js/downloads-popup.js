@@ -369,7 +369,7 @@ export class DownloadsPopup {
       .downloads-popup {
         position: absolute;
         width: 340px;
-        background-color: var(--browser-theme-background, #18181b);
+        background-color: var(--settings-card-bg, #18181b);
         border: 1px solid var(--browser-theme-border, #3f3f46);
         border-radius: 8px;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
