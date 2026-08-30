@@ -1,9 +1,9 @@
 import path from 'path'
 import { createLogger } from '../logger.js'
 import { fileURLToPath } from 'url'
-import mime from 'mime-types'
 import ScopedFS from 'scoped-fs'
 import { Readable } from 'stream'
+import { resolveFileCached, respondWithFile } from './static-file.js'
 
 const log = createLogger('protocols:theme')
 
@@ -20,23 +20,11 @@ const CHECK_PATHS = [
   (path) => path + '.html'
 ]
 
-async function resolveFile (filePath) {
-  for (const toTry of CHECK_PATHS) {
-    const tryPath = toTry(filePath)
-    if (await exists(tryPath)) return tryPath
-  }
-  throw new Error('File not found')
-}
+// request path -> resolved theme path; see the note in static-file.js.
+const resolveCache = new Map()
 
-async function exists (filePath) {
-  return new Promise((resolve, reject) => {
-    themeFS.stat(filePath, (err, stat) => {
-      if (err) {
-        if (err.code === 'ENOENT') resolve(false)
-        else reject(err)
-      } else resolve(stat.isFile())
-    })
-  })
+function resolveFile (filePath) {
+  return resolveFileCached({ scopedFs: themeFS, filePath, candidates: CHECK_PATHS, cache: resolveCache })
 }
 
 async function get404Response () {
@@ -80,40 +68,38 @@ export async function createHandler () {
       const fileName = parsedUrl.pathname.slice(1)
 
       try {
-        let resolvedPath
+        let resolved
 
         // Handle dynamic theme loading for vars.css
         if (fileName === 'vars.css') {
           try {
             // Use the unified themes.css file for all theme switching
-            resolvedPath = await resolveFile('themes.css')
+            resolved = await resolveFile('themes.css')
           } catch (themeError) {
             // Fallback to default vars.css if unified theme file not found
             log.warn('Unified themes.css file not found, falling back to vars.css')
-            resolvedPath = await resolveFile(fileName)
+            resolved = await resolveFile(fileName)
           }
         } else {
           // For all other files, use normal resolution
-          resolvedPath = await resolveFile(fileName)
+          resolved = await resolveFile(fileName)
         }
 
-        const data = Readable.toWeb(themeFS.createReadStream(resolvedPath))
-        const contentType = mime.lookup(resolvedPath) || 'text/plain'
-        const statusCode = 200
-        const headers = {
-          'Content-Type': contentType,
-          'Access-Control-Allow-Origin': '*',
-          'Allow-CSP-From': '*',
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          Pragma: 'no-cache',
-          Expires: '0',
-          ETag: `"theme-${Date.now()}"`,
-          'Last-Modified': new Date().toUTCString()
-        }
-
-        return new Response(data, {
-          status: statusCode,
-          headers
+        // These used to be served no-store with an ETag stamped from Date.now().
+        // That gave every request a brand new validator, so the shell's ~90KB of
+        // CSS and its webfont were re-read and re-parsed on every window and
+        // every internal page, and each response also churned a fresh cache
+        // entry. A validator derived from the file itself keeps edits visible in
+        // development while letting repeat loads answer 304.
+        return respondWithFile({
+          scopedFs: themeFS,
+          resolvedPath: resolved.resolvedPath,
+          stat: resolved.stat,
+          request,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Allow-CSP-From': '*'
+          }
         })
       } catch (e) {
         log.info('File not found:', fileName)

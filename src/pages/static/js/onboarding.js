@@ -17,8 +17,8 @@ setTimeout(() => {
   welcomeScreen.classList.add('hidden')
   setTimeout(() => {
     choosePathScreen.classList.add('visible')
-  }, 400)
-}, 2000)
+  }, 700)
+}, 10000)
 
 const api = window.electronAPI || {}
 const { importOnboardingData, skipOnboarding, openExternalLink, restoreZip, restoreCid, getDeviceInfo } = api
@@ -121,7 +121,7 @@ function setRestoreBusy (busy) {
 cidRestoreBtn.addEventListener('click', async () => {
   const address = cidInput.value.trim()
   if (!address) {
-    setRestoreStatus('Enter a CID or ipfs:// link.', 'error')
+    setRestoreStatus('Enter a hyper:// backup link.', 'error')
     return
   }
   if (!restoreCid) return

@@ -22,6 +22,26 @@ let sharedNode = null
 let sharedUnixFs = null
 let isSuspended = false
 
+// Set by createHandler; starts (or joins) the one node boot. Exported through
+// warmupIPFS so startup can kick the node off in the background, and awaited by
+// the module-level helpers so a backup never races an unbooted node.
+let startNode = null
+
+/**
+ * Boot the IPFS node if it has not been booted yet.
+ *
+ * Safe to call any number of times and from anywhere: the boot is memoised, so
+ * concurrent callers share one node.
+ *
+ * @returns {Promise<void>}
+ */
+export async function warmupIPFS () {
+  // A backup has the node paused and its files frozen; booting one now would
+  // write underneath the copy.
+  if (isSuspended) return
+  if (startNode) await startNode()
+}
+
 export async function suspendIPFS () {
   isSuspended = true
   await _suspendIPFS(sharedNode)
@@ -34,11 +54,13 @@ export async function resumeIPFS () {
 
 export async function ipfsPublishFile (filePath) {
   if (isSuspended) throw new Error('IPFS is currently suspended for backup')
+  await warmupIPFS()
   return _ipfsPublishFile(sharedNode, sharedUnixFs, filePath)
 }
 
 export async function ipfsFetchToFile (cidStr, destPath, onStatus) {
   if (isSuspended) throw new Error('IPFS is currently suspended for backup')
+  await warmupIPFS()
   return _ipfsFetchToFile(sharedUnixFs, cidStr, destPath, onStatus)
 }
 
@@ -109,8 +131,20 @@ function getPeerIdFromString (peerIdString) {
   return peerIdFromCID(CID.parse(peerIdString, multibaseDecoder))
 }
 
+/**
+ * Build the ipfs:// / ipns:// / pubsub:// protocol handler.
+ *
+ * @param {object} ipfsOptions - Helia node options.
+ * @param {Electron.Session} session
+ * @param {object} [securityOptions]
+ * @param {Function} [securityOptions.isExtensionWriteAllowed]
+ * @param {boolean} [securityOptions.lazy] - Start the Helia node on the first
+ *   ipfs:// request instead of before this resolves. The browser passes this so
+ *   the first window paints without waiting on libp2p; callers that need the
+ *   node up front (tests, one-shot tooling) leave it off.
+ */
 export async function createHandler (ipfsOptions, session, securityOptions = {}) {
-  const { isExtensionWriteAllowed } = securityOptions
+  const { isExtensionWriteAllowed, lazy = false } = securityOptions
   let node, unixFileSystem, name, dnsLinkResolver
 
   async function initializeIPFSNode () {
@@ -128,7 +162,22 @@ export async function createHandler (ipfsOptions, session, securityOptions = {})
     sharedUnixFs = unixFileSystem
   }
 
-  await initializeIPFSNode()
+  // Memoised so a burst of ipfs:// requests boots exactly one node, and so a
+  // failed boot can be retried by the next request rather than poisoning them.
+  let nodeStarting = null
+  async function ensureNode () {
+    if (node) return
+    if (!nodeStarting) {
+      nodeStarting = initializeIPFSNode().catch((err) => {
+        nodeStarting = null
+        throw err
+      })
+    }
+    await nodeStarting
+  }
+  startNode = ensureNode
+
+  if (!lazy) await ensureNode()
 
   // Re-announce cached CIDs to the DHT every 6h so provider records
   // don't expire (48h validity). The built-in reprovider crashes, so
@@ -430,8 +479,16 @@ export async function createHandler (ipfsOptions, session, securityOptions = {})
 
   const handler = async function protocolHandler (request) {
     const { url, method } = request
-    if (!node) {
-      log.info('IPFS node is not ready yet')
+    if (isSuspended && !node) {
+      return new Response('IPFS is unavailable while a backup is in progress', {
+        status: 503,
+        headers: { 'Content-Type': 'text/plain' }
+      })
+    }
+    try {
+      await ensureNode()
+    } catch (error) {
+      log.error('IPFS node failed to start:', error)
       return new Response('IPFS node is not ready yet', {
         status: 503,
         headers: { 'Content-Type': 'text/plain' }
@@ -791,7 +848,10 @@ export async function createHandler (ipfsOptions, session, securityOptions = {})
   }
 
   // Expose the node for integration tests (non-breaking; ignored in prod).
-  if (process.env.NODE_ENV === 'test') handler.__node = node
+  // A getter, not a snapshot: with a lazy start there is no node to read yet.
+  if (process.env.NODE_ENV === 'test') {
+    Object.defineProperty(handler, '__node', { get: () => node })
+  }
 
   return handler
 }

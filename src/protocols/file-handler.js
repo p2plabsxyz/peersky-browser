@@ -91,8 +91,8 @@ function generateDirectoryListing (dirPath, entries) {
   <p>
     <strong>🌐 Publish to P2P:</strong>
     <select id="protocolSelect">
-      <option value="ipfs">IPFS</option>
       <option value="hyper">Hypercore</option>
+      <option value="ipfs">IPFS</option>
     </select>
     <button id="publishBtn" onclick="publishDirectory()">📤 Publish</button>
     <span id="status"></span>

@@ -8,6 +8,10 @@ const navBoxIPC = (() => {
 // webUtils for getting file paths from dropped files (Electron 25+)
 const { webUtils } = require('electron')
 
+// Window in which repeated "the browser actions changed" signals collapse into
+// one toolbar render.
+const BROWSER_ACTIONS_RENDER_COALESCE_MS = 16
+
 class NavBox extends HTMLElement {
   constructor () {
     super()
@@ -23,6 +27,11 @@ class NavBox extends HTMLElement {
     this._autocompleteDebounceTimer = null
     this._autocompleteSelectedIndex = -1
     this._autocompleteResults = []
+    // The query the current results answer, so a stale list is not reopened for
+    // a different address, and the pointer position when the list opened, so a
+    // list appearing under a resting cursor does not select under it.
+    this._autocompleteQuery = ''
+    this._autocompleteOpenedAt = null
     this._isAutocompleteVisible = false
 
     this.buildNavBox()
@@ -44,8 +53,18 @@ class NavBox extends HTMLElement {
     const urlInput = this.querySelector('#url')
     if (!urlInput) return
 
-    // Simple URL display for input element
-    urlInput.value = url || ''
+    urlInput.value = this._formatUrlForDisplay(url || '')
+  }
+
+  _formatUrlForDisplay (url) {
+    try {
+      const parsed = new URL(url)
+      const isHttp = parsed.protocol === 'https:' || parsed.protocol === 'http:'
+      if (isHttp && parsed.pathname === '/') {
+        return parsed.origin + parsed.search + parsed.hash
+      }
+    } catch {}
+    return url
   }
 
   buildNavBox () {
@@ -193,6 +212,21 @@ class NavBox extends HTMLElement {
     return null
   }
 
+  /**
+   * Ask for a toolbar re-render.
+   *
+   * A single change reaches the window on two channels (browser-action-changed
+   * and refresh-browser-actions), and each render rebuilds the toolbar DOM and
+   * makes two IPC calls. Collapsing them means one render per change.
+   */
+  scheduleBrowserActionsRender () {
+    if (this._browserActionsRenderTimer) return
+    this._browserActionsRenderTimer = setTimeout(() => {
+      this._browserActionsRenderTimer = null
+      this.renderBrowserActions()
+    }, BROWSER_ACTIONS_RENDER_COALESCE_MS)
+  }
+
   async renderBrowserActions () {
     console.log('[NavBox] renderBrowserActions() called')
     const container = this.querySelector('#extension-icons')
@@ -202,9 +236,12 @@ class NavBox extends HTMLElement {
     }
 
     try {
-      // Get browser actions from extension system via direct IPC
-      const actionsResult = await navBoxIPC.invoke('extensions-list-browser-actions')
-      const pinnedResult = await navBoxIPC.invoke('extensions-get-pinned')
+      // Independent lookups: asking for them one after another doubled the
+      // time the toolbar spends empty on every window open.
+      const [actionsResult, pinnedResult] = await Promise.all([
+        navBoxIPC.invoke('extensions-list-browser-actions'),
+        navBoxIPC.invoke('extensions-get-pinned')
+      ])
 
       if (actionsResult?.success && actionsResult.actions?.length > 0) {
         const allActions = actionsResult.actions
@@ -385,8 +422,22 @@ class NavBox extends HTMLElement {
         bottom: rect.bottom
       }
 
+      // Tell the main process which webview is active instead of making it ask
+      // us back: that round-trip sat in front of every popup open.
+      let activeWebContentsId = null
+      try {
+        const tabBar = document.querySelector('#tabbar')
+        const activeWebview = tabBar?.getActiveWebview?.()
+        const wcId = activeWebview?.getWebContentsId?.()
+        if (Number.isInteger(wcId)) activeWebContentsId = wcId
+      } catch (_) { }
+
       // Try to open popup first, fall back to click if no popup
-      const result = await navBoxIPC.invoke('extensions-open-browser-action-popup', { actionId: extensionId, anchorRect })
+      const result = await navBoxIPC.invoke('extensions-open-browser-action-popup', {
+        actionId: extensionId,
+        anchorRect,
+        activeWebContentsId
+      })
 
       if (!result?.success) {
         // Clean up temp icon if this was from dropdown
@@ -590,6 +641,13 @@ class NavBox extends HTMLElement {
     }
     document.addEventListener('mousedown', this._outsideClickListener)
 
+    this._qrBlurListener = () => this.hideQrCodePopup()
+    window.addEventListener('blur', this._qrBlurListener)
+    this._qrKeyListener = (e) => {
+      if (e.key === 'Escape') this.hideQrCodePopup()
+    }
+    document.addEventListener('keydown', this._qrKeyListener)
+
     this._resizeListener = () => {
       this._positionQrPopup()
     }
@@ -629,6 +687,15 @@ class NavBox extends HTMLElement {
     if (this._outsideClickListener) {
       document.removeEventListener('mousedown', this._outsideClickListener)
       this._outsideClickListener = null
+    }
+
+    if (this._qrBlurListener) {
+      window.removeEventListener('blur', this._qrBlurListener)
+      this._qrBlurListener = null
+    }
+    if (this._qrKeyListener) {
+      document.removeEventListener('keydown', this._qrKeyListener)
+      this._qrKeyListener = null
     }
 
     if (this._resizeListener) {
@@ -772,6 +839,7 @@ class NavBox extends HTMLElement {
       urlInput.addEventListener('keypress', (event) => {
         if (event.key === 'Enter') {
           const url = event.target.value.trim()
+          this._dismissAutocomplete()
           this.dispatchEvent(new CustomEvent('navigate', { detail: { url } }))
         }
       })
@@ -855,7 +923,7 @@ class NavBox extends HTMLElement {
     if (window.electronAPI?.extensions?.onBrowserActionChanged) {
       window.electronAPI.extensions.onBrowserActionChanged(() => {
         console.log('NavBox: Browser actions changed, refreshing...')
-        this.renderBrowserActions()
+        this.scheduleBrowserActionsRender()
       })
     }
 
@@ -958,7 +1026,8 @@ class NavBox extends HTMLElement {
 
     // Focus event - show suggestions if there's input
     urlInput.addEventListener('focus', () => {
-      if (urlInput.value.trim().length > 0 && this._autocompleteResults.length > 0) {
+      const query = urlInput.value.trim()
+      if (query.length > 0 && this._autocompleteResults.length > 0 && query === this._autocompleteQuery) {
         this._showAutocomplete()
       }
     })
@@ -967,6 +1036,10 @@ class NavBox extends HTMLElement {
     urlInput.addEventListener('blur', () => {
       setTimeout(() => this._hideAutocomplete(), 150)
     })
+
+    document.addEventListener('mousemove', (e) => {
+      this._pointer = { x: e.clientX, y: e.clientY }
+    }, { passive: true })
 
     // Click outside to close
     document.addEventListener('mousedown', (e) => {
@@ -988,6 +1061,7 @@ class NavBox extends HTMLElement {
     if (query.length < 1) {
       this._hideAutocomplete()
       this._autocompleteResults = []
+      this._autocompleteQuery = ''
       return
     }
 
@@ -1008,15 +1082,18 @@ class NavBox extends HTMLElement {
 
           if (filteredResults.length > 0) {
             this._autocompleteResults = filteredResults
+            this._autocompleteQuery = query
             this._autocompleteSelectedIndex = -1
             this._renderAutocompleteResults()
             this._showAutocomplete()
           } else {
             this._autocompleteResults = []
+            this._autocompleteQuery = ''
             this._hideAutocomplete()
           }
         } else {
           this._autocompleteResults = []
+          this._autocompleteQuery = ''
           this._hideAutocomplete()
         }
       } catch (error) {
@@ -1045,7 +1122,7 @@ class NavBox extends HTMLElement {
           this._autocompleteSelectedIndex + 1,
           items.length - 1
         )
-        this._updateAutocompleteSelection()
+        this._updateAutocompleteSelection(true)
         break
 
       case 'ArrowUp':
@@ -1054,7 +1131,7 @@ class NavBox extends HTMLElement {
           this._autocompleteSelectedIndex - 1,
           -1
         )
-        this._updateAutocompleteSelection()
+        this._updateAutocompleteSelection(true)
         break
 
       case 'Enter':
@@ -1065,7 +1142,7 @@ class NavBox extends HTMLElement {
             this._selectAutocompleteItem(selected)
           }
         } else {
-          this._hideAutocomplete()
+          this._dismissAutocomplete()
         }
         break
 
@@ -1117,8 +1194,12 @@ class NavBox extends HTMLElement {
         this._selectAutocompleteItem(result)
       })
 
-      // Hover handler - use mousemove so stationary cursor doesn't auto-select
-      item.addEventListener('mousemove', () => {
+      item.addEventListener('mousemove', (e) => {
+        // Opening the list under a resting cursor fires mousemove without the
+        // pointer having moved; ignore until it leaves where it opened.
+        const from = this._autocompleteOpenedAt
+        if (from && e.clientX === from.x && e.clientY === from.y) return
+        this._autocompleteOpenedAt = null
         if (this._autocompleteSelectedIndex !== index) {
           this._autocompleteSelectedIndex = index
           this._updateAutocompleteSelection()
@@ -1129,7 +1210,11 @@ class NavBox extends HTMLElement {
     })
   }
 
-  _updateAutocompleteSelection () {
+  /**
+   * @param {boolean} [fillInput] - Put the highlighted URL in the address bar.
+   *   Arrow keys do; hovering only highlights, as in other browsers.
+   */
+  _updateAutocompleteSelection (fillInput = false) {
     const dropdown = this.querySelector('#url-autocomplete')
     if (!dropdown) return
 
@@ -1143,21 +1228,24 @@ class NavBox extends HTMLElement {
       }
     })
 
-    // Update URL input with selected item's URL for preview
+    if (!fillInput) return
+
     const urlInput = this.querySelector('#url')
-    if (urlInput && this._autocompleteSelectedIndex >= 0) {
-      const selected = this._autocompleteResults[this._autocompleteSelectedIndex]
-      if (selected && selected.url) {
-        urlInput.value = selected.url
-      }
+    if (!urlInput) return
+
+    if (this._autocompleteSelectedIndex < 0) {
+      urlInput.value = this._autocompleteQuery
+      return
     }
+    const selected = this._autocompleteResults[this._autocompleteSelectedIndex]
+    if (selected?.url) urlInput.value = selected.url
   }
 
   _selectAutocompleteItem (result) {
     const urlInput = this.querySelector('#url')
     if (urlInput && result.url) {
       urlInput.value = result.url
-      this._hideAutocomplete()
+      this._dismissAutocomplete()
 
       // Dispatch navigate event
       this.dispatchEvent(new CustomEvent('navigate', {
@@ -1169,6 +1257,7 @@ class NavBox extends HTMLElement {
   _showAutocomplete () {
     const dropdown = this.querySelector('#url-autocomplete')
     if (dropdown && this._autocompleteResults.length > 0) {
+      this._autocompleteOpenedAt = this._pointer ? { ...this._pointer } : null
       dropdown.classList.add('visible')
       this._isAutocompleteVisible = true
     }
@@ -1181,6 +1270,19 @@ class NavBox extends HTMLElement {
       this._isAutocompleteVisible = false
       this._autocompleteSelectedIndex = -1
     }
+  }
+
+  // Hiding alone keeps the cached query so refocusing restores the list. After
+  // navigating that cache has to go, or a late debounce or the focus handler
+  // reopens the dropdown over the page that just loaded.
+  _dismissAutocomplete () {
+    if (this._autocompleteDebounceTimer) {
+      clearTimeout(this._autocompleteDebounceTimer)
+      this._autocompleteDebounceTimer = null
+    }
+    this._autocompleteResults = []
+    this._autocompleteQuery = ''
+    this._hideAutocomplete()
   }
 }
 

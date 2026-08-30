@@ -2,7 +2,7 @@
 // Handles settings storage, defaults, validation, and IPC communication
 // Pattern: Similar to window-manager.js
 
-import { app, ipcMain, BrowserWindow, session, safeStorage, dialog } from 'electron'
+import { app, ipcMain, BrowserWindow, session, safeStorage, dialog, webContents } from 'electron'
 import { promises as fs } from 'fs'
 import path from 'path'
 import os from 'os'
@@ -707,11 +707,10 @@ class SettingsManager {
       const windows = BrowserWindow.getAllWindows()
 
       if (key === 'theme') {
-        // Notify all windows of theme change
-        windows.forEach(window => {
-          if (window && !window.isDestroyed()) {
-            window.webContents.send('theme-changed', value)
-          }
+        // Guests included: internal pages swap data-theme live instead of
+        // waiting for a manual refresh.
+        webContents.getAllWebContents().forEach(wc => {
+          if (!wc.isDestroyed()) wc.send('theme-changed', value)
         })
         logDebug(`Theme changed to ${value}, notified ${windows.length} windows`)
       } else if (key === 'searchEngine') {
