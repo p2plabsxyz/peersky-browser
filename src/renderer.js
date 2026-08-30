@@ -267,6 +267,19 @@ function setupWebviewErrorHandling (webview) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+  // The opener passes the tab layout in the URL so the first paint is already
+  // in the right mode instead of flashing horizontal chrome for the IPC round
+  // trip. The async settings reads below stay authoritative.
+  const startupParams = new URLSearchParams(window.location.search)
+  const verticalFromParams = startupParams.get('verticalTabs') === '1'
+  if (verticalFromParams) {
+    document.body.classList.add('vertical-tabs-layout')
+    if (startupParams.get('keepTabsExpanded') === '1') {
+      document.body.classList.add('vertical-tabs-expanded')
+    }
+    document.querySelector('#titlebar')?.toggleDarwinCollapse?.(true)
+  }
+
   // Initialize theme on page load
   try {
     const currentTheme = await ipcRenderer.invoke('settings-get', 'theme')
@@ -304,8 +317,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   ipcRenderer.on('theme-changed', (event, newTheme) => {
     document.documentElement.setAttribute('data-theme', newTheme)
 
-    reloadThemeCSS()
-
     // Refresh tab bar styles if available
     if (tabBar && typeof tabBar.refreshGroupStyles === 'function') {
       tabBar.refreshGroupStyles()
@@ -318,11 +329,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   })
 
   const titleBar = document.querySelector('#titlebar')
-  const verticalTabsEnabled = await ipcRenderer.invoke('settings-get', 'verticalTabs')
+  const verticalTabsEnabled = verticalFromParams || await ipcRenderer.invoke('settings-get', 'verticalTabs')
   if (verticalTabsEnabled) {
     const { default: VerticalTabs } = await import('./pages/vertical-tabs.js')
     tabBar = document.querySelector('#tabbar') || new VerticalTabs()
-    const keepExpanded = await ipcRenderer.invoke('settings-get', 'keepTabsExpanded')
+    const keepExpanded = startupParams.get('keepTabsExpanded') === '1' ||
+      await ipcRenderer.invoke('settings-get', 'keepTabsExpanded')
     if (keepExpanded) {
       tabBar.updateKeepExpandedState(keepExpanded)
     }
@@ -946,25 +958,3 @@ document.addEventListener('keydown', (e) => {
     }
   }
 })
-
-function reloadThemeCSS () {
-  // Reload CSS imports for theme files
-  const styleElements = document.querySelectorAll('style')
-  styleElements.forEach(style => {
-    const text = style.textContent || style.innerText
-    if (text && text.includes('browser://theme/')) {
-      const newStyle = document.createElement('style')
-      newStyle.textContent = text
-      style.parentNode.replaceChild(newStyle, style)
-    }
-  })
-
-  // Reload CSS links with cache busting
-  const linkElements = document.querySelectorAll('link[href*="browser://theme/"]')
-  linkElements.forEach(link => {
-    const href = link.href.split('?')[0]
-    link.href = `${href}?t=${Date.now()}`
-  })
-
-  console.log('Main window: Theme CSS reloaded')
-}

@@ -1068,8 +1068,14 @@ function navigateToSection (sectionName) {
   navigationInProgress = true
   setTimeout(() => { navigationInProgress = false }, 300)
 
-  // Navigate to the new URL - this will cause a reload but give us proper URLs
-  window.location.href = targetURL
+  // Swap sections in place; pushState keeps the URL proper without a reload.
+  try {
+    window.history.pushState({ section: sectionName }, '', targetURL)
+  } catch (_) {
+    window.location.href = targetURL
+    return
+  }
+  updateSectionUI(sectionName)
 }
 
 // Update the UI to show the correct section (separated for reuse)
