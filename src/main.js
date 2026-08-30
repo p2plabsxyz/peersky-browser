@@ -160,6 +160,25 @@ globalProtocol.registerSchemesAsPrivileged([
   { scheme: 'magnet', privileges: MAGNET_PROTOCOL }
 ])
 
+/**
+ * The shell window's webContents id behind a download, given whatever started
+ * it. Downloads usually come from a webview guest, whose owning window has to
+ * be resolved through its host.
+ *
+ * @param {Electron.WebContents} [wc]
+ * @returns {number|null}
+ */
+function shellWebContentsIdFor (wc) {
+  if (!wc || wc.isDestroyed?.()) return null
+  try {
+    const direct = BrowserWindow.fromWebContents(wc)
+    if (direct && !direct.isDestroyed()) return direct.webContents.id
+    const host = wc.hostWebContents
+    if (host && !host.isDestroyed()) return host.id
+  } catch (_) { }
+  return null
+}
+
 app.whenReady().then(async () => {
   const bootStartedAt = Date.now()
   windowManager = new WindowManager()
@@ -188,6 +207,10 @@ app.whenReady().then(async () => {
 
   userSession.on('will-download', (event, item, sessionWebContents) => {
     const downloadId = crypto.randomUUID()
+    // The shell window that started this download. Progress goes to every
+    // window so an open popup or the downloads page stays current, but only
+    // this one may pop the panel open.
+    const originWindowWcId = shellWebContentsIdFor(sessionWebContents)
 
     activeDownloadItems.set(downloadId, item)
 
@@ -208,7 +231,7 @@ app.whenReady().then(async () => {
       trustedUIWebContents.forEach((id) => {
         const wc = webContents.fromId(id)
         if (wc && !wc.isDestroyed()) {
-          wc.send('download-progress', data)
+          wc.send('download-progress', { ...data, isOrigin: id === originWindowWcId })
         } else {
           trustedUIWebContents.delete(id)
         }

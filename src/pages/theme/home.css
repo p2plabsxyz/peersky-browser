@@ -80,6 +80,7 @@ body::before {
 }
 
 .peerbar .p2p-base-icon {
+  padding: 3px;
   background-color: var(--browser-theme-primary-highlight, #3b82f6);
   -webkit-mask: url("peersky://static/assets/svg/box.svg") no-repeat center;
   mask: url("peersky://static/assets/svg/box.svg") no-repeat center;

@@ -11,10 +11,56 @@ export function setWindowManager (instance) {
   windowManagerInstance = instance
 }
 
+const NAVIGABLE_SCHEMES = new Set([
+  'http:', 'https:', 'peersky:', 'ipfs:', 'ipns:', 'pubsub:',
+  'hyper:', 'hs:', 'web3:', 'bittorrent:', 'bt:', 'magnet:'
+])
+
+// Text is navigable if it parses as a supported URL, or reads as a bare
+// hostname we can reasonably treat as https. Anything else stays a selection.
+function toNavigableUrl (text) {
+  const trimmed = (text || '').trim()
+  if (!trimmed || trimmed.length > 2048 || /\s/.test(trimmed)) return null
+  try {
+    const url = new URL(trimmed)
+    return NAVIGABLE_SCHEMES.has(url.protocol) ? url.href : null
+  } catch (_) {}
+  if (!/^[\w-]+(\.[\w-]+)+(\/.*)?$/.test(trimmed)) return null
+  try {
+    return new URL(`https://${trimmed}`).href
+  } catch (_) {
+    return null
+  }
+}
+
+function shortenForLabel (url) {
+  return url.length > 48 ? `${url.slice(0, 47)}\u2026` : url
+}
+
 export function attachContextMenus (browserWindow, windowManager) {
   // Assign the WindowManager instance if not already set
   if (!windowManagerInstance) {
     windowManagerInstance = windowManager
+  }
+
+  const goToUrl = (url) => {
+    browserWindow.webContents
+      .executeJavaScript(`
+        (function () {
+          const tabBar = document.querySelector('#tabbar') || document.querySelector('tab-bar');
+          if (tabBar && typeof tabBar.navigateActiveTab === 'function') {
+            tabBar.navigateActiveTab(${JSON.stringify(url)});
+            return true;
+          }
+          return false;
+        })()
+      `)
+      .then((navigated) => {
+        if (!navigated) console.warn('Failed to find tab bar to navigate')
+      })
+      .catch((err) => {
+        console.error('Failed to navigate from context menu:', err)
+      })
   }
 
   const attachMenuToWebContents = (webContents) => {
@@ -66,6 +112,16 @@ export function attachContextMenus (browserWindow, windowManager) {
             enabled: params.editFlags.canPaste
           })
         )
+        const pasteTarget = params.isEditable ? toNavigableUrl(clipboard.readText()) : null
+        if (pasteTarget) {
+          menu.append(
+            new MenuItem({
+              label: 'Paste and Go',
+              enabled: params.editFlags.canPaste,
+              click: () => goToUrl(pasteTarget)
+            })
+          )
+        }
         menu.append(
           new MenuItem({
             label: 'Delete',
@@ -79,6 +135,16 @@ export function attachContextMenus (browserWindow, windowManager) {
             accelerator: 'CommandOrControl+A'
           })
         )
+        // Links already offer their own open items, so only bare text needs this.
+        const selectionTarget = params.linkURL ? null : toNavigableUrl(params.selectionText)
+        if (selectionTarget) {
+          menu.append(
+            new MenuItem({
+              label: `Go to ${shortenForLabel(selectionTarget)}`,
+              click: () => goToUrl(selectionTarget)
+            })
+          )
+        }
         menu.append(new MenuItem({ type: 'separator' }))
       }
 
@@ -210,9 +276,12 @@ export function attachContextMenus (browserWindow, windowManager) {
             label: 'Save Image As...',
             click: async () => {
               try {
-                // Extract filename from URL
-                const urlPath = new URL(params.srcURL).pathname
-                const defaultName = path.basename(urlPath) || 'image.png'
+                // Search results serve images through a proxy that keeps the
+                // real URL in a query parameter, so take the name from that.
+                const src = new URL(params.srcURL)
+                const nested = src.searchParams.get('u') || src.searchParams.get('url')
+                const target = nested?.startsWith('http') ? new URL(nested) : src
+                const defaultName = decodeURIComponent(path.basename(target.pathname)) || 'image.png'
 
                 // Show save dialog
                 const result = await dialog.showSaveDialog(browserWindow, {

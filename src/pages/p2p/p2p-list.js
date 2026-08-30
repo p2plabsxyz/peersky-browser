@@ -8,7 +8,10 @@ const builtInP2PApps = [
   { id: "wiki", name: "Wiki", icon: "wikipedia.svg", url: "peersky://p2p/wiki/" }
 ];
 
-const defaultPinnedBuiltInIds = builtInP2PApps.filter((a) => a.id !== "reader").map((a) => a.id);
+const unpinnedByDefaultIds = new Set(["reader", "editor", "wiki"]);
+const defaultPinnedBuiltInIds = builtInP2PApps
+  .filter((a) => !unpinnedByDefaultIds.has(a.id))
+  .map((a) => a.id);
 const defaultIconUrl = "peersky://static/assets/svg/default-extension-icon.svg";
 
 const normalizeBuiltInApp = (app) => ({
@@ -63,7 +66,7 @@ export const getAllApps = async () => {
 export const getPinnedApps = async () => {
   try {
     const stored = await window.electronAPI.settings.get('pinnedP2PApps');
-    // A stored value of null means all apps are pinned by default except Social Reader
+    // A stored value of null means the default set, not every app
     if (stored === null || stored === undefined) return defaultPinnedBuiltInIds;
     return stored;
   } catch (e) {

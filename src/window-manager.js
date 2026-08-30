@@ -6,6 +6,7 @@ import ScopedFS from 'scoped-fs'
 import { fileURLToPath } from 'url'
 import { attachContextMenus } from './context-menu.js'
 import { randomUUID } from 'crypto'
+import settingsManager from './settings-manager.js'
 import { getPartition } from './session.js'
 import extensionManager from './extensions/index.js'
 import { createCoalescedTask } from './coalesce.js'
@@ -971,6 +972,8 @@ class PeerskyWindow {
     const query = {
       query: {
         url: url || 'peersky://home',
+        ...(settingsManager.settings?.verticalTabs && { verticalTabs: '1' }),
+        ...(settingsManager.settings?.keepTabsExpanded && { keepTabsExpanded: '1' }),
         ...(newWindow && { newWindow: 'true' }),
         windowId: this.windowId,
         ...(savedTabs && { restoreTabs: 'true' }),

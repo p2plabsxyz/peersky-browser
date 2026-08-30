@@ -96,7 +96,8 @@ async function loadWindowManager (userDataPath) {
     electron,
     '../../src/extensions/index.js': { default: { addWindow: () => {}, removeWindow: () => {} } },
     '../../src/context-menu.js': { attachContextMenus: () => {}, setWindowManager: () => {} },
-    '../../src/session.js': { getPartition: () => 'persist:peersky', usePersist: () => true }
+    '../../src/session.js': { getPartition: () => 'persist:peersky', usePersist: () => true },
+    '../../src/settings-manager.js': { default: { settings: {} } }
   })
   return WindowManager
 }

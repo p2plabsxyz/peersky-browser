@@ -605,7 +605,7 @@ class TabBar extends HTMLElement {
         if (tabElement && group) {
           tabElement.dataset.groupId = tabData.groupId
           if (group.expanded) {
-            tabElement.style.borderTop = `2px solid ${group.color}`
+            tabElement.style.setProperty('--group-color', group.color)
           }
         }
       }
@@ -712,6 +712,9 @@ class TabBar extends HTMLElement {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         tab.classList.remove('opening')
+        // The stagger is for the entrance only; left in place it delays every
+        // later hover and close transition too.
+        setTimeout(() => { tab.style.transitionDelay = '' }, 500)
       })
     })
     const protocol = this._getProtocol(url)
@@ -1292,6 +1295,9 @@ class TabBar extends HTMLElement {
 
   // Update the selectTab method to handle display properly
   selectTab (tabId, isNewTab = false) {
+    // The find bar belongs to the tab it was opened over; addTab selects too.
+    // Focus must stay put: activeTabId still points at the outgoing tab here.
+    if (tabId !== this.activeTabId) document.querySelector('#find')?.hide?.({ restoreFocus: false })
     if (this.activeTabId) {
       const currentActive = document.getElementById(this.activeTabId)
       if (currentActive) currentActive.classList.remove('active')
@@ -1760,7 +1766,7 @@ class TabBar extends HTMLElement {
       <div class="context-menu-separator"></div>
       <div class="context-menu-item" data-action="close-others">
         <img class="menu-icon" src="${iconPath}/close.svg" />
-        Close other tabs
+        Close all tabs
       </div>
       <div class="context-menu-item" data-action="close">
         <img class="menu-icon" src="${iconPath}/close.svg" />
@@ -2197,7 +2203,7 @@ class TabBar extends HTMLElement {
     // Create the group metadata
     this.tabGroups.set(groupId, {
       id: groupId,
-      name: options.name || '',
+      name: String(options.name || '').slice(0, 24),
       color: options.color || this.groupColors[colorIndex],
       expanded: options.expanded !== undefined ? options.expanded : true
     })
@@ -2238,7 +2244,7 @@ class TabBar extends HTMLElement {
       tabElement.dataset.groupId = groupId
       const group = this.tabGroups.get(groupId)
       if (group) {
-        tabElement.style.borderTop = group.expanded ? '2px solid ' + group.color : 'none'
+        tabElement.style.setProperty('--group-color', group.color)
       }
     }
   }
@@ -2255,7 +2261,7 @@ class TabBar extends HTMLElement {
     const tabElement = document.getElementById(tabId)
     if (tabElement) {
       delete tabElement.dataset.groupId
-      tabElement.style.borderTop = 'none'
+      tabElement.style.removeProperty('--group-color')
     }
 
     // Check if group is now empty
@@ -2277,7 +2283,7 @@ class TabBar extends HTMLElement {
         const tabElement = document.getElementById(tabId)
         if (tabElement) {
           delete tabElement.dataset.groupId
-          tabElement.style.borderTop = 'none'
+          tabElement.style.removeProperty('--group-color')
         }
         this.tabGroupAssignments.delete(tabId)
       }
@@ -2339,7 +2345,7 @@ class TabBar extends HTMLElement {
     const group = this.tabGroups.get(groupId)
     if (!group) return
 
-    if (properties.name !== undefined) group.name = properties.name
+    if (properties.name !== undefined) group.name = String(properties.name).slice(0, 24)
     if (properties.color !== undefined) group.color = properties.color
     if (properties.expanded !== undefined) group.expanded = properties.expanded
 
@@ -2353,7 +2359,7 @@ class TabBar extends HTMLElement {
         if (gId === groupId) {
           const tabElement = document.getElementById(tabId)
           if (tabElement && group.expanded) {
-            tabElement.style.borderTop = '2px solid ' + properties.color
+            tabElement.style.setProperty('--group-color', properties.color)
           }
         }
       }
@@ -2515,7 +2521,7 @@ class TabBar extends HTMLElement {
       this.tabGroups.set(groupId, group)
     } else {
       // Update existing group
-      if (properties.name !== undefined) group.name = properties.name
+      if (properties.name !== undefined) group.name = String(properties.name).slice(0, 24)
       if (properties.color !== undefined) group.color = properties.color
       if (properties.expanded !== undefined) group.expanded = properties.expanded
     }
@@ -2530,7 +2536,7 @@ class TabBar extends HTMLElement {
         if (gId === groupId) {
           const tabElement = document.getElementById(tabId)
           if (tabElement && group.expanded) {
-            tabElement.style.borderTop = '2px solid ' + properties.color
+            tabElement.style.setProperty('--group-color', properties.color)
           }
         }
       }
@@ -2572,7 +2578,7 @@ class TabBar extends HTMLElement {
     }
 
     // Update header style
-    header.style.backgroundColor = group.color
+    header.style.setProperty('--group-color', group.color)
 
     // Only recreate content if header is new
     if (!headerExists) {
@@ -2719,9 +2725,9 @@ class TabBar extends HTMLElement {
       if (tabElement && group) {
         tabElement.dataset.groupId = groupId
         if (group.expanded) {
-          tabElement.style.borderTop = `2px solid ${group.color}`
+          tabElement.style.setProperty('--group-color', group.color)
         } else {
-          tabElement.style.borderTop = 'none'
+          tabElement.style.removeProperty('--group-color')
         }
       }
     }
@@ -2769,7 +2775,7 @@ class TabBar extends HTMLElement {
     dialog.innerHTML = `
       <h1>${dialogTitle}</h1>
       <div class="dialog-row">
-        <input type="text" id="group-name" value="${group.name || ''}" placeholder="Enter group name">
+        <input type="text" id="group-name" maxlength="24" value="${group.name || ''}" placeholder="Enter group name">
       </div>
       <div class="dialog-row">
         <div class="color-options">
