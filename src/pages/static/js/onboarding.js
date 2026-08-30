@@ -17,8 +17,8 @@ setTimeout(() => {
   welcomeScreen.classList.add('hidden')
   setTimeout(() => {
     choosePathScreen.classList.add('visible')
-  }, 400)
-}, 2000)
+  }, 700)
+}, 10000)
 
 const api = window.electronAPI || {}
 const { importOnboardingData, skipOnboarding, openExternalLink, restoreZip, restoreCid, getDeviceInfo } = api
