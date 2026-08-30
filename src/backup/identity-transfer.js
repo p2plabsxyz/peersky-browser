@@ -196,7 +196,8 @@ export async function createIdentityTransferZip (userDataDir, outPath, options =
     await createBackupZip(userDataDir, innerZip, {
       peerskyVersion: options.peerskyVersion || '',
       isIdentityTransfer: true,
-      targetDeviceType
+      targetDeviceType,
+      includePrivate: options.includePrivate !== false
     })
 
     const contentKey = crypto.randomBytes(32)

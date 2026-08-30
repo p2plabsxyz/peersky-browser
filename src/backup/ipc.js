@@ -6,6 +6,7 @@ import backupManager, { defaultBackupName } from './backup-manager.js'
 import { uploadBackup, downloadBackupFromAddress } from './p2p-backup.js'
 import { getDeviceKeys, getPublicDeviceInfo } from './device-keys.js'
 import { createPairingSession, encodePairingString } from './identity-transfer.js'
+import { listPrivateHyperdrives } from '../protocols/private-hyperdrive-registry.js'
 
 const log = createLogger('backup')
 
@@ -33,7 +34,7 @@ export function setupBackupIpc () {
         if (!event.sender.isDestroyed()) {
           event.sender.send('backup-progress', { phase: 'create', ...data })
         }
-      })
+      }, { includePrivate: payload.includePrivate === true })
       return { success: true, filePath: result.filePath, bytes: result.bytes }
     } catch (error) {
       log.error(`Backup create failed: ${error.message}`)
@@ -94,6 +95,16 @@ export function setupBackupIpc () {
     }
   })
 
+  ipcMain.handle('backup-private-hyperdrives', async () => {
+    try {
+      const items = await listPrivateHyperdrives(app.getPath('userData'))
+      return { success: true, items }
+    } catch (error) {
+      log.error(`Private Hyperdrive listing failed: ${error.message}`)
+      return { success: false, error: error.message }
+    }
+  })
+
   ipcMain.handle('backup-identity-create', async (event, payload = {}) => {
     try {
       const { targetPairingPayload } = payload
@@ -110,7 +121,8 @@ export function setupBackupIpc () {
       if (canceled || !filePath) return { canceled: true }
 
       const result = await backupManager.createIdentityTransferBackup(filePath, {
-        targetPairingPayload
+        targetPairingPayload,
+        includePrivate: payload.includePrivate !== false
       })
       return { success: true, filePath: result.filePath, bytes: result.bytes, manifest: result.manifest }
     } catch (error) {
@@ -124,7 +136,8 @@ export function setupBackupIpc () {
     try {
       const { targetPairingPayload } = payload
       const result = await backupManager.createIdentityTransferBackup(outPath, {
-        targetPairingPayload
+        targetPairingPayload,
+        includePrivate: payload.includePrivate !== false
       })
       const ttlMs = result.manifest.identityTransfer.expiresAt - Date.now()
       const upload = await uploadBackup(result.filePath, 'hyper', { ephemeral: true, ttlMs })

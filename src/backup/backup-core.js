@@ -33,6 +33,16 @@ export const MOBILE_IDENTITY_BACKUP_TARGETS = [
   { name: 'peersky-identity.json', type: 'file' }
 ]
 
+export const PRIVATE_HYPER_BACKUP_TARGETS = [
+  { name: 'privateHyperdrives.json', type: 'file' },
+  { name: 'hyper-private', type: 'dir' }
+]
+
+const RESTORABLE_BACKUP_TARGETS = [
+  ...IDENTITY_BACKUP_TARGETS,
+  ...PRIVATE_HYPER_BACKUP_TARGETS
+]
+
 // Skip live DB lock/log files. CORESTORE is left in to stabilize manifest
 // hashes, but is explicitly dropped during restore in backup-manager.js.
 const SKIP_NAMES = new Set(['LOCK', 'repo.lock', '.DS_Store', 'LOG', 'LOG.old'])
@@ -95,11 +105,15 @@ async function sha256Dir (dir) {
   return hash.digest('hex')
 }
 
-function selectTargets (isIdentityTransfer, targetDeviceType) {
-  if (!isIdentityTransfer) return STANDARD_BACKUP_TARGETS
-  return targetDeviceType === 'mobile'
-    ? MOBILE_IDENTITY_BACKUP_TARGETS
-    : IDENTITY_BACKUP_TARGETS
+function selectTargets (isIdentityTransfer, targetDeviceType, includePrivate) {
+  const targets = !isIdentityTransfer
+    ? STANDARD_BACKUP_TARGETS
+    : targetDeviceType === 'mobile'
+      ? MOBILE_IDENTITY_BACKUP_TARGETS
+      : IDENTITY_BACKUP_TARGETS
+  return includePrivate
+    ? [...targets, ...PRIVATE_HYPER_BACKUP_TARGETS]
+    : targets
 }
 
 // Legacy compatibility for backups created before LOG and LOG.old were added to SKIP_NAMES.
@@ -135,9 +149,9 @@ async function sha256DirOld (dir) {
 }
 
 // Build the manifest describing which targets are present and their checksums.
-export async function buildManifest (userDataDir, peerskyVersion = '', isIdentityTransfer = false, targetDeviceType = 'desktop') {
+export async function buildManifest (userDataDir, peerskyVersion = '', isIdentityTransfer = false, targetDeviceType = 'desktop', includePrivate = false) {
   const files = {}
-  const targets = selectTargets(isIdentityTransfer, targetDeviceType)
+  const targets = selectTargets(isIdentityTransfer, targetDeviceType, includePrivate)
   for (const target of targets) {
     const abs = path.join(userDataDir, target.name)
     if (!(await pathExists(abs))) continue
@@ -174,8 +188,8 @@ async function appendHashedFile (archive, sourcePath, archivePath) {
 // Stream all present targets plus a manifest into a single .zip at outPath.
 // onProgress receives { processedBytes, totalBytes, entries } updates.
 export async function createBackupZip (userDataDir, outPath, options = {}) {
-  const { peerskyVersion = '', isIdentityTransfer = false, targetDeviceType = 'desktop', onProgress } = options
-  const targets = selectTargets(isIdentityTransfer, targetDeviceType)
+  const { peerskyVersion = '', isIdentityTransfer = false, targetDeviceType = 'desktop', includePrivate = false, onProgress } = options
+  const targets = selectTargets(isIdentityTransfer, targetDeviceType, includePrivate)
   const manifest = {
     version: BACKUP_VERSION,
     peerskyVersion,
@@ -292,7 +306,7 @@ export async function verifyManifest (extractedDir, manifest) {
     throw new Error('Invalid backup manifest')
   }
   for (const [name, expected] of Object.entries(manifest.files)) {
-    const meta = IDENTITY_BACKUP_TARGETS.find((t) => t.name === name)
+    const meta = RESTORABLE_BACKUP_TARGETS.find((t) => t.name === name)
     if (!meta) throw new Error(`Unknown backup entry: ${name}`)
     const abs = path.join(extractedDir, name)
     if (!(await pathExists(abs))) {

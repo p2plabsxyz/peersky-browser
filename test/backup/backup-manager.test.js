@@ -26,10 +26,12 @@ async function loadBackupManager (options = {}) {
   const ipfsHandlerPath = '../../src/protocols/ipfs-handler.js'
   const identityTransferPath = '../../src/backup/identity-transfer.js'
   const encryptedBackupPath = '../../src/backup/encrypted-backup.js'
+  const workerCalls = []
 
   class FakeWorker extends EventEmitter {
-    constructor () {
+    constructor (_workerPath, workerOptions) {
       super()
+      workerCalls.push(workerOptions.workerData)
       queueMicrotask(() => {
         if (options.workerError) {
           this.emit('message', { type: 'error', message: options.workerError })
@@ -83,7 +85,8 @@ async function loadBackupManager (options = {}) {
       resumeIPFS,
       suspendHyper,
       suspendIPFS
-    }
+    },
+    workerCalls
   }
 }
 
@@ -133,6 +136,17 @@ describe('backup-manager', function () {
     expect(stubs.suspendIPFS.calledOnce).to.equal(true)
     expect(stubs.resumeHyper.calledOnce).to.equal(true)
     expect(stubs.resumeIPFS.calledOnce).to.equal(true)
+  })
+
+  it('forwards the private-upload choice to the backup worker', async function () {
+    const { backupManager, workerCalls } = await loadBackupManager()
+
+    await backupManager.createBackup('/tmp/backup.zip', 'passphrase', null, {
+      includePrivate: true
+    })
+
+    expect(workerCalls).to.have.length(1)
+    expect(workerCalls[0]).to.include({ op: 'create', includePrivate: true })
   })
 
   it('preserves live data when staging the restore fails', async function () {

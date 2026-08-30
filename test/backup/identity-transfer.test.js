@@ -24,6 +24,9 @@ async function seedIdentityData (dir) {
   await writeFile(path.join(dir, 'peersky-chat-rooms.json'), JSON.stringify({ rooms: ['room'] }))
   await mkdir(path.join(dir, 'hyper'), { recursive: true })
   await writeFile(path.join(dir, 'hyper', 'core'), 'core-data')
+  await mkdir(path.join(dir, 'hyper-private'), { recursive: true })
+  await writeFile(path.join(dir, 'hyper-private', 'private-core'), 'private-core-data')
+  await writeFile(path.join(dir, 'privateHyperdrives.json'), '[]')
 }
 
 function mobilePairingPayload (publicKey, nonce = '0123456789abcdef0123456789abcdef') {
@@ -62,7 +65,12 @@ describe('identity-transfer', function () {
 
     const payloadDir = await makeTempDir('peersky-id-payload-')
     const innerManifest = await extractAndVerifyIdentityPayload(innerZip, payloadDir)
-    expect(Object.keys(innerManifest.files)).to.include.members(['peersky-ports.json', 'peersky-identity.json'])
+    expect(Object.keys(innerManifest.files)).to.include.members([
+      'peersky-ports.json',
+      'peersky-identity.json',
+      'hyper-private',
+      'privateHyperdrives.json'
+    ])
 
     const ports = JSON.parse(await readFile(path.join(payloadDir, 'peersky-ports.json'), 'utf-8'))
     expect(ports.room.seed).to.equal('secret')

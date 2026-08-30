@@ -12,16 +12,35 @@ describe('Hyper protocol handler', function () {
   })
 
   async function loadHyperModule ({ fetchImpl, chatResponse, chatReject, throwOnFetch, lanReject, lanAttachResults, currentIP = '127.0.0.1' } = {}) {
-    const sdk = {
-      id: 'sdk-test',
+    const createMockSdk = (id) => ({
+      id,
       close: sinon.stub().resolves(),
-      getDrive: sinon.stub().resolves({ core: {} }),
+      corestore: {
+        storage: {
+          hasCore: sinon.stub().resolves(false)
+        }
+      },
+      getDrive: sinon.stub().callsFake(async (name) => ({
+        core: {},
+        url: `hyper://${String(name).replace(/[^a-z0-9]/gi, '').padEnd(52, 'a').slice(0, 52)}/`
+      })),
       joinCore: sinon.stub().resolves(),
+      namespace: sinon.stub().returns({
+        ns: Buffer.from('test'),
+        storage: {
+          getAlias: sinon.stub().resolves(null),
+          hasCore: sinon.stub().resolves(false)
+        }
+      }),
       swarm: { flush: sinon.stub().resolves() },
       suspend: sinon.stub().resolves(),
       resume: sinon.stub().resolves()
-    }
-    const createSDK = sinon.stub().resolves(sdk)
+    })
+    const sdk = createMockSdk('sdk-test')
+    const privateSdk = createMockSdk('private-sdk-test')
+    const createSDK = sinon.stub()
+    createSDK.onFirstCall().resolves(sdk)
+    createSDK.onSecondCall().resolves(privateSdk)
 
     const lanMock = new EventEmitter()
     lanMock.id = 'lan-test'
@@ -44,7 +63,7 @@ describe('Hyper protocol handler', function () {
       attachHyperSDK.resolves(lanMock)
     }
 
-    const fetchStub = sinon.stub().callsFake(async (url, options) => {
+    const createFetchStub = () => sinon.stub().callsFake(async (url, options) => {
       if (throwOnFetch) {
         throw new Error('network failed')
       }
@@ -53,6 +72,8 @@ describe('Hyper protocol handler', function () {
       }
       return new Response('hyper-ok', { status: 200, headers: { 'Content-Type': 'text/plain' } })
     })
+    const fetchStub = createFetchStub()
+    const privateFetchStub = createFetchStub()
 
     const initChat = sinon.spy()
     const handleChatRequest = sinon.stub()
@@ -63,7 +84,12 @@ describe('Hyper protocol handler', function () {
         chatResponse || new Response('chat-ok', { status: 200, headers: { 'Content-Type': 'text/plain' } })
       )
     }
-    const hyperFetchFactory = sinon.stub().resolves(fetchStub)
+    const hyperFetchFactory = sinon.stub().callsFake(async ({ sdk: targetSdk }) => {
+      return targetSdk === privateSdk ? privateFetchStub : fetchStub
+    })
+    const hyperCache = []
+    const saveHyperCache = sinon.stub()
+    const rememberPrivateHyperdrive = sinon.stub().resolves()
 
     const module = await esmock('../../src/protocols/hyper-handler.js', {
       electron: {
@@ -84,6 +110,13 @@ describe('Hyper protocol handler', function () {
       'hypercore-fetch': {
         default: hyperFetchFactory
       },
+      '../../src/protocols/config.js': {
+        hyperCache,
+        saveHyperCache
+      },
+      '../../src/protocols/private-hyperdrive-registry.js': {
+        rememberPrivateHyperdrive
+      },
       '../../src/pages/p2p/peerchat/p2p.js': {
         initChat,
         handleChatRequest,
@@ -91,7 +124,22 @@ describe('Hyper protocol handler', function () {
       }
     })
 
-    return { module, createSDK, attachHyperSDK, fetchStub, hyperFetchFactory, initChat, handleChatRequest, lanMock, sdk }
+    return {
+      module,
+      createSDK,
+      attachHyperSDK,
+      fetchStub,
+      privateFetchStub,
+      hyperFetchFactory,
+      initChat,
+      handleChatRequest,
+      lanMock,
+      sdk,
+      privateSdk,
+      hyperCache,
+      saveHyperCache,
+      rememberPrivateHyperdrive
+    }
   }
 
   function createLanMock (host) {
@@ -201,6 +249,158 @@ describe('Hyper protocol handler', function () {
     expect(response.status).to.equal(500)
     const text = await response.text()
     expect(text).to.contain('chat-crash')
+  })
+
+  it('creates public and private upload drives with matching discovery settings', async function () {
+    const { module, sdk, privateSdk } = await loadHyperModule()
+    const handler = await module.createHandler({ storage: 'test-visibility' })
+
+    const publicResponse = await handler(new Request(
+      'hyper://localhost/?key=public-file&visibility=public',
+      { method: 'POST' }
+    ))
+    const privateResponse = await handler(new Request(
+      'hyper://localhost/?key=private-file&visibility=private',
+      { method: 'POST' }
+    ))
+
+    expect(publicResponse.status).to.equal(200)
+    expect(privateResponse.status).to.equal(200)
+    expect(sdk.getDrive.calledWithExactly('public-file', { autoJoin: true })).to.equal(true)
+    expect(privateSdk.getDrive.calledWithExactly('private-file', { autoJoin: false })).to.equal(true)
+    expect(sdk.getDrive.calledWith('private-file')).to.equal(false)
+  })
+
+  it('uses a distinct Hyperdrive for each upload name', async function () {
+    const { module, sdk, privateSdk } = await loadHyperModule()
+    const handler = await module.createHandler({ storage: 'test-per-upload-drives' })
+
+    for (const name of ['first-file', 'second-file']) {
+      await handler(new Request(
+        `hyper://localhost/?key=${name}&visibility=public`,
+        { method: 'POST' }
+      ))
+      await handler(new Request(
+        `hyper://localhost/?key=${name}&visibility=private`,
+        { method: 'POST' }
+      ))
+    }
+
+    expect(sdk.getDrive.calledWithExactly('first-file', { autoJoin: true })).to.equal(true)
+    expect(sdk.getDrive.calledWithExactly('second-file', { autoJoin: true })).to.equal(true)
+    expect(privateSdk.getDrive.calledWithExactly('first-file', { autoJoin: false })).to.equal(true)
+    expect(privateSdk.getDrive.calledWithExactly('second-file', { autoJoin: false })).to.equal(true)
+  })
+
+  it('keeps the private runtime outside LAN discovery and Corestore replication', async function () {
+    const { module, createSDK, attachHyperSDK, sdk, privateSdk } = await loadHyperModule()
+
+    await module.createHandler({ storage: path.join('profiles', 'hyper') })
+
+    expect(createSDK.callCount).to.equal(2)
+    expect(createSDK.secondCall.args[0]).to.include({
+      storage: path.join('profiles', 'hyper-private'),
+      autoJoin: false,
+      doReplicate: false
+    })
+    expect(attachHyperSDK.calledOnceWithExactly(sdk, {})).to.equal(true)
+    expect(attachHyperSDK.calledWith(privateSdk)).to.equal(false)
+  })
+
+  it('routes private drive writes and reads only through the isolated runtime', async function () {
+    const { module, fetchStub, privateFetchStub } = await loadHyperModule()
+    const handler = await module.createHandler({ storage: 'test-private-routing' })
+    const keyResponse = await handler(new Request(
+      'hyper://localhost/?key=private-file&visibility=private',
+      { method: 'POST' }
+    ))
+    const privateDriveUrl = await keyResponse.text()
+    const privateFileUrl = new URL('/private-file.txt', privateDriveUrl).href
+
+    await handler(new Request(privateFileUrl, { method: 'PUT', body: 'private' }))
+    await handler(new Request(privateFileUrl))
+
+    expect(privateFetchStub.callCount).to.equal(2)
+    expect(fetchStub.called).to.equal(false)
+  })
+
+  it('restores private routing from the isolated Corestore after restart', async function () {
+    const { module, fetchStub, privateFetchStub, privateSdk } = await loadHyperModule()
+    privateSdk.corestore.storage.hasCore.resolves(true)
+    const handler = await module.createHandler({ storage: 'test-private-restore' })
+
+    const response = await handler(new Request(
+      `hyper://${'a'.repeat(52)}/private-file.txt`
+    ))
+
+    expect(response.status).to.equal(200)
+    expect(privateFetchStub.calledOnce).to.equal(true)
+    expect(fetchStub.called).to.equal(false)
+  })
+
+  it('does not persist private drive keys in the shared Hyper cache', async function () {
+    const { module, hyperCache, saveHyperCache, rememberPrivateHyperdrive } = await loadHyperModule()
+    const handler = await module.createHandler({ storage: 'test-private-cache' })
+
+    const response = await handler(new Request(
+      'hyper://localhost/?key=private-file&visibility=private',
+      { method: 'POST' }
+    ))
+
+    expect(response.status).to.equal(200)
+    expect(hyperCache).to.deep.equal([])
+    expect(saveHyperCache.called).to.equal(false)
+    expect(rememberPrivateHyperdrive.calledOnce).to.equal(true)
+    expect(rememberPrivateHyperdrive.firstCall.args[1]).to.include({ name: 'private-file' })
+  })
+
+  it('rejects unsupported upload visibility before opening a drive', async function () {
+    const { module, sdk } = await loadHyperModule()
+    const handler = await module.createHandler({ storage: 'test-invalid-visibility' })
+    sdk.getDrive.resetHistory()
+
+    const response = await handler(new Request(
+      'hyper://localhost/?key=file&visibility=shared',
+      { method: 'POST' }
+    ))
+
+    expect(response.status).to.equal(400)
+    expect(sdk.getDrive.called).to.equal(false)
+  })
+
+  it('rejects unsafe or oversized upload names before opening a drive', async function () {
+    const { module, sdk } = await loadHyperModule()
+    const handler = await module.createHandler({ storage: 'test-invalid-name' })
+    sdk.getDrive.resetHistory()
+
+    for (const key of ['line\nbreak', `next${String.fromCharCode(0x85)}line`, 'a'.repeat(256)]) {
+      const response = await handler(new Request(
+        `hyper://localhost/?key=${encodeURIComponent(key)}&visibility=public`,
+        { method: 'POST' }
+      ))
+      expect(response.status).to.equal(400)
+    }
+
+    expect(sdk.getDrive.called).to.equal(false)
+  })
+
+  it('recovers a runtime already closed when suspension partially fails', async function () {
+    const { module, createSDK, sdk, privateSdk } = await loadHyperModule()
+    await module.createHandler({ storage: 'test-suspend-recovery' })
+    createSDK.onThirdCall().resolves(privateSdk)
+    sdk.close.rejects(new Error('main close failed'))
+
+    let failure
+    try {
+      await module.suspendHyper()
+    } catch (error) {
+      failure = error
+    }
+
+    expect(failure?.message).to.equal('main close failed')
+    expect(privateSdk.close.calledOnce).to.equal(true)
+    expect(sdk.close.calledOnce).to.equal(true)
+    expect(createSDK.callCount).to.equal(3)
   })
 
   it('blocks extension-origin writes when no explicit write permission is granted', async function () {

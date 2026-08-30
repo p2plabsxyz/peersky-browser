@@ -116,7 +116,7 @@ function runWorker (data, onProgress) {
 
 class BackupManager {
   // Create a .zip of persistent data at outPath. onProgress: ({processedBytes,...}).
-  async createBackup (outPath, passphrase, onProgress) {
+  async createBackup (outPath, passphrase, onProgress, options = {}) {
     log.info(`Creating backup at ${outPath}`)
     // Suspend P2P stores so the worker sees a consistent snapshot on disk.
     // Services are always resumed in the finally block, even on failure.
@@ -128,7 +128,8 @@ class BackupManager {
         userDataDir: userDataDir(),
         outPath,
         peerskyVersion: app.getVersion(),
-        passphrase
+        passphrase,
+        includePrivate: options.includePrivate === true
       }, onProgress)
       log.info(`Backup created: ${result.bytes} bytes`)
       return result

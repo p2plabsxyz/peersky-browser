@@ -8,10 +8,11 @@ async function run () {
   const { op } = workerData
 
   if (op === 'create') {
-    const { userDataDir, outPath, peerskyVersion, passphrase } = workerData
+    const { userDataDir, outPath, peerskyVersion, passphrase, includePrivate } = workerData
     const result = await createEncryptedBackupZip(userDataDir, outPath, {
       peerskyVersion,
       passphrase,
+      includePrivate: includePrivate === true,
       onProgress: (data) => parentPort.postMessage({ type: 'progress', data })
     })
     return { filePath: result.filePath, bytes: result.bytes, manifest: result.manifest }
