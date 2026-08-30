@@ -813,6 +813,7 @@ class NavBox extends HTMLElement {
       urlInput.addEventListener('keypress', (event) => {
         if (event.key === 'Enter') {
           const url = event.target.value.trim()
+          this._dismissAutocomplete()
           this.dispatchEvent(new CustomEvent('navigate', { detail: { url } }))
         }
       })
@@ -1115,7 +1116,7 @@ class NavBox extends HTMLElement {
             this._selectAutocompleteItem(selected)
           }
         } else {
-          this._hideAutocomplete()
+          this._dismissAutocomplete()
         }
         break
 
@@ -1218,16 +1219,7 @@ class NavBox extends HTMLElement {
     const urlInput = this.querySelector('#url')
     if (urlInput && result.url) {
       urlInput.value = result.url
-      // A search debounced before this keypress would otherwise land after the
-      // dropdown closes and reopen it over the page.
-      if (this._autocompleteDebounceTimer) {
-        clearTimeout(this._autocompleteDebounceTimer)
-        this._autocompleteDebounceTimer = null
-      }
-      this._autocompleteResults = []
-      this._autocompleteQuery = ''
-      this._autocompleteSelectedIndex = -1
-      this._hideAutocomplete()
+      this._dismissAutocomplete()
 
       // Dispatch navigate event
       this.dispatchEvent(new CustomEvent('navigate', {
@@ -1252,6 +1244,19 @@ class NavBox extends HTMLElement {
       this._isAutocompleteVisible = false
       this._autocompleteSelectedIndex = -1
     }
+  }
+
+  // Hiding alone keeps the cached query so refocusing restores the list. After
+  // navigating that cache has to go, or a late debounce or the focus handler
+  // reopens the dropdown over the page that just loaded.
+  _dismissAutocomplete () {
+    if (this._autocompleteDebounceTimer) {
+      clearTimeout(this._autocompleteDebounceTimer)
+      this._autocompleteDebounceTimer = null
+    }
+    this._autocompleteResults = []
+    this._autocompleteQuery = ''
+    this._hideAutocomplete()
   }
 }
 
