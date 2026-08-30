@@ -87,7 +87,9 @@ export default class VerticalTabs extends BaseTabBar {
   }
 
   _syncBodyExpanded () {
-    const expanded = this.classList.contains('expanded') || this.classList.contains('keep-expanded')
+    // Only the pinned mode resizes the page. Hover expansion floats over it,
+    // so the webview never repaints mid-animation.
+    const expanded = this.classList.contains('keep-expanded')
     document.body.classList.toggle('vertical-tabs-expanded', expanded)
   }
 
