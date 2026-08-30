@@ -83,11 +83,10 @@ class TitleBar extends HTMLElement {
   // Method to toggle titlebar visibility on Darwin
   toggleDarwinCollapse (shouldCollapse) {
     if (process.platform === 'darwin') {
-      if (shouldCollapse) {
-        this.classList.add('titlebar-collapsed-darwin')
-      } else {
-        this.classList.remove('titlebar-collapsed-darwin')
-      }
+      this.classList.toggle('titlebar-collapsed-darwin', !!shouldCollapse)
+      // Layout rules key off body classes: :has() styling of cousins goes
+      // stale after a shell reload in this Chromium.
+      document.body.classList.toggle('darwin-collapsed', !!shouldCollapse)
     }
   }
 }

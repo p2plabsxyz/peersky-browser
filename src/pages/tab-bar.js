@@ -1763,7 +1763,7 @@ class TabBar extends HTMLElement {
       <div class="context-menu-separator"></div>
       <div class="context-menu-item" data-action="close-others">
         <img class="menu-icon" src="${iconPath}/close.svg" />
-        Close other tabs
+        Close all tabs
       </div>
       <div class="context-menu-item" data-action="close">
         <img class="menu-icon" src="${iconPath}/close.svg" />

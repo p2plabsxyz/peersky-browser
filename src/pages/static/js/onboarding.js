@@ -121,7 +121,7 @@ function setRestoreBusy (busy) {
 cidRestoreBtn.addEventListener('click', async () => {
   const address = cidInput.value.trim()
   if (!address) {
-    setRestoreStatus('Enter a CID or ipfs:// link.', 'error')
+    setRestoreStatus('Enter a hyper:// backup link.', 'error')
     return
   }
   if (!restoreCid) return

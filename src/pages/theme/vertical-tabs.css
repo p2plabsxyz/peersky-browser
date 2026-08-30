@@ -12,6 +12,7 @@
   flex-direction: column;
   background-color: var(--peersky-nav-background);
   border-right: 1px solid var(--peersky-nav-border-color);
+  box-shadow: 4px 0 6px -1px rgba(0, 0, 0, 0.1), 2px 0 4px -1px rgba(0, 0, 0, 0.06);
   z-index: 1000;
   transition: width var(--vertical-tabs-transition-duration) ease,
               background-color var(--vertical-tabs-transition-duration) ease,
@@ -245,24 +246,9 @@
   display: flex;
 }
 
-/* Adjust webview container when vertical tabs are enabled */
-body:has(.tabbar.vertical-tabs) .webview-container {
-  left: 48px;
-  width: calc(100% - 48px);
-  transition: left var(--vertical-tabs-transition-duration) ease,
-              width var(--vertical-tabs-transition-duration) ease;
-}
-
-body:has(.tabbar.vertical-tabs.expanded) .webview-container {
-  left: 200px;
-  width: calc(100% - 200px);
-}
-
-body.extension-side-panel-open:has(.tabbar.vertical-tabs) .webview-container,
-body.extension-side-panel-open:has(.tabbar.vertical-tabs.expanded) .webview-container {
-  width: auto;
-  right: var(--extension-side-panel-width, 380px);
-}
+/* Webview container layout comes from body classes set in vertical-tabs.js.
+   No transition: a throttled window freezes it mid-flight, leaving the strip
+   overlapping the page. */
 
 /* Loading indicator for vertical tabs */
 .tabbar.vertical-tabs .tab.loading .tab-favicon::after {
@@ -284,7 +270,8 @@ body.extension-side-panel-open:has(.tabbar.vertical-tabs.expanded) .webview-cont
   100% { transform: translate(-50%, -50%) rotate(360deg); }
 }
 
-/* P2P indicator positioning for vertical tabs */
+/* P2P indicator: corner badge on collapsed squares, inline after the
+   title once the row is wide enough to have one. */
 .tabbar.vertical-tabs .p2p-indicator {
   position: absolute;
   top: 4px;
@@ -295,6 +282,15 @@ body.extension-side-panel-open:has(.tabbar.vertical-tabs.expanded) .webview-cont
   margin: 0;
   border-radius: 50%;
   background-color: var(--browser-theme-primary-highlight);
+}
+
+.tabbar.vertical-tabs.expanded .p2p-indicator,
+.tabbar.vertical-tabs.keep-expanded .p2p-indicator {
+  position: static;
+  order: 2;
+  margin: 0 0 0 6px;
+  align-self: center;
+  flex-shrink: 0;
 }
 
 /* Pinned tabs indicator */
@@ -361,7 +357,11 @@ body:has(.tabbar.vertical-tabs) .tabbar-container {
 }
 
 body:has(.tabbar.vertical-tabs) .header-container,
-body:has(.tabbar.vertical-tabs) .header-container * {
+body:has(.tabbar.vertical-tabs) #navbox {
+  -webkit-app-region: drag;
+}
+
+body:has(.tabbar.vertical-tabs) #navbox > * {
   -webkit-app-region: no-drag;
 }
 
@@ -377,18 +377,18 @@ body:has(.tabbar.vertical-tabs) .app-icon {
   transition: height 0.3s ease, opacity 0.3s ease;
 }
 
-body:has(.titlebar.titlebar-collapsed-darwin) .header-container {
+body.darwin-collapsed .header-container {
   top: 0 !important;
   transition: top 0.3s ease;
 }
 
-body:has(.titlebar.titlebar-collapsed-darwin) .tabbar.vertical-tabs {
+body.darwin-collapsed .tabbar.vertical-tabs {
   top: 50px !important;
   height: calc(100vh - 50px) !important;
   transition: top 0.3s ease, height 0.3s ease;
 }
 
-body:has(.titlebar.titlebar-collapsed-darwin) .webview-container {
+body.darwin-collapsed .webview-container {
   top: 50px !important;
   height: calc(100vh - 50px) !important;
   transition: top 0.3s ease, height 0.3s ease;
@@ -398,13 +398,13 @@ body:has(.titlebar.titlebar-collapsed-darwin) .webview-container {
   -webkit-app-region: drag;
 }
 
-body:has(.titlebar.titlebar-collapsed-darwin) #navbox {
+body.darwin-collapsed #navbox {
   padding-left: 78px !important; /* Space for macOS traffic lights */
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
 }
-body:has(.titlebar.titlebar-collapsed-darwin) .tabbar.vertical-tabs {
+body.darwin-collapsed .tabbar.vertical-tabs {
   border-left: none !important;
-  box-shadow: none !important;
+  box-shadow: 4px 0 6px -1px rgba(0, 0, 0, 0.1), 2px 0 4px -1px rgba(0, 0, 0, 0.06) !important;
 }
 
 .tabbar.vertical-tabs .tab.split-left,

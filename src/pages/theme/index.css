@@ -290,6 +290,31 @@ find-menu {
   display: none !important;
 }
 
+/* Floating surfaces must never fall inside a window drag region. */
+.url-autocomplete-dropdown,
+.extensions-popup,
+.qr-popup,
+.extension-context-menu {
+  -webkit-app-region: no-drag;
+}
+
+/* Onboarding hides the nav and tabs; the leftover chrome adopts the page
+   colour and the content reclaims the nav's space. */
+body.onboarding-active .titlebar {
+  background-color: var(--settings-bg-primary);
+}
+
+body.onboarding-active .header-container {
+  display: none;
+}
+
+body.onboarding-active .webview-container {
+  top: 38px !important;
+  height: calc(100vh - 38px) !important;
+  left: 0 !important;
+  width: 100% !important;
+}
+
 .tabbar {
   display: flex;
   align-items: center;
@@ -794,6 +819,7 @@ body.extension-side-panel-open .webview-container {
 }
 
 .tab-context-menu {
+  -webkit-app-region: no-drag;
   background: var(--settings-card-bg);
   border: 1px solid var(--settings-border);
   border-radius: 6px;
@@ -1331,28 +1357,28 @@ body.extension-side-panel-open .webview-container {
   line-height: 1;
 }
 
-.vertical-tabs-layout {
-  display: flex !important;
+body.vertical-tabs-layout .webview-container {
+  left: 60px;
+  width: calc(100% - 60px);
 }
 
-.vertical-tabs-layout .webview-container {
-  margin-left: 48px !important; /* Updated to match collapsed width */
-  width: calc(100% - 48px) !important;
-  transition: margin-left 0.3s ease, width 0.3s ease !important;
+body.vertical-tabs-layout.vertical-tabs-expanded .webview-container {
+  left: 212px;
+  width: calc(100% - 212px);
 }
 
 body.extension-side-panel-open.vertical-tabs-layout .webview-container {
-  width: auto !important;
-  right: var(--extension-side-panel-width, 380px) !important;
+  width: auto;
+  right: var(--extension-side-panel-width, 380px);
 }
 
 /* Add smooth transitions for the layout changes */
 body {
-  transition: all 0.3s ease !important;
+  transition: none !important;
 }
 
 .webview-container {
-  transition: left 0.3s ease, width 0.3s ease !important;
+  transition: none !important;
 }
 
 .tab-placeholder {

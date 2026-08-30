@@ -68,6 +68,12 @@ export default class VerticalTabs extends BaseTabBar {
     })
 
     window.addEventListener('resize', () => this.updateAddButtonSticky())
+
+    document.body.classList.add('vertical-tabs-layout')
+    this._layoutSync = new MutationObserver(() => this._syncBodyExpanded())
+    this._layoutSync.observe(this, { attributes: true, attributeFilter: ['class'] })
+    this._syncBodyExpanded()
+
     // Ensure CSS is loaded before applying styles
     this.loadVerticalTabsCSS()
 
@@ -78,6 +84,17 @@ export default class VerticalTabs extends BaseTabBar {
     if (process.platform === 'darwin') {
       this.collapseTitlebarOnDarwin()
     }
+  }
+
+  _syncBodyExpanded () {
+    const expanded = this.classList.contains('expanded') || this.classList.contains('keep-expanded')
+    document.body.classList.toggle('vertical-tabs-expanded', expanded)
+  }
+
+  disconnectedCallback () {
+    super.disconnectedCallback?.()
+    this._layoutSync?.disconnect()
+    document.body.classList.remove('vertical-tabs-layout', 'vertical-tabs-expanded')
   }
 
   collapseTitlebarOnDarwin () {

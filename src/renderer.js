@@ -528,9 +528,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   })
 
   function updateOnboardingVisibility (url) {
-    const isOb = url && url.startsWith('peersky://onboarding')
+    const isOb = !!(url && url.startsWith('peersky://onboarding'))
     if (nav) nav.style.display = isOb ? 'none' : ''
     if (tabBar) tabBar.style.display = isOb ? 'none' : ''
+    document.body.classList.toggle('onboarding-active', isOb)
   }
 
   function handleTabSelected (e) {

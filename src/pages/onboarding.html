@@ -281,6 +281,11 @@
       border-color: var(--settings-border-focus);
     }
 
+    #choose-path-screen .section-label {
+      text-align: center;
+      margin-bottom: 14px;
+    }
+
     .divider-or {
       width: 100%;
       text-align: center;
@@ -347,9 +352,9 @@
     <h1 class="onboarding-title">Restore Backup</h1>
     <p class="onboarding-subtitle">Bring back your tabs, identity and P2P data</p>
 
-    <div class="section-label">Restore from CID</div>
-    <input type="text" class="cid-input" id="cid-input" placeholder="ipfs://bafy... or a CID">
-    <button class="skip-btn" id="cid-restore-btn" style="margin-bottom: 4px;">Restore from CID</button>
+    <div class="section-label">Restore from a hyper:// link</div>
+    <input type="text" class="cid-input" id="cid-input" placeholder="hyper://...">
+    <button class="skip-btn" id="cid-restore-btn" style="margin-bottom: 4px;">Restore</button>
 
     <div class="divider-or">or</div>
 
