@@ -30,6 +30,7 @@ import { fileURLToPath } from 'url'
 import { promises as fs } from 'fs'
 import { installChromeWebStore } from 'electron-chrome-web-store'
 import { ElectronChromeExtensions } from '@p2plabs/peersky-chrome-extensions'
+import { shouldHonourTabActivation } from './tab-activation.js'
 import ManifestValidator from './manifest-validator.js'
 import { loadPolicy } from './policy.js'
 import { ensureDir, KeyedMutex, ERR } from './util.js'
@@ -220,7 +221,7 @@ class ExtensionManager {
            */
           selectTab: async (tab, win) => {
             try {
-              if (!win || win.isDestroyed()) return
+              if (!shouldHonourTabActivation({ registering: this._registeringTab, window: win })) return
               const tabId = tab && typeof tab.id === 'number' ? tab.id : null
               if (!tabId) return
               const js = `
@@ -920,7 +921,12 @@ class ExtensionManager {
         this.sidePanelGuestIds?.delete(wcId)
       })
 
-      this.electronChromeExtensions.addTab(webContents, window)
+      this._registeringTab = true
+      try {
+        this.electronChromeExtensions.addTab(webContents, window)
+      } finally {
+        this._registeringTab = false
+      }
       log.info(`[ExtensionManager] Registered webContents ${webContents.id} with extension system`)
 
       // Side panel guests often attach before getURL() is set; drop them if they
