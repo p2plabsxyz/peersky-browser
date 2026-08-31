@@ -282,11 +282,18 @@ export async function createHandler (ipfsOptions, session, securityOptions = {})
       }
       log.info(`Added all files in ${Date.now() - startTime}ms`)
 
-      // Pin the root CID recursively
-      for await (const pinned of node.pins.add(rootCid, { recursive: true })) {
-        if (!pinned) continue
+      // Pin the root CID recursively. Identical content yields an identical
+      // CID, so re-uploading a file that is already pinned is a no-op rather
+      // than a failure: helia throws instead of returning early.
+      try {
+        for await (const pinned of node.pins.add(rootCid, { recursive: true })) {
+          if (!pinned) continue
+        }
+        log.info(`Pinned in ${Date.now() - startTime}ms`)
+      } catch (error) {
+        if (error?.name !== 'AlreadyPinnedError') throw error
+        log.info(`Already pinned in ${Date.now() - startTime}ms`)
       }
-      log.info(`Pinned in ${Date.now() - startTime}ms`)
 
       const fileUrl = `ipfs://${rootCid.toString()}/`
       log.info('Files uploaded with root CID:', rootCid.toString())
