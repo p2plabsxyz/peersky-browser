@@ -23,6 +23,7 @@
 import electron from 'electron'
 import { ERR, validateInstallSource, sha256Hex } from './util.js'
 import path from 'path'
+import { clearSidePanelState, syncSidePanelForActiveTab, registerSidePanelGuest } from './services/side-panel.js'
 const { ipcMain, BrowserWindow, dialog, app } = electron
 
 // Simple in-memory rate limiter for install attempts per sender WebContents
@@ -394,7 +395,7 @@ export function setupExtensionIpcHandlers (extensionManager) {
     })
 
     // Handle browser action popup
-    ipcMain.handle('extensions-open-browser-action-popup', async (event, { actionId, anchorRect }) => {
+    ipcMain.handle('extensions-open-browser-action-popup', async (event, { actionId, anchorRect, activeWebContentsId }) => {
       try {
         if (!actionId || typeof actionId !== 'string') {
           throw Object.assign(new Error('Invalid action ID'), { code: ERR.E_INVALID_ID })
@@ -418,7 +419,14 @@ export function setupExtensionIpcHandlers (extensionManager) {
             }
           : { x: 100, y: 40, width: 20, height: 20, left: 100, top: 40, right: 120, bottom: 60 }
 
-        const result = await extensionManager.openBrowserActionPopup(actionId, senderWindow, safeRect)
+        // The renderer knows which webview is active; taking its word for it
+        // (after the ownership check inside the extension system) saves a
+        // round-trip back into the renderer on every click.
+        const hintedId = Number.isInteger(activeWebContentsId) ? activeWebContentsId : null
+
+        const result = await extensionManager.openBrowserActionPopup(actionId, senderWindow, safeRect, {
+          activeWebContentsId: hintedId
+        })
         return result || { success: true }
       } catch (error) {
         console.error('ExtensionIPC: extensions-open-browser-action-popup failed:', error)
@@ -498,6 +506,14 @@ export function setupExtensionIpcHandlers (extensionManager) {
             try { ece.selectTab(webviewContents, senderWindow) } catch (_) { }
           }
         } catch (_) { /* ignore for now */ }
+
+        try {
+          if (senderWindow && !senderWindow.isDestroyed()) {
+            syncSidePanelForActiveTab(extensionManager, senderWindow, webContentsId)
+          }
+        } catch (syncErr) {
+          console.warn('[ExtensionIPC] side panel tab sync failed:', syncErr?.message || syncErr)
+        }
 
         return { success: true }
       } catch (error) {
@@ -846,6 +862,25 @@ export function setupExtensionIpcHandlers (extensionManager) {
           error: error.message,
           results: []
         }
+      }
+    })
+
+    ipcMain.on('extensions-side-panel-webview', (event, webContentsId) => {
+      try {
+        if (typeof webContentsId !== 'number') return
+        registerSidePanelGuest(extensionManager, webContentsId)
+      } catch (error) {
+        console.warn('[ExtensionIPC] extensions-side-panel-webview failed:', error?.message || error)
+      }
+    })
+
+    ipcMain.on('extensions-side-panel-closed', (event) => {
+      try {
+        const win = BrowserWindow.fromWebContents(event.sender)
+        if (!win || win.isDestroyed()) return
+        clearSidePanelState(extensionManager, win.id)
+      } catch (error) {
+        console.warn('[ExtensionIPC] extensions-side-panel-closed failed:', error?.message || error)
       }
     })
 

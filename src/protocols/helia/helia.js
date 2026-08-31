@@ -1,6 +1,5 @@
 // @ts-check
 import { createHelia } from "helia";
-import { createLibp2p } from "libp2p";
 import { noise } from "@chainsafe/libp2p-noise";
 import { yamux } from "@chainsafe/libp2p-yamux";
 import { mplex } from "@libp2p/mplex";
@@ -21,8 +20,7 @@ import { bootstrap } from "@libp2p/bootstrap";
 import { keychain } from "@libp2p/keychain";
 import { http } from "@libp2p/http";
 import { delegatedRoutingV1HttpApiClient } from "@helia/delegated-routing-v1-http-api-client";
-import { ipnsValidator } from "ipns/validator";
-import { ipnsSelector } from "ipns/selector";
+import { ipnsValidator, ipnsSelector } from "@helia/ipns";
 import { userAgent } from "libp2p/user-agent";
 import { ipfsOptions, getLibp2pPrivateKey } from "../config.js";
 import pkg from '../../../package.json' with { type: 'json' };
@@ -50,7 +48,9 @@ export async function createNode() {
   const privateKey = await getLibp2pPrivateKey();
   const agentVersion = `peersky-browser/${version} ${userAgent()}`;
 
-  const libp2p = await createLibp2p({
+  // helia@7 constructs libp2p itself during start(), injecting nodeInfo and
+  // the datastore, so hand it options rather than a built instance.
+  const libp2pOptions = {
     privateKey,
     nodeInfo: {
       userAgent: agentVersion
@@ -58,11 +58,11 @@ export async function createNode() {
     addresses: {
       listen: [
         '/ip4/0.0.0.0/tcp/0',
-        '/ip4/0.0.0.0/tcp/4002/ws',
-        '/ip4/0.0.0.0/udp/4003/webrtc-direct',
+        '/ip4/0.0.0.0/tcp/0/ws',
+        '/ip4/0.0.0.0/udp/0/webrtc-direct',
         '/ip6/::/tcp/0',
-        '/ip6/::/tcp/4002/ws',
-        '/ip6/::/udp/4003/webrtc-direct',
+        '/ip6/::/tcp/0/ws',
+        '/ip6/::/udp/0/webrtc-direct',
         '/p2p-circuit'
       ],
     },
@@ -110,7 +110,7 @@ export async function createNode() {
       inboundConnectionThreshold: 50,
       maxIncomingPendingConnections: 50,
     },
-  });
+  };
 
   /** @type {any} */
   const ds = options.datastore;
@@ -131,10 +131,16 @@ export async function createNode() {
 
     const node = await createHelia({
       ...options,
-      libp2p,
+      libp2p: libp2pOptions,
       datastore: ds,
       blockstore: bs,
     });
+
+    // libp2p is created during start(), and reading node.libp2p before that
+    // throws NotStartedError.
+    if (node.status !== "started") {
+      await node.start();
+    }
 
     log.info("Peer ID:", node.libp2p.peerId.toString());
     log.info("Node userAgent:", agentVersion);
@@ -147,7 +153,6 @@ export async function createNode() {
     if (dsOpened) {
       try { await ds.close(); } catch (e) { log.warn("Failed to close datastore after init failure:", e); }
     }
-    try { await libp2p.stop(); } catch (e) { log.warn("Failed to stop libp2p after init failure:", e); }
     throw error;
   }
 }

@@ -10,33 +10,45 @@
  * Security Model: Principle of least privilege with granular access control.
  */
 
-const { contextBridge, ipcRenderer } = require('electron')
+const { contextBridge, ipcRenderer, webUtils } = require('electron')
 
 // Context detection using window.location for immediate synchronous access
 const url = window.location.href
-const isSettings = url.startsWith('peersky://settings')
-const isExtensions = url.startsWith('peersky://extensions')
-const isHome = url.startsWith('peersky://home')
-const isBookmarks = url.includes('peersky://bookmarks')
-const isDownloads = url.includes('peersky://downloads')
-const isTabsPage = url.includes('peersky://tabs')
-const isP2PPage = url.startsWith('peersky://p2p')
-const isUserP2PApp = url.startsWith('peersky://myapps')
-const isInternal = (url.startsWith('peersky://') && !isUserP2PApp) || url.startsWith('file://') || url.includes('agregore.mauve.moe')
+
+// Scheme and host only: a page picks its own query string and fragment, so a
+// substring of the href proves nothing about which page it is.
+function parseLocation (href) {
+  try {
+    const { protocol, hostname } = new URL(href)
+    return { protocol, hostname }
+  } catch (_) {
+    return { protocol: '', hostname: '' }
+  }
+}
+
+const { protocol: pageProtocol, hostname: pageHost } = parseLocation(url)
+
+const isPeerskyPage = (name) => pageProtocol === 'peersky:' && pageHost === name
+
+const isSettings = isPeerskyPage('settings')
+const isExtensions = isPeerskyPage('extensions')
+const isHome = isPeerskyPage('home')
+const isOnboarding = isPeerskyPage('onboarding')
+const isBookmarks = isPeerskyPage('bookmarks')
+const isDownloads = isPeerskyPage('downloads')
+const isBackup = isPeerskyPage('backup')
+const isTabsPage = isPeerskyPage('tabs')
+const isP2PPage = isPeerskyPage('p2p')
+const isUserP2PApp = isPeerskyPage('myapps')
+const isTrustedExternalHost = pageHost === 'agregore.mauve.moe'
+const isInternal = (pageProtocol === 'peersky:' && !isUserP2PApp) || pageProtocol === 'file:' || isTrustedExternalHost
 const isExternal = !isInternal
 
+const isP2P = ['hyper:', 'ipfs:', 'ipns:', 'hs:'].includes(pageProtocol)
+
+const isBitTorrent = ['bt:', 'bittorrent:', 'magnet:'].includes(pageProtocol)
+
 console.log('Unified-preload: URL detection', { url, isInternal, isExternal })
-
-const isP2P =
-  url.startsWith('hyper://') ||
-  url.startsWith('ipfs://') ||
-  url.startsWith('ipns://') ||
-  url.startsWith('hs://')
-
-const isBitTorrent =
-  url.startsWith('bt://') ||
-  url.startsWith('bittorrent://') ||
-  url.startsWith('magnet:')
 
 // Expose minimal API for BitTorrent pages to open files in new tabs
 // Note: window.open() doesn't work for file:// URLs from custom protocols due to Electron security
@@ -47,7 +59,7 @@ if (isBitTorrent) {
 }
 
 // Expose LLM API for internal pages, P2P apps, and trusted domains
-if (isInternal || isP2P || isUserP2PApp || url.includes('agregore.mauve.moe')) {
+if (isInternal || isP2P || isUserP2PApp) {
   console.log('Unified-preload: Exposing LLM API for page:', url)
   // Iterator management for streaming
   const iteratorMaps = new Map()
@@ -306,7 +318,7 @@ if (isInternal || isP2P || isUserP2PApp || url.includes('agregore.mauve.moe')) {
   }
 }
 
-const context = { url, isSettings, isExtensions, isHome, isBookmarks, isDownloads, isTabsPage, isP2PPage, isInternal, isExternal }
+const context = { url, isSettings, isExtensions, isHome, isBookmarks, isDownloads, isBackup, isTabsPage, isP2PPage, isInternal, isExternal }
 
 console.log(`Unified-preload: Context detection - URL: ${url}`)
 console.log(`Unified-preload: isSettings: ${isSettings}, isExtensions: ${isExtensions}, isHome: ${isHome}, isBookmarks: ${isBookmarks}, isDownloads: ${isDownloads}, isP2PPage: ${isP2PPage}, isInternal: ${isInternal}, isExternal: ${isExternal}`)
@@ -345,6 +357,8 @@ function createSettingsAPI (pageContext) {
         return ipcRenderer.invoke('settings-upload-wallpaper', fileData)
       },
       getDefaultWallpapers: () => ipcRenderer.invoke('settings-get-default-wallpapers'),
+      getVersion: () => ipcRenderer.invoke('settings-get-version'),
+      checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
       getArchiveData: () => ipcRenderer.invoke('settings-get-archive-data'),
       exportArchive: (jsonContent) => ipcRenderer.invoke('settings-export-archive', jsonContent),
       clearArchive: (cutoff) => ipcRenderer.invoke('settings-clear-archive', cutoff)
@@ -455,6 +469,20 @@ const downloadsAPI = {
   cancel: (id) => ipcRenderer.send('download-cancel', id)
 }
 
+// Backup API - Available only to the dedicated backup page
+const backupAPI = {
+  create: (passphrase, includePrivate = false) => ipcRenderer.invoke('backup-create', { passphrase, includePrivate }),
+  validate: () => ipcRenderer.invoke('backup-validate'),
+  restore: (zipPath, passphrase) => ipcRenderer.invoke('backup-restore', { zipPath, passphrase }),
+  restoreCid: (address, passphrase) => ipcRenderer.invoke('backup-restore-cid', { address, passphrase }),
+  getDeviceInfo: () => ipcRenderer.invoke('backup-device-info'),
+  listPrivateHyperdrives: () => ipcRenderer.invoke('backup-private-hyperdrives'),
+  createIdentityTransfer: (targetPairingPayload, includePrivate = true) => ipcRenderer.invoke('backup-identity-create', { targetPairingPayload, includePrivate }),
+  uploadIdentityTransferHyper: (targetPairingPayload, includePrivate = true) => ipcRenderer.invoke('backup-identity-upload-hyper', { targetPairingPayload, includePrivate }),
+  relaunch: () => ipcRenderer.invoke('backup-relaunch'),
+  onProgress: (callback) => createEventListener('backup-progress', callback)
+}
+
 // Extension API - Available only to settings pages for security
 const extensionAPI = {
   listExtensions: () => ipcRenderer.invoke('extensions-list'),
@@ -531,7 +559,29 @@ const settingsAPI = createSettingsAPI(context)
 
 // Expose APIs based on context with enhanced granularity
 try {
-  if (isSettings) {
+  if (isOnboarding) {
+    contextBridge.exposeInMainWorld('electronAPI', {
+      settings: settingsAPI,
+      importOnboardingData: (data) => ipcRenderer.invoke('onboarding-import-data', data),
+      skipOnboarding: () => ipcRenderer.invoke('onboarding-skip'),
+      restoreBackup: (backupContent) => ipcRenderer.invoke('onboarding-restore-backup', backupContent),
+      restoreZip: (zipPath, passphrase) => ipcRenderer.invoke('onboarding-restore-zip', { zipPath, passphrase }),
+      restoreCid: (address, passphrase) => ipcRenderer.invoke('onboarding-restore-cid', { address, passphrase }),
+      getPathForFile: (file) => webUtils.getPathForFile(file),
+      openExternalLink: (url) => ipcRenderer.invoke('open-external-link', url),
+      getDeviceInfo: () => ipcRenderer.invoke('backup-device-info'),
+      onProgress: (callback) => createEventListener('backup-progress', callback)
+    })
+    console.log('Unified-preload: Onboarding electronAPI exposed')
+  } else if (isBackup) {
+    contextBridge.exposeInMainWorld('electronAPI', {
+      settings: settingsAPI,
+      onThemeChanged: (callback) => createEventListener('theme-changed', callback),
+      readCSS: cssAPI.readCSS,
+      backup: backupAPI
+    })
+    console.log('Unified-preload: Backup electronAPI exposed')
+  } else if (isSettings) {
     // Settings pages get full electronAPI access (exactly what settings.js expects)
     contextBridge.exposeInMainWorld('electronAPI', {
       settings: settingsAPI,
@@ -792,6 +842,10 @@ window.addEventListener('DOMContentLoaded', async () => {
   try {
     // Initialize theme on page load for internal pages
     if (isInternal) {
+      ipcRenderer.on('theme-changed', (_event, theme) => {
+        if (theme) document.documentElement.setAttribute('data-theme', theme)
+      })
+
       // Disable transitions temporarily for non-settings internal pages
       if (!isSettings) {
         document.body.classList.add('transition-disabled')

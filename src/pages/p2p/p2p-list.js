@@ -4,11 +4,14 @@ const builtInP2PApps = [
   { id: "editor", name: "PeerPad", icon: "file-code.svg", url: "peersky://p2p/peerpad/" },
   { id: "p2pmd", name: "P2P Markdown", icon: "markdown.svg", url: "peersky://p2p/p2pmd/" },
   { id: "reader", name: "Social Reader", icon: "people.svg", url: "https://reader.distributed.press/" },
-  { id: "upload", name: "Upload", icon: "file-upload.svg", url: "peersky://p2p/upload/" },
+  { id: "upload", name: "Hyperdrive", icon: "file-upload.svg", url: "peersky://p2p/hyperdrive/" },
   { id: "wiki", name: "Wiki", icon: "wikipedia.svg", url: "peersky://p2p/wiki/" }
 ];
 
-const defaultPinnedBuiltInIds = builtInP2PApps.filter((a) => a.id !== "reader").map((a) => a.id);
+const unpinnedByDefaultIds = new Set(["reader", "editor", "wiki"]);
+const defaultPinnedBuiltInIds = builtInP2PApps
+  .filter((a) => !unpinnedByDefaultIds.has(a.id))
+  .map((a) => a.id);
 const defaultIconUrl = "peersky://static/assets/svg/default-extension-icon.svg";
 
 const normalizeBuiltInApp = (app) => ({
@@ -63,7 +66,7 @@ export const getAllApps = async () => {
 export const getPinnedApps = async () => {
   try {
     const stored = await window.electronAPI.settings.get('pinnedP2PApps');
-    // A stored value of null means all apps are pinned by default except Social Reader
+    // A stored value of null means the default set, not every app
     if (stored === null || stored === undefined) return defaultPinnedBuiltInIds;
     return stored;
   } catch (e) {

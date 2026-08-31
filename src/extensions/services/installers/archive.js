@@ -30,10 +30,10 @@ export async function prepareFromArchive (manager, archivePath) {
     await extractZipFile(archivePath, stagingDir)
   } else {
     sourceType = 'file-crx'
-    const buff = await fs.readFile(archivePath)
-    const crx = await extractCrx(buff)
+    // extractCrx reads the path itself and extracts the embedded ZIP via the
+    // callback; it returns metadata only.
+    const crx = await extractCrx(archivePath, stagingDir, extractZipBuffer)
     publicKeyDer = crx.publicKeyDer || null // eslint-disable-line no-unused-vars
-    await extractZipBuffer(crx.zipBuffer, stagingDir)
   }
 
   // Read manifest from extracted dir (find manifest.json or dynamic equivalent relative to root)

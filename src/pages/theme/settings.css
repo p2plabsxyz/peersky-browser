@@ -433,13 +433,20 @@ body {
   align-items: flex-start;
   padding-top: 1rem;
   padding-bottom: 1rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.setting-row.tall-row .setting-label {
+  min-width: 250px;
 }
 
 .setting-row.tall-row .setting-control {
   flex-direction: row;
-  justify-content: space-between;
-  align-items: flex-start;
+  justify-content: flex-end;
+  align-items: center;
   flex-wrap: wrap;
+  margin-left: 0;
 }
 
 .help-or-error {

@@ -7,6 +7,7 @@ import { app } from 'electron'
 import { createReadStream, promises as fsPromises } from 'fs'
 import { Readable } from 'stream'
 import extensionManager from '../extensions/index.js'
+import { resolveFileCached, respondWithFile } from './static-file.js'
 
 const log = createLogger('protocols:peersky')
 
@@ -30,23 +31,12 @@ const CHECK_PATHS = [
   (path) => path + '.html'
 ]
 
-async function resolveFile (filePath) {
-  for (const toTry of CHECK_PATHS) {
-    const tryPath = toTry(filePath)
-    if (await exists(tryPath)) return tryPath
-  }
-  throw new Error('File not found')
-}
+// request path -> resolved bundle path. The bundle layout is fixed for the life
+// of the process, so this turns three stat calls per asset into one.
+const resolveCache = new Map()
 
-async function exists (filePath) {
-  return new Promise((resolve, reject) => {
-    fs.stat(filePath, (err, stat) => {
-      if (err) {
-        if (err.code === 'ENOENT') resolve(false)
-        else reject(err)
-      } else resolve(stat.isFile())
-    })
-  })
+function resolveFile (filePath) {
+  return resolveFileCached({ scopedFs: fs, filePath, candidates: CHECK_PATHS, cache: resolveCache })
 }
 
 function findHistoryExtension () {
@@ -298,26 +288,22 @@ export async function createHandler () {
     }
 
     try {
-      const resolvedPath = await resolveFile(filePath)
+      const { resolvedPath, stat } = await resolveFile(filePath)
       const format = path.extname(resolvedPath)
 
       if (!['', '.html', '.js', '.css', '.json', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.woff2', '.woff', '.ttf', '.mp3', '.mp4', '.webm', '.ogg'].includes(format)) {
         throw new Error('Unsupported file type')
       }
 
-      const data = Readable.toWeb(fs.createReadStream(resolvedPath))
-      const contentType = mime.lookup(resolvedPath) || 'text/plain'
-      const statusCode = 200
-      const headers = {
-        'Content-Type': contentType,
-        'Access-Control-Allow-Origin': '*',
-        'Allow-CSP-From': '*',
-        'Cache-Control': 'no-cache'
-      }
-
-      return new Response(data, {
-        status: statusCode,
-        headers
+      return respondWithFile({
+        scopedFs: fs,
+        resolvedPath,
+        stat,
+        request,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Allow-CSP-From': '*'
+        }
       })
     } catch (e) {
       if (filePath !== 'error' && filePath !== 'error.html') {

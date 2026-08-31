@@ -10,9 +10,97 @@ const DEFAULT_PAGE = 'peersky://home'
 const isHomePage = (url) => url === 'peersky://home' || url === 'peersky://home/'
 let webviewContainer = null // Will be set dynamically for tabs
 let tabBar // Holds current tab bar component
+let sidePanelEl = null
+let sidePanelWebview = null
 const nav = document.querySelector('#navbox')
 const findMenu = document.querySelector('#find')
 const pageTitle = document.querySelector('title')
+
+function ensureSidePanel () {
+  if (sidePanelEl) return sidePanelEl
+
+  sidePanelEl = document.createElement('aside')
+  sidePanelEl.id = 'extension-side-panel'
+  sidePanelEl.className = 'extension-side-panel'
+  sidePanelEl.innerHTML = `
+    <div class="extension-side-panel-header">
+      <span class="extension-side-panel-title"></span>
+      <button type="button" class="extension-side-panel-close" aria-label="Close side panel">×</button>
+    </div>
+    <div class="extension-side-panel-body"></div>
+  `
+  sidePanelEl.querySelector('.extension-side-panel-close').addEventListener('click', () => {
+    closeExtensionSidePanel({ notify: true })
+  })
+  document.body.appendChild(sidePanelEl)
+  return sidePanelEl
+}
+
+function reportSidePanelGuest () {
+  if (!sidePanelWebview) return
+  try {
+    const id = sidePanelWebview.getWebContentsId?.()
+    if (typeof id === 'number') {
+      ipcRenderer.send('extensions-side-panel-webview', id)
+    }
+  } catch (_) {}
+}
+
+function openExtensionSidePanel ({ url, title, width }) {
+  if (!url) return
+  const panel = ensureSidePanel()
+  const body = panel.querySelector('.extension-side-panel-body')
+  const titleEl = panel.querySelector('.extension-side-panel-title')
+  if (titleEl) titleEl.textContent = title || ''
+
+  const panelWidth = typeof width === 'number' && width > 0 ? width : 380
+  document.documentElement.style.setProperty('--extension-side-panel-width', `${panelWidth}px`)
+
+  if (!sidePanelWebview) {
+    sidePanelWebview = document.createElement('webview')
+    sidePanelWebview.className = 'extension-side-panel-webview'
+    sidePanelWebview.setAttribute('webpreferences', 'contextIsolation=yes,nativeWindowOpen=yes,sandbox=yes')
+    sidePanelWebview.setAttribute('allowpopups', '')
+    sidePanelWebview.addEventListener('did-attach', reportSidePanelGuest)
+    sidePanelWebview.addEventListener('dom-ready', reportSidePanelGuest)
+    body.appendChild(sidePanelWebview)
+  }
+
+  const current = sidePanelWebview.getAttribute('src')
+  if (current !== url) {
+    sidePanelWebview.setAttribute('src', url)
+  } else {
+    // Already loaded; still exclude from ECE in case attach raced ahead of open intent.
+    reportSidePanelGuest()
+  }
+
+  panel.classList.add('open')
+  document.body.classList.add('extension-side-panel-open')
+}
+
+function closeExtensionSidePanel ({ notify = false } = {}) {
+  if (sidePanelEl) sidePanelEl.classList.remove('open')
+  document.body.classList.remove('extension-side-panel-open')
+  document.documentElement.style.removeProperty('--extension-side-panel-width')
+
+  // Tear down the guest so the extension page cannot keep running (timers,
+  // network, etc.) after the panel is hidden. Next open recreates it lazily.
+  if (sidePanelWebview) {
+    try {
+      sidePanelWebview.removeAttribute('src')
+    } catch (_) {}
+    try {
+      sidePanelWebview.remove()
+    } catch (_) {}
+    sidePanelWebview = null
+  }
+  const body = sidePanelEl?.querySelector('.extension-side-panel-body')
+  if (body) body.replaceChildren()
+
+  if (notify) {
+    try { ipcRenderer.send('extensions-side-panel-closed') } catch (_) {}
+  }
+}
 
 // Listen for IPC messages from main process to add tabs
 ipcRenderer.on('add-tab-from-main', (event, url) => {
@@ -179,6 +267,19 @@ function setupWebviewErrorHandling (webview) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+  // The opener passes the tab layout in the URL so the first paint is already
+  // in the right mode instead of flashing horizontal chrome for the IPC round
+  // trip. The async settings reads below stay authoritative.
+  const startupParams = new URLSearchParams(window.location.search)
+  const verticalFromParams = startupParams.get('verticalTabs') === '1'
+  if (verticalFromParams) {
+    document.body.classList.add('vertical-tabs-layout')
+    if (startupParams.get('keepTabsExpanded') === '1') {
+      document.body.classList.add('vertical-tabs-expanded')
+    }
+    document.querySelector('#titlebar')?.toggleDarwinCollapse?.(true)
+  }
+
   // Initialize theme on page load
   try {
     const currentTheme = await ipcRenderer.invoke('settings-get', 'theme')
@@ -216,8 +317,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   ipcRenderer.on('theme-changed', (event, newTheme) => {
     document.documentElement.setAttribute('data-theme', newTheme)
 
-    reloadThemeCSS()
-
     // Refresh tab bar styles if available
     if (tabBar && typeof tabBar.refreshGroupStyles === 'function') {
       tabBar.refreshGroupStyles()
@@ -230,11 +329,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   })
 
   const titleBar = document.querySelector('#titlebar')
-  const verticalTabsEnabled = await ipcRenderer.invoke('settings-get', 'verticalTabs')
+  const verticalTabsEnabled = verticalFromParams || await ipcRenderer.invoke('settings-get', 'verticalTabs')
   if (verticalTabsEnabled) {
     const { default: VerticalTabs } = await import('./pages/vertical-tabs.js')
     tabBar = document.querySelector('#tabbar') || new VerticalTabs()
-    const keepExpanded = await ipcRenderer.invoke('settings-get', 'keepTabsExpanded')
+    const keepExpanded = startupParams.get('keepTabsExpanded') === '1' ||
+      await ipcRenderer.invoke('settings-get', 'keepTabsExpanded')
     if (keepExpanded) {
       tabBar.updateKeepExpandedState(keepExpanded)
     }
@@ -300,10 +400,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   })
 
+  ipcRenderer.on('extensions-side-panel-open', (_event, payload) => {
+    openExtensionSidePanel(payload || {})
+  })
+
+  ipcRenderer.on('extensions-side-panel-close', () => {
+    // Main owns open-intent; don't echo closed or tab-scoped state is wiped on switch.
+    closeExtensionSidePanel({ notify: false })
+  })
+
   ipcRenderer.on('refresh-browser-actions', () => {
     const navBox = document.querySelector('nav-box')
-    if (navBox && typeof navBox.renderBrowserActions === 'function') {
-      navBox.renderBrowserActions()
+    // Coalesced: a single change also arrives on 'browser-action-changed'.
+    if (navBox && typeof navBox.scheduleBrowserActionsRender === 'function') {
+      navBox.scheduleBrowserActionsRender()
     }
   })
 
@@ -429,8 +539,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     }, 100)
   })
 
+  function updateOnboardingVisibility (url) {
+    const isOb = !!(url && url.startsWith('peersky://onboarding'))
+    if (nav) nav.style.display = isOb ? 'none' : ''
+    if (tabBar) tabBar.style.display = isOb ? 'none' : ''
+    document.body.classList.toggle('onboarding-active', isOb)
+  }
+
   function handleTabSelected (e) {
     const { tabId, url } = e.detail
+
+    updateOnboardingVisibility(url)
 
     // Hide peersky://home URL, show all others
     if (isHomePage(url)) {
@@ -456,6 +575,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const { tabId, url } = e.detail
 
     if (tabId === tabBar.activeTabId) {
+      updateOnboardingVisibility(url)
+
       // Hide peersky://home URL, show all others
       if (isHomePage(url)) {
         nav.setStyledUrl('')
@@ -741,7 +862,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     })
 
-    findMenu.addEventListener('hide', () => {
+    findMenu.addEventListener('hide', ({ detail }) => {
+      if (detail?.restoreFocus === false) return
       const webview = tabBar.getActiveWebview()
       if (webview) {
         webview.focus()
@@ -836,25 +958,3 @@ document.addEventListener('keydown', (e) => {
     }
   }
 })
-
-function reloadThemeCSS () {
-  // Reload CSS imports for theme files
-  const styleElements = document.querySelectorAll('style')
-  styleElements.forEach(style => {
-    const text = style.textContent || style.innerText
-    if (text && text.includes('browser://theme/')) {
-      const newStyle = document.createElement('style')
-      newStyle.textContent = text
-      style.parentNode.replaceChild(newStyle, style)
-    }
-  })
-
-  // Reload CSS links with cache busting
-  const linkElements = document.querySelectorAll('link[href*="browser://theme/"]')
-  linkElements.forEach(link => {
-    const href = link.href.split('?')[0]
-    link.href = `${href}?t=${Date.now()}`
-  })
-
-  console.log('Main window: Theme CSS reloaded')
-}

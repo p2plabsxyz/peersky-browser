@@ -25,8 +25,10 @@ describe('Protocol and extension security guardrails', function () {
 
     const ipfsHandlerJs = await readFile('src/protocols/ipfs-handler.js', 'utf8')
     expect(ipfsHandlerJs).to.match(/enforceExtensionWritePolicy/)
+    // The options object may carry more than the policy hook (eg lazy startup);
+    // what matters is that the write policy is still wired into the handler.
     expect(mainJs).to.match(
-      /createIPFSHandler\(\s*ipfsOptions\s*,\s*session\s*,\s*\{\s*isExtensionWriteAllowed\s*\}\s*\)/
+      /createIPFSHandler\(\s*ipfsOptions\s*,\s*session\s*,\s*\{[^}]*\bisExtensionWriteAllowed\b[^}]*\}\s*\)/
     )
   })
 
@@ -93,6 +95,18 @@ describe('Protocol and extension security guardrails', function () {
     })
 
     expect(dangerousResult.warnings.join(' ')).to.contain('High-risk host permission')
+
+    const sidePanelResult = validator.validatePermissions(['sidePanel', 'storage'])
+    expect(sidePanelResult.allowed).to.equal(true)
+    expect(sidePanelResult.warnings.join(' ')).to.not.contain('sidePanel')
+    expect(sidePanelResult.permissionDetails.find((d) => d.permission === 'sidePanel').category)
+      .to.equal('safe')
+
+    // permissionConfig classifies debugger as blocked even when policy does not
+    // list it — wording must use the assessed category, not "unknown".
+    const debuggerResult = validator.validatePermissions(['debugger'])
+    expect(debuggerResult.warnings.join(' ')).to.contain('Blocked permission: debugger')
+    expect(debuggerResult.warnings.join(' ')).to.not.contain('Unknown or unclassified permission: debugger')
   })
 
   it('rejects traversal patterns in extension install paths', async function () {
@@ -111,9 +125,18 @@ describe('Protocol and extension security guardrails', function () {
   it('keeps extension API scoped and external pages minimal in preload', async function () {
     const preload = await readFile('src/pages/unified-preload.js', 'utf8')
 
-    expect(preload).to.match(/const\s+isExtensions\s*=\s*url\.startsWith\(\s*['"]peersky:\/\/extensions['"]\s*\)/)
+    // Scheme and host, never a substring of the href. See preload-page-context.test.js.
+    expect(preload).to.match(/const\s+isExtensions\s*=\s*isPeerskyPage\(\s*['"]extensions['"]\s*\)/)
+    expect(preload).to.not.match(/url\.includes\(\s*['"]peersky:\/\//)
+    expect(preload).to.not.match(/url\.includes\(\s*['"]agregore/)
     expect(preload).to.match(/const\s+isExternal\s*=\s*!isInternal/)
     expect(preload).to.match(/extensions\s*:\s*extensionAPI/)
     expect(preload).to.match(/External minimal API exposed \(no settings access\)/)
+  })
+
+  it('has onboardingCompleted in settings defaults and validators', async function () {
+    const settingsJs = await readFile('src/settings-manager.js', 'utf8')
+    expect(settingsJs).to.match(/onboardingCompleted:\s*false/)
+    expect(settingsJs).to.match(/onboardingCompleted:\s*\([^)]*\)\s*=>\s*typeof\s+[a-zA-Z0-9_]+\s*===\s*['"]boolean['"]/)
   })
 })

@@ -15,8 +15,54 @@ import { peerIdFromString, peerIdFromCID } from '@libp2p/peer-id'
 import { ensCache, saveEnsCache, RPC_URL, ipfsCache, saveIpfsCache } from './config.js'
 import { JsonRpcProvider } from 'ethers'
 import { enforceExtensionWritePolicy } from '../extensions/request-policy.js'
-
+import { _suspendIPFS, _resumeIPFS, _ipfsPublishFile, _ipfsFetchToFile, provideCidWithRetry } from '../backup/ipfs-backup.js'
 const log = createLogger('protocols:ipfs')
+
+let sharedNode = null
+let sharedUnixFs = null
+let isSuspended = false
+
+// Set by createHandler; starts (or joins) the one node boot. Exported through
+// warmupIPFS so startup can kick the node off in the background, and awaited by
+// the module-level helpers so a backup never races an unbooted node.
+let startNode = null
+
+/**
+ * Boot the IPFS node if it has not been booted yet.
+ *
+ * Safe to call any number of times and from anywhere: the boot is memoised, so
+ * concurrent callers share one node.
+ *
+ * @returns {Promise<void>}
+ */
+export async function warmupIPFS () {
+  // A backup has the node paused and its files frozen; booting one now would
+  // write underneath the copy.
+  if (isSuspended) return
+  if (startNode) await startNode()
+}
+
+export async function suspendIPFS () {
+  isSuspended = true
+  await _suspendIPFS(sharedNode)
+}
+
+export async function resumeIPFS () {
+  isSuspended = false
+  await _resumeIPFS(sharedNode)
+}
+
+export async function ipfsPublishFile (filePath) {
+  if (isSuspended) throw new Error('IPFS is currently suspended for backup')
+  await warmupIPFS()
+  return _ipfsPublishFile(sharedNode, sharedUnixFs, filePath)
+}
+
+export async function ipfsFetchToFile (cidStr, destPath, onStatus) {
+  if (isSuspended) throw new Error('IPFS is currently suspended for backup')
+  await warmupIPFS()
+  return _ipfsFetchToFile(sharedUnixFs, cidStr, destPath, onStatus)
+}
 
 const P2P_APP_NAMES = {
   editor: 'P2P Editor',
@@ -85,11 +131,26 @@ function getPeerIdFromString (peerIdString) {
   return peerIdFromCID(CID.parse(peerIdString, multibaseDecoder))
 }
 
+/**
+ * Build the ipfs:// / ipns:// / pubsub:// protocol handler.
+ *
+ * @param {object} ipfsOptions - Helia node options.
+ * @param {Electron.Session} session
+ * @param {object} [securityOptions]
+ * @param {Function} [securityOptions.isExtensionWriteAllowed]
+ * @param {boolean} [securityOptions.lazy] - Start the Helia node on the first
+ *   ipfs:// request instead of before this resolves. The browser passes this so
+ *   the first window paints without waiting on libp2p; callers that need the
+ *   node up front (tests, one-shot tooling) leave it off.
+ */
 export async function createHandler (ipfsOptions, session, securityOptions = {}) {
-  const { isExtensionWriteAllowed } = securityOptions
+  const { isExtensionWriteAllowed, lazy = false } = securityOptions
   let node, unixFileSystem, name, dnsLinkResolver
 
   async function initializeIPFSNode () {
+    if (sharedNode || sharedUnixFs) {
+      log.warn('IPFS node already initialized! Overwriting existing references...')
+    }
     log.info('Initializing IPFS node...')
     const startTime = Date.now()
     node = await createNode(ipfsOptions)
@@ -97,9 +158,26 @@ export async function createHandler (ipfsOptions, session, securityOptions = {})
     unixFileSystem = unixfs(node)
     name = ipns(node)
     dnsLinkResolver = dnsLink(node)
+    sharedNode = node
+    sharedUnixFs = unixFileSystem
   }
 
-  await initializeIPFSNode()
+  // Memoised so a burst of ipfs:// requests boots exactly one node, and so a
+  // failed boot can be retried by the next request rather than poisoning them.
+  let nodeStarting = null
+  async function ensureNode () {
+    if (node) return
+    if (!nodeStarting) {
+      nodeStarting = initializeIPFSNode().catch((err) => {
+        nodeStarting = null
+        throw err
+      })
+    }
+    await nodeStarting
+  }
+  startNode = ensureNode
+
+  if (!lazy) await ensureNode()
 
   // Re-announce cached CIDs to the DHT every 6h so provider records
   // don't expire (48h validity). The built-in reprovider crashes, so
@@ -204,9 +282,18 @@ export async function createHandler (ipfsOptions, session, securityOptions = {})
       }
       log.info(`Added all files in ${Date.now() - startTime}ms`)
 
-      // Pin the root CID recursively
-      await node.pins.add(rootCid, { recursive: true })
-      log.info(`Pinned in ${Date.now() - startTime}ms`)
+      // Pin the root CID recursively. Identical content yields an identical
+      // CID, so re-uploading a file that is already pinned is a no-op rather
+      // than a failure: helia throws instead of returning early.
+      try {
+        for await (const pinned of node.pins.add(rootCid, { recursive: true })) {
+          if (!pinned) continue
+        }
+        log.info(`Pinned in ${Date.now() - startTime}ms`)
+      } catch (error) {
+        if (error?.name !== 'AlreadyPinnedError') throw error
+        log.info(`Already pinned in ${Date.now() - startTime}ms`)
+      }
 
       const fileUrl = `ipfs://${rootCid.toString()}/`
       log.info('Files uploaded with root CID:', rootCid.toString())
@@ -269,31 +356,14 @@ export async function createHandler (ipfsOptions, session, securityOptions = {})
           Location: fileUrl,
           'Content-Type': 'text/plain'
         }
-      });
+      })
 
       // Provide the root CID to the DHT in the background with retry.
       // On fresh startup the DHT routing table may be empty; retry after
       // a short delay to give bootstrap peers time to connect.
-      (async () => {
-        const maxAttempts = 3
-        const retryDelayMs = 10_000
-        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-          const peerCount = node.libp2p.getPeers().length
-          log.info(`Providing ${rootCid} (attempt ${attempt}/${maxAttempts}, peers: ${peerCount})`)
-          try {
-            await node.libp2p.contentRouting.provide(rootCid)
-            log.info(`Provided ${rootCid} in ${Date.now() - startTime}ms`)
-            break
-          } catch (err) {
-            log.warn(`Provide attempt ${attempt} failed: ${err.message}`)
-            if (attempt < maxAttempts) {
-              await new Promise(resolve => setTimeout(resolve, retryDelayMs))
-            } else {
-              log.error(`Failed to provide ${rootCid} after ${maxAttempts} attempts`)
-            }
-          }
-        }
-      })()
+      provideCidWithRetry(node, rootCid, { startTime }).catch((err) => {
+        log.error(`Failed to run provide loop for ${rootCid}: ${err.message}`)
+      })
 
       return response
     } catch (e) {
@@ -416,8 +486,16 @@ export async function createHandler (ipfsOptions, session, securityOptions = {})
 
   const handler = async function protocolHandler (request) {
     const { url, method } = request
-    if (!node) {
-      log.info('IPFS node is not ready yet')
+    if (isSuspended && !node) {
+      return new Response('IPFS is unavailable while a backup is in progress', {
+        status: 503,
+        headers: { 'Content-Type': 'text/plain' }
+      })
+    }
+    try {
+      await ensureNode()
+    } catch (error) {
+      log.error('IPFS node failed to start:', error)
       return new Response('IPFS node is not ready yet', {
         status: 503,
         headers: { 'Content-Type': 'text/plain' }
@@ -777,7 +855,10 @@ export async function createHandler (ipfsOptions, session, securityOptions = {})
   }
 
   // Expose the node for integration tests (non-breaking; ignored in prod).
-  if (process.env.NODE_ENV === 'test') handler.__node = node
+  // A getter, not a snapshot: with a lazy start there is no node to read yet.
+  if (process.env.NODE_ENV === 'test') {
+    Object.defineProperty(handler, '__node', { get: () => node })
+  }
 
   return handler
 }

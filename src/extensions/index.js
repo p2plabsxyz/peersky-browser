@@ -30,6 +30,7 @@ import { fileURLToPath } from 'url'
 import { promises as fs } from 'fs'
 import { installChromeWebStore } from 'electron-chrome-web-store'
 import { ElectronChromeExtensions } from '@p2plabs/peersky-chrome-extensions'
+import { shouldHonourTabActivation } from './tab-activation.js'
 import ManifestValidator from './manifest-validator.js'
 import { loadPolicy } from './policy.js'
 import { ensureDir, KeyedMutex, ERR } from './util.js'
@@ -42,10 +43,16 @@ import { resolveManifestStrings } from './utils/strings.js'
 import * as RegistryService from './services/registry.js'
 import * as LoaderService from './services/loader.js'
 import * as BrowserActions from './services/browser-actions.js'
+import * as SidePanelService from './services/side-panel.js'
 import { installExtensionPopupGuards as installPopupGuards } from './services/popup-guards.js'
 import { openUrlInPeerskyTab } from './services/open-url-in-browser-tab.js'
 import * as WebStoreService from './services/webstore.js'
+import { sendToWindows } from './services/broadcast.js'
+import { createPendingTabs } from './services/pending-tabs.js'
 import { createLogger } from '../logger.js'
+
+// Window for collapsing a burst of browser-action updates into one broadcast.
+const BROWSER_ACTION_COALESCE_MS = 100
 const { BrowserWindow, webContents } = electron // eslint-disable-line no-unused-vars
 
 const log = createLogger('extensions')
@@ -83,9 +90,21 @@ class ExtensionManager {
     this.popupToOpener = new Map()
     this.popupToExtensionId = new Map()
 
+    // windowId → currently visible panel
+    this.activeSidePanels = new Map()
+    // `${windowId}:${tabId}` → tab-scoped open intent
+    this.sidePanelOpenByTab = new Map()
+    // windowId → global open intent
+    this.sidePanelOpenGlobal = new Map()
+    // webContents ids of docked side panel guests (never ECE tabs)
+    this.sidePanelGuestIds = new Set()
+
     // Paths (set in initialize)
     this.extensionsBaseDir = null
     this.extensionsRegistryFile = null
+
+    // Tabs that attached before the extension host came up
+    this.pendingTabs = createPendingTabs()
   }
 
   /**
@@ -94,6 +113,7 @@ class ExtensionManager {
    * @param {Object} options - Configuration options
    * @param {Electron.App} options.app - Electron app instance
    * @param {Electron.Session} options.session - Electron session for extension loading
+   * @param {boolean} [options.installPreinstalled=true] - Import bundled extensions
    */
   async initialize (options) {
     if (this.initializationPromise) {
@@ -201,7 +221,7 @@ class ExtensionManager {
            */
           selectTab: async (tab, win) => {
             try {
-              if (!win || win.isDestroyed()) return
+              if (!shouldHonourTabActivation({ registering: this._registeringTab, window: win })) return
               const tabId = tab && typeof tab.id === 'number' ? tab.id : null
               if (!tabId) return
               const js = `
@@ -411,6 +431,14 @@ class ExtensionManager {
             } catch (err) {
               log.error('[ExtensionManager] removeWindow impl failed:', err)
             }
+          },
+
+          openSidePanel: async (details) => {
+            await SidePanelService.openSidePanel(this, details)
+          },
+
+          closeSidePanel: async (details) => {
+            await SidePanelService.closeSidePanel(this, details)
           }
         })
         log.info('ExtensionManager: ElectronChromeExtensions initialized')
@@ -464,12 +492,17 @@ class ExtensionManager {
       // Load registry
       await this._readRegistry()
 
-      // Install bundled preinstalled extensions (one-time import)
-      try {
-        await this._installBundledPreinstalled()
-      } catch (err) {
-        log.warn('ExtensionManager: Preinstalled import skipped:', err.message || err)
+      if (options.installPreinstalled !== false) {
+        try {
+          await this._installBundledPreinstalled()
+        } catch (err) {
+          log.warn('ExtensionManager: Preinstalled import skipped:', err.message || err)
+        }
       }
+
+      // Tabs that attached while this was still booting are registered now, so
+      // extensions can target them without waiting for a navigation.
+      this._flushPendingTabRegistrations()
 
       // Load enabled extensions
       await this._loadExtensionsIntoElectron()
@@ -502,20 +535,41 @@ class ExtensionManager {
     }
 
     const entries = Array.isArray(manifest.extensions) ? manifest.extensions : []
-    const desiredIds = new Set(entries.map(e => e.id))
+    const desiredIds = new Set(entries.map(e => e.id).filter(Boolean))
+
+    const matchesPreinstalledEntry = (ext, entry) => {
+      if (entry.id && ext.id === entry.id) return true
+      if (entry.name && (ext.displayName === entry.name || ext.name === entry.name)) return true
+      return false
+    }
+
+    const removePreinstalledRecord = async (ext) => {
+      if (!ext?.id) return
+      if (this.session && ext.electronId) {
+        try { await this.session.removeExtension(ext.electronId) } catch (_) { }
+      }
+      const extPath = path.join(this.extensionsBaseDir, ext.id)
+      await fs.rm(extPath, { recursive: true, force: true })
+      this.loadedExtensions.delete(ext.id)
+    }
+
+    const findExistingPreinstalled = (entry) => {
+      for (const ext of this.loadedExtensions.values()) {
+        if (matchesPreinstalledEntry(ext, entry)) return ext
+      }
+      return null
+    }
 
     // Prune removed preinstalled
     const toPrune = Array.from(this.loadedExtensions.values())
       .filter(ext => (ext.source === 'preinstalled' || ext.isSystem === true))
-      .filter(ext => !desiredIds.has(ext.id))
+      .filter(ext => {
+        if (desiredIds.has(ext.id)) return false
+        return !entries.some(entry => matchesPreinstalledEntry(ext, entry))
+      })
     for (const ext of toPrune) {
       try {
-        if (this.session && ext.electronId) {
-          try { await this.session.removeExtension(ext.electronId) } catch (_) { }
-        }
-        const extPath = path.join(this.extensionsBaseDir, ext.id)
-        await fs.rm(extPath, { recursive: true, force: true })
-        this.loadedExtensions.delete(ext.id)
+        await removePreinstalledRecord(ext)
         await this._writeRegistry()
         log.info('ExtensionManager: Pruned removed preinstalled extension:', ext.displayName || ext.name)
       } catch (err) {
@@ -523,10 +577,10 @@ class ExtensionManager {
       }
     }
 
-    // Install missing preinstalled
+    // Install missing preinstalled (or refresh when bundled version changes)
     for (const entry of entries) {
       try {
-        if (this.loadedExtensions.has(entry.id)) continue
+        const existing = findExistingPreinstalled(entry)
         const sourceRef = typeof entry.archive === 'string' && entry.archive.length ? entry.archive : entry.dir
         if (!sourceRef) {
           log.warn('ExtensionManager: Preinstalled entry missing source reference')
@@ -534,39 +588,40 @@ class ExtensionManager {
         }
 
         const sourcePath = path.join(preDir, sourceRef)
-        let stat
+        let sourceStat
         try {
-          stat = await fs.stat(sourcePath)
+          sourceStat = await fs.stat(sourcePath)
         } catch (statErr) {
           log.warn('ExtensionManager: Preinstalled source missing:', sourceRef, statErr.message || statErr)
           continue
         }
 
+        if (existing) {
+          const preinstallVersionMatch = !entry.version ||
+            String(existing.preinstallVersion || '') === String(entry.version)
+          if (preinstallVersionMatch) continue
+          await removePreinstalledRecord(existing)
+        } else if (entry.id && this.loadedExtensions.has(entry.id)) {
+          continue
+        }
+
         let extData
-        if (stat.isDirectory()) {
+        if (sourceStat.isDirectory()) {
           extData = await this._prepareFromDirectory(sourcePath)
         } else {
           extData = await this._prepareFromArchive(sourcePath)
         }
 
-        // Respect ID from postinstall manifest
         if (entry.id) {
           extData.id = entry.id
+        }
+        if (entry.version) {
+          extData.preinstallVersion = entry.version
         }
         extData.isSystem = true
         extData.removable = false
         extData.source = 'preinstalled'
         await this._saveExtensionMetadata(extData)
-        if (this.session && extData.enabled) {
-          try {
-            const electronExtension = await this.session.loadExtension(extData.installedPath, { allowFileAccess: false })
-            extData.electronId = electronExtension.id
-          } catch (loadErr) {
-            log.warn('ExtensionManager: Failed to load preinstalled extension:', loadErr.message)
-          }
-        }
-        this.loadedExtensions.set(extData.id, extData)
-        await this._writeRegistry()
         log.info('ExtensionManager: Preinstalled extension imported:', extData.displayName || extData.name)
       } catch (err) {
         const ref = entry && (entry.archive || entry.dir || entry.id || 'unknown')
@@ -821,11 +876,14 @@ class ExtensionManager {
    * @param {string} actionId - Browser action identifier
    * @param {Object} window - Window instance
    * @param {Object} anchorRect - Anchor rectangle for popup positioning
+   * @param {Object} [options]
+   * @param {number|null} [options.activeWebContentsId] - Active tab as the
+   *   renderer already knows it, so the click path need not ask it back.
    * @returns {Promise<Object>} Success result
    */
-  async openBrowserActionPopup (actionId, window, anchorRect = {}) {
+  async openBrowserActionPopup (actionId, window, anchorRect = {}, options = {}) {
     await this.initialize()
-    return BrowserActions.openBrowserAction(this, actionId, window, anchorRect)
+    return BrowserActions.openBrowserAction(this, actionId, window, anchorRect, options)
   }
 
   /**
@@ -835,27 +893,80 @@ class ExtensionManager {
    * @param {Electron.WebContents} webContents - WebContents to register as tab
    */
   addWindow (window, webContents) {
-    if (this.electronChromeExtensions) {
-      if (!webContents) return // avoid registering shell UI or popups as tabs
-      try {
-        // Skip if this webContents is already registered to avoid duplicate
-        // addTab() calls which can trigger spurious navigations/reloads
-        if (!this._registeredTabs) this._registeredTabs = new Set()
-        const wcId = webContents.id
-        if (this._registeredTabs.has(wcId)) return
-        this._registeredTabs.add(wcId)
-        webContents.once('destroyed', () => {
-          this._registeredTabs?.delete(wcId)
-        })
-
-        this.electronChromeExtensions.addTab(webContents, window)
-        log.info(`[ExtensionManager] Registered webContents ${webContents.id} with extension system`)
-      } catch (error) {
-        log.error('[ExtensionManager] Failed to register window:', error)
+    if (!this.electronChromeExtensions) {
+      // The extension host boots alongside the first windows, so tabs can
+      // attach before it exists; hold them until it is up. See pending-tabs.js.
+      // A call with no webContents is the shell window registering itself,
+      // which was never a tab and needs no queueing.
+      if (webContents && !this.pendingTabs.add(window, webContents)) {
+        log.warn('[ExtensionManager] Could not queue tab for the extension host')
       }
-    } else {
-      log.warn('[ExtensionManager] ElectronChromeExtensions not available')
+      return
     }
+    if (!webContents) return // avoid registering shell UI or popups as tabs
+    try {
+      if (SidePanelService.isSidePanelGuest(this, window, webContents)) {
+        SidePanelService.registerSidePanelGuest(this, webContents.id)
+        return
+      }
+
+      // Skip if this webContents is already registered to avoid duplicate
+      // addTab() calls which can trigger spurious navigations/reloads
+      if (!this._registeredTabs) this._registeredTabs = new Set()
+      const wcId = webContents.id
+      if (this._registeredTabs.has(wcId)) return
+      this._registeredTabs.add(wcId)
+      webContents.once('destroyed', () => {
+        this._registeredTabs?.delete(wcId)
+        this.sidePanelGuestIds?.delete(wcId)
+      })
+
+      this._registeringTab = true
+      try {
+        this.electronChromeExtensions.addTab(webContents, window)
+      } finally {
+        this._registeringTab = false
+      }
+      log.info(`[ExtensionManager] Registered webContents ${webContents.id} with extension system`)
+
+      // Side panel guests often attach before getURL() is set; drop them if they
+      // later navigate to the docked panel URL.
+      const dropIfSidePanel = () => {
+        if (SidePanelService.isSidePanelGuest(this, window, webContents)) {
+          SidePanelService.registerSidePanelGuest(this, webContents.id)
+          try { webContents.removeListener('did-navigate', dropIfSidePanel) } catch (_) {}
+          try { webContents.removeListener('did-frame-navigate', dropIfSidePanel) } catch (_) {}
+        }
+      }
+      try {
+        webContents.on('did-navigate', dropIfSidePanel)
+        webContents.on('did-frame-navigate', dropIfSidePanel)
+      } catch (_) {}
+    } catch (error) {
+      log.error('[ExtensionManager] Failed to register window:', error)
+    }
+  }
+
+  /**
+   * Register every tab that attached before the extension host existed.
+   */
+  _flushPendingTabRegistrations () {
+    const pending = this.pendingTabs.drain()
+    if (pending.length === 0) return
+    log.info(`[ExtensionManager] Registering ${pending.length} tab(s) that attached during startup`)
+    for (const { window, webContents } of pending) {
+      this.addWindow(window, webContents)
+    }
+  }
+
+  /**
+   * Tell every window to re-read the browser action list.
+   *
+   * Windows that opened before the extensions finished loading rendered an
+   * empty toolbar; this is what fills it in.
+   */
+  refreshBrowserActions () {
+    this._broadcastBrowserActionChanged()
   }
 
   /**
@@ -1326,29 +1437,37 @@ class ExtensionManager {
 
   async _findFileByName (_dir, _name, _depth) { return null }
 
-  _broadcastBrowserActionChanged () {
+  /**
+   * @param {string} channel
+   * @param {any} [payload]
+   */
+  _broadcastToWindows (channel, payload) {
     try {
-      const windows = BrowserWindow.getAllWindows()
-      for (const win of windows) {
-        if (!win || win.isDestroyed()) continue
-        const wc = win.webContents
-        if (!wc || wc.isDestroyed()) continue
-        wc.send('browser-action-changed', { t: Date.now() })
-        wc.send('refresh-browser-actions')
-      }
+      sendToWindows(BrowserWindow.getAllWindows(), channel, payload)
     } catch (_) { }
   }
 
+  _broadcastBrowserActionChanged () {
+    this._broadcastToWindows('browser-action-changed', { t: Date.now() })
+    this._broadcastToWindows('refresh-browser-actions')
+  }
+
+  /**
+   * Badge updates arrive per tab on every page load, and each one fans out to
+   * every window, which then re-lists every extension's action. Coalescing a
+   * burst into one broadcast keeps that proportional to activity rather than to
+   * extensions × windows × updates.
+   */
   _broadcastBrowserActionUpdated () {
-    try {
-      const windows = BrowserWindow.getAllWindows()
-      for (const win of windows) {
-        if (!win || win.isDestroyed()) continue
-        const wc = win.webContents
-        if (!wc || wc.isDestroyed()) continue
-        wc.send('browser-action-updated', { t: Date.now() })
-      }
-    } catch (_) { }
+    if (this._browserActionUpdateTimer) return
+
+    this._browserActionUpdateTimer = setTimeout(() => {
+      this._browserActionUpdateTimer = null
+      this._broadcastToWindows('browser-action-updated', { t: Date.now() })
+    }, BROWSER_ACTION_COALESCE_MS)
+
+    // Never hold the process open on a pending badge refresh.
+    this._browserActionUpdateTimer.unref?.()
   }
 
   /**

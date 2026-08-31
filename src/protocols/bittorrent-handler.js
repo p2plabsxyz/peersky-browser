@@ -18,6 +18,8 @@ const __dirname = path.dirname(__filename)
 
 let worker = null
 let workerReady = false
+/** Resolver for the in-flight "wait for worker ready" promise, if any. */
+let onWorkerReady = null
 const pendingRequests = new Map()
 let requestId = 0
 
@@ -172,6 +174,28 @@ function isValidUiApiToken (token) {
   return true
 }
 
+// Memoised worker boot so a burst of bt:// requests forks exactly one worker.
+let workerStarting = null
+
+/**
+ * Fork the WebTorrent worker if it is not running yet.
+ *
+ * Every entry point that talks to the worker goes through here, so the worker
+ * can be forked on first use rather than at startup.
+ *
+ * @returns {Promise<void>}
+ */
+export function warmupBittorrent () {
+  if (worker) return Promise.resolve()
+  if (!workerStarting) {
+    workerStarting = initializeWorker().catch((err) => {
+      workerStarting = null
+      throw err
+    })
+  }
+  return workerStarting
+}
+
 async function initializeWorker () {
   if (worker) return
 
@@ -197,6 +221,7 @@ async function initializeWorker () {
     if (msg.type === 'ready') {
       log.info('[BT] Worker process ready')
       workerReady = true
+      onWorkerReady?.()
       return
     }
 
@@ -266,6 +291,8 @@ async function initializeWorker () {
     log.info(`[BT] Worker exited with code ${code}`)
     worker = null
     workerReady = false
+    // Clear the memo so the next torrent request forks a fresh worker.
+    workerStarting = null
 
     // Save all active torrents to disk before clearing cache
     // Mark them as paused so they show resume button on restart
@@ -289,18 +316,21 @@ async function initializeWorker () {
     loadTorrentStateCache()
   })
 
-  // Wait for worker to be ready (max 10s)
+  // Wait for the worker's "ready" message (max 10s). Resolved by the message
+  // handler above rather than polled, so a fast worker costs no extra latency.
   await new Promise((resolve) => {
-    const check = setInterval(() => {
-      if (workerReady) {
-        clearInterval(check)
-        resolve()
-      }
-    }, 100)
-    setTimeout(() => {
-      clearInterval(check)
+    if (workerReady) return resolve()
+    let settled = false
+    const finish = () => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      onWorkerReady = null
       resolve()
-    }, 10000)
+    }
+    const timer = setTimeout(finish, 10000)
+    timer.unref?.()
+    onWorkerReady = finish
   })
 
   // Periodically save in-progress torrent states as crash safety net
@@ -318,7 +348,10 @@ async function initializeWorker () {
   log.info('[BT] Worker initialized. Download path:', downloadPath)
 }
 
-function sendCommand (action, params = {}) {
+async function sendCommand (action, params = {}) {
+  // The worker is forked on first use, so any command may be the one that
+  // starts it.
+  await warmupBittorrent()
   return new Promise((resolve, reject) => {
     if (!worker) {
       return reject(new Error('Worker not initialized'))
@@ -337,10 +370,19 @@ function sendCommand (action, params = {}) {
   })
 }
 
-export async function createHandler () {
-  await initializeWorker()
+/**
+ * Build the bt:// / bittorrent:// / magnet: protocol handler.
+ *
+ * @param {object} [options]
+ * @param {boolean} [options.lazy] - Fork the WebTorrent worker on the first
+ *   torrent request instead of before this resolves. The browser passes this so
+ *   startup never waits on the worker handshake.
+ */
+export async function createHandler ({ lazy = false } = {}) {
+  if (!lazy) await warmupBittorrent()
 
   return async function protocolHandler (request) {
+    await warmupBittorrent()
     const rawUrl = request.url
     log.info(`[BT] Handling request: ${request.method} ${rawUrl}`)
 
@@ -436,6 +478,7 @@ export function shutdownBittorrent () {
     try { worker.kill('SIGKILL') } catch {}
     worker = null
     workerReady = false
+    workerStarting = null
   }
 }
 

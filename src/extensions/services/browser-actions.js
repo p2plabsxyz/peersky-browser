@@ -1,7 +1,10 @@
 // Browser actions (click/open popup) and helpers
 
-import { app, Menu, webContents } from 'electron'
+import { app, BrowserWindow, Menu, webContents } from 'electron'
+import { promises as fs } from 'fs'
+import path from 'path'
 import { registerPopupForStabilization, consumeRecentFocusClose } from './popup-guards.js'
+import { tryOpenSidePanelOnActionClick } from './side-panel.js'
 import { createLogger } from '../../logger.js'
 
 const log = createLogger('extensions')
@@ -102,8 +105,10 @@ export async function listBrowserActions (manager, window) {
       })
     }
   }
+  // Every badge or icon update makes each window re-list, so this runs far too
+  // often to log at info level.
   if (actions.length > 0) {
-    log.info(`ExtensionManager: Found ${actions.length} browser actions`)
+    log.debug(`ExtensionManager: Found ${actions.length} browser actions`)
   }
   return actions
 }
@@ -123,11 +128,16 @@ export async function clickBrowserAction (manager, actionId, window) {
     try {
       log.info(`ExtensionManager: Triggering browser action click for ${extension.displayName || extension.name}`)
 
-      // Get and register the active webview to ensure proper tab context
       const activeWebview = await getAndRegisterActiveWebview(manager, window)
       const activeTab = activeWebview || window.webContents
 
       pinECEWindowFocus(manager, window, activeTab)
+
+      // openPanelOnActionClick: open/toggle panel and skip onClicked.
+      // Extensions like WebBrain leave this false and open via sidePanel.open() from onClicked.
+      if (await tryOpenSidePanelOnActionClick(manager, extension, window, activeTab)) {
+        return
+      }
 
       // Method 1: Use activateExtension if available (preferred for extensions without popups)
       if (manager.electronChromeExtensions.activateExtension) {
@@ -217,7 +227,18 @@ export async function clickBrowserAction (manager, actionId, window) {
   }
 }
 
-export async function openBrowserAction (manager, actionId, window, anchorRect) {
+/**
+ * Open (or toggle off) an extension's popup.
+ *
+ * @param {any} manager
+ * @param {string} actionId
+ * @param {Electron.BrowserWindow} window
+ * @param {object} anchorRect - Toolbar button rect, for popup placement.
+ * @param {object} [options]
+ * @param {number|null} [options.activeWebContentsId] - See getAndRegisterActiveWebview.
+ */
+export async function openBrowserAction (manager, actionId, window, anchorRect, options = {}) {
+  const { activeWebContentsId = null } = options
   try {
     // If the click that stole focus already closed this popup, treat this
     // invocation as the toggle-off half of that click.
@@ -235,6 +256,18 @@ export async function openBrowserAction (manager, actionId, window, anchorRect) 
       log.warn(`ExtensionManager: Extension ${actionId} has no browser action`)
       return { success: false, error: 'No browser action found' }
     }
+
+    const activeWebview = await getAndRegisterActiveWebview(manager, window, activeWebContentsId)
+    const activeTab = activeWebview || window.webContents
+    pinECEWindowFocus(manager, window, activeTab)
+
+    if (await tryOpenSidePanelOnActionClick(manager, extension, window, activeTab)) {
+      if (window && !window.isDestroyed() && window.webContents && !window.webContents.isDestroyed()) {
+        window.webContents.send('remove-tempIcon', actionId)
+      }
+      return { success: true, sidePanel: true }
+    }
+
     if (!action.default_popup) {
       log.info(`ExtensionManager: Extension ${extension.displayName || extension.name} has no popup, triggering click instead`)
       await clickBrowserAction(manager, actionId, window)
@@ -244,22 +277,24 @@ export async function openBrowserAction (manager, actionId, window, anchorRect) 
       return { success: true }
     }
     const popupRelRaw = String(action.default_popup || '').replace(/^\//, '')
-    const popupExists = await doesExtensionFileExist(extension.installedPath, popupRelRaw)
-    let resolvedPopupRel = popupRelRaw
-    if (!popupExists) {
+
+    // Where the popup file actually lives is only needed if the extension host
+    // cannot open it for us. Probing the extension directory here — a stat, and
+    // for a mismatched manifest a two-deep directory walk — put disk I/O in
+    // front of every single click.
+    const resolvePopupPath = async () => {
+      if (await doesExtensionFileExist(extension.installedPath, popupRelRaw)) return popupRelRaw
       const alt = await resolvePopupRelativePath(extension.installedPath, popupRelRaw)
       if (alt) {
         log.warn(`ExtensionManager: Manifest popup missing (${popupRelRaw}), using detected ${alt}`)
-        resolvedPopupRel = alt
+        return alt
       }
+      return popupRelRaw
     }
+
     if (manager.electronChromeExtensions && extension.electronId) {
       try {
         log.info(`ExtensionManager: Opening popup for ${extension.displayName || extension.name} at`, anchorRect)
-        const activeWebview = await getAndRegisterActiveWebview(manager, window)
-        const activeTab = activeWebview || window.webContents
-
-        pinECEWindowFocus(manager, window, activeTab)
 
         // Method 2: Use browserAction.openPopup
         if (manager.electronChromeExtensions.api && manager.electronChromeExtensions.api.browserAction) {
@@ -321,6 +356,7 @@ export async function openBrowserAction (manager, actionId, window, anchorRect) 
         }
         log.info(`ExtensionManager: Falling back to regular click for ${extension.displayName || extension.name}`)
         await clickBrowserAction(manager, actionId, window)
+        const resolvedPopupRel = await resolvePopupPath()
         if (resolvedPopupRel) {
           log.info(`ExtensionManager: Attempting manual popup creation for ${extension.displayName || extension.name}`)
           try {
@@ -380,7 +416,42 @@ export function closeAllPopups (manager) {
   }
 }
 
-export async function getAndRegisterActiveWebview (manager, window) {
+/**
+ * True when `wc` is a guest of `window`, so a renderer-supplied webContents id
+ * can only ever name a tab of the window that sent it.
+ */
+function isOwnedByWindow (wc, window) {
+  try {
+    if (!wc || wc.isDestroyed() || !window || window.isDestroyed()) return false
+    if (wc.hostWebContents && wc.hostWebContents.id === window.webContents.id) return true
+    return BrowserWindow.fromWebContents(wc) === window
+  } catch (_) {
+    return false
+  }
+}
+
+/**
+ * Resolve the window's active tab and make sure the extension host knows about
+ * it.
+ *
+ * @param {any} manager
+ * @param {Electron.BrowserWindow} window
+ * @param {number|null} [activeWebContentsId] - The active webview's id as the
+ *   renderer already knows it. Supplying it skips an executeJavaScript round-trip
+ *   on the click path; it is verified to belong to `window` before use, and a
+ *   stale or foreign id just falls back to asking the renderer.
+ * @returns {Promise<Electron.WebContents|null>}
+ */
+export async function getAndRegisterActiveWebview (manager, window, activeWebContentsId = null) {
+  if (typeof activeWebContentsId === 'number') {
+    const hinted = webContents.fromId(activeWebContentsId)
+    if (isOwnedByWindow(hinted, window)) {
+      manager.addWindow(window, hinted)
+      return hinted
+    }
+    log.debug(`[ExtensionManager] Ignoring unusable active webContents hint ${activeWebContentsId}`)
+  }
+
   try {
     const activeTabData = await window.webContents.executeJavaScript(`
       (function() {
@@ -411,38 +482,31 @@ export async function getAndRegisterActiveWebview (manager, window) {
 
 export async function doesExtensionFileExist (root, rel) {
   try {
-    const fs = await import('fs/promises')
-    const pathMod = await import('path')
-    const p = pathMod.join(root, rel)
-    await fs.access(p)
+    await fs.access(path.join(root, rel))
     return true
   } catch (_) { return false }
 }
 
 export async function resolvePopupRelativePath (root, desiredRel) {
-  const fs = await import('fs/promises')
-  const pathMod = await import('path')
-  const desiredBase = desiredRel ? pathMod.basename(desiredRel) : 'popup.html'
+  const desiredBase = desiredRel ? path.basename(desiredRel) : 'popup.html'
   const candidates = [desiredRel, 'popup.html', 'popup/index.html', 'ui/popup.html', 'dist/popup.html', 'build/popup.html']
   for (const rel of candidates) {
     if (!rel) continue
-    try { await fs.access(pathMod.join(root, rel)); return rel } catch (_) { }
+    try { await fs.access(path.join(root, rel)); return rel } catch (_) { }
   }
   try {
     const found = await findFileByName(root, desiredBase, 2)
-    if (found) return pathMod.relative(root, found)
+    if (found) return path.relative(root, found)
   } catch (_) { }
   return null
 }
 
 async function findFileByName (dir, name, depth) {
-  const fs = await import('fs/promises')
-  const pathMod = await import('path')
   if (depth < 0) return null
   try {
     const entries = await fs.readdir(dir, { withFileTypes: true })
     for (const e of entries) {
-      const full = pathMod.join(dir, e.name)
+      const full = path.join(dir, e.name)
       if (e.isDirectory()) {
         if (e.name.startsWith('.')) continue
         const r = await findFileByName(full, name, depth - 1)

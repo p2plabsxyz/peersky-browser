@@ -24,6 +24,21 @@ function emitResult (payload) {
   console.log(`${RESULT_PREFIX}${JSON.stringify(payload)}`)
 }
 
+async function safeShutdownAndExit (code) {
+  // Give Node.js a moment to flush stdout pipe to parent process
+  // before we trigger shutdown, in case app.exit() deadlocks.
+  await new Promise(resolve => setTimeout(resolve, 500))
+
+  try {
+    await withTimeout(extensionManager.shutdown(), 5000, 'shutdown')
+  } catch {
+  }
+  app.exit(code)
+  // Electron's app.exit() sometimes fails to forcefully kill the process in headless CI environments.
+  // This process.exit fallback ensures the test runner doesn't hang indefinitely.
+  setTimeout(() => process.exit(code), 3000)
+}
+
 async function withTimeout (taskPromise, timeoutMs, label) {
   let timer = null
   const timeoutPromise = new Promise((_resolve, reject) => {
@@ -159,21 +174,43 @@ app.whenReady().then(async () => {
     const browserSession = session.defaultSession
     await ensureTestProtocols(browserSession)
 
-    await extensionManager.initialize({ app, session: browserSession })
+    try {
+      await withTimeout(
+        extensionManager.initialize({
+          app,
+          session: browserSession,
+          installPreinstalled: false
+        }),
+        60000,
+        'extension manager initialization'
+      )
+    } catch (initError) {
+      if (args.mode === 'probe') {
+        throw new Error('Probe extension is not installed')
+      }
+      throw initError
+    }
 
     let extension = getProbeExtension()
     if (args.mode === 'install-and-probe' && !extension) {
-      const installResult = await extensionManager.installExtension(path.resolve(args.fixture))
+      const installResult = await withTimeout(
+        extensionManager.installExtension(path.resolve(args.fixture)),
+        30000,
+        'probe extension installation'
+      )
       extension = installResult.extension
     }
 
     if (args.mode === 'uninstall') {
       if (extension) {
-        await extensionManager.uninstallExtension(extension.id)
+        await withTimeout(
+          extensionManager.uninstallExtension(extension.id),
+          30000,
+          'uninstall extension'
+        )
       }
       emitResult({ ok: true, mode: args.mode, uninstalled: !!extension })
-      await extensionManager.shutdown()
-      app.exit(0)
+      await safeShutdownAndExit(0)
       return
     }
 
@@ -191,14 +228,9 @@ app.whenReady().then(async () => {
       probe
     })
 
-    await extensionManager.shutdown()
-    app.exit(0)
+    await safeShutdownAndExit(0)
   } catch (error) {
     emitResult({ ok: false, mode: args.mode, error: String(error && error.message ? error.message : error) })
-    try {
-      await extensionManager.shutdown()
-    } catch {
-    }
-    app.exit(1)
+    await safeShutdownAndExit(1)
   }
 })

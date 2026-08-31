@@ -2,7 +2,7 @@
 // Handles settings storage, defaults, validation, and IPC communication
 // Pattern: Similar to window-manager.js
 
-import { app, ipcMain, BrowserWindow, session, safeStorage, dialog } from 'electron'
+import { app, ipcMain, BrowserWindow, session, safeStorage, dialog, webContents } from 'electron'
 import { promises as fs } from 'fs'
 import path from 'path'
 import os from 'os'
@@ -65,9 +65,12 @@ const DEFAULT_SETTINGS = {
   pinnedP2PApps: null,
   extensionP2PEnabled: false,
   extensionAutoUpdate: true,
+  autoUpdateEnabled: true,
   memorySaverEnabled: false,
   memorySaverExclusions: ['peersky://p2p/*'],
   customDnsResolver: '',
+=======
+  onboardingCompleted: false,
   llm: {
     enabled: false,
     baseURL: 'http://127.0.0.1:11434/',
@@ -483,6 +486,11 @@ class SettingsManager {
       return { canceled: true }
     })
 
+    // Get app version
+    ipcMain.handle('settings-get-version', async () => {
+      return app.getVersion()
+    })
+
     ipcMain.handle('settings-clear-archive', async (event, cutoff) => {
       try {
         if (!cutoff || cutoff <= 0) {
@@ -532,6 +540,11 @@ class SettingsManager {
 
       // Start with defaults
       this.settings = { ...DEFAULT_SETTINGS }
+
+      // Existing profiles upgrading to this version should bypass onboarding
+      if (loaded && Object.keys(loaded).length > 0 && !('onboardingCompleted' in loaded)) {
+        this.settings.onboardingCompleted = true
+      }
 
       // Merge loaded settings, handling nested objects properly
       for (const key in loaded) {
@@ -643,9 +656,11 @@ class SettingsManager {
       wallpaper: (v) => typeof v === 'string',
       wallpaperCustomPath: (v) => v === null || typeof v === 'string',
       pinnedP2PApps: (v) => v === null || (Array.isArray(v) && v.every(id => typeof id === 'string')),
+      autoUpdateEnabled: (v) => typeof v === 'boolean',
       memorySaverEnabled: (v) => typeof v === 'boolean',
       memorySaverExclusions: (v) => Array.isArray(v) && v.every(ex => typeof ex === 'string'),
       customDnsResolver: (v) => v === '' || (typeof v === 'string' && v.length < 512),
+      onboardingCompleted: (v) => typeof v === 'boolean',
       llm: (v) => {
         // Validate LLM settings object (simplified for Ollama-only)
         if (typeof v !== 'object' || v === null) return false
@@ -695,11 +710,10 @@ class SettingsManager {
       const windows = BrowserWindow.getAllWindows()
 
       if (key === 'theme') {
-        // Notify all windows of theme change
-        windows.forEach(window => {
-          if (window && !window.isDestroyed()) {
-            window.webContents.send('theme-changed', value)
-          }
+        // Guests included: internal pages swap data-theme live instead of
+        // waiting for a manual refresh.
+        webContents.getAllWebContents().forEach(wc => {
+          if (!wc.isDestroyed()) wc.send('theme-changed', value)
         })
         logDebug(`Theme changed to ${value}, notified ${windows.length} windows`)
       } else if (key === 'searchEngine') {

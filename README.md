@@ -76,7 +76,7 @@
 
   - [x] `peersky://p2p/peerchat/`
     - Peer-to-peer messaging over Hyper
-  - [x] `peersky://p2p/upload/`
+  - [x] `peersky://p2p/hyperdrive/`
     - Decentralized file storage
   - [x] `peersky://p2p/peerpad/`
     - Build and publish websites
@@ -167,6 +167,12 @@
   - [x] Provide metadata (e.g., creation date, content type) to improve navigation and usability.
   - [x] Ability to download all the hashes of published data in a .json file.
 
+- [x] Backup & Restore (peersky://backup):
+
+  - [x] Create offline `.zip` backups containing tabs, window layout, ENS cache, and full IPFS/Hypercore data.
+  - [x] Upload backups to IPFS or Hypercore to share and restore via a P2P CID.
+  - [x] **Note**: When restoring a backup from a P2P CID, the original device (or another peer) must remain online to serve the data.
+
 ## Development
 
 
@@ -193,16 +199,10 @@ npm start
 ```
 
 ### Build
-  After development of the browser, run the following command. This will create a production build.
+  After development of the browser, run the following command. This will create a production build for the platform you are on.
 
 ```bash
 npm run build
-# For Intel and Silicon macs
-```
-
-```bash
-npm run build-all
-# For macOS, Linux, and Windows
 ```
 
 Now, the `dist` folder will appear in the root directory.
@@ -232,12 +232,21 @@ npm test
 Run specific test suites:
 
 ```bash
-npm run test:p2p          # Unit tests (IPFS/Hyper handlers)
+npm run test:p2p          # Protocol handler unit tests (IPFS/Hyper/HS/BitTorrent)
 npm run test:p2p:e2e      # End-to-end sync tests (2-3 min)
+npm run test:backup       # Backup, restore, and identity transfer
 npm run test:extensions   # Extension lifecycle tests
 npm run test:security     # Security and isolation tests
+npm run test:llm          # LLM streaming and dispatcher contract
+npm run test:updater      # Auto-updater tests
+npm run test:perf         # Performance regression tests
 npm run test:integration  # Real app restart tests (5+ min)
 ```
+
+`npm test` runs every suite and prints a combined pass/fail tally. It keeps
+going after a failure so one run shows the whole picture, then exits non-zero
+naming the suites that failed. `npm run test:ci` is the same minus the slow
+integration suite, and is what the workflows run.
 
 For detailed testing documentation, see [Testing Guide](./docs/Testing.md).
 

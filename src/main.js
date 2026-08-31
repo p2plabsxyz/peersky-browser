@@ -1,16 +1,16 @@
-import { app, session, protocol as globalProtocol, ipcMain, BrowserWindow, Menu, webContents } from 'electron' // eslint-disable-line no-unused-vars
+import { app, session, protocol as globalProtocol, ipcMain, BrowserWindow, Menu, webContents, shell } from 'electron' // eslint-disable-line no-unused-vars
 import { createLogger } from './logger.js'
 import fs from 'fs/promises'
 import path from 'path'
 import crypto from 'crypto'
 import { createHandler as createBrowserHandler } from './protocols/peersky-protocol.js'
 import { createHandler as createBrowserThemeHandler } from './protocols/theme-handler.js'
-import { createHandler as createIPFSHandler } from './protocols/ipfs-handler.js'
-import { createHandler as createHyperHandler } from './protocols/hyper-handler.js'
+import { createHandler as createIPFSHandler, warmupIPFS } from './protocols/ipfs-handler.js'
+import { createHandler as createHyperHandler, warmupHyper } from './protocols/hyper-handler.js'
 import { createHandler as createHSHandler } from './protocols/hs-handler.js'
 import { createHandler as createWeb3Handler } from './protocols/web3-handler.js'
 import { createHandler as createFileHandler } from './protocols/file-handler.js'
-import { createHandler as createBittorrentHandler, setupBittorrentIpc, shutdownBittorrent } from './protocols/bittorrent-handler.js'
+import { createHandler as createBittorrentHandler, setupBittorrentIpc, shutdownBittorrent, warmupBittorrent } from './protocols/bittorrent-handler.js'
 import { ipfsOptions, hyperOptions } from './protocols/config.js'
 import { createMenuTemplate } from './actions.js'
 import WindowManager from './window-manager.js'
@@ -20,7 +20,7 @@ import { setWindowManager } from './context-menu.js'
 import { isBuiltInSearchEngine } from './search-engine.js'
 import './llm.js'
 import './llm-memory.js'
-// import { setupAutoUpdater } from "./auto-updater.js";
+import { setupAutoUpdater, checkForUpdatesNow } from './auto-updater.js'
 
 // Import and initialize extension system
 import extensionManager from './extensions/index.js'
@@ -28,6 +28,9 @@ import { setupExtensionIpcHandlers } from './extensions/extensions-ipc.js'
 import { getBrowserSession, usePersist } from './session.js'
 import { setupPermissionHandler } from './permissions.js'
 import { setupP2pmdPdfExportIpc } from './pages/p2p/p2pmd/pdf-export-ipc.js'
+import { setupBackupIpc } from './backup/ipc.js'
+import backupManager from './backup/backup-manager.js'
+import { downloadBackupFromAddress } from './backup/p2p-backup.js'
 
 const log = createLogger('main')
 
@@ -157,10 +160,28 @@ globalProtocol.registerSchemesAsPrivileged([
   { scheme: 'magnet', privileges: MAGNET_PROTOCOL }
 ])
 
+/**
+ * The shell window's webContents id behind a download, given whatever started
+ * it. Downloads usually come from a webview guest, whose owning window has to
+ * be resolved through its host.
+ *
+ * @param {Electron.WebContents} [wc]
+ * @returns {number|null}
+ */
+function shellWebContentsIdFor (wc) {
+  if (!wc || wc.isDestroyed?.()) return null
+  try {
+    const direct = BrowserWindow.fromWebContents(wc)
+    if (direct && !direct.isDestroyed()) return direct.webContents.id
+    const host = wc.hostWebContents
+    if (host && !host.isDestroyed()) return host.id
+  } catch (_) { }
+  return null
+}
+
 app.whenReady().then(async () => {
+  const bootStartedAt = Date.now()
   windowManager = new WindowManager()
-  await p2pAppRegistry.init()
-  p2pAppRegistry.setupIpc()
 
   // Set the WindowManager instance in context-menu.js
   setWindowManager(windowManager)
@@ -173,11 +194,28 @@ app.whenReady().then(async () => {
   }
 
   await setupProtocols(userSession)
+  // Everything the first window needs before it can paint, run together rather
+  // than one after another. Each of these is independent: protocol handlers,
+  // the p2p app registry behind peersky:// app pages, the settings that decide
+  // onboarding vs. restore, and the permission handler.
+  await Promise.all([
+    setupProtocols(userSession),
+    p2pAppRegistry.init(),
+    settingsManager.loadSettings(),
+    setupPermissionHandler(userSession)
+  ])
+
+  p2pAppRegistry.setupIpc()
   installExtensionWebRequestBridge(userSession)
   setupBittorrentIpc()
+  setupBackupIpc()
 
   userSession.on('will-download', (event, item, sessionWebContents) => {
     const downloadId = crypto.randomUUID()
+    // The shell window that started this download. Progress goes to every
+    // window so an open popup or the downloads page stays current, but only
+    // this one may pop the panel open.
+    const originWindowWcId = shellWebContentsIdFor(sessionWebContents)
 
     activeDownloadItems.set(downloadId, item)
 
@@ -198,7 +236,7 @@ app.whenReady().then(async () => {
       trustedUIWebContents.forEach((id) => {
         const wc = webContents.fromId(id)
         if (wc && !wc.isDestroyed()) {
-          wc.send('download-progress', data)
+          wc.send('download-progress', { ...data, isOrigin: id === originWindowWcId })
         } else {
           trustedUIWebContents.delete(id)
         }
@@ -247,28 +285,37 @@ app.whenReady().then(async () => {
     })
   })
 
-  await setupPermissionHandler(userSession)
+  // The extension system loads every installed extension into the session, one
+  // at a time, which is the slowest thing at startup and nothing the first
+  // paint depends on. Let it run alongside window creation. Registrations that
+  // arrive before it finishes are queued by ExtensionManager.addWindow and
+  // flushed once the extension host exists, so a webview that attaches during
+  // this window is not lost.
+  const extensionsInitializing = extensionManager.initialize({ app, session: userSession })
 
-  // Initialize extension system
-  try {
-    log.info('Initializing extension system...')
-    await extensionManager.initialize({ app, session: userSession })
-    log.info('Extension system initialized successfully')
+  // Registered now, not when initialize() resolves: the first window asks for
+  // its browser actions the moment it loads, and every handler already waits on
+  // initialize() itself. Registering them late made those calls reject.
+  setupExtensionIpcHandlers(extensionManager)
 
-    // Setup extension IPC handlers
-    setupExtensionIpcHandlers(extensionManager)
-    log.info('Extension IPC handlers registered')
-  } catch (error) {
-    log.error('Failed to initialize extension system:', error)
-  }
+  const extensionsReady = extensionsInitializing
+    .then(() => log.info(`Extension system initialized in ${Date.now() - bootStartedAt}ms`))
+    .catch((error) => log.error('Failed to initialize extension system:', error))
 
   // Check for --new-window argument (from Windows taskbar jump list)
   const hasNewWindowArg = process.argv.includes('--new-window')
 
-  // Load saved windows or open a new one
-  await windowManager.openSavedWindows()
-  if (windowManager.all.length === 0 || hasNewWindowArg) {
-    windowManager.open({ isMainWindow: windowManager.all.length === 0 })
+  const onboardingCompleted = settingsManager.settings.onboardingCompleted
+
+  if (onboardingCompleted === false) {
+    log.info('Onboarding not completed, loading onboarding window')
+    windowManager.open({ url: 'peersky://onboarding', isMainWindow: true })
+  } else {
+    // Load saved windows or open a new one
+    await windowManager.openSavedWindows()
+    if (windowManager.all.length === 0 || hasNewWindowArg) {
+      windowManager.open({ isMainWindow: windowManager.all.length === 0 })
+    }
   }
 
   // Register shortcuts from menu template (NOTE: all these shortcuts works on a window only if a window is in focus)
@@ -298,6 +345,31 @@ app.whenReady().then(async () => {
 
   windowManager.startSaver()
 
+  log.info(`First window opened ${Date.now() - bootStartedAt}ms after app ready`)
+
+  // The shell is on screen now. Boot the p2p stack behind it, and only once the
+  // first window has actually painted so the warm-up never competes with it.
+  const firstWindow = windowManager.all[0]
+  let warmupStarted = false
+  const startWarmup = () => {
+    if (warmupStarted) return
+    warmupStarted = true
+    warmP2PBackends()
+    extensionsReady.then(() => {
+      // Windows that opened while extensions were still loading show no browser
+      // actions until they are told to look again.
+      extensionManager.refreshBrowserActions()
+    })
+  }
+  const firstWebContents = firstWindow?.window?.webContents
+  if (firstWebContents && !firstWebContents.isDestroyed() && firstWebContents.isLoading()) {
+    firstWebContents.once('did-finish-load', startWarmup)
+    // A window that never finishes loading must not strand the p2p stack.
+    setTimeout(startWarmup, 5000).unref?.()
+  } else {
+    startWarmup()
+  }
+
   // Setup dock/taskbar menu for "New Window" option
   if (process.platform === 'darwin') {
     // macOS dock menu
@@ -324,25 +396,71 @@ app.whenReady().then(async () => {
     ])
   }
 
-  // Initialize AutoUpdater after windowManager is ready
-  // console.log("App is prepared, setting up AutoUpdater...");
-  // setupAutoUpdater();
+  // Initialize AutoUpdater after windowManager is ready. The callback saves the
+  // session before the updater quits; setQuitting(true) also stops the save from
+  // wiping the restore file if a window is already gone.
+  setupAutoUpdater(async () => {
+    windowManager.setQuitting(true)
+    windowManager.stopSaver()
+    await windowManager.saveCompleteState()
+  })
+
+  ipcMain.handle('check-for-updates', () => {
+    return checkForUpdatesNow()
+  })
 })
 
 // Introduce a flag to prevent multiple 'before-quit' handling
 let isQuitting = false
+const SHUTDOWN_TIMEOUT_MS = 8000
+const FORCE_QUIT_TIMEOUT_MS = 15000
+
+function withTimeout (promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_resolve, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+    )
+  ])
+}
 
 app.on('before-quit', async (event) => {
   if (isQuitting) {
     return
   }
-  event.preventDefault() // Prevent the default quit behavior
+
+  if (app.isQuittingForUpdate) {
+    // Session was already saved before quitAndInstall. Hard-exit now, since
+    // process.exit hangs on p2p native handles.
+    log.info('[quit] Update install — exiting')
+    if (process.platform === 'darwin') {
+      // macOS: Squirrel handles restart externally, so SIGKILL is safe.
+      process.kill(process.pid, 'SIGKILL')
+    } else {
+      // Windows/Linux: app.exit(0) allows app.relaunch() to fire.
+      app.exit(0)
+    }
+    return
+  }
+
+  event.preventDefault() // Defer the quit so we can shut p2p services down cleanly.
 
   log.info('Before quit: Saving window states...')
 
   isQuitting = true // Set the quitting flag
 
   windowManager.setQuitting(true) // Inform WindowManager that quitting is happening
+
+  // Absolute watchdog: p2p services (libp2p / hyperswarm / holesail) hold native
+  // handles that can keep the process alive even after app.quit(), and Electron
+  // stops pumping JS timers once a graceful quit begins. Schedule the hard exit
+  // now, while the loop is still healthy, so the process is guaranteed to die
+  // (this is what lets the installer swap the bundle on update).
+  const forceQuit = setTimeout(() => {
+    log.warn('[quit] Shutdown watchdog fired — force-exiting')
+    process.exit(0)
+  }, FORCE_QUIT_TIMEOUT_MS)
+  forceQuit.unref?.()
 
   // Shutdown BitTorrent — save state and kill worker before process exits
   try {
@@ -354,30 +472,40 @@ app.on('before-quit', async (event) => {
 
   // Shutdown extension system
   try {
-    await extensionManager.shutdown()
+    await withTimeout(extensionManager.shutdown(), SHUTDOWN_TIMEOUT_MS, 'Extension shutdown')
     log.info('Extension system shutdown successfully')
   } catch (error) {
     log.error('Error shutting down extension system:', error)
   }
 
-  windowManager
-    .saveOpened()
-    .then(() => {
-      log.info('Window states saved successfully.')
-      windowManager.stopSaver()
-      app.quit() // Proceed to quit the app
-    })
-    .catch((error) => {
-      log.error('Error saving window states on quit:', error)
-      windowManager.stopSaver()
-      app.quit() // Proceed to quit the app even if saving fails
-    })
+  try {
+    // Run any coalesced save that is still waiting, then take the final snapshot.
+    await withTimeout(windowManager.flushPendingSave(), SHUTDOWN_TIMEOUT_MS, 'Pending state flush')
+    await withTimeout(windowManager.saveOpened(), SHUTDOWN_TIMEOUT_MS, 'Window state save')
+    log.info('Window states saved successfully.')
+  } catch (error) {
+    log.error('Error saving window states on quit:', error)
+  }
+
+  windowManager.stopSaver()
+  log.info('[quit] Shutdown complete — exiting')
+  process.exit(0)
 })
 
+/**
+ * Register every scheme the browser serves.
+ *
+ * The p2p backends (Helia, hyper-sdk, the WebTorrent worker) are started
+ * lazily: each takes seconds to come up, and nothing on the first screen needs
+ * them. Their handlers are registered here so a p2p:// URL entered a moment
+ * later still resolves — it just starts the backend on the way through — and
+ * warmP2PBackends() boots them in the background once the UI is up.
+ */
 async function setupProtocols (session) {
   const { protocol: sessionProtocol } = session
   const isExtensionWriteAllowed = ({ extensionId, scheme }) =>
     extensionManager.isP2PWriteAllowed(extensionId, scheme)
+  const lazy = true
 
   app.setAsDefaultProtocolClient('peersky')
   app.setAsDefaultProtocolClient('file')
@@ -391,44 +519,76 @@ async function setupProtocols (session) {
   app.setAsDefaultProtocolClient('bt')
   app.setAsDefaultProtocolClient('magnet')
 
-  const browserProtocolHandler = await createBrowserHandler()
+  const [
+    browserProtocolHandler,
+    browserThemeHandler,
+    ipfsProtocolHandler,
+    hyperProtocolHandler,
+    hsProtocolHandler,
+    web3ProtocolHandler,
+    fileProtocolHandler,
+    bittorrentProtocolHandler
+  ] = await Promise.all([
+    createBrowserHandler(),
+    createBrowserThemeHandler(),
+    createIPFSHandler(ipfsOptions, session, { isExtensionWriteAllowed, lazy }),
+    createHyperHandler(hyperOptions, { isExtensionWriteAllowed, lazy }),
+    createHSHandler(),
+    createWeb3Handler(),
+    createFileHandler(),
+    createBittorrentHandler({ lazy })
+  ])
+
   sessionProtocol.handle('peersky', browserProtocolHandler)
-
-  const browserThemeHandler = await createBrowserThemeHandler()
   sessionProtocol.handle('browser', browserThemeHandler)
-
-  const ipfsProtocolHandler = await createIPFSHandler(ipfsOptions, session, { isExtensionWriteAllowed })
   sessionProtocol.handle('ipfs', ipfsProtocolHandler)
   sessionProtocol.handle('ipns', ipfsProtocolHandler)
   sessionProtocol.handle('pubsub', ipfsProtocolHandler)
-
-  const hyperProtocolHandler = await createHyperHandler(hyperOptions, { isExtensionWriteAllowed })
   sessionProtocol.handle('hyper', hyperProtocolHandler)
-
-  const hsProtocolHandler = await createHSHandler()
   sessionProtocol.handle('hs', hsProtocolHandler)
-
-  const web3ProtocolHandler = await createWeb3Handler()
   sessionProtocol.handle('web3', web3ProtocolHandler)
-
-  const fileProtocolHandler = await createFileHandler()
   sessionProtocol.handle('file', fileProtocolHandler)
-
-  const bittorrentProtocolHandler = await createBittorrentHandler()
   sessionProtocol.handle('bittorrent', bittorrentProtocolHandler)
   sessionProtocol.handle('bt', bittorrentProtocolHandler)
   sessionProtocol.handle('magnet', bittorrentProtocolHandler)
 }
 
+/**
+ * Bring the p2p backends up in the background, after the UI is interactive.
+ *
+ * A user who opens a p2p:// URL straight away does not wait for this — the
+ * protocol handlers start whatever they need themselves. This only means the
+ * common case (opening one a few seconds in) finds the swarm already joined.
+ */
+function warmP2PBackends () {
+  for (const [label, warm] of [
+    ['IPFS', warmupIPFS],
+    ['Hyper', warmupHyper],
+    ['BitTorrent', warmupBittorrent]
+  ]) {
+    Promise.resolve()
+      .then(warm)
+      .catch((error) => log.warn(`${label} warm-up failed, will retry on first use:`, error?.message || error))
+  }
+}
+
 function installExtensionWebRequestBridge (session) {
+  // Loopback carries the browser's own plumbing: the p2p gateways and local
+  // servers backing peersky:// pages. Chromium sets no initiator on requests
+  // from those pages, so a content blocker sees origin-less traffic and can
+  // cancel it, breaking the browser itself. Internal transport is not the
+  // extension's to filter.
+  const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]'])
+
   const shouldForwardToExtensions = (rawUrl) => {
     const url = typeof rawUrl === 'string' ? rawUrl : ''
     if (!url) return false
     if (url.startsWith('file://')) return false
     if (url.startsWith('chrome-extension://')) return false
     try {
-      const proto = new URL(url).protocol
-      return proto === 'http:' || proto === 'https:' || proto === 'ws:' || proto === 'wss:' || proto === 'ftp:'
+      const { protocol, hostname } = new URL(url)
+      if (LOOPBACK_HOSTS.has(hostname)) return false
+      return protocol === 'http:' || protocol === 'https:' || protocol === 'ws:' || protocol === 'wss:' || protocol === 'ftp:'
     } catch (_) {
       return false
     }
@@ -440,6 +600,7 @@ function installExtensionWebRequestBridge (session) {
       callback({}) // eslint-disable-line n/no-callback-literal
       return
     }
+
     let result = {}
     try {
       result =
@@ -449,6 +610,12 @@ function installExtensionWebRequestBridge (session) {
     } catch (e) {
       console.warn('[webRequest] onBeforeRequest extension dispatch failed:', e?.message)
     }
+
+    // Electron expects redirectURL
+    if (result.redirectUrl && !result.redirectURL) {
+      result = { ...result, redirectURL: result.redirectUrl }
+    }
+
     callback(result)
   })
 
@@ -515,6 +682,18 @@ function installExtensionWebRequestBridge (session) {
       callback(result)
     }
   )
+
+  session.webRequest.onBeforeRedirect({ urls: ['<all_urls>'] }, async (details) => {
+    const url = details?.url || ''
+    if (!shouldForwardToExtensions(url)) {
+      return
+    }
+    try {
+      await extensionManager.electronChromeExtensions?.notifyWebRequestOnBeforeRedirect(details)
+    } catch (e) {
+      console.warn('[webRequest] onBeforeRedirect extension dispatch failed:', e?.message)
+    }
+  })
 
   session.webRequest.onResponseStarted({ urls: ['<all_urls>'] }, async (details) => {
     const url = details?.url || ''
@@ -876,6 +1055,253 @@ ipcMain.handle('check-built-in-engine', (event, template) => {
 })
 
 setupP2pmdPdfExportIpc()
+
+// Onboarding IPC handlers
+ipcMain.handle('onboarding-import-data', async (event, dataStr) => {
+  try {
+    const importData = JSON.parse(dataStr)
+    if (!importData || typeof importData !== 'object') {
+      throw new Error('Invalid onboarding JSON data')
+    }
+
+    const userDataPath = app.getPath('userData')
+    const TABS_FILE = path.join(userDataPath, 'tabs.json')
+    const PERSIST_FILE = path.join(userDataPath, 'lastOpened.json')
+
+    const windowStates = []
+    const allTabsData = {}
+
+    if (importData.windows && Array.isArray(importData.windows) && importData.windows.length > 0) {
+      for (const win of importData.windows) {
+        const windowId = crypto.randomUUID()
+        let activeTabIndex = win.activeTabIndex || 0
+        if (!win.tabs || !win.tabs.length) {
+          win.tabs = [{ url: 'peersky://home' }]
+        }
+        if (activeTabIndex < 0 || activeTabIndex >= win.tabs.length) {
+          activeTabIndex = 0
+        }
+        const activeTab = win.tabs[activeTabIndex]
+
+        windowStates.push({
+          windowId,
+          url: activeTab && activeTab.url ? activeTab.url : 'peersky://home',
+          position: [100, 100],
+          size: [1280, 800]
+        })
+
+        const mappedTabs = win.tabs.map((tab, idx) => {
+          let protocol = 'https:'
+          try {
+            const parsed = new URL(tab.url || 'peersky://home')
+            protocol = parsed.protocol
+          } catch (_) {}
+
+          return {
+            id: `tab-${idx}`,
+            url: tab.url || 'peersky://home',
+            title: tab.title || 'New Tab',
+            protocol,
+            isPinned: tab.pinned || false,
+            groupId: null,
+            isSuspended: false
+          }
+        })
+
+        allTabsData[windowId] = {
+          tabs: mappedTabs,
+          activeTabId: `tab-${activeTabIndex}`,
+          tabCounter: mappedTabs.length,
+          splitPairs: [],
+          tabGroups: []
+        }
+      }
+    } else {
+      // Default fallback window
+      const windowId = crypto.randomUUID()
+      windowStates.push({
+        windowId,
+        url: 'peersky://home',
+        position: [100, 100],
+        size: [1280, 800]
+      })
+
+      allTabsData[windowId] = {
+        tabs: [{
+          id: 'tab-0',
+          url: 'peersky://home',
+          title: 'Home',
+          protocol: 'peersky:',
+          isPinned: false,
+          groupId: null,
+          isSuspended: false
+        }],
+        activeTabId: 'tab-0',
+        tabCounter: 1,
+        splitPairs: [],
+        tabGroups: []
+      }
+    }
+
+    // Write session files atomically
+    await fs.writeFile(TABS_FILE + '.tmp', JSON.stringify(allTabsData, null, 2), 'utf-8')
+    await fs.rename(TABS_FILE + '.tmp', TABS_FILE)
+    await fs.writeFile(PERSIST_FILE + '.tmp', JSON.stringify(windowStates, null, 2), 'utf-8')
+    await fs.rename(PERSIST_FILE + '.tmp', PERSIST_FILE)
+
+    // Mark onboarding as completed
+    settingsManager.settings.onboardingCompleted = true
+    await settingsManager.saveSettings()
+
+    // Auto-install extensions in background
+    if (importData.extensions && Array.isArray(importData.extensions)) {
+      for (const ext of importData.extensions) {
+        if (ext.id && ext.type === 'extension') {
+          try {
+            log.info(`Auto-installing imported extension: ${ext.name} (${ext.id})`)
+            await extensionManager.installFromWebStore(ext.id)
+          } catch (err) {
+            log.warn(`Failed to auto-install extension ${ext.id}:`, err.message)
+          }
+        }
+      }
+    }
+
+    // Open restored windows
+    await windowManager.openSavedWindows()
+
+    // Close onboarding window
+    const onboardingWindow = BrowserWindow.fromWebContents(event.sender)
+    if (onboardingWindow) {
+      onboardingWindow.close()
+    }
+
+    return { success: true }
+  } catch (error) {
+    log.error('Failed to import onboarding data:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('onboarding-skip', async (event) => {
+  try {
+    settingsManager.settings.onboardingCompleted = true
+    await settingsManager.saveSettings()
+
+    // Open default home page
+    windowManager.open({ url: 'peersky://home', isMainWindow: true })
+
+    // Close onboarding window
+    const onboardingWindow = BrowserWindow.fromWebContents(event.sender)
+    if (onboardingWindow) {
+      onboardingWindow.close()
+    }
+
+    return { success: true }
+  } catch (error) {
+    log.error('Failed to skip onboarding:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('onboarding-restore-backup', async (event, backupContent) => {
+  try {
+    const parsed = JSON.parse(backupContent)
+    if (!parsed || typeof parsed !== 'object') {
+      throw new Error('Invalid JSON format')
+    }
+
+    // Merge settings
+    for (const key in parsed) {
+      if (settingsManager.validateSetting(key, parsed[key])) {
+        settingsManager.settings[key] = parsed[key]
+      }
+    }
+
+    settingsManager.settings.onboardingCompleted = true
+    await settingsManager.saveSettings()
+
+    // Open default home page
+    windowManager.open({ url: 'peersky://home', isMainWindow: true })
+
+    // Close onboarding window
+    const onboardingWindow = BrowserWindow.fromWebContents(event.sender)
+    if (onboardingWindow) {
+      onboardingWindow.close()
+    }
+
+    return { success: true }
+  } catch (error) {
+    log.error('Failed to restore settings backup:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+// Restore a full Peersky .zip backup during onboarding, then mark onboarding
+// complete and relaunch so the restored P2P data loads from a clean process.
+async function finishOnboardingRestore () {
+  settingsManager.settings.onboardingCompleted = true
+  await settingsManager.saveSettings()
+  windowManager.setSkipSaveOnQuit(true)
+  backupManager.relaunch()
+}
+
+ipcMain.handle('onboarding-restore-zip', async (event, payload = {}) => {
+  try {
+    const zipPath = typeof payload === 'string' ? payload : payload?.zipPath
+    const res = await backupManager.restoreBackup(zipPath, (data) => {
+      if (!event.sender.isDestroyed()) {
+        event.sender.send('backup-progress', { phase: 'restore', ...data })
+      }
+    }, { passphrase: payload?.passphrase })
+    if (!res.success) return res
+    await finishOnboardingRestore()
+    return { success: true }
+  } catch (error) {
+    log.error('Onboarding zip restore failed:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('onboarding-restore-cid', async (event, payload = {}) => {
+  let zipPath
+  try {
+    const address = typeof payload === 'string' ? payload : payload?.address
+    zipPath = await downloadBackupFromAddress(address, (status) => {
+      if (!event.sender.isDestroyed()) {
+        event.sender.send('backup-progress', { phase: 'fetch', message: status.message })
+      }
+    })
+    const res = await backupManager.restoreBackup(zipPath, (data) => {
+      if (!event.sender.isDestroyed()) {
+        event.sender.send('backup-progress', { phase: 'restore', ...data })
+      }
+    }, { passphrase: payload?.passphrase })
+    if (!res.success) return res
+    await finishOnboardingRestore()
+    return { success: true }
+  } catch (error) {
+    log.error('Onboarding CID restore failed:', error)
+    return { success: false, error: error.message }
+  } finally {
+    if (zipPath) await fs.rm(zipPath, { force: true }).catch(() => {})
+  }
+})
+
+ipcMain.handle('open-external-link', (_event, url) => {
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+      shell.openExternal(url)
+      return { success: true }
+    } else {
+      throw new Error('Only HTTP/HTTPS URLs are allowed')
+    }
+  } catch (err) {
+    log.error('Failed to open external link:', err)
+    return { success: false, error: err.message }
+  }
+})
 
 // Suppress the libp2p/utils queue stack-overflow that fires when the
 // kad-DHT provide operation runs. The provide still succeeds via HTTP

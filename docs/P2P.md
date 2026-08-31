@@ -17,7 +17,8 @@ Static apps work especially well with P2P protocols: they can be **served locall
 ```js
 async function publishToHyper(file) {
   // Create (or reuse) a Hyperdrive keyed by "myapp"
-  const response = await fetch('hyper://localhost/?key=myapp', {
+  const params = new URLSearchParams({ key: 'myapp', visibility: 'public' });
+  const response = await fetch(`hyper://localhost/?${params}`, {
     method: 'POST'
   });
   const hyperdriveUrl = await response.text(); // e.g. "hyper://abcdef.../"
@@ -36,6 +37,28 @@ async function publishToHyper(file) {
   }
 }
 ```
+
+### Public and private Hyperdrive uploads
+
+The Hyperdrive app asks for a visibility before creating an upload:
+
+- **Public** uploads use PeerSky's normal networked Hyper runtime. Their discovery keys are announced, their contents can replicate to peers, and their `hyper://` URLs can be shared.
+- **Private** uploads use a separate local runtime with discovery and replication disabled. Their `hyper://` URLs work only in the PeerSky profile that created or restored them. Private means **unannounced**, not encrypted.
+
+Each upload name selects its own Hyperdrive, so sharing one public upload does not expose unrelated uploads. Private upload metadata is kept in a separate local registry and is never added to the shared Hyper cache.
+
+```mermaid
+flowchart TD
+    A[Choose a file or folder] --> B{Visibility}
+    B -->|Public| C[Networked Hyper runtime]
+    C --> D[Announced and replicated]
+    D --> E[Shareable hyper:// URL]
+    B -->|Private| F[Isolated local Hyper runtime]
+    F --> G[No discovery or replication]
+    G --> H[Available only in this PeerSky profile]
+```
+
+Private uploads are excluded from normal backups by default. Identity transfers include them by default because they move data to another user-owned device. Both controls are explicit: if private uploads are excluded, the Backup page shows how many will be left behind. The same page lists the private uploads currently stored on the device.
 
 ### Publish to IPFS
 

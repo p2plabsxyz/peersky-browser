@@ -1,6 +1,9 @@
 import { expect } from 'chai'
 import sinon from 'sinon'
 import esmock from 'esmock'
+import os from 'os'
+import path from 'path'
+import { mkdtemp, writeFile } from 'fs/promises'
 
 import { ensCache } from '../../src/protocols/config.js'
 
@@ -92,7 +95,23 @@ async function loadIpfsHandlerModule (overrides = {}) {
 
   const CIDClass = overrides.CIDClass || DefaultFakeCID
 
-  const createNode = overrides.createNode || sinon.stub().resolves(overrides.node)
+  const testNode = overrides.node || {}
+  if (!testNode.pins) {
+    testNode.pins = {}
+  }
+  if (!testNode.pins.add) {
+    testNode.pins.add = sinon.stub().callsFake(async function * (cid) {
+      yield cid
+    })
+  }
+  if (!testNode.libp2p) {
+    testNode.libp2p = {
+      getPeers: () => [],
+      contentRouting: { provide: sinon.stub().resolves() }
+    }
+  }
+
+  const createNode = overrides.createNode || sinon.stub().resolves(testNode)
   const unixfsFactory = overrides.unixfsFactory || sinon.stub().returns(overrides.unixfs)
   const ipnsFactory = overrides.ipnsFactory || sinon.stub().returns(overrides.name)
   const dnsFactory = overrides.dnsFactory || sinon.stub().returns(overrides.dns)
@@ -196,7 +215,7 @@ describe('IPFS protocol handler', function () {
     })
 
     const node = {
-      pins: { add: sinon.stub().resolves() },
+      pins: { add: sinon.stub().callsFake(async function * (cid) { yield cid }) },
       libp2p: {
         getPeers: () => ['peer-a'],
         contentRouting: { provide: sinon.stub().returns(providePromise) }
@@ -242,6 +261,45 @@ describe('IPFS protocol handler', function () {
     resolveProvide()
     const response = await responsePromise
     expect(response.statusCode).to.equal(200)
+  })
+
+  it('provides backup file CIDs after publishing them', async function () {
+    const cid = { toString: () => 'bafy-backup-file' }
+    const provide = sinon.stub().resolves()
+    const node = {
+      pins: { add: sinon.stub().callsFake(async function * (pinnedCid) { yield pinnedCid }) },
+      libp2p: {
+        getPeers: () => ['peer-a'],
+        contentRouting: { provide }
+      }
+    }
+    const addByteStream = sinon.stub().resolves(cid)
+
+    const { module } = await loadIpfsHandlerModule({
+      node,
+      unixfs: {
+        addByteStream,
+        addAll: sinon.stub(),
+        stat: sinon.stub(),
+        cat: sinon.stub(),
+        ls: sinon.stub()
+      },
+      name: { resolve: sinon.stub() },
+      dns: { resolve: sinon.stub() }
+    })
+
+    await module.createHandler({ repo: 'test-ipfs-backup-publish' }, { getBlobData: sinon.stub() })
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), 'peersky-ipfs-publish-'))
+    const filePath = path.join(tempDir, 'backup.zip')
+    await writeFile(filePath, 'backup-bytes')
+
+    const publishedCid = await module.ipfsPublishFile(filePath)
+
+    expect(publishedCid).to.equal('bafy-backup-file')
+    expect(addByteStream.calledOnce).to.equal(true)
+    expect(node.pins.add.calledWith(cid, { recursive: true })).to.equal(true)
+    expect(provide.calledOnce).to.equal(true)
+    expect(provide.firstCall.args[0]).to.equal(cid)
   })
 
   it('resolves ipns:// paths and serves content', async function () {
@@ -655,7 +713,7 @@ describe('IPFS protocol handler', function () {
       ipfsCache,
       saveIpfsCache,
       node: {
-        pins: { add: sinon.stub() },
+        pins: { add: sinon.stub().callsFake(async function * (cid) { yield cid }) },
         libp2p: { getPeers: () => [], contentRouting: { provide: sinon.stub().resolves() } }
       },
       unixfs: { addAll, stat: sinon.stub(), cat: sinon.stub(), ls: sinon.stub() },
@@ -693,7 +751,7 @@ describe('IPFS protocol handler', function () {
       ipfsCache,
       saveIpfsCache,
       node: {
-        pins: { add: sinon.stub() },
+        pins: { add: sinon.stub().callsFake(async function * (cid) { yield cid }) },
         libp2p: { getPeers: () => [], contentRouting: { provide: sinon.stub().resolves() } }
       },
       unixfs: { addAll, stat: sinon.stub(), cat: sinon.stub(), ls: sinon.stub() },
