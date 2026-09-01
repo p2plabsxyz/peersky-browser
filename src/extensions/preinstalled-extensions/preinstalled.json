@@ -13,12 +13,6 @@
       "archive": "linguist-web-page-transla.zip"
     },
     {
-      "id": "ljhijonmfahplgbbacgcfnaihbjljhhb",
-      "name": "WebBrain",
-      "url": "https://chromewebstore.google.com/detail/webbrain/ljhijonmfahplgbbacgcfnaihbjljhhb",
-      "archive": "webbrain.zip"
-    },
-    {
       "name": "PeerSky History",
       "version": "2.0.0",
       "url": "https://github.com/p2plabsxyz/extension-peersky-history/releases/download/v{version}/peersky-history-v{version}.zip",
