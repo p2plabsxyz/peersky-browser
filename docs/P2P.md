@@ -162,7 +162,7 @@ Pin/unpin changes are persisted via the main-process settings system (`pinnedP2P
 
 ## Git Submodules for Built-in P2P Apps
 
-Built-in P2P apps (peerchat, peerpad, upload, p2pmd, ai-chat, wiki) are maintained as independent Git repositories and included as submodules. This allows each app to be developed and versioned separately.
+Built-in P2P apps (peerchat, peerpad, upload, p2pmd, ai-chat, wiki, peertunes) are maintained as independent Git repositories and included as submodules. This allows each app to be developed and versioned separately.
 
 **Automatic initialization:**
 ```bash

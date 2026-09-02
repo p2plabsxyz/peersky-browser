@@ -16,3 +16,6 @@
 [submodule "src/pages/p2p/wiki"]
 	path = src/pages/p2p/wiki
 	url = https://github.com/p2plabsxyz/wiki
+[submodule "src/pages/p2p/peertunes"]
+	path = src/pages/p2p/peertunes
+	url = https://github.com/p2plabsxyz/peertunes

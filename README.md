@@ -90,6 +90,9 @@
     - Peers dashboard with roles, live editing status, and edit history
   - [x] `peersky://p2p/wiki/`
     - Browse Wikipedia over IPFS
+  - [x] `peersky://p2p/peertunes/`
+    - iPod classic style music player with Cover Flow and click wheel
+    - Syncs songs from `hyper://` drives or local folders, with tags and album art
   - [x] [reader.p2plabs.xyz](https://reader.distributed.press/)
     - A p2p offline ActivityPub client for reading and following microblogs on the fediverse.
 
