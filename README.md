@@ -76,10 +76,7 @@
 
   - [x] `peersky://p2p/peerchat/`
     - Peer-to-peer messaging over Hyper
-  - [x] `peersky://p2p/hyperdrive/`
-    - Decentralized file storage
-  - [x] `peersky://p2p/peerpad/`
-    - Build and publish websites
+    - Works over the local network with no internet, via our [hyperdht mDNS](https://github.com/p2plabsxyz/hyperdht-mdns) discovery
   - [x] `peersky://p2p/p2pmd/`
     - Real-time collaborative markdown editor
     - Presentation slides mode with speaker notes
@@ -88,13 +85,16 @@
     - AI-powered content generation
     - Publish to IPFS/Hypercore
     - Peers dashboard with roles, live editing status, and edit history
-  - [x] `peersky://p2p/wiki/`
-    - Browse Wikipedia over IPFS
   - [x] `peersky://p2p/peertunes/`
     - iPod classic style music player with Cover Flow and click wheel
     - Syncs songs from `hyper://` drives or local folders, with tags and album art
-  - [x] [reader.p2plabs.xyz](https://reader.distributed.press/)
-    - A p2p offline ActivityPub client for reading and following microblogs on the fediverse.
+  - [x] `peersky://p2p/ai-chat/`
+    - Chat with local AI models, with nothing leaving the device
+  - [x] `peersky://p2p/hyperdrive/`
+    - Decentralized file storage, published as a public or private drive
+  - [x] And several others, including a website builder, a Wikipedia reader over
+    IPFS, and the [Social Reader](https://reader.distributed.press/) ActivityPub
+    client for the fediverse.
 
 - [x] Electron’s Auto-updater:
 
