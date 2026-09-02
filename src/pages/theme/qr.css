@@ -26,11 +26,22 @@ qr-popup {
 [data-theme="transparent"] .qr-popup {
   background-color: #18181b;
 }
+/* The code is drawn edge to edge, so on a dark theme its white ended exactly
+   where the modules did. Scanners need a light quiet zone around the finder
+   patterns, so carry the white out past the code itself. */
+.qr-popup qr-code {
+  background: #ffffff;
+  width: 200px;
+  height: 200px;
+  padding: 16px;
+  border-radius: 4px;
+  box-sizing: content-box;
+}
+
 .qr-popup img {
   width: 100%;
   max-width: 200px;
   height: auto;
-  border-radius: 4px;
 }
 .qr-popup.open {
   opacity: 1;
