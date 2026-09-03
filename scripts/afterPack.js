@@ -1,139 +1,116 @@
 /**
  * electron-builder afterPack hook
  *
- * Re-downloads the correct architecture prebuild for native modules
- * that @electron/rebuild misses (cmake-js based modules like node-datachannel).
+ * Two jobs once the app is packed:
+ * 1. The nested webrtc-polyfill copy of node-datachannel still uses the old
+ *    build/Release layout, so it holds whatever binary npm fetched for the
+ *    build host. Its path is already in the asar index, so replacing the
+ *    unpacked bytes with the target-arch prebuild works at this stage.
+ * 2. Verify the result. Every packed node-datachannel copy must resolve a
+ *    binary of the target architecture, scoped variants through the asar
+ *    index. A miss is a guaranteed startup crash on the target machine, so
+ *    fail the build instead of shipping it.
  */
 import { execSync } from 'node:child_process'
 import path from 'node:path'
 import fs from 'node:fs'
+import {
+  ARCH_NAMES, scopedVariant, findDataChannelCopies, hasLocalBinary
+} from './beforePack.js'
 
-// Electron-builder arch enum: 1 = x64, 3 = arm64
-const ARCH_MAP = { 1: 'x64', 3: 'arm64', 0: 'ia32' }
-
-// cmake-js modules that ship prebuilds but aren't detected by @electron/rebuild
-const PREBUILD_MODULES = [
-  'node_modules/node-datachannel',
-  'node_modules/webrtc-polyfill/node_modules/node-datachannel'
-]
-
-export default async function afterPack (context) {
-  const arch = ARCH_MAP[context.arch] || 'x64'
-  const platform = context.electronPlatformName // darwin, linux, win32
-
-  // With asar: true, node_modules are in app.asar.unpacked/
-  const appDirMac = path.join(context.appOutDir, context.packager.appInfo.productFilename + '.app',
-    'Contents', 'Resources', 'app.asar.unpacked')
-  const appDirMacNoAsar = path.join(context.appOutDir, context.packager.appInfo.productFilename + '.app',
-    'Contents', 'Resources', 'app')
-  const appDirLinux = path.join(context.appOutDir, 'resources', 'app.asar.unpacked')
-  const appDirLinuxNoAsar = path.join(context.appOutDir, 'resources', 'app')
-
-  // Try asar.unpacked first, then fall back to non-asar layout
-  const root = fs.existsSync(appDirMac)
-    ? appDirMac
-    : fs.existsSync(appDirLinux)
-      ? appDirLinux
-      : fs.existsSync(appDirMacNoAsar)
-        ? appDirMacNoAsar
-        : appDirLinuxNoAsar
-
-  console.log(`[afterPack] Fixing native prebuilds for ${platform}-${arch} in ${root}`)
-
-  for (const modRel of PREBUILD_MODULES) {
-    const modPath = path.join(root, modRel)
-    if (!fs.existsSync(modPath)) continue
-
-    const buildDir = path.join(modPath, 'build', 'Release')
-    const nodeFiles = fs.existsSync(buildDir)
-      ? fs.readdirSync(buildDir).filter(f => f.endsWith('.node'))
-      : []
-
-    if (nodeFiles.length === 0) continue
-
-    try {
-      console.log(`[afterPack] Running prebuild-install for ${modRel} (${platform}-${arch})`)
-      execSync(
-        `npx prebuild-install -r napi --platform ${platform} --arch ${arch}`,
-        { cwd: modPath, stdio: 'inherit', timeout: 60000 }
-      )
-      console.log(`[afterPack] ✓ ${modRel} prebuild installed for ${platform}-${arch}`)
-    } catch (err) {
-      console.warn(`[afterPack] ⚠ Failed to install prebuild for ${modRel}: ${err.message}`)
+// Reads the executable header. Signing and prebuild-install exit codes can
+// both lie about what is actually in the file.
+export function binaryArch (file) {
+  const b = fs.readFileSync(file)
+  if (b.length < 0x40) return null
+  const cpu = (t) => ({ 7: 'x64', 12: 'arm64' })[t & 0xff] || null
+  if (b.readUInt32LE(0) === 0xfeedfacf) return cpu(b.readUInt32LE(4))
+  const beMagic = b.readUInt32BE(0)
+  if (beMagic === 0xcafebabe || beMagic === 0xcafebabf) {
+    const slices = []
+    for (let i = 0; i < b.readUInt32BE(4); i++) slices.push(cpu(b.readUInt32BE(8 + i * 20)))
+    return slices
+  }
+  if (b.readUInt32BE(0) === 0x7f454c46) {
+    return { 0x3e: 'x64', 0xb7: 'arm64', 0x03: 'ia32' }[b.readUInt16LE(0x12)] || null
+  }
+  if (b.readUInt16BE(0) === 0x4d5a) {
+    const pe = b.readUInt32LE(0x3c)
+    if (b.length > pe + 6 && b.readUInt32BE(pe) === 0x50450000) {
+      return { 0x8664: 'x64', 0xaa64: 'arm64', 0x014c: 'ia32' }[b.readUInt16LE(pe + 4)] || null
     }
   }
-
-  await installScopedBinaries(root, platform, arch)
-}
-
-// node-datachannel >= 0.33 ships binaries as per-arch optionalDependencies
-// (@node-datachannel/darwin-x64 and friends). npm only installs the host's
-// variant, so a cross-arch build packs the wrong one and the loader throws
-// MODULE_NOT_FOUND on the target machine. Find every packed copy that uses the
-// scoped model (no local build/Release binary) and fetch its exact version's
-// variant next to it, so upgrades and nested copies need no list maintenance.
-const SCOPE = '@node-datachannel'
-
-function scopedVariant (platform, arch) {
-  if (platform === 'darwin') return `darwin-${arch}`
-  if (platform === 'win32') return `win32-${arch}-msvc`
-  if (platform === 'linux') return `linux-${arch}-gnu`
   return null
 }
 
-function findDataChannelCopies (dir, depth = 0, found = []) {
-  if (depth > 6 || !fs.existsSync(dir)) return found
-  for (const name of fs.readdirSync(dir)) {
-    if (name.startsWith('.')) continue
-    const child = path.join(dir, name)
-    if (!fs.statSync(child).isDirectory()) continue
-    if (name === 'node-datachannel' && fs.existsSync(path.join(child, 'package.json'))) {
-      found.push(child)
-    } else if (name === 'node_modules' || fs.existsSync(path.join(child, 'node_modules'))) {
-      findDataChannelCopies(name === 'node_modules' ? child : path.join(child, 'node_modules'), depth + 1, found)
-    }
-  }
-  return found
+function assertArch (file, arch, what) {
+  const found = binaryArch(file)
+  const ok = Array.isArray(found) ? found.includes(arch) : found === arch
+  if (!ok) throw new Error(`[afterPack] ${what} is ${JSON.stringify(found)} instead of ${arch}: ${file}`)
 }
 
-async function installScopedBinaries (root, platform, arch) {
-  const os = await import('node:os')
+async function asarEntries (asarPath) {
+  if (!fs.existsSync(asarPath)) return null
+  const asar = await import('@electron/asar')
+  const list = (asar.listPackage || asar.default.listPackage)
+  try {
+    return list(asarPath, { isPack: false })
+  } catch {
+    return list(asarPath)
+  }
+}
+
+export default async function afterPack (context) {
+  const arch = ARCH_NAMES[context.arch] || 'x64'
+  const platform = context.electronPlatformName
   const variant = scopedVariant(platform, arch)
-  if (!variant) return
 
-  for (const modPath of findDataChannelCopies(path.join(root, 'node_modules'))) {
-    const buildDir = path.join(modPath, 'build', 'Release')
-    const hasLocalBinary = fs.existsSync(buildDir) &&
-      fs.readdirSync(buildDir).some(f => f.endsWith('.node'))
-    if (hasLocalBinary) continue // old prebuild layout, handled above
+  const resources = platform === 'darwin'
+    ? path.join(context.appOutDir, context.packager.appInfo.productFilename + '.app', 'Contents', 'Resources')
+    : path.join(context.appOutDir, 'resources')
+  const root = ['app.asar.unpacked', 'app'].map(d => path.join(resources, d)).find(fs.existsSync)
+  if (!root) throw new Error(`[afterPack] no packed app found under ${resources}`)
+  const entries = await asarEntries(path.join(resources, 'app.asar'))
 
-    const version = JSON.parse(fs.readFileSync(path.join(modPath, 'package.json'), 'utf8')).version
-    const pkgName = `${SCOPE}/${variant}`
-    // Next to the copy, so require() resolves this one before any other version.
-    const destDir = path.join(path.dirname(modPath), SCOPE, variant)
-    if (fs.existsSync(path.join(destDir, 'package.json'))) {
-      const have = JSON.parse(fs.readFileSync(path.join(destDir, 'package.json'), 'utf8')).version
-      if (have === version) {
-        console.log(`[afterPack] ✓ ${pkgName}@${version} already present at ${path.relative(root, destDir)}`)
-        continue
+  const copies = findDataChannelCopies(path.join(root, 'node_modules'))
+  if (copies.length === 0) throw new Error('[afterPack] no node-datachannel in the packed app, layout changed?')
+
+  for (const modPath of copies) {
+    const rel = path.relative(root, modPath)
+    if (hasLocalBinary(modPath)) {
+      const buildDir = path.join(modPath, 'build', 'Release')
+      for (const f of fs.readdirSync(buildDir).filter(f => f.endsWith('.node'))) {
+        fs.rmSync(path.join(buildDir, f))
       }
-    }
-
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'scoped-binary-'))
-    try {
-      console.log(`[afterPack] Fetching ${pkgName}@${version} for ${platform}-${arch}`)
-      execSync(`npm pack ${pkgName}@${version} --pack-destination "${tmp}"`, { stdio: 'pipe', timeout: 120000 })
-      const tarball = fs.readdirSync(tmp).find(f => f.endsWith('.tgz'))
-      if (!tarball) throw new Error('npm pack produced no tarball')
-      fs.mkdirSync(destDir, { recursive: true })
-      execSync(`tar -xzf "${path.join(tmp, tarball)}" -C "${destDir}" --strip-components=1`, { stdio: 'pipe', timeout: 60000 })
-      console.log(`[afterPack] ✓ ${pkgName}@${version} installed into packed app`)
-    } catch (err) {
-      // A missing binary is a guaranteed startup crash on the target arch, so
-      // fail the build instead of shipping it.
-      throw new Error(`[afterPack] Failed to install ${pkgName}@${version}: ${err.message}`)
-    } finally {
-      fs.rmSync(tmp, { recursive: true, force: true })
+      try {
+        execSync(`npx prebuild-install -r napi --platform ${platform} --arch ${arch}`,
+          { cwd: modPath, stdio: 'pipe', timeout: 120000 })
+      } catch (err) {
+        throw new Error(`[afterPack] prebuild-install ${platform}-${arch} failed for ${rel}: ${err.message}`)
+      }
+      for (const f of fs.readdirSync(buildDir).filter(f => f.endsWith('.node'))) {
+        assertArch(path.join(buildDir, f), arch, `${rel} prebuild`)
+      }
+      console.log(`[afterPack] ✓ ${rel} carries the ${platform}-${arch} prebuild`)
+    } else {
+      // Scoped layout: the loader requires @node-datachannel/<variant>, which
+      // resolution finds next to this copy or at the tree root.
+      const variantDir = [path.dirname(modPath), path.join(root, 'node_modules')]
+        .map(d => path.join(d, '@node-datachannel', variant))
+        .find(d => fs.existsSync(path.join(d, 'package.json')))
+      if (!variantDir) {
+        throw new Error(`[afterPack] @node-datachannel/${variant} is not in the packed app, ${rel} would crash on ${arch}. Is the beforePack hook wired up?`)
+      }
+      const nodeFile = fs.readdirSync(variantDir).find(f => f.endsWith('.node'))
+      if (!nodeFile) throw new Error(`[afterPack] no .node binary inside ${variantDir}`)
+      assertArch(path.join(variantDir, nodeFile), arch, `@node-datachannel/${variant}`)
+      if (entries) {
+        const indexPath = '/' + path.relative(root, path.join(variantDir, 'package.json')).split(path.sep).join('/')
+        if (!entries.some(e => e.split(path.sep).join('/').replace(/^\/?/, '/') === indexPath)) {
+          throw new Error(`[afterPack] ${indexPath} is missing from the asar index, require() cannot reach it. It must be installed before packing, not after.`)
+        }
+      }
+      console.log(`[afterPack] ✓ ${rel} resolves @node-datachannel/${variant} through the asar index`)
     }
   }
 }
