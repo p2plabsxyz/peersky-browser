@@ -674,6 +674,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         showSettingsSavedMessage('Update is ready. Follow the prompt to restart.', 'success')
       } else if (status === 'error' || status === 'timeout') {
         showSettingsSavedMessage('Could not check for updates. Please try again later.', 'error')
+      } else if (status === 'not-initialized') {
+        showSettingsSavedMessage('Still starting up. Try again in a moment.', 'error')
       } else {
         showSettingsSavedMessage('Update check triggered.', 'success')
       }

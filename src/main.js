@@ -186,6 +186,14 @@ app.whenReady().then(async () => {
   // Set the WindowManager instance in context-menu.js
   setWindowManager(windowManager)
 
+  // Registered before the awaits below: this handler used to sit at the end of
+  // this block, so anything rejecting earlier left Settings invoking a channel
+  // that was never registered. checkForUpdatesNow reports 'not-initialized'
+  // until the updater is up, so registering it early is safe.
+  ipcMain.handle('check-for-updates', () => {
+    return checkForUpdatesNow()
+  })
+
   // Get consistent session for protocols and extensions
   const userSession = getBrowserSession()
 
@@ -193,12 +201,29 @@ app.whenReady().then(async () => {
   // than one after another. Each of these is independent: protocol handlers,
   // the p2p app registry behind peersky:// app pages, the settings that decide
   // onboarding vs. restore, and the permission handler.
-  await Promise.all([
-    setupProtocols(userSession),
-    p2pAppRegistry.init(),
-    settingsManager.loadSettings(),
-    setupPermissionHandler(userSession)
-  ])
+  // Settled, not all: a browser whose protocols failed to register is still a
+  // browser that must be able to update itself to a build where they work.
+  const startupTasks = [
+    ['protocols', setupProtocols(userSession)],
+    ['p2p app registry', p2pAppRegistry.init()],
+    ['settings', settingsManager.loadSettings()],
+    ['permission handler', setupPermissionHandler(userSession)]
+  ]
+  const startupResults = await Promise.allSettled(startupTasks.map(([, task]) => task))
+  startupResults.forEach((result, index) => {
+    if (result.status === 'rejected') {
+      log.error(`[startup] ${startupTasks[index][0]} failed:`, result.reason?.stack || result.reason)
+    }
+  })
+
+  // Started here, right after settings load, rather than at the end of this
+  // block: anything failing later used to leave the updater uninitialised, so
+  // the build could never update itself out of the broken state.
+  setupAutoUpdater(async () => {
+    windowManager.setQuitting(true)
+    windowManager.stopSaver()
+    await windowManager.saveCompleteState()
+  })
 
   p2pAppRegistry.setupIpc()
   installExtensionWebRequestBridge(userSession)
@@ -390,19 +415,8 @@ app.whenReady().then(async () => {
       }
     ])
   }
-
-  // Initialize AutoUpdater after windowManager is ready. The callback saves the
-  // session before the updater quits; setQuitting(true) also stops the save from
-  // wiping the restore file if a window is already gone.
-  setupAutoUpdater(async () => {
-    windowManager.setQuitting(true)
-    windowManager.stopSaver()
-    await windowManager.saveCompleteState()
-  })
-
-  ipcMain.handle('check-for-updates', () => {
-    return checkForUpdatesNow()
-  })
+}).catch((error) => {
+  log.error('[startup] failed during app initialization:', error?.stack || error)
 })
 
 // Introduce a flag to prevent multiple 'before-quit' handling
