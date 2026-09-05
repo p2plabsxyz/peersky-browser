@@ -197,6 +197,11 @@ app.whenReady().then(async () => {
   // Get consistent session for protocols and extensions
   const userSession = getBrowserSession()
 
+  if (settingsManager.settings.customDnsResolver) {
+    hyperOptions.dnsResolver = settingsManager.settings.customDnsResolver
+  }
+
+  await setupProtocols(userSession)
   // Everything the first window needs before it can paint, run together rather
   // than one after another. Each of these is independent: protocol handlers,
   // the p2p app registry behind peersky:// app pages, the settings that decide

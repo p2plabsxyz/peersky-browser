@@ -68,6 +68,8 @@ const DEFAULT_SETTINGS = {
   autoUpdateEnabled: true,
   memorySaverEnabled: false,
   memorySaverExclusions: ['peersky://p2p/*'],
+  customDnsResolver: '',
+=======
   onboardingCompleted: false,
   llm: {
     enabled: false,
@@ -657,6 +659,7 @@ class SettingsManager {
       autoUpdateEnabled: (v) => typeof v === 'boolean',
       memorySaverEnabled: (v) => typeof v === 'boolean',
       memorySaverExclusions: (v) => Array.isArray(v) && v.every(ex => typeof ex === 'string'),
+      customDnsResolver: (v) => v === '' || (typeof v === 'string' && v.length < 512),
       onboardingCompleted: (v) => typeof v === 'boolean',
       llm: (v) => {
         // Validate LLM settings object (simplified for Ollama-only)
