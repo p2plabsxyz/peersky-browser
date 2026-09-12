@@ -10,6 +10,7 @@ import settingsManager from './settings-manager.js'
 import { getPartition } from './session.js'
 import extensionManager from './extensions/index.js'
 import { createCoalescedTask } from './coalesce.js'
+import { goBackActiveTab, goForwardActiveTab } from './history-nav.js'
 
 const log = createLogger('window-manager')
 
@@ -549,6 +550,13 @@ class WindowManager {
       if (this.windows.size === 1) {
         this.stopSaver()
       }
+    })
+
+    // The extra buttons on a mouse arrive as app commands, which Electron only
+    // emits on Windows and Linux.
+    window.window.on('app-command', (_event, command) => {
+      if (command === 'browser-backward') goBackActiveTab(window.window)
+      else if (command === 'browser-forward') goForwardActiveTab(window.window)
     })
 
     // A drag emits move events continuously and a resize emits one per frame;
