@@ -1,4 +1,5 @@
 import { Menu, MenuItem, clipboard, dialog } from 'electron'
+import { isExternalScheme, openExternalScheme } from './external-scheme.js'
 import path from 'path'
 import extensionManager from './extensions/index.js'
 
@@ -501,6 +502,12 @@ export function attachContextMenus (browserWindow, windowManager) {
     (event, webviewWebContents) => {
       attachMenuToWebContents(webviewWebContents)
 
+      webviewWebContents.on('will-navigate', (navEvent, url) => {
+        if (!isExternalScheme(url)) return
+        navEvent.preventDefault()
+        openExternalScheme(browserWindow, url)
+      })
+
       // Webview popups: allow native popups with opener for OAuth/extension flows
       webviewWebContents.setWindowOpenHandler((details) => {
         const { url, features = '', disposition } = details
@@ -544,6 +551,10 @@ export function attachContextMenus (browserWindow, windowManager) {
 
         // Only allow http/https or about:blank; block others
         if (!isSafePopupUrl(url)) {
+          if (isExternalScheme(url)) {
+            openExternalScheme(browserWindow, url)
+            return { action: 'deny' }
+          }
           // Preserve previous behavior for unsafe schemes: re-route to tab/window
           try {
             const urlLiteral = JSON.stringify(url || '')
