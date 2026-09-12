@@ -11,6 +11,12 @@ const PROMPT_PERMISSIONS = new Set([
   'fullscreen'
 ])
 
+// Chromium grants a sanitized clipboard write on user activation without ever
+// asking, so routing it through the deny-by-default branch below silently broke
+// every copy button in the browser's own pages. Reading the clipboard is not
+// here on purpose: that one stays denied.
+const SILENT_GRANT_PERMISSIONS = new Set(['clipboard-sanitized-write'])
+
 const PERMISSION_LABELS = {
   geolocation: 'Location',
   media: 'Camera and microphone',
@@ -84,6 +90,10 @@ export async function setupPermissionHandler (session) {
   }
 
   session.setPermissionRequestHandler((webContents, permission, callback) => {
+    if (SILENT_GRANT_PERMISSIONS.has(permission)) {
+      callback(true) // eslint-disable-line n/no-callback-literal
+      return
+    }
     if (!PROMPT_PERMISSIONS.has(permission)) {
       callback(false) // eslint-disable-line n/no-callback-literal
       return
