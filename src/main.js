@@ -1297,6 +1297,36 @@ ipcMain.handle('onboarding-restore-cid', async (event, payload = {}) => {
   }
 })
 
+// Windows 10 and later refuse to let an app make itself the default browser;
+// the user has to pick it in Settings, so the best we can do is take them
+// there. macOS and Linux accept the request directly.
+ipcMain.handle('get-default-browser-status', () => {
+  try {
+    return {
+      isDefault: app.isDefaultProtocolClient('https'),
+      canSetDirectly: process.platform !== 'win32'
+    }
+  } catch (err) {
+    log.error('[default-browser] status check failed:', err?.message || err)
+    return { isDefault: false, canSetDirectly: process.platform !== 'win32' }
+  }
+})
+
+ipcMain.handle('set-as-default-browser', async () => {
+  if (process.platform === 'win32') {
+    await shell.openExternal('ms-settings:defaultapps')
+    return { success: false, openedSystemSettings: true }
+  }
+  try {
+    const http = app.setAsDefaultProtocolClient('http')
+    const https = app.setAsDefaultProtocolClient('https')
+    return { success: http && https, isDefault: app.isDefaultProtocolClient('https') }
+  } catch (err) {
+    log.error('[default-browser] set failed:', err?.message || err)
+    return { success: false, error: err?.message || String(err) }
+  }
+})
+
 ipcMain.handle('open-external-link', (_event, url) => {
   try {
     const parsed = new URL(url)

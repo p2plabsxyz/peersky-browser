@@ -402,6 +402,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const autoUpdateEnabled = document.getElementById('auto-update-enabled')
   const checkForUpdatesBtn = document.getElementById('check-for-updates')
+  const setDefaultBrowserBtn = document.getElementById('set-default-browser')
+  const defaultBrowserHint = document.getElementById('default-browser-hint')
   const memorySaverEnabled = document.getElementById('memory-saver-enabled')
   const memoryExclusionInput = document.getElementById('memory-exclusion-input')
   const addExclusionBtn = document.getElementById('add-exclusion-btn')
@@ -660,6 +662,44 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   autoUpdateEnabled?.addEventListener('change', async (e) => {
     await saveSettingToBackend('autoUpdateEnabled', e.target.checked)
+  })
+
+  const refreshDefaultBrowserRow = async () => {
+    if (!setDefaultBrowserBtn || !settingsAPI?.settings?.getDefaultBrowserStatus) return
+    try {
+      const { isDefault, canSetDirectly } = await settingsAPI.settings.getDefaultBrowserStatus()
+      setDefaultBrowserBtn.disabled = isDefault
+      setDefaultBrowserBtn.textContent = isDefault ? 'Default Browser' : 'Set as Default'
+      if (defaultBrowserHint) {
+        defaultBrowserHint.textContent = isDefault
+          ? 'Peersky opens links from other apps'
+          : canSetDirectly
+            ? 'Open links from other apps in Peersky'
+            : 'Windows asks you to choose this in System Settings'
+      }
+    } catch (err) {
+      console.warn('Could not read default browser status', err)
+    }
+  }
+  refreshDefaultBrowserRow()
+
+  setDefaultBrowserBtn?.addEventListener('click', async () => {
+    if (!settingsAPI?.settings?.setAsDefaultBrowser) return
+    try {
+      setDefaultBrowserBtn.disabled = true
+      const result = await settingsAPI.settings.setAsDefaultBrowser()
+      if (result?.openedSystemSettings) {
+        showSettingsSavedMessage('Pick Peersky under Default apps in the window that opened.', 'success')
+      } else if (result?.success) {
+        showSettingsSavedMessage('Peersky is now your default browser.', 'success')
+      } else {
+        showSettingsSavedMessage('Could not set Peersky as default.', 'error')
+      }
+    } catch (err) {
+      showSettingsSavedMessage(`Could not set Peersky as default: ${err.message}`, 'error')
+    } finally {
+      await refreshDefaultBrowserRow()
+    }
   })
 
   checkForUpdatesBtn?.addEventListener('click', async () => {
