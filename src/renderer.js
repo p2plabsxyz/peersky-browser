@@ -103,9 +103,14 @@ function closeExtensionSidePanel ({ notify = false } = {}) {
 }
 
 // Listen for IPC messages from main process to add tabs
+// A link the OS handed to the app can arrive before the tab bar exists; it
+// waits here until the tab bar is connected instead of being dropped.
+const tabsPendingFromMain = []
 ipcRenderer.on('add-tab-from-main', (event, url) => {
   if (tabBar && typeof tabBar.addTab === 'function') {
     tabBar.addTab(url)
+  } else {
+    tabsPendingFromMain.push(url)
   }
 })
 
@@ -374,6 +379,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   })
 
   await tabBar.connectWebviewContainer(webviewContainer)
+  while (tabsPendingFromMain.length) tabBar.addTab(tabsPendingFromMain.shift())
 
   // Setup error handling for all webviews
   tabBar.addEventListener('tab-created', (e) => {

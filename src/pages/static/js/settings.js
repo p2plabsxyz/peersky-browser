@@ -667,33 +667,42 @@ document.addEventListener('DOMContentLoaded', async () => {
   const refreshDefaultBrowserRow = async () => {
     if (!setDefaultBrowserBtn || !settingsAPI?.settings?.getDefaultBrowserStatus) return
     try {
-      const { isDefault, canSetDirectly } = await settingsAPI.settings.getDefaultBrowserStatus()
+      const { isDefault, support } = await settingsAPI.settings.getDefaultBrowserStatus()
+      // Only disabled once it is already true. A button that cannot explain
+      // itself is indistinguishable from a broken one.
       setDefaultBrowserBtn.disabled = isDefault
       setDefaultBrowserBtn.textContent = isDefault ? 'Default Browser' : 'Set as Default'
       if (defaultBrowserHint) {
         defaultBrowserHint.textContent = isDefault
           ? 'Peersky opens links from other apps'
-          : canSetDirectly
-            ? 'Open links from other apps in Peersky'
-            : 'Windows asks you to choose this in System Settings'
+          : support === 'unavailable'
+            ? 'Only the installed Peersky can be the default browser'
+            : support === 'system-settings'
+              ? 'Choose Peersky in your system settings'
+              : 'Open links from other apps in Peersky'
       }
     } catch (err) {
       console.warn('Could not read default browser status', err)
     }
   }
   refreshDefaultBrowserRow()
+  if (setDefaultBrowserBtn) window.addEventListener('focus', refreshDefaultBrowserRow)
 
   setDefaultBrowserBtn?.addEventListener('click', async () => {
     if (!settingsAPI?.settings?.setAsDefaultBrowser) return
     try {
       setDefaultBrowserBtn.disabled = true
       const result = await settingsAPI.settings.setAsDefaultBrowser()
-      if (result?.openedSystemSettings) {
-        showSettingsSavedMessage('Pick Peersky under Default apps in the window that opened.', 'success')
-      } else if (result?.success) {
+      if (result?.isDefault) {
         showSettingsSavedMessage('Peersky is now your default browser.', 'success')
+      } else if (result?.support === 'unavailable') {
+        showSettingsSavedMessage('This is a dev run. Only the installed Peersky can be the default browser.', 'error')
+      } else if (result?.support === 'system-settings') {
+        showSettingsSavedMessage('Pick Peersky under default apps in your system settings.', 'success')
+      } else if (result?.error) {
+        showSettingsSavedMessage(`Could not set Peersky as default: ${result.error}`, 'error')
       } else {
-        showSettingsSavedMessage('Could not set Peersky as default.', 'error')
+        showSettingsSavedMessage('Asked macOS to make Peersky the default. Confirm in the system dialog, which can open behind this window.', 'success')
       }
     } catch (err) {
       showSettingsSavedMessage(`Could not set Peersky as default: ${err.message}`, 'error')

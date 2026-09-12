@@ -21,6 +21,7 @@ import { isBuiltInSearchEngine } from './search-engine.js'
 import './llm.js'
 import './llm-memory.js'
 import { setupAutoUpdater, checkForUpdatesNow } from './auto-updater.js'
+import { urlFromArgv, queueLaunchUrl, startDeliveringLaunchUrls } from './launch-url.js'
 
 // Import and initialize extension system
 import extensionManager from './extensions/index.js'
@@ -179,7 +180,59 @@ function shellWebContentsIdFor (wc) {
   return null
 }
 
+// One process per profile. A second launch, which is how Windows and Linux
+// hand over a link or a taskbar "new window", forwards its argv to the owner
+// and exits instead of booting a rival on the same profile.
+const isPrimaryInstance = app.requestSingleInstanceLock()
+if (!isPrimaryInstance) {
+  console.log('[launch] another Peersky instance owns this profile; forwarding and quitting')
+  app.exit(0)
+}
+
+app.on('second-instance', (_event, argv) => {
+  const url = urlFromArgv(argv)
+  if (url) {
+    queueLaunchUrl(url)
+  } else if (argv.includes('--new-window') && windowManager) {
+    windowManager.open({})
+  } else {
+    focusAnyWindow()
+  }
+})
+
+// macOS only ever hands over a scheme the bundle declares, so the argv
+// allowlist would add nothing here and would drop declared schemes it omits.
+app.on('open-url', (event, url) => {
+  event.preventDefault()
+  queueLaunchUrl(url)
+})
+
+queueLaunchUrl(urlFromArgv(process.argv))
+
+function focusAnyWindow () {
+  const win = BrowserWindow.getFocusedWindow() || windowManager?.all[0]?.window
+  if (!win || win.isDestroyed()) return
+  if (win.isMinimized()) win.restore()
+  win.focus()
+}
+
+// The shell page buffers this until its tab bar exists, so the only race left
+// is a renderer that has not started loading yet.
+function openLaunchUrl (url) {
+  const win = BrowserWindow.getFocusedWindow() || windowManager?.all[0]?.window
+  if (!win || win.isDestroyed()) {
+    windowManager?.open({ url })
+    return
+  }
+  const send = () => win.webContents.send('add-tab-from-main', url)
+  if (win.webContents.isLoading()) win.webContents.once('did-finish-load', send)
+  else send()
+  if (win.isMinimized()) win.restore()
+  win.focus()
+}
+
 app.whenReady().then(async () => {
+  if (!isPrimaryInstance) return
   const bootStartedAt = Date.now()
   windowManager = new WindowManager()
 
@@ -337,6 +390,9 @@ app.whenReady().then(async () => {
       windowManager.open({ isMainWindow: windowManager.all.length === 0 })
     }
   }
+  // Onboarding included: a link that arrives then opens beside it rather than
+  // waiting for the user to finish.
+  startDeliveringLaunchUrls(openLaunchUrl)
 
   // Register shortcuts from menu template (NOTE: all these shortcuts works on a window only if a window is in focus)
   const menuTemplate = createMenuTemplate(windowManager)
@@ -516,17 +572,16 @@ async function setupProtocols (session) {
     extensionManager.isP2PWriteAllowed(extensionId, scheme)
   const lazy = true
 
-  app.setAsDefaultProtocolClient('peersky')
-  app.setAsDefaultProtocolClient('file')
-  app.setAsDefaultProtocolClient('browser')
-  app.setAsDefaultProtocolClient('ipfs')
-  app.setAsDefaultProtocolClient('ipns')
-  app.setAsDefaultProtocolClient('hyper')
-  app.setAsDefaultProtocolClient('hs')
-  app.setAsDefaultProtocolClient('web3')
-  app.setAsDefaultProtocolClient('bittorrent')
-  app.setAsDefaultProtocolClient('bt')
-  app.setAsDefaultProtocolClient('magnet')
+  // Only a packaged app can take these: a dev run would register the bare
+  // Electron binary, which opens Electron's welcome window instead of Peersky
+  // and steals the schemes from the installed copy.
+  if (app.isPackaged) {
+    for (const scheme of ['peersky', 'browser', 'ipfs', 'ipns', 'hyper', 'hs', 'web3', 'bittorrent', 'bt', 'magnet']) {
+      app.setAsDefaultProtocolClient(scheme)
+    }
+  } else {
+    log.info('[protocols] dev run: not registering as scheme handler')
+  }
 
   const [
     browserProtocolHandler,
@@ -1297,33 +1352,50 @@ ipcMain.handle('onboarding-restore-cid', async (event, payload = {}) => {
   }
 })
 
-// Windows 10 and later refuse to let an app make itself the default browser;
-// the user has to pick it in Settings, so the best we can do is take them
-// there. macOS and Linux accept the request directly.
+// Only a plain packaged build can ask for the http/https default. A dev run
+// would register the bare Electron binary, which declares no URL schemes of its
+// own, so the request cannot take and the claim it leaves behind is inherited by
+// every Electron app on the machine. The App Store sandbox refuses the call.
+// Windows exposes no supported API for this and Linux needs a desktop entry this
+// build does not name, so both are sent to the system's own default apps UI.
+function defaultBrowserSupport () {
+  if (!app.isPackaged || process.mas) return 'unavailable'
+  return process.platform === 'darwin' ? 'direct' : 'system-settings'
+}
+
 ipcMain.handle('get-default-browser-status', () => {
+  const support = defaultBrowserSupport()
+  // Only the macOS getter reads the record the OS actually decides with. The
+  // Windows one reads back a key the app itself wrote.
+  if (support !== 'direct') return { isDefault: false, support }
   try {
-    return {
-      isDefault: app.isDefaultProtocolClient('https'),
-      canSetDirectly: process.platform !== 'win32'
-    }
+    return { isDefault: app.isDefaultProtocolClient('https'), support }
   } catch (err) {
     log.error('[default-browser] status check failed:', err?.message || err)
-    return { isDefault: false, canSetDirectly: process.platform !== 'win32' }
+    return { isDefault: false, support }
   }
 })
 
 ipcMain.handle('set-as-default-browser', async () => {
-  if (process.platform === 'win32') {
-    await shell.openExternal('ms-settings:defaultapps')
-    return { success: false, openedSystemSettings: true }
+  const support = defaultBrowserSupport()
+  if (support === 'unavailable') {
+    log.info('[default-browser] not an installed build; refusing to register')
+    return { isDefault: false, support }
+  }
+  if (support === 'system-settings') {
+    if (process.platform === 'win32') await shell.openExternal('ms-settings:defaultapps')
+    return { isDefault: false, support }
   }
   try {
-    const http = app.setAsDefaultProtocolClient('http')
-    const https = app.setAsDefaultProtocolClient('https')
-    return { success: http && https, isDefault: app.isDefaultProtocolClient('https') }
+    app.setAsDefaultProtocolClient('http')
+    app.setAsDefaultProtocolClient('https')
+    // The call returns before macOS has shown its confirmation sheet, so the
+    // user's answer is not known here. Report only what is true right now; the
+    // row re-reads the real state when the window regains focus.
+    return { isDefault: app.isDefaultProtocolClient('https'), support }
   } catch (err) {
     log.error('[default-browser] set failed:', err?.message || err)
-    return { success: false, error: err?.message || String(err) }
+    return { isDefault: false, support, error: err?.message || String(err) }
   }
 })
 
