@@ -275,7 +275,9 @@ app.whenReady().then(async () => {
   setupAutoUpdater(async () => {
     windowManager.setQuitting(true)
     windowManager.stopSaver()
-    await windowManager.saveCompleteState()
+    // saveFinal, not saveCompleteState: all three shutdown savers share the one
+    // queue, or two of them can write the same temp files at once.
+    await windowManager.saveFinal()
   })
 
   p2pAppRegistry.setupIpc()

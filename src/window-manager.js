@@ -120,7 +120,7 @@ class WindowManager {
 
         (async () => {
           try {
-            await this.saveCompleteState()
+            await this.saveFinal()
           } catch (error) {
             log.error(`Error during ${signal} shutdown save:`, error)
           } finally {
