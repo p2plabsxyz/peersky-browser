@@ -556,6 +556,10 @@ app.on('before-quit', async (event) => {
   } catch (error) {
     log.error('Error saving window states on quit:', error)
   }
+  // Windows are held closed while a shutdown save is in flight. Releasing that
+  // here is what the removed window-manager handler used to do; without it the
+  // guard could never clear and a window could not close during shutdown.
+  windowManager.finalSaveCompleted = true
 
   // The session is safely on disk from here, so the p2p stack can be closed.
   // Exiting without this severs live libp2p sockets and a corestore mid-write,
