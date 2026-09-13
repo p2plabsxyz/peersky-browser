@@ -741,6 +741,19 @@ class WindowManager {
     this.pendingSave.schedule()
   }
 
+  /**
+   * The final save on the way out. saveOpened refuses to run once shutdown has
+   * started, and saveCompleteState on its own skips the queue that keeps saves
+   * from overlapping. A quit landing while an interval save is mid-flight would
+   * then put two writers on the same two temp paths, and the losing rename can
+   * move a torn file into place, which reads back as a corrupt session.
+   */
+  async saveFinal () {
+    const run = this.saveQueue.catch(() => {}).then(() => this.saveCompleteState())
+    this.saveQueue = run.catch(() => {})
+    return run
+  }
+
   beginSessionRestore (windowCount) {
     if (windowCount <= 0) return
     this.restoringSession = true
@@ -755,7 +768,10 @@ class WindowManager {
 
   finishSessionRestore () {
     if (!this.restoringSession) return
-    if (--this.pendingRestores > 0) return
+    // A reload of a restored window fires did-finish-load again, so clamp
+    // rather than letting the count run negative.
+    this.pendingRestores = Math.max(0, this.pendingRestores - 1)
+    if (this.pendingRestores > 0) return
     this.endSessionRestore(RESTORE_SETTLE_MS)
   }
 
@@ -923,8 +939,11 @@ class WindowManager {
       return
     }
 
-    // Hold autosaves off until the restored tabs are actually on screen.
-    this.beginSessionRestore(windowStates.length)
+    // Hold autosaves off until the restored tabs are actually on screen. Only
+    // windows that have tabs to restore report back, and a window can be listed
+    // in lastOpened.json with no entry in tabs.json, so counting every window
+    // would leave the gate owed a report that never arrives.
+    this.beginSessionRestore(windowStates.filter((state) => savedTabs[state.windowId]).length)
 
     for (const [index, state] of windowStates.entries()) {
       log.info(`Opening saved window ${index + 1}:`, state)

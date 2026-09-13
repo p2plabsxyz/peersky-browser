@@ -522,25 +522,48 @@ app.on('before-quit', async (event) => {
 
   isQuitting = true // Set the quitting flag
 
-  // Both flags, because saveOpened and saveWindowStates each check a different
-  // one before deciding a window list is empty rather than merely torn down.
-  windowManager.setQuitting(true)
-  windowManager.shutdownInProgress = true
-  windowManager.stopSaver()
-
   // Absolute watchdog: p2p services (libp2p / hyperswarm / holesail) hold native
   // handles that can keep the process alive even after app.quit(), and Electron
   // stops pumping JS timers once a graceful quit begins. Schedule the hard exit
   // now, while the loop is still healthy, so the process is guaranteed to die
-  // (this is what lets the installer swap the bundle on update).
+  // (this is what lets the installer swap the bundle on update). It is armed
+  // before anything else is touched: the quit is already deferred and a second
+  // one is refused, so a throw below this line with no watchdog would leave the
+  // app impossible to quit at all.
   const forceQuit = setTimeout(() => {
     log.warn('[quit] Shutdown watchdog fired — force-exiting')
     process.exit(0)
   }, FORCE_QUIT_TIMEOUT_MS)
   forceQuit.unref?.()
 
+  // Both flags, because saveOpened and saveWindowStates each check a different
+  // one before deciding a window list is empty rather than merely torn down.
+  windowManager.setQuitting(true)
+  windowManager.shutdownInProgress = true
+  windowManager.stopSaver()
+
   const deadline = Date.now() + SHUTDOWN_BUDGET_MS
-  const budgeted = (cap) => Math.max(0, Math.min(cap, deadline - Date.now()))
+  // Never hand a phase a zero budget: a spent budget would make withTimeout
+  // reject on the next tick, which skips the phase rather than shortening it.
+  const budgeted = (cap, floor) => Math.max(floor, Math.min(cap, deadline - Date.now()))
+
+  // The session goes first. It is the only user data here, everything after it
+  // is teardown, and giving it the budget last meant a slow extension shutdown
+  // could leave it nothing and silently skip it.
+  try {
+    // saveCompleteState, not saveOpened: saveOpened refuses to run once
+    // shutdownInProgress is set, which is set above so an empty window list is
+    // never mistaken for "no session". Going through it here would silently
+    // skip the final save and leave whatever the interval saver last wrote.
+    await withTimeout(windowManager.saveFinal(), budgeted(SHUTDOWN_TIMEOUT_MS, 3000), 'Window state save')
+    log.info('Window states saved successfully.')
+  } catch (error) {
+    log.error('Error saving window states on quit:', error)
+  }
+  // Windows are held closed while a shutdown save is in flight. Releasing that
+  // here is what the removed window-manager handler used to do; without it the
+  // guard could never clear and a window could not close during shutdown.
+  windowManager.finalSaveCompleted = true
 
   // Shutdown BitTorrent — save state and kill worker before process exits
   try {
@@ -552,31 +575,16 @@ app.on('before-quit', async (event) => {
 
   // Shutdown extension system
   try {
-    await withTimeout(extensionManager.shutdown(), budgeted(SHUTDOWN_TIMEOUT_MS), 'Extension shutdown')
+    await withTimeout(extensionManager.shutdown(), budgeted(SHUTDOWN_TIMEOUT_MS, 1000), 'Extension shutdown')
     log.info('Extension system shutdown successfully')
   } catch (error) {
     log.error('Error shutting down extension system:', error)
   }
 
-  try {
-    // saveCompleteState, not saveOpened: saveOpened refuses to run once
-    // shutdownInProgress is set, which is set above so an empty window list is
-    // never mistaken for "no session". Going through it here would silently
-    // skip the final save and leave whatever the interval saver last wrote.
-    await withTimeout(windowManager.saveCompleteState(), budgeted(SHUTDOWN_TIMEOUT_MS), 'Window state save')
-    log.info('Window states saved successfully.')
-  } catch (error) {
-    log.error('Error saving window states on quit:', error)
-  }
-  // Windows are held closed while a shutdown save is in flight. Releasing that
-  // here is what the removed window-manager handler used to do; without it the
-  // guard could never clear and a window could not close during shutdown.
-  windowManager.finalSaveCompleted = true
-
   // The session is safely on disk from here, so the p2p stack can be closed.
   // Exiting without this severs live libp2p sockets and a corestore mid-write,
   // which is what turned an ordinary quit into a crash report.
-  const p2pBudget = Math.max(1000, budgeted(P2P_CLOSE_TIMEOUT_MS))
+  const p2pBudget = budgeted(P2P_CLOSE_TIMEOUT_MS, 1000)
   await Promise.allSettled([
     withTimeout(suspendHyper({ recover: false }), p2pBudget, 'Hyper close')
       .catch((error) => log.error('Error closing Hyper on quit:', error)),
