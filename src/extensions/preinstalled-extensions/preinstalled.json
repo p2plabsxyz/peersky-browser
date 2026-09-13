@@ -1,12 +1,6 @@
 {
   "extensions": [
     {
-      "id": "eimadpbcbfnmbkopoojfekhnkhdbieeh",
-      "name": "Dark Reader",
-      "url": "https://chromewebstore.google.com/detail/dark-reader/eimadpbcbfnmbkopoojfekhnkhdbieeh",
-      "archive": "dark-reader.zip"
-    },
-    {
       "id": "gbefmodhlophhakmoecijeppjblibmie",
       "name": "Linguist - web page translator",
       "url": "https://chromewebstore.google.com/detail/linguist-web-page-transla/gbefmodhlophhakmoecijeppjblibmie",
