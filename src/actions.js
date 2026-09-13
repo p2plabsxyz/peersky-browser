@@ -1,5 +1,6 @@
 import { app, BrowserWindow } from 'electron'
 import { createLogger } from './logger.js'
+import { goBackActiveTab, goForwardActiveTab } from './history-nav.js'
 const log = createLogger('actions')
 
 export function createActions (windowManager) {
@@ -60,44 +61,12 @@ export function createActions (windowManager) {
     Forward: {
       label: 'Forward',
       accelerator: 'CommandOrControl+]',
-      click: () => {
-        const focusedWindow = BrowserWindow.getFocusedWindow()
-        if (focusedWindow) {
-          focusedWindow.webContents.executeJavaScript(`{
-            const tabBar = document.querySelector('#tabbar');
-            if (tabBar && typeof tabBar.goForwardActiveTab === 'function') {
-              tabBar.goForwardActiveTab();
-            } else {
-              // Fallback for single webview
-              const webview = document.querySelector('webview');
-              if (webview && webview.canGoForward()) {
-                webview.goForward();
-              }
-            }
-          }`)
-        }
-      }
+      click: () => goForwardActiveTab(BrowserWindow.getFocusedWindow())
     },
     Back: {
       label: 'Back',
       accelerator: 'CommandOrControl+[',
-      click: () => {
-        const focusedWindow = BrowserWindow.getFocusedWindow()
-        if (focusedWindow) {
-          focusedWindow.webContents.executeJavaScript(`{
-            const tabBar = document.querySelector('#tabbar');
-            if (tabBar && typeof tabBar.goBackActiveTab === 'function') {
-              tabBar.goBackActiveTab();
-            } else {
-              // Fallback for single webview
-              const webview = document.querySelector('webview');
-              if (webview && webview.canGoBack()) {
-                webview.goBack();
-              }
-            }
-          }`)
-        }
-      }
+      click: () => goBackActiveTab(BrowserWindow.getFocusedWindow())
     },
     FocusURLBar: {
       label: 'Focus URL Bar',

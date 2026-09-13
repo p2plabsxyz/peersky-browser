@@ -32,7 +32,26 @@
     }
   }
 
+  // Reloading this page would just rebuild the error; retry means the address
+  // that failed. The scheme is checked because the parameter arrives in a URL.
+  const RETRY_SCHEMES = new Set([
+    'http:', 'https:', 'peersky:', 'browser:', 'ipfs:', 'ipns:', 'pubsub:',
+    'hyper:', 'hs:', 'web3:', 'bittorrent:', 'bt:', 'magnet:', 'file:'
+  ])
+
+  const retryTarget = (() => {
+    if (!errorUrl) return null
+    try {
+      return RETRY_SCHEMES.has(new URL(errorUrl).protocol) ? errorUrl : null
+    } catch {
+      return null
+    }
+  })()
+
   // Button actions
-  retryBtn?.addEventListener('click', () => window.location.reload())
+  retryBtn?.addEventListener('click', () => {
+    if (retryTarget) window.location.href = retryTarget
+    else window.location.reload()
+  })
   homeBtn?.addEventListener('click', () => (window.location.href = 'peersky://home'))
 })()

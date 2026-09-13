@@ -3,6 +3,32 @@
 // calls a single tab action produces.
 const TAB_STATE_SAVE_DEBOUNCE_MS = 150
 
+// A failed load is shown by navigating the tab to peersky://error.html, so a
+// plain reload reloads the error page and the address that failed is never
+// tried again. The scheme is checked because the url parameter travels in a
+// URL a page can craft.
+const RELOADABLE_SCHEMES = new Set([
+  'http:', 'https:', 'peersky:', 'browser:', 'ipfs:', 'ipns:', 'pubsub:',
+  'hyper:', 'hs:', 'web3:', 'bittorrent:', 'bt:', 'magnet:', 'file:'
+])
+
+function failedUrlBehindErrorPage (webview) {
+  let current = ''
+  try {
+    current = webview.getURL?.() || webview.getAttribute('src') || ''
+  } catch {
+    current = webview.getAttribute('src') || ''
+  }
+  if (!current.includes('error.html')) return null
+  try {
+    const failed = new URL(current).searchParams.get('url')
+    if (!failed) return null
+    return RELOADABLE_SCHEMES.has(new URL(failed).protocol) ? failed : null
+  } catch {
+    return null
+  }
+}
+
 class TabBar extends HTMLElement {
   constructor () {
     super()
@@ -1663,9 +1689,10 @@ class TabBar extends HTMLElement {
 
   reloadActiveTab () {
     const webview = this.getActiveWebview()
-    if (webview) {
-      webview.reload()
-    }
+    if (!webview) return
+    const failed = failedUrlBehindErrorPage(webview)
+    if (failed) this.navigateActiveTab(failed)
+    else webview.reload()
   }
 
   stopActiveTab () {
@@ -1855,7 +1882,13 @@ class TabBar extends HTMLElement {
     switch (action) {
       case 'reload':
         if (webview) {
-          webview.reload()
+          const failed = failedUrlBehindErrorPage(webview)
+          if (failed) {
+            webview.setAttribute('src', failed)
+            this.updateTab(tabId, { url: failed })
+          } else {
+            webview.reload()
+          }
         }
         break
 

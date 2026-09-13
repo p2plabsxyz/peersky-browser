@@ -40,10 +40,20 @@
     .backup-passphrase-dialog input { width: 100%; box-sizing: border-box; margin: 8px 0; }
     .backup-passphrase-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
     .private-backup-option { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
-    .private-backup-warning { color: #dc3545; font-weight: 600; }
-    #private-hyperdrive-list { margin: 10px 0 0; padding-left: 20px; }
-    #private-hyperdrive-list li { margin: 6px 0; overflow-wrap: anywhere; }
-    #private-hyperdrive-list a { color: var(--settings-link-color, #4da3ff); }
+    .private-uploads { margin-top: 8px; font-size: 0.85em; }
+    /* Keep the marker inside the content box: outside puts it in the card's
+       padding, hard against the border. Inside lines it up with the label above. */
+    .private-uploads > summary {
+      cursor: pointer;
+      opacity: 0.7;
+      width: fit-content;
+      list-style-position: inside;
+    }
+    .private-uploads > summary::marker { font-size: 0.8em; }
+    .private-uploads[data-excluded="true"] > summary { color: #dc3545; font-weight: 600; opacity: 1; }
+    .private-hyperdrive-list { margin: 8px 0 0; padding-left: 20px; opacity: 0.7; }
+    .private-hyperdrive-list li { margin: 6px 0; overflow-wrap: anywhere; }
+    .private-hyperdrive-list a { color: var(--settings-link-color, #4da3ff); }
   </style>
   <title>Backup & Restore</title>
 </head>
@@ -67,36 +77,94 @@
       <div class="settings-page active">
         <h1 class="section-title">Backup &amp; Restore</h1>
 
+        <!-- Progress and status lead the page so a long operation is visible
+             from where the user already is, instead of below the fold. -->
+        <div id="backup-progress" class="settings-section" style="display: none;">
+          <div class="setting-row">
+            <div class="setting-label">
+              <span id="backup-progress-label">Working...</span>
+              <progress id="backup-progress-bar" max="100" value="0" style="width: 100%;"></progress>
+            </div>
+          </div>
+        </div>
+
+        <div id="backup-status" class="backup-status" style="display: none;"></div>
+
         <section class="settings-section">
           <div class="setting-row tall-row">
             <div class="setting-label">
               Create backup
-              <p class="setting-description">Create a passphrase-encrypted bundle of
-                your tabs, window layout, P2P identity, PeerChat rooms, and Hyper
-                repository. The refetchable IPFS repository is not included.</p>
-              <p class="setting-description" style="margin-top: 6px;">Note: Since this uses P2P networks, the device that uploaded the backup (or another peer) must remain online for others to download it.</p>
+              <p class="setting-description">A passphrase-encrypted zip of your tabs,
+                window layout, P2P identity, PeerChat rooms and Hyper repository.</p>
               <label class="private-backup-option" for="backup-include-private">
                 <input type="checkbox" id="backup-include-private">
                 Include private Hyperdrive uploads
               </label>
-              <p id="backup-private-warning" class="setting-description private-backup-warning" hidden></p>
+              <details class="private-uploads" id="backup-private-uploads" hidden>
+                <summary></summary>
+                <ul class="private-hyperdrive-list" data-private-list></ul>
+              </details>
             </div>
             <div class="setting-control">
               <button type="button" id="backup-create" class="btn btn-primary">Create Backup</button>
             </div>
           </div>
         </section>
-        
+
+        <section class="settings-section">
+          <div class="setting-row tall-row">
+            <div class="setting-label">
+              Restore from a file
+              <p class="setting-description">Replace current data with a backup .zip.
+                Encrypted backups need their passphrase. Your existing data is swapped
+                only after a complete staged copy.</p>
+            </div>
+            <div class="setting-control">
+              <button type="button" id="backup-choose" class="btn btn-secondary">Choose File</button>
+            </div>
+          </div>
+
+          <div class="setting-row tall-row">
+            <div class="setting-label">
+              Restore from the network
+              <p class="setting-description">Download and restore a backup or an
+                identity transfer from a Hypercore address.</p>
+            </div>
+            <div class="setting-control" style="display: flex; gap: 8px; align-items: center;">
+              <input type="text" id="backup-cid-input" class="cid-input" placeholder="hyper://..." style="width: 220px; margin-bottom: 0; height: 34px; box-sizing: border-box;">
+              <input type="password" id="backup-cid-passphrase" class="cid-input" placeholder="passphrase, if encrypted" style="width: 180px; margin-bottom: 0; height: 34px; box-sizing: border-box;">
+              <button type="button" id="backup-cid-download" class="btn btn-secondary" style="height: 34px; box-sizing: border-box; margin: 0;">Download</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="backup-manifest-section" class="settings-section" style="display: none;">
+          <div id="backup-manifest" class="setting-row">
+            <div class="setting-label">
+              Selected backup
+              <p id="backup-manifest-details" class="setting-description"></p>
+            </div>
+            <div class="setting-control">
+              <button type="button" id="backup-restore" class="btn btn-warning">Restore</button>
+            </div>
+          </div>
+        </section>
+
         <section class="settings-section">
           <div class="setting-row tall-row">
             <div class="setting-label">
               Identity transfer
-              <p class="setting-description">Scan or paste the device pairing code shown by the receiving device. The code identifies whether it is Mobile or Desktop. Upload Hyper creates a sealed, short-lived transfer for that device.</p>
+              <p class="setting-description">Move this device's identity to another
+                device. Scan or paste the pairing code the receiving device shows,
+                then upload a sealed, short-lived transfer for it.</p>
               <label class="private-backup-option" for="identity-include-private">
                 <input type="checkbox" id="identity-include-private" checked>
                 Include private Hyperdrive uploads
               </label>
-              <p id="identity-private-warning" class="setting-description private-backup-warning" hidden></p>
+              <details class="private-uploads" id="identity-private-uploads" hidden>
+                <summary></summary>
+                <ul class="private-hyperdrive-list" data-private-list></ul>
+              </details>
             </div>
             <div class="setting-control" style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; align-items: center;">
               <button type="button" id="identity-scan-qr" class="btn btn-secondary" style="height: 34px; box-sizing: border-box; margin: 0;">Scan QR</button>
@@ -104,7 +172,7 @@
               <button type="button" id="identity-create" class="btn btn-secondary" style="height: 34px; box-sizing: border-box; margin: 0;">Save Zip</button>
               <button type="button" id="identity-upload-hyper" class="btn btn-secondary" style="height: 34px; box-sizing: border-box; margin: 0;">Upload Hyper</button>
             </div>
-            
+
             <div id="qr-scanner-container" style="display: none; width: 100%; margin-top: 16px; text-align: center; background: #000; border-radius: 8px; overflow: hidden; position: relative;">
               <video id="qr-scanner-video" style="width: 100%; max-width: 400px; max-height: 300px; display: block; margin: 0 auto;"></video>
               <button type="button" id="qr-scanner-cancel" class="btn btn-secondary" style="position: absolute; bottom: 16px; right: 16px;">Cancel</button>
@@ -128,17 +196,6 @@
 
         <div id="identity-transfer-status" class="backup-status success" style="display: none;"></div>
 
-        <section class="settings-section">
-          <div class="setting-row tall-row">
-            <div class="setting-label">
-              Private Hyperdrive uploads
-              <p class="setting-description">These uploads stay on this device unless you explicitly include them in a backup or identity transfer.</p>
-              <p id="private-hyperdrive-status" class="setting-description">Loading...</p>
-              <ul id="private-hyperdrive-list"></ul>
-            </div>
-          </div>
-        </section>
-
         <section id="backup-cid-section" class="settings-section" style="display: none;">
           <div id="backup-cid-row" class="setting-row" style="border-bottom: none;">
             <div class="setting-label">
@@ -151,56 +208,6 @@
           </div>
           <qr-code id="backup-qr-code" style="display: none; pointer-events: none; margin: 0 auto 24px auto; width: 220px; height: 220px; background: white; padding: 12px; box-sizing: border-box;" data-bg="white" data-fg="black"></qr-code>
         </section>
-
-        <section class="settings-section">
-          <div class="setting-row tall-row">
-            <div class="setting-label">
-              Restore backup from File
-              <p class="setting-description">Replace current data with the contents
-                of a local backup .zip. Encrypted backups require their passphrase.
-                Existing data is swapped only after a complete staged copy.</p>
-            </div>
-            <div class="setting-control">
-              <button type="button" id="backup-choose" class="btn btn-secondary">Choose File</button>
-            </div>
-          </div>
-
-          <div class="setting-row tall-row">
-            <div class="setting-label">
-              Restore backup from P2P
-              <p class="setting-description">Download and restore an encrypted backup or device-sealed identity transfer using an IPFS CID or Hypercore address.</p>
-            </div>
-            <div class="setting-control" style="display: flex; gap: 8px; align-items: center;">
-              <input type="text" id="backup-cid-input" class="cid-input" placeholder="ipfs://... or hyper://..." style="width: 220px; margin-bottom: 0; height: 34px; box-sizing: border-box;">
-              <input type="password" id="backup-cid-passphrase" class="cid-input" placeholder="passphrase, if encrypted" style="width: 180px; margin-bottom: 0; height: 34px; box-sizing: border-box;">
-              <button type="button" id="backup-cid-download" class="btn btn-secondary" style="height: 34px; box-sizing: border-box; margin: 0;">Download</button>
-            </div>
-          </div>
-
-        </section>
-
-        <section id="backup-manifest-section" class="settings-section" style="display: none;">
-          <div id="backup-manifest" class="setting-row">
-            <div class="setting-label">
-              Selected backup
-              <p id="backup-manifest-details" class="setting-description"></p>
-            </div>
-            <div class="setting-control">
-              <button type="button" id="backup-restore" class="btn btn-warning">Restore</button>
-            </div>
-          </div>
-        </section>
-
-        <div id="backup-progress" class="settings-section" style="display: none;">
-          <div class="setting-row">
-            <div class="setting-label">
-              <span id="backup-progress-label">Working...</span>
-              <progress id="backup-progress-bar" max="100" value="0" style="width: 100%;"></progress>
-            </div>
-          </div>
-        </div>
-
-        <div id="backup-status" class="backup-status" style="display: none;"></div>
       </div>
     </main>
   </div>

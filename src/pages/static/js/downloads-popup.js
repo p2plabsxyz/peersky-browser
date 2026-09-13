@@ -2,6 +2,7 @@ export class DownloadsPopup {
   constructor (ipc) {
     this.popup = null
     this.isVisible = false
+    this.openedByDownload = false
     this.targetButton = null
     this.activeDownloads = new Map()
 
@@ -85,7 +86,10 @@ export class DownloadsPopup {
       const dlBtn =
         navBox?.shadowRoot?.querySelector('#downloads') ||
         navBox?.querySelector('#downloads')
-      if (dlBtn) this.show(dlBtn)
+      if (dlBtn) {
+        this.show(dlBtn)
+        this.openedByDownload = true
+      }
     }
 
     if (this.isVisible && this.popup) {
@@ -102,6 +106,12 @@ export class DownloadsPopup {
           if (itemEl) itemEl.remove()
 
           if (this.activeDownloads.size === 0) {
+            // A panel the user never asked for should not outlive the transfer
+            // it announced. One the user opened stays until they close it.
+            if (this.openedByDownload) {
+              this.hide()
+              return
+            }
             const listContainer = this.popup.querySelector(
               '.downloads-popup-list'
             )
@@ -231,6 +241,7 @@ export class DownloadsPopup {
 
   hide () {
     if (!this.isVisible) return
+    this.openedByDownload = false
     this.popup?.classList.remove('open')
     this.isVisible = false
 

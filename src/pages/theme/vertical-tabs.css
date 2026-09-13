@@ -110,7 +110,7 @@
   margin-left: 4px;
   margin-right: 4px;
   border-radius: 8px;
-  border: var(--peersky-nav-button-inactive) 0.5px solid;
+  border: var(--peersky-nav-button-inactive) 1px solid;
   padding: 4px;
   justify-content: center;
   transition:

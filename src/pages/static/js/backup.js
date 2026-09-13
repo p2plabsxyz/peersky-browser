@@ -22,10 +22,9 @@ const identityDeviceKey = document.getElementById('identity-device-key')
 const identityKeyCopyBtn = document.getElementById('identity-key-copy')
 const backupIncludePrivate = document.getElementById('backup-include-private')
 const identityIncludePrivate = document.getElementById('identity-include-private')
-const backupPrivateWarning = document.getElementById('backup-private-warning')
-const identityPrivateWarning = document.getElementById('identity-private-warning')
-const privateHyperdriveStatus = document.getElementById('private-hyperdrive-status')
-const privateHyperdriveList = document.getElementById('private-hyperdrive-list')
+const backupPrivateUploads = document.getElementById('backup-private-uploads')
+const identityPrivateUploads = document.getElementById('identity-private-uploads')
+const privateListError = { message: null }
 
 let selectedZipPath = null
 let selectedManifest = null
@@ -43,21 +42,31 @@ function formatBytes (bytes) {
   return `${value.toFixed(1)} ${units[i]}`
 }
 
+// Anything the user is meant to read is brought on screen. These blocks used to
+// appear wherever the page happened to be scrolled, so a long operation or a
+// verification code could go unnoticed below the fold.
+function reveal (element) {
+  element.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+}
+
 function showStatus (message, kind) {
   statusBox.textContent = message
   statusBox.className = `backup-status ${kind || 'info'}`
   statusBox.style.display = 'block'
+  reveal(statusBox)
 }
 
 function showIdentityTransferStatus (message) {
   identityTransferStatus.textContent = message
   identityTransferStatus.style.display = 'block'
+  reveal(identityTransferStatus)
 }
 
 function showProgress (label) {
   progressLabel.textContent = label
   progressBar.removeAttribute('value')
   progressBox.style.display = 'block'
+  reveal(progressBox)
 }
 
 function hideProgress () {
@@ -75,55 +84,65 @@ function setBusy (busy) {
   if (identityIncludePrivate) identityIncludePrivate.disabled = busy
 }
 
-function exclusionMessage () {
-  if (privateHyperdriveCount === null) {
-    return 'Private upload count unavailable; private uploads are not included.'
-  }
+// The summary doubles as the old warning line: it says whether the private
+// uploads are in or out, and opening it lists them.
+function summaryText (included) {
+  if (privateListError.message) return privateListError.message
   const noun = privateHyperdriveCount === 1 ? 'upload' : 'uploads'
-  return `${privateHyperdriveCount} private ${noun} not included.`
+  return included
+    ? `${privateHyperdriveCount} private ${noun} included.`
+    : `${privateHyperdriveCount} private ${noun} not included.`
 }
 
 function updatePrivateWarnings () {
-  for (const [checkbox, warning] of [
-    [backupIncludePrivate, backupPrivateWarning],
-    [identityIncludePrivate, identityPrivateWarning]
+  for (const [checkbox, details] of [
+    [backupIncludePrivate, backupPrivateUploads],
+    [identityIncludePrivate, identityPrivateUploads]
   ]) {
-    if (!checkbox || !warning) continue
-    const excluded = !checkbox.checked && (privateHyperdriveCount === null || privateHyperdriveCount > 0)
-    warning.textContent = excluded ? exclusionMessage() : ''
-    warning.hidden = !excluded
+    if (!checkbox || !details) continue
+    // Nothing to say when the device has no private uploads at all.
+    const relevant = privateListError.message !== null || privateHyperdriveCount > 0
+    details.hidden = !relevant
+    if (!relevant) continue
+    const included = checkbox.checked
+    details.dataset.excluded = String(!included)
+    details.querySelector('summary').textContent = summaryText(included)
+  }
+}
+
+function renderPrivateList (items) {
+  for (const list of document.querySelectorAll('[data-private-list]')) {
+    list.replaceChildren()
+    for (const item of items) {
+      const row = document.createElement('li')
+      const link = document.createElement('a')
+      link.href = item.url
+      link.target = '_blank'
+      link.rel = 'noopener noreferrer'
+      link.textContent = item.name
+      row.appendChild(link)
+      const created = new Date(item.timestamp)
+      if (!Number.isNaN(created.getTime())) row.append(` - ${created.toLocaleString()}`)
+      list.appendChild(row)
+    }
   }
 }
 
 async function loadPrivateHyperdrives () {
   if (!api || typeof api.listPrivateHyperdrives !== 'function') return
   const response = await api.listPrivateHyperdrives()
-  privateHyperdriveList.replaceChildren()
   if (!response.success) {
     privateHyperdriveCount = null
-    privateHyperdriveStatus.textContent = `Could not list private uploads: ${response.error}`
+    privateListError.message = `Could not list private uploads: ${response.error}`
+    renderPrivateList([])
     updatePrivateWarnings()
     return
   }
 
   const items = Array.isArray(response.items) ? response.items : []
   privateHyperdriveCount = items.length
-  privateHyperdriveStatus.textContent = items.length === 0
-    ? 'No private uploads on this device.'
-    : `${items.length} private ${items.length === 1 ? 'upload' : 'uploads'} on this device.`
-
-  for (const item of items) {
-    const row = document.createElement('li')
-    const link = document.createElement('a')
-    link.href = item.url
-    link.target = '_blank'
-    link.rel = 'noopener noreferrer'
-    link.textContent = item.name
-    row.appendChild(link)
-    const created = new Date(item.timestamp)
-    if (!Number.isNaN(created.getTime())) row.append(` - ${created.toLocaleString()}`)
-    privateHyperdriveList.appendChild(row)
-  }
+  privateListError.message = null
+  renderPrivateList(items)
   updatePrivateWarnings()
 }
 
@@ -281,21 +300,50 @@ chooseBtn?.addEventListener('click', async () => {
   }
 })
 
-cidCopyBtn?.addEventListener('click', async () => {
+// Copying used to swallow every failure, so a click on a value that was still
+// loading, or a clipboard write the page was not allowed to make, looked
+// identical to success. Fall back to a selection copy and say so when it fails.
+async function copyText (text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text)
+      return true
+    } catch (_) {}
+  }
+  const scratch = document.createElement('textarea')
+  scratch.value = text
+  scratch.setAttribute('readonly', '')
+  scratch.style.position = 'fixed'
+  scratch.style.opacity = '0'
+  document.body.appendChild(scratch)
   try {
-    await navigator.clipboard.writeText(cidValue.textContent || '')
-    cidCopyBtn.textContent = 'Copied'
-    setTimeout(() => { cidCopyBtn.textContent = 'Copy' }, 1500)
-  } catch (_) {}
-})
+    scratch.select()
+    return document.execCommand('copy')
+  } catch (_) {
+    return false
+  } finally {
+    scratch.remove()
+  }
+}
 
-identityKeyCopyBtn?.addEventListener('click', async () => {
-  try {
-    await navigator.clipboard.writeText(identityDeviceKey.textContent || '')
-    identityKeyCopyBtn.textContent = 'Copied'
-    setTimeout(() => { identityKeyCopyBtn.textContent = 'Copy' }, 1500)
-  } catch (_) {}
-})
+function wireCopyButton (button, read, label) {
+  button?.addEventListener('click', async () => {
+    const text = (read() || '').trim()
+    if (!text || text.endsWith('...')) {
+      showStatus(`${label} is not ready yet.`, 'error')
+      return
+    }
+    if (await copyText(text)) {
+      button.textContent = 'Copied'
+      setTimeout(() => { button.textContent = 'Copy' }, 1500)
+    } else {
+      showStatus(`Could not copy the ${label.toLowerCase()}. Select the text and copy it manually.`, 'error')
+    }
+  })
+}
+
+wireCopyButton(cidCopyBtn, () => cidValue.textContent, 'Identity transfer address')
+wireCopyButton(identityKeyCopyBtn, () => identityDeviceKey.textContent, 'Device pairing code')
 
 const identityScanQrBtn = document.getElementById('identity-scan-qr')
 const qrScannerContainer = document.getElementById('qr-scanner-container')
@@ -428,8 +476,8 @@ const cidDownloadBtn = document.getElementById('backup-cid-download')
 cidDownloadBtn?.addEventListener('click', async () => {
   if (!api || !cidInput.value.trim()) return
   const ok = window.confirm(
-    'Restoring will overwrite your current tabs, P2P identities, and IPFS/Hyper ' +
-    'data with the backup contents. Peersky will restart. Continue?')
+    'Restoring will overwrite your current tabs, P2P identities and Hyper data ' +
+    'with the backup contents. Peersky will restart. Continue?')
   if (!ok) return
 
   setBusy(true)
@@ -460,8 +508,8 @@ cidDownloadBtn?.addEventListener('click', async () => {
 restoreBtn?.addEventListener('click', async () => {
   if (!api || !selectedZipPath) return
   const ok = window.confirm(
-    'Restoring will overwrite your current tabs, P2P identities, and IPFS/Hyper ' +
-    'data with the backup contents. Peersky will restart. Continue?')
+    'Restoring will overwrite your current tabs, P2P identities and Hyper data ' +
+    'with the backup contents. Peersky will restart. Continue?')
   if (!ok) return
 
   setBusy(true)
@@ -497,6 +545,6 @@ loadDeviceInfo().catch((err) => {
 
 loadPrivateHyperdrives().catch((err) => {
   privateHyperdriveCount = null
-  if (privateHyperdriveStatus) privateHyperdriveStatus.textContent = `Could not list private uploads: ${err.message}`
+  privateListError.message = `Could not list private uploads: ${err.message}`
   updatePrivateWarnings()
 })

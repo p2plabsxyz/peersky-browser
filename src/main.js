@@ -5,8 +5,8 @@ import path from 'path'
 import crypto from 'crypto'
 import { createHandler as createBrowserHandler } from './protocols/peersky-protocol.js'
 import { createHandler as createBrowserThemeHandler } from './protocols/theme-handler.js'
-import { createHandler as createIPFSHandler, warmupIPFS } from './protocols/ipfs-handler.js'
-import { createHandler as createHyperHandler, warmupHyper } from './protocols/hyper-handler.js'
+import { createHandler as createIPFSHandler, warmupIPFS, suspendIPFS } from './protocols/ipfs-handler.js'
+import { createHandler as createHyperHandler, warmupHyper, suspendHyper } from './protocols/hyper-handler.js'
 import { createHandler as createHSHandler } from './protocols/hs-handler.js'
 import { createHandler as createWeb3Handler } from './protocols/web3-handler.js'
 import { createHandler as createFileHandler } from './protocols/file-handler.js'
@@ -21,6 +21,7 @@ import { isBuiltInSearchEngine } from './search-engine.js'
 import './llm.js'
 import './llm-memory.js'
 import { setupAutoUpdater, checkForUpdatesNow } from './auto-updater.js'
+import { urlFromArgv, queueLaunchUrl, startDeliveringLaunchUrls } from './launch-url.js'
 
 // Import and initialize extension system
 import extensionManager from './extensions/index.js'
@@ -179,7 +180,59 @@ function shellWebContentsIdFor (wc) {
   return null
 }
 
+// One process per profile. A second launch, which is how Windows and Linux
+// hand over a link or a taskbar "new window", forwards its argv to the owner
+// and exits instead of booting a rival on the same profile.
+const isPrimaryInstance = app.requestSingleInstanceLock()
+if (!isPrimaryInstance) {
+  console.log('[launch] another Peersky instance owns this profile; forwarding and quitting')
+  app.exit(0)
+}
+
+app.on('second-instance', (_event, argv) => {
+  const url = urlFromArgv(argv)
+  if (url) {
+    queueLaunchUrl(url)
+  } else if (argv.includes('--new-window') && windowManager) {
+    windowManager.open({})
+  } else {
+    focusAnyWindow()
+  }
+})
+
+// macOS only ever hands over a scheme the bundle declares, so the argv
+// allowlist would add nothing here and would drop declared schemes it omits.
+app.on('open-url', (event, url) => {
+  event.preventDefault()
+  queueLaunchUrl(url)
+})
+
+queueLaunchUrl(urlFromArgv(process.argv))
+
+function focusAnyWindow () {
+  const win = BrowserWindow.getFocusedWindow() || windowManager?.all[0]?.window
+  if (!win || win.isDestroyed()) return
+  if (win.isMinimized()) win.restore()
+  win.focus()
+}
+
+// The shell page buffers this until its tab bar exists, so the only race left
+// is a renderer that has not started loading yet.
+function openLaunchUrl (url) {
+  const win = BrowserWindow.getFocusedWindow() || windowManager?.all[0]?.window
+  if (!win || win.isDestroyed()) {
+    windowManager?.open({ url })
+    return
+  }
+  const send = () => win.webContents.send('add-tab-from-main', url)
+  if (win.webContents.isLoading()) win.webContents.once('did-finish-load', send)
+  else send()
+  if (win.isMinimized()) win.restore()
+  win.focus()
+}
+
 app.whenReady().then(async () => {
+  if (!isPrimaryInstance) return
   const bootStartedAt = Date.now()
   windowManager = new WindowManager()
 
@@ -222,7 +275,9 @@ app.whenReady().then(async () => {
   setupAutoUpdater(async () => {
     windowManager.setQuitting(true)
     windowManager.stopSaver()
-    await windowManager.saveCompleteState()
+    // saveFinal, not saveCompleteState: all three shutdown savers share the one
+    // queue, or two of them can write the same temp files at once.
+    await windowManager.saveFinal()
   })
 
   p2pAppRegistry.setupIpc()
@@ -337,6 +392,9 @@ app.whenReady().then(async () => {
       windowManager.open({ isMainWindow: windowManager.all.length === 0 })
     }
   }
+  // Onboarding included: a link that arrives then opens beside it rather than
+  // waiting for the user to finish.
+  startDeliveringLaunchUrls(openLaunchUrl)
 
   // Register shortcuts from menu template (NOTE: all these shortcuts works on a window only if a window is in focus)
   const menuTemplate = createMenuTemplate(windowManager)
@@ -422,6 +480,10 @@ app.whenReady().then(async () => {
 // Introduce a flag to prevent multiple 'before-quit' handling
 let isQuitting = false
 const SHUTDOWN_TIMEOUT_MS = 8000
+const P2P_CLOSE_TIMEOUT_MS = 4000
+// Every graceful phase shares one budget, so their worst case cannot outrun the
+// watchdog and leave the p2p close to be killed halfway.
+const SHUTDOWN_BUDGET_MS = 12000
 const FORCE_QUIT_TIMEOUT_MS = 15000
 
 function withTimeout (promise, ms, label) {
@@ -435,6 +497,10 @@ function withTimeout (promise, ms, label) {
 
 app.on('before-quit', async (event) => {
   if (isQuitting) {
+    // A second Cmd+Q while the first shutdown is still closing p2p must not be
+    // allowed through: the default quit would kill the process mid-close, which
+    // is the crash this handler exists to avoid.
+    event.preventDefault()
     return
   }
 
@@ -458,18 +524,48 @@ app.on('before-quit', async (event) => {
 
   isQuitting = true // Set the quitting flag
 
-  windowManager.setQuitting(true) // Inform WindowManager that quitting is happening
-
   // Absolute watchdog: p2p services (libp2p / hyperswarm / holesail) hold native
   // handles that can keep the process alive even after app.quit(), and Electron
   // stops pumping JS timers once a graceful quit begins. Schedule the hard exit
   // now, while the loop is still healthy, so the process is guaranteed to die
-  // (this is what lets the installer swap the bundle on update).
+  // (this is what lets the installer swap the bundle on update). It is armed
+  // before anything else is touched: the quit is already deferred and a second
+  // one is refused, so a throw below this line with no watchdog would leave the
+  // app impossible to quit at all.
   const forceQuit = setTimeout(() => {
     log.warn('[quit] Shutdown watchdog fired — force-exiting')
     process.exit(0)
   }, FORCE_QUIT_TIMEOUT_MS)
   forceQuit.unref?.()
+
+  // Both flags, because saveOpened and saveWindowStates each check a different
+  // one before deciding a window list is empty rather than merely torn down.
+  windowManager.setQuitting(true)
+  windowManager.shutdownInProgress = true
+  windowManager.stopSaver()
+
+  const deadline = Date.now() + SHUTDOWN_BUDGET_MS
+  // Never hand a phase a zero budget: a spent budget would make withTimeout
+  // reject on the next tick, which skips the phase rather than shortening it.
+  const budgeted = (cap, floor) => Math.max(floor, Math.min(cap, deadline - Date.now()))
+
+  // The session goes first. It is the only user data here, everything after it
+  // is teardown, and giving it the budget last meant a slow extension shutdown
+  // could leave it nothing and silently skip it.
+  try {
+    // saveCompleteState, not saveOpened: saveOpened refuses to run once
+    // shutdownInProgress is set, which is set above so an empty window list is
+    // never mistaken for "no session". Going through it here would silently
+    // skip the final save and leave whatever the interval saver last wrote.
+    await withTimeout(windowManager.saveFinal(), budgeted(SHUTDOWN_TIMEOUT_MS, 3000), 'Window state save')
+    log.info('Window states saved successfully.')
+  } catch (error) {
+    log.error('Error saving window states on quit:', error)
+  }
+  // Windows are held closed while a shutdown save is in flight. Releasing that
+  // here is what the removed window-manager handler used to do; without it the
+  // guard could never clear and a window could not close during shutdown.
+  windowManager.finalSaveCompleted = true
 
   // Shutdown BitTorrent — save state and kill worker before process exits
   try {
@@ -481,22 +577,24 @@ app.on('before-quit', async (event) => {
 
   // Shutdown extension system
   try {
-    await withTimeout(extensionManager.shutdown(), SHUTDOWN_TIMEOUT_MS, 'Extension shutdown')
+    await withTimeout(extensionManager.shutdown(), budgeted(SHUTDOWN_TIMEOUT_MS, 1000), 'Extension shutdown')
     log.info('Extension system shutdown successfully')
   } catch (error) {
     log.error('Error shutting down extension system:', error)
   }
 
-  try {
-    // Run any coalesced save that is still waiting, then take the final snapshot.
-    await withTimeout(windowManager.flushPendingSave(), SHUTDOWN_TIMEOUT_MS, 'Pending state flush')
-    await withTimeout(windowManager.saveOpened(), SHUTDOWN_TIMEOUT_MS, 'Window state save')
-    log.info('Window states saved successfully.')
-  } catch (error) {
-    log.error('Error saving window states on quit:', error)
-  }
+  // The session is safely on disk from here, so the p2p stack can be closed.
+  // Exiting without this severs live libp2p sockets and a corestore mid-write,
+  // which is what turned an ordinary quit into a crash report.
+  const p2pBudget = budgeted(P2P_CLOSE_TIMEOUT_MS, 1000)
+  await Promise.allSettled([
+    withTimeout(suspendHyper({ recover: false }), p2pBudget, 'Hyper close')
+      .catch((error) => log.error('Error closing Hyper on quit:', error)),
+    withTimeout(suspendIPFS(), p2pBudget, 'IPFS close')
+      .catch((error) => log.error('Error closing IPFS on quit:', error))
+  ])
+  log.info('[quit] P2P services closed')
 
-  windowManager.stopSaver()
   log.info('[quit] Shutdown complete — exiting')
   process.exit(0)
 })
@@ -516,17 +614,16 @@ async function setupProtocols (session) {
     extensionManager.isP2PWriteAllowed(extensionId, scheme)
   const lazy = true
 
-  app.setAsDefaultProtocolClient('peersky')
-  app.setAsDefaultProtocolClient('file')
-  app.setAsDefaultProtocolClient('browser')
-  app.setAsDefaultProtocolClient('ipfs')
-  app.setAsDefaultProtocolClient('ipns')
-  app.setAsDefaultProtocolClient('hyper')
-  app.setAsDefaultProtocolClient('hs')
-  app.setAsDefaultProtocolClient('web3')
-  app.setAsDefaultProtocolClient('bittorrent')
-  app.setAsDefaultProtocolClient('bt')
-  app.setAsDefaultProtocolClient('magnet')
+  // Only a packaged app can take these: a dev run would register the bare
+  // Electron binary, which opens Electron's welcome window instead of Peersky
+  // and steals the schemes from the installed copy.
+  if (app.isPackaged) {
+    for (const scheme of ['peersky', 'browser', 'ipfs', 'ipns', 'hyper', 'hs', 'web3', 'bittorrent', 'bt', 'magnet']) {
+      app.setAsDefaultProtocolClient(scheme)
+    }
+  } else {
+    log.info('[protocols] dev run: not registering as scheme handler')
+  }
 
   const [
     browserProtocolHandler,
@@ -1294,6 +1391,53 @@ ipcMain.handle('onboarding-restore-cid', async (event, payload = {}) => {
     return { success: false, error: error.message }
   } finally {
     if (zipPath) await fs.rm(zipPath, { force: true }).catch(() => {})
+  }
+})
+
+// Only a plain packaged build can ask for the http/https default. A dev run
+// would register the bare Electron binary, which declares no URL schemes of its
+// own, so the request cannot take and the claim it leaves behind is inherited by
+// every Electron app on the machine. The App Store sandbox refuses the call.
+// Windows exposes no supported API for this and Linux needs a desktop entry this
+// build does not name, so both are sent to the system's own default apps UI.
+function defaultBrowserSupport () {
+  if (!app.isPackaged || process.mas) return 'unavailable'
+  return process.platform === 'darwin' ? 'direct' : 'system-settings'
+}
+
+ipcMain.handle('get-default-browser-status', () => {
+  const support = defaultBrowserSupport()
+  // Only the macOS getter reads the record the OS actually decides with. The
+  // Windows one reads back a key the app itself wrote.
+  if (support !== 'direct') return { isDefault: false, support }
+  try {
+    return { isDefault: app.isDefaultProtocolClient('https'), support }
+  } catch (err) {
+    log.error('[default-browser] status check failed:', err?.message || err)
+    return { isDefault: false, support }
+  }
+})
+
+ipcMain.handle('set-as-default-browser', async () => {
+  const support = defaultBrowserSupport()
+  if (support === 'unavailable') {
+    log.info('[default-browser] not an installed build; refusing to register')
+    return { isDefault: false, support }
+  }
+  if (support === 'system-settings') {
+    if (process.platform === 'win32') await shell.openExternal('ms-settings:defaultapps')
+    return { isDefault: false, support }
+  }
+  try {
+    app.setAsDefaultProtocolClient('http')
+    app.setAsDefaultProtocolClient('https')
+    // The call returns before macOS has shown its confirmation sheet, so the
+    // user's answer is not known here. Report only what is true right now; the
+    // row re-reads the real state when the window regains focus.
+    return { isDefault: app.isDefaultProtocolClient('https'), support }
+  } catch (err) {
+    log.error('[default-browser] set failed:', err?.message || err)
+    return { isDefault: false, support, error: err?.message || String(err) }
   }
 })
 

@@ -23,8 +23,14 @@ function looksLikeDomain (string) {
   return !string.match(/\s/) && string.includes('.')
 }
 
-function isBareLocalhost (string) {
-  return string.match(/^localhost(:[0-9]+)?\/?$/)
+// new URL('localhost:3000') parses as the scheme "localhost", so isURL() claims
+// it is already navigable and the browser is handed a scheme nothing serves.
+// Loopback authorities are matched before that, and over http: a dev server on
+// https is the exception, not the rule.
+const LOOPBACK_RE = /^(localhost|127(?:\.[0-9]{1,3}){3}|\[::1\])(:[0-9]{1,5})?(\/.*)?$/i
+
+function isLoopbackAddress (string) {
+  return LOOPBACK_RE.test(string)
 }
 
 function makeHttp (query) {
@@ -99,10 +105,10 @@ async function handleURL (rawURL) {
     rawURL.startsWith(MAGNET_PREFIX)
   ) {
     return rawURL
+  } else if (isLoopbackAddress(rawURL)) {
+    return makeHttp(rawURL)
   } else if (isURL(rawURL)) {
     return rawURL
-  } else if (isBareLocalhost(rawURL)) {
-    return makeHttp(rawURL)
   } else if (looksLikeDomain(rawURL)) {
     return makeHttps(rawURL)
   } else {
@@ -211,7 +217,7 @@ export {
   MAGNET_PREFIX,
   isURL,
   looksLikeDomain,
-  isBareLocalhost,
+  isLoopbackAddress,
   makeHttp,
   makeHttps,
   makeSearch,
