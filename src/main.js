@@ -479,6 +479,9 @@ app.whenReady().then(async () => {
 let isQuitting = false
 const SHUTDOWN_TIMEOUT_MS = 8000
 const P2P_CLOSE_TIMEOUT_MS = 4000
+// Every graceful phase shares one budget, so their worst case cannot outrun the
+// watchdog and leave the p2p close to be killed halfway.
+const SHUTDOWN_BUDGET_MS = 12000
 const FORCE_QUIT_TIMEOUT_MS = 15000
 
 function withTimeout (promise, ms, label) {
@@ -492,6 +495,10 @@ function withTimeout (promise, ms, label) {
 
 app.on('before-quit', async (event) => {
   if (isQuitting) {
+    // A second Cmd+Q while the first shutdown is still closing p2p must not be
+    // allowed through: the default quit would kill the process mid-close, which
+    // is the crash this handler exists to avoid.
+    event.preventDefault()
     return
   }
 
@@ -532,6 +539,9 @@ app.on('before-quit', async (event) => {
   }, FORCE_QUIT_TIMEOUT_MS)
   forceQuit.unref?.()
 
+  const deadline = Date.now() + SHUTDOWN_BUDGET_MS
+  const budgeted = (cap) => Math.max(0, Math.min(cap, deadline - Date.now()))
+
   // Shutdown BitTorrent — save state and kill worker before process exits
   try {
     shutdownBittorrent()
@@ -542,16 +552,18 @@ app.on('before-quit', async (event) => {
 
   // Shutdown extension system
   try {
-    await withTimeout(extensionManager.shutdown(), SHUTDOWN_TIMEOUT_MS, 'Extension shutdown')
+    await withTimeout(extensionManager.shutdown(), budgeted(SHUTDOWN_TIMEOUT_MS), 'Extension shutdown')
     log.info('Extension system shutdown successfully')
   } catch (error) {
     log.error('Error shutting down extension system:', error)
   }
 
   try {
-    // Run any coalesced save that is still waiting, then take the final snapshot.
-    await withTimeout(windowManager.flushPendingSave(), SHUTDOWN_TIMEOUT_MS, 'Pending state flush')
-    await withTimeout(windowManager.saveOpened(), SHUTDOWN_TIMEOUT_MS, 'Window state save')
+    // saveCompleteState, not saveOpened: saveOpened refuses to run once
+    // shutdownInProgress is set, which is set above so an empty window list is
+    // never mistaken for "no session". Going through it here would silently
+    // skip the final save and leave whatever the interval saver last wrote.
+    await withTimeout(windowManager.saveCompleteState(), budgeted(SHUTDOWN_TIMEOUT_MS), 'Window state save')
     log.info('Window states saved successfully.')
   } catch (error) {
     log.error('Error saving window states on quit:', error)
@@ -564,10 +576,11 @@ app.on('before-quit', async (event) => {
   // The session is safely on disk from here, so the p2p stack can be closed.
   // Exiting without this severs live libp2p sockets and a corestore mid-write,
   // which is what turned an ordinary quit into a crash report.
+  const p2pBudget = Math.max(1000, budgeted(P2P_CLOSE_TIMEOUT_MS))
   await Promise.allSettled([
-    withTimeout(suspendHyper({ recover: false }), P2P_CLOSE_TIMEOUT_MS, 'Hyper close')
+    withTimeout(suspendHyper({ recover: false }), p2pBudget, 'Hyper close')
       .catch((error) => log.error('Error closing Hyper on quit:', error)),
-    withTimeout(suspendIPFS(), P2P_CLOSE_TIMEOUT_MS, 'IPFS close')
+    withTimeout(suspendIPFS(), p2pBudget, 'IPFS close')
       .catch((error) => log.error('Error closing IPFS on quit:', error))
   ])
   log.info('[quit] P2P services closed')

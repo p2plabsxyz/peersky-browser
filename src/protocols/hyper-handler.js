@@ -418,10 +418,13 @@ export async function waitForDriveReady (url, timeoutMs = PEER_WAIT_MS) {
     const done = typeof drive.core.findingPeers === 'function'
       ? drive.core.findingPeers()
       : null
-    if (done) sdk.swarm.flush().then(done, done)
 
     let timer = null
     try {
+      // Inside the try: if the SDK is torn down by a backup between here and
+      // the race, the throw must still reach the finally that releases the
+      // counter, or this drive waits the full timeout on every later request.
+      if (done) sdk.swarm.flush().then(done, done)
       await Promise.race([
         drive.core.update({ wait: true }),
         new Promise((resolve) => { timer = setTimeout(resolve, timeoutMs) })

@@ -34,6 +34,8 @@ const TAB_STATE_TIMEOUT_MS = 2000
 
 // Grace period after the last restored window loads, before autosaves resume.
 const RESTORE_SETTLE_MS = 3000
+// Hard ceiling on the gate, so a window that never loads cannot wedge it shut.
+const RESTORE_GATE_MAX_MS = 30000
 const cssPath = path.join(__dirname, 'pages', 'theme')
 const cssFS = new ScopedFS(cssPath)
 
@@ -89,6 +91,7 @@ class WindowManager {
     this.skipSaveOnQuit = false
     this.restoringSession = false
     this.pendingRestores = 0
+    this.restoreGateTimer = null
 
     // High-frequency triggers go through this instead of calling saveOpened
     // directly; see SAVE_DEBOUNCE_MS.
@@ -742,12 +745,28 @@ class WindowManager {
     if (windowCount <= 0) return
     this.restoringSession = true
     this.pendingRestores = windowCount
+    // A window that fails to load, or is closed before it does, never reports
+    // back. Without this the gate would stay shut and autosaving would stop for
+    // the rest of the run, so the gate always opens on its own eventually.
+    clearTimeout(this.restoreGateTimer)
+    this.restoreGateTimer = setTimeout(() => this.endSessionRestore(), RESTORE_GATE_MAX_MS)
+    this.restoreGateTimer.unref?.()
   }
 
   finishSessionRestore () {
     if (!this.restoringSession) return
     if (--this.pendingRestores > 0) return
-    const settle = setTimeout(() => { this.restoringSession = false }, RESTORE_SETTLE_MS)
+    this.endSessionRestore(RESTORE_SETTLE_MS)
+  }
+
+  endSessionRestore (delay = 0) {
+    clearTimeout(this.restoreGateTimer)
+    this.restoreGateTimer = null
+    if (!delay) {
+      this.restoringSession = false
+      return
+    }
+    const settle = setTimeout(() => { this.restoringSession = false }, delay)
     settle.unref?.()
   }
 
@@ -773,9 +792,17 @@ class WindowManager {
       }
     }
 
-    // Never save(periodic saves) during shutdown
+    // Never save(periodic saves) during shutdown. The final save on quit goes
+    // through saveCompleteState, which deliberately bypasses this.
     if (this.shutdownInProgress) {
       log.info('Shutdown in progress - saveOpened blocked')
+      return
+    }
+
+    // The interval saver reaches here too, and mid-restore it would snapshot a
+    // tab bar that has not taken its tabs yet.
+    if (this.restoringSession) {
+      log.info('Session restore in progress - saveOpened deferred')
       return
     }
 
@@ -1088,8 +1115,6 @@ class PeerskyWindow {
           }).finally(() => {
             this.windowManager?.finishSessionRestore()
           })
-        } else {
-          this.windowManager?.finishSessionRestore()
         }
 
         this.window.webContents.executeJavaScript(`

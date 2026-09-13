@@ -159,6 +159,74 @@ describe('Session restore across restart', function () {
     await manager.saveCompleteState()
   }
 
+  describe('the quit path actually writes', function () {
+    // main.js sets both flags before saving, so the save it calls must be one
+    // that still runs with them set. saveOpened does not, and relying on it
+    // silently skipped the final save entirely.
+    it('writes the session even though shutdown flags are already set', async function () {
+      const manager = new WindowManager()
+      manager.windows = new Set(fourWindows())
+      manager.setQuitting(true)
+      manager.shutdownInProgress = true
+      manager.stopSaver()
+
+      await manager.saveCompleteState()
+
+      const states = await readJson('lastOpened.json')
+      const tabs = await readJson('tabs.json')
+      expect(states).to.have.lengthOf(4)
+      expect(Object.keys(tabs)).to.have.members(['win-a', 'win-b', 'win-c', 'win-d'])
+    })
+
+    it('refuses the periodic save once shutdown has started', async function () {
+      const manager = new WindowManager()
+      manager.windows = new Set(fourWindows())
+      manager.shutdownInProgress = true
+
+      await manager.saveOpened()
+
+      let wrote = true
+      try { await readJson('lastOpened.json') } catch { wrote = false }
+      expect(wrote, 'the periodic save must stay out of the way during shutdown').to.equal(false)
+    })
+  })
+
+  describe('the restore gate', function () {
+    it('reopens on its own if a restored window never reports back', async function () {
+      const clock = sinon.useFakeTimers()
+      try {
+        const manager = new WindowManager()
+        manager.beginSessionRestore(2)
+        expect(manager.restoringSession).to.equal(true)
+
+        // Only one of the two windows ever finishes loading.
+        manager.finishSessionRestore()
+        await clock.tickAsync(5000)
+        expect(manager.restoringSession, 'still shut with one window outstanding').to.equal(true)
+
+        await clock.tickAsync(30000)
+        expect(manager.restoringSession, 'the ceiling must reopen it').to.equal(false)
+      } finally {
+        clock.restore()
+      }
+    })
+
+    it('opens after a settle once every window reports back', async function () {
+      const clock = sinon.useFakeTimers()
+      try {
+        const manager = new WindowManager()
+        manager.beginSessionRestore(2)
+        manager.finishSessionRestore()
+        manager.finishSessionRestore()
+        expect(manager.restoringSession, 'settle has not elapsed').to.equal(true)
+        await clock.tickAsync(3100)
+        expect(manager.restoringSession).to.equal(false)
+      } finally {
+        clock.restore()
+      }
+    })
+  })
+
   it('restores every window with its position, size and tabs', async function () {
     const manager = new WindowManager()
     const windows = fourWindows()
