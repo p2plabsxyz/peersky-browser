@@ -5,8 +5,8 @@ import path from 'path'
 import crypto from 'crypto'
 import { createHandler as createBrowserHandler } from './protocols/peersky-protocol.js'
 import { createHandler as createBrowserThemeHandler } from './protocols/theme-handler.js'
-import { createHandler as createIPFSHandler, warmupIPFS } from './protocols/ipfs-handler.js'
-import { createHandler as createHyperHandler, warmupHyper } from './protocols/hyper-handler.js'
+import { createHandler as createIPFSHandler, warmupIPFS, suspendIPFS } from './protocols/ipfs-handler.js'
+import { createHandler as createHyperHandler, warmupHyper, suspendHyper } from './protocols/hyper-handler.js'
 import { createHandler as createHSHandler } from './protocols/hs-handler.js'
 import { createHandler as createWeb3Handler } from './protocols/web3-handler.js'
 import { createHandler as createFileHandler } from './protocols/file-handler.js'
@@ -478,6 +478,7 @@ app.whenReady().then(async () => {
 // Introduce a flag to prevent multiple 'before-quit' handling
 let isQuitting = false
 const SHUTDOWN_TIMEOUT_MS = 8000
+const P2P_CLOSE_TIMEOUT_MS = 4000
 const FORCE_QUIT_TIMEOUT_MS = 15000
 
 function withTimeout (promise, ms, label) {
@@ -514,7 +515,11 @@ app.on('before-quit', async (event) => {
 
   isQuitting = true // Set the quitting flag
 
-  windowManager.setQuitting(true) // Inform WindowManager that quitting is happening
+  // Both flags, because saveOpened and saveWindowStates each check a different
+  // one before deciding a window list is empty rather than merely torn down.
+  windowManager.setQuitting(true)
+  windowManager.shutdownInProgress = true
+  windowManager.stopSaver()
 
   // Absolute watchdog: p2p services (libp2p / hyperswarm / holesail) hold native
   // handles that can keep the process alive even after app.quit(), and Electron
@@ -552,7 +557,17 @@ app.on('before-quit', async (event) => {
     log.error('Error saving window states on quit:', error)
   }
 
-  windowManager.stopSaver()
+  // The session is safely on disk from here, so the p2p stack can be closed.
+  // Exiting without this severs live libp2p sockets and a corestore mid-write,
+  // which is what turned an ordinary quit into a crash report.
+  await Promise.allSettled([
+    withTimeout(suspendHyper({ recover: false }), P2P_CLOSE_TIMEOUT_MS, 'Hyper close')
+      .catch((error) => log.error('Error closing Hyper on quit:', error)),
+    withTimeout(suspendIPFS(), P2P_CLOSE_TIMEOUT_MS, 'IPFS close')
+      .catch((error) => log.error('Error closing IPFS on quit:', error))
+  ])
+  log.info('[quit] P2P services closed')
+
   log.info('[quit] Shutdown complete — exiting')
   process.exit(0)
 })

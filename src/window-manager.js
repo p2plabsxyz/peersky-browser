@@ -31,6 +31,9 @@ const SAVE_MAX_WAIT_MS = 2000
 
 // A wedged renderer must not hold up the whole snapshot.
 const TAB_STATE_TIMEOUT_MS = 2000
+
+// Grace period after the last restored window loads, before autosaves resume.
+const RESTORE_SETTLE_MS = 3000
 const cssPath = path.join(__dirname, 'pages', 'theme')
 const cssFS = new ScopedFS(cssPath)
 
@@ -84,6 +87,8 @@ class WindowManager {
     this.finalSaveCompleted = false
     this.saveQueue = Promise.resolve()
     this.skipSaveOnQuit = false
+    this.restoringSession = false
+    this.pendingRestores = 0
 
     // High-frequency triggers go through this instead of calling saveOpened
     // directly; see SAVE_DEBOUNCE_MS.
@@ -126,38 +131,12 @@ class WindowManager {
       process.on('SIGTERM', () => handleSignal('SIGTERM'))
     }
 
-    app.on('before-quit', (event) => {
-      // Updates save + exit in main.js. Skip this handler's app.exit(0), which
-      // hangs on p2p native handles and leaves the app stuck in the dock.
-      if (app.isQuittingForUpdate) {
-        return
-      }
-      // Avoid re-entering if something calls app.quit() again
-      if (this.shutdownInProgress) {
-        log.info('before-quit: shutdown already in progress, ignoring.')
-        return
-      }
-
-      log.info('before-quit: performing final session save (without clearing).')
-      this.isQuitting = true
-      this.shutdownInProgress = true
-      this.stopSaver()
-
-      // Prevent the default quit, we'll exit manually after the async save
-      event.preventDefault();
-
-      (async () => {
-        try {
-          await this.saveCompleteState()
-        } catch (error) {
-          log.error('Error during final save in before-quit:', error)
-        } finally {
-          this.finalSaveCompleted = true
-          // Important: app.exit() does not re-emit 'before-quit'
-          app.exit(0)
-        }
-      })()
-    })
+    // Shutdown has exactly one owner, the before-quit handler in main.js. This
+    // class used to register a second one that also preventDefault'd, saved the
+    // same two files under the same temp names and then called app.exit(0) on
+    // its own. The two raced: whichever finished first tore the windows down
+    // under the other, which is how a quit could take minutes, die by signal
+    // instead of exiting, and leave a half-written session behind.
   }
 
   registerListeners () {
@@ -752,7 +731,24 @@ class WindowManager {
    */
   requestSave () {
     if (this.isQuitting || this.shutdownInProgress) return
+    // A restored window navigates before its tab bar has taken the saved tabs,
+    // and that navigation used to schedule a save. The save then read an empty
+    // tab bar and overwrote the very session it was still restoring.
+    if (this.restoringSession) return
     this.pendingSave.schedule()
+  }
+
+  beginSessionRestore (windowCount) {
+    if (windowCount <= 0) return
+    this.restoringSession = true
+    this.pendingRestores = windowCount
+  }
+
+  finishSessionRestore () {
+    if (!this.restoringSession) return
+    if (--this.pendingRestores > 0) return
+    const settle = setTimeout(() => { this.restoringSession = false }, RESTORE_SETTLE_MS)
+    settle.unref?.()
   }
 
   /**
@@ -899,6 +895,9 @@ class WindowManager {
       this.open() // Create default window
       return
     }
+
+    // Hold autosaves off until the restored tabs are actually on screen.
+    this.beginSessionRestore(windowStates.length)
 
     for (const [index, state] of windowStates.entries()) {
       log.info(`Opening saved window ${index + 1}:`, state)
@@ -1086,7 +1085,11 @@ class PeerskyWindow {
         })();
       `).catch(error => {
             log.error('Error restoring tabs:', error)
+          }).finally(() => {
+            this.windowManager?.finishSessionRestore()
           })
+        } else {
+          this.windowManager?.finishSessionRestore()
         }
 
         this.window.webContents.executeJavaScript(`
