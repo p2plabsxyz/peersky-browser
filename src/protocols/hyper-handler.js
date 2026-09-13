@@ -32,9 +32,33 @@ const ephemeralPublishers = new Set()
 const MAX_UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024
 const MAX_HYPERDRIVE_NAME_LENGTH = 255
 
+// bonjour-service defaults a published service's host to os.hostname(), which
+// on macOS is the machine's own <name>.local. Announcing an authoritative A
+// record for that name makes macOS believe another device has claimed its
+// hostname, so it renames itself and shows the "already in use on this network"
+// warning. The service name is already unique per peer key, so advertise that
+// as the host instead. Peers resolve each other from the packet's source
+// address, so discovery is unaffected.
+export function withPeerLocalHost (adapter) {
+  const advertise = adapter.advertise.bind(adapter)
+  adapter.advertise = (record, handlers) => advertise(
+    record?.name ? { ...record, host: `${record.name}.local` } : record,
+    handlers
+  )
+  return adapter
+}
+
+function createLANAdapter () {
+  const Adapter = HyperDHTmDNS.BonjourAdapter
+  if (typeof Adapter !== 'function') return null
+  return withPeerLocalHost(new Adapter())
+}
+
 function getLANOptions () {
   const port = Number.parseInt(process.env.PEERSKY_LAN_PORT || '', 10)
-  return Number.isInteger(port) && port > 0 && port <= 65535 ? { port } : {}
+  const options = Number.isInteger(port) && port > 0 && port <= 65535 ? { port } : {}
+  const adapter = createLANAdapter()
+  return adapter ? { ...options, adapter } : options
 }
 
 function wireLANEvents (instance) {
@@ -303,7 +327,10 @@ async function getHyperRequestContext (url) {
 }
 
 // Close the corestore entirely so its RocksDB state is strictly frozen on disk.
-export async function suspendHyper () {
+// A backup needs the store reopened if closing fails, but a quit does not:
+// reopening RocksDB moments before the process exits is how a clean shutdown
+// turns back into a torn one, so shutdown passes recover: false.
+export async function suspendHyper ({ recover = true } = {}) {
   isSuspended = true
   const results = await Promise.allSettled([
     _suspendHyper(privateSdk, () => {
@@ -320,6 +347,7 @@ export async function suspendHyper () {
   ])
   const failure = results.find((result) => result.status === 'rejected')
   if (!failure) return
+  if (!recover) throw failure.reason
 
   isSuspended = false
   await Promise.allSettled([
@@ -369,22 +397,39 @@ export async function hyperPublishFile (filePath, fileName = 'backup.zip', optio
   return _hyperPublishFile(f, sdk, filePath, fileName)
 }
 
-async function waitForDriveReady (url) {
+// A drive nobody is seeding must not hold a tab open forever, so the wait is
+// bounded and the caller serves whatever the drive has once it expires.
+const PEER_WAIT_MS = 15000
+
+export async function waitForDriveReady (url, timeoutMs = PEER_WAIT_MS) {
   if (!sdk) return
   try {
-    const urlObj = new URL(url)
-    const hostname = urlObj.hostname
+    const { hostname } = new URL(url)
     if (!hostname || hostname === 'localhost') return
     const drive = await sdk.getDrive(`hyper://${hostname}/`)
     if (drive.writable || drive.core.length > 0) return
 
     log.info(`Waiting for peers for ${hostname}...`)
-    if (typeof drive.core.findingPeers === 'function') {
-      const finding = drive.core.findingPeers()
-      await sdk.joinCore(drive.core)
-      await finding
+    // findingPeers() hands back the release callback, and holding it open is
+    // the only thing that makes update() wait for a peer rather than return
+    // straight away against a core that has replicated nothing yet. Awaiting
+    // the callback instead of calling it, as this did before, both skipped the
+    // wait and leaked the counter. Releasing twice is safe: it is once-guarded.
+    const done = typeof drive.core.findingPeers === 'function'
+      ? drive.core.findingPeers()
+      : null
+    if (done) sdk.swarm.flush().then(done, done)
+
+    let timer = null
+    try {
+      await Promise.race([
+        drive.core.update({ wait: true }),
+        new Promise((resolve) => { timer = setTimeout(resolve, timeoutMs) })
+      ])
+    } finally {
+      if (timer) clearTimeout(timer)
+      if (done) done()
     }
-    await drive.update()
     log.info(`Finished waiting for peers for ${hostname}, core length is now ${drive.core.length}`)
   } catch (err) {
     log.error(`Error waiting for peers for ${url}:`, err)
@@ -554,9 +599,18 @@ export async function createHandler (options, securityOptions = {}) {
 // Handle general hyper:// requests (not chat API).
 async function handleHyperRequest (req) {
   const { url, method = 'GET', headers } = req
-  const { fetch: fetchFn } = await getHyperRequestContext(url)
+  const context = await getHyperRequestContext(url)
+  const fetchFn = context.fetch
   const upperMethod = method.toUpperCase()
   const hasBody = upperMethod !== 'GET' && upperMethod !== 'HEAD'
+
+  // Without this the first read of a drive races replication and hypercore-fetch
+  // answers "Peers Not Found" against a core of length zero, which is why a page
+  // only appeared after two or three refreshes. A private drive is local, and a
+  // write creates content rather than reading it, so neither needs to wait.
+  if (!context.private && !hasBody) {
+    await waitForDriveReady(url)
+  }
 
   try {
     log.info(`[handleHyperRequest] Fetching: ${method} ${formatHyperUrlForLog(url)}`)

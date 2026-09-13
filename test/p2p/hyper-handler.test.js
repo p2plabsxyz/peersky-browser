@@ -11,7 +11,11 @@ describe('Hyper protocol handler', function () {
     sinon.restore()
   })
 
-  async function loadHyperModule ({ fetchImpl, chatResponse, chatReject, throwOnFetch, lanReject, lanAttachResults, currentIP = '127.0.0.1' } = {}) {
+  async function loadHyperModule ({ fetchImpl, chatResponse, chatReject, throwOnFetch, lanReject, lanAttachResults, currentIP = '127.0.0.1', driveLength = 0 } = {}) {
+    // Order matters for the peer-discovery regression: the drive must be given
+    // a chance to replicate before the fetch that would 404 with no peers.
+    const callOrder = []
+    const releasePeers = sinon.stub()
     const createMockSdk = (id) => ({
       id,
       close: sinon.stub().resolves(),
@@ -21,7 +25,18 @@ describe('Hyper protocol handler', function () {
         }
       },
       getDrive: sinon.stub().callsFake(async (name) => ({
-        core: {},
+        writable: false,
+        core: {
+          length: driveLength,
+          findingPeers: sinon.stub().callsFake(() => {
+            callOrder.push('findingPeers')
+            return releasePeers
+          }),
+          update: sinon.stub().callsFake(async () => {
+            callOrder.push('update')
+            return true
+          })
+        },
         url: `hyper://${String(name).replace(/[^a-z0-9]/gi, '').padEnd(52, 'a').slice(0, 52)}/`
       })),
       joinCore: sinon.stub().resolves(),
@@ -64,6 +79,7 @@ describe('Hyper protocol handler', function () {
     }
 
     const createFetchStub = () => sinon.stub().callsFake(async (url, options) => {
+      callOrder.push('fetch')
       if (throwOnFetch) {
         throw new Error('network failed')
       }
@@ -126,6 +142,8 @@ describe('Hyper protocol handler', function () {
 
     return {
       module,
+      callOrder,
+      releasePeers,
       createSDK,
       attachHyperSDK,
       fetchStub,
@@ -160,6 +178,72 @@ describe('Hyper protocol handler', function () {
 
     expect(attachHyperSDK.calledOnceWithExactly(sdk, {})).to.equal(true)
     expect(attachHyperSDK.calledBefore(initChat)).to.equal(true)
+  })
+
+  describe('first load of a drive that has not replicated yet', function () {
+    it('waits for peers before fetching, so the first read is not a 404', async function () {
+      const { module, callOrder, releasePeers, fetchStub } = await loadHyperModule()
+      const handler = await module.createHandler({ storage: 'test-peer-wait' })
+
+      const response = await handler(new Request(`hyper://${'b'.repeat(52)}/index.html`, { method: 'GET' }))
+
+      expect(response.status).to.equal(200)
+      expect(fetchStub.calledOnce).to.equal(true)
+      // The wait has to happen first; fetching before it is the regression.
+      expect(callOrder.indexOf('update')).to.be.greaterThan(-1)
+      expect(callOrder.indexOf('update')).to.be.lessThan(callOrder.indexOf('fetch'))
+      // Peer discovery must be held open across the update, then released,
+      // rather than the release callback being awaited and never invoked.
+      expect(callOrder.indexOf('findingPeers')).to.be.lessThan(callOrder.indexOf('update'))
+      expect(releasePeers.called).to.equal(true)
+    })
+
+    it('asks the core to wait rather than answering from an empty core', async function () {
+      const { module, sdk } = await loadHyperModule()
+      const handler = await module.createHandler({ storage: 'test-peer-wait-opts' })
+
+      await handler(new Request(`hyper://${'c'.repeat(52)}/index.html`, { method: 'GET' }))
+
+      const drive = await sdk.getDrive.returnValues[0]
+      expect(drive.core.update.firstCall.args[0]).to.deep.equal({ wait: true })
+    })
+
+    it('skips the wait once the drive already has content', async function () {
+      const { module, callOrder } = await loadHyperModule({ driveLength: 5 })
+      const handler = await module.createHandler({ storage: 'test-peer-wait-warm' })
+
+      await handler(new Request(`hyper://${'d'.repeat(52)}/index.html`, { method: 'GET' }))
+
+      expect(callOrder).to.deep.equal(['fetch'])
+    })
+
+    it('does not delay a write, which creates content instead of reading it', async function () {
+      const { module, callOrder } = await loadHyperModule()
+      const handler = await module.createHandler({ storage: 'test-peer-wait-put' })
+
+      await handler(new Request(`hyper://${'e'.repeat(52)}/note.txt`, { method: 'PUT', body: 'hi' }))
+
+      expect(callOrder).to.deep.equal(['fetch'])
+    })
+  })
+
+  it('advertises a per-peer mDNS host so macOS does not rename itself', async function () {
+    const { module } = await loadHyperModule()
+    const published = []
+    const adapter = {
+      advertise: sinon.stub().callsFake((record) => {
+        published.push(record)
+        return { stop: async () => {} }
+      })
+    }
+
+    module.withPeerLocalHost(adapter)
+    adapter.advertise({ name: 'hyperdht-mdns-0123456789ab', type: 'hyperdht-mdns', port: 49799 })
+
+    // Never the machine's own hostname, which is what macOS defends.
+    expect(published[0].host).to.equal('hyperdht-mdns-0123456789ab.local')
+    expect(published[0].host).to.not.equal(`${os.hostname()}`)
+    expect(published[0].port).to.equal(49799)
   })
 
   it('uses PEERSKY_LAN_PORT for additional local instances', async function () {
