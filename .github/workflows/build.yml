@@ -21,11 +21,14 @@ jobs:
         os: [macos-15, ubuntu-latest, windows-latest]
 
     steps:
-      - name: Install libarchive-tools for pacman build # Related https://github.com/electron-userland/electron-builder/issues/4181
+      # libarchive-tools: pacman build, https://github.com/electron-userland/electron-builder/issues/4181
+      # zsync: provides zsyncmake, which afterAllArtifactBuild uses to emit the
+      # AppImage .zsync so updates fetch changed blocks instead of the whole file.
+      - name: Install Linux packaging tools
         if: startsWith(matrix.os, 'ubuntu')
         run: |
           sudo apt-get update
-          sudo apt-get install -y libarchive-tools
+          sudo apt-get install -y libarchive-tools zsync
 
       - name: Check out Git repository
         uses: actions/checkout@v3
