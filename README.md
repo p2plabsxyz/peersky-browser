@@ -210,6 +210,15 @@ npm run build
 
 Now, the `dist` folder will appear in the root directory.
 
+Building the Linux AppImage also needs `zsyncmake`, from the `zsync` package, to
+produce the `.zsync` that AppImage update tools use for incremental downloads.
+Without it the build still succeeds and simply skips that file, but a release
+should be built with it installed.
+
+```bash
+sudo apt-get install -y zsync   # or: brew install zsync
+```
+
 ### Linting
 
 This project uses [StandardJS](https://standardjs.com) for code style. To check for lint errors:
