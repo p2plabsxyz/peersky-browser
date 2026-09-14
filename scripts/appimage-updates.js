@@ -1,18 +1,13 @@
 /**
- * Linux AppImage delta updates (#222), wired as two electron-builder hooks.
- * The named exports below match the hook names, which is how electron-builder
- * resolves them, so both live in one file.
+ * Publishes a .zsync beside each AppImage and points the AppImage at it, so
+ * AppImage update tools fetch only changed blocks (#222). Peersky's own updater
+ * still downloads the whole file.
  *
- * artifactBuildCompleted writes the pointer to the .zsync into the runtime's
- * .upd_info section, which ships zero-filled so update tools find nothing. It
- * has to run in this hook rather than the later one: electron-builder starts
- * uploading an artifact as soon as it is created, so patching afterwards would
- * put the original bytes on the release. Patching invalidates the sha512
- * already computed, so the event's updateInfo is corrected too, which is what
- * latest-linux.yml is written from.
- *
- * afterAllArtifactBuild then builds the .zsync itself, from the final bytes.
- * Paths returned from that hook are the only ones electron-builder uploads.
+ * Both hooks live here because electron-builder resolves a hook to the named
+ * export matching it. The pointer goes in artifactBuildCompleted, which is
+ * awaited before the upload starts; writing it later would ship the original
+ * bytes. Patching invalidates the sha512, so updateInfo is corrected with it,
+ * and leaves the appended block map stale by one block, which nothing reads.
  */
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -27,9 +22,10 @@ export function appImageArtifacts (artifactPaths) {
 // prereleases, so releases must be published as normal releases.
 export function updateInformation ({ owner, repo, appImageName, version }) {
   if (!owner || !repo) throw new Error('[appimage-updates] publish owner and repo are required')
+  // Without the wildcard the pattern matches only the release it shipped in.
+  if (!version) throw new Error('[appimage-updates] a version is required to wildcard the zsync pattern')
   const zsyncName = `${path.basename(appImageName)}.zsync`
-  const pattern = version ? zsyncName.split(version).join('*') : zsyncName
-  return `gh-releases-zsync|${owner}|${repo}|latest|${pattern}`
+  return `gh-releases-zsync|${owner}|${repo}|latest|${zsyncName.split(version).join('*')}`
 }
 
 // Reads only the section table, not the whole 300 MB artifact.
@@ -101,12 +97,12 @@ export async function patchAppImage (event, pkg) {
   writeUpdateInformation(event.file, updateInformation({
     owner: publish.owner,
     repo: publish.repo,
-    appImageName: path.basename(event.file),
+    // GitHub uploads under safeArtifactName when it differs from the on-disk name.
+    appImageName: event.safeArtifactName || path.basename(event.file),
     version: pkg.version
   }))
 
-  // The file changed, so the hash electron-builder computed before this hook no
-  // longer describes it. latest-linux.yml is written from this object.
+  // latest-linux.yml is written from this object, and the bytes just changed.
   if (event.updateInfo) event.updateInfo.sha512 = await sha512Base64(event.file)
   return true
 }
@@ -128,14 +124,26 @@ export function zsyncArgs (appImagePath) {
 
 const defaultRun = (file, args, options) => execFileSync(file, args, { ...options, stdio: 'pipe' })
 
-export function buildZsyncArtifacts (artifactPaths, { run = defaultRun } = {}) {
+const isMissingCommand = (error) =>
+  error?.code === 'ENOENT' || /ENOENT|not found/i.test(error?.message || '')
+
+// Failures throw, since a release must not silently lack the file. The one
+// exception is zsyncmake being absent off CI, where build-all builds Linux
+// targets from machines that will not have it.
+export function buildZsyncArtifacts (artifactPaths, { run = defaultRun, ci = process.env.CI } = {}) {
   const built = []
   for (const appImage of appImageArtifacts(artifactPaths)) {
     const { cwd, args } = zsyncArgs(appImage)
     try {
       run('zsyncmake', args, { cwd })
     } catch (error) {
-      // A release silently missing the file it promises is worse than a red build.
+      if (isMissingCommand(error) && !ci) {
+        console.warn(
+          `[appimage-updates] zsyncmake not installed, skipping ${path.basename(appImage)}.zsync. ` +
+          'Install the zsync package to build a release locally.'
+        )
+        continue
+      }
       throw new Error(
         `[appimage-updates] zsyncmake failed for ${path.basename(appImage)}: ` +
         `${error?.message || error}. Install the zsync package on the build host.`

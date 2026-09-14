@@ -1,6 +1,7 @@
-// Every Linux update downloaded the whole ~330 MB AppImage (#222). Three things
-// have to hold: the .zsync exists, the AppImage points at it, and the published
-// checksum still matches the patched bytes.
+// AppImage update tools downloaded the whole ~330 MB file every time (#222).
+// Three things have to hold: the .zsync exists, the AppImage points at it, and
+// the published checksum still matches the patched bytes. Peersky's own updater
+// is untouched and still does a full download.
 
 import fs from 'fs'
 import os from 'os'
@@ -127,16 +128,18 @@ describe('zsync artifacts for the AppImage', function () {
     })
   })
 
+  // ci is explicit throughout: it defaults to process.env.CI, which is set on
+  // the runners and not on a laptop.
   describe('when zsyncmake is missing or fails', function () {
     it('fails the build rather than publishing a release without it', function () {
       const run = () => { throw new Error('spawn zsyncmake ENOENT') }
-      expect(() => buildZsyncArtifacts([APPIMAGE], { run }))
+      expect(() => buildZsyncArtifacts([APPIMAGE], { run, ci: 'true' }))
         .to.throw(/zsyncmake failed for peersky-browser-1\.0\.0-beta\.28-linux-x86_64\.AppImage/)
     })
 
     it('says how to fix it', function () {
       const run = () => { throw new Error('spawn zsyncmake ENOENT') }
-      expect(() => buildZsyncArtifacts([APPIMAGE], { run })).to.throw(/Install the zsync package/)
+      expect(() => buildZsyncArtifacts([APPIMAGE], { run, ci: 'true' })).to.throw(/Install the zsync package/)
     })
   })
 })
@@ -201,6 +204,16 @@ describe('pointing the AppImage at its zsync', function () {
         .to.throw(/larger than the 32 byte \.upd_info section/)
     })
 
+    // Readers stop at the first NUL, so a payload filling the slot exactly
+    // leaves nothing to terminate it.
+    it('refuses a string that exactly fills the slot, leaving no terminator', function () {
+      const { file } = fakeAppImage(32)
+      expect(() => writeUpdateInformation(file, 'x'.repeat(32))).to.throw(/larger than the 32 byte/)
+      const ok = fakeAppImage(32)
+      writeUpdateInformation(ok.file, 'x'.repeat(31))
+      expect(readUpdInfo(ok.file, ok.updOffset, ok.updInfoSize)).to.have.lengthOf(31)
+    })
+
     it('fails loudly if a future runtime drops the section', function () {
       const { file } = fakeAppImage()
       const fd = fs.openSync(file, 'r+')
@@ -245,7 +258,8 @@ describe('pointing the AppImage at its zsync', function () {
       expect(await patchAppImage(e, pkg)).to.equal(true)
       expect(readUpdInfo(file, updOffset, updInfoSize)).to.include('gh-releases-zsync|p2plabsxyz|peersky-browser|latest|')
       expect(e.updateInfo.sha512, 'a stale hash would describe bytes nobody downloads').to.equal(await sha512Base64(file))
-      expect(e.updateInfo.blockMapSize, 'the appended blockmap is unchanged').to.equal(355006)
+      // Size and trailer untouched; contents are knowingly stale by one block.
+      expect(e.updateInfo.blockMapSize, 'the blockmap trailer is not resized').to.equal(355006)
     })
 
     it('ignores every artifact that is not an AppImage', async function () {
@@ -319,5 +333,46 @@ describe('the packaging config the delta depends on', function () {
   it('leaves compression and the appimage toolset at their defaults', function () {
     expect(build.compression, 'compression must stay unset for deltas to be small').to.equal(undefined)
     expect(build.toolsets?.appimage, 'a pinned appimage toolset switches the runtime and compressor').to.equal(undefined)
+  })
+})
+
+describe('building without zsyncmake installed', function () {
+  const APP = '/d/peersky-1.0.0-linux-x86_64.AppImage'
+  const missing = () => { const e = new Error('spawn zsyncmake ENOENT'); e.code = 'ENOENT'; throw e }
+
+  // build-all builds Linux targets from macOS and Windows, so a missing
+  // packaging tool must not break a developer's local build.
+  // null, not undefined: a default parameter still fires for undefined.
+  it('skips the zsync locally rather than failing the build', function () {
+    expect(buildZsyncArtifacts([APP], { run: missing, ci: null })).to.deep.equal([])
+  })
+
+  // A release that quietly lacks the file it promises is worse than a red build.
+  it('still fails the build in CI', function () {
+    expect(() => buildZsyncArtifacts([APP], { run: missing, ci: 'true' }))
+      .to.throw(/zsyncmake failed/)
+  })
+
+  it('fails everywhere when zsyncmake is present but errors', function () {
+    const broken = () => { throw new Error('zsyncmake: write error') }
+    expect(() => buildZsyncArtifacts([APP], { run: broken, ci: null })).to.throw(/write error/)
+    expect(() => buildZsyncArtifacts([APP], { run: broken, ci: 'true' })).to.throw(/write error/)
+  })
+})
+
+describe('the pattern follows the name GitHub stores', function () {
+  // GitHub uploads under safeArtifactName when it differs from the on-disk name.
+  it('prefers safeArtifactName over the on-disk basename', async function () {
+    const { file, updOffset, updInfoSize } = fakeAppImage()
+    await patchAppImage(
+      { file, safeArtifactName: 'peersky-browser-9.9.9-linux-x86_64.AppImage', updateInfo: {} },
+      { version: '9.9.9', build: { publish: [{ owner: 'o', repo: 'r' }] } }
+    )
+    expect(readUpdInfo(file, updOffset, updInfoSize)).to.equal('gh-releases-zsync|o|r|latest|peersky-browser-*-linux-x86_64.AppImage.zsync')
+  })
+
+  it('refuses to build a pattern with no version to wildcard', function () {
+    expect(() => updateInformation({ owner: 'o', repo: 'r', appImageName: 'a.AppImage', version: '' }))
+      .to.throw(/version is required/)
   })
 })
