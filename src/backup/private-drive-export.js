@@ -1,12 +1,8 @@
 import crypto from 'crypto'
 import z32 from 'z32'
 import { listPrivateHyperdrives } from '../protocols/private-hyperdrive-registry.js'
+import { getOrCreatePrivateDriveKey } from './private-drive-key.js'
 
-// Named private-drive-key.json for mobile compatibility, even though the
-// record carries no key yet: desktop private drives are unencrypted and
-// "device only" (autoJoin:false, doReplicate:false, announce:false). The
-// filename is the mobile transfer contract; key will be populated once
-// desktop private drives are encrypted.
 export const PRIVATE_DRIVE_KEY_FILE = 'private-drive-key.json'
 
 export async function buildPrivateDriveKeyExport (userDataDir, now = Date.now()) {
@@ -27,14 +23,16 @@ export async function buildPrivateDriveKeyExport (userDataDir, now = Date.now())
   if (drives.length === 0) return null
 
   const primary = drives[0].driveId
+  const key = await getOrCreatePrivateDriveKey(userDataDir)
+  const deviceOnly = process.env.PEERSKY_PRIVATE_DEVICE_ONLY === '1'
 
   return Buffer.from(JSON.stringify({
     version: 3,
     createdAt: new Date(now).toISOString(),
-    key: null,
+    key: key.toString('hex'),
     driveId: primary,
-    encrypted: false,
-    announce: false,
+    encrypted: !deviceOnly,
+    announce: !deviceOnly,
     source: 'desktop',
     entries: drives
   }, null, 2))

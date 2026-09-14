@@ -269,10 +269,10 @@ describe('private-drive-export', function () {
 
     const record = JSON.parse(bytes.toString('utf-8'))
     expect(record.version).to.equal(3)
-    expect(record.key).to.equal(null)
+    expect(record.key).to.match(/^[0-9a-f]{64}$/)
     expect(record.driveId).to.equal(driveId.toLowerCase())
-    expect(record.encrypted).to.equal(false)
-    expect(record.announce).to.equal(false)
+    expect(record.encrypted).to.equal(true)
+    expect(record.announce).to.equal(true)
     expect(record.source).to.equal('desktop')
     expect(record.createdAt).to.equal(new Date(1700000000000).toISOString())
     expect(record.entries).to.have.length(2)
@@ -308,7 +308,7 @@ describe('private-drive-export', function () {
 
     const record = JSON.parse(await readFile(path.join(dest, 'private-drive-key.json'), 'utf-8'))
     expect(record.driveId).to.equal(driveId.toLowerCase())
-    expect(record.announce).to.equal(false)
+    expect(record.announce).to.equal(true)
     expect(record.source).to.equal('desktop')
   })
 

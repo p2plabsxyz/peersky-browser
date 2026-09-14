@@ -58,7 +58,7 @@ flowchart TD
     G --> H[Available only in this PeerSky profile]
 ```
 
-Private uploads are excluded from normal backups by default. Identity transfers include them by default because they move data to another user-owned device. Both controls are explicit: if private uploads are excluded, the Backup page shows how many will be left behind. The same page lists the private uploads currently stored on the device.
+Private uploads are excluded from normal backups by default. Identity transfers include them by default because they move data to another user-owned device. Both controls are explicit: if private uploads are excluded, the Backup page shows how many will be left behind. The same page lists the private uploads currently stored on the device. On arrival the receiving device adopts the drive into its own isolated corestore (`announce:false`, no discovery), so transferred private drives stay device-only there until device linking opts them into networking — the record's key file is what later lets the receiving side open the same encrypted drive.
 
 ### Publish to IPFS
 
