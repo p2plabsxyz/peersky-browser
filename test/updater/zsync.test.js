@@ -6,16 +6,18 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { expect } from 'chai'
-import afterAllArtifactBuild, {
+import {
   appImageArtifacts,
-  zsyncArgs,
-  buildZsyncArtifacts,
   updateInformation,
   findElfSection,
   writeUpdateInformation,
   sha512Base64,
-  refreshedUpdateYml
-} from '../../scripts/afterAllArtifactBuild.js'
+  patchAppImage,
+  artifactBuildCompleted,
+  zsyncArgs,
+  buildZsyncArtifacts,
+  afterAllArtifactBuild
+} from '../../scripts/appimage-updates.js'
 
 const APPIMAGE = '/build/dist/peersky-browser-1.0.0-beta.28-linux-x86_64.AppImage'
 
@@ -140,7 +142,9 @@ describe('zsync artifacts for the AppImage', function () {
 })
 
 // Without this the .zsync is published but unreachable: update tools read the
-// URL from inside the AppImage and find a blank section.
+// URL from inside the AppImage and find a blank section. It has to happen in
+// artifactBuildCompleted, because electron-builder starts uploading an artifact
+// as soon as it is created, before afterAllArtifactBuild ever runs.
 describe('pointing the AppImage at its zsync', function () {
   describe('the update-information string', function () {
     it('names the zsync, not the AppImage', function () {
@@ -226,49 +230,44 @@ describe('pointing the AppImage at its zsync', function () {
     })
   })
 
-  // Patching changes bytes, so the checksum electron-builder already wrote
-  // would describe a file nobody can download.
-  describe('keeping latest-linux.yml true', function () {
-    const doc = [
-      'version: 1.0.0-beta.28',
-      'files:',
-      '  - url: peersky-browser-1.0.0-beta.28-linux-x86_64.AppImage',
-      '    sha512: STALEHASH==',
-      '    size: 341629610',
-      '    blockMapSize: 355006',
-      '  - url: peersky-browser-1.0.0-beta.28-linux-amd64.deb',
-      '    sha512: DEBHASH==',
-      '    size: 243468832',
-      'path: peersky-browser-1.0.0-beta.28-linux-x86_64.AppImage',
-      'sha512: STALEHASH==',
-      "releaseDate: '2026-09-03T02:09:07.418Z'"
-    ].join('\n')
-    const NAME = 'peersky-browser-1.0.0-beta.28-linux-x86_64.AppImage'
+  // electron-builder starts uploading an artifact as soon as it is created, so
+  // patching later would put the unpatched bytes on the release and leave the
+  // published checksum describing a file nobody downloads.
+  describe('patching before the upload', function () {
+    function event (file) {
+      return { file, updateInfo: { sha512: 'STALE==', blockMapSize: 355006 } }
+    }
+    const pkg = { version: '1.0.0-beta.28', build: { publish: [{ owner: 'p2plabsxyz', repo: 'peersky-browser' }] } }
 
-    it('replaces the AppImage hash in both places it appears', function () {
-      const out = refreshedUpdateYml(doc, NAME, 'FRESH==')
-      expect(out.match(/sha512: FRESH==/g), 'the files entry and the top-level copy').to.have.lengthOf(2)
-      expect(out).to.not.include('STALEHASH==')
+    it('embeds the pointer and corrects the hash the yml is written from', async function () {
+      const { file, updOffset, updInfoSize } = fakeAppImage()
+      const e = event(file)
+      expect(await patchAppImage(e, pkg)).to.equal(true)
+      expect(readUpdInfo(file, updOffset, updInfoSize)).to.include('gh-releases-zsync|p2plabsxyz|peersky-browser|latest|')
+      expect(e.updateInfo.sha512, 'a stale hash would describe bytes nobody downloads').to.equal(await sha512Base64(file))
+      expect(e.updateInfo.blockMapSize, 'the appended blockmap is unchanged').to.equal(355006)
     })
 
-    it('leaves the other artifacts alone', function () {
-      const out = refreshedUpdateYml(doc, NAME, 'FRESH==')
-      expect(out, 'the deb was not patched, so its hash must stand').to.include('sha512: DEBHASH==')
-      expect(out).to.include('size: 341629610')
-      expect(out).to.include('blockMapSize: 355006')
-      expect(out).to.include('version: 1.0.0-beta.28')
-      expect(out).to.include("releaseDate: '2026-09-03T02:09:07.418Z'")
+    it('ignores every artifact that is not an AppImage', async function () {
+      for (const name of ['x.dmg', 'x.deb', 'x.exe', 'latest-linux.yml']) {
+        expect(await patchAppImage(event(name), pkg), name).to.equal(false)
+      }
+      expect(await patchAppImage(undefined, pkg)).to.equal(false)
+      expect(await patchAppImage({}, pkg)).to.equal(false)
     })
 
-    it('changes nothing but those two lines', function () {
-      const out = refreshedUpdateYml(doc, NAME, 'FRESH==').split('\n')
-      const before = doc.split('\n')
-      const differing = before.filter((line, i) => line !== out[i])
-      expect(differing).to.deep.equal(['    sha512: STALEHASH==', 'sha512: STALEHASH=='])
+    it('survives an event that carries no updateInfo', async function () {
+      const { file } = fakeAppImage()
+      const e = { file }
+      expect(await patchAppImage(e, pkg)).to.equal(true)
+      expect(e.updateInfo).to.equal(undefined)
     })
 
-    it('is a no-op when the AppImage is not listed', function () {
-      expect(refreshedUpdateYml(doc, 'something-else.AppImage', 'FRESH==')).to.equal(doc)
+    it('runs as a hook on its own, reading the real package.json', async function () {
+      const { file, updOffset, updInfoSize } = fakeAppImage()
+      const e = event(file)
+      await artifactBuildCompleted(e)
+      expect(readUpdInfo(file, updOffset, updInfoSize)).to.include('gh-releases-zsync|')
     })
   })
 
@@ -293,7 +292,13 @@ describe('the packaging config the delta depends on', function () {
   })
 
   it('runs the hook that emits and uploads the zsync', function () {
-    expect(build.afterAllArtifactBuild).to.equal('./scripts/afterAllArtifactBuild.js')
+    expect(build.afterAllArtifactBuild).to.equal('./scripts/appimage-updates.js')
+  })
+
+  // Dropping this one would put the unpatched AppImage on the release, because
+  // the upload starts before afterAllArtifactBuild runs.
+  it('patches the AppImage in the hook that runs before the upload', function () {
+    expect(build.artifactBuildCompleted).to.equal('./scripts/appimage-updates.js')
   })
 
   it('still builds an AppImage for the zsync to describe', function () {

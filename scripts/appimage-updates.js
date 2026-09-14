@@ -1,9 +1,18 @@
 /**
- * AppImage delta updates (#222). electron-builder has no zsync support, and the
- * runtime's .upd_info section ships zero-filled so update tools find no pointer
- * to the .zsync. Writes that pointer, refreshes the sha512 it invalidates in
- * latest-linux.yml, then builds the .zsync from the final bytes. Only paths
- * returned from this hook get uploaded.
+ * Linux AppImage delta updates (#222), wired as two electron-builder hooks.
+ * The named exports below match the hook names, which is how electron-builder
+ * resolves them, so both live in one file.
+ *
+ * artifactBuildCompleted writes the pointer to the .zsync into the runtime's
+ * .upd_info section, which ships zero-filled so update tools find nothing. It
+ * has to run in this hook rather than the later one: electron-builder starts
+ * uploading an artifact as soon as it is created, so patching afterwards would
+ * put the original bytes on the release. Patching invalidates the sha512
+ * already computed, so the event's updateInfo is corrected too, which is what
+ * latest-linux.yml is written from.
+ *
+ * afterAllArtifactBuild then builds the .zsync itself, from the final bytes.
+ * Paths returned from that hook are the only ones electron-builder uploads.
  */
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -14,20 +23,10 @@ export function appImageArtifacts (artifactPaths) {
   return (artifactPaths || []).filter((p) => typeof p === 'string' && p.endsWith('.AppImage'))
 }
 
-// No -u: the release URL is unknown at build time, so zsyncmake writes a
-// relative URL naming the AppImage beside the .zsync.
-export function zsyncArgs (appImagePath) {
-  const name = path.basename(appImagePath)
-  return {
-    cwd: path.dirname(appImagePath),
-    args: ['-o', `${name}.zsync`, name]
-  }
-}
-
 // Version wildcarded so one string serves every release. "latest" skips
 // prereleases, so releases must be published as normal releases.
 export function updateInformation ({ owner, repo, appImageName, version }) {
-  if (!owner || !repo) throw new Error('[afterAllArtifactBuild] publish owner and repo are required')
+  if (!owner || !repo) throw new Error('[appimage-updates] publish owner and repo are required')
   const zsyncName = `${path.basename(appImageName)}.zsync`
   const pattern = version ? zsyncName.split(version).join('*') : zsyncName
   return `gh-releases-zsync|${owner}|${repo}|latest|${pattern}`
@@ -95,24 +94,36 @@ export function sha512Base64 (filePath) {
   })
 }
 
-// Matches the stale value rather than parsing, so the rest of the document is
-// returned byte for byte and no YAML library is needed.
-export function refreshedUpdateYml (text, appImageName, sha512) {
-  const lines = text.split('\n')
-  const entry = lines.findIndex((l) => l.includes(`url: ${appImageName}`))
-  if (entry === -1) return text
+export async function patchAppImage (event, pkg) {
+  if (!event || typeof event.file !== 'string' || appImageArtifacts([event.file]).length === 0) return false
+  const publish = [].concat(pkg.build?.publish || [])[0] || {}
 
-  let stale = null
-  for (let i = entry + 1; i < lines.length && !/^\s*-\s/.test(lines[i]); i++) {
-    const found = lines[i].match(/^\s*sha512:\s*(\S+)\s*$/)
-    if (found) { stale = found[1]; break }
+  writeUpdateInformation(event.file, updateInformation({
+    owner: publish.owner,
+    repo: publish.repo,
+    appImageName: path.basename(event.file),
+    version: pkg.version
+  }))
+
+  // The file changed, so the hash electron-builder computed before this hook no
+  // longer describes it. latest-linux.yml is written from this object.
+  if (event.updateInfo) event.updateInfo.sha512 = await sha512Base64(event.file)
+  return true
+}
+
+export async function artifactBuildCompleted (event) {
+  const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+  await patchAppImage(event, pkg)
+}
+
+// No -u: the release URL is unknown at build time, so zsyncmake writes a
+// relative URL naming the AppImage beside the .zsync.
+export function zsyncArgs (appImagePath) {
+  const name = path.basename(appImagePath)
+  return {
+    cwd: path.dirname(appImagePath),
+    args: ['-o', `${name}.zsync`, name]
   }
-  if (!stale) return text
-
-  return lines.map((line) => {
-    const match = line.match(/^(\s*sha512:\s*)(\S+)\s*$/)
-    return match && match[2] === stale ? `${match[1]}${sha512}` : line
-  }).join('\n')
 }
 
 const defaultRun = (file, args, options) => execFileSync(file, args, { ...options, stdio: 'pipe' })
@@ -126,7 +137,7 @@ export function buildZsyncArtifacts (artifactPaths, { run = defaultRun } = {}) {
     } catch (error) {
       // A release silently missing the file it promises is worse than a red build.
       throw new Error(
-        `[afterAllArtifactBuild] zsyncmake failed for ${path.basename(appImage)}: ` +
+        `[appimage-updates] zsyncmake failed for ${path.basename(appImage)}: ` +
         `${error?.message || error}. Install the zsync package on the build host.`
       )
     }
@@ -136,31 +147,6 @@ export function buildZsyncArtifacts (artifactPaths, { run = defaultRun } = {}) {
 }
 
 // Returns [] on the macOS and Windows runners, which build no AppImage.
-export default async function afterAllArtifactBuild (buildResult) {
-  const artifactPaths = buildResult?.artifactPaths || []
-  const appImages = appImageArtifacts(artifactPaths)
-  if (appImages.length === 0) return []
-
-  const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
-  const publish = [].concat(pkg.build?.publish || [])[0] || {}
-
-  for (const appImage of appImages) {
-    writeUpdateInformation(appImage, updateInformation({
-      owner: publish.owner,
-      repo: publish.repo,
-      appImageName: path.basename(appImage),
-      version: pkg.version
-    }))
-
-    const hash = await sha512Base64(appImage)
-    const ymlPath = path.join(path.dirname(appImage), 'latest-linux.yml')
-    if (fs.existsSync(ymlPath)) {
-      fs.writeFileSync(
-        ymlPath,
-        refreshedUpdateYml(fs.readFileSync(ymlPath, 'utf8'), path.basename(appImage), hash)
-      )
-    }
-  }
-
-  return buildZsyncArtifacts(appImages)
+export async function afterAllArtifactBuild (buildResult) {
+  return buildZsyncArtifacts(buildResult?.artifactPaths)
 }

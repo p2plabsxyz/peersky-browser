@@ -49,7 +49,8 @@
     "asar": true,
     "beforePack": "./scripts/beforePack.js",
     "afterPack": "./scripts/afterPack.js",
-    "afterAllArtifactBuild": "./scripts/afterAllArtifactBuild.js",
+    "artifactBuildCompleted": "./scripts/appimage-updates.js",
+    "afterAllArtifactBuild": "./scripts/appimage-updates.js",
     "appId": "peersky.p2plabs.xyz",
     "productName": "Peersky Browser",
     "directories": {
