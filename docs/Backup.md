@@ -22,10 +22,19 @@ ensCache.json
 ipfsCache.json
 hyperCache.json
 hyper/
+privateHyperdrives.json
+hyper-private/
+private-drive-key.json
 peersky-chat-rooms.json
 peersky-ports.json
 peersky-identity.json
 ```
+
+`privateHyperdrives.json`, `hyper-private/`, and `private-drive-key.json`
+are included only when private uploads are included (`includePrivate`). The
+private corestore is encrypted with the per-profile key carried in
+`private-drive-key.json`, so the extracted archive can only be read back
+with that key file.
 
 The `hyper/` corestore contains secret keys for writable Hypercores, so every
 local backup is encrypted. The `ipfs/` repository is not backed up. It contains

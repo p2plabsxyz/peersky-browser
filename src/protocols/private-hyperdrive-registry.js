@@ -34,7 +34,8 @@ function normalizePrivateHyperdrive (entry) {
     return {
       name: entry.name,
       url: `hyper://${url.hostname}/`,
-      timestamp
+      timestamp,
+      encrypted: entry.encrypted === true
     }
   } catch {
     return null

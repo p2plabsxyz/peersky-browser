@@ -1,10 +1,68 @@
 import { expect } from 'chai'
 import sinon from 'sinon'
 import esmock from 'esmock'
+import crypto from 'crypto'
 import os from 'os'
 import path from 'path'
-import { mkdtemp, rm, writeFile } from 'fs/promises'
+import { mkdtempSync } from 'fs'
+import z32 from 'z32'
+import { mkdtemp, readFile, rm, writeFile } from 'fs/promises'
 import { EventEmitter } from 'events'
+
+const TEST_USER_DATA = mkdtempSync(path.join(os.tmpdir(), 'peersky-test-userdata-'))
+
+const driveStores = new Map()
+
+class FakeHyperdrive {
+  constructor (nameOrKey, key, opts = {}) {
+    this.core = { key: key || Buffer.alloc(32), discoveryKey: Buffer.alloc(32), length: 0 }
+    this.encryptionKey = opts.encryptionKey || null
+    if (key) {
+      this.url = `hyper://${z32.encode(key)}/`
+    } else {
+      const derived = crypto.createHash('sha256').update(String(nameOrKey.seed || nameOrKey || 'private-drive')).digest()
+      this.url = `hyper://${z32.encode(derived)}/`
+    }
+    if (!driveStores.has(this.url)) driveStores.set(this.url, new Map())
+    this.files = driveStores.get(this.url)
+  }
+
+  async ready () {}
+
+  async stat (drivePath, opts = {}) {
+    if (drivePath === '/' || this.files.has(drivePath)) {
+      return { isDirectory: () => drivePath === '/', size: (this.files.get(drivePath) || Buffer.alloc(0)).length }
+    }
+    return opts.allowMissing ? null : null
+  }
+
+  async entry (drivePath) {
+    if (drivePath === '/') throw new Error('Invalid filename: /')
+    if (!this.files.has(drivePath)) return null
+    const buffer = this.files.get(drivePath)
+    return { value: { blob: buffer.length ? { byteLength: buffer.length } : null } }
+  }
+
+  async readdir (drivePath) {
+    const children = [...this.files.keys()]
+    return drivePath === '/' ? children : children.map((name) => ({ name: name.split('/').pop(), type: 'file' }))
+  }
+
+  async get (drivePath) {
+    if (!this.files.has(drivePath)) return null
+    return this.files.get(drivePath)
+  }
+
+  async put (drivePath, buffer) {
+    this.files.set(drivePath, buffer)
+  }
+
+  async del (drivePath) {
+    this.files.delete(drivePath)
+  }
+
+  async mkdir () {}
+}
 
 describe('Hyper protocol handler', function () {
   afterEach(function () {
@@ -22,7 +80,14 @@ describe('Hyper protocol handler', function () {
       corestore: {
         storage: {
           hasCore: sinon.stub().resolves(false)
-        }
+        },
+        namespace: sinon.stub().returns({
+          ns: Buffer.from('test'),
+          storage: {
+            getAlias: sinon.stub().resolves(null),
+            hasCore: sinon.stub().resolves(false)
+          }
+        })
       },
       getDrive: sinon.stub().callsFake(async (name) => ({
         writable: false,
@@ -40,13 +105,6 @@ describe('Hyper protocol handler', function () {
         url: `hyper://${String(name).replace(/[^a-z0-9]/gi, '').padEnd(52, 'a').slice(0, 52)}/`
       })),
       joinCore: sinon.stub().resolves(),
-      namespace: sinon.stub().returns({
-        ns: Buffer.from('test'),
-        storage: {
-          getAlias: sinon.stub().resolves(null),
-          hasCore: sinon.stub().resolves(false)
-        }
-      }),
       swarm: { flush: sinon.stub().resolves() },
       suspend: sinon.stub().resolves(),
       resume: sinon.stub().resolves()
@@ -110,7 +168,7 @@ describe('Hyper protocol handler', function () {
     const module = await esmock('../../src/protocols/hyper-handler.js', {
       electron: {
         app: {
-          getPath: () => 'test-userdata'
+          getPath: () => TEST_USER_DATA
         },
         safeStorage: {}
       },
@@ -137,6 +195,10 @@ describe('Hyper protocol handler', function () {
         initChat,
         handleChatRequest,
         CHAT_STORAGE: 'test-chat-store'
+      }
+    }, {
+      hyperdrive: {
+        default: FakeHyperdrive
       }
     })
 
@@ -351,8 +413,9 @@ describe('Hyper protocol handler', function () {
     expect(publicResponse.status).to.equal(200)
     expect(privateResponse.status).to.equal(200)
     expect(sdk.getDrive.calledWithExactly('public-file', { autoJoin: true })).to.equal(true)
-    expect(privateSdk.getDrive.calledWithExactly('private-file', { autoJoin: false })).to.equal(true)
     expect(sdk.getDrive.calledWith('private-file')).to.equal(false)
+    expect(privateSdk.getDrive.called).to.equal(false)
+    expect(privateSdk.corestore.namespace.calledWithExactly('private-file')).to.equal(true)
   })
 
   it('uses a distinct Hyperdrive for each upload name', async function () {
@@ -372,11 +435,12 @@ describe('Hyper protocol handler', function () {
 
     expect(sdk.getDrive.calledWithExactly('first-file', { autoJoin: true })).to.equal(true)
     expect(sdk.getDrive.calledWithExactly('second-file', { autoJoin: true })).to.equal(true)
-    expect(privateSdk.getDrive.calledWithExactly('first-file', { autoJoin: false })).to.equal(true)
-    expect(privateSdk.getDrive.calledWithExactly('second-file', { autoJoin: false })).to.equal(true)
+    expect(privateSdk.getDrive.called).to.equal(false)
+    expect(privateSdk.corestore.namespace.calledWithExactly('first-file')).to.equal(true)
+    expect(privateSdk.corestore.namespace.calledWithExactly('second-file')).to.equal(true)
   })
 
-  it('keeps the private runtime outside LAN discovery and Corestore replication', async function () {
+  it('runs the private runtime announced and replicating under LAN isolation', async function () {
     const { module, createSDK, attachHyperSDK, sdk, privateSdk } = await loadHyperModule()
 
     await module.createHandler({ storage: path.join('profiles', 'hyper') })
@@ -384,41 +448,45 @@ describe('Hyper protocol handler', function () {
     expect(createSDK.callCount).to.equal(2)
     expect(createSDK.secondCall.args[0]).to.include({
       storage: path.join('profiles', 'hyper-private'),
-      autoJoin: false,
-      doReplicate: false
+      autoJoin: true,
+      doReplicate: true
     })
     expect(attachHyperSDK.calledOnceWithExactly(sdk, {})).to.equal(true)
     expect(attachHyperSDK.calledWith(privateSdk)).to.equal(false)
   })
 
-  it('routes private drive writes and reads only through the isolated runtime', async function () {
+  it('routes private drive writes and reads through the encrypted runtime', async function () {
     const { module, fetchStub, privateFetchStub } = await loadHyperModule()
     const handler = await module.createHandler({ storage: 'test-private-routing' })
     const keyResponse = await handler(new Request(
       'hyper://localhost/?key=private-file&visibility=private',
       { method: 'POST' }
     ))
+    expect(keyResponse.status).to.equal(200)
     const privateDriveUrl = await keyResponse.text()
     const privateFileUrl = new URL('/private-file.txt', privateDriveUrl).href
 
-    await handler(new Request(privateFileUrl, { method: 'PUT', body: 'private' }))
-    await handler(new Request(privateFileUrl))
+    const putResponse = await handler(new Request(privateFileUrl, { method: 'PUT', body: 'private' }))
+    const getResponse = await handler(new Request(privateFileUrl))
 
-    expect(privateFetchStub.callCount).to.equal(2)
+    expect(putResponse.status).to.equal(200)
+    expect(getResponse.status).to.equal(200)
+    expect(await getResponse.text()).to.equal('private')
+    expect(privateFetchStub.called).to.equal(false)
     expect(fetchStub.called).to.equal(false)
   })
 
-  it('restores private routing from the isolated Corestore after restart', async function () {
+  it('serves private drives from the encrypted runtime after restart', async function () {
     const { module, fetchStub, privateFetchStub, privateSdk } = await loadHyperModule()
     privateSdk.corestore.storage.hasCore.resolves(true)
     const handler = await module.createHandler({ storage: 'test-private-restore' })
 
     const response = await handler(new Request(
-      `hyper://${'a'.repeat(52)}/private-file.txt`
+      `hyper://${'a'.repeat(52)}/`
     ))
 
     expect(response.status).to.equal(200)
-    expect(privateFetchStub.calledOnce).to.equal(true)
+    expect(privateFetchStub.called).to.equal(false)
     expect(fetchStub.called).to.equal(false)
   })
 
@@ -436,6 +504,60 @@ describe('Hyper protocol handler', function () {
     expect(saveHyperCache.called).to.equal(false)
     expect(rememberPrivateHyperdrive.calledOnce).to.equal(true)
     expect(rememberPrivateHyperdrive.firstCall.args[1]).to.include({ name: 'private-file' })
+  })
+
+  it('creates the encryption key and announces new private drives', async function () {
+    const { module, privateSdk, rememberPrivateHyperdrive } = await loadHyperModule()
+    const handler = await module.createHandler({ storage: 'test-private-flag' })
+
+    const response = await handler(new Request(
+      'hyper://localhost/?key=new-private-flag&visibility=private',
+      { method: 'POST' }
+    ))
+
+    expect(response.status).to.equal(200)
+    expect(privateSdk.joinCore.calledOnce).to.equal(true)
+    expect(rememberPrivateHyperdrive.calledOnce).to.equal(true)
+    expect(rememberPrivateHyperdrive.firstCall.args[1]).to.include({ encrypted: true })
+
+    const keyFile = path.join(TEST_USER_DATA, 'private-drive-key.json')
+    const keyContents = JSON.parse(await readFile(keyFile, 'utf8'))
+    expect(typeof keyContents.key).to.equal('string')
+    expect(/^[a-f0-9]{64}$/i.test(keyContents.key)).to.equal(true)
+  })
+
+  it('serves pre-key private drives unencrypted and device-only', async function () {
+    const { module, privateSdk, fetchStub, privateFetchStub } = await loadHyperModule()
+    privateSdk.corestore.storage.hasCore.resolves(true)
+    const legacyUrl = `hyper://${'a'.repeat(52)}/`
+    await writeFile(
+      path.join(TEST_USER_DATA, 'privateHyperdrives.json'),
+      JSON.stringify([{ name: 'old-drive', url: legacyUrl, timestamp: 1, encrypted: false }])
+    )
+    const handler = await module.createHandler({ storage: 'test-legacy-private' })
+
+    const response = await handler(new Request(legacyUrl))
+
+    expect(response.status).to.equal(200)
+    expect(privateSdk.joinCore.called).to.equal(false)
+    expect(privateFetchStub.called).to.equal(false)
+    expect(fetchStub.called).to.equal(false)
+  })
+
+  it('announces private drives that carry the encryption flag', async function () {
+    const { module, privateSdk } = await loadHyperModule()
+    privateSdk.corestore.storage.hasCore.resolves(true)
+    const privateUrl = `hyper://${'a'.repeat(52)}/`
+    await writeFile(
+      path.join(TEST_USER_DATA, 'privateHyperdrives.json'),
+      JSON.stringify([{ name: 'encrypted-drive', url: privateUrl, timestamp: 1, encrypted: true }])
+    )
+    const handler = await module.createHandler({ storage: 'test-encrypted-private' })
+
+    const response = await handler(new Request(privateUrl))
+
+    expect(response.status).to.equal(200)
+    expect(privateSdk.joinCore.calledOnce).to.equal(true)
   })
 
   it('rejects unsupported upload visibility before opening a drive', async function () {
