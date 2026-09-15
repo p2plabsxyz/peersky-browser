@@ -257,7 +257,9 @@ export async function createBackupZip (userDataDir, outPath, options = {}) {
     }
 
     if (includePrivate) {
-      const keyBytes = await buildPrivateDriveKeyExport(userDataDir)
+      const keyBytes = await buildPrivateDriveKeyExport(userDataDir, Date.now(), {
+        mobileSafe: isIdentityTransfer && targetDeviceType === 'mobile'
+      })
       if (keyBytes) {
         manifest.files[PRIVATE_DRIVE_KEY_FILE] = `sha256:${hashPrivateDriveKeyExport(keyBytes)}`
         archive.append(keyBytes, { name: PRIVATE_DRIVE_KEY_FILE })

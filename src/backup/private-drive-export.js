@@ -5,7 +5,9 @@ import { getOrCreatePrivateDriveKey } from './private-drive-key.js'
 
 export const PRIVATE_DRIVE_KEY_FILE = 'private-drive-key.json'
 
-export async function buildPrivateDriveKeyExport (userDataDir, now = Date.now()) {
+export async function buildPrivateDriveKeyExport (userDataDir, now = Date.now(), options = {}) {
+  const { mobileSafe } = options
+
   let entries
   try {
     entries = await listPrivateHyperdrives(userDataDir)
@@ -34,7 +36,7 @@ export async function buildPrivateDriveKeyExport (userDataDir, now = Date.now())
     encrypted: !deviceOnly,
     announce: !deviceOnly,
     source: 'desktop',
-    entries: drives
+    entries: mobileSafe ? undefined : drives
   }, null, 2))
 }
 
