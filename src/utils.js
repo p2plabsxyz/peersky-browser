@@ -9,11 +9,20 @@ const BT_PREFIX = 'bt://'
 const BITTORRENT_PREFIX = 'bittorrent://'
 const MAGNET_PREFIX = 'magnet:'
 
+// Schemes the browser serves. Others may still be handled by the OS.
+const NAVIGABLE_SCHEMES = new Set([
+  'http:', 'https:', 'about:', 'file:', 'blob:', 'data:',
+  'peersky:', 'browser:', 'ipfs:', 'ipns:', 'pubsub:',
+  'hyper:', 'hs:', 'web3:', 'bittorrent:', 'bt:', 'magnet:'
+])
+
 // Utility functions
 function isURL (string) {
   try {
-    const u = new URL(string) // eslint-disable-line no-unused-vars, no-new
-    return true
+    const { protocol } = new URL(string)
+    if (NAVIGABLE_SCHEMES.has(protocol)) return true
+    // An unfamiliar scheme with a space is a typed phrase, not an address.
+    return !/\s/.test(string)
   } catch {
     return false
   }
@@ -216,6 +225,7 @@ export {
   BITTORRENT_PREFIX,
   MAGNET_PREFIX,
   isURL,
+  NAVIGABLE_SCHEMES,
   looksLikeDomain,
   isLoopbackAddress,
   makeHttp,
