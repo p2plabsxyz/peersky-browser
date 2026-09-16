@@ -652,6 +652,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       updateNavigationButtons(tabBar)
     })
 
+    tabBar.addEventListener('zoom-changed', (e) => nav?.setZoomIndicator(e.detail.percent))
+    tabBar.addEventListener('tab-selected', () => tabBar.emitZoomChanged())
+
     // Check if we need to navigate to a specific URL initially
 
     // Setup error handling

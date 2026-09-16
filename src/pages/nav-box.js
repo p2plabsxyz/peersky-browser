@@ -114,7 +114,13 @@ class NavBox extends HTMLElement {
     autocompleteDropdown.className = 'url-autocomplete-dropdown'
     autocompleteDropdown.id = 'url-autocomplete'
 
+    const zoomIndicator = document.createElement('span')
+    zoomIndicator.id = 'zoom-indicator'
+    zoomIndicator.className = 'zoom-indicator'
+    zoomIndicator.hidden = true
+
     urlBarWrapper.appendChild(urlInput)
+    urlBarWrapper.appendChild(zoomIndicator)
     urlBarWrapper.appendChild(qrButton)
     urlBarWrapper.appendChild(autocompleteDropdown)
     this.appendChild(urlBarWrapper)
@@ -765,6 +771,14 @@ class NavBox extends HTMLElement {
     try { return new URL(s) } catch {}
     try { return new URL('https://' + s) } catch {}
     return null
+  }
+
+  // Hidden at 100%, like other browsers.
+  setZoomIndicator (percent) {
+    const indicator = this.querySelector('#zoom-indicator')
+    if (!indicator) return
+    indicator.textContent = `${percent}%`
+    indicator.hidden = percent === 100
   }
 
   async updateSearchPlaceholder () {

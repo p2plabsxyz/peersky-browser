@@ -36,6 +36,7 @@ class TabBar extends HTMLElement {
     this.activeTabId = null
     this.tabCounter = 0
     this.webviews = new Map() // Store webviews by tab ID
+    this.zoomLevels = new Map() // Zoom level by tab ID
     this._tabsStateTimer = null // Pending coalesced saveTabsState write
     this.webviewContainer = null // Will be set by connectWebviewContainer
     this.pinnedTabs = new Set() // Track pinned tabs
@@ -223,6 +224,7 @@ class TabBar extends HTMLElement {
     // Destroy webview
     webview.remove()
     this.webviews.delete(tabId)
+    this.zoomLevels.delete(tabId)
 
     // Unregister extension cleanly (reuse the already-captured id)
     if (webContentsId != null) {
@@ -942,6 +944,7 @@ class TabBar extends HTMLElement {
     let pendingWcId = null
     let registering = false
     webview.addEventListener('dom-ready', () => {
+      this.applyZoomForTab(tabId)
       // Ensure this webview is visible if it's the active tab
       if (this.activeTabId === tabId) {
         webview.style.display = 'flex'
@@ -1223,6 +1226,7 @@ class TabBar extends HTMLElement {
 
       webview.remove()
       this.webviews.delete(tabId)
+      this.zoomLevels.delete(tabId)
     }
 
     // Remove tab from group
@@ -1385,6 +1389,7 @@ class TabBar extends HTMLElement {
       }
 
       const newWebview = this.webviews.get(tabId)
+      this.applyZoomForTab(tabId)
 
       // Keep extension system in sync with tab switches so popup UIs
       // can resolve the active tab reliably.
@@ -1693,6 +1698,57 @@ class TabBar extends HTMLElement {
     const failed = failedUrlBehindErrorPage(webview)
     if (failed) this.navigateActiveTab(failed)
     else webview.reload()
+  }
+
+  // Zoom the page, not the shell, so the tab bar and address bar stay put.
+  // Limits are roughly 25% to 500%, matching other browsers.
+  // The zoom calls throw until the webview is dom-ready, and dom-ready reapplies
+  // the tab's level, so it is safe to give up here.
+  zoomActiveTab (step) {
+    const webview = this.getActiveWebview()
+    if (!webview) return
+    try {
+      const level = Math.max(-7, Math.min(9, webview.getZoomLevel() + step))
+      this.zoomLevels.set(this.activeTabId, level)
+      webview.setZoomLevel(level)
+    } catch (_) {
+      return
+    }
+    this.emitZoomChanged()
+  }
+
+  resetActiveTabZoom () {
+    const webview = this.getActiveWebview()
+    if (!webview) return
+    this.zoomLevels.set(this.activeTabId, 0)
+    try {
+      webview.setZoomLevel(0)
+    } catch (_) {
+      return
+    }
+    this.emitZoomChanged()
+  }
+
+  // Chromium scopes zoom to the origin, so every peersky://p2p app shared one
+  // level. Only one webview is on screen at a time, so reapplying the tab's own
+  // level as it is shown keeps them independent.
+  applyZoomForTab (tabId) {
+    const webview = this.webviews.get(tabId)
+    if (!webview) return
+    const level = this.zoomLevels.get(tabId) || 0
+    try {
+      if (webview.getZoomLevel() !== level) webview.setZoomLevel(level)
+    } catch (_) {}
+  }
+
+  // Zoom is per tab, so the indicator follows whichever tab is showing.
+  emitZoomChanged () {
+    const webview = this.getActiveWebview()
+    let percent = 100
+    try {
+      if (webview) percent = Math.round(webview.getZoomFactor() * 100)
+    } catch (_) {}
+    this.dispatchEvent(new CustomEvent('zoom-changed', { detail: { percent } }))
   }
 
   stopActiveTab () {
@@ -2017,6 +2073,7 @@ class TabBar extends HTMLElement {
       if (webview) {
         webview.remove()
         this.webviews.delete(tabId)
+        this.zoomLevels.delete(tabId)
       }
 
       this.pinnedTabs.delete(tabId)
@@ -2072,6 +2129,7 @@ class TabBar extends HTMLElement {
     if (webview) {
       webview.remove()
       this.webviews.delete(tabId)
+      this.zoomLevels.delete(tabId)
     }
 
     // Remove from pinned tabs if it was pinned

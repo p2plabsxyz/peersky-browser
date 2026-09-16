@@ -3,6 +3,17 @@ import { createLogger } from './logger.js'
 import { goBackActiveTab, goForwardActiveTab } from './history-nav.js'
 const log = createLogger('actions')
 
+// A null step means reset.
+function zoomActiveTab (step) {
+  const focusedWindow = BrowserWindow.getFocusedWindow()
+  if (!focusedWindow) return
+  const call = step === null ? 'resetActiveTabZoom()' : `zoomActiveTab(${step})`
+  focusedWindow.webContents.executeJavaScript(`{
+    const tabBar = document.querySelector('#tabbar');
+    if (tabBar && typeof tabBar.zoomActiveTab === 'function') tabBar.${call};
+  }`).catch((err) => log.error('Zoom action failed:', err))
+}
+
 export function createActions (windowManager) {
   const actions = {
     OpenDevTools: {
@@ -139,6 +150,28 @@ export function createActions (windowManager) {
             .catch((err) => log.error('Reload action script failed:', err))
         }
       }
+    },
+    ZoomIn: {
+      label: 'Zoom In',
+      accelerator: 'CommandOrControl+Plus',
+      click: () => zoomActiveTab(0.5)
+    },
+    // Most keyboards put + behind shift, so bind the bare key too.
+    ZoomInEquals: {
+      label: 'Zoom In',
+      accelerator: 'CommandOrControl+=',
+      visible: false,
+      click: () => zoomActiveTab(0.5)
+    },
+    ZoomOut: {
+      label: 'Zoom Out',
+      accelerator: 'CommandOrControl+-',
+      click: () => zoomActiveTab(-0.5)
+    },
+    ActualSize: {
+      label: 'Actual Size',
+      accelerator: 'CommandOrControl+0',
+      click: () => zoomActiveTab(null)
     },
     Print: {
       label: 'Print...',
@@ -397,6 +430,11 @@ export function createMenuTemplate (windowManager) {
       label: 'View',
       submenu: [
         { ...actions.Reload },
+        { type: 'separator' },
+        { ...actions.ZoomIn },
+        { ...actions.ZoomInEquals },
+        { ...actions.ZoomOut },
+        { ...actions.ActualSize },
         { type: 'separator' },
         { ...actions.FullScreen },
         { ...actions.OpenDevTools }
