@@ -266,11 +266,13 @@ class TabBar extends HTMLElement {
         if (webContentsId == null) return
 
         restored = true
-        await ipcRenderer.invoke('restore-navigation-history', {
+        const result = await ipcRenderer.invoke('restore-navigation-history', {
           webContentsId,
           entries,
           activeIndex
         })
+        const tab = this.tabs.find(t => t.id === tabId)
+        if (result?.success && tab) tab.savedNavigation = null
 
         this.dispatchEvent(new CustomEvent('navigation-state-changed', {
           detail: { tabId }
@@ -282,9 +284,6 @@ class TabBar extends HTMLElement {
     }
 
     webview.addEventListener('dom-ready', attemptRestore, { once: true })
-    setTimeout(() => {
-      attemptRestore()
-    }, 300)
   }
 
   forceActivateCurrentTab () {
@@ -418,7 +417,10 @@ class TabBar extends HTMLElement {
       // For isolated windows, ONLY create the specified tab and don't load any persisted tabs
       const tabUrl = singleTabUrl || initialUrl
       const tabTitle = singleTabTitle || searchParams.get('title') || 'New Tab'
-      this.addTab(tabUrl, tabTitle)
+      const navigation = JSON.parse(searchParams.get('singleTabNavigation') || 'null')
+      const tabId = `tab-${this.tabCounter++}`
+      this.addTabWithId(tabId, tabUrl, tabTitle, { navigation })
+      this.selectTab(tabId, true)
       // Don't call saveTabsState() here to avoid overwriting the main window's tabs
       return
     }
@@ -642,11 +644,6 @@ class TabBar extends HTMLElement {
     persistedData.tabs.forEach(tabData => {
       const tabId = this.addTabWithId(tabData.id, tabData.url, tabData.title, tabData)
 
-      if (tabData.navigation && tabData.navigation.entries?.length) {
-        const webview = this.webviews.get(tabId)
-        this.restoreNavigationForWebview(tabId, webview, tabData.navigation, 'restored tab')
-      }
-
       // Restore pinned state
       if (tabData.isPinned) {
         this.pinnedTabs.add(tabId)
@@ -793,9 +790,8 @@ class TabBar extends HTMLElement {
 
     // Create webview for this tab if container exists and NOT suspended
     if (this.webviewContainer && !tabData.isSuspended) {
-      const webview = this.createWebviewForTab(tabId, url)
-
-      if (tabData.navigation && tabData.navigation.entries?.length) {
+      const webview = this.createWebviewForTab(tabId, url, tabData.navigation)
+      if (tabData.navigation?.entries?.length) {
         this.restoreNavigationForWebview(tabId, webview, tabData.navigation, 'new tab')
       }
     } else if (tabData.isSuspended) {
@@ -946,7 +942,7 @@ class TabBar extends HTMLElement {
   }
 
   // Create a new webview for a tab
-  createWebviewForTab (tabId, url) {
+  createWebviewForTab (tabId, url, navigation = null) {
     // Create webview element
     const webview = document.createElement('webview')
     webview.id = `webview-${tabId}`
@@ -958,8 +954,15 @@ class TabBar extends HTMLElement {
     const preloadURL = pathToFileURL(preloadPath).href
     webview.setAttribute('preload', preloadURL)
     webview.setAttribute('webpreferences', 'contextIsolation=yes,nativeWindowOpen=yes,autoplayPolicy=document-user-activation-required')
-    // Set important attributes
-    webview.setAttribute('src', url)
+    // History can only be restored before the first load, so a tab that has
+    // some starts on a placeholder that main swaps for the restored history.
+    let src = url
+    if (navigation?.entries?.length) {
+      const token = `${tabId}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+      require('electron').ipcRenderer.sendSync('queue-navigation-restore', { token, entries: navigation.entries, index: navigation.activeIndex, url })
+      src = `about:blank#peersky-restore=${token}`
+    }
+    webview.setAttribute('src', src)
     webview.setAttribute('allowpopups', '')
     // webview.setAttribute("webpreferences", "backgroundThrottling=false");
     // webview.setAttribute("nodeintegration", "");
@@ -1394,7 +1397,7 @@ class TabBar extends HTMLElement {
       if (tab) {
         if (tab.isSuspended) {
           tab.isFallbackNavigating = true
-          const wokenWebview = this.createWebviewForTab(tabId, tab.url)
+          const wokenWebview = this.createWebviewForTab(tabId, tab.url, tab.savedNavigation)
 
           if (tab.savedNavigation && tab.savedNavigation.entries?.length) {
             this.restoreNavigationForWebview(tabId, wokenWebview, tab.savedNavigation, 'sleeping tab')
@@ -2178,7 +2181,7 @@ class TabBar extends HTMLElement {
     if (!tab) return
 
     const { ipcRenderer } = require('electron')
-    ipcRenderer.send('new-window-with-tab', { url: tab.url, title: tab.title, isolate: true })
+    ipcRenderer.send('new-window-with-tab', { url: tab.url, title: tab.title, navigation: tab.navigation, isolate: true })
     this.dispatchEvent(new CustomEvent('tab-moved-to-new-window', {
       detail: { tabId, url: tab.url, title: tab.title }
     }))

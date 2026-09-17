@@ -12,6 +12,7 @@ import extensionManager from './extensions/index.js'
 import { createCoalescedTask } from './coalesce.js'
 import { goBackActiveTab, goForwardActiveTab } from './history-nav.js'
 import { registerTabDragPreview } from './tab-drag-preview.js'
+import { watchHost } from './navigation-restore.js'
 
 const log = createLogger('window-manager')
 
@@ -144,10 +145,6 @@ class WindowManager {
   }
 
   registerListeners () {
-    ipcMain.on('new-window', () => {
-      this.open()
-    })
-
     // Handles tearing off a single tab into a new window
     ipcMain.on('new-window-with-tab', (event, data) => {
       log.info('Creating new window for torn off tab:', data.url)
@@ -155,7 +152,8 @@ class WindowManager {
         isolate: true,
         singleTab: {
           url: data.url,
-          title: data.title
+          title: data.title,
+          navigation: data.navigation
         }
       })
     })
@@ -1048,6 +1046,7 @@ class PeerskyWindow {
 
     this.id = this.window.webContents.id
     this.windowId = windowId || randomUUID()
+    watchHost(this.window.webContents)
     this.savedTabs = savedTabs // Store saved tabs for restoration
 
     const loadURL = path.join(__dirname, 'pages', 'index.html')
@@ -1062,7 +1061,8 @@ class PeerskyWindow {
         ...(isolate && { isolate: 'true' }),
         ...(singleTab && {
           singleTabUrl: singleTab.url,
-          singleTabTitle: singleTab.title
+          singleTabTitle: singleTab.title,
+          ...(singleTab.navigation && { singleTabNavigation: JSON.stringify(singleTab.navigation) })
         }),
         ...(options.splitLeftUrl && {
           splitLeftUrl: options.splitLeftUrl,

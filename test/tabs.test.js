@@ -8,6 +8,8 @@ import esmock from 'esmock'
 const tabBar = await readFile(new URL('../src/pages/tab-bar.js', import.meta.url), 'utf8')
 const windows = await readFile(new URL('../src/window-manager.js', import.meta.url), 'utf8')
 const renderer = await readFile(new URL('../src/renderer.js', import.meta.url), 'utf8')
+const main = await readFile(new URL('../src/main.js', import.meta.url), 'utf8')
+const vertical = await readFile(new URL('../src/pages/vertical-tabs.js', import.meta.url), 'utf8')
 
 // The preview module creates windows, so electron is stubbed out.
 const preview = await esmock.strict('../src/tab-drag-preview.js', {
@@ -172,5 +174,97 @@ describe('media autoplay', function () {
     const prefs = tabBar.match(/setAttribute\('webpreferences', '([^']+)'\)/)
     expect(prefs, 'the webview sets its web preferences').to.not.equal(null)
     expect(prefs[1].split(',')).to.include('autoplayPolicy=document-user-activation-required')
+  })
+})
+
+// The restore handler was a stub, so a restored or moved tab had no history.
+// Electron can only restore before a guest's first load, so the guest starts
+// on a placeholder src that main blanks as it attaches.
+describe('navigation history', function () {
+  async function loadModule () {
+    const handlers = {}
+    const mod = await esmock.strict('../src/navigation-restore.js', {
+      electron: { ipcMain: { on: (ch, fn) => { handlers[ch] = fn }, handle: (ch, fn) => { handlers[ch] = fn } } },
+      '../src/logger.js': { createLogger: () => ({ warn () {} }) }
+    })
+    mod.registerNavigationRestore()
+    return { mod, handlers }
+  }
+
+  function fakeHost () {
+    const listeners = {}
+    return { on: (ev, fn) => { listeners[ev] = fn }, emit: (ev, ...args) => listeners[ev](...args) }
+  }
+
+  it('blanks the placeholder src and restores the queued history as the guest attaches', async function () {
+    const { mod, handlers } = await loadModule()
+    const host = fakeHost()
+    mod.watchHost(host)
+    handlers['queue-navigation-restore']({}, { token: 't1', entries: [{ url: 'a' }, { url: 'b', title: 'B' }], index: 1, url: 'b' })
+    const params = { src: mod.PLACEHOLDER + 't1' }
+    host.emit('will-attach-webview', {}, {}, params)
+    expect(params.src).to.equal('')
+    let restored
+    const guest = { id: 7, isDestroyed: () => false, once () {}, navigationHistory: { restore: async (opts) => { restored = opts } } }
+    await host.emit('did-attach-webview', {}, guest)
+    expect(restored).to.deep.equal({ entries: [{ url: 'a', title: '' }, { url: 'b', title: 'B' }], index: 1 })
+    expect(await handlers['restore-navigation-history']({}, { webContentsId: 7 })).to.deep.equal({ success: true })
+  })
+
+  it('loads the tab url itself when the restore fails, and leaves other guests alone', async function () {
+    const { mod, handlers } = await loadModule()
+    const host = fakeHost()
+    mod.watchHost(host)
+    handlers['queue-navigation-restore']({}, { token: 't2', entries: [{ url: 'a' }], index: 0, url: 'a' })
+    host.emit('will-attach-webview', {}, {}, { src: mod.PLACEHOLDER + 't2' })
+    let loaded
+    const guest = { id: 8, isDestroyed: () => false, once () {}, loadURL: async (u) => { loaded = u }, navigationHistory: { restore: async () => { throw new Error('nope') } } }
+    await host.emit('did-attach-webview', {}, guest)
+    expect(loaded).to.equal('a')
+    expect(await handlers['restore-navigation-history']({}, { webContentsId: 8 })).to.deep.equal({ success: false })
+    const plain = { src: 'https://example.test' }
+    host.emit('will-attach-webview', {}, {}, plain)
+    expect(plain.src).to.equal('https://example.test')
+  })
+
+  it('is queued by the tab bar before the placeholder src is set, and travels with a torn-off tab', function () {
+    const factory = tabBar.slice(tabBar.indexOf('createWebviewForTab (tabId, url, navigation'), tabBar.indexOf("webview.setAttribute('allowpopups'"))
+    expect(factory.indexOf("sendSync('queue-navigation-restore'")).to.be.below(factory.indexOf("webview.setAttribute('src', src)"))
+    expect(tabBar).to.contain("send('new-window-with-tab', { url: tab.url, title: tab.title, navigation: tab.navigation, isolate: true })")
+    expect(windows).to.contain('singleTabNavigation: JSON.stringify(singleTab.navigation)')
+    expect(tabBar).to.contain('if (result?.success && tab) tab.savedNavigation = null')
+  })
+})
+
+// The same IPC was handled in main.js and in the window manager, so one send
+// opened two windows.
+describe('opening a window over IPC', function () {
+  it('has exactly one handler', function () {
+    const count = (main.match(/ipcMain\.on\('new-window'/g) || []).length + (windows.match(/ipcMain\.on\('new-window'/g) || []).length
+    expect(count).to.equal(1)
+  })
+})
+
+// VerticalTabs.addTabWithId dropped its fourth parameter, so in vertical mode a
+// tab lost its history and its suspended state: the bug that made moving a tab
+// between windows lose history for anyone not using horizontal tabs.
+describe('the vertical tab bar', function () {
+  const methods = [...vertical.matchAll(/^ {2}([a-zA-Z_][\w]*) \(([^)]*)\) \{([\s\S]*?)^ {2}\}/gm)]
+
+  it('overrides at least one base method, so this check is live', function () {
+    expect(methods.filter(m => m[3].includes(`super.${m[1]}(`)).length).to.be.above(0)
+  })
+
+  it('never drops a parameter the base method declares', function () {
+    const dropped = []
+    for (const [, name, , body] of methods) {
+      const call = body.match(new RegExp(`super\\.${name}\\(([^)]*)\\)`))
+      const base = tabBar.match(new RegExp(`^ {2}${name} \\(([^)]*)\\)`, 'm'))
+      if (!call || !base) continue
+      const declared = base[1].trim() ? base[1].split(/,(?![^{]*})/).length : 0
+      const forwarded = call[1].trim() ? call[1].split(',').length : 0
+      if (forwarded < declared) dropped.push(`${name}: base takes ${declared}, override forwards ${forwarded}`)
+    }
+    expect(dropped).to.deep.equal([])
   })
 })
