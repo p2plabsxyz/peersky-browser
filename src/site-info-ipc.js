@@ -85,6 +85,7 @@ export function setupSiteInfoIpc (session) {
       connection: connectionFor(parsed.protocol),
       permissions,
       permissionMeta: MANAGED_PERMISSIONS,
+      canEditPermissions: originOk && parsed.origin !== 'unknown',
       cookies: {
         count: await cookieCount(session, parsed.href)
       }

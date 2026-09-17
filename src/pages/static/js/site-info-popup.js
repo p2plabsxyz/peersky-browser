@@ -5,7 +5,9 @@ export class SiteInfoPopup {
     this.isVisible = false
     this.targetButton = null
     this._originExpanded = false
+    this._openPermission = null
     this._info = null
+    this._pageUrl = ''
 
     this.hide = this.hide.bind(this)
     this.handleClickOutside = this.handleClickOutside.bind(this)
@@ -29,6 +31,14 @@ export class SiteInfoPopup {
         <p class="site-info-connection"></p>
         <p class="site-info-origin" hidden></p>
       </div>
+      <div class="site-info-permissions" hidden>
+        <div class="site-info-section-head">
+          <h3>Permissions</h3>
+          <p class="site-info-perm-summary"></p>
+        </div>
+        <div class="site-info-perm-list" role="list"></div>
+        <button type="button" class="site-info-reset-perms">Reset permissions</button>
+      </div>
     `
 
     document.body.appendChild(popup)
@@ -39,6 +49,8 @@ export class SiteInfoPopup {
     if (this.isVisible) return
     this.targetButton = targetButton
     this._originExpanded = false
+    this._openPermission = null
+    this._pageUrl = pageUrl || ''
 
     if (!this.popup) {
       this.popup = this.createPopup()
@@ -62,6 +74,8 @@ export class SiteInfoPopup {
     this.popup?.classList.remove('open')
     this.isVisible = false
     this._info = null
+    this._openPermission = null
+    this._pageUrl = ''
 
     document.removeEventListener('click', this.handleClickOutside)
     document.removeEventListener('keydown', this.handleKeyDown)
@@ -78,10 +92,13 @@ export class SiteInfoPopup {
 
   async refresh (pageUrl) {
     if (!this.popup || !this.isVisible) return
+    this._pageUrl = pageUrl || ''
+    this._openPermission = null
 
     if (!pageUrl) {
       this._info = null
       this.renderIdentity(null)
+      this.renderPermissions(null)
       return
     }
 
@@ -89,10 +106,12 @@ export class SiteInfoPopup {
       const info = await this.ipc.invoke('site-info-get', pageUrl)
       this._info = info?.ok ? info : null
       this.renderIdentity(this._info)
+      this.renderPermissions(this._info)
     } catch (err) {
       console.warn('[SiteInfoPopup] site-info-get failed:', err?.message || err)
       this._info = null
       this.renderIdentity(null)
+      this.renderPermissions(null)
     }
 
     requestAnimationFrame(() => this.positionPopup())
@@ -129,21 +148,134 @@ export class SiteInfoPopup {
     this.loadIcon(icon, info.connection?.secure ? 'shield-check.svg' : 'shield-x.svg')
   }
 
+  renderPermissions (info) {
+    const section = this.popup.querySelector('.site-info-permissions')
+    const list = this.popup.querySelector('.site-info-perm-list')
+    const summary = this.popup.querySelector('.site-info-perm-summary')
+    const resetBtn = this.popup.querySelector('.site-info-reset-perms')
+    if (!section || !list) return
+
+    if (!info?.canEditPermissions) {
+      section.hidden = true
+      list.innerHTML = ''
+      if (summary) summary.textContent = ''
+      return
+    }
+
+    section.hidden = false
+    const meta = Array.isArray(info.permissionMeta) ? info.permissionMeta : []
+    const states = info.permissions || {}
+
+    let allowed = 0
+    let blocked = 0
+    let asking = 0
+    for (const { id } of meta) {
+      const state = states[id] || 'ask'
+      if (state === 'allow') allowed++
+      else if (state === 'block') blocked++
+      else asking++
+    }
+    if (summary) {
+      summary.textContent = `${allowed} allowed · ${blocked} blocked · ${asking} ask`
+    }
+
+    list.innerHTML = meta.map(({ id, label }) => {
+      const state = states[id] || 'ask'
+      const open = this._openPermission === id
+      return `
+        <div class="site-info-perm-row${open ? ' is-open' : ''}" role="listitem" data-permission="${id}">
+          <button type="button" class="site-info-perm-toggle" data-permission="${id}">
+            <span class="site-info-perm-label">${this.escapeHtml(label)}</span>
+            <span class="site-info-perm-state">${stateLabel(state)}</span>
+          </button>
+          ${open ? permissionChooserHtml(id, state) : ''}
+        </div>
+      `
+    }).join('')
+
+    if (resetBtn) {
+      resetBtn.disabled = allowed + blocked === 0
+    }
+  }
+
   setupEventListeners () {
     if (!this.popup) return
 
     this.popup.addEventListener('click', (event) => {
       const hostBtn = event.target.closest('.site-info-host')
-      if (!hostBtn || hostBtn.disabled) return
-      event.preventDefault()
-      event.stopPropagation()
-      this._originExpanded = !this._originExpanded
-      const originEl = this.popup.querySelector('.site-info-origin')
-      if (originEl) {
-        originEl.hidden = !this._originExpanded
-        hostBtn.setAttribute('aria-expanded', String(this._originExpanded))
+      if (hostBtn && !hostBtn.disabled) {
+        event.preventDefault()
+        event.stopPropagation()
+        this._originExpanded = !this._originExpanded
+        const originEl = this.popup.querySelector('.site-info-origin')
+        if (originEl) {
+          originEl.hidden = !this._originExpanded
+          hostBtn.setAttribute('aria-expanded', String(this._originExpanded))
+        }
+        return
+      }
+
+      const choice = event.target.closest('.site-info-perm-choice')
+      if (choice) {
+        event.preventDefault()
+        event.stopPropagation()
+        this.setPermissionState(choice.dataset.permission, choice.dataset.state)
+        return
+      }
+
+      const toggle = event.target.closest('.site-info-perm-toggle')
+      if (toggle) {
+        event.preventDefault()
+        event.stopPropagation()
+        const id = toggle.dataset.permission
+        this._openPermission = this._openPermission === id ? null : id
+        this.renderPermissions(this._info)
+        requestAnimationFrame(() => this.positionPopup())
+        return
+      }
+
+      const resetBtn = event.target.closest('.site-info-reset-perms')
+      if (resetBtn) {
+        event.preventDefault()
+        event.stopPropagation()
+        this.resetPermissions()
       }
     })
+  }
+
+  async setPermissionState (permission, state) {
+    if (!this._info?.origin || !permission || !state) return
+
+    const result = await this.ipc.invoke('site-info-set-permission', {
+      origin: this._info.origin,
+      permission,
+      state
+    })
+    if (!result?.ok) {
+      console.warn('[SiteInfoPopup] set-permission failed:', result?.error)
+      return
+    }
+
+    if (!this._info.permissions) this._info.permissions = {}
+    this._info.permissions[permission] = state
+    this._openPermission = null
+    this.renderPermissions(this._info)
+    requestAnimationFrame(() => this.positionPopup())
+  }
+
+  async resetPermissions () {
+    if (!this._info?.origin) return
+
+    const result = await this.ipc.invoke(
+      'site-info-reset-permissions',
+      this._info.origin
+    )
+    if (!result?.ok) {
+      console.warn('[SiteInfoPopup] reset-permissions failed:', result?.error)
+      return
+    }
+
+    await this.refresh(this._pageUrl || this._info.url)
   }
 
   positionPopup () {
@@ -184,15 +316,27 @@ export class SiteInfoPopup {
 
   handleKeyDown (event) {
     if (!this.isVisible) return
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      this.hide()
-      this.targetButton?.focus()
+    if (event.key !== 'Escape') return
+    event.preventDefault()
+    if (this._openPermission) {
+      this._openPermission = null
+      this.renderPermissions(this._info)
+      requestAnimationFrame(() => this.positionPopup())
+      return
     }
+    this.hide()
+    this.targetButton?.focus()
   }
 
   _handleWindowBlur () {
     if (this.isVisible) this.hide()
+  }
+
+  escapeHtml (text) {
+    if (!text || typeof text !== 'string') return ''
+    const div = document.createElement('div')
+    div.textContent = text
+    return div.innerHTML
   }
 
   loadIcon (container, fileName) {
@@ -216,6 +360,27 @@ export class SiteInfoPopup {
     this.popup = null
     this.targetButton = null
   }
+}
+
+function stateLabel (state) {
+  if (state === 'allow') return 'Allow'
+  if (state === 'block') return 'Block'
+  return 'Ask'
+}
+
+function permissionChooserHtml (permission, current) {
+  return `
+    <div class="site-info-perm-chooser" role="group" aria-label="Permission options">
+      ${['ask', 'allow', 'block'].map(state => `
+        <button
+          type="button"
+          class="site-info-perm-choice${current === state ? ' is-selected' : ''}"
+          data-permission="${permission}"
+          data-state="${state}"
+        >${stateLabel(state)}</button>
+      `).join('')}
+    </div>
+  `
 }
 
 const SECURE_PROTOCOLS = new Set([

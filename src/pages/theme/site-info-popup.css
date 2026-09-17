@@ -2,6 +2,8 @@
   position: fixed;
   z-index: 1000;
   width: 320px;
+  max-height: min(480px, calc(100vh - 80px));
+  overflow-y: auto;
   background: var(--settings-card-bg);
   border: 1px solid var(--settings-border);
   border-radius: 8px;
@@ -84,6 +86,126 @@
   font-size: 12px;
   word-break: break-all;
   opacity: 0.85;
+}
+
+.site-info-permissions {
+  border-top: 1px solid var(--settings-border);
+  padding: 12px 0 10px;
+}
+
+.site-info-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 16px 8px;
+}
+
+.site-info-section-head h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  opacity: 0.7;
+}
+
+.site-info-perm-summary {
+  margin: 0;
+  font-size: 11px;
+  opacity: 0.55;
+  white-space: nowrap;
+}
+
+.site-info-perm-row {
+  display: flex;
+  flex-direction: column;
+}
+
+.site-info-perm-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  margin: 0;
+  padding: 8px 16px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.site-info-perm-toggle:hover,
+.site-info-perm-row.is-open .site-info-perm-toggle {
+  background: var(--browser-theme-background-hover, rgba(255, 255, 255, 0.05));
+}
+
+.site-info-perm-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.site-info-perm-state {
+  flex-shrink: 0;
+  font-size: 12px;
+  opacity: 0.65;
+}
+
+.site-info-perm-chooser {
+  display: flex;
+  gap: 6px;
+  padding: 0 16px 10px;
+}
+
+.site-info-perm-choice {
+  flex: 1;
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--settings-border);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.site-info-perm-choice:hover {
+  background: var(--browser-theme-background-hover, rgba(255, 255, 255, 0.05));
+}
+
+.site-info-perm-choice.is-selected {
+  border-color: var(--browser-theme-primary-highlight, #3b82f6);
+  background: var(--browser-theme-background-active, rgba(59, 130, 246, 0.12));
+}
+
+.site-info-reset-perms {
+  display: block;
+  width: calc(100% - 32px);
+  margin: 4px 16px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--settings-border);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.site-info-reset-perms:hover:not(:disabled) {
+  background: var(--browser-theme-background-hover, rgba(255, 255, 255, 0.05));
+}
+
+.site-info-reset-perms:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .inside-urlbar#site-info {
