@@ -63,7 +63,7 @@ export class SiteInfoPopup {
         </div>
         <div class="site-info-clear-confirm" hidden>
           <p class="site-info-clear-title"></p>
-          <p class="site-info-clear-detail">This will remove cookies, local storage, IndexedDB, cached data, and service workers for this site.</p>
+          <p class="site-info-clear-detail">This will remove cookies, local storage, IndexedDB, cached data, and service workers for this origin. Permissions are not changed.</p>
           <div class="site-info-clear-buttons">
             <button type="button" class="site-info-clear-cancel">Cancel</button>
             <button type="button" class="site-info-clear-confirm-btn">Clear</button>
@@ -253,7 +253,7 @@ export class SiteInfoPopup {
     let asking = 0
     for (const { id } of meta) {
       const state = states[id] || 'ask'
-      if (state === 'allow') allowed++
+      if (state === 'allow' || state === 'allow-session') allowed++
       else if (state === 'block') blocked++
       else asking++
     }
@@ -614,6 +614,7 @@ export class SiteInfoPopup {
 
 function stateLabel (state) {
   if (state === 'allow') return 'Allow'
+  if (state === 'allow-session') return 'Allow this session'
   if (state === 'block') return 'Block'
   return 'Ask'
 }
@@ -625,13 +626,18 @@ function privacyStatusLabel (ext) {
   return 'On'
 }
 
+function permissionChoiceSelected (current, state) {
+  if (state === 'allow') return current === 'allow' || current === 'allow-session'
+  return current === state
+}
+
 function permissionChooserHtml (permission, current) {
   return `
     <div class="site-info-perm-chooser" role="group" aria-label="Permission options">
       ${['ask', 'allow', 'block'].map(state => `
         <button
           type="button"
-          class="site-info-perm-choice${current === state ? ' is-selected' : ''}"
+          class="site-info-perm-choice${permissionChoiceSelected(current, state) ? ' is-selected' : ''}"
           data-permission="${permission}"
           data-state="${state}"
         >${stateLabel(state)}</button>

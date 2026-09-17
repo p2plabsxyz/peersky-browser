@@ -6,8 +6,10 @@ The shield control in the URL bar opens a panel for the active page: identity, p
 
 - **Identity** — host, connection label, expand for full origin
 - **Privacy** — observes preinstalled uBlock Origin and Consent Autodeny (on/off, toolbar badge when present). Not a built-in shields engine.
-- **Permissions** — Ask / Allow / Block for managed Electron permissions (`http`/`https` origins only)
+- **Permissions** — Ask / Allow / Block for managed Electron permissions (`http`/`https` origins only). Session grants from the prompt show as “Allow this session”.
 - **Site data** — cookie count and clear for that origin (does not reset permissions)
+
+`clipboard-sanitized-write` is granted silently (Chromium’s usual copy-on-gesture behavior) and is not listed in the panel.
 
 ## Pages and IPC
 
@@ -17,4 +19,4 @@ The shield control in the URL bar opens a panel for the active page: identity, p
 | Full page | `peersky://site-settings` |
 | Main process | `src/site-info-ipc.js`, `src/permissions.js` |
 
-IPC channels: `site-info-get`, `site-info-set-permission`, `site-info-reset-permissions`, `site-info-clear-data`, `site-info-get-cookies`.
+IPC channels: `site-info-get`, `site-info-set-permission`, `site-info-reset-permissions`, `site-info-clear-data`.

@@ -12,7 +12,6 @@ import { connectionFor } from './site-info-connection.js'
 const SITE_STORAGES = [
   'cookies',
   'localstorage',
-  'sessionstorage',
   'indexdb',
   'cachestorage',
   'serviceworkers'
@@ -125,7 +124,7 @@ export function setupSiteInfoIpc (session) {
       permissionMeta: MANAGED_PERMISSIONS,
       canEditPermissions: originOk && parsed.origin !== 'unknown',
       cookies: {
-        count: await cookieCount(session, parsed.href)
+        count: await cookieCount(session, parsed.origin + '/')
       },
       privacy: await getPrivacyStatus(event)
     }
@@ -152,28 +151,6 @@ export function setupSiteInfoIpc (session) {
       return { ok: true }
     } catch (err) {
       return { ok: false, error: err?.message || 'clear failed' }
-    }
-  })
-
-  ipcMain.handle('site-info-get-cookies', async (_event, pageUrl) => {
-    const parsed = parsePageUrl(pageUrl)
-    if (!parsed.ok) return { ok: false, error: parsed.error }
-    try {
-      const cookies = await session.cookies.get({ url: parsed.href })
-      return {
-        ok: true,
-        count: cookies.length,
-        cookies: cookies.slice(0, 100).map(c => ({
-          name: c.name,
-          domain: c.domain,
-          path: c.path,
-          secure: c.secure,
-          httpOnly: c.httpOnly,
-          session: c.session
-        }))
-      }
-    } catch (err) {
-      return { ok: false, error: err?.message || 'cookies failed' }
     }
   })
 }

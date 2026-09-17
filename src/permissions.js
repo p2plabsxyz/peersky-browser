@@ -73,7 +73,9 @@ function entryAllows (entry) {
 function getPermissionState (origin, permission) {
   if (!isManagedPermission(permission) || !isValidOrigin(origin)) return 'ask'
   const entry = permissionCache.get(cacheKey(origin, permission))
-  return entry ? entry.state : 'ask'
+  if (!entry) return 'ask'
+  if (entry.state === 'allow' && !entry.permanent) return 'allow-session'
+  return entry.state
 }
 
 export function getPermissionsForOrigin (origin) {
@@ -240,6 +242,7 @@ export async function setupPermissionHandler (session) {
   })
 
   session.setPermissionCheckHandler((_webContents, permission, requestingOrigin) => {
+    if (SILENT_GRANT_PERMISSIONS.has(permission)) return true
     if (!PROMPT_PERMISSIONS.has(permission)) return false
     let origin = 'unknown'
     try {

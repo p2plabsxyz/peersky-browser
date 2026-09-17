@@ -74,13 +74,15 @@ function render (info) {
   const permRows = document.getElementById('permission-rows')
   permRows.innerHTML = meta.map(({ id, label }) => {
     const state = states[id] || 'ask'
+    const allowSelected = state === 'allow' || state === 'allow-session'
+    const allowLabel = state === 'allow-session' ? 'Allow this session' : 'Allow'
     return `
       <div class="setting-row">
         <div class="setting-label">${escapeText(label)}</div>
         <div class="setting-control">
           <select class="site-settings-perm-select" data-permission="${escapeText(id)}">
             <option value="ask"${state === 'ask' ? ' selected' : ''}>Ask</option>
-            <option value="allow"${state === 'allow' ? ' selected' : ''}>Allow</option>
+            <option value="allow"${allowSelected ? ' selected' : ''}>${allowLabel}</option>
             <option value="block"${state === 'block' ? ' selected' : ''}>Block</option>
           </select>
         </div>
