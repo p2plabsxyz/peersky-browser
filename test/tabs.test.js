@@ -212,6 +212,13 @@ describe('navigation history', function () {
     expect(await handlers['restore-navigation-history']({}, { webContentsId: 7 })).to.deep.equal({ success: true })
   })
 
+  it('forgets a queued restore that nothing ever claims', async function () {
+    const preview = await readFile(new URL('../src/navigation-restore.js', import.meta.url), 'utf8')
+    const queue = preview.slice(preview.indexOf("'queue-navigation-restore'"), preview.indexOf("'restore-navigation-history'"))
+    expect(queue).to.contain('setTimeout(() => pending.delete(token), 30000)')
+    expect(queue).to.contain('if (expiry.unref) expiry.unref()')
+  })
+
   it('loads the tab url itself when the restore fails, and leaves other guests alone', async function () {
     const { mod, handlers } = await loadModule()
     const host = fakeHost()

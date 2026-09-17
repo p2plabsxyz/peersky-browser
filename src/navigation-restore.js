@@ -14,6 +14,9 @@ const results = new Map() // guest webContents id -> Promise<restored?>
 export function registerNavigationRestore () {
   ipcMain.on('queue-navigation-restore', (event, { token, entries, index, url }) => {
     pending.set(token, { entries, index, url })
+    // Nothing claims the token if the tab goes before its webview attaches.
+    const expiry = setTimeout(() => pending.delete(token), 30000)
+    if (expiry.unref) expiry.unref()
     event.returnValue = true
   })
 
