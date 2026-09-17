@@ -158,7 +158,7 @@ describe('switching the tab layout', function () {
   it('retires the old bar so it can never persist stale state', function () {
     expect(onSwitch).to.contain('oldBar.retire()')
     expect(tabBar).to.contain('if (this._retired || this._tabsStateTimer) return')
-    expect(tabBar).to.match(/writeTabsStateNow \(\) \{\n\s+if \(this\._retired\) return/)
+    expect(tabBar).to.match(/writeTabsStateNow \(\) \{\s+if \(this\._retired\) return/)
     const retire = tabBar.slice(tabBar.indexOf('retire ()'), tabBar.indexOf('// Restore tabs from persisted data'))
     expect(retire).to.contain('this.tabs = []')
     expect(retire).to.contain('this.webviews = new Map()')

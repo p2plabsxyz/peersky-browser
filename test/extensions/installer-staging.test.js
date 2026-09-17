@@ -7,11 +7,12 @@ import path from 'path'
 import { createWriteStream } from 'fs'
 import { mkdtemp, mkdir, readdir, writeFile } from 'fs/promises'
 import archiver from 'archiver'
+import { fileURLToPath } from 'url'
 
 import { prepareFromArchive } from '../../src/extensions/services/installers/archive.js'
 import { prepareFromDirectory } from '../../src/extensions/services/installers/directory.js'
 
-const fixture = new URL('../fixtures/extensions/mv3-p2p-probe/', import.meta.url).pathname
+const fixture = fileURLToPath(new URL('../fixtures/extensions/mv3-p2p-probe/', import.meta.url))
 
 async function freshManager () {
   return { extensionsBaseDir: await mkdtemp(path.join(os.tmpdir(), 'peersky-ext-')), app: null }
