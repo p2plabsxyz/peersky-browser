@@ -2,8 +2,10 @@
   position: fixed;
   z-index: 1000;
   width: 320px;
-  max-height: min(480px, calc(100vh - 80px));
-  overflow-y: auto;
+  max-height: min(620px, calc(100vh - 72px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background: var(--settings-card-bg);
   border: 1px solid var(--settings-border);
   border-radius: 8px;
@@ -152,6 +154,34 @@ button.site-info-privacy-row.is-action:hover {
 .site-info-permissions {
   border-top: 1px solid var(--settings-border);
   padding: 12px 0 10px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.site-info-perm-list {
+  max-height: min(220px, 32vh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--peersky-nav-button-inactive, #666) transparent;
+}
+
+.site-info-perm-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.site-info-perm-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.site-info-perm-list::-webkit-scrollbar-thumb {
+  background: var(--peersky-nav-button-inactive, #666);
+  border-radius: 3px;
+}
+
+.site-info-perm-list::-webkit-scrollbar-thumb:hover {
+  background: var(--peersky-nav-button-color, #999);
 }
 
 .site-info-section-head {
