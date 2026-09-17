@@ -22,7 +22,17 @@ export async function prepareFromArchive (manager, archivePath) {
   await ensureDir(stagingRoot)
   const stagingDir = path.join(stagingRoot, `arc-${Date.now()}-${randomBytes(4).toString('hex')}`)
   await ensureDir(stagingDir)
+  const tempDir = path.join(stagingRoot, `pkg-${Date.now()}-${randomBytes(4).toString('hex')}`)
+  try {
+    return await stage(manager, archivePath, isZip, stagingDir, tempDir)
+  } finally {
+    await fs.rm(stagingDir, { recursive: true, force: true })
+    await fs.rm(tempDir, { recursive: true, force: true })
+  }
+}
 
+// tempDir is renamed into place on success, so it only survives a failure.
+async function stage (manager, archivePath, isZip, stagingDir, tempDir) {
   let sourceType = 'file-zip'
   let publicKeyDer = null // eslint-disable-line no-unused-vars
 
@@ -82,7 +92,6 @@ export async function prepareFromArchive (manager, archivePath) {
   const finalDir = path.join(root, versionDirName)
   await ensureDir(path.dirname(finalDir))
 
-  const tempDir = path.join(manager.extensionsBaseDir, '_staging', `pkg-${Date.now()}-${randomBytes(4).toString('hex')}`)
   await ensureDir(tempDir)
   await fs.cp(actualStagingDir, tempDir, { recursive: true })
   await ensureDir(path.dirname(finalDir))
