@@ -2,7 +2,7 @@
     <img align="center" src="/public/icon.png" width="200" height="200"></img>
 </p>
 
-<h1 align="center">PeerSky</h1>
+<h1 align="center">PeerSky Browser</h1>
 
 <div align="center">
     <img src="https://img.shields.io/github/actions/workflow/status/p2plabsxyz/peersky-browser/build.yml" alt="GitHub Actions Workflow Status">
@@ -66,6 +66,8 @@ sudo apt-get install -y zsync   # or: brew install zsync
 ### Linting
 
 This project uses [StandardJS](https://standardjs.com) for code style. To check for lint errors:
+
+[![js-standard-style](https://cdn.rawgit.com/feross/standard/master/badge.svg)](https://github.com/feross/standard)
 
 ```bash
 npm run lint
