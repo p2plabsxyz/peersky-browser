@@ -97,7 +97,9 @@ async function loadWindowManager (userDataPath) {
     '../../src/extensions/index.js': { default: { addWindow: () => {}, removeWindow: () => {} } },
     '../../src/context-menu.js': { attachContextMenus: () => {}, setWindowManager: () => {} },
     '../../src/session.js': { getPartition: () => 'persist:peersky', usePersist: () => true },
-    '../../src/settings-manager.js': { default: { settings: {} } }
+    '../../src/settings-manager.js': { default: { settings: {} } },
+    '../../src/tab-drag-preview.js': { registerTabDragPreview: () => {} },
+    '../../src/navigation-restore.js': { watchHost: () => {} }
   })
   return WindowManager
 }
