@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { ipcMain, BrowserWindow } from 'electron'
 import {
   MANAGED_PERMISSIONS,
   getPermissionsForOrigin,
@@ -6,6 +6,7 @@ import {
   resetPermissionsForOrigin,
   isValidOrigin
 } from './permissions.js'
+import extensionManager from './extensions/index.js'
 
 const SITE_STORAGES = [
   'cookies',
@@ -28,6 +29,11 @@ const SECURE_SCHEMES = new Set([
   'web3:',
   'file:'
 ])
+
+const PRIVACY_EXTENSIONS = [
+  { key: 'ublock', label: 'uBlock Origin', match: /ublock/i },
+  { key: 'consentAutodeny', label: 'Consent Autodeny', match: /consent\s*autodeny/i }
+]
 
 function parsePageUrl (raw) {
   if (typeof raw !== 'string' || !raw.trim()) {
@@ -66,8 +72,62 @@ async function cookieCount (session, url) {
   }
 }
 
+function extensionName (ext) {
+  return ext?.displayName || ext?.name || ''
+}
+
+async function getPrivacyStatus (event) {
+  let extensions = []
+  let actions = []
+  try {
+    extensions = await extensionManager.listExtensions()
+  } catch {
+    extensions = []
+  }
+  try {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (win && !win.isDestroyed()) {
+      actions = await extensionManager.listBrowserActions(win)
+    }
+  } catch {
+    actions = []
+  }
+
+  const actionById = new Map(
+    (Array.isArray(actions) ? actions : []).map(a => [a.id, a])
+  )
+
+  const privacy = {}
+  for (const { key, label, match } of PRIVACY_EXTENSIONS) {
+    const ext = (Array.isArray(extensions) ? extensions : []).find(e =>
+      match.test(extensionName(e))
+    )
+    if (!ext) {
+      privacy[key] = {
+        id: null,
+        name: label,
+        installed: false,
+        enabled: false,
+        badgeText: '',
+        hasAction: false
+      }
+      continue
+    }
+    const action = actionById.get(ext.id)
+    privacy[key] = {
+      id: ext.id,
+      name: extensionName(ext) || label,
+      installed: true,
+      enabled: !!ext.enabled,
+      badgeText: action?.badgeText ? String(action.badgeText) : '',
+      hasAction: !!action?.hasAction
+    }
+  }
+  return privacy
+}
+
 export function setupSiteInfoIpc (session) {
-  ipcMain.handle('site-info-get', async (_event, pageUrl) => {
+  ipcMain.handle('site-info-get', async (event, pageUrl) => {
     const parsed = parsePageUrl(pageUrl)
     if (!parsed.ok) return { ok: false, error: parsed.error }
 
@@ -88,7 +148,8 @@ export function setupSiteInfoIpc (session) {
       canEditPermissions: originOk && parsed.origin !== 'unknown',
       cookies: {
         count: await cookieCount(session, parsed.href)
-      }
+      },
+      privacy: await getPrivacyStatus(event)
     }
   })
 

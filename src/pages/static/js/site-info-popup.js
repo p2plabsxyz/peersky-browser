@@ -32,6 +32,13 @@ export class SiteInfoPopup {
         <p class="site-info-connection"></p>
         <p class="site-info-origin" hidden></p>
       </div>
+      <div class="site-info-privacy" hidden>
+        <div class="site-info-section-head">
+          <h3>Privacy protection</h3>
+        </div>
+        <div class="site-info-privacy-list"></div>
+        <button type="button" class="site-info-manage-ext">Manage extensions</button>
+      </div>
       <div class="site-info-permissions" hidden>
         <div class="site-info-section-head">
           <h3>Permissions</h3>
@@ -122,6 +129,7 @@ export class SiteInfoPopup {
     if (!pageUrl) {
       this._info = null
       this.renderIdentity(null)
+      this.renderPrivacy(null)
       this.renderPermissions(null)
       this.renderSiteData(null)
       return
@@ -131,12 +139,14 @@ export class SiteInfoPopup {
       const info = await this.ipc.invoke('site-info-get', pageUrl)
       this._info = info?.ok ? info : null
       this.renderIdentity(this._info)
+      this.renderPrivacy(this._info)
       this.renderPermissions(this._info)
       this.renderSiteData(this._info)
     } catch (err) {
       console.warn('[SiteInfoPopup] site-info-get failed:', err?.message || err)
       this._info = null
       this.renderIdentity(null)
+      this.renderPrivacy(null)
       this.renderPermissions(null)
       this.renderSiteData(null)
     }
@@ -173,6 +183,42 @@ export class SiteInfoPopup {
     this.popup.classList.toggle('is-secure', !!info.connection?.secure)
     this.popup.classList.toggle('is-insecure', !info.connection?.secure)
     this.loadIcon(icon, info.connection?.secure ? 'shield-check.svg' : 'shield-x.svg')
+  }
+
+  renderPrivacy (info) {
+    const section = this.popup.querySelector('.site-info-privacy')
+    const list = this.popup.querySelector('.site-info-privacy-list')
+    if (!section || !list) return
+
+    if (!info) {
+      section.hidden = true
+      list.innerHTML = ''
+      return
+    }
+
+    section.hidden = false
+    const privacy = info.privacy || {}
+    const rows = [
+      { key: 'ublock', openable: true },
+      { key: 'consentAutodeny', openable: false }
+    ]
+
+    list.innerHTML = rows.map(({ key, openable }) => {
+      const ext = privacy[key]
+      if (!ext) return ''
+      const status = privacyStatusLabel(ext)
+      const canOpen = openable && ext.installed && ext.enabled && ext.hasAction && ext.id
+      const tag = canOpen ? 'button' : 'div'
+      const attrs = canOpen
+        ? `type="button" class="site-info-privacy-row is-action" data-ext-id="${this.escapeHtml(ext.id)}"`
+        : 'class="site-info-privacy-row"'
+      return `
+        <${tag} ${attrs}>
+          <span class="site-info-privacy-name">${this.escapeHtml(ext.name)}</span>
+          <span class="site-info-privacy-status">${this.escapeHtml(status)}</span>
+        </${tag}>
+      `
+    }).join('')
   }
 
   renderPermissions (info) {
@@ -269,6 +315,28 @@ export class SiteInfoPopup {
         if (originEl) {
           originEl.hidden = !this._originExpanded
           hostBtn.setAttribute('aria-expanded', String(this._originExpanded))
+        }
+        return
+      }
+
+      const privacyRow = event.target.closest('.site-info-privacy-row.is-action')
+      if (privacyRow) {
+        event.preventDefault()
+        event.stopPropagation()
+        this.openExtensionAction(privacyRow.dataset.extId)
+        return
+      }
+
+      const manageExt = event.target.closest('.site-info-manage-ext')
+      if (manageExt) {
+        event.preventDefault()
+        event.stopPropagation()
+        this.hide()
+        const navBox = document.querySelector('nav-box')
+        if (navBox) {
+          navBox.dispatchEvent(new CustomEvent('navigate', {
+            detail: { url: 'peersky://extensions' }
+          }))
         }
         return
       }
@@ -382,6 +450,33 @@ export class SiteInfoPopup {
     requestAnimationFrame(() => this.positionPopup())
   }
 
+  async openExtensionAction (extensionId) {
+    if (!extensionId) return
+    const rect = this.targetButton?.getBoundingClientRect?.()
+    const anchorRect = rect
+      ? {
+          x: rect.x,
+          y: rect.y,
+          width: rect.width,
+          height: rect.height,
+          left: rect.left,
+          top: rect.top,
+          right: rect.right,
+          bottom: rect.bottom
+        }
+      : undefined
+
+    try {
+      this.hide()
+      await this.ipc.invoke('extensions-open-browser-action-popup', {
+        actionId: extensionId,
+        anchorRect
+      })
+    } catch (err) {
+      console.warn('[SiteInfoPopup] open extension action failed:', err?.message || err)
+    }
+  }
+
   positionPopup () {
     if (!this.popup || !this.targetButton) return
 
@@ -476,6 +571,13 @@ function stateLabel (state) {
   if (state === 'allow') return 'Allow'
   if (state === 'block') return 'Block'
   return 'Ask'
+}
+
+function privacyStatusLabel (ext) {
+  if (!ext?.installed) return 'Not installed'
+  if (!ext.enabled) return 'Off'
+  if (ext.badgeText) return `On · ${ext.badgeText}`
+  return 'On'
 }
 
 function permissionChooserHtml (permission, current) {
