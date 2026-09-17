@@ -6,6 +6,7 @@ export class SiteInfoPopup {
     this.targetButton = null
     this._originExpanded = false
     this._openPermission = null
+    this._confirmClear = false
     this._info = null
     this._pageUrl = ''
 
@@ -39,6 +40,26 @@ export class SiteInfoPopup {
         <div class="site-info-perm-list" role="list"></div>
         <button type="button" class="site-info-reset-perms">Reset permissions</button>
       </div>
+      <div class="site-info-data" hidden>
+        <div class="site-info-section-head">
+          <h3>Site data</h3>
+        </div>
+        <div class="site-info-data-row">
+          <span>Cookies</span>
+          <span class="site-info-cookie-count">0</span>
+        </div>
+        <div class="site-info-data-actions">
+          <button type="button" class="site-info-clear-data">Clear site data</button>
+        </div>
+        <div class="site-info-clear-confirm" hidden>
+          <p class="site-info-clear-title"></p>
+          <p class="site-info-clear-detail">This will remove cookies, local storage, IndexedDB, cached data, and service workers for this site.</p>
+          <div class="site-info-clear-buttons">
+            <button type="button" class="site-info-clear-cancel">Cancel</button>
+            <button type="button" class="site-info-clear-confirm-btn">Clear</button>
+          </div>
+        </div>
+      </div>
     `
 
     document.body.appendChild(popup)
@@ -50,6 +71,7 @@ export class SiteInfoPopup {
     this.targetButton = targetButton
     this._originExpanded = false
     this._openPermission = null
+    this._confirmClear = false
     this._pageUrl = pageUrl || ''
 
     if (!this.popup) {
@@ -75,6 +97,7 @@ export class SiteInfoPopup {
     this.isVisible = false
     this._info = null
     this._openPermission = null
+    this._confirmClear = false
     this._pageUrl = ''
 
     document.removeEventListener('click', this.handleClickOutside)
@@ -94,11 +117,13 @@ export class SiteInfoPopup {
     if (!this.popup || !this.isVisible) return
     this._pageUrl = pageUrl || ''
     this._openPermission = null
+    this._confirmClear = false
 
     if (!pageUrl) {
       this._info = null
       this.renderIdentity(null)
       this.renderPermissions(null)
+      this.renderSiteData(null)
       return
     }
 
@@ -107,11 +132,13 @@ export class SiteInfoPopup {
       this._info = info?.ok ? info : null
       this.renderIdentity(this._info)
       this.renderPermissions(this._info)
+      this.renderSiteData(this._info)
     } catch (err) {
       console.warn('[SiteInfoPopup] site-info-get failed:', err?.message || err)
       this._info = null
       this.renderIdentity(null)
       this.renderPermissions(null)
+      this.renderSiteData(null)
     }
 
     requestAnimationFrame(() => this.positionPopup())
@@ -198,6 +225,37 @@ export class SiteInfoPopup {
     }
   }
 
+  renderSiteData (info) {
+    const section = this.popup.querySelector('.site-info-data')
+    const countEl = this.popup.querySelector('.site-info-cookie-count')
+    const actions = this.popup.querySelector('.site-info-data-actions')
+    const confirm = this.popup.querySelector('.site-info-clear-confirm')
+    const title = this.popup.querySelector('.site-info-clear-title')
+    if (!section) return
+
+    // Same origin constraint as clearStorageData / permission store.
+    if (!info?.canEditPermissions) {
+      section.hidden = true
+      this._confirmClear = false
+      return
+    }
+
+    section.hidden = false
+    const count = info.cookies?.count ?? 0
+    if (countEl) countEl.textContent = String(count)
+
+    if (this._confirmClear) {
+      if (actions) actions.hidden = true
+      if (confirm) confirm.hidden = false
+      if (title) {
+        title.textContent = `Clear data from ${info.hostname || info.origin}?`
+      }
+    } else {
+      if (actions) actions.hidden = false
+      if (confirm) confirm.hidden = true
+    }
+  }
+
   setupEventListeners () {
     if (!this.popup) return
 
@@ -239,6 +297,34 @@ export class SiteInfoPopup {
         event.preventDefault()
         event.stopPropagation()
         this.resetPermissions()
+        return
+      }
+
+      const clearBtn = event.target.closest('.site-info-clear-data')
+      if (clearBtn) {
+        event.preventDefault()
+        event.stopPropagation()
+        this._confirmClear = true
+        this.renderSiteData(this._info)
+        requestAnimationFrame(() => this.positionPopup())
+        return
+      }
+
+      const clearCancel = event.target.closest('.site-info-clear-cancel')
+      if (clearCancel) {
+        event.preventDefault()
+        event.stopPropagation()
+        this._confirmClear = false
+        this.renderSiteData(this._info)
+        requestAnimationFrame(() => this.positionPopup())
+        return
+      }
+
+      const clearConfirm = event.target.closest('.site-info-clear-confirm-btn')
+      if (clearConfirm) {
+        event.preventDefault()
+        event.stopPropagation()
+        this.clearSiteData()
       }
     })
   }
@@ -276,6 +362,24 @@ export class SiteInfoPopup {
     }
 
     await this.refresh(this._pageUrl || this._info.url)
+  }
+
+  async clearSiteData () {
+    if (!this._info?.origin) return
+
+    const result = await this.ipc.invoke(
+      'site-info-clear-data',
+      this._info.origin
+    )
+    if (!result?.ok) {
+      console.warn('[SiteInfoPopup] clear-data failed:', result?.error)
+      return
+    }
+
+    this._confirmClear = false
+    if (this._info.cookies) this._info.cookies.count = 0
+    this.renderSiteData(this._info)
+    requestAnimationFrame(() => this.positionPopup())
   }
 
   positionPopup () {
@@ -318,6 +422,12 @@ export class SiteInfoPopup {
     if (!this.isVisible) return
     if (event.key !== 'Escape') return
     event.preventDefault()
+    if (this._confirmClear) {
+      this._confirmClear = false
+      this.renderSiteData(this._info)
+      requestAnimationFrame(() => this.positionPopup())
+      return
+    }
     if (this._openPermission) {
       this._openPermission = null
       this.renderPermissions(this._info)
