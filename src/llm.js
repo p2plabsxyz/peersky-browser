@@ -79,6 +79,23 @@ async function maybeShowOllamaNotInstalledDialog (error) {
   }
 }
 
+// Whether an Ollama model takes images. Current Ollama states this outright;
+// the rest are fallbacks for versions that do not.
+export function detectVision (model, info = {}) {
+  const capabilities = Array.isArray(info.capabilities) ? info.capabilities : []
+  if (capabilities.some(c => String(c).toLowerCase() === 'vision')) return true
+
+  const families = info.details?.families || []
+  const visionFamily = families.some(f => {
+    const name = String(f).toLowerCase()
+    return name === 'clip' || name === 'mllama' || name.includes('vl') || name.includes('vision')
+  })
+  const projector = !!(info.projector_info || info.model_info?.['clip.type'])
+  const named = ['-vl', ':vl', 'llava', 'bakllava', 'moondream', 'minicpm-v', 'cogvlm']
+    .some(k => String(model).toLowerCase().includes(k))
+  return visionFamily || projector || named
+}
+
 // IPC Handlers
 ipcMain.handle('llm-supported', async (event) => {
   const settings = settingsManager.settings || {}
@@ -98,20 +115,9 @@ ipcMain.handle('llm-model-info', async () => {
       const res = await fetch(`${rawBase}/api/show`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: model })
+        body: JSON.stringify({ model, name: model }) // name is the older spelling
       })
-      if (res.ok) {
-        const info = await res.json()
-        const families = info.details?.families || []
-        const hasVisionFamily = families.some(f =>
-          f === 'clip' || f === 'mllama' || f.includes('vl') || f.includes('vision')
-        )
-        const hasProjector = !!(info.projector_info || info.model_info?.['clip.type'])
-        const nameHeuristic = ['-vl', ':vl', 'llava', 'bakllava', 'moondream', 'minicpm-v', 'cogvlm'].some(k =>
-          model.toLowerCase().includes(k)
-        )
-        vision = hasVisionFamily || hasProjector || nameHeuristic
-      }
+      if (res.ok) vision = detectVision(model, await res.json())
     } catch { /* model info unavailable */ }
   }
   return { model, vision }
