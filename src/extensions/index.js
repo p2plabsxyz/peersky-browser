@@ -821,6 +821,7 @@ class ExtensionManager {
         }
 
         await this._writeRegistry()
+        this._broadcastBrowserActionChanged()
         return true
       } catch (error) {
         log.error('ExtensionManager: Toggle failed:', error)

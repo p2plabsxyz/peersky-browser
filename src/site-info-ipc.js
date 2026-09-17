@@ -96,7 +96,7 @@ async function getPrivacyStatus (event) {
       id: ext.id,
       name: extensionName(ext) || label,
       installed: true,
-      enabled: !!ext.enabled,
+      enabled: ext.enabled === true,
       badgeText: action?.badgeText ? String(action.badgeText) : '',
       hasAction: !!action?.hasAction
     }

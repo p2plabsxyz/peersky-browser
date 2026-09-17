@@ -14,6 +14,9 @@ export class SiteInfoPopup {
     this.handleClickOutside = this.handleClickOutside.bind(this)
     this.handleKeyDown = this.handleKeyDown.bind(this)
     this._handleWindowBlur = this._handleWindowBlur.bind(this)
+    this._onExtensionStateChanged = this._onExtensionStateChanged.bind(this)
+
+    this.ipc.on('browser-action-changed', this._onExtensionStateChanged)
   }
 
   createPopup () {
@@ -571,6 +574,13 @@ export class SiteInfoPopup {
     if (this.isVisible) this.hide()
   }
 
+  _onExtensionStateChanged () {
+    if (!this.isVisible) return
+    const pageUrl = this._pageUrl || this._info?.url || ''
+    if (!pageUrl) return
+    this.refresh(pageUrl)
+  }
+
   escapeHtml (text) {
     if (!text || typeof text !== 'string') return ''
     const div = document.createElement('div')
@@ -595,6 +605,7 @@ export class SiteInfoPopup {
 
   destroy () {
     this.hide()
+    this.ipc.removeListener('browser-action-changed', this._onExtensionStateChanged)
     this.popup?.remove()
     this.popup = null
     this.targetButton = null
