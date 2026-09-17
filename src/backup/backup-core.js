@@ -4,6 +4,11 @@ import crypto from 'crypto'
 import archiver from 'archiver'
 import { Transform } from 'stream'
 import { finished } from 'stream/promises'
+import {
+  buildPrivateDriveKeyExport,
+  hashPrivateDriveKeyExport,
+  PRIVATE_DRIVE_KEY_FILE
+} from './private-drive-export.js'
 
 // Backup bundle format version. Bumped only on incompatible layout changes.
 export const BACKUP_VERSION = '1.0.0'
@@ -40,7 +45,8 @@ export const PRIVATE_HYPER_BACKUP_TARGETS = [
 
 const RESTORABLE_BACKUP_TARGETS = [
   ...IDENTITY_BACKUP_TARGETS,
-  ...PRIVATE_HYPER_BACKUP_TARGETS
+  ...PRIVATE_HYPER_BACKUP_TARGETS,
+  { name: PRIVATE_DRIVE_KEY_FILE, type: 'file' }
 ]
 
 // Skip live DB lock/log files. CORESTORE is left in to stabilize manifest
@@ -248,6 +254,17 @@ export async function createBackupZip (userDataDir, outPath, options = {}) {
         dirHash.update(digest)
       }
       manifest.files[target.name] = `sha256:${dirHash.digest('hex')}`
+    }
+
+    if (includePrivate) {
+      const keyBytes = await buildPrivateDriveKeyExport(userDataDir, Date.now(), {
+        mobileSafe: isIdentityTransfer && targetDeviceType === 'mobile'
+      })
+      if (keyBytes) {
+        manifest.files[PRIVATE_DRIVE_KEY_FILE] = `sha256:${hashPrivateDriveKeyExport(keyBytes)}`
+        archive.append(keyBytes, { name: PRIVATE_DRIVE_KEY_FILE })
+        uncompressedBytes += keyBytes.length
+      }
     }
 
     const manifestBytes = Buffer.from(JSON.stringify(manifest, null, 2))

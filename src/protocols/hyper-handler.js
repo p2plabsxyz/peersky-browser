@@ -18,15 +18,22 @@ import { hyperCache, saveHyperCache } from './config.js'
 import { enforceExtensionWritePolicy } from '../extensions/request-policy.js'
 import { resolveHyperdriveUploadTarget } from './hyper-drive-visibility.js'
 import { rememberPrivateHyperdrive } from './private-hyperdrive-registry.js'
+import { openPrivateDriveByName, makePrivateDriveFetcher } from './private-hyperdrive.js'
 
 import { _suspendHyper, _hyperPublishFile, _hyperFetchToFile } from '../backup/hyper-backup.js'
 
 const log = createLogger('protocols:hyper')
 
 // Single SDK and swarm for the app lifecycle (hyper:// browsing + chat share the same swarm).
-let sdk, fetch, privateSdk, privateFetch, savedSdkOptions
+let sdk, fetch, privateSdk, privateFetch, privateKeyedFetch, savedSdkOptions
 const privateDriveHostnames = new Set()
 const ephemeralPublishers = new Set()
+
+let privateDeviceOnly = process.env.PEERSKY_PRIVATE_DEVICE_ONLY === '1'
+
+export function setPrivateHyperdriveDeviceOnly (value) {
+  privateDeviceOnly = Boolean(value)
+}
 
 // keep chunks smaller to avoid oversized blocks.
 const MAX_UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024
@@ -235,14 +242,23 @@ async function startHyperSDK (options) {
   return fetch
 }
 
-function getPrivateSDKOptions (options) {
+function getPrivateSDKOptions (options, deviceOnly) {
   const { corestore, dnsCache, swarm, ...isolatedOptions } = options || {}
   const storage = isolatedOptions.storage || path.join(app.getPath('userData'), 'hyper')
+  const privateStorage = path.join(path.dirname(storage), `${path.basename(storage)}-private`)
+  if (deviceOnly) {
+    return {
+      ...isolatedOptions,
+      storage: privateStorage,
+      autoJoin: false,
+      doReplicate: false
+    }
+  }
   return {
     ...isolatedOptions,
-    storage: path.join(path.dirname(storage), `${path.basename(storage)}-private`),
-    autoJoin: false,
-    doReplicate: false
+    storage: privateStorage,
+    autoJoin: true,
+    doReplicate: true
   }
 }
 
@@ -304,12 +320,13 @@ function initializePrivateHyperSDK (options) {
 }
 
 async function startPrivateHyperSDK (options) {
-  const privateOptions = getPrivateSDKOptions(options || savedSdkOptions)
+  const privateOptions = getPrivateSDKOptions(options || savedSdkOptions, privateDeviceOnly)
   const openedSdk = await createSDK(privateOptions)
   try {
     const openedFetch = await makeHyperFetch({ sdk: openedSdk, writable: true })
     privateSdk = openedSdk
     privateFetch = openedFetch
+    privateKeyedFetch = makePrivateDriveFetcher(openedSdk, app.getPath('userData'))
     return privateFetch
   } catch (error) {
     await openedSdk.close().catch(() => {})
@@ -320,7 +337,11 @@ async function startPrivateHyperSDK (options) {
 async function getHyperRequestContext (url) {
   const hostname = new URL(url).hostname
   if (await isStoredPrivateDrive(hostname)) {
-    return { sdk: privateSdk, fetch: privateFetch, private: true }
+    return {
+      sdk: privateSdk,
+      fetch: privateDeviceOnly ? privateFetch : privateKeyedFetch,
+      private: true
+    }
   }
   const publicFetch = await initializeHyperSDK()
   return { sdk, fetch: publicFetch, private: false }
@@ -504,18 +525,27 @@ export async function createHandler (options, securityOptions = {}) {
               headers: { 'Content-Type': 'text/plain' }
             })
           }
-          if (visibility === 'private') await initializePrivateHyperSDK()
-          const targetSdk = visibility === 'private' ? privateSdk : sdk
-          const drive = await targetSdk.getDrive(target.driveName, {
-            autoJoin: target.autoJoin
-          })
+          let drive
           if (visibility === 'private') {
+            await initializePrivateHyperSDK()
+            drive = privateDeviceOnly
+              ? await privateSdk.getDrive(target.driveName, { autoJoin: target.autoJoin })
+              : await openPrivateDriveByName(privateSdk, target.driveName, {
+                userDataDir: app.getPath('userData'),
+                autoJoin: true
+              })
             rememberPrivateDrive(drive)
+            if (privateKeyedFetch?.register) {
+              privateKeyedFetch.register(new URL(drive.url).hostname, drive)
+            }
             await rememberPrivateHyperdrive(app.getPath('userData'), {
               name: keyName,
               url: drive.url,
-              timestamp: Date.now()
+              timestamp: Date.now(),
+              encrypted: !privateDeviceOnly
             })
+          } else {
+            drive = await sdk.getDrive(target.driveName, { autoJoin: target.autoJoin })
           }
           resp = new Response(drive.url, {
             status: 200,

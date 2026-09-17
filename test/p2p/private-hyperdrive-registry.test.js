@@ -17,11 +17,11 @@ describe('private Hyperdrive registry', function () {
 
     await rememberPrivateHyperdrive(userData, { name: 'first.txt', url: firstUrl, timestamp: 1 })
     await rememberPrivateHyperdrive(userData, { name: 'renamed.txt', url: firstUrl, timestamp: 2 })
-    await rememberPrivateHyperdrive(userData, { name: 'second.txt', url: secondUrl, timestamp: 3 })
+    await rememberPrivateHyperdrive(userData, { name: 'encrypted.txt', url: secondUrl, timestamp: 3, encrypted: true })
 
     expect(await listPrivateHyperdrives(userData)).to.deep.equal([
-      { name: 'second.txt', url: secondUrl, timestamp: 3 },
-      { name: 'renamed.txt', url: firstUrl, timestamp: 2 }
+      { name: 'encrypted.txt', url: secondUrl, timestamp: 3, encrypted: true },
+      { name: 'renamed.txt', url: firstUrl, timestamp: 2, encrypted: false }
     ])
     const persisted = JSON.parse(await readFile(
       path.join(userData, PRIVATE_HYPERDRIVE_REGISTRY_FILE),
