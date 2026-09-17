@@ -278,6 +278,11 @@ describe('private-drive-export', function () {
     expect(record.entries).to.have.length(2)
     expect(record.entries[0].driveId).to.equal(driveId.toLowerCase())
     expect(record.entries[1].driveId).to.equal(Buffer.from(z32.decode('a'.repeat(52))).toString('hex'))
+
+    const mobileBytes = await buildPrivateDriveKeyExport(userData, 1700000000000, { mobileSafe: true })
+    const mobileRecord = JSON.parse(mobileBytes.toString('utf-8'))
+    expect(mobileRecord.entries).to.have.length(2)
+    expect(mobileRecord.driveId).to.equal(driveId.toLowerCase())
   })
 
   it('returns null when the registry has no decodable drive', async function () {
