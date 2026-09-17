@@ -17,7 +17,7 @@
 
 💻 [Download](https://peersky.p2plabs.xyz/) 📜 [Docs](./docs/)
 
-PeerSky is a gateway to the peer-to-peer web, not just a browser. It turns your computer into a node (a server for the network), so pages and apps can come from the people who have them rather than from one company's server. The everyday web works as usual, and alongside PeerSky carries a full ecosystem of apps built on the same idea: chat, collaborative editing, file sharing, a music player, a local AI, and more. Most of these keep working on a local network with no internet at all.
+PeerSky is a gateway to the peer-to-peer web, not just a browser. It turns your computer into a node (a server for the network), so pages and apps can come from the people who have them rather than from one company's server. The everyday web works as usual, and alongside it PeerSky carries a full ecosystem of apps built on the same idea: chat, collaborative editing, file sharing, a music player, a local AI, and more. Most of these keep working on a local network with no internet at all.
 
 We are building a surveillance-free internet where you own your tools, your data, and your connections, and where no single company can shut you out. Our vision is to save the internet, one peer at a time.
 
