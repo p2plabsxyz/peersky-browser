@@ -17,6 +17,7 @@ import WindowManager from './window-manager.js'
 import settingsManager from './settings-manager.js'
 import p2pAppRegistry from './p2p-app-registry.js'
 import { setWindowManager } from './context-menu.js'
+import { registerNavigationRestore } from './navigation-restore.js'
 import { isBuiltInSearchEngine } from './search-engine.js'
 import './llm.js'
 import './llm-memory.js'
@@ -1121,11 +1122,7 @@ ipcMain.on('get-tab-navigation', (event, webContentsId) => {
   }
 })
 
-// Electron cannot natively overwrite a WebContents history stack after recreation,
-// so the fallback is handled in the UI layer (savedNavigation on the tab object).
-ipcMain.handle('restore-navigation-history', async (_event, _data) => {
-  return { success: true, note: 'Native history rewrite not supported; relying on UI fallback.' }
-})
+registerNavigationRestore()
 
 ipcMain.on('group-action', (_event, data) => {
   log.info('Group action received:', data)

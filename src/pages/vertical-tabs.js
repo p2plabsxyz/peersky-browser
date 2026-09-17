@@ -125,8 +125,8 @@ export default class VerticalTabs extends BaseTabBar {
   }
 
   // Override tab creation to ensure proper favicon handling
-  addTabWithId (tabId, url = 'peersky://home', title = 'Home') {
-    const result = super.addTabWithId(tabId, url, title)
+  addTabWithId (tabId, url = 'peersky://home', title = 'Home', tabData = {}) {
+    const result = super.addTabWithId(tabId, url, title, tabData)
 
     this.ensureAddButtonPosition()
     this.updateAddButtonSticky()

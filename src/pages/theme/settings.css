@@ -98,7 +98,6 @@ body {
   padding: 1rem 1.5rem;
   color: var(--settings-text-secondary) !important;
   text-decoration: none;
-  transition: background-color 0.15s ease-in-out;
   font-size: 0.9rem;
   margin: 0;
   box-sizing: border-box;
@@ -118,13 +117,10 @@ body {
   object-fit: contain;
 }
 
-.settings-sidebar .nav-item:hover {
-  background: var(--settings-card-bg);
-  color: var(--settings-text-primary) !important;
-}
-
+.settings-sidebar .nav-item:hover,
 .settings-sidebar .nav-item.active {
-  background: var(--settings-card-bg);
+  font-weight: 600;
+  background: transparent; /* style.css paints every hovered link */
   color: var(--settings-text-primary) !important;
 }
 

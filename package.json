@@ -20,6 +20,9 @@
     "test:all": "node test/run-tests.mjs",
     "test:updater": "mocha \"test/updater/**/*.test.js\" --timeout 20000 --exit",
     "test:launch-url": "mocha \"test/launch-url.test.js\" --timeout 10000",
+    "test:url-input": "mocha \"test/url-input.test.js\" --timeout 10000",
+    "test:zoom": "mocha \"test/zoom.test.js\" --timeout 10000",
+    "test:tabs": "mocha \"test/tabs.test.js\" --timeout 10000",
     "test:integration": "mocha \"test/integration/**/*.test.js\" --timeout 300000",
     "test:p2pmd:gutter:e2e": "mocha \"test/integration/p2pmd-gutter-sync.e2e.test.js\" --timeout 300000 --exit",
     "test:p2p": "mocha \"test/p2p/ipfs-handler.test.js\" \"test/p2p/hyper-drive-visibility.test.js\" \"test/p2p/private-hyperdrive-registry.test.js\" \"test/p2p/hyper-handler.test.js\" \"test/p2p/hs-handler.test.js\" \"test/p2p/bittorrent-handler.test.js\" --timeout 20000 --exit",
@@ -42,7 +45,7 @@
     "build-all": "electron-builder build -mwl",
     "lint": "standard",
     "lint:fix": "standard --fix",
-    "test:ci": "node test/run-tests.mjs backup p2p p2p:e2e extensions security llm updater perf launch-url"
+    "test:ci": "node test/run-tests.mjs backup p2p p2p:e2e extensions security llm updater perf launch-url url-input zoom tabs"
   },
   "build": {
     "npmRebuild": true,

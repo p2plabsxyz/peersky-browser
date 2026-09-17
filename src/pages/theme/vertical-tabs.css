@@ -299,26 +299,6 @@
    No transition: a throttled window freezes it mid-flight, leaving the strip
    overlapping the page. */
 
-/* Loading indicator for vertical tabs */
-.tabbar.vertical-tabs .tab.loading .tab-favicon::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 16px;
-  height: 16px;
-  border: 2px solid var(--peersky-nav-button-color);
-  border-top: 2px solid var(--peersky-nav-button-active);
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  0% { transform: translate(-50%, -50%) rotate(0deg); }
-  100% { transform: translate(-50%, -50%) rotate(360deg); }
-}
-
 /* P2P indicator: corner badge on collapsed squares, inline after the
    title once the row is wide enough to have one. */
 .tabbar.vertical-tabs .p2p-indicator {

@@ -32,26 +32,16 @@ export async function prepareFromDirectory (manager, dirPath) {
   const targetPath = path.join(manager.extensionsBaseDir, extensionId, versionDirName)
   await ensureDir(path.dirname(targetPath))
   const tempDir = path.join(manager.extensionsBaseDir, '_staging', `dir-${Date.now()}-${randomBytes(4).toString('hex')}`)
-  await ensureDir(tempDir)
-  await fs.cp(dirPath, tempDir, { recursive: true })
   try {
-    await fs.writeFile(path.join(tempDir, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf8')
-  } catch (_) { }
-
-  // If we found a different filename, ensure the original content is also preserved at the canonical manifest.json path
-  // (The line above writes a clean JSON, but if the original had comments or weird formatting, we might want the exact content?
-  // Actually, standardizing on valid JSON is probably better for consumption.)
-  if (path.basename(foundPath) !== 'manifest.json') {
-    // Ensure we don't have a conflict if the user *also* had a file literally named "manifest.json" that was invalid?
-    // But logic earlier ensures we picked the preferred one.
-    // So we just ensure a `manifest.json` exists for Electron.
-    const destManifestPath = path.join(tempDir, 'manifest.json')
-    try { await fs.access(destManifestPath) } catch (_) {
-      await fs.writeFile(destManifestPath, altManifestContent, 'utf8')
-    }
+    await ensureDir(tempDir)
+    await fs.cp(dirPath, tempDir, { recursive: true })
+    await fs.writeFile(path.join(tempDir, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf8').catch(() => {})
+    await placeManifest(tempDir, foundPath, altManifestContent)
+    await ensureDir(path.dirname(targetPath))
+    await atomicReplaceDir(tempDir, targetPath)
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true }) // only survives a failure
   }
-  await ensureDir(path.dirname(targetPath))
-  await atomicReplaceDir(tempDir, targetPath)
 
   const appLocale = (manager.app && typeof manager.app.getLocale === 'function') ? manager.app.getLocale() : 'en'
   const { name: displayName, description: displayDescription } = await resolveManifestStrings(targetPath, manifest, appLocale, 'en')
@@ -105,4 +95,13 @@ export async function prepareFromDirectory (manager, dirPath) {
   } catch (_) { }
 
   return ext
+}
+
+// Electron needs a manifest.json; an alternative manifest file supplies it.
+async function placeManifest (tempDir, foundPath, altManifestContent) {
+  if (path.basename(foundPath) === 'manifest.json') return
+  const dest = path.join(tempDir, 'manifest.json')
+  try { await fs.access(dest) } catch (_) {
+    await fs.writeFile(dest, altManifestContent, 'utf8')
+  }
 }

@@ -64,6 +64,10 @@
           <img src="peersky://static/assets/svg/clock-history.svg" class="nav-icon" alt="Clock History Icon">
           <span>History</span>
         </a>
+        <a href="#about" class="nav-item" data-section="about">
+          <img src="peersky://static/assets/svg/info-circle.svg" class="nav-icon" alt="About Icon">
+          <span>About</span>
+        </a>
       </div>
     </nav>
 
@@ -472,6 +476,55 @@
           <span class="archive-subsection-label">ENS Cache</span>
           <pagination-control id="ens-pagination" search-placeholder="Search by name or hash..."></pagination-control>
         </div>
+      </div>
+
+      <!-- About Section -->
+      <div id="about-section" class="settings-page">
+        <h1 class="section-title">About</h1>
+
+        <section class="settings-section">
+          <div class="setting-row">
+            <div class="setting-label">
+              <div style="font-weight: 500;">Peersky Browser</div>
+              <div class="setting-hint" style="margin-top: 4px;">A peer-to-peer web browser</div>
+            </div>
+            <div class="setting-control">
+              <span id="about-version" style="color: var(--text-secondary); font-size: 0.9rem;">Loading...</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <div class="setting-row">
+            <div class="setting-label">
+              <div style="font-weight: 500;">Source code</div>
+              <div class="setting-hint" style="margin-top: 4px;">All our software is open source, including every component, at github.com/p2plabsxyz</div>
+            </div>
+            <div class="setting-control">
+              <a href="https://github.com/p2plabsxyz/peersky-browser" target="_blank" rel="noreferrer" class="btn btn-secondary">Open</a>
+            </div>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-label">
+              <div style="font-weight: 500;">Report an issue</div>
+              <div class="setting-hint" style="margin-top: 4px;">Found a bug or have a request? Open an issue</div>
+            </div>
+            <div class="setting-control">
+              <a href="https://github.com/p2plabsxyz/peersky-browser/issues" target="_blank" rel="noreferrer" class="btn btn-secondary">Report</a>
+            </div>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-label">
+              <div style="font-weight: 500;">License</div>
+              <div class="setting-hint" style="margin-top: 4px;">Released under the MIT License</div>
+            </div>
+            <div class="setting-control">
+              <a href="https://github.com/p2plabsxyz/peersky-browser/blob/main/LICENSE" target="_blank" rel="noreferrer" class="btn btn-secondary">MIT</a>
+            </div>
+          </div>
+        </section>
       </div>
     </main>
   </div>

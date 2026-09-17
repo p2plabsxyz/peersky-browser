@@ -114,6 +114,11 @@ ipcRenderer.on('add-tab-from-main', (event, url) => {
   }
 })
 
+// A tab dragged here from another window.
+ipcRenderer.on('add-tab-at-point', (event, tab) => {
+  tabBar?.insertTabAtPoint?.(tab)
+})
+
 // Get initial URL from search params
 const searchParams = new URL(window.location.href).searchParams
 const toNavigate = searchParams.has('url') ? searchParams.get('url') : DEFAULT_PAGE
@@ -463,25 +468,22 @@ document.addEventListener('DOMContentLoaded', async () => {
   ipcRenderer.on('vertical-tabs-changed', async (_, enabled) => {
     const oldBar = tabBar
 
-    // Clean up old webviews before creating new tab bar
-    if (oldBar && oldBar.webviews) {
-      oldBar.webviews.forEach((webview) => {
-        if (webview && webview.parentNode) {
-          webview.remove()
+    // Only the strip changes shape here. The webviews stay exactly where they
+    // are, because destroying them reloaded every open page.
+    const carried = oldBar && oldBar.tabs?.length
+      ? {
+          state: oldBar.getTabsStateForSaving(),
+          webviews: oldBar.webviews,
+          zoomLevels: oldBar.zoomLevels,
+          activeTabId: oldBar.activeTabId,
+          favicons: new Map(oldBar.tabs.map((t) => [t.id, document.getElementById(t.id)?.querySelector('.tab-favicon')?.style.backgroundImage]))
         }
-      })
-      oldBar.webviews.clear()
-    }
+      : null
 
-    // Clear existing webviews from container
-    if (webviewContainer) {
-      while (webviewContainer.firstChild) {
-        webviewContainer.removeChild(webviewContainer.firstChild)
-      }
-    }
-
-    // Remove old tab bar from DOM
-    if (oldBar && oldBar.parentElement) {
+    if (oldBar) {
+      oldBar.removeEventListener('tab-selected', handleTabSelected)
+      oldBar.removeEventListener('tab-navigated', handleTabNavigated)
+      if (carried) oldBar.retire()
       oldBar.remove()
     }
 
@@ -505,8 +507,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     }
 
-    // Connect webview container and wait for tab restoration
-    await tabBar.connectWebviewContainer(webviewContainer)
+    if (carried && carried.state) {
+      tabBar.adoptTabs(carried, webviewContainer)
+    } else {
+      await tabBar.connectWebviewContainer(webviewContainer)
+    }
 
     // RE-ATTACH event listeners for the new tab bar
     if (webviewContainer && nav && tabBar) {
@@ -651,6 +656,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     tabBar.addEventListener('navigation-state-changed', () => {
       updateNavigationButtons(tabBar)
     })
+
+    tabBar.addEventListener('zoom-changed', (e) => nav?.setZoomIndicator(e.detail.percent))
+    tabBar.addEventListener('tab-selected', () => tabBar.emitZoomChanged())
 
     // Check if we need to navigate to a specific URL initially
 

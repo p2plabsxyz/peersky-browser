@@ -1055,20 +1055,19 @@ function initializeSidebarNavigation () {
   })
 
   // Parse URL subpath and navigate to appropriate section
-  const currentPath = window.location.pathname || window.location.hash
+  const currentPath = window.location.pathname
   const currentHref = window.location.href
+  // Read the hash on its own: pathname is "/" here, so "pathname || hash" never
+  // reached it and every #section deep link opened Appearance.
+  const hashSection = window.location.hash.replace('#', '')
   let targetSection = 'appearance' // default
 
   // Check for URL subpath (e.g., /settings/search or peersky://settings/search)
   const subpathMatch = currentPath.match(/\/settings\/(\w+)/) || currentHref.match(/\/settings\/(\w+)/)
   if (subpathMatch) {
     targetSection = subpathMatch[1]
-  // Check for hash-based navigation (backward compatibility)
-  } else if (currentPath.includes('#')) {
-    const hashSection = currentPath.replace('#', '')
-    if (hashSection && ['general', 'appearance', 'search', 'tabs', 'extensions', 'archive'].includes(hashSection)) {
-      targetSection = hashSection
-    }
+  } else if (hashSection && isKnownSection(hashSection)) {
+    targetSection = hashSection
   }
 
   // Update UI to show the determined section (don't trigger navigation on page load)
@@ -1082,16 +1081,14 @@ function initializeSidebarNavigation () {
       sectionFromHistory = event.state.section
     } else {
       // Parse current URL to determine section
-      const currentPath = window.location.pathname || window.location.hash
+      const currentPath = window.location.pathname
       const currentHref = window.location.href
+      const hashSection = window.location.hash.replace('#', '')
       const subpathMatch = currentPath.match(/\/settings\/(\w+)/) || currentHref.match(/\/settings\/(\w+)/)
       if (subpathMatch) {
         sectionFromHistory = subpathMatch[1]
-      } else if (currentPath.includes('#')) {
-        const hashSection = currentPath.replace('#', '')
-        if (hashSection && ['general', 'appearance', 'search', 'tabs', 'extensions', 'archive'].includes(hashSection)) {
-          sectionFromHistory = hashSection
-        }
+      } else if (hashSection && isKnownSection(hashSection)) {
+        sectionFromHistory = hashSection
       }
     }
 
@@ -1209,17 +1206,25 @@ function updateClearBtnLabel () {
   if (clearBtn) clearBtn.textContent = filter === 'all' ? 'Clear All' : 'Clear'
 }
 
+// Read the sections off the page so a new one cannot be missed here.
+function isKnownSection (name) {
+  return [...document.querySelectorAll('.settings-page')]
+    .some((page) => page.id === `${name}-section`)
+}
+
 // Load and display app version
 async function loadAppVersion () {
-  const versionElement = document.getElementById('app-version')
-  if (!versionElement) return
+  const elements = ['app-version', 'about-version']
+    .map((id) => document.getElementById(id))
+    .filter(Boolean)
+  if (!elements.length) return
 
   try {
     const version = await settingsAPI.settings.getVersion()
-    versionElement.textContent = `v${version}`
+    for (const el of elements) el.textContent = `v${version}`
   } catch (error) {
     console.error('Failed to load app version:', error)
-    versionElement.textContent = 'Unknown'
+    for (const el of elements) el.textContent = 'Unknown'
   }
 }
 

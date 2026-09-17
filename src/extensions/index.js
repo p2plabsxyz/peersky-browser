@@ -137,6 +137,8 @@ class ExtensionManager {
 
       // Create directories
       await ensureDir(this.extensionsBaseDir)
+      // Installs stage under _staging; anything still there at boot is a leftover.
+      await fs.rm(path.join(this.extensionsBaseDir, '_staging'), { recursive: true, force: true })
 
       // Initialize Chrome Web Store support
       log.info('ExtensionManager: Initializing Chrome Web Store support...')

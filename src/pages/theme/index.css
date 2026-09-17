@@ -1500,3 +1500,11 @@ body {
 .tab.active .tab-title {
   color: var(--browser-theme-text-color);
 }
+
+.zoom-indicator {
+  padding: 0 8px;
+  font-size: 0.8em;
+  color: var(--peersky-nav-button-color);
+  white-space: nowrap;
+  -webkit-app-region: no-drag;
+}
