@@ -43,7 +43,7 @@ async function publishToHyper(file) {
 The Hyperdrive app asks for a visibility before creating an upload:
 
 - **Public** uploads use PeerSky's normal networked Hyper runtime. Their discovery keys are announced, their contents can replicate to peers, and their `hyper://` URLs can be shared.
-- **Private** uploads use a separate local runtime with discovery and replication disabled. Their `hyper://` URLs work only in the PeerSky profile that created or restored them. Private means **unannounced**, not encrypted.
+- **Private** uploads use a separate runtime over the same Hyper network, with block-level encryption applied from a per-profile 32-byte `encryptionKey`. They are announced and replicated (`autoJoin: true`, `doReplicate: true`) exactly like public drives, so their contents move between your devices. `hyper://` URLs are keyed and decrypt correctly only where that key is available — in the profile that created them and on devices that have adopted the key via an identity transfer. Setting `PEERSKY_PRIVATE_DEVICE_ONLY=1` restores the old device-only behavior (isolated runtime, no discovery or replication).
 
 Each upload name selects its own Hyperdrive, so sharing one public upload does not expose unrelated uploads. Private upload metadata is kept in a separate local registry and is never added to the shared Hyper cache.
 
@@ -53,12 +53,13 @@ flowchart TD
     B -->|Public| C[Networked Hyper runtime]
     C --> D[Announced and replicated]
     D --> E[Shareable hyper:// URL]
-    B -->|Private| F[Isolated local Hyper runtime]
-    F --> G[No discovery or replication]
-    G --> H[Available only in this PeerSky profile]
+    B -->|Private| F[Encrypted Hyper runtime]
+    F --> G[Announced and replicated with a per-profile key]
+    G --> H[Keyed hyper:// URL]
+    H --> I[Decrypts where the key is available]
 ```
 
-Private uploads are excluded from normal backups by default. Identity transfers include them by default because they move data to another user-owned device. Both controls are explicit: if private uploads are excluded, the Backup page shows how many will be left behind. The same page lists the private uploads currently stored on the device. On arrival the receiving device adopts the drive into its own isolated corestore (`announce:false`, no discovery), so transferred private drives stay device-only there until device linking opts them into networking — the record's key file is what later lets the receiving side open the same encrypted drive.
+Private uploads are excluded from normal backups by default. Identity transfers include them by default because they move data to another user-owned device. Both controls are explicit: if private uploads are excluded, the Backup page shows how many will be left behind. The same page lists the private uploads currently stored on the device. The transfer ships the drive's encryption key file (`private-drive-key.json`) beside the synced store; on arrival the receiving device adopts the drive into that keyed, synced corestore, so the same encrypted drive can be opened and written on both sides. The key file is what binds a received drive to a device — without it the drive's blocks remain encrypted no matter how far they replicate.
 
 ### Publish to IPFS
 
