@@ -540,7 +540,7 @@ class TabBar extends HTMLElement {
    * nothing downstream depends on the write having already landed.
    */
   saveTabsState () {
-    if (this._tabsStateTimer) return
+    if (this._retired || this._tabsStateTimer) return
     this._tabsStateTimer = setTimeout(() => {
       this._tabsStateTimer = null
       this.writeTabsStateNow()
@@ -557,6 +557,7 @@ class TabBar extends HTMLElement {
   }
 
   writeTabsStateNow () {
+    if (this._retired) return
     try {
       const tabsData = this.getTabsStateForSaving()
       if (!tabsData) {
@@ -585,6 +586,40 @@ class TabBar extends HTMLElement {
     } catch (error) {
       console.error('Failed to save tabs state:', error)
     }
+  }
+
+  // The webviews live in the container, not the strip, so switching between
+  // horizontal and vertical tabs only needs to rebuild the strip around them.
+  adoptTabs ({ state, webviews, zoomLevels, activeTabId, favicons }, webviewContainer) {
+    this.webviews = webviews
+    this.zoomLevels = zoomLevels || new Map()
+    // No container while rebuilding, so addTabWithId creates no webviews, and
+    // no history for live tabs, so nothing is replayed into them.
+    this.webviewContainer = null
+    this.restoreTabs({
+      ...state,
+      activeTabId,
+      tabs: state.tabs.map((tab) => ({ ...tab, navigation: webviews.has(tab.id) ? null : tab.navigation }))
+    })
+    this.webviewContainer = webviewContainer
+    for (const [tabId, webview] of webviews) {
+      this.setupWebviewEvents(webview, tabId)
+      const icon = favicons?.get(tabId)
+      const el = icon && document.getElementById(tabId)?.querySelector('.tab-favicon')
+      if (el) el.style.backgroundImage = icon
+    }
+    this.saveTabsState()
+  }
+
+  // Called on the outgoing bar. Its webview listeners keep firing, so it must
+  // hold nothing they could act on or persist.
+  retire () {
+    this._retired = true
+    if (this._tabsStateTimer) clearTimeout(this._tabsStateTimer)
+    this._tabsStateTimer = null
+    this.tabs = []
+    this.webviews = new Map()
+    this.splitPairs = []
   }
 
   // Restore tabs from persisted data
@@ -785,7 +820,8 @@ class TabBar extends HTMLElement {
         clearTimeout(hoverTimeout)
       }
 
-      // Delay showing the card
+      // A collapsed vertical strip is being scanned, not read, so wait longer.
+      const collapsedVertical = this.isVertical && !this.classList.contains('expanded')
       hoverTimeout = setTimeout(async () => {
         const tab = this.tabs.find(t => t.id === tabId)
         if (!tab) return
@@ -818,22 +854,23 @@ class TabBar extends HTMLElement {
           <div class="hover-card-memory" id="hover-memory-${tabId}">Memory usage: Loading...</div>
         `
 
-        // Position the card
+        // Beside a vertical strip, below a horizontal one.
         const tabRect = tabElement.getBoundingClientRect()
+        const vertical = this.isVertical
         hoverCard.style.position = 'fixed'
-        hoverCard.style.left = `${tabRect.left}px`
-        hoverCard.style.top = `${tabRect.bottom + 8}px`
+        hoverCard.style.left = `${vertical ? tabRect.right + 8 : tabRect.left}px`
+        hoverCard.style.top = `${vertical ? tabRect.top : tabRect.bottom + 8}px`
         hoverCard.style.zIndex = '10002'
 
-        // Ensure card doesn't go off screen
         document.body.appendChild(hoverCard)
         const cardRect = hoverCard.getBoundingClientRect()
-        if (cardRect.right > window.innerWidth) {
-          hoverCard.style.left = `${window.innerWidth - cardRect.width - 10}px`
-        }
-        if (cardRect.bottom > window.innerHeight) {
-          hoverCard.style.top = `${tabRect.top - cardRect.height - 8}px`
-        }
+        const margin = 8
+        let left = cardRect.left
+        let top = cardRect.top
+        if (cardRect.right > window.innerWidth - margin) left = window.innerWidth - cardRect.width - margin
+        if (cardRect.bottom > window.innerHeight - margin) top = window.innerHeight - cardRect.height - margin
+        hoverCard.style.left = `${Math.max(margin, left)}px`
+        hoverCard.style.top = `${Math.max(margin, top)}px`
 
         // Async memory lookup
         if (webview) {
@@ -862,7 +899,7 @@ class TabBar extends HTMLElement {
           const memDiv = document.getElementById(`hover-memory-${tabId}`)
           if (memDiv) memDiv.textContent = tab.isSuspended ? 'Tab is sleeping' : 'Memory usage: N/A'
         }
-      }, 800) // Show after 800ms hover
+      }, collapsedVertical ? 8000 : 3000)
     }
 
     const hideHoverCard = () => {
@@ -920,7 +957,7 @@ class TabBar extends HTMLElement {
     const preloadPath = path.join(__dirname, 'unified-preload.js')
     const preloadURL = pathToFileURL(preloadPath).href
     webview.setAttribute('preload', preloadURL)
-    webview.setAttribute('webpreferences', 'contextIsolation=yes,nativeWindowOpen=yes')
+    webview.setAttribute('webpreferences', 'contextIsolation=yes,nativeWindowOpen=yes,autoplayPolicy=document-user-activation-required')
     // Set important attributes
     webview.setAttribute('src', url)
     webview.setAttribute('allowpopups', '')
@@ -2102,64 +2139,96 @@ class TabBar extends HTMLElement {
     })
   }
 
-  moveTabToNewWindow (tabId) {
-    this.destroyHoverCard() // ensure card removed if this tab had it
+  // Takes a tab out of this window and returns what another window needs to
+  // recreate it. Refuses the last tab.
+  detachTab (tabId, { last = false } = {}) {
+    this.destroyHoverCard()
     const tab = this.tabs.find(t => t.id === tabId)
-    if (!tab) return
+    if (!tab || (this.tabs.length === 1 && !last)) return null
 
-    // Prevent moving the last tab
-    if (this.tabs.length === 1) {
-      console.log('Cannot move the last tab to a new window')
-      return
-    }
-
-    const tabElement = document.getElementById(tabId)
-    if (tabElement) {
-      tabElement.remove()
-    }
-
-    // Remove from tabs array
-    const tabIndex = this.tabs.findIndex(t => t.id === tabId)
-    if (tabIndex !== -1) {
-      this.tabs.splice(tabIndex, 1)
-    }
-
-    // Remove associated webview
+    let navigation = tab.savedNavigation?.entries?.length ? tab.savedNavigation : null
     const webview = this.webviews.get(tabId)
+    if (!navigation && webview) {
+      try {
+        const { ipcRenderer } = require('electron')
+        navigation = ipcRenderer.sendSync('get-tab-navigation', webview.getWebContentsId())
+      } catch (_) {}
+    }
+
+    document.getElementById(tabId)?.remove()
+    const tabIndex = this.tabs.findIndex(t => t.id === tabId)
+    this.tabs.splice(tabIndex, 1)
     if (webview) {
       webview.remove()
       this.webviews.delete(tabId)
       this.zoomLevels.delete(tabId)
     }
-
-    // Remove from pinned tabs if it was pinned
     this.pinnedTabs.delete(tabId)
-
-    // Remove from group if it was grouped
     this.removeTabFromGroup(tabId)
 
-    // If we moved the active tab, select another one
-    if (this.activeTabId === tabId) {
-      const newTabIndex = Math.max(0, tabIndex - 1)
-      if (this.tabs[newTabIndex]) {
-        this.selectTab(this.tabs[newTabIndex].id)
-      }
+    if (this.activeTabId === tabId && this.tabs.length) {
+      this.selectTab(this.tabs[Math.max(0, tabIndex - 1)].id)
     }
-
-    // Save the current state (without the moved tab)
     this.saveTabsState()
+    return { url: tab.url, title: tab.title, navigation }
+  }
+
+  moveTabToNewWindow (tabId) {
+    const tab = this.detachTab(tabId)
+    if (!tab) return
 
     const { ipcRenderer } = require('electron')
-    ipcRenderer.send('new-window-with-tab', {
-      url: tab.url,
-      title: tab.title,
-      isolate: true // Remove tabId to prevent conflicts
-    })
-
-    // Dispatch event that tab was moved
+    ipcRenderer.send('new-window-with-tab', { url: tab.url, title: tab.title, isolate: true })
     this.dispatchEvent(new CustomEvent('tab-moved-to-new-window', {
       detail: { tabId, url: tab.url, title: tab.title }
     }))
+  }
+
+  // A tab dropped over another Peersky window joins that window; anywhere else
+  // it gets a window of its own.
+  async moveTabOut (tabId, screenX, screenY) {
+    const targetId = await this.windowAt(screenX, screenY)
+    if (targetId === null) return this.moveTabToNewWindow(tabId)
+
+    const tab = this.detachTab(tabId)
+    if (!tab) return
+    require('electron').ipcRenderer.send('move-tab-to-window', { targetId, ...tab, x: screenX, y: screenY })
+  }
+
+  // The window's only tab joins another window, and this window closes.
+  moveLastTabToWindow (tabId, targetId, screenX, screenY) {
+    const tab = this.detachTab(tabId, { last: true })
+    if (!tab) return
+    require('electron').ipcRenderer.send('move-tab-to-window', { targetId, closeSource: true, ...tab, x: screenX, y: screenY })
+  }
+
+  // Id of the other Peersky window under a screen point, or null.
+  async windowAt (x, y) {
+    try {
+      return await require('electron').ipcRenderer.invoke('window-at-point', { x, y })
+    } catch (_) {
+      return null
+    }
+  }
+
+  // The other half of moveTabOut, run in the receiving window.
+  insertTabAtPoint ({ url, title, navigation, x, y }) {
+    const tabs = Array.from(this.tabContainer.querySelectorAll('.tab'))
+    const cx = x - window.screenX
+    const cy = y - window.screenY - (window.outerHeight - window.innerHeight)
+    let index = tabs.length
+    for (let i = 0; i < tabs.length; i++) {
+      const r = tabs[i].getBoundingClientRect()
+      const before = this.isVertical ? cy < r.top + r.height / 2 : cx < r.left + r.width / 2
+      if (before) { index = i; break }
+    }
+
+    const tabId = `tab-${this.tabCounter++}`
+    this.addTabWithId(tabId, url, title, { navigation })
+    this.moveTabToPosition(tabId, index)
+    this.selectTab(tabId, true)
+    this.saveTabsState()
+    return tabId
   }
 
   // Toggle pin state of a tab
@@ -3182,6 +3251,67 @@ class TabBar extends HTMLElement {
   }
 
   // Drag and Drop Handlers
+  // The dragged element can't be drawn outside the window, so once the drag
+  // leaves the strip an always-on-top window shows a copy of the tab instead.
+  startDragPreview (rect) {
+    const el = this.primaryDragTarget
+    const titleEl = el.querySelector('.tab-title')
+    const icon = /^url\(["']?(.*?)["']?\)$/.exec(el.querySelector('.tab-favicon')?.style.backgroundImage || '')
+    const style = getComputedStyle(el)
+    const preview = { ready: false, shown: false }
+    this.dragPreview = preview
+    const { ipcRenderer } = require('electron')
+    ipcRenderer.invoke('tab-drag-preview-prepare', {
+      title: titleEl?.textContent || '',
+      favicon: icon ? icon[1] : '',
+      showTitle: !!titleEl && titleEl.getBoundingClientRect().width > 0,
+      width: rect.width,
+      height: rect.height,
+      background: this.solidBackground(el, this.tabContainer),
+      color: (titleEl ? getComputedStyle(titleEl) : style).color,
+      fontFamily: style.fontFamily,
+      fontSize: style.fontSize,
+      borderRadius: style.borderRadius
+    }).then(ok => { if (ok) preview.ready = true }).catch(() => {})
+  }
+
+  // The tab's own background, else the first one behind the strip.
+  solidBackground (tabEl, strip) {
+    const opaque = c => c && c !== 'transparent' && !/^rgba\(.*,\s*0\)$/.test(c)
+    const own = getComputedStyle(tabEl).backgroundColor
+    if (opaque(own)) return own
+    for (let node = strip; node; node = node.parentElement) {
+      const bg = getComputedStyle(node).backgroundColor
+      if (opaque(bg)) return bg
+    }
+    return '#2b2b2b'
+  }
+
+  moveDragPreview (e) {
+    const preview = this.dragPreview
+    if (!preview?.ready) return
+    const { ipcRenderer } = require('electron')
+    ipcRenderer.send('tab-drag-preview', { type: 'move', x: e.screenX - this.dragOffsetLeft, y: e.screenY - this.dragOffsetTop })
+    if (preview.shown) return
+    preview.shown = true
+    this.draggedElements.forEach(el => { el.style.visibility = 'hidden' })
+  }
+
+  hideDragPreview () {
+    const preview = this.dragPreview
+    if (!preview?.shown) return
+    preview.shown = false
+    this.draggedElements?.forEach(el => { el.style.visibility = '' })
+    require('electron').ipcRenderer.send('tab-drag-preview', { type: 'hide' })
+  }
+
+  endDragPreview () {
+    if (!this.dragPreview) return
+    this.hideDragPreview()
+    this.dragPreview = null
+    require('electron').ipcRenderer.send('tab-drag-preview', { type: 'end' })
+  }
+
   handlePointerDown (e) {
     // Only accept left-clicks. Ignore clicks on close buttons or the add tab button.
     if (e.button !== 0 || e.target.closest('.close-tab') || e.target.closest('.add-tab-button')) return
@@ -3275,6 +3405,7 @@ class TabBar extends HTMLElement {
 
       this.dragTotalWidth = totalWidth
       this.dragTotalHeight = totalHeight
+      this.startDragPreview(rects[0])
     }
 
     if (this.isDragging) {
@@ -3295,7 +3426,9 @@ class TabBar extends HTMLElement {
           el.style.top = `${floatTop + offsetY}px`
         })
         if (this.placeholder) this.placeholder.style.display = 'none'
+        this.moveDragPreview(e)
       } else {
+        this.hideDragPreview()
         const placeholderRect = this.placeholder.getBoundingClientRect()
 
         this.draggedElements.forEach(el => {
@@ -3382,6 +3515,7 @@ class TabBar extends HTMLElement {
     if (this.webviewContainer) {
       this.webviewContainer.style.pointerEvents = ''
     }
+    this.endDragPreview()
 
     if (!this.isDragging || !this.draggedElements) {
       if (this.primaryDragTarget) {
@@ -3397,29 +3531,45 @@ class TabBar extends HTMLElement {
 
     const idsToMove = this.draggedElements.map(el => el.id)
 
-    if (this.isOutsideContainer && this.tabs.length > this.draggedElements.length) {
-      this.draggedElements.forEach(el => {
-        el.classList.remove('dragging')
-        el.remove()
+    if (this.isOutsideContainer && idsToMove.length === 1 && this.tabs.length === 1) {
+      // The last tab can only join another window; anywhere else it snaps back.
+      this.windowAt(e.screenX, e.screenY).then(targetId => {
+        if (targetId === null) return this.settleDrag()
+        this.discardDraggedElements()
+        this.moveLastTabToWindow(idsToMove[0], targetId, e.screenX, e.screenY)
       })
+      return
+    }
 
-      if (this.placeholder && this.placeholder.parentNode) {
-        this.placeholder.remove()
-      }
-
-      this.placeholder = null
-      this.draggedElements = null
-      this.primaryDragTarget = null
-      this.isOutsideContainer = false
-
+    if (this.isOutsideContainer && this.tabs.length > this.draggedElements.length) {
+      this.discardDraggedElements()
       if (idsToMove.length === 1) {
-        this.moveTabToNewWindow(idsToMove[0])
+        this.moveTabOut(idsToMove[0], e.screenX, e.screenY)
       } else if (idsToMove.length === 2) {
         this.moveSplitGroupToNewWindow(idsToMove)
       }
       return
     }
 
+    this.settleDrag()
+  }
+
+  discardDraggedElements () {
+    this.draggedElements.forEach(el => {
+      el.classList.remove('dragging')
+      el.remove()
+    })
+    if (this.placeholder && this.placeholder.parentNode) {
+      this.placeholder.remove()
+    }
+    this.placeholder = null
+    this.draggedElements = null
+    this.primaryDragTarget = null
+    this.isOutsideContainer = false
+  }
+
+  // Slides the dragged tabs back into the strip at the placeholder.
+  settleDrag () {
     if (this.placeholder) this.placeholder.style.display = ''
     const placeholderRect = this.placeholder ? this.placeholder.getBoundingClientRect() : { left: 0, top: 0 }
 

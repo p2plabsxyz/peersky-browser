@@ -11,6 +11,7 @@ import { getPartition } from './session.js'
 import extensionManager from './extensions/index.js'
 import { createCoalescedTask } from './coalesce.js'
 import { goBackActiveTab, goForwardActiveTab } from './history-nav.js'
+import { registerTabDragPreview } from './tab-drag-preview.js'
 
 const log = createLogger('window-manager')
 
@@ -158,6 +159,34 @@ class WindowManager {
         }
       })
     })
+
+    // Which other window, if any, is under a screen point. Used at the end of
+    // a tab drag to decide between joining that window and opening a new one.
+    ipcMain.handle('window-at-point', (event, { x, y }) => {
+      for (const peersky of this.windows) {
+        const win = peersky.window
+        if (win.isDestroyed() || win.webContents.id === event.sender.id) continue
+        const b = win.getBounds()
+        if (x >= b.x && x < b.x + b.width && y >= b.y && y < b.y + b.height) return win.webContents.id
+      }
+      return null
+    })
+
+    // closeSource: the tab was the sender's last, so the sender goes away.
+    // The target is focused once it has, or the closing steals focus back.
+    ipcMain.on('move-tab-to-window', (event, { targetId, closeSource, ...tab }) => {
+      const target = this.findWindowBySenderId(targetId)
+      if (!target || target.window.isDestroyed()) return
+      target.window.webContents.send('add-tab-at-point', tab)
+      const source = closeSource && BrowserWindow.fromWebContents(event.sender)
+      if (source && !source.isDestroyed()) {
+        source.once('closed', () => { if (!target.window.isDestroyed()) target.window.focus() })
+        source.close()
+        return
+      }
+      target.window.focus()
+    })
+    registerTabDragPreview()
 
     // Handles tearing off a split tab pair into a new window
     ipcMain.on('new-window-with-split-tabs', (event, data) => {
