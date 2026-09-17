@@ -29,6 +29,7 @@ import extensionManager from './extensions/index.js'
 import { setupExtensionIpcHandlers } from './extensions/extensions-ipc.js'
 import { getBrowserSession, usePersist } from './session.js'
 import { setupPermissionHandler } from './permissions.js'
+import { setupSiteInfoIpc } from './site-info-ipc.js'
 import { setupP2pmdPdfExportIpc } from './pages/p2p/p2pmd/pdf-export-ipc.js'
 import { setupBackupIpc } from './backup/ipc.js'
 import backupManager from './backup/backup-manager.js'
@@ -285,6 +286,7 @@ app.whenReady().then(async () => {
   installExtensionWebRequestBridge(userSession)
   setupBittorrentIpc()
   setupBackupIpc()
+  setupSiteInfoIpc(userSession)
 
   userSession.on('will-download', (event, item, sessionWebContents) => {
     const downloadId = crypto.randomUUID()
