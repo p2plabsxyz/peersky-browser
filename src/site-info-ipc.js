@@ -7,6 +7,7 @@ import {
   isValidOrigin
 } from './permissions.js'
 import extensionManager from './extensions/index.js'
+import { connectionFor } from './site-info-connection.js'
 
 const SITE_STORAGES = [
   'cookies',
@@ -16,19 +17,6 @@ const SITE_STORAGES = [
   'cachestorage',
   'serviceworkers'
 ]
-
-const SECURE_SCHEMES = new Set([
-  'https:',
-  'peersky:',
-  'ipfs:',
-  'ipns:',
-  'hyper:',
-  'bt:',
-  'bittorrent:',
-  'magnet:',
-  'web3:',
-  'file:'
-])
 
 const PRIVACY_EXTENSIONS = [
   { key: 'ublock', label: 'uBlock Origin', match: /ublock/i },
@@ -51,16 +39,6 @@ function parsePageUrl (raw) {
   } catch {
     return { ok: false, error: 'invalid url' }
   }
-}
-
-function connectionFor (protocol) {
-  if (protocol === 'http:') {
-    return { secure: false, label: 'Not secure' }
-  }
-  if (SECURE_SCHEMES.has(protocol)) {
-    return { secure: true, label: 'Connection is secure' }
-  }
-  return { secure: false, label: 'Connection status unknown' }
 }
 
 async function cookieCount (session, url) {
