@@ -252,6 +252,8 @@ async function loadWindowManager () {
     '../../src/context-menu.js': { attachContextMenus: sinon.stub(), setWindowManager: sinon.stub() },
     '../../src/extensions/index.js': { default: { addWindow: sinon.stub() } },
     '../../src/session.js': { getPartition: () => '' },
+    '../../src/tab-drag-preview.js': { registerTabDragPreview: sinon.stub() },
+    '../../src/navigation-restore.js': { watchHost: sinon.stub() },
     '../../src/settings-manager.js': { default: { settings: {} } },
     '../../src/logger.js': {
       createLogger: () => ({ info () {}, warn () {}, error () {}, debug () {} })
