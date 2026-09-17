@@ -10,6 +10,7 @@ const windows = await readFile(new URL('../src/window-manager.js', import.meta.u
 const renderer = await readFile(new URL('../src/renderer.js', import.meta.url), 'utf8')
 const main = await readFile(new URL('../src/main.js', import.meta.url), 'utf8')
 const vertical = await readFile(new URL('../src/pages/vertical-tabs.js', import.meta.url), 'utf8')
+const verticalCss = await readFile(new URL('../src/pages/theme/vertical-tabs.css', import.meta.url), 'utf8')
 
 // The preview module creates windows, so electron is stubbed out.
 const preview = await esmock.strict('../src/tab-drag-preview.js', {
@@ -266,5 +267,15 @@ describe('the vertical tab bar', function () {
       if (forwarded < declared) dropped.push(`${name}: base takes ${declared}, override forwards ${forwarded}`)
     }
     expect(dropped).to.deep.equal([])
+  })
+})
+
+// The loading spinner was positioned against the tab rather than the favicon,
+// so it span in the middle of the tab, over the title.
+describe('a loading tab in the vertical strip', function () {
+  it('shows no spinner, the same as the horizontal strip', function () {
+    expect(verticalCss).to.not.contain('animation: spin')
+    expect(verticalCss).to.not.contain('@keyframes spin')
+    expect(verticalCss).to.not.match(/\.tab\.loading[^{]*::after/)
   })
 })
