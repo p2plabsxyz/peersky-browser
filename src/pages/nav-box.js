@@ -32,6 +32,7 @@ class NavBox extends HTMLElement {
     // list appearing under a resting cursor does not select under it.
     this._autocompleteQuery = ''
     this._autocompleteOpenedAt = null
+    this._autocompleteEpoch = 0
     this._isAutocompleteVisible = false
 
     this.buildNavBox()
@@ -1068,6 +1069,7 @@ class NavBox extends HTMLElement {
     if (this._autocompleteDebounceTimer) {
       clearTimeout(this._autocompleteDebounceTimer)
     }
+    this._autocompleteEpoch++
 
     const query = value.trim()
 
@@ -1081,8 +1083,11 @@ class NavBox extends HTMLElement {
 
     // Debounce the search (200ms)
     this._autocompleteDebounceTimer = setTimeout(async () => {
+      const epoch = this._autocompleteEpoch
       try {
         const result = await navBoxIPC.invoke('history-search', query)
+        // Dropped if the query moved on or Enter navigated while this was out.
+        if (epoch !== this._autocompleteEpoch) return
 
         if (result.success && result.results && result.results.length > 0) {
           // Get current page URL from active webview via tab-bar
@@ -1290,6 +1295,7 @@ class NavBox extends HTMLElement {
   // navigating that cache has to go, or a late debounce or the focus handler
   // reopens the dropdown over the page that just loaded.
   _dismissAutocomplete () {
+    this._autocompleteEpoch++
     if (this._autocompleteDebounceTimer) {
       clearTimeout(this._autocompleteDebounceTimer)
       this._autocompleteDebounceTimer = null

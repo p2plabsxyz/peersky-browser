@@ -3,6 +3,9 @@
 
 import { expect } from 'chai'
 import { isURL, looksLikeDomain, isLoopbackAddress, NAVIGABLE_SCHEMES } from '../src/utils.js'
+import { readFile } from 'fs/promises'
+
+const navBox = await readFile(new URL('../src/pages/nav-box.js', import.meta.url), 'utf8')
 
 describe('telling a typed URL from a search', function () {
   describe('text that merely contains a colon', function () {
@@ -83,5 +86,27 @@ describe('telling a typed URL from a search', function () {
         expect(NAVIGABLE_SCHEMES.has(scheme), scheme).to.equal(true)
       }
     })
+  })
+})
+
+// Pressing Enter closed the suggestions, then the history search that was still
+// in flight came back and reopened them over the page that had just loaded.
+describe('the address bar suggestions', function () {
+  const search = navBox.slice(navBox.indexOf('_handleAutocompleteInput (value)'), navBox.indexOf('_handleAutocompleteKeydown (e)'))
+  const dismiss = navBox.slice(navBox.indexOf('_dismissAutocomplete () {'))
+
+  it('ignores a search that lands after the query moved on', function () {
+    expect(search).to.contain('const epoch = this._autocompleteEpoch')
+    expect(search).to.contain('if (epoch !== this._autocompleteEpoch) return')
+  })
+
+  it('checks that before it stores or shows anything', function () {
+    expect(search.indexOf('if (epoch !== this._autocompleteEpoch) return')).to.be.below(search.indexOf('this._autocompleteResults = filteredResults'))
+    expect(search.indexOf('if (epoch !== this._autocompleteEpoch) return')).to.be.below(search.indexOf('this._showAutocomplete()'))
+  })
+
+  it('moves the epoch on for new input and when navigating away', function () {
+    expect(search).to.contain('this._autocompleteEpoch++')
+    expect(dismiss).to.contain('this._autocompleteEpoch++')
   })
 })
