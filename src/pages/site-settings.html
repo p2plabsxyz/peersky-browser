@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' peersky:; object-src 'none'; style-src 'self' 'unsafe-inline' browser:;">
+  <link rel="icon" type="image/png" href="peersky://static/assets/logo.png" />
+  <style>
+    @import url("browser://theme/index.css");
+    @import url("browser://theme/vars.css");
+    @import url("browser://theme/settings.css");
+    @import url("browser://theme/site-settings-page.css");
+  </style>
+  <title>Site settings</title>
+</head>
+<body>
+<div class="settings-wrapper">
+  <div class="settings-layout">
+    <main class="settings-content" id="site-settings-root">
+      <h1 class="page-title">Site settings</h1>
+      <p class="site-settings-empty" id="empty-state">
+        Open site settings from the shield icon in the address bar while visiting a site.
+      </p>
+      <div id="site-settings-body" hidden>
+        <header class="site-settings-header">
+          <h2 class="site-settings-host" id="site-host"></h2>
+          <p class="site-settings-connection" id="site-connection"></p>
+          <p class="site-settings-origin" id="site-origin"></p>
+        </header>
+
+        <section class="settings-section" id="section-security">
+          <h3 class="section-title">Security</h3>
+          <div class="setting-row">
+            <div class="setting-label">Connection</div>
+            <div class="setting-control" id="security-connection"></div>
+          </div>
+          <div class="setting-row">
+            <div class="setting-label">Protocol</div>
+            <div class="setting-control" id="security-protocol"></div>
+          </div>
+        </section>
+
+        <section class="settings-section" id="section-privacy">
+          <h3 class="section-title">Privacy</h3>
+          <div id="privacy-rows"></div>
+          <div class="setting-row site-settings-actions-row">
+            <a class="btn btn-secondary" href="peersky://extensions">Manage extensions</a>
+          </div>
+        </section>
+
+        <section class="settings-section" id="section-permissions" hidden>
+          <h3 class="section-title">Permissions</h3>
+          <div id="permission-rows"></div>
+          <div class="setting-row site-settings-actions-row">
+            <button type="button" class="btn btn-secondary" id="reset-permissions">Reset permissions</button>
+          </div>
+        </section>
+
+        <section class="settings-section" id="section-data" hidden>
+          <h3 class="section-title">Site data</h3>
+          <div class="setting-row">
+            <div class="setting-label">Cookies</div>
+            <div class="setting-control" id="cookie-count">0</div>
+          </div>
+          <div class="setting-row site-settings-actions-row" id="clear-actions">
+            <button type="button" class="btn btn-secondary" id="clear-data">Clear site data</button>
+          </div>
+          <div class="site-settings-clear-confirm" id="clear-confirm" hidden>
+            <p id="clear-title"></p>
+            <p class="site-settings-clear-detail">
+              This will remove cookies, local storage, IndexedDB, cached data, and service workers for this site. Permissions are not changed.
+            </p>
+            <div class="site-settings-clear-buttons">
+              <button type="button" class="btn btn-secondary" id="clear-cancel">Cancel</button>
+              <button type="button" class="btn btn-danger" id="clear-confirm-btn">Clear</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+</div>
+<script src="peersky://static/js/site-settings-page.js" defer></script>
+</body>
+</html>

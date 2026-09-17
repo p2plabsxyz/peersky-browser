@@ -14,7 +14,7 @@ const RULES_START = 'function parseLocation'
 const RULES_END = 'const isBitTorrent'
 
 const FLAGS = [
-  'isSettings', 'isExtensions', 'isHome', 'isOnboarding', 'isBookmarks',
+  'isSettings', 'isExtensions', 'isSiteSettings', 'isHome', 'isOnboarding', 'isBookmarks',
   'isDownloads', 'isBackup', 'isTabsPage', 'isP2PPage', 'isUserP2PApp',
   'isInternal', 'isExternal', 'isP2P', 'isBitTorrent'
 ]
@@ -72,6 +72,7 @@ describe('preload page context', function () {
     const cases = [
       ['peersky://settings', 'isSettings'],
       ['peersky://extensions', 'isExtensions'],
+      ['peersky://site-settings?origin=https%3A%2F%2Fexample.com', 'isSiteSettings'],
       ['peersky://home', 'isHome'],
       ['peersky://onboarding', 'isOnboarding'],
       ['peersky://bookmarks', 'isBookmarks'],

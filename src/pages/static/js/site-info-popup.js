@@ -67,6 +67,9 @@ export class SiteInfoPopup {
           </div>
         </div>
       </div>
+      <div class="site-info-footer" hidden>
+        <button type="button" class="site-info-open-settings">Site settings</button>
+      </div>
     `
 
     document.body.appendChild(popup)
@@ -132,6 +135,7 @@ export class SiteInfoPopup {
       this.renderPrivacy(null)
       this.renderPermissions(null)
       this.renderSiteData(null)
+      this.renderFooter(null)
       return
     }
 
@@ -142,6 +146,7 @@ export class SiteInfoPopup {
       this.renderPrivacy(this._info)
       this.renderPermissions(this._info)
       this.renderSiteData(this._info)
+      this.renderFooter(this._info)
     } catch (err) {
       console.warn('[SiteInfoPopup] site-info-get failed:', err?.message || err)
       this._info = null
@@ -149,6 +154,7 @@ export class SiteInfoPopup {
       this.renderPrivacy(null)
       this.renderPermissions(null)
       this.renderSiteData(null)
+      this.renderFooter(null)
     }
 
     requestAnimationFrame(() => this.positionPopup())
@@ -302,6 +308,12 @@ export class SiteInfoPopup {
     }
   }
 
+  renderFooter (info) {
+    const footer = this.popup.querySelector('.site-info-footer')
+    if (!footer) return
+    footer.hidden = !info?.origin
+  }
+
   setupEventListeners () {
     if (!this.popup) return
 
@@ -338,6 +350,14 @@ export class SiteInfoPopup {
             detail: { url: 'peersky://extensions' }
           }))
         }
+        return
+      }
+
+      const openSettings = event.target.closest('.site-info-open-settings')
+      if (openSettings) {
+        event.preventDefault()
+        event.stopPropagation()
+        this.openSiteSettingsPage()
         return
       }
 
@@ -474,6 +494,20 @@ export class SiteInfoPopup {
       })
     } catch (err) {
       console.warn('[SiteInfoPopup] open extension action failed:', err?.message || err)
+    }
+  }
+
+  openSiteSettingsPage () {
+    if (!this._info?.origin && !this._info?.url) return
+    const params = new URLSearchParams()
+    if (this._info.url) params.set('url', this._info.url)
+    else params.set('origin', this._info.origin)
+    this.hide()
+    const navBox = document.querySelector('nav-box')
+    if (navBox) {
+      navBox.dispatchEvent(new CustomEvent('navigate', {
+        detail: { url: `peersky://site-settings?${params.toString()}` }
+      }))
     }
   }
 

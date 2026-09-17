@@ -356,6 +356,29 @@ button.site-info-privacy-row.is-action:hover {
   color: #ef4444;
 }
 
+.site-info-footer {
+  border-top: 1px solid var(--settings-border);
+  padding: 10px 16px 12px;
+}
+
+.site-info-open-settings {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--settings-border);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.site-info-open-settings:hover {
+  background: var(--browser-theme-background-hover, rgba(255, 255, 255, 0.05));
+}
+
 .inside-urlbar#site-info {
   padding: 6px 8px 6px 10px;
   flex-shrink: 0;
