@@ -9,6 +9,7 @@ export class SiteInfoPopup {
     this._confirmClear = false
     this._info = null
     this._pageUrl = ''
+    this._refreshSeq = 0
 
     this.hide = this.hide.bind(this)
     this.handleClickOutside = this.handleClickOutside.bind(this)
@@ -112,6 +113,7 @@ export class SiteInfoPopup {
     this._openPermission = null
     this._confirmClear = false
     this._pageUrl = ''
+    this._refreshSeq++
 
     document.removeEventListener('click', this.handleClickOutside)
     document.removeEventListener('keydown', this.handleKeyDown)
@@ -128,6 +130,7 @@ export class SiteInfoPopup {
 
   async refresh (pageUrl) {
     if (!this.popup || !this.isVisible) return
+    const seq = ++this._refreshSeq
     this._pageUrl = pageUrl || ''
     this._openPermission = null
     this._confirmClear = false
@@ -144,6 +147,7 @@ export class SiteInfoPopup {
 
     try {
       const info = await this.ipc.invoke('site-info-get', pageUrl)
+      if (seq !== this._refreshSeq || !this.isVisible) return
       this._info = info?.ok ? info : null
       this.renderIdentity(this._info)
       this.renderPrivacy(this._info)
@@ -151,6 +155,7 @@ export class SiteInfoPopup {
       this.renderSiteData(this._info)
       this.renderFooter(this._info)
     } catch (err) {
+      if (seq !== this._refreshSeq || !this.isVisible) return
       console.warn('[SiteInfoPopup] site-info-get failed:', err?.message || err)
       this._info = null
       this.renderIdentity(null)
@@ -160,6 +165,7 @@ export class SiteInfoPopup {
       this.renderFooter(null)
     }
 
+    if (seq !== this._refreshSeq || !this.isVisible) return
     requestAnimationFrame(() => this.positionPopup())
   }
 
@@ -651,7 +657,9 @@ const SECURE_PROTOCOLS = new Set([
   'peersky:',
   'ipfs:',
   'ipns:',
+  'pubsub:',
   'hyper:',
+  'hs:',
   'bt:',
   'bittorrent:',
   'magnet:',
