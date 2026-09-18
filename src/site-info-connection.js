@@ -19,6 +19,10 @@ export function connectionFor (protocol) {
       return { secure: true, label: 'Web3' }
     case 'file:':
       return { secure: true, label: 'Local file' }
+    case 'hs:':
+      return { secure: true, label: 'Holesail' }
+    case 'pubsub:':
+      return { secure: true, label: 'PubSub' }
     default:
       return { secure: false, label: 'Connection status unknown' }
   }
