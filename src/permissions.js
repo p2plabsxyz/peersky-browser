@@ -39,7 +39,7 @@ export function isValidOrigin (origin) {
   return typeof origin === 'string' &&
     origin.length > 0 &&
     origin.length < 256 &&
-    (origin === 'unknown' || ORIGIN_REGEX.test(origin))
+    ORIGIN_REGEX.test(origin)
 }
 
 function cacheKey (origin, permission) {
@@ -87,7 +87,7 @@ export function getPermissionsForOrigin (origin) {
 }
 
 export function setPermission (origin, permission, state) {
-  if (!isValidOrigin(origin) || origin === 'unknown') {
+  if (!isValidOrigin(origin)) {
     return { ok: false, error: 'invalid origin' }
   }
   if (!isManagedPermission(permission)) {
@@ -164,13 +164,13 @@ function savePermissions () {
 function originFromWebContents (webContents) {
   try {
     const url = webContents.getURL() || ''
-    if (!url) return 'unknown'
+    if (!url) return null
     const o = new URL(url).origin
-    if (o && o.length < 256 && isValidOrigin(o)) return o
+    if (o && o.length < 256 && ORIGIN_REGEX.test(o)) return o
   } catch {
-    /* keep unknown */
+    /* ignore */
   }
-  return 'unknown'
+  return null
 }
 
 async function loadPermissions () {
@@ -203,6 +203,11 @@ export async function setupPermissionHandler (session) {
     }
 
     const origin = originFromWebContents(webContents)
+    if (!origin) {
+      callback(false) // eslint-disable-line n/no-callback-literal
+      return
+    }
+
     const key = cacheKey(origin, permission)
     const cached = permissionCache.get(key)
     if (cached) {
@@ -230,9 +235,12 @@ export async function setupPermissionHandler (session) {
         } else if (response === 1) {
           permissionCache.set(key, { state: 'allow', permanent: false })
           callback(true) // eslint-disable-line n/no-callback-literal
-        } else {
+        } else if (response === 2) {
           permissionCache.set(key, { state: 'block', permanent: true })
           savePermissions()
+          callback(false) // eslint-disable-line n/no-callback-literal
+        } else {
+          // Dialog dismissed (e.g. response === -1) — deny once, do not persist.
           callback(false) // eslint-disable-line n/no-callback-literal
         }
       })
@@ -244,15 +252,16 @@ export async function setupPermissionHandler (session) {
   session.setPermissionCheckHandler((_webContents, permission, requestingOrigin) => {
     if (SILENT_GRANT_PERMISSIONS.has(permission)) return true
     if (!PROMPT_PERMISSIONS.has(permission)) return false
-    let origin = 'unknown'
+    let origin = null
     try {
       if (requestingOrigin) {
         const o = new URL(requestingOrigin).origin
-        if (isValidOrigin(o)) origin = o
+        if (ORIGIN_REGEX.test(o)) origin = o
       }
     } catch {
-      /* unknown */
+      /* ignore */
     }
+    if (!origin) return false
     return entryAllows(permissionCache.get(cacheKey(origin, permission)))
   })
 }
