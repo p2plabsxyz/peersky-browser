@@ -20,5 +20,7 @@ describe('site-info connection labels', function () {
     expect(connectionFor('hyper:').label).to.equal('Hypercore')
     expect(connectionFor('bt:').label).to.equal('BitTorrent')
     expect(connectionFor('peersky:').label).to.equal('PeerSky page')
+    expect(connectionFor('hs:').label).to.equal('Holesail')
+    expect(connectionFor('pubsub:').label).to.equal('PubSub')
   })
 })
