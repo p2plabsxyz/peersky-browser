@@ -32,15 +32,21 @@ async function loadPermissions () {
 }
 
 describe('permission cache', function () {
-  it('rejects opaque and non-http origins for edits', async function () {
-    const { setPermission, isValidOrigin } = await loadPermissions()
+  it('accepts http(s) and browser scheme origins, rejects opaque ones', async function () {
+    const { setPermission, isValidOrigin, permissionOriginFromUrl } = await loadPermissions()
     expect(isValidOrigin('https://example.com')).to.equal(true)
-    expect(isValidOrigin('ipfs://bafy')).to.equal(false)
-    expect(setPermission('peersky://settings', 'geolocation', 'allow')).to.deep.equal({
+    expect(isValidOrigin('peersky://backup')).to.equal(true)
+    expect(isValidOrigin('ipfs://bafy')).to.equal(true)
+    expect(isValidOrigin('file://')).to.equal(true)
+    expect(permissionOriginFromUrl('peersky://backup/scan')).to.equal('peersky://backup')
+    expect(permissionOriginFromUrl('file:///C:/x')).to.equal('file://')
+    expect(isValidOrigin('unknown')).to.equal(false)
+    expect(isValidOrigin('null')).to.equal(false)
+    expect(setPermission('about:blank', 'geolocation', 'allow')).to.deep.equal({
       ok: false,
       error: 'invalid origin'
     })
-    expect(setPermission('unknown', 'geolocation', 'allow')).to.deep.equal({
+    expect(setPermission('data:text/html,hi', 'geolocation', 'allow')).to.deep.equal({
       ok: false,
       error: 'invalid origin'
     })
@@ -76,6 +82,15 @@ describe('permission cache', function () {
     })
     expect(granted).to.equal(true)
     expect(checkHandler(null, 'clipboard-sanitized-write', 'peersky://settings')).to.equal(true)
+  })
+
+  it('prompts on peersky pages instead of denying', async function () {
+    const { requestHandler, getPermissionsForOrigin } = await loadPermissions()
+    const wc = { getURL: () => 'peersky://backup' }
+    await new Promise((resolve) => {
+      requestHandler(wc, 'media', () => resolve())
+    })
+    expect(getPermissionsForOrigin('peersky://backup').media).to.equal('allow-session')
   })
 
   it('keeps Allow this time in memory only', async function () {

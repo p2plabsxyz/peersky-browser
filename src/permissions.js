@@ -1,6 +1,7 @@
 import { app, dialog, BrowserWindow } from 'electron'
 import fs from 'fs/promises'
 import path from 'path'
+import { NAVIGABLE_SCHEMES } from './utils.js'
 
 export const MANAGED_PERMISSIONS = [
   { id: 'geolocation', label: 'Location' },
@@ -22,10 +23,12 @@ const PERMISSION_LABELS = Object.fromEntries(
 // here on purpose: that one stays denied.
 const SILENT_GRANT_PERMISSIONS = new Set(['clipboard-sanitized-write'])
 
+// blob:/data:/about: have no stable host; do not share a cache key across them.
+const OPAQUE_SCHEMES = new Set(['blob:', 'data:', 'about:'])
+
 const PERMISSIONS_FILE = path.join(app.getPath('userData'), 'permissions.json')
 const MAX_CACHE_ENTRIES = 500
 const MAX_FILE_BYTES = 512 * 1024
-const ORIGIN_REGEX = /^https?:\/\/[^/]+$/
 const STATES = new Set(['allow', 'block', 'ask'])
 
 const permissionCache = new Map()
@@ -35,11 +38,41 @@ function isManagedPermission (permission) {
   return PROMPT_PERMISSIONS.has(permission)
 }
 
+/**
+ * Stable permission key for a page URL.
+ * http(s) use URL.origin; other navigable schemes use scheme://host so Node's
+ * opaque "null" origin does not collapse peersky/ipfs/hyper/file into one bucket.
+ */
+export function permissionOriginFromUrl (raw) {
+  if (!raw || typeof raw !== 'string') return null
+  if (raw === 'null' || raw === 'unknown') return null
+  try {
+    const url = new URL(raw)
+    if (!NAVIGABLE_SCHEMES.has(url.protocol)) return null
+    if (OPAQUE_SCHEMES.has(url.protocol)) return null
+
+    if (url.protocol === 'http:' || url.protocol === 'https:') {
+      if (!url.host || url.origin === 'null') return null
+      return url.origin.length < 256 ? url.origin : null
+    }
+
+    if (url.host) {
+      const key = `${url.protocol}//${url.host}`
+      return key.length < 256 ? key : null
+    }
+
+    // file:///… has an empty host; one shared key for local files.
+    if (url.protocol === 'file:') return 'file://'
+
+    return null
+  } catch {
+    return null
+  }
+}
+
 export function isValidOrigin (origin) {
-  return typeof origin === 'string' &&
-    origin.length > 0 &&
-    origin.length < 256 &&
-    ORIGIN_REGEX.test(origin)
+  if (typeof origin !== 'string' || !origin || origin.length >= 256) return false
+  return permissionOriginFromUrl(origin) === origin
 }
 
 function cacheKey (origin, permission) {
@@ -163,14 +196,10 @@ function savePermissions () {
 
 function originFromWebContents (webContents) {
   try {
-    const url = webContents.getURL() || ''
-    if (!url) return null
-    const o = new URL(url).origin
-    if (o && o.length < 256 && ORIGIN_REGEX.test(o)) return o
+    return permissionOriginFromUrl(webContents.getURL() || '')
   } catch {
-    /* ignore */
+    return null
   }
-  return null
 }
 
 async function loadPermissions () {
@@ -252,15 +281,7 @@ export async function setupPermissionHandler (session) {
   session.setPermissionCheckHandler((_webContents, permission, requestingOrigin) => {
     if (SILENT_GRANT_PERMISSIONS.has(permission)) return true
     if (!PROMPT_PERMISSIONS.has(permission)) return false
-    let origin = null
-    try {
-      if (requestingOrigin) {
-        const o = new URL(requestingOrigin).origin
-        if (ORIGIN_REGEX.test(o)) origin = o
-      }
-    } catch {
-      /* ignore */
-    }
+    const origin = permissionOriginFromUrl(requestingOrigin)
     if (!origin) return false
     return entryAllows(permissionCache.get(cacheKey(origin, permission)))
   })
