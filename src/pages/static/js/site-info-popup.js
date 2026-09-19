@@ -1,3 +1,5 @@
+import { connectionFor } from '../../../utils.js'
+
 export class SiteInfoPopup {
   constructor (ipc) {
     this.ipc = ipc
@@ -652,25 +654,10 @@ function permissionChooserHtml (permission, current) {
   `
 }
 
-const SECURE_PROTOCOLS = new Set([
-  'https:',
-  'peersky:',
-  'ipfs:',
-  'ipns:',
-  'pubsub:',
-  'hyper:',
-  'hs:',
-  'bt:',
-  'bittorrent:',
-  'magnet:',
-  'web3:',
-  'file:'
-])
-
 export function isSecurePageUrl (url) {
   if (!url || typeof url !== 'string') return false
   try {
-    return SECURE_PROTOCOLS.has(new URL(url).protocol)
+    return connectionFor(new URL(url).protocol).secure === true
   } catch {
     return false
   }

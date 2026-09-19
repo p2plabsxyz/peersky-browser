@@ -1,5 +1,5 @@
 import { expect } from 'chai'
-import { connectionFor } from '../../src/site-info-connection.js'
+import { connectionFor } from '../../src/utils.js'
 
 describe('site-info connection labels', function () {
   it('marks http as not secure', function () {
@@ -22,5 +22,12 @@ describe('site-info connection labels', function () {
     expect(connectionFor('peersky:').label).to.equal('PeerSky page')
     expect(connectionFor('hs:').label).to.equal('Holesail')
     expect(connectionFor('pubsub:').label).to.equal('PubSub')
+  })
+
+  it('covers other navigable schemes that used to fall through', function () {
+    expect(connectionFor('about:').secure).to.equal(true)
+    expect(connectionFor('browser:').label).to.equal('PeerSky page')
+    expect(connectionFor('blob:').secure).to.equal(true)
+    expect(connectionFor('data:').secure).to.equal(false)
   })
 })
