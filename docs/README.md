@@ -2,6 +2,7 @@
 
 - [Settings](Settings.md)
 - [Tabs](Tabs.md)
+- [Site info](SiteInfo.md)
 - [LLMs](LLM.md)
 - [Extensions](Extensions.md)
 - [Theme Protocol](Theme.md)

@@ -293,6 +293,7 @@ find-menu {
 /* Floating surfaces must never fall inside a window drag region. */
 .url-autocomplete-dropdown,
 .extensions-popup,
+.site-info-popup,
 .qr-popup,
 .extension-context-menu {
   -webkit-app-region: no-drag;
