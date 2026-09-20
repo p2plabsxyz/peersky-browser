@@ -26,7 +26,7 @@ const PRIVACY_EXTENSIONS = [
 function isTrustedSiteInfoSender (event) {
   const wc = event?.sender
   if (!wc || wc.isDestroyed()) return false
-  if (BrowserWindow.fromWebContents(wc)) return true
+  if (typeof wc.getType === 'function' && wc.getType() === 'window') return true
   try {
     const url = wc.getURL() || ''
     return /^peersky:\/\/site-settings([/?#]|$)/i.test(url)
