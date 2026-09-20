@@ -22,6 +22,8 @@ class NavBox extends HTMLElement {
     this._resizeListener = null
     this._extensionsPopup = null
     this._downloadsPopup = null
+    this._siteInfoPopup = null
+    this._pageUrl = ''
 
     // Autocomplete state
     this._autocompleteDebounceTimer = null
@@ -43,6 +45,7 @@ class NavBox extends HTMLElement {
     this.attachAutocompleteListeners()
     this.initializeExtensionsPopup()
     this.initializeDownloadsPopup()
+    this.initializeSiteInfoPopup()
   }
 
   connectedCallback () {
@@ -54,7 +57,13 @@ class NavBox extends HTMLElement {
     const urlInput = this.querySelector('#url')
     if (!urlInput) return
 
-    urlInput.value = this._formatUrlForDisplay(url || '')
+    this._pageUrl = url || ''
+    urlInput.value = this._formatUrlForDisplay(this._pageUrl)
+    this._updateSiteInfoButton(this._resolvePageUrl() || this._pageUrl)
+
+    if (this._siteInfoPopup?.isVisible) {
+      this._siteInfoPopup.refresh(this._resolvePageUrl() || this._pageUrl)
+    }
   }
 
   _formatUrlForDisplay (url) {
@@ -98,6 +107,14 @@ class NavBox extends HTMLElement {
     const urlBarWrapper = document.createElement('div')
     urlBarWrapper.className = 'url-bar-wrapper'
 
+    const siteInfoButton = this.createButton(
+      'site-info',
+      'peersky://static/assets/svg/shield-x.svg'
+    )
+    siteInfoButton.classList.add('inside-urlbar')
+    siteInfoButton.title = 'Site information'
+    siteInfoButton.setAttribute('aria-label', 'Site information')
+
     const urlInput = document.createElement('input')
     urlInput.type = 'text'
     urlInput.id = 'url'
@@ -120,12 +137,14 @@ class NavBox extends HTMLElement {
     zoomIndicator.className = 'zoom-indicator'
     zoomIndicator.hidden = true
 
+    urlBarWrapper.appendChild(siteInfoButton)
     urlBarWrapper.appendChild(urlInput)
     urlBarWrapper.appendChild(zoomIndicator)
     urlBarWrapper.appendChild(qrButton)
     urlBarWrapper.appendChild(autocompleteDropdown)
     this.appendChild(urlBarWrapper)
 
+    this.buttonElements['site-info'] = siteInfoButton
     this.buttonElements['qr-code'] = qrButton
 
     // Create buttons that should appear after the URL input
@@ -833,6 +852,8 @@ class NavBox extends HTMLElement {
           this.dispatchEvent(new CustomEvent('toggle-bookmark'))
         } else if (button.id === 'qr-code') {
           this._toggleQrCodePopup()
+        } else if (button.id === 'site-info') {
+          this._toggleSiteInfoPopup()
         } else if (button.id === 'extensions') {
           this._toggleExtensionsPopup()
         } else if (button.id === 'downloads') {
@@ -1017,6 +1038,49 @@ class NavBox extends HTMLElement {
     if (!this._downloadsPopup) return
     const dlButton = this.buttonElements.downloads
     if (dlButton) this._downloadsPopup.toggle(dlButton)
+  }
+
+  async initializeSiteInfoPopup () {
+    try {
+      const { SiteInfoPopup, isSecurePageUrl } = await import('./static/js/site-info-popup.js')
+      this._siteInfoPopup = new SiteInfoPopup(navBoxIPC)
+      this._isSecurePageUrl = isSecurePageUrl
+      this._updateSiteInfoButton(this._pageUrl)
+    } catch (error) {
+      console.error('Failed to initialize site info popup:', error)
+    }
+  }
+
+  _resolvePageUrl () {
+    const tabBar = document.querySelector('tab-bar')
+    const fromWebview = tabBar?.getActiveWebview?.()?.getURL?.()
+    if (fromWebview) return fromWebview
+    return this._pageUrl || ''
+  }
+
+  async _toggleSiteInfoPopup () {
+    if (!this._siteInfoPopup) return
+    const button = this.buttonElements['site-info']
+    if (!button) return
+    await this._siteInfoPopup.toggle(button, this._resolvePageUrl())
+  }
+
+  _updateSiteInfoButton (url) {
+    const button = this.buttonElements['site-info']
+    if (!button) return
+
+    const secure = typeof this._isSecurePageUrl === 'function'
+      ? this._isSecurePageUrl(url)
+      : false
+
+    this.updateButtonIcon(button, secure ? 'shield-check.svg' : 'shield-x.svg')
+    button.classList.toggle('is-insecure', !!url && !secure)
+    button.title = !url
+      ? 'Site information'
+      : secure
+        ? 'Connection is secure'
+        : 'Connection is not secure'
+    button.setAttribute('aria-label', button.title)
   }
 
   // Autocomplete / History Suggestions

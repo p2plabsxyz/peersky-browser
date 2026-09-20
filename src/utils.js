@@ -16,6 +16,34 @@ const NAVIGABLE_SCHEMES = new Set([
   'hyper:', 'hs:', 'web3:', 'bittorrent:', 'bt:', 'magnet:'
 ])
 
+// Connection labels for the site-info shield. Keep in sync with NAVIGABLE_SCHEMES.
+const CONNECTION_BY_PROTOCOL = {
+  'http:': { secure: false, label: 'Not secure' },
+  'https:': { secure: true, label: 'Connection is secure' },
+  'peersky:': { secure: true, label: 'PeerSky page' },
+  'browser:': { secure: true, label: 'PeerSky page' },
+  'about:': { secure: true, label: 'Browser page' },
+  'ipfs:': { secure: true, label: 'IPFS' },
+  'ipns:': { secure: true, label: 'IPFS' },
+  'pubsub:': { secure: true, label: 'PubSub' },
+  'hyper:': { secure: true, label: 'Hypercore' },
+  'hs:': { secure: true, label: 'Holesail' },
+  'bt:': { secure: true, label: 'BitTorrent' },
+  'bittorrent:': { secure: true, label: 'BitTorrent' },
+  'magnet:': { secure: true, label: 'BitTorrent' },
+  'web3:': { secure: true, label: 'Web3' },
+  'file:': { secure: true, label: 'Local file' },
+  'blob:': { secure: true, label: 'Blob' },
+  'data:': { secure: false, label: 'Data URL' }
+}
+
+function connectionFor (protocol) {
+  return CONNECTION_BY_PROTOCOL[protocol] || {
+    secure: false,
+    label: 'Connection status unknown'
+  }
+}
+
 // Utility functions
 function isURL (string) {
   try {
@@ -226,6 +254,8 @@ export {
   MAGNET_PREFIX,
   isURL,
   NAVIGABLE_SCHEMES,
+  CONNECTION_BY_PROTOCOL,
+  connectionFor,
   looksLikeDomain,
   isLoopbackAddress,
   makeHttp,

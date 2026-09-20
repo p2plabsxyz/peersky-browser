@@ -90,7 +90,7 @@ input, button, textarea, select, select *, option  {
   flex: 1;
   background: transparent;
   border: none;
-  padding: 0.4rem 10px;
+  padding: 0.4rem 10px 0.4rem 4px;
   color: var(--browser-theme-text-color);
   font-size: medium;
   font-family: inherit;
@@ -293,6 +293,7 @@ find-menu {
 /* Floating surfaces must never fall inside a window drag region. */
 .url-autocomplete-dropdown,
 .extensions-popup,
+.site-info-popup,
 .qr-popup,
 .extension-context-menu {
   -webkit-app-region: no-drag;

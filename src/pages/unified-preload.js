@@ -32,6 +32,7 @@ const isPeerskyPage = (name) => pageProtocol === 'peersky:' && pageHost === name
 
 const isSettings = isPeerskyPage('settings')
 const isExtensions = isPeerskyPage('extensions')
+const isSiteSettings = isPeerskyPage('site-settings')
 const isHome = isPeerskyPage('home')
 const isOnboarding = isPeerskyPage('onboarding')
 const isBookmarks = isPeerskyPage('bookmarks')
@@ -318,10 +319,10 @@ if (isInternal || isP2P || isUserP2PApp) {
   }
 }
 
-const context = { url, isSettings, isExtensions, isHome, isBookmarks, isDownloads, isBackup, isTabsPage, isP2PPage, isInternal, isExternal }
+const context = { url, isSettings, isExtensions, isSiteSettings, isHome, isBookmarks, isDownloads, isBackup, isTabsPage, isP2PPage, isInternal, isExternal }
 
 console.log(`Unified-preload: Context detection - URL: ${url}`)
-console.log(`Unified-preload: isSettings: ${isSettings}, isExtensions: ${isExtensions}, isHome: ${isHome}, isBookmarks: ${isBookmarks}, isDownloads: ${isDownloads}, isP2PPage: ${isP2PPage}, isInternal: ${isInternal}, isExternal: ${isExternal}`)
+console.log(`Unified-preload: isSettings: ${isSettings}, isExtensions: ${isExtensions}, isSiteSettings: ${isSiteSettings}, isHome: ${isHome}, isBookmarks: ${isBookmarks}, isDownloads: ${isDownloads}, isP2PPage: ${isP2PPage}, isInternal: ${isInternal}, isExternal: ${isExternal}`)
 
 // Factory function to create context-appropriate settings API with access control
 function createSettingsAPI (pageContext) {
@@ -365,13 +366,13 @@ function createSettingsAPI (pageContext) {
       exportArchive: (jsonContent) => ipcRenderer.invoke('settings-export-archive', jsonContent),
       clearArchive: (cutoff) => ipcRenderer.invoke('settings-clear-archive', cutoff)
     }
-  } else if (pageContext.isExtensions) {
-    // Extensions pages get limited settings API - only theme access
+  } else if (pageContext.isExtensions || pageContext.isSiteSettings) {
+    // Extensions / site-settings pages get limited settings API - only theme access
     return {
       get: (key) => {
         const allowedKeys = ['theme']
         if (!allowedKeys.includes(key)) {
-          throw new Error(`Access denied: Extensions pages can only access: ${allowedKeys.join(', ')}`)
+          throw new Error(`Access denied: This page can only access: ${allowedKeys.join(', ')}`)
         }
         return baseAPI.get(key)
       }
@@ -642,6 +643,19 @@ try {
     })
 
     console.log('Unified-preload: Extensions electronAPI and full extensionAPI exposed')
+  } else if (isSiteSettings) {
+    contextBridge.exposeInMainWorld('electronAPI', {
+      settings: settingsAPI,
+      onThemeChanged: (callback) => createEventListener('theme-changed', callback),
+      readCSS: cssAPI.readCSS,
+      siteInfo: {
+        get: (pageUrl) => ipcRenderer.invoke('site-info-get', pageUrl),
+        setPermission: (payload) => ipcRenderer.invoke('site-info-set-permission', payload),
+        resetPermissions: (origin) => ipcRenderer.invoke('site-info-reset-permissions', origin),
+        clearData: (origin) => ipcRenderer.invoke('site-info-clear-data', origin)
+      }
+    })
+    console.log('Unified-preload: Site settings electronAPI exposed')
   } else if (isHome) {
     // Home pages need browser action APIs for extension toolbar integration
 
