@@ -1,6 +1,8 @@
 import { expect } from 'chai'
 import os from 'os'
 import path from 'path'
+import crypto from 'crypto'
+import z32 from 'z32'
 import { mkdtemp, mkdir, writeFile, readFile, stat } from 'fs/promises'
 
 import {
@@ -10,6 +12,10 @@ import {
   verifyManifest,
   buildManifest
 } from '../../src/backup/backup-core.js'
+import {
+  buildPrivateDriveKeyExport,
+  decodeDriveId
+} from '../../src/backup/private-drive-export.js'
 
 async function makeTempDir (prefix) {
   return mkdtemp(path.join(os.tmpdir(), prefix))
@@ -236,5 +242,92 @@ describe('backup-core', function () {
       expect(err.message).to.match(/invalid/i)
     }
     expect(threw).to.equal(true)
+  })
+})
+
+describe('private-drive-export', function () {
+  it('decodes a z32 hyperdrive hostname to its 64-hex drive id', async function () {
+    const driveId = crypto.randomBytes(32).toString('hex')
+    const hostname = z32.encode(Buffer.from(driveId, 'hex')).toLowerCase()
+    expect(decodeDriveId(`hyper://${hostname}/`)).to.equal(driveId.toLowerCase())
+    expect(decodeDriveId(`hyper://${driveId}/`)).to.equal(driveId.toLowerCase())
+    expect(decodeDriveId('hyper://not-a-valid-key/')).to.equal(null)
+  })
+
+  it('exports a deterministic v3 key record for the newest private drive', async function () {
+    const userData = await makeTempDir('peersky-bk-keyexport-')
+    await mkdir(path.join(userData, 'hyper-private'), { recursive: true })
+    await writeFile(path.join(userData, 'hyper-private', 'core'), 'core')
+    const driveId = crypto.randomBytes(32).toString('hex')
+    await writeFile(path.join(userData, 'privateHyperdrives.json'), JSON.stringify([
+      { name: 'older', url: `hyper://${'a'.repeat(52)}/`, timestamp: 1 },
+      { name: 'newest', url: `hyper://${driveId}/`, timestamp: 2 }
+    ]))
+
+    const bytes = await buildPrivateDriveKeyExport(userData, 1700000000000)
+    expect(bytes).to.not.equal(null)
+
+    const record = JSON.parse(bytes.toString('utf-8'))
+    expect(record.version).to.equal(3)
+    expect(record.key).to.match(/^[0-9a-f]{64}$/)
+    expect(record.driveId).to.equal(driveId.toLowerCase())
+    expect(record.encrypted).to.equal(true)
+    expect(record.announce).to.equal(true)
+    expect(record.source).to.equal('desktop')
+    expect(record.createdAt).to.equal(new Date(1700000000000).toISOString())
+    expect(record.entries).to.have.length(2)
+    expect(record.entries[0].driveId).to.equal(driveId.toLowerCase())
+    expect(record.entries[1].driveId).to.equal(Buffer.from(z32.decode('a'.repeat(52))).toString('hex'))
+
+    const mobileBytes = await buildPrivateDriveKeyExport(userData, 1700000000000, { mobileSafe: true })
+    const mobileRecord = JSON.parse(mobileBytes.toString('utf-8'))
+    expect(mobileRecord.entries).to.have.length(2)
+    expect(mobileRecord.driveId).to.equal(driveId.toLowerCase())
+  })
+
+  it('returns null when the registry has no decodable drive', async function () {
+    const userData = await makeTempDir('peersky-bk-keyexport-none-')
+    await writeFile(path.join(userData, 'privateHyperdrives.json'), JSON.stringify([
+      { name: 'broken', url: 'hyper://not-a-valid-key/', timestamp: 1 }
+    ]))
+
+    expect(await buildPrivateDriveKeyExport(userData)).to.equal(null)
+  })
+
+  it('bundles private-drive-key.json with the private corestore on request', async function () {
+    const userData = await makeTempDir('peersky-bk-bundle-')
+    await seedUserData(userData)
+    const driveId = crypto.randomBytes(32).toString('hex')
+    await writeFile(path.join(userData, 'privateHyperdrives.json'), JSON.stringify([
+      { name: 'private-file.txt', url: `hyper://${driveId}/`, timestamp: 1 }
+    ]))
+
+    const outPath = path.join(await makeTempDir('peersky-bk-bundleout-'), 'backup.zip')
+    const result = await createBackupZip(userData, outPath, { includePrivate: true })
+
+    expect(result.manifest.files).to.have.property('private-drive-key.json')
+
+    const dest = await makeTempDir('peersky-bk-bundledest-')
+    await extractBackupZip(outPath, dest)
+    await verifyManifest(dest, result.manifest)
+
+    const record = JSON.parse(await readFile(path.join(dest, 'private-drive-key.json'), 'utf-8'))
+    expect(record.driveId).to.equal(driveId.toLowerCase())
+    expect(record.announce).to.equal(true)
+    expect(record.source).to.equal('desktop')
+  })
+
+  it('never bundles the key record when private data is excluded', async function () {
+    const userData = await makeTempDir('peersky-bk-nokey-')
+    await seedUserData(userData)
+
+    const outPath = path.join(await makeTempDir('peersky-bk-nokeyout-'), 'backup.zip')
+    const result = await createBackupZip(userData, outPath, {
+      isIdentityTransfer: true,
+      targetDeviceType: 'mobile',
+      includePrivate: false
+    })
+
+    expect(result.manifest.files).not.to.have.property('private-drive-key.json')
   })
 })
