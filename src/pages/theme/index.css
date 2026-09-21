@@ -102,7 +102,7 @@ input, button, textarea, select, select *, option  {
   background: none;
   border: none;
   cursor: pointer;
-  padding: 6px 12px;
+  padding: 6px 8px;
   display: flex;
   align-items: center;
   justify-content: center;
