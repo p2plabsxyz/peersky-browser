@@ -2,6 +2,9 @@ import { expect } from 'chai'
 import sinon from 'sinon'
 import esmock from 'esmock'
 import crypto from 'crypto'
+import os from 'os'
+import path from 'path'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs'
 import z32 from 'z32'
 
 function driveUrl (key) {
@@ -47,7 +50,8 @@ class FakeHyperdrive {
   }
 }
 
-async function load (registryEntries) {
+async function load (registryEntries, options = {}) {
+  const userDataDir = options.userDataDir || '/tmp/user-data'
   const namespace = sinon.stub().returns({})
   const joined = []
   const sdk = {
@@ -68,7 +72,7 @@ async function load (registryEntries) {
     }
   })
 
-  const fetcher = module.makePrivateDriveFetcher(sdk, '/tmp/user-data')
+  const fetcher = module.makePrivateDriveFetcher(sdk, userDataDir)
   const readFile = async (url, drivePath) => {
     const response = await fetcher(`${url}${drivePath}`)
     return { status: response.status, body: await response.text() }
@@ -130,5 +134,47 @@ describe('private Hyperdrive keyed fetcher', function () {
     await writeFile(url, '/hello.txt', 'hello')
 
     expect(sdk.joinCore.called).to.equal(false)
+  })
+
+  it('rejects writes to a private drive adopted from another device', async function () {
+    const key = crypto.randomBytes(32)
+    const url = driveUrl(key)
+    const driveId = key.toString('hex')
+    const userDataDir = mkdtempSync(path.join(os.tmpdir(), 'peersky-own-'))
+    mkdirSync(userDataDir, { recursive: true })
+    writeFileSync(path.join(userDataDir, 'private-drive-owners.json'), JSON.stringify({
+      [driveId]: { owned: false }
+    }))
+
+    try {
+      const { fetcher } = await load([
+        { name: 'shared', url, timestamp: 1, encrypted: true }
+      ], { userDataDir })
+
+      const put = await fetcher(`${url}note.txt`, { method: 'PUT', body: 'nope' })
+      expect(put.status).to.equal(403)
+
+      const del = await fetcher(`${url}note.txt`, { method: 'DELETE' })
+      expect(del.status).to.equal(403)
+
+      const listing = await fetcher(url)
+      expect(listing.status).to.equal(200)
+      expect(await listing.text()).to.include('Read-only')
+    } finally {
+      rmSync(userDataDir, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps writes enabled for drives created on this device', async function () {
+    const key = crypto.randomBytes(32)
+    const url = driveUrl(key)
+    const { writeFile, readFile } = await load([
+      { name: 'mine', url, timestamp: 1, encrypted: true }
+    ])
+
+    expect(await writeFile(url, '/hello.txt', 'hello')).to.equal(200)
+    const result = await readFile(url, '/hello.txt')
+    expect(result.status).to.equal(200)
+    expect(result.body).to.equal('hello')
   })
 })
