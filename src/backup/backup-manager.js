@@ -11,6 +11,9 @@ import { createIdentityTransferZip, decryptIdentityTransferZip, extractAndVerify
 import { decryptEncryptedBackupZip, isEncryptedBackupManifest } from './encrypted-backup.js'
 import { suspendHyper, resumeHyper } from '../protocols/hyper-handler.js'
 import { suspendIPFS, resumeIPFS } from '../protocols/ipfs-handler.js'
+import { setPrivateDriveOwnership, currentPrivateDriveIds } from '../protocols/private-drive-ownership.js'
+import { listPrivateHyperdrives } from '../protocols/private-hyperdrive-registry.js'
+import { decodeDriveId } from './private-drive-export.js'
 
 const log = createLogger('backup')
 
@@ -88,6 +91,21 @@ export async function applyRestoreTransaction (dest, applyDir, names) {
   }
 
   await fs.rm(previousRoot, { recursive: true, force: true })
+}
+
+// A restored registry replaces the local one, so any drive that was not on
+// this device before the restore arrived from the backed-up profile. Drives
+// new to this device are recorded as adopted (read-only), leaving the
+// original device as the single writer; drives already present here stay
+// owned, so restoring the same device keeps its own drives writable.
+export async function adoptRestoredPrivateDriveCopies (dest, previousIds) {
+  const restoredEntries = await listPrivateHyperdrives(dest).catch(() => [])
+  for (const entry of restoredEntries) {
+    const driveId = decodeDriveId(entry.url)
+    if (driveId && !previousIds.has(driveId)) {
+      await setPrivateDriveOwnership(dest, driveId, false)
+    }
+  }
 }
 
 export function defaultBackupName () {
@@ -195,7 +213,13 @@ class BackupManager {
         await verifyManifest(tempDir, manifest)
       }
 
+      const previousPrivateDriveIds = await currentPrivateDriveIds(dest)
+
       await applyRestoreTransaction(dest, applyDir, Object.keys(applyManifest.files))
+
+      if (Object.keys(applyManifest.files).includes('privateHyperdrives.json')) {
+        await adoptRestoredPrivateDriveCopies(dest, previousPrivateDriveIds)
+      }
 
       resumeServices = false
 
