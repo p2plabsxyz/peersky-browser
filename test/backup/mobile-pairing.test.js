@@ -96,6 +96,38 @@ describe('mobile pairing cap', () => {
     expect(await assertMobilePairingAllowed(dir, pairing(PHONE_A, 'mobile'))).to.equal(PHONE_A)
   })
 
+  it('shows the release control as soon as a phone is paired', async () => {
+    // The row starts hidden and only appeared on page load, so after pairing
+    // the user had no visible way to release the slot and the desktop looked
+    // stuck saying a phone was already paired.
+    const page = await fs.readFile(new URL('../../src/pages/static/js/backup.js', import.meta.url), 'utf8')
+    const refreshes = page.match(/refreshPairedMobile\(\)/g) || []
+    expect(refreshes.length, 'refreshed in fewer places than there are ways to pair').to.be.at.least(4)
+
+    // Both ways of handing an identity to a phone have to update it.
+    const zip = page.slice(page.indexOf('api.createIdentityTransfer('), page.indexOf('Identity transfer failed'))
+    expect(zip).to.contain('refreshPairedMobile()')
+    const hyper = page.slice(page.indexOf("cidRow.style.display = ''"), page.indexOf('VERIFICATION CODE'))
+    expect(hyper).to.contain('refreshPairedMobile()')
+  })
+
+  it('calls the bridge the page actually has', async () => {
+    // backup.js reads window.electronAPI.backup. Calling a namespace that
+    // does not exist threw, the catch hid the row, and the release control
+    // was unreachable with no error shown anywhere.
+    const page = await fs.readFile(new URL('../../src/pages/static/js/backup.js', import.meta.url), 'utf8')
+    expect(page).to.contain('const api = window.electronAPI && window.electronAPI.backup')
+    expect(page).to.contain('await api.getPairedMobile()')
+    expect(page).to.contain('await api.forgetPairedMobile()')
+    expect(page, 'a namespace this page does not define').to.not.contain('window.peersky.backup')
+
+    // And the preload has to actually expose them, or api.* is undefined.
+    const preload = await fs.readFile(new URL('../../src/pages/unified-preload.js', import.meta.url), 'utf8')
+    for (const name of ['getPairedMobile', 'forgetPairedMobile']) {
+      expect(preload, `${name} is not exposed`).to.contain(`${name}:`)
+    }
+  })
+
   it('ignores junk in place of a pairing code', async () => {
     for (const value of ['', 'not-a-pairing-code', undefined, null]) {
       expect(await assertMobilePairingAllowed(dir, value)).to.equal(null)

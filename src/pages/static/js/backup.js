@@ -355,7 +355,7 @@ const pairedMobileForgetBtn = document.getElementById('paired-mobile-forget')
 async function refreshPairedMobile () {
   if (!pairedMobileRow) return
   try {
-    const result = await window.peersky.backup.getPairedMobile()
+    const result = await api.getPairedMobile()
     const paired = result?.success ? result.paired : null
     if (!paired) {
       pairedMobileRow.style.display = 'none'
@@ -382,7 +382,7 @@ pairedMobileForgetBtn?.addEventListener('click', async () => {
   if (!confirmed) return
 
   try {
-    const result = await window.peersky.backup.forgetPairedMobile()
+    const result = await api.forgetPairedMobile()
     if (!result?.success) throw new Error(result?.error || 'Could not release the phone')
     await refreshPairedMobile()
     showIdentityTransferStatus('Phone released. Pair a new one with its pairing code.')
@@ -470,6 +470,9 @@ identityCreateBtn?.addEventListener('click', async () => {
     )
     if (res.canceled) return
     if (res.success) {
+      // The phone slot is taken now, so the row that releases it has to
+      // appear without making the user reload the page to find it.
+      await refreshPairedMobile()
       showStatus(`Identity transfer saved (${formatBytes(res.bytes)}): ${res.filePath}`, 'success')
     } else {
       showStatus(`Identity transfer failed: ${res.error}`, 'error')
@@ -505,6 +508,7 @@ identityUploadHyperBtn?.addEventListener('click', async () => {
         qrImg.style.display = 'none'
       }
       cidRow.style.display = ''
+      await refreshPairedMobile()
       showIdentityTransferStatus(`Encrypted identity transfer uploaded to Hyper.\n\nVERIFICATION CODE: ${res.verificationCode}\n\nScan the QR code below with PeerSky Mobile (Settings > Link Device) to restore identity automatically.\n\nNote: Ensure the verification code matches exactly.`)
     } else {
       showStatus(`Identity transfer upload failed: ${res.error}`, 'error')
