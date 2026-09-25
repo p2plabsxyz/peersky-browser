@@ -345,6 +345,54 @@ function wireCopyButton (button, read, label) {
 wireCopyButton(cidCopyBtn, () => cidValue.textContent, 'Identity transfer address')
 wireCopyButton(identityKeyCopyBtn, () => identityDeviceKey.textContent, 'Device pairing code')
 
+// An identity lives on one phone at a time. Showing which one, and offering a
+// way to release it, is the difference between a cap that looks like a bug
+// and one the user can act on.
+const pairedMobileRow = document.getElementById('paired-mobile-row')
+const pairedMobileDetail = document.getElementById('paired-mobile-detail')
+const pairedMobileForgetBtn = document.getElementById('paired-mobile-forget')
+
+async function refreshPairedMobile () {
+  if (!pairedMobileRow) return
+  try {
+    const result = await window.peersky.backup.getPairedMobile()
+    const paired = result?.success ? result.paired : null
+    if (!paired) {
+      pairedMobileRow.style.display = 'none'
+      return
+    }
+    const when = paired.pairedAt ? new Date(paired.pairedAt).toLocaleDateString() : 'an earlier date'
+    pairedMobileDetail.textContent = `Paired ${when}. Key ${paired.encryptionPublicKey.slice(0, 16)}...`
+    pairedMobileRow.style.display = ''
+  } catch {
+    pairedMobileRow.style.display = 'none'
+  }
+}
+
+pairedMobileForgetBtn?.addEventListener('click', async () => {
+  // The old phone is not asked to confirm. It is usually broken, sold or
+  // already wiped by the time someone clicks this, so waiting on it would
+  // fail exactly when it is needed. Say plainly what that means instead.
+  const confirmed = window.confirm(
+    'Move this identity to a new phone?\n\n' +
+    'Delete PeerSky data on the old phone first, or remove the app. ' +
+    'Two phones on one identity will split your messages, and each phone ' +
+    'keeps whatever it already has.'
+  )
+  if (!confirmed) return
+
+  try {
+    const result = await window.peersky.backup.forgetPairedMobile()
+    if (!result?.success) throw new Error(result?.error || 'Could not release the phone')
+    await refreshPairedMobile()
+    showIdentityTransferStatus('Phone released. Pair a new one with its pairing code.')
+  } catch (error) {
+    showStatus(error.message, 'error')
+  }
+})
+
+refreshPairedMobile()
+
 const identityScanQrBtn = document.getElementById('identity-scan-qr')
 const qrScannerContainer = document.getElementById('qr-scanner-container')
 const qrScannerVideo = document.getElementById('qr-scanner-video')
