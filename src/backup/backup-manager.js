@@ -8,6 +8,7 @@ import fsExtra from 'fs-extra'
 import { createLogger } from '../logger.js'
 import { readManifest, verifyManifest } from './backup-core.js'
 import { createIdentityTransferZip, decryptIdentityTransferZip, extractAndVerifyIdentityPayload, isIdentityTransferManifest } from './identity-transfer.js'
+import { assertMobilePairingAllowed, setPairedMobile } from './mobile-pairing.js'
 import { decryptEncryptedBackupZip, isEncryptedBackupManifest } from './encrypted-backup.js'
 import { suspendHyper, resumeHyper } from '../protocols/hyper-handler.js'
 import { suspendIPFS, resumeIPFS } from '../protocols/ipfs-handler.js'
@@ -141,6 +142,14 @@ class BackupManager {
 
   async createIdentityTransferBackup (outPath, options = {}) {
     log.info(`Creating identity transfer backup at ${outPath}`)
+
+    // Checked before any work is done, so a refused pairing costs nothing and
+    // never leaves a half-built transfer behind.
+    const mobileKey = await assertMobilePairingAllowed(
+      userDataDir(),
+      options.targetPairingPayload || options.targetEncryptionPublicKey
+    )
+
     await suspendHyper()
     await suspendIPFS()
     try {
@@ -148,6 +157,10 @@ class BackupManager {
         ...options,
         peerskyVersion: app.getVersion()
       })
+      // Recorded only once the transfer exists. A failure part way through
+      // must not leave the identity looking paired to a phone that never got
+      // it, or the user would have to move-to-new-phone to retry.
+      if (mobileKey) await setPairedMobile(userDataDir(), mobileKey)
       log.info(`Identity transfer backup created: ${result.bytes} bytes`)
       return result
     } finally {

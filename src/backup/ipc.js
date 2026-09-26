@@ -6,6 +6,7 @@ import backupManager, { defaultBackupName } from './backup-manager.js'
 import { uploadBackup, downloadBackupFromAddress } from './p2p-backup.js'
 import { getDeviceKeys, getPublicDeviceInfo } from './device-keys.js'
 import { createPairingSession, encodePairingString } from './identity-transfer.js'
+import { clearPairedMobile, readPairedMobile } from './mobile-pairing.js'
 import { listPrivateHyperdrives } from '../protocols/private-hyperdrive-registry.js'
 
 const log = createLogger('backup')
@@ -127,6 +128,30 @@ export function setupBackupIpc () {
       return { success: true, filePath: result.filePath, bytes: result.bytes, manifest: result.manifest }
     } catch (error) {
       log.error(`Identity transfer create failed: ${error.message}`)
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('backup-paired-mobile', async () => {
+    try {
+      return { success: true, paired: await readPairedMobile(app.getPath('userData')) }
+    } catch (error) {
+      log.error(`Reading paired mobile failed: ${error.message}`)
+      return { success: false, error: error.message }
+    }
+  })
+
+  // Releases the phone slot so another can be paired. Deliberately does not
+  // wait to hear from the old phone: the usual reason to move is that it is
+  // broken, sold or already wiped, and blocking on it would fail exactly when
+  // this is needed. The caller warns the user to wipe the old phone first.
+  ipcMain.handle('backup-forget-mobile', async () => {
+    try {
+      await clearPairedMobile(app.getPath('userData'))
+      log.info('Paired mobile cleared; a new phone can be paired')
+      return { success: true }
+    } catch (error) {
+      log.error(`Clearing paired mobile failed: ${error.message}`)
       return { success: false, error: error.message }
     }
   })

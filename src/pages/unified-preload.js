@@ -481,6 +481,8 @@ const backupAPI = {
   getDeviceInfo: () => ipcRenderer.invoke('backup-device-info'),
   listPrivateHyperdrives: () => ipcRenderer.invoke('backup-private-hyperdrives'),
   createIdentityTransfer: (targetPairingPayload, includePrivate = true) => ipcRenderer.invoke('backup-identity-create', { targetPairingPayload, includePrivate }),
+  getPairedMobile: () => ipcRenderer.invoke('backup-paired-mobile'),
+  forgetPairedMobile: () => ipcRenderer.invoke('backup-forget-mobile'),
   uploadIdentityTransferHyper: (targetPairingPayload, includePrivate = true) => ipcRenderer.invoke('backup-identity-upload-hyper', { targetPairingPayload, includePrivate }),
   relaunch: () => ipcRenderer.invoke('backup-relaunch'),
   onProgress: (callback) => createEventListener('backup-progress', callback)
