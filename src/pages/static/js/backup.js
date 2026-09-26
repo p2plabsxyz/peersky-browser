@@ -457,8 +457,19 @@ identityScanQrBtn?.addEventListener('click', async () => {
   }
 })
 
+// Both identity buttons used to return silently when the pairing code box was
+// empty, so a click looked like the feature was broken. Point at the field that
+// is actually missing instead.
+function requireIdentityTargetKey () {
+  if (identityTargetKey?.value.trim()) return true
+  showStatus('Paste the phone pairing code first, or scan the QR code from PeerSky Mobile (Settings > Link Device).', 'error')
+  identityTargetKey?.focus()
+  identityTargetKey?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  return false
+}
+
 identityCreateBtn?.addEventListener('click', async () => {
-  if (!api || !identityTargetKey.value.trim()) return
+  if (!api || !requireIdentityTargetKey()) return
 
   setBusy(true)
   showProgress('Creating encrypted identity transfer...')
@@ -486,7 +497,7 @@ identityCreateBtn?.addEventListener('click', async () => {
 })
 
 identityUploadHyperBtn?.addEventListener('click', async () => {
-  if (!api || !identityTargetKey.value.trim()) return
+  if (!api || !requireIdentityTargetKey()) return
 
   setBusy(true)
   showProgress('Uploading encrypted identity transfer to Hyper...')
