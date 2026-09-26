@@ -536,7 +536,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         // Also update the nav display
-        nav.setStyledUrl(isHomePage(activeTab.url) ? '' : activeTab.url)
+        nav.setStyledUrl(isHomePage(activeTab.url) ? '' : activeTab.url, activeTab.url)
       }
     }, 300)
 
@@ -564,7 +564,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Hide peersky://home URL, show all others
     if (isHomePage(url)) {
-      nav.setStyledUrl('')
+      nav.setStyledUrl('', url)
     } else {
       nav.setStyledUrl(url)
     }
@@ -590,7 +590,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       // Hide peersky://home URL, show all others
       if (isHomePage(url)) {
-        nav.setStyledUrl('')
+        nav.setStyledUrl('', url)
       } else {
         nav.setStyledUrl(url)
       }
@@ -841,7 +841,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (nav) {
         // Hide peersky://home URL, show all others
         if (isHomePage(e.detail.url)) {
-          nav.setStyledUrl('')
+          nav.setStyledUrl('', e.detail.url)
         } else {
           nav.setStyledUrl(e.detail.url)
         }
