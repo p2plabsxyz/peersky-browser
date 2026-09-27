@@ -1,5 +1,9 @@
 import { setPinnedState, getPinnedApps, getAllApps } from 'peersky://p2p/p2p-list.js'
 
+const SKIPPED_BUNDLE_ENTRIES = new Set([
+  '.git', '.hg', '.svn', '.ds_store', 'thumbs.db', 'desktop.ini'
+])
+
 class P2PAppManager extends HTMLElement {
   constructor () {
     super()
@@ -343,6 +347,11 @@ class P2PAppManager extends HTMLElement {
             const filesToUpload = []
 
             const readEntry = async (entry, pathPrefix = '') => {
+              // Version control and OS bookkeeping are not part of a site, and
+              // reading a repository's history here would mean megabytes over
+              // IPC for files the registry drops anyway. Kept in step with
+              // SKIPPED_BUNDLE_ENTRIES in src/p2p-app-registry.js.
+              if (SKIPPED_BUNDLE_ENTRIES.has(entry.name.toLowerCase())) return
               if (entry.isFile) {
                 return new Promise((resolve) => {
                   entry.file(async (file) => {
