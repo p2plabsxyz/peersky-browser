@@ -246,7 +246,13 @@
     "z32": "^1.1.0"
   },
   "overrides": {
-    "bare-dgram": "1.0.1"
+    "bare-dgram": "1.0.1",
+    "electron-chrome-web-store": {
+      "adm-zip": "^0.6.1"
+    },
+    "viem": {
+      "ws": "^8.22.0"
+    }
   },
   "devDependencies": {
     "@istanbuljs/esm-loader-hook": "^0.3.0",
