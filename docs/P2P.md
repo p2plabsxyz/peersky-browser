@@ -85,6 +85,9 @@ async function publishToIPFS(files) {
 }
 ```
 
+> [!NOTE]
+> Writes from a website, a Hyper or IPFS site, or a local file need the user's consent. The first `PUT`, `POST` or `DELETE` to `hyper://`, `ipfs://` or `ipns://` from a site shows a **P2P publishing** prompt, and the answer is remembered for that site in site settings. Built-in `peersky://` apps write without a prompt. Writes from service workers are refused, since they cannot show one.
+
 Check our p2p apps in `/pages/p2p/`: https://github.com/p2plabsxyz/peersky-browser/tree/main/src/pages/p2p
 
 ## 🤖 LLM-powered P2P apps

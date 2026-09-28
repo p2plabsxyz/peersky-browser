@@ -83,7 +83,8 @@ Security highlights
 - ZIP/CRX extraction with zip-slip prevention (rejects on normalized path escape).
 - Manifest V3 required by default; permission and host-permission checks.
 - Icons streamed read-only via a custom protocol handler.
-- Web Store installs flow through `electron-chrome-web-store`, relying on Google-signed CRX verification; no extra signature layer beyond the store.
+- An install never replaces an installed extension: a package whose ID, `manifest.key` ID or folder belongs to one is refused before anything is written.
+- Web Store installs flow through `electron-chrome-web-store`, which downloads the CRX from Google over HTTPS and checks that its key matches the extension ID. It does not verify the CRX signature itself.
 
 
 ## 4. Extensions API: Preload + IPC
@@ -184,6 +185,7 @@ Validation & security
 - Manifest `permissions` and `host_permissions` are validated at install. Risky hosts (`*://*/*`, LAN ranges, etc.) surface warnings in `extension.warnings` for UI review.
 - Optional permission prompts (`chrome.permissions.request`) are currently blocked; calls reject with `E_INVALID_STATE` so extensions must declare needed hosts up front.
 - Runtime host-permission reviews are manual today—disable the extension or uninstall if the warning set looks unsafe.
+- Writing to `hyper://`, `ipfs://` or `ipns://` needs `p2pWrite`, `p2pWriteAll`, or a scoped `p2pWrite:<scheme>` (for example `p2pWrite:ipfs`) in the manifest `permissions`. Writes from extension pages are checked against it. Writes from background service workers are refused, because the browser cannot tell which extension sent them.
 
 ### Side panel
 
