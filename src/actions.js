@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, webContents } from 'electron'
 import { createLogger } from './logger.js'
 import { goBackActiveTab, goForwardActiveTab } from './history-nav.js'
 const log = createLogger('actions')
@@ -19,10 +19,24 @@ export function createActions (windowManager) {
     OpenDevTools: {
       label: 'Open Dev Tools',
       accelerator: 'CommandOrControl+Shift+I',
-      click: () => {
+      click: async () => {
         const focusedWindow = BrowserWindow.getFocusedWindow()
-        if (focusedWindow) {
-          focusedWindow.webContents.openDevTools({ mode: 'detach' })
+        if (!focusedWindow) return
+        const host = focusedWindow.webContents
+        if (!app.isPackaged) {
+          host.openDevTools({ mode: 'detach' })
+          return
+        }
+        // The shell's console has node, so "paste this into DevTools" scams
+        // would own the machine. Users get the active tab's DevTools instead.
+        const guestId = await host.executeJavaScript(
+          "document.querySelector('#tabbar')?.getActiveWebview()?.getWebContentsId() ?? null"
+        ).catch(() => null)
+        const guest = Number.isInteger(guestId) ? webContents.fromId(guestId) : null
+        if (guest && guest.hostWebContents?.id === host.id) {
+          guest.openDevTools()
+        } else if (host.getLastWebPreferences()?.nodeIntegration !== true) {
+          host.openDevTools({ mode: 'detach' })
         }
       }
     },

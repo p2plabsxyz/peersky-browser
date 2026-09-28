@@ -862,7 +862,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const webview = tabBar.getActiveWebview()
       if (webview) {
         webview.executeJavaScript(
-          `window.find("${detail.value}", ${detail.findNext})`
+          `window.find(${JSON.stringify(String(detail.value))}, ${!!detail.findNext})`
         )
       }
     })
@@ -871,7 +871,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const webview = tabBar.getActiveWebview()
       if (webview) {
         webview.executeJavaScript(
-          `window.find("${detail.value}", ${detail.findNext}, true)`
+          `window.find(${JSON.stringify(String(detail.value))}, ${!!detail.findNext}, true)`
         )
       }
     })
