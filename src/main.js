@@ -12,6 +12,7 @@ import { createHandler as createWeb3Handler } from './protocols/web3-handler.js'
 import { createHandler as createFileHandler } from './protocols/file-handler.js'
 import { createHandler as createBittorrentHandler, setupBittorrentIpc, shutdownBittorrent, warmupBittorrent } from './protocols/bittorrent-handler.js'
 import { ipfsOptions, hyperOptions } from './protocols/config.js'
+import { gateRequest, stampVetted, requireVetted } from './protocols/request-gate.js'
 import { createMenuTemplate } from './actions.js'
 import WindowManager from './window-manager.js'
 import settingsManager from './settings-manager.js'
@@ -28,7 +29,7 @@ import { urlFromArgv, queueLaunchUrl, startDeliveringLaunchUrls } from './launch
 import extensionManager from './extensions/index.js'
 import { setupExtensionIpcHandlers } from './extensions/extensions-ipc.js'
 import { getBrowserSession, usePersist } from './session.js'
-import { setupPermissionHandler } from './permissions.js'
+import { setupPermissionHandler, requestSitePermission, permissionOriginFromUrl } from './permissions.js'
 import { setupSiteInfoIpc } from './site-info-ipc.js'
 import { setupP2pmdPdfExportIpc } from './pages/p2p/p2pmd/pdf-export-ipc.js'
 import { setupBackupIpc } from './backup/ipc.js'
@@ -650,16 +651,16 @@ async function setupProtocols (session) {
 
   sessionProtocol.handle('peersky', browserProtocolHandler)
   sessionProtocol.handle('browser', browserThemeHandler)
-  sessionProtocol.handle('ipfs', ipfsProtocolHandler)
-  sessionProtocol.handle('ipns', ipfsProtocolHandler)
-  sessionProtocol.handle('pubsub', ipfsProtocolHandler)
-  sessionProtocol.handle('hyper', hyperProtocolHandler)
-  sessionProtocol.handle('hs', hsProtocolHandler)
+  sessionProtocol.handle('ipfs', requireVetted(ipfsProtocolHandler))
+  sessionProtocol.handle('ipns', requireVetted(ipfsProtocolHandler))
+  sessionProtocol.handle('pubsub', requireVetted(ipfsProtocolHandler))
+  sessionProtocol.handle('hyper', requireVetted(hyperProtocolHandler))
+  sessionProtocol.handle('hs', requireVetted(hsProtocolHandler))
   sessionProtocol.handle('web3', web3ProtocolHandler)
   sessionProtocol.handle('file', fileProtocolHandler)
-  sessionProtocol.handle('bittorrent', bittorrentProtocolHandler)
-  sessionProtocol.handle('bt', bittorrentProtocolHandler)
-  sessionProtocol.handle('magnet', bittorrentProtocolHandler)
+  sessionProtocol.handle('bittorrent', requireVetted(bittorrentProtocolHandler))
+  sessionProtocol.handle('bt', requireVetted(bittorrentProtocolHandler))
+  sessionProtocol.handle('magnet', requireVetted(bittorrentProtocolHandler))
 }
 
 /**
@@ -679,6 +680,27 @@ function warmP2PBackends () {
       .then(warm)
       .catch((error) => log.warn(`${label} warm-up failed, will retry on first use:`, error?.message || error))
   }
+}
+
+async function isGatedRequestAllowed (details) {
+  try {
+    const verdict = gateRequest({
+      url: details.url,
+      method: details.method,
+      resourceType: details.resourceType,
+      initiatorOrigin: details.initiatorOrigin,
+      frameUrl: details.frame?.url
+    })
+    if (verdict.action === 'allow') return true
+    if (verdict.action === 'extension') return extensionManager.isP2PWriteAllowed(verdict.extensionId, verdict.scheme)
+    if (verdict.action === 'ask') {
+      const origin = permissionOriginFromUrl(verdict.caller)
+      return !!origin && await requestSitePermission(details.webContents, origin, 'p2pPublish')
+    }
+  } catch (err) {
+    log.warn('[webRequest] request gate failed:', err?.message || err)
+  }
+  return false
 }
 
 function installExtensionWebRequestBridge (session) {
@@ -705,6 +727,11 @@ function installExtensionWebRequestBridge (session) {
 
   session.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, async (details, callback) => {
     const url = details?.url || ''
+    if (!(await isGatedRequestAllowed(details))) {
+      log.warn(`[webRequest] blocked ${details.method} ${url.split(':')[0]}: request from ${details.initiatorOrigin || details.frame?.url || 'unknown'}`)
+      callback({ cancel: true }) // eslint-disable-line n/no-callback-literal
+      return
+    }
     if (!shouldForwardToExtensions(url)) {
       callback({}) // eslint-disable-line n/no-callback-literal
       return
@@ -732,6 +759,11 @@ function installExtensionWebRequestBridge (session) {
     { urls: ['<all_urls>'] },
     async (details, callback) => {
       const url = details?.url || ''
+      const stamped = stampVetted(details)
+      if (stamped) {
+        callback({ requestHeaders: stamped }) // eslint-disable-line n/no-callback-literal
+        return
+      }
       if (!shouldForwardToExtensions(url)) {
         callback({}) // eslint-disable-line n/no-callback-literal
         return

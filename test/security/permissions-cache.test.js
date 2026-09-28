@@ -4,7 +4,7 @@ import path from 'path'
 import { mkdtemp } from 'fs/promises'
 import esmock from 'esmock'
 
-async function loadPermissions () {
+async function loadPermissions (dialog = { showMessageBox: async () => ({ response: 1 }) }) {
   const userData = await mkdtemp(path.join(os.tmpdir(), 'peersky-perms-'))
   let requestHandler = null
   let checkHandler = null
@@ -12,9 +12,7 @@ async function loadPermissions () {
   const mod = await esmock.strict('../../src/permissions.js', {
     electron: {
       app: { getPath: () => userData },
-      dialog: {
-        showMessageBox: async () => ({ response: 1 })
-      },
+      dialog,
       BrowserWindow: {
         fromWebContents: () => null,
         getAllWindows: () => []
@@ -91,6 +89,30 @@ describe('permission cache', function () {
       requestHandler(wc, 'media', () => resolve())
     })
     expect(getPermissionsForOrigin('peersky://backup').media).to.equal('allow-session')
+  })
+
+  it('asks once for P2P publishing, however many writes are waiting', async function () {
+    let prompts = 0
+    const { requestSitePermission, getPermissionsForOrigin } = await loadPermissions({
+      showMessageBox: async () => { prompts++; return { response: 0 } }
+    })
+    const wc = { getURL: () => 'https://site.example/' }
+    const ask = () => requestSitePermission(wc, 'https://site.example', 'p2pPublish')
+    expect(await Promise.all([ask(), ask(), ask()])).to.deep.equal([true, true, true])
+    expect(await ask()).to.equal(true)
+    expect(prompts).to.equal(1)
+    expect(getPermissionsForOrigin('https://site.example').p2pPublish).to.equal('allow')
+  })
+
+  it('remembers a blocked site without asking again', async function () {
+    let prompts = 0
+    const { requestSitePermission } = await loadPermissions({
+      showMessageBox: async () => { prompts++; return { response: 2 } }
+    })
+    const ask = () => requestSitePermission(null, 'hyper://abc', 'p2pPublish')
+    expect(await ask()).to.equal(false)
+    expect(await ask()).to.equal(false)
+    expect(prompts).to.equal(1)
   })
 
   it('keeps Allow this time in memory only', async function () {
