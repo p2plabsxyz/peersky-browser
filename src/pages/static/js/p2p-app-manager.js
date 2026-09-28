@@ -1,8 +1,19 @@
 import { setPinnedState, getPinnedApps, getAllApps } from 'peersky://p2p/p2p-list.js'
 
 const SKIPPED_BUNDLE_ENTRIES = new Set([
-  '.git', '.hg', '.svn', '.ds_store', 'thumbs.db', 'desktop.ini'
+  '.git', '.hg', '.svn', '.ds_store', 'thumbs.db', 'desktop.ini',
+  '.env', '.npmrc', '.netrc', '.pypirc', '.htpasswd',
+  '.ssh', '.aws', '.gnupg', 'id_rsa', 'id_ed25519', 'node_modules'
 ])
+
+// .env.local and server.pem carry the same thing under another name.
+const SKIPPED_BUNDLE_PATTERNS = [/^\.env\./, /\.(pem|key|p12|pfx)$/]
+
+function isSkippedBundleName (name) {
+  const lower = String(name).toLowerCase()
+  return SKIPPED_BUNDLE_ENTRIES.has(lower) ||
+    SKIPPED_BUNDLE_PATTERNS.some((pattern) => pattern.test(lower))
+}
 
 class P2PAppManager extends HTMLElement {
   constructor () {
@@ -351,7 +362,7 @@ class P2PAppManager extends HTMLElement {
               // reading a repository's history here would mean megabytes over
               // IPC for files the registry drops anyway. Kept in step with
               // SKIPPED_BUNDLE_ENTRIES in src/p2p-app-registry.js.
-              if (SKIPPED_BUNDLE_ENTRIES.has(entry.name.toLowerCase())) return
+              if (isSkippedBundleName(entry.name)) return
               if (entry.isFile) {
                 return new Promise((resolve) => {
                   entry.file(async (file) => {

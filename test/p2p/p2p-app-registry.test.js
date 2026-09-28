@@ -88,6 +88,26 @@ describe('P2P app folder import', function () {
     expect(await bundledFiles(userData, app.id)).to.deep.equal(['index.html'])
   })
 
+  it('leaves credentials behind, which the old allowlist kept out by accident', async function () {
+    const { registry, userData } = await loadRegistry()
+
+    const app = await registry.importFolder({
+      name: 'My Site',
+      files: [
+        file('index.html'),
+        file('.env', 'API_KEY=secret'),
+        file('.env.local', 'API_KEY=secret'),
+        file('.npmrc', '//registry.npmjs.org/:_authToken=secret'),
+        file('server.pem', 'PRIVATE KEY'),
+        file('config/app.key', 'PRIVATE KEY'),
+        file('.ssh/id_rsa', 'PRIVATE KEY'),
+        file('node_modules/left-pad/index.js')
+      ]
+    })
+
+    expect(await bundledFiles(userData, app.id)).to.deep.equal(['index.html'])
+  })
+
   it('refuses a second app with a name already on the shelf', async function () {
     const { registry, userData } = await loadRegistry()
     await registry.importFolder({ name: 'My Site', files: [file('index.html')] })
@@ -151,7 +171,14 @@ describe('P2P app folder import', function () {
 
     // The page skips them so they are never read; the registry skips them so
     // nothing else can put them in. They have to name the same things.
+    const patterns = (source) => {
+      const start = source.indexOf('SKIPPED_BUNDLE_PATTERNS = [')
+      return source.slice(start, source.indexOf(']', start))
+    }
+
     expect(listed(pageSource)).to.deep.equal(listed(registrySource))
     expect(listed(registrySource)).to.include('.git')
+    expect(listed(registrySource)).to.include('.env')
+    expect(patterns(pageSource)).to.equal(patterns(registrySource))
   })
 })

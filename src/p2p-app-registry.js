@@ -17,21 +17,33 @@ const MAX_BUNDLE_FILES = 500
 // an allowlist of extensions turned ordinary files (LICENSE, CNAME, README.md,
 // a workflow yaml) into a failed upload for the whole folder.
 //
-// Two kinds of thing are left behind rather than published. Version control is
+// Three kinds of thing are left behind rather than published. Version control is
 // not part of a site, and .git in particular carries the repository config,
 // which is where a remote's access token sits: publishing it would hand that
 // out to everyone who opens the app. The rest is operating system bookkeeping
-// that nothing asks for.
+// that nothing asks for. The third is credentials, which sit in a project
+// folder as often as a README and cannot be unpublished once they are out.
 //
 // Kept in step with the same list in
 // src/pages/static/js/p2p-app-manager.js, which skips them before a dropped
 // folder is ever read.
 const SKIPPED_BUNDLE_ENTRIES = new Set([
-  '.git', '.hg', '.svn', '.ds_store', 'thumbs.db', 'desktop.ini'
+  '.git', '.hg', '.svn', '.ds_store', 'thumbs.db', 'desktop.ini',
+  '.env', '.npmrc', '.netrc', '.pypirc', '.htpasswd',
+  '.ssh', '.aws', '.gnupg', 'id_rsa', 'id_ed25519', 'node_modules'
 ])
 
+// .env.local and server.pem carry the same thing under another name.
+const SKIPPED_BUNDLE_PATTERNS = [/^\.env\./, /\.(pem|key|p12|pfx)$/]
+
+function isSkippedBundleName (name) {
+  const lower = String(name).toLowerCase()
+  return SKIPPED_BUNDLE_ENTRIES.has(lower) ||
+    SKIPPED_BUNDLE_PATTERNS.some((pattern) => pattern.test(lower))
+}
+
 function isSkippedBundlePath (relPath) {
-  return relPath.split('/').some((segment) => SKIPPED_BUNDLE_ENTRIES.has(segment.toLowerCase()))
+  return relPath.split('/').some(isSkippedBundleName)
 }
 
 function getUserAppsDir () {
