@@ -373,6 +373,18 @@ describe('Hyper protocol handler', function () {
     expect(handleChatRequest.firstCall.args[1]).to.equal(sdk)
   })
 
+  it("serves a site's own /chat path from its drive, not the chat handler", async function () {
+    const { module, handleChatRequest } = await loadHyperModule({
+      fetchImpl: async () => new Response('site-page', { status: 200 })
+    })
+    const handler = await module.createHandler({ storage: 'test-chat-path' })
+
+    const response = await handler(new Request('hyper://example.org/chat.html', { method: 'GET' }))
+
+    expect(await response.text()).to.equal('site-page')
+    expect(handleChatRequest.callCount).to.equal(0)
+  })
+
   it('returns 500 response when Hyper fetch fails', async function () {
     const { module } = await loadHyperModule({ throwOnFetch: true })
     sinon.stub(console, 'error')

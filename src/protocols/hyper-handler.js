@@ -498,7 +498,6 @@ export async function createHandler (options, securityOptions = {}) {
     const { url, method } = req
     const urlObj = new URL(url)
     const protocol = urlObj.protocol.replace(':', '')
-    const pathname = urlObj.pathname
 
     // Intercept Hyperdrive key generation/retrieval
     const isKeyRequest = method === 'POST' && urlObj.searchParams.has('key')
@@ -611,10 +610,7 @@ export async function createHandler (options, securityOptions = {}) {
       })
       if (denied) return denied
 
-      if (
-        protocol === 'hyper' &&
-        (urlObj.hostname === 'chat' || pathname.startsWith('/chat'))
-      ) {
+      if (protocol === 'hyper' && urlObj.hostname === 'chat') {
         return await handleChatRequestP2P(req, sdk)
       } else {
         return await handleHyperRequest(req)
