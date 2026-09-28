@@ -203,6 +203,8 @@
     ]
   },
   "dependencies": {
+    "@chainsafe/libp2p-noise": "^17.0.0",
+    "@chainsafe/libp2p-yamux": "^8.0.1",
     "@helia/dnslink": "^2.0.2",
     "@helia/ipns": "^10.1.0",
     "@helia/unixfs": "^8.0.5",
