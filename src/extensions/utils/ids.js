@@ -30,3 +30,16 @@ export function generateSecureExtensionId (manifest) {
   } catch (_) {}
   return id
 }
+
+/**
+ * The ID Chromium assigns an extension whose manifest carries this key.
+ * @param {string} key - Base64 DER public key from manifest.key
+ * @returns {string|null}
+ */
+export function chromeIdFromKey (key) {
+  if (typeof key !== 'string' || !key) return null
+  const der = Buffer.from(key, 'base64')
+  if (!der.length) return null
+  const hex = createHash('sha256').update(der).digest('hex').slice(0, 32)
+  return [...hex].map((c) => String.fromCharCode(97 + parseInt(c, 16))).join('')
+}
