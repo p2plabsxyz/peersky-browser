@@ -1,7 +1,9 @@
 import Hyperdrive from 'hyperdrive'
 import z32 from 'z32'
 import { getOrCreatePrivateDriveKey } from '../backup/private-drive-key.js'
+import { decodeDriveId } from '../backup/private-drive-export.js'
 import { listPrivateHyperdrives } from './private-hyperdrive-registry.js'
+import { isOwnedPrivateDrive } from './private-drive-ownership.js'
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -40,14 +42,17 @@ function escapeHtml (value) {
   })[character])
 }
 
-function renderPrivateListing (hostname, children) {
+function renderPrivateListing (hostname, children, { readOnly = false } = {}) {
   const rows = children.map((entry) => {
     const name = typeof entry === 'string' ? entry : entry.name
     const kind = typeof entry === 'string' ? 'file' : entry.type
     const suffix = kind === 'directory' ? '/' : ''
     return `<li><a href="hyper://${hostname}/${encodeURIComponent(name)}${suffix}">${escapeHtml(name)}</a></li>`
   }).join('\n')
-  return `<html><head><title>${hostname}</title></head><body><ul>${rows}</ul></body></html>`
+  const banner = readOnly
+    ? '<p class="private-drive-readonly">Read-only: the original drive stays writable only on the device that created it.</p>'
+    : ''
+  return `<html><head><title>${hostname}</title></head><body>${banner}<ul>${rows}</ul></body></html>`
 }
 
 function decodeHostname (hostname) {
@@ -97,7 +102,7 @@ export function makePrivateDriveFetcher (sdk, userDataDir) {
   const opened = new Map()
 
   function register (hostname, drive) {
-    opened.set(hostname, Promise.resolve(drive))
+    opened.set(hostname, Promise.resolve({ drive, owned: true }))
   }
 
   async function open (url) {
@@ -105,23 +110,30 @@ export function makePrivateDriveFetcher (sdk, userDataDir) {
     if (!opened.has(hostname)) {
       const entries = await listPrivateHyperdrives(userDataDir).catch(() => [])
       const match = entries.find((entry) => entry.url === `hyper://${hostname}/`)
-      opened.set(hostname, openPrivateDriveByHostname(sdk, hostname, {
-        userDataDir,
-        autoJoin: true,
-        encrypted: match ? match.encrypted === true : false,
-        name: match ? match.name : null
-      }))
+      opened.set(hostname, (async () => {
+        const drive = await openPrivateDriveByHostname(sdk, hostname, {
+          userDataDir,
+          autoJoin: true,
+          encrypted: match ? match.encrypted === true : false,
+          name: match ? match.name : null
+        })
+        const owned = await isOwnedPrivateDrive(userDataDir, decodeDriveId(`hyper://${hostname}/`))
+        return { drive, owned }
+      })())
     }
     return opened.get(hostname)
   }
 
   async function handle (url, options = {}) {
     const parsed = new URL(url)
-    const drive = await open(url)
+    const { drive, owned } = await open(url)
     const pathname = parsed.pathname === '' || parsed.pathname === '/' ? '/' : parsed.pathname
     const method = (options.method || 'GET').toUpperCase()
 
     if (method === 'PUT' || method === 'POST') {
+      if (!owned) {
+        return new Response('This private drive is read-only on this device', { status: 403 })
+      }
       const body = options.body
       if (body == null) {
         await drive.putEntry(pathname, {})
@@ -133,6 +145,9 @@ export function makePrivateDriveFetcher (sdk, userDataDir) {
     }
 
     if (method === 'DELETE') {
+      if (!owned) {
+        return new Response('This private drive is read-only on this device', { status: 403 })
+      }
       await drive.del(pathname).catch(() => {})
       return new Response('', { status: 200 })
     }
@@ -149,7 +164,7 @@ export function makePrivateDriveFetcher (sdk, userDataDir) {
       for await (const child of await drive.readdir(pathname)) {
         children.push(typeof child === 'string' ? child : child.name)
       }
-      const listing = renderPrivateListing(parsed.hostname, children)
+      const listing = renderPrivateListing(parsed.hostname, children, { readOnly: !owned })
       return new Response(listing, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } })
     }
 

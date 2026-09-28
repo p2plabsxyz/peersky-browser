@@ -76,6 +76,7 @@ async function loadBackupManager (options = {}) {
 
   return {
     backupManager: module.default,
+    module,
     userData,
     stubs: {
       copy,
@@ -196,5 +197,21 @@ describe('backup-manager', function () {
     expect(error?.code).to.equal('ENOENT')
     expect(await readFile(path.join(userData, 'tabs.json'), 'utf-8')).to.equal('live tabs')
     expect(await readFile(path.join(userData, 'lastOpened.json'), 'utf-8')).to.equal('live window')
+  })
+
+  it('marks drives new to this device as adopted after a restore', async function () {
+    const { module, userData } = await loadBackupManager()
+    const drive = 'c'.repeat(64)
+    const existing = 'd'.repeat(64)
+    await writeFile(path.join(userData, 'privateHyperdrives.json'), JSON.stringify([
+      { name: 'new', url: `hyper://${drive}/`, timestamp: 2, encrypted: true },
+      { name: 'existing', url: `hyper://${existing}/`, timestamp: 1, encrypted: true }
+    ]))
+
+    await module.adoptRestoredPrivateDriveCopies(userData, new Set([existing]))
+
+    const ownership = JSON.parse(await readFile(path.join(userData, 'private-drive-owners.json'), 'utf8'))
+    expect(ownership[drive]).to.deep.equal({ owned: false })
+    expect(ownership[existing]).to.equal(undefined)
   })
 })
