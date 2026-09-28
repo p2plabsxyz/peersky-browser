@@ -100,6 +100,15 @@ export class ExtensionsPopup {
             </div>
         `
 
+    // The shell's CSP blocks inline handlers; error events do not bubble, so
+    // listen in the capture phase for icons that fail to load.
+    popup.addEventListener('error', (event) => {
+      const img = event.target
+      if (img?.tagName !== 'IMG' || !img.closest('.extension-icon')) return
+      img.style.display = 'none'
+      if (img.nextElementSibling) img.nextElementSibling.style.display = 'block'
+    }, true)
+
     document.body.appendChild(popup)
 
     // Load SVG icons after DOM insertion
@@ -205,7 +214,7 @@ export class ExtensionsPopup {
       return `
                 <div class="extension-item ${hasAction ? '' : 'no-action'}" role="listitem" data-extension-id="${escapedId}">
                     <div class="extension-icon" role="img" aria-label="${escapedNameAttr} icon">
-                        ${ext.icon ? `<img src="${this.escapeHtmlAttribute(ext.icon)}" alt="${escapedNameAttr} icon" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">` : ''}
+                        ${ext.icon ? `<img src="${this.escapeHtmlAttribute(ext.icon)}" alt="${escapedNameAttr} icon">` : ''}
                         <div class="svg-container" style="${ext.icon ? 'display:none' : 'display:block'}"></div>
                         ${badgeText ? `<span class="extension-badge" data-badge-color="${badgeColorAttr}">${badgeTextEscaped}</span>` : ''}
                     </div>
