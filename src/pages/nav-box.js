@@ -53,12 +53,15 @@ class NavBox extends HTMLElement {
     this.updateSearchPlaceholder()
   }
 
-  setStyledUrl (url) {
+  // peersky://home hides its own address so the search placeholder shows through,
+  // so the address to display and the page that is actually loaded are not always
+  // the same string. The shield has to describe the page, never the empty field.
+  setStyledUrl (url, pageUrl = url) {
     const urlInput = this.querySelector('#url')
     if (!urlInput) return
 
-    this._pageUrl = url || ''
-    urlInput.value = this._formatUrlForDisplay(this._pageUrl)
+    this._pageUrl = pageUrl || ''
+    urlInput.value = this._formatUrlForDisplay(url || '')
     this._updateSiteInfoButton(this._resolvePageUrl() || this._pageUrl)
 
     if (this._siteInfoPopup?.isVisible) {

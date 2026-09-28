@@ -188,6 +188,15 @@
               <button type="button" id="identity-key-copy" class="btn btn-secondary">Copy</button>
             </div>
           </div>
+          <div class="setting-row tall-row" id="paired-mobile-row" style="display: none;">
+            <div class="setting-label">
+              Phone using this identity
+              <p id="paired-mobile-detail" class="setting-description" style="user-select: text; word-break: break-all;"></p>
+            </div>
+            <div class="setting-control" style="display: flex; gap: 8px; align-items: center;">
+              <button type="button" id="paired-mobile-forget" class="btn btn-secondary">Move to a new phone</button>
+            </div>
+          </div>
           <div id="device-key-qr-container" style="display: none; padding: 12px; text-align: center;">
             <p class="setting-description" style="margin: 0 auto 8px; text-align: center; width: 100%; max-width: none;">Scan with PeerSky Mobile or another desktop instance to import identity to this device:</p>
             <qr-code id="device-key-qr-code" style="pointer-events: none; width: 180px; height: 180px; background: white; padding: 8px; box-sizing: border-box; margin: 0 auto;" data-bg="white" data-fg="black"></qr-code>

@@ -20,14 +20,43 @@
   li {
     margin: 4px 0;
   }
+  h2 {
+    font-size: 1em;
+    margin: 20px 0 6px;
+  }
+  p {
+    margin: 0 0 6px;
+    opacity: 0.75;
+  }
 </style>
 <body>
+  <h2>Pages</h2>
   <ul>
-    <li><a href="peersky://home">peersky://home</a></li>
-    <li><a href="peersky://p2p">peersky://p2p</a></li>
-    <li><a href="peersky://settings">peersky://settings</a></li>
-    <li><a href="peersky://tabs">peersky://tabs</a></li>
+    <li><a href="peersky://about">peersky://about</a></li>
+    <li><a href="peersky://backup">peersky://backup</a></li>
     <li><a href="peersky://bookmarks">peersky://bookmarks</a></li>
+    <li><a href="peersky://bt-manager">peersky://bt-manager</a></li>
+    <li><a href="peersky://downloads">peersky://downloads</a></li>
+    <li><a href="peersky://extensions">peersky://extensions</a></li>
+    <li><a href="peersky://history">peersky://history</a></li>
+    <li><a href="peersky://home">peersky://home</a></li>
+    <li><a href="peersky://onboarding">peersky://onboarding</a></li>
+    <li><a href="peersky://p2p">peersky://p2p</a></li>
+    <li><a href="peersky://plan1">peersky://plan1</a></li>
+    <li><a href="peersky://settings">peersky://settings</a></li>
+    <li><a href="peersky://site-settings">peersky://site-settings</a></li>
+    <li><a href="peersky://tabs">peersky://tabs</a></li>
     <li><a href="peersky://version">peersky://version</a></li>
+  </ul>
+
+  <h2>Status checks</h2>
+  <p>
+    Open these to see what PeerChat is connected to right now. Each peer is
+    listed with the rooms you share, whether it was found on your local network,
+    and whether the handshake finished. A peer with
+    <code>"handshake": false</code> is connected but not yet talking PeerChat.
+  </p>
+  <ul>
+    <li><a href="hyper://chat/?action=net-status">hyper://chat/?action=net-status</a></li>
   </ul>
 </body>

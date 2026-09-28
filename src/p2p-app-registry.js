@@ -13,11 +13,38 @@ const __dirname = path.dirname(__filename)
 const MAX_ICON_BYTES = 512 * 1024
 const MAX_BUNDLE_BYTES = 25 * 1024 * 1024
 const MAX_BUNDLE_FILES = 500
-const ALLOWED_BUNDLE_EXTENSIONS = new Set([
-  '.html', '.htm', '.css', '.js', '.mjs', '.cjs', '.json',
-  '.svg', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico',
-  '.woff', '.woff2', '.ttf', '.otf', '.map', '.txt'
+// A folder goes up as it stands. A site is whatever its author put in it, and
+// an allowlist of extensions turned ordinary files (LICENSE, CNAME, README.md,
+// a workflow yaml) into a failed upload for the whole folder.
+//
+// Three kinds of thing are left behind rather than published. Version control is
+// not part of a site, and .git in particular carries the repository config,
+// which is where a remote's access token sits: publishing it would hand that
+// out to everyone who opens the app. The rest is operating system bookkeeping
+// that nothing asks for. The third is credentials, which sit in a project
+// folder as often as a README and cannot be unpublished once they are out.
+//
+// Kept in step with the same list in
+// src/pages/static/js/p2p-app-manager.js, which skips them before a dropped
+// folder is ever read.
+const SKIPPED_BUNDLE_ENTRIES = new Set([
+  '.git', '.hg', '.svn', '.ds_store', 'thumbs.db', 'desktop.ini',
+  '.env', '.npmrc', '.netrc', '.pypirc', '.htpasswd',
+  '.ssh', '.aws', '.gnupg', 'id_rsa', 'id_ed25519', 'node_modules'
 ])
+
+// .env.local and server.pem carry the same thing under another name.
+const SKIPPED_BUNDLE_PATTERNS = [/^\.env\./, /\.(pem|key|p12|pfx)$/]
+
+function isSkippedBundleName (name) {
+  const lower = String(name).toLowerCase()
+  return SKIPPED_BUNDLE_ENTRIES.has(lower) ||
+    SKIPPED_BUNDLE_PATTERNS.some((pattern) => pattern.test(lower))
+}
+
+function isSkippedBundlePath (relPath) {
+  return relPath.split('/').some(isSkippedBundleName)
+}
 
 function getUserAppsDir () {
   return path.join(app.getPath('userData'), 'myapps')
@@ -137,6 +164,18 @@ class P2PAppRegistry {
     return this.registry.find((entry) => entry.id === id) || null
   }
 
+  /**
+   * An app already on the shelf under this name.
+   *
+   * Two tiles with the same name are two apps nobody can tell apart, and the
+   * second quietly became "name-2" under the hood while showing the same label.
+   */
+  findByName (name) {
+    const wanted = String(name || '').trim().toLowerCase()
+    if (!wanted) return null
+    return this.registry.find((entry) => entry.name.trim().toLowerCase() === wanted) || null
+  }
+
   makeUniqueId (base, existingIds) {
     if (!existingIds.has(base)) return base
     let i = 2
@@ -236,11 +275,7 @@ class P2PAppRegistry {
     for (const file of files) {
       const relPath = sanitizeBundlePath(file?.path)
       if (!relPath) throw new Error('Folder contains invalid file paths')
-
-      const ext = path.extname(relPath).toLowerCase()
-      if (!ALLOWED_BUNDLE_EXTENSIONS.has(ext)) {
-        throw new Error(`Unsupported file type in bundle: ${relPath}`)
-      }
+      if (isSkippedBundlePath(relPath)) continue
 
       const dataAny = file?.data
       const byteLength = Buffer.isBuffer(dataAny)
@@ -262,12 +297,20 @@ class P2PAppRegistry {
       normalizedFiles.push({ relPath, buffer })
     }
 
+    if (!normalizedFiles.length) throw new Error('Folder is empty')
+
     const hasRootIndex = normalizedFiles.some((f) => f.relPath.toLowerCase() === 'index.html')
     if (!hasRootIndex) {
       throw new Error('Folder must include index.html at the root')
     }
 
     const inferredName = String(payload?.name || '').trim() || 'Local App'
+    // Before anything is written, so a clash leaves no half-made app behind.
+    const clash = this.findByName(inferredName)
+    if (clash) {
+      throw new Error(`An app called "${clash.name}" is already here. Rename the folder, or remove the one you have.`)
+    }
+
     const baseId = slugify(inferredName) || 'local-app'
     const uniqueId = this.makeUniqueId(baseId, new Set(this.registry.map((a) => a.id)))
     const appDir = path.join(getUserAppsDir(), uniqueId, 'app')
@@ -306,6 +349,9 @@ class P2PAppRegistry {
     const getFiles = async (dirPath, baseDir) => {
       const entries = await fs.readdir(dirPath, { withFileTypes: true })
       for (const entry of entries) {
+        // Skipped here as well as in importFolder, so a repository's history is
+        // never read off disk only to be dropped afterwards.
+        if (SKIPPED_BUNDLE_ENTRIES.has(entry.name.toLowerCase())) continue
         const fullPath = path.join(dirPath, entry.name)
         if (entry.isDirectory()) {
           await getFiles(fullPath, baseDir)

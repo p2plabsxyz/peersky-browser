@@ -1,5 +1,6 @@
 import { expect } from 'chai'
 import { connectionFor } from '../../src/utils.js'
+import { isSecurePageUrl } from '../../src/pages/static/js/site-info-popup.js'
 
 describe('site-info connection labels', function () {
   it('marks http as not secure', function () {
@@ -29,5 +30,26 @@ describe('site-info connection labels', function () {
     expect(connectionFor('browser:').label).to.equal('PeerSky page')
     expect(connectionFor('blob:').secure).to.equal(true)
     expect(connectionFor('data:').secure).to.equal(false)
+  })
+})
+
+/**
+ * peersky://home blanks its own address bar so the search placeholder shows
+ * through. That blank string used to be what drove the shield as well, so the
+ * home page reported "not secure" with a crossed-out shield. The address to
+ * display and the page that is loaded have to stay separate values.
+ */
+describe('site-info shield on the home page', function () {
+  it('treats the home page as secure', function () {
+    expect(isSecurePageUrl('peersky://home')).to.equal(true)
+    expect(isSecurePageUrl('peersky://home/')).to.equal(true)
+  })
+
+  it('reports a blank address as not secure, which is why it must not drive the shield', function () {
+    expect(isSecurePageUrl('')).to.equal(false)
+  })
+
+  it('still crosses out plain http', function () {
+    expect(isSecurePageUrl('http://example.com')).to.equal(false)
   })
 })

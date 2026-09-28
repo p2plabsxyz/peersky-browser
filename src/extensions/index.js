@@ -31,6 +31,7 @@ import { promises as fs } from 'fs'
 import { installChromeWebStore } from 'electron-chrome-web-store'
 import { ElectronChromeExtensions } from '@p2plabs/peersky-chrome-extensions'
 import { shouldHonourTabActivation } from './tab-activation.js'
+import { refuseTabClose } from './tab-untracking.js'
 import ManifestValidator from './manifest-validator.js'
 import { loadPolicy } from './policy.js'
 import { ensureDir, KeyedMutex, ERR } from './util.js'
@@ -84,6 +85,11 @@ class ExtensionManager {
 
     // ElectronChromeExtensions for browser actions
     this.electronChromeExtensions = null
+
+    // webContents ids we are currently untracking ourselves. The extensions
+    // store calls the removeTab hook from inside its own removeTab(), so
+    // without this a closing tab asks the UI to close it a second time.
+    this._untrackingTabs = new Set()
 
     // Track active popups for auto-close on tab switch
     this.activePopups = new Set()
@@ -251,22 +257,21 @@ class ExtensionManager {
 
           /**
            * Remove/close a tab given its WebContents
-           * Called when extensions use chrome.tabs.remove()
+           * Called when extensions use chrome.tabs.remove(), and also from
+           * inside the store's own removeTab() when we untrack a closing tab.
+           * Only the first of those wants the tab closed.
            */
           removeTab: async (tab, win) => {
             try {
               log.info('[ExtensionManager] removeTab called for webContents:', tab?.id)
 
-              if (!tab || (typeof tab.isDestroyed === 'function' && tab.isDestroyed())) {
-                log.warn('[ExtensionManager] removeTab: tab already destroyed')
+              const refusal = refuseTabClose({ untracking: this._untrackingTabs, tab })
+              if (refusal) {
+                log.warn(`[ExtensionManager] removeTab: ${refusal}`)
                 return
               }
 
-              const wcId = typeof tab.id === 'number' ? tab.id : null
-              if (!wcId) {
-                log.warn('[ExtensionManager] removeTab: no valid webContents ID')
-                return
-              }
+              const wcId = tab.id
 
               // Find the main window with tabbar
               const allWindows = BrowserWindow.getAllWindows()
@@ -989,7 +994,14 @@ class ExtensionManager {
         return
       }
 
-      this.electronChromeExtensions.removeTab(webContents)
+      // The store runs the removeTab hook synchronously from inside this call,
+      // so the flag only has to stand for the duration of it.
+      this._untrackingTabs.add(webContents.id)
+      try {
+        this.electronChromeExtensions.removeTab(webContents)
+      } finally {
+        this._untrackingTabs.delete(webContents.id)
+      }
       log.info(`[ExtensionManager] Unregistered webContents ${webContents.id} from extension system`)
     } catch (error) {
       // During shutdown, this is expected and not an error
