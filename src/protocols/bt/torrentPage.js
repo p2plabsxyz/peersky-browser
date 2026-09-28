@@ -8,7 +8,7 @@ function extractDisplayName (magnetUrl) {
   return match ? decodeURIComponent(match[1].replace(/\+/g, ' ')) : null
 }
 
-export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, theme = 'dark', apiToken = '') {
+export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, theme = 'dark') {
   const name = displayName || extractDisplayName(magnetUrl) || torrentId || 'Unknown Torrent'
   const safeInfoHash = escapeForHtml(torrentId)
   const safeName = escapeForHtml(name)
@@ -218,7 +218,7 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
     var magnetUrl = ${JSON.stringify(magnetUrl)};
     var torrentId = ${JSON.stringify(torrentId)};
     var apiBase = ${JSON.stringify(apiBase)};
-    var apiToken = ${JSON.stringify(apiToken)};
+    var apiToken = '';
     var currentInfoHash = torrentId;
     var statusInterval = null;
     var filesRendered = false;
@@ -249,12 +249,8 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
     }
 
     async function refreshApiToken() {
-      var tokenUrl = apiBase + '?action=api&api=token';
-      var resp = await fetch(tokenUrl, { method: 'GET' });
-      var text = await resp.text();
       try {
-        var data = JSON.parse(text);
-        apiToken = data && data.token ? data.token : '';
+        apiToken = (await window.peerskyBT.apiToken()) || '';
       } catch (e) {
         apiToken = '';
       }

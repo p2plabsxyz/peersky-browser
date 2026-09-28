@@ -41,7 +41,7 @@ const isBackup = isPeerskyPage('backup')
 const isTabsPage = isPeerskyPage('tabs')
 const isP2PPage = isPeerskyPage('p2p')
 const isUserP2PApp = isPeerskyPage('myapps')
-const isTrustedExternalHost = pageHost === 'agregore.mauve.moe'
+const isTrustedExternalHost = pageProtocol === 'https:' && pageHost === 'agregore.mauve.moe'
 const isInternal = (pageProtocol === 'peersky:' && !isUserP2PApp) || pageProtocol === 'file:' || isTrustedExternalHost
 const isExternal = !isInternal
 
@@ -56,6 +56,12 @@ console.log('Unified-preload: URL detection', { url, isInternal, isExternal })
 if (isBitTorrent) {
   contextBridge.exposeInMainWorld('peersky', {
     openInTab: (fileUrl) => ipcRenderer.send('open-url-in-tab', fileUrl)
+  })
+}
+
+if (isBitTorrent || isPeerskyPage('bt-manager')) {
+  contextBridge.exposeInMainWorld('peerskyBT', {
+    apiToken: () => ipcRenderer.invoke('bt-api-token')
   })
 }
 
@@ -106,8 +112,9 @@ if (isInternal || isP2P || isUserP2PApp) {
     iteratorReturn
   })
 
-  // LLM Memory: internal pages only
-  if (isInternal || isUserP2PApp) {
+  // LLM Memory: peersky: pages only. isInternal also covers file: pages and a
+  // trusted external host, neither of which should read the whole history.
+  if (pageProtocol === 'peersky:') {
     contextBridge.exposeInMainWorld('llmMemory', {
       add: (entry) => ipcRenderer.invoke('llm-memory-add', entry),
       list: (opts) => ipcRenderer.invoke('llm-memory-list', opts || {}),

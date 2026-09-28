@@ -101,9 +101,10 @@ async function jsonBody (res) {
   }
 }
 
-function apiToken (html) {
-  const m = String(html).match(/var apiToken = "([a-f0-9]+)"/)
-  return m ? m[1] : null
+// Tokens live in the module instance, so mint from the handler loaded last.
+let mintLatest = null
+function mintToken () {
+  return mintLatest(`bt://${HASH_HEX}/`)
 }
 
 function apiQuery (parts) {
@@ -165,6 +166,7 @@ describe('BitTorrent protocol handler', function () {
       tmpDirs.push(dd)
     }
     const fork = sinon.stub()
+    const ipcMain = { handle: sinon.stub() }
 
     // strict so ../settings-manager.js is not merged with the real module (pulls permissions → electron).
     const mod = await esmock.strict('../../src/protocols/bittorrent-handler.js', {
@@ -177,7 +179,7 @@ describe('BitTorrent protocol handler', function () {
             return path.join(ud, t)
           }
         },
-        ipcMain: { handle: sinon.stub() }
+        ipcMain
       },
       '../../src/logger.js': {
         createLogger: () => ({ info () {}, warn () {}, error () {} })
@@ -191,24 +193,32 @@ describe('BitTorrent protocol handler', function () {
     fork.returns(child)
 
     const handler = await mod.createHandler()
-    return { handler, child, ud, dd }
+    const loaded = { handler, child, ud, dd, mod, ipcMain }
+    mintLatest = tokenIpc(loaded)
+    return loaded
   }
 
-  it('serves torrent UI on bt:// and puts apiToken in the page', async () => {
+  function tokenIpc ({ mod, ipcMain }) {
+    mod.setupBittorrentIpc()
+    const call = ipcMain.handle.getCalls().find((c) => c.args[0] === 'bt-api-token')
+    return (senderUrl) => call.args[1]({ senderFrame: { url: senderUrl } })
+  }
+
+  it('serves torrent UI on bt:// without an API token in the page', async () => {
     const { handler } = await loadHandler()
     const res = await handler(new Request(`bt://${HASH_HEX}/`))
     expect(res.status).to.equal(200)
     expect(res.headers.get('Content-Type')).to.match(/text\/html/)
     const html = await res.text()
     expect(html).to.include('BitTorrent')
-    expect(apiToken(html)).to.have.lengthOf(48)
+    expect(html).to.include("var apiToken = '';")
   })
 
   it('serves torrent UI for magnet: URLs', async () => {
     const { handler } = await loadHandler()
     const res = await handler(new Request(MAGNET))
     expect(res.status).to.equal(200)
-    expect(apiToken(await res.text())).to.be.a('string')
+    expect(await res.text()).to.include("var apiToken = '';")
   })
 
   it('rejects API calls when request.url is not bt/bittorrent/magnet', async () => {
@@ -234,7 +244,7 @@ describe('BitTorrent protocol handler', function () {
 
   it('mutations need a valid token; pause works with token from the UI page', async () => {
     const { handler, child } = await loadHandler()
-    const token = apiToken(await (await handler(new Request(`bt://${HASH_HEX}/`))).text())
+    const token = mintToken()
     expect(token).to.be.a('string')
 
     const start = apiQuery({ api: 'start', magnet: encodeURIComponent(MAGNET) })
@@ -255,7 +265,7 @@ describe('BitTorrent protocol handler', function () {
 
   it('accepts X-BT-Token header for mutations', async () => {
     const { handler, child } = await loadHandler()
-    const token = apiToken(await (await handler(new Request(`bt://${HASH_HEX}/`))).text())
+    const token = mintToken()
     const url = apiQuery({ api: 'pause', hash: HASH_HEX })
     const res = await handler(new Request(url, { method: 'POST', headers: { 'X-BT-Token': token } }))
     expect(res.status).to.equal(200)
@@ -299,7 +309,11 @@ describe('BitTorrent protocol handler', function () {
     child.emit('message', { type: 'status-update', infoHash: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', name: 'alpha', files: [] })
     child.emit('message', { type: 'status-update', infoHash: '9999999999999999999999999999999999999999', name: 'alpha', files: [] })
 
-    const res = await handler(new Request(apiQuery({ api: 'list' })))
+    const denied = await handler(new Request(apiQuery({ api: 'list' })))
+    expect(denied.status).to.equal(403)
+
+    const token = mintToken()
+    const res = await handler(new Request(apiQuery({ api: 'list' }), { headers: { 'X-BT-Token': token } }))
     expect(res.status).to.equal(200)
     const body = await jsonBody(res)
     expect(body.torrents.map((t) => t.infoHash)).to.deep.equal([
@@ -309,21 +323,30 @@ describe('BitTorrent protocol handler', function () {
     ])
   })
 
-  it('token endpoint mints a token usable for a mutation', async () => {
+  it('token is not served over bt://, so other origins cannot read it', async () => {
     const { handler } = await loadHandler()
-    const tokenRes = await handler(new Request(apiQuery({ api: 'token' })))
-    expect(tokenRes.status).to.equal(200)
-    const tokenBody = await jsonBody(tokenRes)
-    expect(tokenBody.token).to.be.a('string').with.lengthOf(48)
+    const res = await handler(new Request(apiQuery({ api: 'token' })))
+    expect(res.status).to.equal(400)
+    expect((await jsonBody(res)).token).to.equal(undefined)
+  })
+
+  it('token IPC mints a usable token only for torrent UI pages', async () => {
+    const loaded = await loadHandler()
+    const mint = tokenIpc(loaded)
+    for (const url of ['https://evil.example/', 'hyper://abc/', 'peersky://settings/', undefined]) {
+      expect(() => mint(url), String(url)).to.throw('Forbidden')
+    }
+    expect(mint('peersky://bt-manager/')).to.be.a('string').with.lengthOf(48)
+    const token = mint(`bt://${HASH_HEX}/`)
 
     const start = apiQuery({ api: 'start', magnet: encodeURIComponent(MAGNET) })
-    const startRes = await handler(new Request(start, { method: 'POST', headers: { 'X-BT-Token': tokenBody.token } }))
+    const startRes = await loaded.handler(new Request(start, { method: 'POST', headers: { 'X-BT-Token': token } }))
     expect(startRes.status).to.equal(200)
   })
 
   it('start merges custom tr= with defaults and returns success', async () => {
     const { handler, child } = await loadHandler()
-    const token = apiToken(await (await handler(new Request(`bt://${HASH_HEX}/`))).text())
+    const token = mintToken()
     const magnet = `${MAGNET}&tr=${encodeURIComponent('udp://tracker.example.com:6969/announce')}`
     const url = apiQuery({ api: 'start', magnet: encodeURIComponent(magnet) })
     const res = await handler(new Request(url, { method: 'POST', headers: { 'X-BT-Token': token } }))
@@ -343,7 +366,7 @@ describe('BitTorrent protocol handler', function () {
 
   it('seed hits the worker with action seed', async () => {
     const { handler, child } = await loadHandler()
-    const token = apiToken(await (await handler(new Request(`bt://${HASH_HEX}/`))).text())
+    const token = mintToken()
     const url = apiQuery({ api: 'seed', magnet: encodeURIComponent(MAGNET), hash: HASH_HEX })
     const res = await handler(new Request(url, { method: 'POST', headers: { 'X-BT-Token': token } }))
     expect(res.status).to.equal(200)
@@ -354,7 +377,7 @@ describe('BitTorrent protocol handler', function () {
 
   it('stop and unseed dispatch their worker actions', async () => {
     const { handler, child } = await loadHandler()
-    const token = apiToken(await (await handler(new Request(`bt://${HASH_HEX}/`))).text())
+    const token = mintToken()
 
     const stopRes = await handler(new Request(apiQuery({ api: 'stop', hash: HASH_HEX }), { method: 'POST', headers: { 'X-BT-Token': token } }))
     expect(stopRes.status).to.equal(200)
@@ -460,7 +483,7 @@ describe('BitTorrent protocol handler', function () {
         numPeers: 0
       })
 
-      const token = apiToken(await (await handler(new Request(`bt://${HASH_HEX}/`))).text())
+      const token = mintToken()
       const res = await handler(new Request(apiQuery({ api: 'resume', hash: HASH_HEX }), { method: 'POST', headers: { 'X-BT-Token': token } }))
       expect(res.status).to.equal(200)
       expect((await jsonBody(res)).success).to.equal(true)
@@ -518,7 +541,7 @@ describe('BitTorrent protocol handler', function () {
         numPeers: 0
       })
 
-      const token = apiToken(await (await handler(new Request(`bt://${HASH_HEX}/`))).text())
+      const token = mintToken()
       const res = await handler(new Request(apiQuery({ api: 'resume', hash: HASH_HEX }), { method: 'POST', headers: { 'X-BT-Token': token } }))
       expect(res.status).to.equal(200)
       expect(resumes).to.equal(1)
@@ -546,7 +569,7 @@ describe('BitTorrent protocol handler', function () {
       numPeers: 0,
       files: []
     })
-    const token = apiToken(await (await handler(new Request(`bt://${HASH_HEX}/`))).text())
+    const token = mintToken()
     const res = await handler(
       new Request(apiQuery({ api: 'resume', hash: HASH_HEX }), { method: 'POST', headers: { 'X-BT-Token': token } })
     )
@@ -649,7 +672,7 @@ describe('BitTorrent protocol handler', function () {
       numPeers: 4,
       files: []
     })
-    const token = apiToken(await (await handler(new Request(`bt://${HASH_HEX}/`))).text())
+    const token = mintToken()
     const stopRes = await handler(
       new Request(apiQuery({ api: 'stop', hash: HASH_HEX }), { method: 'POST', headers: { 'X-BT-Token': token } })
     )
@@ -683,7 +706,7 @@ describe('BitTorrent protocol handler', function () {
       numPeers: 8,
       files: []
     })
-    const token = apiToken(await (await handler(new Request(`bt://${HASH_HEX}/`))).text())
+    const token = mintToken()
     const unseedRes = await handler(
       new Request(apiQuery({ api: 'unseed', hash: HASH_HEX }), { method: 'POST', headers: { 'X-BT-Token': token } })
     )
@@ -722,7 +745,7 @@ describe('BitTorrent protocol handler', function () {
         files: [{ index: 0, name: 'keep-me.txt', path: 'keep-me.txt', length: 4, downloaded: 4, progress: 1 }]
       })
 
-      const token = apiToken(await (await handler(new Request(`bt://${HASH_HEX}/`))).text())
+      const token = mintToken()
       const rmRes = await handler(
         new Request(apiQuery({ api: 'remove', hash: HASH_HEX }), { method: 'POST', headers: { 'X-BT-Token': token } })
       )
@@ -766,7 +789,7 @@ describe('BitTorrent protocol handler', function () {
       files: []
     })
 
-    const token = apiToken(await (await handler(new Request(`bt://${HASH_HEX}/`))).text())
+    const token = mintToken()
     const res = await handler(
       new Request(apiQuery({ api: 'resume', hash: HASH_HEX }), { method: 'POST', headers: { 'X-BT-Token': token } })
     )

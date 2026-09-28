@@ -225,9 +225,11 @@
     }
 
     async function getApiToken() {
-      var res = await fetch("bt://api?action=api&api=token", { method: "GET" });
-      var data = await res.json();
-      apiToken = data && data.token ? data.token : "";
+      try {
+        apiToken = (await window.peerskyBT.apiToken()) || "";
+      } catch (e) {
+        apiToken = "";
+      }
       return apiToken;
     }
 
@@ -239,17 +241,16 @@
       if (action === "seed" && torrent && torrent.magnetURI) {
         url += "&magnet=" + encodeURIComponent(torrent.magnetURI);
       }
-      var options = { method: action === "list" || action === "token" ? "GET" : "POST" };
-      if (options.method === "POST" && !apiToken) {
+      var options = { method: action === "list" ? "GET" : "POST" };
+      if (!apiToken) {
         await getApiToken();
       }
-      if (options.method === "POST" && apiToken) {
+      if (apiToken) {
         options.headers = { "X-BT-Token": apiToken };
       }
       var resp = await fetch(url, options);
       var data = await resp.json();
       if (
-        options.method === "POST" &&
         data &&
         data.error === "Forbidden: invalid API token" &&
         retryOnTokenError !== false
