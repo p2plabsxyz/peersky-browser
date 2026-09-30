@@ -114,6 +114,17 @@ ipcRenderer.on('add-tab-from-main', (event, url) => {
   }
 })
 
+// Tabs sent from another device, such as a phone, which open asleep.
+const sleepingTabsPendingFromMain = []
+ipcRenderer.on('add-tabs-from-main', (event, batch) => {
+  if (!batch || !Array.isArray(batch.tabs)) return
+  if (tabBar && typeof tabBar.addSleepingTabs === 'function') {
+    tabBar.addSleepingTabs(batch.tabs, { group: batch.group })
+  } else {
+    sleepingTabsPendingFromMain.push(batch)
+  }
+})
+
 // A tab dragged here from another window.
 ipcRenderer.on('add-tab-at-point', (event, tab) => {
   tabBar?.insertTabAtPoint?.(tab)
@@ -385,6 +396,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   await tabBar.connectWebviewContainer(webviewContainer)
   while (tabsPendingFromMain.length) tabBar.addTab(tabsPendingFromMain.shift())
+  while (sleepingTabsPendingFromMain.length) {
+    const batch = sleepingTabsPendingFromMain.shift()
+    tabBar.addSleepingTabs(batch.tabs, { group: batch.group })
+  }
 
   // Setup error handling for all webviews
   tabBar.addEventListener('tab-created', (e) => {

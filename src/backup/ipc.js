@@ -7,6 +7,7 @@ import { uploadBackup, downloadBackupFromAddress } from './p2p-backup.js'
 import { getDeviceKeys, getPublicDeviceInfo } from './device-keys.js'
 import { createPairingSession, encodePairingString } from './identity-transfer.js'
 import { clearPairedMobile, readPairedMobile } from './mobile-pairing.js'
+import { rememberPairingNonce } from './pairing-sessions.js'
 import { listPrivateHyperdrives } from '../protocols/private-hyperdrive-registry.js'
 
 const log = createLogger('backup')
@@ -15,8 +16,24 @@ function ownerWindow (event) {
   return BrowserWindow.fromWebContents(event.sender) || null
 }
 
+// Tabs from a phone open in the window the Backup & Restore page is in. The
+// page is a tab itself, so the window is the one hosting it.
+function openTabsBeside (event, tabs) {
+  const host = event.sender.hostWebContents ||
+    ownerWindow(event)?.webContents ||
+    BrowserWindow.getFocusedWindow()?.webContents ||
+    BrowserWindow.getAllWindows()[0]?.webContents
+  if (!host || host.isDestroyed()) return false
+  host.send('add-tabs-from-main', { tabs, group: 'Phone' })
+  return true
+}
+
 // Register IPC handlers for the backup & restore UI.
 export function setupBackupIpc () {
+  backupManager.clearLeftoverStaging().catch((error) => {
+    log.error(`Could not clear leftover restore staging: ${error.message}`)
+  })
+
   ipcMain.handle('backup-create', async (event, payload = {}) => {
     try {
       const win = ownerWindow(event)
@@ -89,6 +106,7 @@ export function setupBackupIpc () {
       const keys = await getDeviceKeys(app.getPath('userData'))
       const device = getPublicDeviceInfo(keys)
       const session = await createPairingSession(app.getPath('userData'), 'desktop')
+      rememberPairingNonce(session.nonce)
       return { success: true, device, pairingPayload: encodePairingString(session) }
     } catch (error) {
       log.error(`Backup device info failed: ${error.message}`)
@@ -175,27 +193,49 @@ export function setupBackupIpc () {
     }
   })
 
-  ipcMain.handle('backup-restore-cid', async (event, payload = {}) => {
-    let zipPath
+  // Restoring from the network is two steps. The download is checked first,
+  // and a transfer shows its code, so the person compares the two screens
+  // before anything here changes.
+  ipcMain.handle('backup-fetch-restore', async (event, payload = {}) => {
     try {
       const address = typeof payload === 'string' ? payload : payload?.address
-      zipPath = await downloadBackupFromAddress(address, (status) => {
+      const zipPath = await downloadBackupFromAddress(address, (status) => {
         if (!event.sender.isDestroyed()) {
           event.sender.send('backup-progress', { phase: 'fetch', message: status.message })
         }
       })
-      const result = await backupManager.restoreBackup(zipPath, (data) => {
+      const staged = await backupManager.stageRestore(zipPath, (data) => {
         if (!event.sender.isDestroyed()) {
           event.sender.send('backup-progress', { phase: 'restore', ...data })
         }
-      }, { passphrase: payload?.passphrase })
-      return result
+      })
+      return { success: true, ...staged }
     } catch (error) {
-      log.error(`Backup CID restore failed: ${error.message}`)
+      log.error(`Fetching a restore failed: ${error.message}`)
       return { success: false, error: error.message }
-    } finally {
-      if (zipPath) await fs.rm(zipPath, { force: true }).catch(() => {})
     }
+  })
+
+  ipcMain.handle('backup-apply-restore', async (event, payload = {}) => {
+    try {
+      return await backupManager.applyStaged(payload?.stageId, {
+        passphrase: payload?.passphrase,
+        onProgress: (data) => {
+          if (!event.sender.isDestroyed()) {
+            event.sender.send('backup-progress', { phase: 'restore', ...data })
+          }
+        },
+        openTabs: (tabs) => openTabsBeside(event, tabs)
+      })
+    } catch (error) {
+      log.error(`Applying a restore failed: ${error.message}`)
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('backup-discard-restore', async (_event, payload = {}) => {
+    backupManager.discardStaged(payload?.stageId)
+    return { success: true }
   })
 
   ipcMain.handle('backup-relaunch', async () => {

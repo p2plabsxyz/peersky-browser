@@ -54,6 +54,14 @@
     .private-hyperdrive-list { margin: 8px 0 0; padding-left: 20px; opacity: 0.7; }
     .private-hyperdrive-list li { margin: 6px 0; overflow-wrap: anywhere; }
     .private-hyperdrive-list a { color: var(--settings-link-color, #4da3ff); }
+    .incoming-code {
+      margin: 8px 0 4px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 1.8em;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      user-select: text;
+    }
   </style>
   <title>Backup & Restore</title>
 </head>
@@ -127,13 +135,31 @@
           <div class="setting-row tall-row">
             <div class="setting-label">
               Restore from the network
-              <p class="setting-description">Download and restore a backup or an
-                identity transfer from a Hypercore address.</p>
+              <p class="setting-description">Get a backup, an identity transfer, or
+                tabs and bookmarks sent from PeerSky Mobile, from a hyper:// link.
+                Nothing changes until you confirm.</p>
+            </div>
+            <div class="setting-control" style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; align-items: center;">
+              <button type="button" id="backup-cid-scan" class="btn btn-secondary" style="height: 34px; box-sizing: border-box; margin: 0;">Scan QR</button>
+              <input type="text" id="backup-cid-input" class="cid-input" aria-label="hyper:// link" placeholder="hyper://..." style="width: 220px; margin-bottom: 0; height: 34px; box-sizing: border-box;">
+              <input type="password" id="backup-cid-passphrase" class="cid-input" aria-label="Backup passphrase" placeholder="passphrase, if encrypted" style="width: 180px; margin-bottom: 0; height: 34px; box-sizing: border-box;">
+              <button type="button" id="backup-cid-download" class="btn btn-secondary" style="height: 34px; box-sizing: border-box; margin: 0;">Download</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- What came from the network, checked but not applied. A transfer
+             shows its code here, to compare with the other screen first. -->
+        <section id="backup-incoming-section" class="settings-section" style="display: none;">
+          <div class="setting-row tall-row">
+            <div class="setting-label">
+              <span id="backup-incoming-title">Ready to restore</span>
+              <p id="backup-incoming-code" class="incoming-code" hidden></p>
+              <p id="backup-incoming-details" class="setting-description"></p>
             </div>
             <div class="setting-control" style="display: flex; gap: 8px; align-items: center;">
-              <input type="text" id="backup-cid-input" class="cid-input" placeholder="hyper://..." style="width: 220px; margin-bottom: 0; height: 34px; box-sizing: border-box;">
-              <input type="password" id="backup-cid-passphrase" class="cid-input" placeholder="passphrase, if encrypted" style="width: 180px; margin-bottom: 0; height: 34px; box-sizing: border-box;">
-              <button type="button" id="backup-cid-download" class="btn btn-secondary" style="height: 34px; box-sizing: border-box; margin: 0;">Download</button>
+              <button type="button" id="backup-incoming-cancel" class="btn btn-secondary">Cancel</button>
+              <button type="button" id="backup-incoming-apply" class="btn btn-primary">Restore</button>
             </div>
           </div>
         </section>
@@ -198,7 +224,7 @@
             </div>
           </div>
           <div id="device-key-qr-container" style="display: none; padding: 12px; text-align: center;">
-            <p class="setting-description" style="margin: 0 auto 8px; text-align: center; width: 100%; max-width: none;">Scan with PeerSky Mobile or another desktop instance to import identity to this device:</p>
+            <p class="setting-description" style="margin: 0 auto 8px; text-align: center; width: 100%; max-width: none;">Scan this with PeerSky Mobile to send its tabs and bookmarks here, or with another desktop to move its identity here:</p>
             <qr-code id="device-key-qr-code" style="pointer-events: none; width: 180px; height: 180px; background: white; padding: 8px; box-sizing: border-box; margin: 0 auto;" data-bg="white" data-fg="black"></qr-code>
           </div>
         </section>

@@ -66,6 +66,20 @@ Old data is removed only after every target has been swapped successfully.
 A restart is required after a successful restore so Hyper and IPFS reopen from
 a clean process.
 
+## Restoring from the network
+
+Restore from the network takes a `hyper://` link and works in two steps.
+The download is read first: a backup waits for the person to say restore, and
+an identity transfer is checked, decrypted and verified into
+`.peersky-incoming-*` inside the profile folder, then its six character code
+is shown. Nothing in the profile changes until the person confirms. Cancelling,
+or leaving the page, drops what was fetched, and anything a crash leaves behind
+is cleared at the next start.
+
+A transfer fetched this way must have been made for a pairing code this
+desktop showed in the last hour (`src/backup/pairing-sessions.js`). A code
+answers one transfer; once it is used, the page shows a fresh one.
+
 ## Identity transfer
 
 Identity transfer is intended for moving the identity to a specific receiving
@@ -101,6 +115,34 @@ nothing on the phone opens and which can run to gigabytes. The key goes to a
 phone even when there are no private drives yet, because the phone encrypts
 its own private uploads with it, and that is what lets this desktop open them.
 
+## Receiving from a phone
+
+PeerSky Mobile can send to this desktop. The phone scans the pairing code on
+the Backup & Restore page and puts a transfer up for it, in the same format
+as an identity transfer: sealed to this desktop, signed by the phone, and
+encrypted with AES-256-GCM. The decrypted payload says `"source": "mobile"`
+and holds only:
+
+```
+phone-tabs.json
+phone-bookmarks.json
+phone-private-drives.json
+```
+
+Paste or scan the phone's link under Restore from the network. After the code
+is confirmed (`src/backup/phone-sync.js`):
+
+- the phone's bookmarks and favourites are added after this desktop's own,
+  and one already here is left as it is,
+- the phone's tabs open asleep, in a collapsed group called Phone, in the
+  window the page is in,
+- the phone's private drive, encrypted with this desktop's key, is added to
+  the private drives as `Private files from your phone`, read-only here.
+
+Nothing is replaced and nothing restarts. Each entry is read into memory with
+a size cap and checked against the manifest, since anyone who can see this
+desktop's code could send it something.
+
 Identity transfer creates an independent copy of the identity. There is no
 claimed one-mobile limit or cryptographic revocation mechanism. Removing a
 device from a local registry could not revoke keys already copied to that
@@ -124,6 +166,9 @@ device-sealed identity transfer described above.
 - `src/backup/encrypted-backup.js`: passphrase-encrypted local backup wrapper.
 - `src/backup/identity-transfer.js`: receiver-sealed identity transfer and
   verification code derivation.
-- `src/backup/backup-manager.js`: service suspension and transactional restore.
+- `src/backup/phone-sync.js`: reading and adding what a phone sends.
+- `src/backup/pairing-sessions.js`: the pairing codes this desktop has shown.
+- `src/backup/backup-manager.js`: service suspension, transactional restore,
+  and the two-step restore from the network.
 - `src/backup/p2p-backup.js`: encrypted-wrapper upload gate and P2P download.
 - `src/backup/ipc.js`: backup page IPC handlers.

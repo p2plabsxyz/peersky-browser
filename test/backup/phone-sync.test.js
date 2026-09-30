@@ -1,0 +1,191 @@
+import { expect } from 'chai'
+import os from 'os'
+import path from 'path'
+import crypto from 'crypto'
+import z32 from 'z32'
+import archiver from 'archiver'
+import { createWriteStream } from 'fs'
+import { mkdtemp, readFile, writeFile } from 'fs/promises'
+
+import {
+  applyPhoneSync,
+  isImportableUrl,
+  mergeBookmarks,
+  parsePhoneSync,
+  PHONE_PRIVATE_DRIVE_NAME,
+  readPhoneSyncZip
+} from '../../src/backup/phone-sync.js'
+import { listPrivateHyperdrives } from '../../src/protocols/private-hyperdrive-registry.js'
+import { isOwnedPrivateDrive } from '../../src/protocols/private-drive-ownership.js'
+
+async function makeTempDir (prefix) {
+  return mkdtemp(path.join(os.tmpdir(), prefix))
+}
+
+const sha256 = (bytes) => `sha256:${crypto.createHash('sha256').update(bytes).digest('hex')}`
+
+// The inner zip of a transfer from a phone, the way PeerSky Mobile packs it.
+async function writePhoneZip (zipPath, { files, manifest }) {
+  const output = createWriteStream(zipPath)
+  const archive = archiver('zip', { zlib: { level: 6 } })
+  const done = new Promise((resolve, reject) => {
+    output.on('close', resolve)
+    archive.on('error', reject)
+  })
+  archive.pipe(output)
+  const listed = {}
+  for (const [name, value] of Object.entries(files)) {
+    const bytes = Buffer.from(typeof value === 'string' ? value : JSON.stringify(value))
+    archive.append(bytes, { name })
+    listed[name] = sha256(bytes)
+  }
+  archive.append(JSON.stringify(manifest || { version: '1.0.0', source: 'mobile', files: listed }), { name: 'manifest.json' })
+  await archive.finalize()
+  await done
+  return listed
+}
+
+describe('phone-sync', function () {
+  this.timeout(20000)
+
+  it('reads what a phone sent, checked against its manifest', async function () {
+    const dir = await makeTempDir('peersky-phone-sync-')
+    const zipPath = path.join(dir, 'inner.zip')
+    await writePhoneZip(zipPath, {
+      files: {
+        'phone-tabs.json': { version: 1, tabs: [{ url: 'https://example.com/a', title: 'A' }, { url: 'peersky://home', title: 'Home' }] },
+        'phone-bookmarks.json': { version: 1, bookmarks: [{ url: 'hyper://blog.example/', title: 'Blog', createdAt: 1700000000000 }] },
+        'phone-private-drives.json': { version: 1, drives: [{ driveId: 'E'.repeat(64) }, { driveId: 'nope' }] }
+      }
+    })
+
+    const sync = await readPhoneSyncZip(zipPath)
+    expect(sync.tabs).to.deep.equal([{ url: 'https://example.com/a', title: 'A' }])
+    expect(sync.bookmarks).to.deep.equal([{ url: 'hyper://blog.example/', title: 'Blog', createdAt: 1700000000000 }])
+    expect(sync.privateDrives).to.deep.equal([{ driveId: 'e'.repeat(64) }])
+  })
+
+  it('refuses anything a phone does not send, or that does not match its checksum', async function () {
+    const dir = await makeTempDir('peersky-phone-sync-bad-')
+
+    const unknown = path.join(dir, 'unknown.zip')
+    await writePhoneZip(unknown, { files: { 'tabs.json': '{}' } })
+    await expectRejection(readPhoneSyncZip(unknown), /unknown entry from the phone: tabs\.json/)
+
+    const tampered = path.join(dir, 'tampered.zip')
+    await writePhoneZip(tampered, {
+      files: { 'phone-tabs.json': '{"tabs":[]}' },
+      manifest: { version: '1.0.0', source: 'mobile', files: { 'phone-tabs.json': sha256(Buffer.from('something else')) } }
+    })
+    await expectRejection(readPhoneSyncZip(tampered), /Checksum mismatch for phone-tabs\.json/)
+
+    const desktop = path.join(dir, 'desktop.zip')
+    await writePhoneZip(desktop, {
+      files: { 'phone-tabs.json': '{}' },
+      manifest: { version: '1.0.0', files: {} }
+    })
+    await expectRejection(readPhoneSyncZip(desktop), /did not come from a phone/)
+
+    const large = path.join(dir, 'large.zip')
+    await writePhoneZip(large, { files: { 'phone-bookmarks.json': 'x'.repeat(5 * 1024 * 1024) } })
+    await expectRejection(readPhoneSyncZip(large), /too large/)
+  })
+
+  it('keeps only addresses a desktop can open, once each, with tidy titles', function () {
+    const sync = parsePhoneSync({
+      'phone-tabs.json': Buffer.from(JSON.stringify({
+        tabs: [
+          { url: 'https://a.example/', title: '  Spaced\n  out  ' },
+          { url: 'https://a.example/', title: 'Again' },
+          { url: 'javascript:alert(1)', title: 'No' },
+          { url: 'ipfs://bafy/', title: '' },
+          { url: 'https://b.example/' }
+        ]
+      }))
+    })
+    expect(sync.tabs).to.deep.equal([
+      { url: 'https://a.example/', title: 'Spaced out' },
+      { url: 'ipfs://bafy/', title: 'ipfs://bafy/' },
+      { url: 'https://b.example/', title: 'https://b.example/' }
+    ])
+    expect(isImportableUrl('file:///etc/passwd')).to.equal(false)
+    expect(isImportableUrl(`https://x.example/${'a'.repeat(9000)}`)).to.equal(false)
+  })
+
+  it('adds new bookmarks after the desktop\'s own and leaves those alone', function () {
+    const existing = [{ url: 'https://a.example/', title: 'Mine', favicon: 'icon', dateAdded: '2025-01-01T00:00:00.000Z' }]
+    const { bookmarks, added } = mergeBookmarks(existing, [
+      { url: 'https://a.example/', title: 'Phone title', createdAt: 1 },
+      { url: 'https://b.example/', title: 'B', createdAt: 1700000000000 },
+      { url: 'https://c.example/', title: 'C', createdAt: null }
+    ], Date.parse('2026-09-29T00:00:00.000Z'))
+
+    expect(added).to.equal(2)
+    expect(bookmarks).to.deep.equal([
+      existing[0],
+      { url: 'https://b.example/', title: 'B', dateAdded: new Date(1700000000000).toISOString() },
+      { url: 'https://c.example/', title: 'C', dateAdded: '2026-09-29T00:00:00.000Z' }
+    ])
+  })
+
+  it('puts the bookmarks and the private drive in place, and doing it twice adds nothing', async function () {
+    const userData = await makeTempDir('peersky-phone-sync-apply-')
+    await writeFile(path.join(userData, 'bookmarks.json'), JSON.stringify([
+      { url: 'https://a.example/', title: 'Mine', dateAdded: '2025-01-01T00:00:00.000Z' }
+    ]))
+    const driveId = 'e'.repeat(64)
+    const sync = {
+      tabs: [{ url: 'https://t.example/', title: 'T' }],
+      bookmarks: [
+        { url: 'https://a.example/', title: 'Dupe', createdAt: 1 },
+        { url: 'https://b.example/', title: 'B', createdAt: 1700000000000 }
+      ],
+      privateDrives: [{ driveId }]
+    }
+
+    const first = await applyPhoneSync(userData, sync, { now: 1750000000000 })
+    const hostname = z32.encode(Buffer.from(driveId, 'hex'))
+    expect(first).to.deep.equal({ bookmarksAdded: 1, privateHostnames: [hostname] })
+
+    const bookmarks = JSON.parse(await readFile(path.join(userData, 'bookmarks.json'), 'utf8'))
+    expect(bookmarks.map((bookmark) => bookmark.url)).to.deep.equal(['https://a.example/', 'https://b.example/'])
+
+    const drives = await listPrivateHyperdrives(userData)
+    expect(drives).to.deep.equal([{
+      name: PHONE_PRIVATE_DRIVE_NAME,
+      url: `hyper://${hostname}/`,
+      timestamp: 1750000000000,
+      encrypted: true
+    }])
+    // The phone's drive: readable here, written only on the phone.
+    expect(await isOwnedPrivateDrive(userData, driveId)).to.equal(false)
+
+    const second = await applyPhoneSync(userData, sync, { now: 1750000001000 })
+    expect(second.bookmarksAdded).to.equal(0)
+    expect(JSON.parse(await readFile(path.join(userData, 'bookmarks.json'), 'utf8'))).to.have.length(2)
+    expect(await listPrivateHyperdrives(userData)).to.have.length(1)
+  })
+
+  it('starts a bookmarks file when there is none, and never writes over one it cannot read', async function () {
+    const fresh = await makeTempDir('peersky-phone-sync-fresh-')
+    const sync = { tabs: [], bookmarks: [{ url: 'https://b.example/', title: 'B', createdAt: 1 }], privateDrives: [] }
+    expect((await applyPhoneSync(fresh, sync)).bookmarksAdded).to.equal(1)
+    expect(JSON.parse(await readFile(path.join(fresh, 'bookmarks.json'), 'utf8'))).to.have.length(1)
+
+    const broken = await makeTempDir('peersky-phone-sync-broken-')
+    await writeFile(path.join(broken, 'bookmarks.json'), '{ not json')
+    await expectRejection(applyPhoneSync(broken, sync), /could not be read/)
+    expect(await readFile(path.join(broken, 'bookmarks.json'), 'utf8')).to.equal('{ not json')
+  })
+})
+
+async function expectRejection (promise, pattern) {
+  let error = null
+  try {
+    await promise
+  } catch (caught) {
+    error = caught
+  }
+  expect(error, 'expected a rejection').to.be.an('error')
+  expect(error.message).to.match(pattern)
+}

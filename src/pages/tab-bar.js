@@ -921,6 +921,26 @@ class TabBar extends HTMLElement {
     if (card) card.remove()
   }
 
+  // Tabs sent from another device, such as a phone. They open asleep, so a
+  // phone's worth of tabs costs nothing until one is picked, and together in
+  // a collapsed group so they do not bury the tabs already open here.
+  addSleepingTabs (tabs, { group } = {}) {
+    const ids = []
+    for (const tab of Array.isArray(tabs) ? tabs : []) {
+      if (!tab || typeof tab.url !== 'string' || !tab.url) continue
+      const tabId = `tab-${this.tabCounter++}`
+      this.addTabWithId(tabId, tab.url, typeof tab.title === 'string' && tab.title ? tab.title : tab.url, { isSuspended: true })
+      ids.push(tabId)
+    }
+    if (ids.length === 0) return ids
+    if (group) {
+      this.createTabGroup(ids, { name: group, expanded: false })
+    } else {
+      this.saveTabsState()
+    }
+    return ids
+  }
+
   addTab (url = 'peersky://home', title = 'Home') {
     const tabId = `tab-${this.tabCounter++}`
     this.addTabWithId(tabId, url, title)

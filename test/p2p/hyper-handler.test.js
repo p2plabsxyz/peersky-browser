@@ -556,6 +556,37 @@ describe('Hyper protocol handler', function () {
     expect(fetchStub.called).to.equal(false)
   })
 
+  it('routes a registered private drive this desktop never opened, like a phone\'s, to the private store', async function () {
+    const { module, privateSdk, fetchStub } = await loadHyperModule()
+    const phoneUrl = `hyper://${'b'.repeat(52)}/`
+    await writeFile(
+      path.join(TEST_USER_DATA, 'privateHyperdrives.json'),
+      JSON.stringify([{ name: 'Private files from your phone', url: phoneUrl, timestamp: 1, encrypted: true }])
+    )
+    const handler = await module.createHandler({ storage: 'test-phone-private' })
+
+    const response = await handler(new Request(phoneUrl))
+
+    expect(response.status).to.equal(200)
+    expect(fetchStub.called).to.equal(false)
+    expect(privateSdk.joinCore.calledOnce).to.equal(true)
+  })
+
+  it('routes an address trusted while running to the private store', async function () {
+    const { module, fetchStub } = await loadHyperModule()
+    await writeFile(path.join(TEST_USER_DATA, 'privateHyperdrives.json'), '[]')
+    const handler = await module.createHandler({ storage: 'test-trusted-private' })
+    const hostname = 'c'.repeat(52)
+
+    await handler(new Request(`hyper://${hostname}/`))
+    expect(fetchStub.calledOnce).to.equal(true)
+
+    module.trustPrivateDriveHostname(hostname)
+    const response = await handler(new Request(`hyper://${hostname}/`))
+    expect(response.status).to.equal(200)
+    expect(fetchStub.calledOnce).to.equal(true)
+  })
+
   it('announces private drives that carry the encryption flag', async function () {
     const { module, privateSdk } = await loadHyperModule()
     privateSdk.corestore.storage.hasCore.resolves(true)

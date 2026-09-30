@@ -17,7 +17,7 @@ import { createLogger } from '../logger.js'
 import { hyperCache, saveHyperCache } from './config.js'
 import { enforceExtensionWritePolicy } from '../extensions/request-policy.js'
 import { resolveHyperdriveUploadTarget } from './hyper-drive-visibility.js'
-import { rememberPrivateHyperdrive } from './private-hyperdrive-registry.js'
+import { listPrivateHyperdrives, rememberPrivateHyperdrive } from './private-hyperdrive-registry.js'
 import { openPrivateDriveByName, makePrivateDriveFetcher } from './private-hyperdrive.js'
 
 import { _suspendHyper, _hyperPublishFile, _hyperFetchToFile } from '../backup/hyper-backup.js'
@@ -268,6 +268,23 @@ function rememberPrivateDrive (drive) {
   } catch {}
 }
 
+// A private drive this desktop did not create, such as the one a phone sends
+// the address of, is not in the private store until it is first opened. Its
+// address is routed to the private store anyway, where it opens with the
+// profile key; the public store would only ever see ciphertext.
+export function trustPrivateDriveHostname (hostname) {
+  if (typeof hostname === 'string' && hostname) privateDriveHostnames.add(hostname)
+}
+
+async function trustRegisteredPrivateDrives () {
+  const entries = await listPrivateHyperdrives(app.getPath('userData')).catch(() => [])
+  for (const entry of entries) {
+    try {
+      privateDriveHostnames.add(new URL(entry.url).hostname)
+    } catch {}
+  }
+}
+
 function decodeHyperdriveKey (hostname) {
   try {
     if (hostname.length === 52) return z32.decode(hostname)
@@ -281,6 +298,7 @@ async function isStoredPrivateDrive (hostname) {
   const key = decodeHyperdriveKey(hostname)
   if (!key) return false
   await initializePrivateHyperSDK()
+  if (privateDriveHostnames.has(hostname)) return true
   const discoveryKey = hypercoreCrypto.discoveryKey(key)
   if (!await privateSdk.corestore.storage.hasCore(discoveryKey)) return false
   privateDriveHostnames.add(hostname)
@@ -327,6 +345,7 @@ async function startPrivateHyperSDK (options) {
     privateSdk = openedSdk
     privateFetch = openedFetch
     privateKeyedFetch = makePrivateDriveFetcher(openedSdk, app.getPath('userData'))
+    await trustRegisteredPrivateDrives()
     return privateFetch
   } catch (error) {
     await openedSdk.close().catch(() => {})
