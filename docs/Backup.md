@@ -135,13 +135,37 @@ is confirmed (`src/backup/phone-sync.js`):
 - the phone's bookmarks and favourites are added after this desktop's own,
   and one already here is left as it is,
 - the phone's tabs open asleep, in a collapsed group called Phone, in the
-  window the page is in,
-- the phone's private drive, encrypted with this desktop's key, is added to
-  the private drives as `Private files from your phone`, read-only here.
+  window the page is in. A page already open in any window is left out: it is
+  often one this desktop sent to the phone, coming back,
+- the phone's private drive is added to the private drives as
+  `Private files from your phone`, read-only here.
 
-Nothing is replaced and nothing restarts. Each entry is read into memory with
-a size cap and checked against the manifest, since anyone who can see this
-desktop's code could send it something.
+Nothing is replaced and nothing restarts. The page then says what was added,
+or that everything the phone sent was already here. Each entry is read into
+memory with a size cap and checked against the manifest, since anyone who can
+see this desktop's code could send it something.
+
+The phone sends its private drive with the drive's own key. This desktop keeps
+that key in the `entries` of `private-drive-key.json`, beside its own key
+(`getPrivateDriveKeyFor` in `src/backup/private-drive-key.js`), and opens the
+drive with it. So it does not matter which key the phone made the drive with:
+one from before the phone was linked opens here, and so does the drive of a
+phone that was linked to another desktop. Backups and transfers carry the
+per-drive keys in the same entries, so a desktop or phone this profile goes to
+next opens the drive too. A drive's key never changes, so the first one kept
+for a drive stays. A drive this desktop made is left alone whatever a phone
+lists: it is never renamed, made read-only, or given another key.
+
+The phone's drive lives on the phone, so a file in it is not on this desktop
+until it is first read. When a private drive this desktop cannot write does
+not have a file, its peers are asked for the latest before the answer is
+File not found, for up to 15 seconds, as for a public drive, and at most once
+every 30 seconds per drive (`src/protocols/private-hyperdrive.js`).
+
+A desktop still in its first-run screen takes the phone's link there too,
+under "Restore a backup, or bring tabs from your phone", which also shows this
+desktop's pairing code. Once the codes match, onboarding closes and the first
+window opens with the phone's tabs asleep beside Home.
 
 Identity transfer creates an independent copy of the identity, and there is no
 cryptographic revocation: removing a phone could not take back keys already
@@ -173,3 +197,5 @@ device-sealed identity transfer described above.
   and the two-step restore from the network.
 - `src/backup/p2p-backup.js`: encrypted-wrapper upload gate and P2P download.
 - `src/backup/ipc.js`: backup page IPC handlers.
+- `src/backup/ipc-caller.js`: refuses a backup or onboarding channel called
+  from any page but Backup & Restore or onboarding, as `bt-api-token` does.
