@@ -18,6 +18,7 @@ export const MANIFEST_NAME = 'manifest.json'
 export const STANDARD_BACKUP_TARGETS = [
   { name: 'lastOpened.json', type: 'file' },
   { name: 'tabs.json', type: 'file' },
+  { name: 'bookmarks.json', type: 'file' },
   { name: 'ensCache.json', type: 'file' },
   { name: 'ipfsCache.json', type: 'file' },
   { name: 'hyperCache.json', type: 'file' },
@@ -29,12 +30,13 @@ export const STANDARD_BACKUP_TARGETS = [
 
 export const IDENTITY_BACKUP_TARGETS = STANDARD_BACKUP_TARGETS
 
+// Only what a phone keeps. It merges the tabs and bookmarks into its own and
+// keeps the identity; the rest of a desktop profile means nothing there.
+// hyper/ in particular is this desktop's own corestore, which can run to
+// gigabytes, and the phone threw it away on arrival.
 export const MOBILE_IDENTITY_BACKUP_TARGETS = [
-  { name: 'lastOpened.json', type: 'file' },
   { name: 'tabs.json', type: 'file' },
-  { name: 'hyper', type: 'dir' },
-  { name: 'peersky-chat-rooms.json', type: 'file' },
-  { name: 'peersky-ports.json', type: 'file' },
+  { name: 'bookmarks.json', type: 'file' },
   { name: 'peersky-identity.json', type: 'file' }
 ]
 
@@ -258,7 +260,7 @@ export async function createBackupZip (userDataDir, outPath, options = {}) {
 
     if (includePrivate) {
       const keyBytes = await buildPrivateDriveKeyExport(userDataDir, Date.now(), {
-        mobileSafe: isIdentityTransfer && targetDeviceType === 'mobile'
+        forPhone: isIdentityTransfer && targetDeviceType === 'mobile'
       })
       if (keyBytes) {
         manifest.files[PRIVATE_DRIVE_KEY_FILE] = `sha256:${hashPrivateDriveKeyExport(keyBytes)}`

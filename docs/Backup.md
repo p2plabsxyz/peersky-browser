@@ -18,6 +18,7 @@ the user passphrase with scrypt. The encrypted inner zip can contain:
 ```
 lastOpened.json
 tabs.json
+bookmarks.json
 ensCache.json
 ipfsCache.json
 hyperCache.json
@@ -91,6 +92,14 @@ binds the displayed desktop key to the receiver session.
 Identity transfers do not have an application-defined size limit on desktop or
 mobile. Available memory, storage, and the underlying ZIP format still determine
 the largest transfer a device can process.
+
+A phone gets only what it keeps: `tabs.json`, `bookmarks.json`,
+`peersky-identity.json`, and, with private uploads included, the private
+drives and `private-drive-key.json`. The phone merges the tabs and bookmarks
+into its own. It does not get `hyper/`, this desktop's own corestore, which
+nothing on the phone opens and which can run to gigabytes. The key goes to a
+phone even when there are no private drives yet, because the phone encrypts
+its own private uploads with it, and that is what lets this desktop open them.
 
 Identity transfer creates an independent copy of the identity. There is no
 claimed one-mobile limit or cryptographic revocation mechanism. Removing a

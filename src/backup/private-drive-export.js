@@ -5,6 +5,9 @@ import { getOrCreatePrivateDriveKey } from './private-drive-key.js'
 
 export const PRIVATE_DRIVE_KEY_FILE = 'private-drive-key.json'
 
+// forPhone: a phone is receiving this, so the key goes even when there are no
+// private drives yet. The phone encrypts its own private uploads with it, and
+// that is what lets this desktop open them too.
 export async function buildPrivateDriveKeyExport (userDataDir, now = Date.now(), options = {}) {
   let entries
   try {
@@ -12,7 +15,6 @@ export async function buildPrivateDriveKeyExport (userDataDir, now = Date.now(),
   } catch {
     return null
   }
-  if (entries.length === 0) return null
 
   const drives = []
   for (const entry of entries) {
@@ -20,9 +22,8 @@ export async function buildPrivateDriveKeyExport (userDataDir, now = Date.now(),
     if (!driveId) continue
     drives.push({ driveId, createdAt: entry.timestamp || null })
   }
-  if (drives.length === 0) return null
+  if (drives.length === 0 && !options.forPhone) return null
 
-  const primary = drives[0].driveId
   const key = await getOrCreatePrivateDriveKey(userDataDir)
   const deviceOnly = process.env.PEERSKY_PRIVATE_DEVICE_ONLY === '1'
 
@@ -30,7 +31,7 @@ export async function buildPrivateDriveKeyExport (userDataDir, now = Date.now(),
     version: 3,
     createdAt: new Date(now).toISOString(),
     key: key.toString('hex'),
-    driveId: primary,
+    ...(drives.length > 0 ? { driveId: drives[0].driveId } : {}),
     encrypted: !deviceOnly,
     announce: !deviceOnly,
     source: 'desktop',

@@ -20,6 +20,8 @@ async function makeTempDir (prefix) {
 }
 
 async function seedIdentityData (dir) {
+  await writeFile(path.join(dir, 'tabs.json'), JSON.stringify({ 1: { tabs: [{ url: 'https://example.com/', title: 'Example' }] } }))
+  await writeFile(path.join(dir, 'bookmarks.json'), JSON.stringify([{ url: 'https://example.com/', title: 'Example', dateAdded: '2026-01-01T00:00:00.000Z' }]))
   await writeFile(path.join(dir, 'peersky-ports.json'), JSON.stringify({ room: { seed: 'secret' } }))
   await writeFile(path.join(dir, 'peersky-chat-rooms.json'), JSON.stringify({ rooms: ['room'] }))
   await mkdir(path.join(dir, 'hyper'), { recursive: true })
@@ -66,14 +68,19 @@ describe('identity-transfer', function () {
     const payloadDir = await makeTempDir('peersky-id-payload-')
     const innerManifest = await extractAndVerifyIdentityPayload(innerZip, payloadDir)
     expect(Object.keys(innerManifest.files)).to.include.members([
-      'peersky-ports.json',
+      'tabs.json',
+      'bookmarks.json',
       'peersky-identity.json',
       'hyper-private',
       'privateHyperdrives.json'
     ])
+    // The phone throws these away, and hyper/ can run to gigabytes.
+    for (const name of ['hyper', 'peersky-ports.json', 'peersky-chat-rooms.json', 'lastOpened.json']) {
+      expect(innerManifest.files).not.to.have.property(name)
+    }
 
-    const ports = JSON.parse(await readFile(path.join(payloadDir, 'peersky-ports.json'), 'utf-8'))
-    expect(ports.room.seed).to.equal('secret')
+    const bookmarks = JSON.parse(await readFile(path.join(payloadDir, 'bookmarks.json'), 'utf-8'))
+    expect(bookmarks[0].url).to.equal('https://example.com/')
   })
 
   it('derives the same verification code as PeerSky Mobile', function () {
@@ -111,7 +118,7 @@ describe('identity-transfer', function () {
     const target = await makeTempDir('peersky-id-size-target-')
     await seedIdentityData(source)
     await writeFile(
-      path.join(source, 'hyper', 'large-core'),
+      path.join(source, 'hyper-private', 'large-core'),
       Buffer.alloc(50 * 1024 * 1024 + 1)
     )
     const targetInfo = getPublicDeviceInfo(await getDeviceKeys(target))
@@ -121,7 +128,7 @@ describe('identity-transfer', function () {
       targetPairingPayload: mobilePairingPayload(targetInfo.encryptionPublicKey)
     })
 
-    expect(created.bytes).to.be.greaterThan(100)
+    expect(created.bytes).to.be.greaterThan(50 * 1024)
     expect((await stat(outPath)).size).to.equal(created.bytes)
   })
 })
