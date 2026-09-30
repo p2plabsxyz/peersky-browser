@@ -8,6 +8,7 @@ import { getDeviceKeys, getPublicDeviceInfo } from './device-keys.js'
 import { createPairingSession, encodePairingString } from './identity-transfer.js'
 import { clearPairedMobile, readPairedMobile } from './mobile-pairing.js'
 import { rememberPairingNonce } from './pairing-sessions.js'
+import { tabsNotOpen } from './phone-sync.js'
 import { listPrivateHyperdrives } from '../protocols/private-hyperdrive-registry.js'
 
 const log = createLogger('backup')
@@ -17,19 +18,23 @@ function ownerWindow (event) {
 }
 
 // Tabs from a phone open in the window the Backup & Restore page is in. The
-// page is a tab itself, so the window is the one hosting it.
-function openTabsBeside (event, tabs) {
+// page is a tab itself, so the window is the one hosting it. A page already
+// open in any window is left out. Returns how many tabs were opened.
+async function openTabsBeside (event, tabs, getTabs) {
   const host = event.sender.hostWebContents ||
     ownerWindow(event)?.webContents ||
     BrowserWindow.getFocusedWindow()?.webContents ||
     BrowserWindow.getAllWindows()[0]?.webContents
-  if (!host || host.isDestroyed()) return false
-  host.send('add-tabs-from-main', { tabs, group: 'Phone' })
-  return true
+  if (!host || host.isDestroyed()) return 0
+  const windows = typeof getTabs === 'function' ? await getTabs().catch(() => null) : null
+  const fresh = tabsNotOpen(tabs, windows)
+  if (fresh.length > 0) host.send('add-tabs-from-main', { tabs: fresh, group: 'Phone' })
+  return fresh.length
 }
 
-// Register IPC handlers for the backup & restore UI.
-export function setupBackupIpc () {
+// Register IPC handlers for the backup & restore UI. getTabs reads every
+// window's tabs, so a phone's tab already open here is not opened again.
+export function setupBackupIpc ({ getTabs } = {}) {
   backupManager.clearLeftoverStaging().catch((error) => {
     log.error(`Could not clear leftover restore staging: ${error.message}`)
   })
@@ -225,7 +230,7 @@ export function setupBackupIpc () {
             event.sender.send('backup-progress', { phase: 'restore', ...data })
           }
         },
-        openTabs: (tabs) => openTabsBeside(event, tabs)
+        openTabs: (tabs) => openTabsBeside(event, tabs, getTabs)
       })
     } catch (error) {
       log.error(`Applying a restore failed: ${error.message}`)

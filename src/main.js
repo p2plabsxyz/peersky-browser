@@ -286,7 +286,7 @@ app.whenReady().then(async () => {
   p2pAppRegistry.setupIpc()
   installExtensionWebRequestBridge(userSession)
   setupBittorrentIpc()
-  setupBackupIpc()
+  setupBackupIpc({ getTabs: () => windowManager.getTabs() })
   setupSiteInfoIpc(userSession)
 
   userSession.on('will-download', (event, item, sessionWebContents) => {

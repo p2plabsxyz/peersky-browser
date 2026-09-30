@@ -923,11 +923,14 @@ class TabBar extends HTMLElement {
 
   // Tabs sent from another device, such as a phone. They open asleep, so a
   // phone's worth of tabs costs nothing until one is picked, and together in
-  // a collapsed group so they do not bury the tabs already open here.
+  // a collapsed group so they do not bury the tabs already open here. A page
+  // already open in this window is not opened twice.
   addSleepingTabs (tabs, { group } = {}) {
     const ids = []
+    const open = new Set(this.tabs.map((tab) => tab.url))
     for (const tab of Array.isArray(tabs) ? tabs : []) {
-      if (!tab || typeof tab.url !== 'string' || !tab.url) continue
+      if (!tab || typeof tab.url !== 'string' || !tab.url || open.has(tab.url)) continue
+      open.add(tab.url)
       const tabId = `tab-${this.tabCounter++}`
       this.addTabWithId(tabId, tab.url, typeof tab.title === 'string' && tab.title ? tab.title : tab.url, { isSuspended: true })
       ids.push(tabId)

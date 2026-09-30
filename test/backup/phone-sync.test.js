@@ -13,7 +13,8 @@ import {
   mergeBookmarks,
   parsePhoneSync,
   PHONE_PRIVATE_DRIVE_NAME,
-  readPhoneSyncZip
+  readPhoneSyncZip,
+  tabsNotOpen
 } from '../../src/backup/phone-sync.js'
 import { listPrivateHyperdrives, rememberPrivateHyperdrive } from '../../src/protocols/private-hyperdrive-registry.js'
 import { isOwnedPrivateDrive } from '../../src/protocols/private-drive-ownership.js'
@@ -177,6 +178,23 @@ describe('phone-sync', function () {
     expect(await listPrivateHyperdrives(userData)).to.deep.equal([{ name: 'mine', url, timestamp: 1, encrypted: true }])
     expect(await isOwnedPrivateDrive(userData, driveId)).to.equal(true)
     expect(await getPrivateDriveKeyFor(userData, driveId)).to.equal(null)
+  })
+
+  it('leaves out a phone tab already open here, in any window', function () {
+    const phoneTabs = [
+      { url: 'https://sent.example/?from=desktop', title: 'Sent from here' },
+      { url: 'https://other-window.example/', title: 'Open elsewhere' },
+      { url: 'https://new.example/', title: 'New' }
+    ]
+    const windows = {
+      first: { tabs: [{ url: 'peersky://home/' }, { url: 'https://sent.example/?from=desktop', isSuspended: true }] },
+      second: { tabs: [{ url: 'https://other-window.example/' }] },
+      broken: null
+    }
+
+    expect(tabsNotOpen(phoneTabs, windows)).to.deep.equal([{ url: 'https://new.example/', title: 'New' }])
+    // With no windows to ask, every tab opens.
+    expect(tabsNotOpen(phoneTabs, null)).to.deep.equal(phoneTabs)
   })
 
   it('puts the bookmarks and the private drive in place, and doing it twice adds nothing', async function () {

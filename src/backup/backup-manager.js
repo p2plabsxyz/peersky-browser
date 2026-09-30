@@ -381,17 +381,22 @@ class BackupManager {
     if (staged.kind === 'phone') {
       const applied = await applyPhoneSync(userDataDir(), staged.sync)
       for (const hostname of applied.privateHostnames) trustPrivateDriveHostname(hostname)
-      if (typeof openTabs === 'function' && staged.sync.tabs.length > 0) openTabs(staged.sync.tabs)
+      // openTabs says how many it opened: a tab already open here is left out.
+      let tabsAdded = 0
+      if (typeof openTabs === 'function' && staged.sync.tabs.length > 0) {
+        const opened = await openTabs(staged.sync.tabs)
+        tabsAdded = Number.isInteger(opened) ? opened : staged.sync.tabs.length
+      }
       forgetPairingNonce(staged.nonce)
       this.dropStaged(staged)
-      log.info(`Added ${applied.bookmarksAdded} bookmarks and ${staged.sync.tabs.length} tabs from a phone`)
+      log.info(`Added ${applied.bookmarksAdded} bookmarks and ${tabsAdded} tabs from a phone`)
       return {
         success: true,
         requiresRestart: false,
         added: {
-          tabs: staged.sync.tabs.length,
+          tabs: tabsAdded,
           bookmarks: applied.bookmarksAdded,
-          privateDrives: applied.privateHostnames.length
+          privateDrives: applied.privateDrivesAdded
         }
       }
     }

@@ -134,6 +134,22 @@ export function mergeBookmarks (existing, incoming, now = Date.now()) {
 }
 
 /**
+ * The phone's tabs that are not open on this desktop yet, in any window.
+ * `windows` is each window's tab state, as the window manager collects it. A
+ * page already open here is often one this desktop sent to the phone, coming
+ * back, and the phone leaves out a tab it has open in the same way.
+ */
+export function tabsNotOpen (tabs, windows) {
+  const open = new Set()
+  for (const state of Object.values(windows || {})) {
+    for (const tab of Array.isArray(state?.tabs) ? state.tabs : []) {
+      if (typeof tab?.url === 'string') open.add(tab.url)
+    }
+  }
+  return tabs.filter((tab) => !open.has(tab.url))
+}
+
+/**
  * Puts what the phone sent in place, apart from the tabs, which need a
  * window and are opened by the caller. Safe to run twice: a bookmark or drive
  * already here is not added again.

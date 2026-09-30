@@ -304,6 +304,16 @@ describe('backup-manager', function () {
     expect(again.message).to.match(/no longer waiting/)
   })
 
+  it('counts only the phone tabs that were opened, not those already open here', async function () {
+    const { backupManager } = await loadBackupManager(phoneTransferOptions())
+    const staged = await backupManager.stageRestore(await downloadedZip())
+    expect(staged.tabs).to.equal(1)
+
+    // The page was already open, so the window opened none of them.
+    const result = await backupManager.applyStaged(staged.stageId, { openTabs: async () => 0 })
+    expect(result.added.tabs).to.equal(0)
+  })
+
   it('refuses a transfer made for a code this desktop is not showing, before decrypting it', async function () {
     const options = phoneTransferOptions()
     const { backupManager, stubs } = await loadBackupManager({ ...options, isLivePairingNonce: sinon.stub().returns(false) })

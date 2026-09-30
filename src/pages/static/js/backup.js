@@ -577,7 +577,7 @@ function listPhoneSync ({ tabs, bookmarks, privateDrives }) {
 function describePhoneSync (res) {
   const list = listPhoneSync(res)
   if (!list) return 'The phone sent no tabs or bookmarks.'
-  return `Adds ${list} from your phone. Nothing here is replaced.` +
+  return `Adds ${list} from your phone, skipping any already here. Nothing here is replaced.` +
     (res.tabs ? ' The tabs open asleep in a group called Phone.' : '')
 }
 
