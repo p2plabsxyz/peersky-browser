@@ -9,6 +9,7 @@ import { createPairingSession, encodePairingString } from './identity-transfer.j
 import { clearPairedMobile, readPairedMobile } from './mobile-pairing.js'
 import { rememberPairingNonce } from './pairing-sessions.js'
 import { tabsNotOpen } from './phone-sync.js'
+import { assertCaller } from './ipc-caller.js'
 import { listPrivateHyperdrives } from '../protocols/private-hyperdrive-registry.js'
 
 const log = createLogger('backup')
@@ -39,7 +40,15 @@ export function setupBackupIpc ({ getTabs } = {}) {
     log.error(`Could not clear leftover restore staging: ${error.message}`)
   })
 
-  ipcMain.handle('backup-create', async (event, payload = {}) => {
+  // Every channel here is for the Backup & Restore page; onboarding also asks
+  // for this desktop's pairing code. These export and replace the identity,
+  // so a caller from any other page is refused before anything runs.
+  const handle = (channel, handler) => ipcMain.handle(channel, (event, ...args) => {
+    assertCaller(event, 'backup', ...(channel === 'backup-device-info' ? ['onboarding'] : []))
+    return handler(event, ...args)
+  })
+
+  handle('backup-create', async (event, payload = {}) => {
     try {
       const win = ownerWindow(event)
       const saveOptions = {
@@ -65,7 +74,7 @@ export function setupBackupIpc ({ getTabs } = {}) {
     }
   })
 
-  ipcMain.handle('backup-validate', async (event) => {
+  handle('backup-validate', async (event) => {
     try {
       const win = ownerWindow(event)
       const openOptions = {
@@ -88,7 +97,7 @@ export function setupBackupIpc ({ getTabs } = {}) {
     }
   })
 
-  ipcMain.handle('backup-restore', async (event, payload = {}) => {
+  handle('backup-restore', async (event, payload = {}) => {
     try {
       const zipPath = typeof payload === 'string' ? payload : payload?.zipPath
       if (!zipPath || typeof zipPath !== 'string') {
@@ -106,7 +115,7 @@ export function setupBackupIpc ({ getTabs } = {}) {
     }
   })
 
-  ipcMain.handle('backup-device-info', async () => {
+  handle('backup-device-info', async () => {
     try {
       const keys = await getDeviceKeys(app.getPath('userData'))
       const device = getPublicDeviceInfo(keys)
@@ -119,7 +128,7 @@ export function setupBackupIpc ({ getTabs } = {}) {
     }
   })
 
-  ipcMain.handle('backup-private-hyperdrives', async () => {
+  handle('backup-private-hyperdrives', async () => {
     try {
       const items = await listPrivateHyperdrives(app.getPath('userData'))
       return { success: true, items }
@@ -129,7 +138,7 @@ export function setupBackupIpc ({ getTabs } = {}) {
     }
   })
 
-  ipcMain.handle('backup-identity-create', async (event, payload = {}) => {
+  handle('backup-identity-create', async (event, payload = {}) => {
     try {
       const { targetPairingPayload } = payload
       const win = ownerWindow(event)
@@ -155,7 +164,7 @@ export function setupBackupIpc ({ getTabs } = {}) {
     }
   })
 
-  ipcMain.handle('backup-paired-mobile', async () => {
+  handle('backup-paired-mobile', async () => {
     try {
       return { success: true, paired: await readPairedMobile(app.getPath('userData')) }
     } catch (error) {
@@ -168,7 +177,7 @@ export function setupBackupIpc ({ getTabs } = {}) {
   // wait to hear from the old phone: the usual reason to move is that it is
   // broken, sold or already wiped, and blocking on it would fail exactly when
   // this is needed. The caller warns the user to wipe the old phone first.
-  ipcMain.handle('backup-forget-mobile', async () => {
+  handle('backup-forget-mobile', async () => {
     try {
       await clearPairedMobile(app.getPath('userData'))
       log.info('Paired mobile cleared; a new phone can be paired')
@@ -179,7 +188,7 @@ export function setupBackupIpc ({ getTabs } = {}) {
     }
   })
 
-  ipcMain.handle('backup-identity-upload-hyper', async (_event, payload = {}) => {
+  handle('backup-identity-upload-hyper', async (_event, payload = {}) => {
     const outPath = path.join(app.getPath('temp'), `peersky-identity-${Date.now()}.zip`)
     try {
       const { targetPairingPayload } = payload
@@ -201,7 +210,7 @@ export function setupBackupIpc ({ getTabs } = {}) {
   // Restoring from the network is two steps. The download is checked first,
   // and a transfer shows its code, so the person compares the two screens
   // before anything here changes.
-  ipcMain.handle('backup-fetch-restore', async (event, payload = {}) => {
+  handle('backup-fetch-restore', async (event, payload = {}) => {
     try {
       const address = typeof payload === 'string' ? payload : payload?.address
       const zipPath = await downloadBackupFromAddress(address, (status) => {
@@ -221,7 +230,7 @@ export function setupBackupIpc ({ getTabs } = {}) {
     }
   })
 
-  ipcMain.handle('backup-apply-restore', async (event, payload = {}) => {
+  handle('backup-apply-restore', async (event, payload = {}) => {
     try {
       return await backupManager.applyStaged(payload?.stageId, {
         passphrase: payload?.passphrase,
@@ -238,12 +247,12 @@ export function setupBackupIpc ({ getTabs } = {}) {
     }
   })
 
-  ipcMain.handle('backup-discard-restore', async (_event, payload = {}) => {
+  handle('backup-discard-restore', async (_event, payload = {}) => {
     backupManager.discardStaged(payload?.stageId)
     return { success: true }
   })
 
-  ipcMain.handle('backup-relaunch', async () => {
+  handle('backup-relaunch', async () => {
     const { windowManager } = await import('../main.js')
     if (windowManager) {
       windowManager.setSkipSaveOnQuit(true)

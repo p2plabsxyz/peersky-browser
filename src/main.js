@@ -33,6 +33,7 @@ import { setupPermissionHandler, requestSitePermission, permissionOriginFromUrl 
 import { setupSiteInfoIpc } from './site-info-ipc.js'
 import { setupP2pmdPdfExportIpc } from './pages/p2p/p2pmd/pdf-export-ipc.js'
 import { setupBackupIpc } from './backup/ipc.js'
+import { assertCaller } from './backup/ipc-caller.js'
 import backupManager from './backup/backup-manager.js'
 import { downloadBackupFromAddress } from './backup/p2p-backup.js'
 
@@ -1195,6 +1196,7 @@ setupP2pmdPdfExportIpc()
 
 // Onboarding IPC handlers
 ipcMain.handle('onboarding-import-data', async (event, dataStr) => {
+  assertCaller(event, 'onboarding')
   try {
     const importData = JSON.parse(dataStr)
     if (!importData || typeof importData !== 'object') {
@@ -1321,6 +1323,7 @@ ipcMain.handle('onboarding-import-data', async (event, dataStr) => {
 })
 
 ipcMain.handle('onboarding-skip', async (event) => {
+  assertCaller(event, 'onboarding')
   try {
     settingsManager.settings.onboardingCompleted = true
     await settingsManager.saveSettings()
@@ -1342,6 +1345,7 @@ ipcMain.handle('onboarding-skip', async (event) => {
 })
 
 ipcMain.handle('onboarding-restore-backup', async (event, backupContent) => {
+  assertCaller(event, 'onboarding')
   try {
     const parsed = JSON.parse(backupContent)
     if (!parsed || typeof parsed !== 'object') {
@@ -1384,6 +1388,7 @@ async function finishOnboardingRestore () {
 }
 
 ipcMain.handle('onboarding-restore-zip', async (event, payload = {}) => {
+  assertCaller(event, 'onboarding')
   try {
     const zipPath = typeof payload === 'string' ? payload : payload?.zipPath
     const res = await backupManager.restoreBackup(zipPath, (data) => {
@@ -1404,6 +1409,7 @@ ipcMain.handle('onboarding-restore-zip', async (event, payload = {}) => {
 // beside it. A transfer, from a phone or another desktop, waits for the
 // person to compare the code on both screens (onboarding-apply-restore).
 ipcMain.handle('onboarding-restore-cid', async (event, payload = {}) => {
+  assertCaller(event, 'onboarding')
   const onProgress = (data) => {
     if (!event.sender.isDestroyed()) {
       event.sender.send('backup-progress', { phase: 'restore', ...data })
@@ -1437,6 +1443,7 @@ function onboardingWindowFor (event) {
 }
 
 ipcMain.handle('onboarding-apply-restore', async (event, payload = {}) => {
+  assertCaller(event, 'onboarding')
   try {
     let phoneTabs = []
     const res = await backupManager.applyStaged(payload?.stageId, {
@@ -1471,7 +1478,8 @@ ipcMain.handle('onboarding-apply-restore', async (event, payload = {}) => {
   }
 })
 
-ipcMain.handle('onboarding-discard-restore', async (_event, payload = {}) => {
+ipcMain.handle('onboarding-discard-restore', async (event, payload = {}) => {
+  assertCaller(event, 'onboarding')
   backupManager.discardStaged(payload?.stageId)
   return { success: true }
 })
