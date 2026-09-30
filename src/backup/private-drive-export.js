@@ -1,7 +1,7 @@
 import crypto from 'crypto'
 import z32 from 'z32'
 import { listPrivateHyperdrives } from '../protocols/private-hyperdrive-registry.js'
-import { getOrCreatePrivateDriveKey } from './private-drive-key.js'
+import { getOrCreatePrivateDriveKey, getPrivateDriveKeyFor } from './private-drive-key.js'
 
 export const PRIVATE_DRIVE_KEY_FILE = 'private-drive-key.json'
 
@@ -16,11 +16,14 @@ export async function buildPrivateDriveKeyExport (userDataDir, now = Date.now(),
     return null
   }
 
+  // A drive with a key of its own, such as a phone's, carries it: the device
+  // this goes to opens that drive with it rather than with this desktop's key.
   const drives = []
   for (const entry of entries) {
     const driveId = decodeDriveId(entry.url)
     if (!driveId) continue
-    drives.push({ driveId, createdAt: entry.timestamp || null })
+    const driveKey = await getPrivateDriveKeyFor(userDataDir, driveId)
+    drives.push({ driveId, createdAt: entry.timestamp || null, ...(driveKey ? { key: driveKey.toString('hex') } : {}) })
   }
   if (drives.length === 0 && !options.forPhone) return null
 

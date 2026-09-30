@@ -15,8 +15,10 @@ import {
   PHONE_PRIVATE_DRIVE_NAME,
   readPhoneSyncZip
 } from '../../src/backup/phone-sync.js'
-import { listPrivateHyperdrives } from '../../src/protocols/private-hyperdrive-registry.js'
+import { listPrivateHyperdrives, rememberPrivateHyperdrive } from '../../src/protocols/private-hyperdrive-registry.js'
 import { isOwnedPrivateDrive } from '../../src/protocols/private-drive-ownership.js'
+import { getOrCreatePrivateDriveKey, getPrivateDriveKeyFor } from '../../src/backup/private-drive-key.js'
+import { buildPrivateDriveKeyExport } from '../../src/backup/private-drive-export.js'
 
 async function makeTempDir (prefix) {
   return mkdtemp(path.join(os.tmpdir(), prefix))
@@ -128,6 +130,55 @@ describe('phone-sync', function () {
     ])
   })
 
+  it('keeps the key a phone sends with its drive, and passes it on in exports', async function () {
+    const sync = parsePhoneSync({
+      'phone-private-drives.json': Buffer.from(JSON.stringify({
+        drives: [
+          { driveId: 'a'.repeat(64), key: 'B'.repeat(64) },
+          { driveId: 'c'.repeat(64), key: 'not a key' },
+          { driveId: 'd'.repeat(64) }
+        ]
+      }))
+    })
+    expect(sync.privateDrives).to.deep.equal([
+      { driveId: 'a'.repeat(64), key: 'b'.repeat(64) },
+      { driveId: 'c'.repeat(64) },
+      { driveId: 'd'.repeat(64) }
+    ])
+
+    const userData = await makeTempDir('peersky-phone-sync-key-')
+    const own = await getOrCreatePrivateDriveKey(userData)
+    await applyPhoneSync(userData, { tabs: [], bookmarks: [], privateDrives: sync.privateDrives })
+
+    expect((await getPrivateDriveKeyFor(userData, 'a'.repeat(64))).toString('hex')).to.equal('b'.repeat(64))
+    expect(await getPrivateDriveKeyFor(userData, 'd'.repeat(64))).to.equal(null)
+    // This desktop's own key is left as it was.
+    expect((await getOrCreatePrivateDriveKey(userData)).equals(own)).to.equal(true)
+
+    // A phone or desktop this profile goes to next opens the drive with it too.
+    const exported = JSON.parse((await buildPrivateDriveKeyExport(userData, 0)).toString('utf8'))
+    expect(exported.key).to.equal(own.toString('hex'))
+    expect(exported.entries.find((entry) => entry.driveId === 'a'.repeat(64)).key).to.equal('b'.repeat(64))
+    expect(exported.entries.find((entry) => entry.driveId === 'd'.repeat(64))).to.not.have.property('key')
+
+    // A key kept for a drive is never swapped for another.
+    await applyPhoneSync(userData, { tabs: [], bookmarks: [], privateDrives: [{ driveId: 'a'.repeat(64), key: 'c'.repeat(64) }] })
+    expect((await getPrivateDriveKeyFor(userData, 'a'.repeat(64))).toString('hex')).to.equal('b'.repeat(64))
+  })
+
+  it('never touches a private drive this desktop made, whatever a phone lists', async function () {
+    const userData = await makeTempDir('peersky-phone-sync-own-')
+    const driveId = 'f'.repeat(64)
+    const url = `hyper://${z32.encode(Buffer.from(driveId, 'hex'))}/`
+    await rememberPrivateHyperdrive(userData, { name: 'mine', url, timestamp: 1, encrypted: true })
+
+    const applied = await applyPhoneSync(userData, { tabs: [], bookmarks: [], privateDrives: [{ driveId, key: 'e'.repeat(64) }] })
+    expect(applied).to.deep.include({ privateHostnames: [], privateDrivesAdded: 0 })
+    expect(await listPrivateHyperdrives(userData)).to.deep.equal([{ name: 'mine', url, timestamp: 1, encrypted: true }])
+    expect(await isOwnedPrivateDrive(userData, driveId)).to.equal(true)
+    expect(await getPrivateDriveKeyFor(userData, driveId)).to.equal(null)
+  })
+
   it('puts the bookmarks and the private drive in place, and doing it twice adds nothing', async function () {
     const userData = await makeTempDir('peersky-phone-sync-apply-')
     await writeFile(path.join(userData, 'bookmarks.json'), JSON.stringify([
@@ -145,7 +196,7 @@ describe('phone-sync', function () {
 
     const first = await applyPhoneSync(userData, sync, { now: 1750000000000 })
     const hostname = z32.encode(Buffer.from(driveId, 'hex'))
-    expect(first).to.deep.equal({ bookmarksAdded: 1, privateHostnames: [hostname] })
+    expect(first).to.deep.equal({ bookmarksAdded: 1, privateHostnames: [hostname], privateDrivesAdded: 1 })
 
     const bookmarks = JSON.parse(await readFile(path.join(userData, 'bookmarks.json'), 'utf8'))
     expect(bookmarks.map((bookmark) => bookmark.url)).to.deep.equal(['https://a.example/', 'https://b.example/'])
@@ -162,6 +213,9 @@ describe('phone-sync', function () {
 
     const second = await applyPhoneSync(userData, sync, { now: 1750000001000 })
     expect(second.bookmarksAdded).to.equal(0)
+    // Trusted again for this run, but not counted: it was already here.
+    expect(second.privateHostnames).to.deep.equal([hostname])
+    expect(second.privateDrivesAdded).to.equal(0)
     expect(JSON.parse(await readFile(path.join(userData, 'bookmarks.json'), 'utf8'))).to.have.length(2)
     expect(await listPrivateHyperdrives(userData)).to.have.length(1)
   })

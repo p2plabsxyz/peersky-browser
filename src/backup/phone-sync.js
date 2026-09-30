@@ -2,8 +2,9 @@ import { promises as fs } from 'fs'
 import path from 'path'
 import crypto from 'crypto'
 import z32 from 'z32'
-import { rememberPrivateHyperdrive } from '../protocols/private-hyperdrive-registry.js'
-import { setPrivateDriveOwnership } from '../protocols/private-drive-ownership.js'
+import { listPrivateHyperdrives, rememberPrivateHyperdrive } from '../protocols/private-hyperdrive-registry.js'
+import { isOwnedPrivateDrive, setPrivateDriveOwnership } from '../protocols/private-drive-ownership.js'
+import { rememberPrivateDriveKeyFor } from './private-drive-key.js'
 
 // What PeerSky Mobile sends to a desktop: its open tabs, its bookmarks and
 // favourites, and the address of its private drive. It arrives as an ordinary
@@ -26,6 +27,7 @@ const MAX_PRIVATE_DRIVES = 8
 const MAX_URL_LENGTH = 8192
 const MAX_TITLE_LENGTH = 256
 const HEX_DRIVE_ID = /^[0-9a-f]{64}$/
+const HEX_DRIVE_KEY = /^[0-9a-f]{64}$/
 
 export function isPhoneSyncManifest (manifest) {
   return Boolean(manifest && typeof manifest === 'object' && manifest.source === PHONE_SYNC_SOURCE)
@@ -96,11 +98,14 @@ export function parsePhoneSync (files) {
     if (bookmarks.length === MAX_BOOKMARKS) break
   }
 
+  // Each drive comes with its key, so it opens here whichever key the phone
+  // made it with. A phone that sends no key made it with this desktop's.
   const privateDrives = []
   for (const drive of listFrom(files[PHONE_PRIVATE_DRIVES_FILE], 'drives')) {
     const driveId = String(drive?.driveId || '').toLowerCase()
     if (!HEX_DRIVE_ID.test(driveId) || privateDrives.some((item) => item.driveId === driveId)) continue
-    privateDrives.push({ driveId })
+    const key = String(drive?.key || '').toLowerCase()
+    privateDrives.push(HEX_DRIVE_KEY.test(key) ? { driveId, key } : { driveId })
     if (privateDrives.length === MAX_PRIVATE_DRIVES) break
   }
 
@@ -142,15 +147,24 @@ export async function applyPhoneSync (userDataDir, sync, { now = Date.now() } = 
     bookmarksAdded = merged.added
   }
 
-  // The phone encrypts its private drive with the key this desktop gave it,
-  // so it opens here. It stays the phone's: read-only on this desktop, the way
-  // a drive adopted from another device always is.
+  // The phone's private drive opens here with the key it sends. It stays the
+  // phone's: read-only on this desktop, the way a drive adopted from another
+  // device always is. Every one is trusted again (privateHostnames); only one
+  // this desktop did not know counts as added.
+  const known = new Set((await listPrivateHyperdrives(userDataDir).catch(() => [])).map((entry) => entry.url))
   const privateHostnames = []
+  let privateDrivesAdded = 0
   for (const drive of sync.privateDrives) {
     const hostname = z32.encode(Buffer.from(drive.driveId, 'hex'))
+    const url = `hyper://${hostname}/`
+    // A drive this desktop made stays its own, whatever a phone lists: it is
+    // never renamed, made read-only here, or given another key.
+    if (known.has(url) && await isOwnedPrivateDrive(userDataDir, drive.driveId)) continue
+    if (!known.has(url)) privateDrivesAdded += 1
+    if (drive.key) await rememberPrivateDriveKeyFor(userDataDir, drive.driveId, drive.key)
     await rememberPrivateHyperdrive(userDataDir, {
       name: PHONE_PRIVATE_DRIVE_NAME,
-      url: `hyper://${hostname}/`,
+      url,
       timestamp: now,
       encrypted: true
     })
@@ -158,7 +172,7 @@ export async function applyPhoneSync (userDataDir, sync, { now = Date.now() } = 
     privateHostnames.push(hostname)
   }
 
-  return { bookmarksAdded, privateHostnames }
+  return { bookmarksAdded, privateHostnames, privateDrivesAdded }
 }
 
 async function readBookmarks (userDataDir) {
