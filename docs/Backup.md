@@ -143,10 +143,11 @@ Nothing is replaced and nothing restarts. Each entry is read into memory with
 a size cap and checked against the manifest, since anyone who can see this
 desktop's code could send it something.
 
-Identity transfer creates an independent copy of the identity. There is no
-claimed one-mobile limit or cryptographic revocation mechanism. Removing a
-device from a local registry could not revoke keys already copied to that
-device, so the old registry and slot enforcement have been removed.
+Identity transfer creates an independent copy of the identity, and there is no
+cryptographic revocation: removing a phone could not take back keys already
+copied to it. What this desktop does keep is a guard against the accidental
+second phone (`src/backup/mobile-pairing.js`): an identity goes to one phone
+at a time, and "Move to a new phone" releases it.
 
 The temporary Hyper publisher uses storage outside the normal `hyper/`
 corestore and is closed and deleted when the transfer expires. Transfer drives
