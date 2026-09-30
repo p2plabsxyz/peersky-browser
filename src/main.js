@@ -1400,29 +1400,80 @@ ipcMain.handle('onboarding-restore-zip', async (event, payload = {}) => {
   }
 })
 
+// A backup asked for by link goes straight in, with the passphrase given
+// beside it. A transfer, from a phone or another desktop, waits for the
+// person to compare the code on both screens (onboarding-apply-restore).
 ipcMain.handle('onboarding-restore-cid', async (event, payload = {}) => {
-  let zipPath
+  const onProgress = (data) => {
+    if (!event.sender.isDestroyed()) {
+      event.sender.send('backup-progress', { phase: 'restore', ...data })
+    }
+  }
   try {
     const address = typeof payload === 'string' ? payload : payload?.address
-    zipPath = await downloadBackupFromAddress(address, (status) => {
+    const zipPath = await downloadBackupFromAddress(address, (status) => {
       if (!event.sender.isDestroyed()) {
         event.sender.send('backup-progress', { phase: 'fetch', message: status.message })
       }
     })
-    const res = await backupManager.restoreBackup(zipPath, (data) => {
-      if (!event.sender.isDestroyed()) {
-        event.sender.send('backup-progress', { phase: 'restore', ...data })
-      }
-    }, { passphrase: payload?.passphrase })
+    const staged = await backupManager.stageRestore(zipPath, onProgress)
+    if (staged.kind !== 'backup') return { success: true, ...staged }
+
+    const res = await backupManager.applyStaged(staged.stageId, { passphrase: payload?.passphrase, onProgress })
     if (!res.success) return res
     await finishOnboardingRestore()
     return { success: true }
   } catch (error) {
     log.error('Onboarding CID restore failed:', error)
     return { success: false, error: error.message }
-  } finally {
-    if (zipPath) await fs.rm(zipPath, { force: true }).catch(() => {})
   }
+})
+
+// Onboarding happens in a tab of its own window. The window closes once the
+// person is through it.
+function onboardingWindowFor (event) {
+  return BrowserWindow.fromWebContents(event.sender) ||
+    (event.sender.hostWebContents ? BrowserWindow.fromWebContents(event.sender.hostWebContents) : null)
+}
+
+ipcMain.handle('onboarding-apply-restore', async (event, payload = {}) => {
+  try {
+    let phoneTabs = []
+    const res = await backupManager.applyStaged(payload?.stageId, {
+      openTabs: (tabs) => {
+        phoneTabs = tabs
+        return tabs.length
+      }
+    })
+    if (!res.success) return res
+    if (res.requiresRestart) {
+      await finishOnboardingRestore()
+      return { success: true }
+    }
+
+    // Tabs and bookmarks from a phone. Nothing restarts: onboarding is done,
+    // and the first window opens with the phone's tabs asleep beside Home.
+    settingsManager.settings.onboardingCompleted = true
+    await settingsManager.saveSettings()
+    const opened = windowManager.open({ url: 'peersky://home', isMainWindow: true })
+    if (phoneTabs.length > 0 && opened?.window) {
+      opened.window.webContents.once('did-finish-load', () => {
+        if (!opened.window.isDestroyed()) {
+          opened.window.webContents.send('add-tabs-from-main', { tabs: phoneTabs, group: 'Phone' })
+        }
+      })
+    }
+    onboardingWindowFor(event)?.close()
+    return { success: true, added: res.added }
+  } catch (error) {
+    log.error('Onboarding restore failed:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('onboarding-discard-restore', async (_event, payload = {}) => {
+  backupManager.discardStaged(payload?.stageId)
+  return { success: true }
 })
 
 // Only a plain packaged build can ask for the http/https default. A dev run

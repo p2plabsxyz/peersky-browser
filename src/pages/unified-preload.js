@@ -581,6 +581,8 @@ try {
       restoreBackup: (backupContent) => ipcRenderer.invoke('onboarding-restore-backup', backupContent),
       restoreZip: (zipPath, passphrase) => ipcRenderer.invoke('onboarding-restore-zip', { zipPath, passphrase }),
       restoreCid: (address, passphrase) => ipcRenderer.invoke('onboarding-restore-cid', { address, passphrase }),
+      applyRestore: (stageId) => ipcRenderer.invoke('onboarding-apply-restore', { stageId }),
+      discardRestore: (stageId) => ipcRenderer.invoke('onboarding-discard-restore', { stageId }),
       getPathForFile: (file) => webUtils.getPathForFile(file),
       openExternalLink: (url) => ipcRenderer.invoke('open-external-link', url),
       getDeviceInfo: () => ipcRenderer.invoke('backup-device-info'),
