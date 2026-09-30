@@ -284,7 +284,7 @@ app.whenReady().then(async () => {
     await windowManager.saveFinal()
   })
 
-  p2pAppRegistry.setupIpc()
+  p2pAppRegistry.setupIpc({ checkForAppUpdate: checkForUpdatesNow })
   installExtensionWebRequestBridge(userSession)
   setupBittorrentIpc()
   setupBackupIpc({ getTabs: () => windowManager.getTabs() })
