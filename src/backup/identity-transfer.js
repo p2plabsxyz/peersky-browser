@@ -92,7 +92,10 @@ export async function createPairingSession (userDataDir, deviceType) {
 export function encodePairingString (session) {
   const params = new URLSearchParams({
     deviceType: normalizeDeviceType(session.deviceType),
-    nonce: session.nonce
+    nonce: session.nonce,
+    // This build takes PeerChat in a transfer. A device whose code does not
+    // say so refuses files it does not know, so it is sent none.
+    chat: '1'
   })
   return `peersky-identity:${session.encryptionPublicKey}?${params}`
 }
@@ -112,7 +115,8 @@ export function decodePairingString (str) {
   return {
     deviceType: normalizeDeviceType(params.get('deviceType')),
     encryptionPublicKey: toHex(decodeEncryptionPublicKey(encryptionPublicKey)),
-    nonce: nonce.toLowerCase()
+    nonce: nonce.toLowerCase(),
+    chat: params.get('chat') === '1'
   }
 }
 
@@ -193,11 +197,16 @@ export async function createIdentityTransferZip (userDataDir, outPath, options =
   try {
     const innerZip = path.join(tempDir, 'identity.zip')
     const payloadPath = path.join(tempDir, IDENTITY_PAYLOAD_NAME)
+    // PeerChat goes only to a device whose code says it takes it.
+    const chat = pairing.chat && typeof options.exportChat === 'function'
+      ? options.exportChat(targetDeviceType)
+      : null
     await createBackupZip(userDataDir, innerZip, {
       peerskyVersion: options.peerskyVersion || '',
       isIdentityTransfer: true,
       targetDeviceType,
-      includePrivate: options.includePrivate !== false
+      includePrivate: options.includePrivate !== false,
+      chatTransfer: chat ? Buffer.from(JSON.stringify(chat)) : null
     })
 
     const contentKey = crypto.randomBytes(32)

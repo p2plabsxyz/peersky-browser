@@ -11,13 +11,14 @@ import { readManifest, verifyManifest } from './backup-core.js'
 import { createIdentityTransferZip, decryptIdentityTransferZip, extractAndVerifyIdentityPayload, isIdentityTransferManifest } from './identity-transfer.js'
 import { assertMobilePairingAllowed, setPairedMobile } from './mobile-pairing.js'
 import { decryptEncryptedBackupZip, isEncryptedBackupManifest } from './encrypted-backup.js'
-import { suspendHyper, resumeHyper, trustPrivateDriveHostname } from '../protocols/hyper-handler.js'
+import { suspendHyper, resumeHyper, trustPrivateDriveHostname, exportChatForTransfer, importChatFromPhone } from '../protocols/hyper-handler.js'
 import { suspendIPFS, resumeIPFS } from '../protocols/ipfs-handler.js'
 import { setPrivateDriveOwnership, currentPrivateDriveIds } from '../protocols/private-drive-ownership.js'
 import { listPrivateHyperdrives } from '../protocols/private-hyperdrive-registry.js'
 import { decodeDriveId } from './private-drive-export.js'
 import { applyPhoneSync, isPhoneSyncManifest, readPhoneSyncZip } from './phone-sync.js'
 import { forgetPairingNonce, isLivePairingNonce } from './pairing-sessions.js'
+import { ensureOwnNetworkKeys } from './network-keys.js'
 
 const log = createLogger('backup')
 
@@ -122,13 +123,17 @@ export async function adoptRestoredPrivateDriveCopies (dest, previousIds) {
 
 // Puts an extracted and verified restore in place. The caller has suspended
 // the P2P services and restarts once this returns.
-async function applyVerifiedRestore (dest, applyDir, applyManifest) {
+async function applyVerifiedRestore (dest, applyDir, applyManifest, { identityTransfer = false } = {}) {
   const names = Object.keys(applyManifest.files)
   const previousPrivateDriveIds = await currentPrivateDriveIds(dest)
   await applyRestoreTransaction(dest, applyDir, names)
   if (names.includes('privateHyperdrives.json')) {
     await adoptRestoredPrivateDriveCopies(dest, previousPrivateDriveIds)
   }
+  // Another desktop's stores, and with them its network keys. This desktop
+  // connects with its own from its next start, so the two are two members.
+  // A backup is this same desktop again and keeps its keys.
+  if (identityTransfer) await ensureOwnNetworkKeys(dest)
 }
 
 export function defaultBackupName () {
@@ -202,7 +207,8 @@ class BackupManager {
     try {
       const result = await createIdentityTransferZip(userDataDir(), outPath, {
         ...options,
-        peerskyVersion: app.getVersion()
+        peerskyVersion: app.getVersion(),
+        exportChat: exportChatForTransfer
       })
       // Recorded only once the transfer exists. A failure part way through
       // must not leave the identity looking paired to a phone that never got
@@ -256,7 +262,7 @@ class BackupManager {
         await verifyManifest(tempDir, manifest)
       }
 
-      await applyVerifiedRestore(dest, applyDir, applyManifest)
+      await applyVerifiedRestore(dest, applyDir, applyManifest, { identityTransfer: !!identityTransfer })
       resumeServices = false
 
       log.info('Backup restored; restart required')
@@ -332,7 +338,9 @@ class BackupManager {
           verificationCode: decrypted.verificationCode,
           tabs: sync.tabs.length,
           bookmarks: sync.bookmarks.length,
-          privateDrives: sync.privateDrives.length
+          privateDrives: sync.privateDrives.length,
+          chatRooms: sync.chat ? sync.chat.rooms.length : 0,
+          chatName: sync.chat?.profile?.username || ''
         }
       }
 
@@ -387,16 +395,19 @@ class BackupManager {
         const opened = await openTabs(staged.sync.tabs)
         tabsAdded = Number.isInteger(opened) ? opened : staged.sync.tabs.length
       }
+      // PeerChat runs, so it takes the phone's name and rooms itself.
+      const chat = staged.sync.chat ? await importChatFromPhone(staged.sync.chat) : null
       forgetPairingNonce(staged.nonce)
       this.dropStaged(staged)
-      log.info(`Added ${applied.bookmarksAdded} bookmarks and ${tabsAdded} tabs from a phone`)
+      log.info(`Added ${applied.bookmarksAdded} bookmarks, ${tabsAdded} tabs and ${chat?.added || 0} chat rooms from a phone`)
       return {
         success: true,
         requiresRestart: false,
         added: {
           tabs: tabsAdded,
           bookmarks: applied.bookmarksAdded,
-          privateDrives: applied.privateDrivesAdded
+          privateDrives: applied.privateDrivesAdded,
+          chatRooms: chat?.added || 0
         }
       }
     }
@@ -411,7 +422,7 @@ class BackupManager {
     await suspendHyper()
     await suspendIPFS()
     try {
-      await applyVerifiedRestore(dest, staged.applyDir, staged.applyManifest)
+      await applyVerifiedRestore(dest, staged.applyDir, staged.applyManifest, { identityTransfer: true })
     } catch (error) {
       await resumeHyper().catch((err) => log.error(`Failed to resume hyper after failed restore: ${err.message}`))
       await resumeIPFS().catch((err) => log.error(`Failed to resume IPFS after failed restore: ${err.message}`))

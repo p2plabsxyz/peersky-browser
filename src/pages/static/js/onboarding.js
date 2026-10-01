@@ -140,10 +140,11 @@ function showRestoreConfirm (res) {
     if (res.tabs) parts.push(plural(res.tabs, 'tab'))
     if (res.bookmarks) parts.push(plural(res.bookmarks, 'bookmark'))
     if (res.privateDrives) parts.push('access to its private files')
+    if (res.chatRooms) parts.push(plural(res.chatRooms, 'PeerChat room'))
     const list = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0]
     restoreConfirmTitle.textContent = 'Does your phone show this code?'
     restoreConfirmDetails.textContent = parts.length
-      ? `Adds ${list} from your phone.`
+      ? `Adds ${list} from your phone.` + (res.chatName ? ` PeerChat takes your phone's name, ${res.chatName}.` : '')
       : 'The phone sent no tabs or bookmarks.'
     restoreConfirmApply.textContent = 'It matches, add them'
   } else {

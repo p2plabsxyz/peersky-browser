@@ -333,6 +333,25 @@ describe('private-drive-export', function () {
     expect(Object.keys(desktop.manifest.files)).to.include.members(['hyper', 'bookmarks.json', 'lastOpened.json', 'peersky-ports.json'])
   })
 
+  it('adds PeerChat for the other device to a transfer, and never to a backup', async function () {
+    const userData = await makeTempDir('peersky-bk-chat-')
+    await seedUserData(userData)
+    const chat = Buffer.from(JSON.stringify({ version: 1, label: 'mobile', rooms: [] }))
+
+    const outPath = path.join(await makeTempDir('peersky-bk-chat-out-'), 'identity.zip')
+    const transfer = await createBackupZip(userData, outPath, { isIdentityTransfer: true, targetDeviceType: 'mobile', chatTransfer: chat })
+    expect(transfer.manifest.files['peerchat-incoming.json']).to.equal(`sha256:${crypto.createHash('sha256').update(chat).digest('hex')}`)
+    const dest = await makeTempDir('peersky-bk-chat-dest-')
+    await extractBackupZip(outPath, dest)
+    await verifyManifest(dest, await readManifest(outPath))
+    expect(await readFile(path.join(dest, 'peerchat-incoming.json'))).to.deep.equal(chat)
+
+    // A backup comes back to this same device, which has its own chat file.
+    const backupOut = path.join(await makeTempDir('peersky-bk-chat-backup-'), 'backup.zip')
+    const backup = await createBackupZip(userData, backupOut, { chatTransfer: chat })
+    expect(backup.manifest.files).not.to.have.property('peerchat-incoming.json')
+  })
+
   it('returns null when the registry has no decodable drive', async function () {
     const userData = await makeTempDir('peersky-bk-keyexport-none-')
     await writeFile(path.join(userData, 'privateHyperdrives.json'), JSON.stringify([

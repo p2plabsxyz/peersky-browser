@@ -94,6 +94,21 @@ describe('phone-sync', function () {
     await expectRejection(readPhoneSyncZip(large), /too large/)
   })
 
+  it('reads the PeerChat a phone sends, and nothing it does not understand', async function () {
+    const dir = await makeTempDir('peersky-phone-chat-')
+    const zipPath = path.join(dir, 'inner.zip')
+    const chat = { version: 1, label: 'desktop', link: { key: 'ab'.repeat(32) }, profile: { username: 'ada' }, rooms: [{ roomKey: 'aa'.repeat(32) }] }
+    await writePhoneZip(zipPath, { files: { 'phone-peerchat.json': chat } })
+
+    const sync = await readPhoneSyncZip(zipPath)
+    expect(sync.chat.profile.username).to.equal('ada')
+    expect(sync.chat.rooms).to.have.length(1)
+
+    expect(parsePhoneSync({ 'phone-peerchat.json': Buffer.from(JSON.stringify({ ...chat, version: 2 })) }).chat).to.equal(null)
+    expect(parsePhoneSync({ 'phone-peerchat.json': Buffer.from('not json') }).chat).to.equal(null)
+    expect(parsePhoneSync({}).chat).to.equal(null)
+  })
+
   it('keeps only addresses a desktop can open, once each, with tidy titles', function () {
     const sync = parsePhoneSync({
       'phone-tabs.json': Buffer.from(JSON.stringify({

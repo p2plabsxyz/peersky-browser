@@ -114,6 +114,8 @@ into its own. It does not get `hyper/`, this desktop's own corestore, which
 nothing on the phone opens and which can run to gigabytes. The key goes to a
 phone even when there are no private drives yet, because the phone encrypts
 its own private uploads with it, and that is what lets this desktop open them.
+A phone whose code says it takes PeerChat also gets `peerchat-incoming.json`
+(see [PeerChat on several devices](#peerchat-on-several-devices)).
 
 ## Receiving from a phone
 
@@ -127,6 +129,7 @@ and holds only:
 phone-tabs.json
 phone-bookmarks.json
 phone-private-drives.json
+phone-peerchat.json
 ```
 
 Paste or scan the phone's link under Restore from the network. After the code
@@ -138,9 +141,11 @@ is confirmed (`src/backup/phone-sync.js`):
   window the page is in. A page already open in any window is left out: it is
   often one this desktop sent to the phone, coming back,
 - the phone's private drive is added to the private drives as
-  `Private files from your phone`, read-only here.
+  `Private files from your phone`, read-only here,
+- PeerChat takes the phone's name, bio and picture, with this desktop's
+  label after the name, and joins the phone's rooms.
 
-Nothing is replaced and nothing restarts. The page then says what was added,
+Nothing else is replaced and nothing restarts. The page then says what was added,
 or that everything the phone sent was already here. Each entry is read into
 memory with a size cap and checked against the manifest, since anyone who can
 see this desktop's code could send it something.
@@ -173,6 +178,40 @@ copied to it. What this desktop does keep is a guard against the accidental
 second phone (`src/backup/mobile-pairing.js`): an identity goes to one phone
 at a time, and "Move to a new phone" releases it.
 
+## PeerChat on several devices
+
+A person's PeerChat goes with their identity. Each device stays its own member
+of a room, and everyone sees which device a message came from by a label after
+the name: the device the name was made on shows the name alone, the phone
+shows `ada@mobile`, and desktops `ada@desktop1`, `ada@desktop2`. When the name
+was made on the phone, the first desktop is `ada@desktop`. There is one phone,
+and moving to a new phone is "Move to a new phone" on the old one. The label is
+fixed: it cannot be edited and does not change with the name.
+
+A device takes PeerChat only when its pairing code says `chat=1`. An older app
+refuses files it does not know, so it is sent none. A transfer to a newer one
+carries `peerchat-incoming.json` (a phone sends `phone-peerchat.json`) with
+the profile, every room with its key, the label the other device takes, and a
+link: a random secret the person's devices share. Room keys travel in the
+clear inside the sealed transfer, because the copy in the chat file is locked
+to the sending desktop's keychain.
+
+A name, bio or picture changed on one device reaches the others the next time
+they share a room. Each profile a device sends carries a proof made with the
+link, and a device takes a newer profile only with a proof it can check, so
+nobody else can rename a person's devices. A room joined later on one device
+is not sent to the others; a new transfer or the room's link brings it.
+
+A desktop restored from another desktop starts with a copy of its stores, and
+the keys its network connections are made with come from those stores. Two
+desktops on one key are one peer: they push each other off the network, and in
+PeerChat they are one member. So a desktop restored from a transfer makes keys
+of its own once (`peersky-network-keys.json`, `src/backup/network-keys.js`),
+which no backup or transfer carries. A room the other desktop made stays that
+desktop's to run, and PeerChat keeps its room feeds under the new key, starting
+from the copy: two desktops appending to one feed would fork it, and a forked
+feed is frozen for good. A backup restored on the same desktop keeps its keys.
+
 The temporary Hyper publisher uses storage outside the normal `hyper/`
 corestore and is closed and deleted when the transfer expires. Transfer drives
 therefore do not accumulate in later backups.
@@ -192,6 +231,8 @@ device-sealed identity transfer described above.
 - `src/backup/identity-transfer.js`: receiver-sealed identity transfer and
   verification code derivation.
 - `src/backup/phone-sync.js`: reading and adding what a phone sends.
+- `src/backup/network-keys.js`: the network keys of a desktop restored from
+  another desktop.
 - `src/backup/pairing-sessions.js`: the pairing codes this desktop has shown.
 - `src/backup/backup-manager.js`: service suspension, transactional restore,
   and the two-step restore from the network.

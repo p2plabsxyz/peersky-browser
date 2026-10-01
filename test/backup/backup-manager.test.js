@@ -22,6 +22,8 @@ async function loadBackupManager (options = {}) {
   const readManifest = options.readManifest || sinon.stub().resolves(manifest)
   const verifyManifest = options.verifyManifest || sinon.stub().resolves()
   const trustPrivateDriveHostname = sinon.stub()
+  const exportChatForTransfer = sinon.stub().returns(null)
+  const importChatFromPhone = options.importChatFromPhone || sinon.stub().resolves({ ok: true, added: 0 })
   const isLivePairingNonce = options.isLivePairingNonce || sinon.stub().returns(true)
   const forgetPairingNonce = sinon.stub()
   const identityTransfer = {
@@ -77,7 +79,7 @@ async function loadBackupManager (options = {}) {
       decryptEncryptedBackupZip: sinon.stub(),
       isEncryptedBackupManifest: sinon.stub().returns(false)
     },
-    [hyperHandlerPath]: { suspendHyper, resumeHyper, trustPrivateDriveHostname },
+    [hyperHandlerPath]: { suspendHyper, resumeHyper, trustPrivateDriveHostname, exportChatForTransfer, importChatFromPhone },
     [ipfsHandlerPath]: { suspendIPFS, resumeIPFS }
   }
 
@@ -96,6 +98,7 @@ async function loadBackupManager (options = {}) {
       suspendHyper,
       suspendIPFS,
       trustPrivateDriveHostname,
+      importChatFromPhone,
       isLivePairingNonce,
       forgetPairingNonce,
       identityTransfer
@@ -137,7 +140,7 @@ const TRANSFER_MANIFEST = { kind: 'peersky-identity-transfer', identityTransfer:
 
 // A phone transfer as the manager sees it once the outer layer is checked:
 // readManifest answers for the wrapper, then for the decrypted inner zip.
-function phoneTransferOptions () {
+function phoneTransferOptions (extraFiles = {}) {
   const readManifest = sinon.stub()
   readManifest.onFirstCall().resolves(TRANSFER_MANIFEST)
   readManifest.resolves({ version: '1.0.0', source: 'mobile', files: {} })
@@ -150,7 +153,8 @@ function phoneTransferOptions () {
         await writePhoneInnerZip(innerZipPath, {
           'phone-tabs.json': { version: 1, tabs: [{ url: 'https://t.example/', title: 'T' }] },
           'phone-bookmarks.json': { version: 1, bookmarks: [{ url: 'https://b.example/', title: 'B', createdAt: 1700000000000 }] },
-          'phone-private-drives.json': { version: 1, drives: [{ driveId: 'e'.repeat(64) }] }
+          'phone-private-drives.json': { version: 1, drives: [{ driveId: 'e'.repeat(64) }] },
+          ...extraFiles
         })
         return { verificationCode: 'ABC123' }
       })
@@ -170,7 +174,7 @@ describe('backup-manager', function () {
   })
 
   it('leaves P2P services stopped after a successful restore', async function () {
-    const { backupManager, stubs } = await loadBackupManager()
+    const { backupManager, stubs, userData } = await loadBackupManager()
 
     const result = await backupManager.restoreBackup('/tmp/backup.zip')
 
@@ -179,6 +183,8 @@ describe('backup-manager', function () {
     expect(stubs.suspendIPFS.calledOnce).to.equal(true)
     expect(stubs.resumeHyper.called).to.equal(false)
     expect(stubs.resumeIPFS.called).to.equal(false)
+    // A backup is this same desktop again, on the keys it had.
+    expect(await exists(path.join(userData, 'peersky-network-keys.json'))).to.equal(false)
   })
 
   it('resumes P2P services when restore fails before data is applied', async function () {
@@ -291,7 +297,8 @@ describe('backup-manager', function () {
     const openTabs = sinon.stub()
     const result = await backupManager.applyStaged(staged.stageId, { openTabs })
     expect(result).to.deep.include({ success: true, requiresRestart: false })
-    expect(result.added).to.deep.equal({ tabs: 1, bookmarks: 1, privateDrives: 1 })
+    expect(result.added).to.deep.equal({ tabs: 1, bookmarks: 1, privateDrives: 1, chatRooms: 0 })
+    expect(stubs.importChatFromPhone.called).to.equal(false)
     expect(openTabs.calledOnceWith([{ url: 'https://t.example/', title: 'T' }])).to.equal(true)
     expect(JSON.parse(await readFile(path.join(userData, 'bookmarks.json'), 'utf8')).map((b) => b.url))
       .to.deep.equal(['https://mine.example/', 'https://b.example/'])
@@ -302,6 +309,21 @@ describe('backup-manager', function () {
     // Used once: the same stage cannot be applied again.
     const again = await backupManager.applyStaged(staged.stageId).catch((error) => error)
     expect(again.message).to.match(/no longer waiting/)
+  })
+
+  it('shows the PeerChat name and rooms a phone sends, and hands them to PeerChat once confirmed', async function () {
+    const chat = { version: 1, label: 'desktop', link: { key: 'ab'.repeat(32) }, profile: { username: 'ada' }, rooms: [{ roomKey: 'aa'.repeat(32) }, { roomKey: 'bb'.repeat(32) }] }
+    const importChatFromPhone = sinon.stub().resolves({ ok: true, added: 1, label: 'desktop' })
+    const { backupManager } = await loadBackupManager({ ...phoneTransferOptions({ 'phone-peerchat.json': chat }), importChatFromPhone })
+
+    const staged = await backupManager.stageRestore(await downloadedZip())
+    expect(staged).to.include({ chatRooms: 2, chatName: 'ada' })
+    expect(importChatFromPhone.called).to.equal(false)
+
+    const result = await backupManager.applyStaged(staged.stageId, { openTabs: async () => 1 })
+    expect(importChatFromPhone.calledOnce).to.equal(true)
+    expect(importChatFromPhone.firstCall.args[0]).to.deep.include({ label: 'desktop' })
+    expect(result.added.chatRooms).to.equal(1)
   })
 
   it('counts only the phone tabs that were opened, not those already open here', async function () {
@@ -349,6 +371,9 @@ describe('backup-manager', function () {
     expect(stubs.suspendHyper.calledOnce).to.equal(true)
     expect(stubs.resumeHyper.called).to.equal(false)
     expect(stubs.forgetPairingNonce.calledWith('ab'.repeat(16))).to.equal(true)
+    // The other desktop's stores came with its network keys. This one
+    // connects with its own from the restart on.
+    expect(await exists(path.join(userData, 'peersky-network-keys.json'))).to.equal(true)
   })
 
   it('holds a backup download until the person says to restore it', async function () {

@@ -565,20 +565,24 @@ function plural (count, noun) {
 }
 
 // "3 tabs, 12 bookmarks and access to its private files", or null for none.
-function listPhoneSync ({ tabs, bookmarks, privateDrives }) {
+function listPhoneSync ({ tabs, bookmarks, privateDrives, chatRooms }) {
   const parts = []
   if (tabs) parts.push(plural(tabs, 'tab'))
   if (bookmarks) parts.push(plural(bookmarks, 'bookmark'))
   if (privateDrives) parts.push('access to its private files')
+  if (chatRooms) parts.push(plural(chatRooms, 'PeerChat room'))
   if (parts.length === 0) return null
   return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0]
 }
 
 function describePhoneSync (res) {
   const list = listPhoneSync(res)
-  if (!list) return 'The phone sent no tabs or bookmarks.'
-  return `Adds ${list} from your phone, skipping any already here. Nothing here is replaced.` +
-    (res.tabs ? ' The tabs open asleep in a group called Phone.' : '')
+  if (!list && !res.chatName) return 'The phone sent no tabs or bookmarks.'
+  let text = list ? `Adds ${list} from your phone, skipping any already here.` : ''
+  // PeerChat takes the phone's name. Everything else here is kept.
+  text += res.chatName ? ` PeerChat here takes your phone's name, ${res.chatName}.` : ' Nothing here is replaced.'
+  if (res.tabs) text += ' The tabs open asleep in a group called Phone.'
+  return text.trim()
 }
 
 function showIncoming (res) {

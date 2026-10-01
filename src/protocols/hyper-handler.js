@@ -11,8 +11,11 @@ import z32 from 'z32'
 import {
   initChat,
   handleChatRequest as handleChatRequestP2P,
+  exportChatTransfer,
+  importChatTransfer,
   CHAT_STORAGE
 } from '../pages/p2p/peerchat/p2p.js'
+import { readNetworkKeys, withNetworkKey } from '../backup/network-keys.js'
 import { createLogger } from '../logger.js'
 import { hyperCache, saveHyperCache } from './config.js'
 import { enforceExtensionWritePolicy } from '../extensions/request-policy.js'
@@ -189,7 +192,9 @@ export async function warmupHyper () {
 async function startHyperSDK (options) {
   log.info('Initializing Hyper SDK...')
 
-  sdk = await createSDK(options)
+  // A desktop restored from another one connects with keys of its own.
+  const networkKeys = await readNetworkKeys(app.getPath('userData'))
+  sdk = await createSDK(withNetworkKey(options, networkKeys?.main))
 
   let lan = null
   try {
@@ -240,6 +245,30 @@ async function startHyperSDK (options) {
 
   log.info('Hyper SDK initialized.')
   return fetch
+}
+
+// A person's PeerChat goes with their identity to their other devices: the
+// profile, every room with its key, and the label the other device takes.
+// Null when PeerChat has no profile yet.
+export function exportChatForTransfer (targetDeviceType) {
+  try {
+    return exportChatTransfer({ targetType: targetDeviceType })
+  } catch (error) {
+    log.warn(`PeerChat could not be packed for a transfer: ${error.message}`)
+    return null
+  }
+}
+
+// What a phone sends: its PeerChat name and rooms, taken while PeerChat runs.
+// A desktop still in its first-run screen may not have started it yet.
+export async function importChatFromPhone (transfer) {
+  try {
+    await warmupHyper()
+    return await importChatTransfer(transfer)
+  } catch (error) {
+    log.warn(`PeerChat from a phone was not taken: ${error.message}`)
+    return { ok: false, added: 0 }
+  }
 }
 
 function getPrivateSDKOptions (options, deviceOnly) {
@@ -339,7 +368,8 @@ function initializePrivateHyperSDK (options) {
 
 async function startPrivateHyperSDK (options) {
   const privateOptions = getPrivateSDKOptions(options || savedSdkOptions, privateDeviceOnly)
-  const openedSdk = await createSDK(privateOptions)
+  const networkKeys = await readNetworkKeys(app.getPath('userData'))
+  const openedSdk = await createSDK(withNetworkKey(privateOptions, networkKeys?.private))
   try {
     const openedFetch = await makeHyperFetch({ sdk: openedSdk, writable: true })
     privateSdk = openedSdk

@@ -45,10 +45,16 @@ export const PRIVATE_HYPER_BACKUP_TARGETS = [
   { name: 'hyper-private', type: 'dir' }
 ]
 
+// A person's PeerChat for another of their devices: the profile, every room
+// with its key, the link their devices share and the label this one takes.
+// PeerChat reads it once on its next start (CHAT_INCOMING in its p2p.js).
+export const CHAT_TRANSFER_FILE = 'peerchat-incoming.json'
+
 const RESTORABLE_BACKUP_TARGETS = [
   ...IDENTITY_BACKUP_TARGETS,
   ...PRIVATE_HYPER_BACKUP_TARGETS,
-  { name: PRIVATE_DRIVE_KEY_FILE, type: 'file' }
+  { name: PRIVATE_DRIVE_KEY_FILE, type: 'file' },
+  { name: CHAT_TRANSFER_FILE, type: 'file' }
 ]
 
 // Skip live DB lock/log files. CORESTORE is left in to stabilize manifest
@@ -267,6 +273,14 @@ export async function createBackupZip (userDataDir, outPath, options = {}) {
         archive.append(keyBytes, { name: PRIVATE_DRIVE_KEY_FILE })
         uncompressedBytes += keyBytes.length
       }
+    }
+
+    // Only in a transfer: a backup is restored on the same device, and its
+    // own chat file is already in it.
+    if (isIdentityTransfer && Buffer.isBuffer(options.chatTransfer)) {
+      manifest.files[CHAT_TRANSFER_FILE] = `sha256:${crypto.createHash('sha256').update(options.chatTransfer).digest('hex')}`
+      archive.append(options.chatTransfer, { name: CHAT_TRANSFER_FILE })
+      uncompressedBytes += options.chatTransfer.length
     }
 
     const manifestBytes = Buffer.from(JSON.stringify(manifest, null, 2))
