@@ -239,8 +239,9 @@ therefore do not accumulate in later backups.
 A person's five most recent P2PMD notes and their P2PMD name go with a
 transfer between this desktop and their phone, both ways. A private note they
 host goes with its text; any other goes as one to join. Only a private note
-(`hs://s000...`, Private ticked when it was made, as the phone always does) can
-be hosted from a copy: its key is what the host's keys are made from. A note
+(`hs://s000...`: Private is ticked for every new note on the desktop, and the
+phone makes no other kind) can be hosted from a copy: its key is what the
+host's keys are made from. A note
 that is not private has the host's public key in its address, so only the
 device that made it can ever host it. P2PMD keeps its notes in
 its own page's storage, so P2PMD's own page reads and writes them
