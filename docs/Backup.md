@@ -189,7 +189,10 @@ and moving to a new phone is "Move to a new phone" on the old one. The label is
 fixed: it cannot be edited and does not change with the name.
 
 A device takes PeerChat only when its pairing code says `chat=1`. An older app
-refuses files it does not know, so it is sent none. A transfer to a newer one
+refuses files it does not know, so it is sent none. A desktop says so only when
+its PeerChat has the transfer functions: installs move the PeerChat submodule to
+its newest commit, and `hyper-handler.js` reads those functions through the
+module namespace, so a PeerChat without them loads and transfers go without it. A transfer to a newer one
 carries `peerchat-incoming.json` (a phone sends `phone-peerchat.json`) with
 the profile, every room with its key, the label the other device takes, and a
 link: a random secret the person's devices share. Room keys travel in the

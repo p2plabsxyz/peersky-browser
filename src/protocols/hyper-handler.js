@@ -11,10 +11,13 @@ import z32 from 'z32'
 import {
   initChat,
   handleChatRequest as handleChatRequestP2P,
-  exportChatTransfer,
-  importChatTransfer,
   CHAT_STORAGE
 } from '../pages/p2p/peerchat/p2p.js'
+// PeerChat is a submodule that installs move to its newest commit, which can
+// be one without the transfer functions yet. Read through the namespace they
+// are only missing, and transfers go without PeerChat; a named import of a
+// missing export stops this whole module from loading.
+import * as peerchat from '../pages/p2p/peerchat/p2p.js'
 import { readNetworkKeys, withNetworkKey } from '../backup/network-keys.js'
 import { createLogger } from '../logger.js'
 import { hyperCache, saveHyperCache } from './config.js'
@@ -247,12 +250,19 @@ async function startHyperSDK (options) {
   return fetch
 }
 
+// Whether this PeerChat can go in a transfer and take one.
+export function chatTakesTransfers () {
+  return typeof peerchat.exportChatTransfer === 'function' &&
+    typeof peerchat.importChatTransfer === 'function'
+}
+
 // A person's PeerChat goes with their identity to their other devices: the
 // profile, every room with its key, and the label the other device takes.
-// Null when PeerChat has no profile yet.
+// Null when PeerChat has no profile yet, or cannot go in a transfer.
 export function exportChatForTransfer (targetDeviceType) {
+  if (!chatTakesTransfers()) return null
   try {
-    return exportChatTransfer({ targetType: targetDeviceType })
+    return peerchat.exportChatTransfer({ targetType: targetDeviceType })
   } catch (error) {
     log.warn(`PeerChat could not be packed for a transfer: ${error.message}`)
     return null
@@ -262,9 +272,10 @@ export function exportChatForTransfer (targetDeviceType) {
 // What a phone sends: its PeerChat name and rooms, taken while PeerChat runs.
 // A desktop still in its first-run screen may not have started it yet.
 export async function importChatFromPhone (transfer) {
+  if (!chatTakesTransfers()) return { ok: false, added: 0 }
   try {
     await warmupHyper()
-    return await importChatTransfer(transfer)
+    return await peerchat.importChatTransfer(transfer)
   } catch (error) {
     log.warn(`PeerChat from a phone was not taken: ${error.message}`)
     return { ok: false, added: 0 }

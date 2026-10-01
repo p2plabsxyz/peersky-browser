@@ -106,10 +106,12 @@ describe('identity-transfer', function () {
     expect(() => decodePairingString('44'.repeat(32))).to.throw(/device pairing code/i)
   })
 
-  it('says in its code that it takes PeerChat, and reads that from a code', function () {
-    const code = encodePairingString({ deviceType: 'desktop', nonce: '55'.repeat(16), encryptionPublicKey: '44'.repeat(32) })
-    expect(decodePairingString(code)).to.deep.include({ deviceType: 'desktop', chat: true })
-    // An older app's code does not.
+  it('says in its code that it takes PeerChat only when it does, and reads that from a code', function () {
+    const session = { deviceType: 'desktop', nonce: '55'.repeat(16), encryptionPublicKey: '44'.repeat(32) }
+    expect(decodePairingString(encodePairingString(session, { chat: true }))).to.deep.include({ deviceType: 'desktop', chat: true })
+    // A PeerChat without transfers says nothing, and neither does an older app.
+    expect(encodePairingString(session)).not.to.include('chat=')
+    expect(decodePairingString(encodePairingString(session)).chat).to.equal(false)
     expect(decodePairingString(mobilePairingPayload('44'.repeat(32))).chat).to.equal(false)
   })
 

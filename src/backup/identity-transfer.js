@@ -89,14 +89,14 @@ export async function createPairingSession (userDataDir, deviceType) {
   }
 }
 
-export function encodePairingString (session) {
+export function encodePairingString (session, { chat = false } = {}) {
   const params = new URLSearchParams({
     deviceType: normalizeDeviceType(session.deviceType),
-    nonce: session.nonce,
-    // This build takes PeerChat in a transfer. A device whose code does not
-    // say so refuses files it does not know, so it is sent none.
-    chat: '1'
+    nonce: session.nonce
   })
+  // This desktop takes PeerChat in a transfer. A device whose code does not
+  // say so refuses files it does not know, so it is sent none.
+  if (chat) params.set('chat', '1')
   return `peersky-identity:${session.encryptionPublicKey}?${params}`
 }
 
