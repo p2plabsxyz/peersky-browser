@@ -209,6 +209,12 @@ joined on one device appears on the others that are online, or the next time
 they connect. A room left on a device stays left there, and a direct
 conversation goes along once the other person has accepted it.
 
+PeerChat's chat channel is `peersky-chat/2`. A peer gets into a room only by
+proving, on its own connection, that it holds the room's key, and frames name a
+room by its topic, so the key never crosses the wire (see PeerChat's README,
+Proving a room). A device on version 1 does not open a channel with one on
+version 2, so a desktop and a phone chat with each other once both run it.
+
 A desktop restored from another desktop starts with a copy of its stores, and
 the keys its network connections are made with come from those stores. Two
 desktops on one key are one peer: they push each other off the network, and in
