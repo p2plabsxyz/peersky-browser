@@ -286,6 +286,32 @@
       margin-bottom: 14px;
     }
 
+    .restore-confirm {
+      width: 100%;
+      margin-bottom: 16px;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid var(--settings-border);
+      background: var(--settings-card-bg);
+      text-align: center;
+    }
+
+    .restore-code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 1.6rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      margin: 6px 0;
+      user-select: text;
+    }
+
+    .restore-hint {
+      font-size: 0.75rem;
+      color: var(--settings-text-secondary);
+      margin: 0 0 10px;
+      text-align: left;
+    }
+
     .divider-or {
       width: 100%;
       text-align: center;
@@ -323,7 +349,7 @@
     </div>
 
     <button class="skip-btn" id="skip-btn">Skip</button>
-    <a class="backup-link" id="backup-link">Restore a Peersky backup (.zip)</a>
+    <a class="backup-link" id="backup-link">Restore a backup, or bring tabs from your phone</a>
   </div>
 
   <!-- Step 3: Import JSON -->
@@ -356,6 +382,16 @@
     <input type="text" class="cid-input" id="cid-input" placeholder="hyper://...">
     <button class="skip-btn" id="cid-restore-btn" style="margin-bottom: 4px;">Restore</button>
 
+    <!-- A transfer is only put in place once the code here matches the one
+         on the other device. -->
+    <div class="restore-confirm" id="restore-confirm" hidden>
+      <div class="section-label" id="restore-confirm-title">Does the other device show this code?</div>
+      <div class="restore-code" id="restore-confirm-code"></div>
+      <p class="restore-hint" id="restore-confirm-details"></p>
+      <button class="skip-btn" id="restore-confirm-apply" style="margin-bottom: 4px;">It matches</button>
+      <a class="backup-link" id="restore-confirm-cancel">Cancel</a>
+    </div>
+
     <div class="divider-or">or</div>
 
     <div class="section-label">Restore from local .zip</div>
@@ -369,6 +405,8 @@
 
     <div class="divider-or"></div>
     <div class="section-label">This device pairing code</div>
+    <p class="restore-hint">Scan this with your other device, then paste the link it shows above.</p>
+    <qr-code id="identity-device-qr" hidden style="pointer-events: none; width: 160px; height: 160px; background: white; padding: 8px; box-sizing: border-box; margin: 0 auto 10px;" data-bg="white" data-fg="black"></qr-code>
     <div class="status-msg" id="identity-device-key" style="display:block; background: var(--settings-card-bg); border: 1px solid var(--settings-border); color: var(--settings-text-primary); user-select: text; word-break: break-all; margin-bottom: 6px;">Loading...</div>
     <button class="skip-btn" id="identity-key-copy" style="margin-bottom: 14px;">Copy Key</button>
 
@@ -377,6 +415,7 @@
     <a class="backup-link" id="restore-back-btn" style="margin-top: 10px; display: inline-block;">&larr; Back to browser selection</a>
   </div>
 
+  <script src="peersky://static/elves/qr-code.js" type="module"></script>
   <script src="peersky://static/js/onboarding.js" defer></script>
 </body>
 </html>

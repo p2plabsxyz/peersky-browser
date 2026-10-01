@@ -338,6 +338,20 @@ body {
   background: var(--settings-border);
 }
 
+/* The action a section is for. Tinted with the theme highlight but keeps the
+   theme's text colour: white on the lighter highlights is hard to read. */
+.btn-primary {
+  background: color-mix(in srgb, var(--browser-theme-primary-highlight, #3b82f6) 22%, var(--settings-bg-secondary));
+  color: var(--settings-text-primary);
+  border: 1px solid var(--browser-theme-primary-highlight, #3b82f6);
+  font-weight: 450;
+  height: 25px;
+}
+
+.btn-primary:hover {
+  background: color-mix(in srgb, var(--browser-theme-primary-highlight, #3b82f6) 38%, var(--settings-bg-secondary));
+}
+
 .btn-danger {
   background: var(--settings-danger-color);
   color: white;

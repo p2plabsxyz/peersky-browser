@@ -182,3 +182,59 @@ describe('P2P app folder import', function () {
     expect(patterns(pageSource)).to.equal(patterns(registrySource))
   })
 })
+
+describe('updating the built-in P2P apps', function () {
+  // A packaged PeerSky once unpacked each app's latest GitHub zip over its
+  // own app.asar.unpacked. Files an update added were invisible to the app,
+  // and PeerSky stopped starting once PeerChat's main-process code imported
+  // one. P2P apps now come with PeerSky updates.
+  async function loadPackaged (appDir) {
+    const userData = await mkdtemp(path.join(os.tmpdir(), 'peersky-packaged-'))
+    const registry = await esmock.strict('../../src/p2p-app-registry.js', {
+      electron: {
+        app: { getPath: () => userData, getAppPath: () => appDir, isPackaged: true },
+        ipcMain: { handle: () => {} },
+        dialog: { showOpenDialog: async () => ({ canceled: true, filePaths: [] }) }
+      }
+    })
+    const module = registry.default ?? registry
+    await module.init()
+    return module
+  }
+
+  it('never downloads or writes a P2P app in a packaged build, and checks for a PeerSky update', async function () {
+    const appDir = await mkdtemp(path.join(os.tmpdir(), 'peersky-app-asar-'))
+    const originalFetch = globalThis.fetch
+    let fetched = false
+    globalThis.fetch = async () => { fetched = true; throw new Error('no network in this test') }
+    try {
+      const registry = await loadPackaged(appDir)
+      let checks = 0
+      registry.setupIpc({ checkForAppUpdate: async () => { checks += 1; return 'up-to-date' } })
+
+      const result = await registry.updateSubmodules()
+      expect(result).to.deep.equal({ success: true, message: 'P2P apps update with PeerSky, and this is the latest PeerSky.' })
+      expect(checks).to.equal(1)
+      expect(fetched).to.equal(false)
+      expect(await readdir(appDir)).to.deep.equal([])
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  it('says when a PeerSky update is ready, and where to look when it cannot check', async function () {
+    const registry = await loadPackaged(await mkdtemp(path.join(os.tmpdir(), 'peersky-app-asar-')))
+
+    registry.setupIpc({ checkForAppUpdate: async () => 'update-available' })
+    expect((await registry.updateSubmodules()).message).to.match(/Restart PeerSky to install it/)
+
+    registry.setupIpc({ checkForAppUpdate: async () => 'not-initialized' })
+    expect(await registry.updateSubmodules()).to.deep.equal({ success: false, error: 'P2P apps update with PeerSky. Check for updates in Settings.' })
+
+    registry.setupIpc({ checkForAppUpdate: async () => { throw new Error('offline') } })
+    expect((await registry.updateSubmodules()).success).to.equal(false)
+
+    registry.setupIpc()
+    expect((await registry.updateSubmodules()).success).to.equal(false)
+  })
+})

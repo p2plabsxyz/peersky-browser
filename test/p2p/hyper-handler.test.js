@@ -69,7 +69,7 @@ describe('Hyper protocol handler', function () {
     sinon.restore()
   })
 
-  async function loadHyperModule ({ fetchImpl, chatResponse, chatReject, throwOnFetch, lanReject, lanAttachResults, currentIP = '127.0.0.1', driveLength = 0 } = {}) {
+  async function loadHyperModule ({ fetchImpl, chatResponse, chatReject, throwOnFetch, lanReject, lanAttachResults, currentIP = '127.0.0.1', driveLength = 0, peerchat = {} } = {}) {
     // Order matters for the peer-discovery regression: the drive must be given
     // a chance to replicate before the fetch that would 404 with no peers.
     const callOrder = []
@@ -194,7 +194,8 @@ describe('Hyper protocol handler', function () {
       '../../src/pages/p2p/peerchat/p2p.js': {
         initChat,
         handleChatRequest,
-        CHAT_STORAGE: 'test-chat-store'
+        CHAT_STORAGE: 'test-chat-store',
+        ...peerchat
       }
     }, {
       hyperdrive: {
@@ -556,6 +557,37 @@ describe('Hyper protocol handler', function () {
     expect(fetchStub.called).to.equal(false)
   })
 
+  it('routes a registered private drive this desktop never opened, like a phone\'s, to the private store', async function () {
+    const { module, privateSdk, fetchStub } = await loadHyperModule()
+    const phoneUrl = `hyper://${'b'.repeat(52)}/`
+    await writeFile(
+      path.join(TEST_USER_DATA, 'privateHyperdrives.json'),
+      JSON.stringify([{ name: 'Private files from your phone', url: phoneUrl, timestamp: 1, encrypted: true }])
+    )
+    const handler = await module.createHandler({ storage: 'test-phone-private' })
+
+    const response = await handler(new Request(phoneUrl))
+
+    expect(response.status).to.equal(200)
+    expect(fetchStub.called).to.equal(false)
+    expect(privateSdk.joinCore.calledOnce).to.equal(true)
+  })
+
+  it('routes an address trusted while running to the private store', async function () {
+    const { module, fetchStub } = await loadHyperModule()
+    await writeFile(path.join(TEST_USER_DATA, 'privateHyperdrives.json'), '[]')
+    const handler = await module.createHandler({ storage: 'test-trusted-private' })
+    const hostname = 'c'.repeat(52)
+
+    await handler(new Request(`hyper://${hostname}/`))
+    expect(fetchStub.calledOnce).to.equal(true)
+
+    module.trustPrivateDriveHostname(hostname)
+    const response = await handler(new Request(`hyper://${hostname}/`))
+    expect(response.status).to.equal(200)
+    expect(fetchStub.calledOnce).to.equal(true)
+  })
+
   it('announces private drives that carry the encryption flag', async function () {
     const { module, privateSdk } = await loadHyperModule()
     privateSdk.corestore.storage.hasCore.resolves(true)
@@ -700,6 +732,34 @@ describe('Hyper protocol handler', function () {
 
     expect(initChat.calledOnce).to.equal(true)
     expect(initChat.firstCall.args[0]).to.equal(sdk)
+  })
+
+  describe('PeerChat in transfers', function () {
+    it('loads with a PeerChat that has no transfers yet, and sends and takes none', async function () {
+      const { module } = await loadHyperModule({ peerchat: { exportChatTransfer: undefined, importChatTransfer: undefined } })
+      expect(module.chatTakesTransfers()).to.equal(false)
+      expect(module.exportChatForTransfer('mobile')).to.equal(null)
+      expect(await module.importChatFromPhone({ version: 1 })).to.deep.equal({ ok: false, added: 0 })
+    })
+
+    it('hands transfers to a PeerChat that takes them', async function () {
+      const exportChatTransfer = sinon.stub().returns({ version: 1, label: 'desktop1' })
+      const importChatTransfer = sinon.stub().resolves({ ok: true, added: 2, label: 'desktop' })
+      const { module } = await loadHyperModule({ peerchat: { exportChatTransfer, importChatTransfer } })
+      expect(module.chatTakesTransfers()).to.equal(true)
+      expect(module.exportChatForTransfer('desktop')).to.deep.equal({ version: 1, label: 'desktop1' })
+      expect(exportChatTransfer.calledOnceWith({ targetType: 'desktop' })).to.equal(true)
+      expect(await module.importChatFromPhone({ version: 1 })).to.deep.equal({ ok: true, added: 2, label: 'desktop' })
+    })
+
+    it('never names the transfer functions in its import from PeerChat', async function () {
+      // Installs follow PeerChat's newest commit. A named import of an export
+      // it does not have yet stops the handler loading, and every hyper://
+      // request with it.
+      const source = await readFile(new URL('../../src/protocols/hyper-handler.js', import.meta.url), 'utf8')
+      const named = [...source.matchAll(/import\s*\{([^}]*)\}\s*from\s*'\.\.\/pages\/p2p\/peerchat\/p2p\.js'/g)].map((match) => match[1]).join(',')
+      expect(named).not.to.match(/exportChatTransfer|importChatTransfer/)
+    })
   })
 
   it('wires up LAN error events correctly', async function () {

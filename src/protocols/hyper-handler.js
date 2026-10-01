@@ -13,11 +13,17 @@ import {
   handleChatRequest as handleChatRequestP2P,
   CHAT_STORAGE
 } from '../pages/p2p/peerchat/p2p.js'
+// PeerChat is a submodule that installs move to its newest commit, which can
+// be one without the transfer functions yet. Read through the namespace they
+// are only missing, and transfers go without PeerChat; a named import of a
+// missing export stops this whole module from loading.
+import * as peerchat from '../pages/p2p/peerchat/p2p.js'
+import { readNetworkKeys, withNetworkKey } from '../backup/network-keys.js'
 import { createLogger } from '../logger.js'
 import { hyperCache, saveHyperCache } from './config.js'
 import { enforceExtensionWritePolicy } from '../extensions/request-policy.js'
 import { resolveHyperdriveUploadTarget } from './hyper-drive-visibility.js'
-import { rememberPrivateHyperdrive } from './private-hyperdrive-registry.js'
+import { listPrivateHyperdrives, rememberPrivateHyperdrive } from './private-hyperdrive-registry.js'
 import { openPrivateDriveByName, makePrivateDriveFetcher } from './private-hyperdrive.js'
 
 import { _suspendHyper, _hyperPublishFile, _hyperFetchToFile } from '../backup/hyper-backup.js'
@@ -189,7 +195,9 @@ export async function warmupHyper () {
 async function startHyperSDK (options) {
   log.info('Initializing Hyper SDK...')
 
-  sdk = await createSDK(options)
+  // A desktop restored from another one connects with keys of its own.
+  const networkKeys = await readNetworkKeys(app.getPath('userData'))
+  sdk = await createSDK(withNetworkKey(options, networkKeys?.main))
 
   let lan = null
   try {
@@ -242,6 +250,38 @@ async function startHyperSDK (options) {
   return fetch
 }
 
+// Whether this PeerChat can go in a transfer and take one.
+export function chatTakesTransfers () {
+  return typeof peerchat.exportChatTransfer === 'function' &&
+    typeof peerchat.importChatTransfer === 'function'
+}
+
+// A person's PeerChat goes with their identity to their other devices: the
+// profile, every room with its key, and the label the other device takes.
+// Null when PeerChat has no profile yet, or cannot go in a transfer.
+export function exportChatForTransfer (targetDeviceType) {
+  if (!chatTakesTransfers()) return null
+  try {
+    return peerchat.exportChatTransfer({ targetType: targetDeviceType })
+  } catch (error) {
+    log.warn(`PeerChat could not be packed for a transfer: ${error.message}`)
+    return null
+  }
+}
+
+// What a phone sends: its PeerChat name and rooms, taken while PeerChat runs.
+// A desktop still in its first-run screen may not have started it yet.
+export async function importChatFromPhone (transfer) {
+  if (!chatTakesTransfers()) return { ok: false, added: 0 }
+  try {
+    await warmupHyper()
+    return await peerchat.importChatTransfer(transfer)
+  } catch (error) {
+    log.warn(`PeerChat from a phone was not taken: ${error.message}`)
+    return { ok: false, added: 0 }
+  }
+}
+
 function getPrivateSDKOptions (options, deviceOnly) {
   const { corestore, dnsCache, swarm, ...isolatedOptions } = options || {}
   const storage = isolatedOptions.storage || path.join(app.getPath('userData'), 'hyper')
@@ -268,6 +308,23 @@ function rememberPrivateDrive (drive) {
   } catch {}
 }
 
+// A private drive this desktop did not create, such as the one a phone sends
+// the address of, is not in the private store until it is first opened. Its
+// address is routed to the private store anyway, where it opens with the
+// profile key; the public store would only ever see ciphertext.
+export function trustPrivateDriveHostname (hostname) {
+  if (typeof hostname === 'string' && hostname) privateDriveHostnames.add(hostname)
+}
+
+async function trustRegisteredPrivateDrives () {
+  const entries = await listPrivateHyperdrives(app.getPath('userData')).catch(() => [])
+  for (const entry of entries) {
+    try {
+      privateDriveHostnames.add(new URL(entry.url).hostname)
+    } catch {}
+  }
+}
+
 function decodeHyperdriveKey (hostname) {
   try {
     if (hostname.length === 52) return z32.decode(hostname)
@@ -281,6 +338,7 @@ async function isStoredPrivateDrive (hostname) {
   const key = decodeHyperdriveKey(hostname)
   if (!key) return false
   await initializePrivateHyperSDK()
+  if (privateDriveHostnames.has(hostname)) return true
   const discoveryKey = hypercoreCrypto.discoveryKey(key)
   if (!await privateSdk.corestore.storage.hasCore(discoveryKey)) return false
   privateDriveHostnames.add(hostname)
@@ -321,12 +379,14 @@ function initializePrivateHyperSDK (options) {
 
 async function startPrivateHyperSDK (options) {
   const privateOptions = getPrivateSDKOptions(options || savedSdkOptions, privateDeviceOnly)
-  const openedSdk = await createSDK(privateOptions)
+  const networkKeys = await readNetworkKeys(app.getPath('userData'))
+  const openedSdk = await createSDK(withNetworkKey(privateOptions, networkKeys?.private))
   try {
     const openedFetch = await makeHyperFetch({ sdk: openedSdk, writable: true })
     privateSdk = openedSdk
     privateFetch = openedFetch
     privateKeyedFetch = makePrivateDriveFetcher(openedSdk, app.getPath('userData'))
+    await trustRegisteredPrivateDrives()
     return privateFetch
   } catch (error) {
     await openedSdk.close().catch(() => {})
