@@ -50,6 +50,9 @@ export const PRIVATE_HYPER_BACKUP_TARGETS = [
 // PeerChat reads it once on its next start (CHAT_INCOMING in its p2p.js).
 export const CHAT_TRANSFER_FILE = 'peerchat-incoming.json'
 
+// A person's recent P2PMD notes, for their phone (p2pmd-notes.js).
+export const NOTES_TRANSFER_FILE = 'p2pmd-incoming.json'
+
 const RESTORABLE_BACKUP_TARGETS = [
   ...IDENTITY_BACKUP_TARGETS,
   ...PRIVATE_HYPER_BACKUP_TARGETS,
@@ -281,6 +284,11 @@ export async function createBackupZip (userDataDir, outPath, options = {}) {
       manifest.files[CHAT_TRANSFER_FILE] = `sha256:${crypto.createHash('sha256').update(options.chatTransfer).digest('hex')}`
       archive.append(options.chatTransfer, { name: CHAT_TRANSFER_FILE })
       uncompressedBytes += options.chatTransfer.length
+    }
+    if (isIdentityTransfer && Buffer.isBuffer(options.notesTransfer)) {
+      manifest.files[NOTES_TRANSFER_FILE] = `sha256:${crypto.createHash('sha256').update(options.notesTransfer).digest('hex')}`
+      archive.append(options.notesTransfer, { name: NOTES_TRANSFER_FILE })
+      uncompressedBytes += options.notesTransfer.length
     }
 
     const manifestBytes = Buffer.from(JSON.stringify(manifest, null, 2))

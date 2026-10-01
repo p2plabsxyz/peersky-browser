@@ -115,7 +115,9 @@ nothing on the phone opens and which can run to gigabytes. The key goes to a
 phone even when there are no private drives yet, because the phone encrypts
 its own private uploads with it, and that is what lets this desktop open them.
 A phone whose code says it takes PeerChat also gets `peerchat-incoming.json`
-(see [PeerChat on several devices](#peerchat-on-several-devices)).
+(see [PeerChat on several devices](#peerchat-on-several-devices)), and one
+whose code says `notes=1` gets `p2pmd-incoming.json` (see
+[P2PMD notes on several devices](#p2pmd-notes-on-several-devices)).
 
 ## Receiving from a phone
 
@@ -130,6 +132,7 @@ phone-tabs.json
 phone-bookmarks.json
 phone-private-drives.json
 phone-peerchat.json
+phone-p2pmd.json
 ```
 
 Paste or scan the phone's link under Restore from the network. After the code
@@ -143,7 +146,9 @@ is confirmed (`src/backup/phone-sync.js`):
 - the phone's private drive is added to the private drives as
   `Private files from your phone`, read-only here,
 - PeerChat takes the phone's name, bio and picture, with this desktop's
-  label after the name, and joins the phone's rooms.
+  label after the name, and joins the phone's rooms,
+- P2PMD adds the phone's recent notes to its own, and takes the phone's name
+  only if it has none.
 
 Nothing else is replaced and nothing restarts. The page then says what was added,
 or that everything the phone sent was already here. Each entry is read into
@@ -228,6 +233,40 @@ feed is frozen for good. A backup restored on the same desktop keeps its keys.
 The temporary Hyper publisher uses storage outside the normal `hyper/`
 corestore and is closed and deleted when the transfer expires. Transfer drives
 therefore do not accumulate in later backups.
+
+## P2PMD notes on several devices
+
+A person's five most recent P2PMD notes and their P2PMD name go with a
+transfer between this desktop and their phone, both ways. A private note they
+host goes with its text; any other goes as one to join. Only a private note
+(`hs://s000...`, Private ticked when it was made, as the phone always does) can
+be hosted from a copy: its key is what the host's keys are made from. A note
+that is not private has the host's public key in its address, so only the
+device that made it can ever host it. P2PMD keeps its notes in
+its own page's storage, so P2PMD's own page reads and writes them
+(`notes-transfer.html` in the P2PMD submodule), loaded out of sight in the
+session its tabs use (`src/backup/p2pmd-notes.js`). It is read before the
+stores are suspended for a send, and handed the phone's notes once the person
+confirms the code.
+
+A device takes notes only when its pairing code says `notes=1`, and this
+desktop says so only when its P2PMD has that page: installs move the P2PMD
+submodule to its newest commit, which may not have it yet.
+
+Only a note's key, its name and its text travel. A drive address, a port or a
+hosting seed belongs to the machine that made it: a copied profile that kept a
+drive address sent every P2PMD write to a drive the new machine could not
+write to (P2PMD #18), so none of them go, and the receiving side drops any
+field it does not know. Nothing already there is replaced: a note already on
+the receiving device keeps its own text, and a name already chosen stays.
+
+A note that went with its text is on both devices, and both open it the same
+way. P2PMD joins it first, asking the join not to host it from a saved seed
+(`joinOnly` on `hs://p2pmd?action=join`), and checks that the room answers. If
+the other device has it open, both edit the same note live. If nobody answers
+within a few seconds, it hosts its own copy. With no copy, because the text of
+the notes together did not fit in 3 MB, it says so rather than putting up an
+empty note.
 
 ## P2P publishing
 

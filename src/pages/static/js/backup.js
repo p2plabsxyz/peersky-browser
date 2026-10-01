@@ -565,12 +565,13 @@ function plural (count, noun) {
 }
 
 // "3 tabs, 12 bookmarks and access to its private files", or null for none.
-function listPhoneSync ({ tabs, bookmarks, privateDrives, chatRooms }) {
+function listPhoneSync ({ tabs, bookmarks, privateDrives, chatRooms, notes }) {
   const parts = []
   if (tabs) parts.push(plural(tabs, 'tab'))
   if (bookmarks) parts.push(plural(bookmarks, 'bookmark'))
   if (privateDrives) parts.push('access to its private files')
   if (chatRooms) parts.push(plural(chatRooms, 'PeerChat room'))
+  if (notes) parts.push(plural(notes, 'P2PMD note'))
   if (parts.length === 0) return null
   return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0]
 }

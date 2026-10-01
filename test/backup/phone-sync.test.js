@@ -109,6 +109,30 @@ describe('phone-sync', function () {
     expect(parsePhoneSync({}).chat).to.equal(null)
   })
 
+  it('reads the P2PMD notes a phone sends, by key, and nothing it does not understand', async function () {
+    const dir = await makeTempDir('peersky-phone-notes-')
+    const zipPath = path.join(dir, 'inner.zip')
+    const key = `hs://${'q'.repeat(52)}`
+    const notes = {
+      version: 1,
+      name: 'Bea',
+      notes: [
+        { key, role: 'host', label: 'Note - Trip', content: '# Trip', updatedAt: 1, openedAt: 2 },
+        { key: 'hs://short', role: 'client' },
+        { key: `${'r'.repeat(52)}`, role: 'client' }
+      ]
+    }
+    await writePhoneZip(zipPath, { files: { 'phone-p2pmd.json': notes } })
+
+    const sync = await readPhoneSyncZip(zipPath)
+    expect(sync.notes.name).to.equal('Bea')
+    expect(sync.notes.notes.map((note) => note.key)).to.deep.equal([key, 'r'.repeat(52)])
+
+    expect(parsePhoneSync({ 'phone-p2pmd.json': Buffer.from(JSON.stringify({ ...notes, version: 2 })) }).notes).to.equal(null)
+    expect(parsePhoneSync({ 'phone-p2pmd.json': Buffer.from('not json') }).notes).to.equal(null)
+    expect(parsePhoneSync({}).notes).to.equal(null)
+  })
+
   it('keeps only addresses a desktop can open, once each, with tidy titles', function () {
     const sync = parsePhoneSync({
       'phone-tabs.json': Buffer.from(JSON.stringify({

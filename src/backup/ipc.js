@@ -12,6 +12,7 @@ import { tabsNotOpen } from './phone-sync.js'
 import { assertCaller } from './ipc-caller.js'
 import { listPrivateHyperdrives } from '../protocols/private-hyperdrive-registry.js'
 import { chatTakesTransfers } from '../protocols/hyper-handler.js'
+import { p2pmdTakesTransfers } from './p2pmd-notes.js'
 
 const log = createLogger('backup')
 
@@ -122,7 +123,7 @@ export function setupBackupIpc ({ getTabs } = {}) {
       const device = getPublicDeviceInfo(keys)
       const session = await createPairingSession(app.getPath('userData'), 'desktop')
       rememberPairingNonce(session.nonce)
-      return { success: true, device, pairingPayload: encodePairingString(session, { chat: chatTakesTransfers() }) }
+      return { success: true, device, pairingPayload: encodePairingString(session, { chat: chatTakesTransfers(), notes: p2pmdTakesTransfers() }) }
     } catch (error) {
       log.error(`Backup device info failed: ${error.message}`)
       return { success: false, error: error.message }

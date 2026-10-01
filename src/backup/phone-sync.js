@@ -19,11 +19,15 @@ export const PHONE_PRIVATE_DRIVES_FILE = 'phone-private-drives.json'
 // The phone's PeerChat: its name, rooms and the link its devices share.
 // PeerChat checks every field when it takes it (importChatTransfer).
 export const PHONE_PEERCHAT_FILE = 'phone-peerchat.json'
+// The phone's recent P2PMD notes. P2PMD checks every field when it takes them
+// (p2pmd-notes.js), and only keys, names and text are ever in it.
+export const PHONE_P2PMD_FILE = 'phone-p2pmd.json'
 export const PHONE_PRIVATE_DRIVE_NAME = 'Private files from your phone'
 
 const BOOKMARKS_FILE = 'bookmarks.json'
-const PHONE_SYNC_FILES = new Set([PHONE_TABS_FILE, PHONE_BOOKMARKS_FILE, PHONE_PRIVATE_DRIVES_FILE, PHONE_PEERCHAT_FILE])
+const PHONE_SYNC_FILES = new Set([PHONE_TABS_FILE, PHONE_BOOKMARKS_FILE, PHONE_PRIVATE_DRIVES_FILE, PHONE_PEERCHAT_FILE, PHONE_P2PMD_FILE])
 const MAX_CHAT_ROOMS = 500
+const MAX_NOTES = 5
 const MAX_ENTRY_BYTES = 4 * 1024 * 1024
 const MAX_TABS = 100
 const MAX_BOOKMARKS = 1000
@@ -113,7 +117,29 @@ export function parsePhoneSync (files) {
     if (privateDrives.length === MAX_PRIVATE_DRIVES) break
   }
 
-  return { tabs, bookmarks, privateDrives, chat: readChat(files[PHONE_PEERCHAT_FILE]) }
+  return {
+    tabs,
+    bookmarks,
+    privateDrives,
+    chat: readChat(files[PHONE_PEERCHAT_FILE]),
+    notes: readNotes(files[PHONE_P2PMD_FILE])
+  }
+}
+
+// Only its shape here, for the confirmation: how many notes, by key.
+function readNotes (bytes) {
+  if (!bytes) return null
+  let parsed
+  try {
+    parsed = JSON.parse(bytes.toString('utf8'))
+  } catch {
+    return null
+  }
+  if (!parsed || typeof parsed !== 'object' || parsed.version !== 1 || !Array.isArray(parsed.notes)) return null
+  const notes = parsed.notes
+    .slice(0, MAX_NOTES)
+    .filter((note) => typeof note?.key === 'string' && /^(?:hs:\/\/)?[a-z0-9]{32,256}$/i.test(note.key.trim()))
+  return { ...parsed, notes }
 }
 
 // Only its shape here, for the confirmation: the rooms and the name.

@@ -141,6 +141,7 @@ function showRestoreConfirm (res) {
     if (res.bookmarks) parts.push(plural(res.bookmarks, 'bookmark'))
     if (res.privateDrives) parts.push('access to its private files')
     if (res.chatRooms) parts.push(plural(res.chatRooms, 'PeerChat room'))
+    if (res.notes) parts.push(plural(res.notes, 'P2PMD note'))
     const list = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0]
     restoreConfirmTitle.textContent = 'Does your phone show this code?'
     restoreConfirmDetails.textContent = parts.length

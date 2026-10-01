@@ -24,10 +24,15 @@ async function loadBackupManager (options = {}) {
   const trustPrivateDriveHostname = sinon.stub()
   const exportChatForTransfer = sinon.stub().returns(null)
   const importChatFromPhone = options.importChatFromPhone || sinon.stub().resolves({ ok: true, added: 0 })
+  const exportP2pmdNotes = options.exportP2pmdNotes || sinon.stub().resolves(null)
+  const importP2pmdNotes = options.importP2pmdNotes || sinon.stub().resolves({ ok: true, added: 0 })
+  const assertMobilePairingAllowed = sinon.stub().resolves(null)
+  const setPairedMobile = sinon.stub().resolves()
   const isLivePairingNonce = options.isLivePairingNonce || sinon.stub().returns(true)
   const forgetPairingNonce = sinon.stub()
   const identityTransfer = {
     createIdentityTransferZip: sinon.stub(),
+    decodePairingString: sinon.stub().returns({ deviceType: 'desktop', chat: false, notes: false }),
     decryptIdentityTransferZip: sinon.stub(),
     extractAndVerifyIdentityPayload: sinon.stub(),
     isIdentityTransferManifest: sinon.stub().returns(false),
@@ -80,6 +85,8 @@ async function loadBackupManager (options = {}) {
       isEncryptedBackupManifest: sinon.stub().returns(false)
     },
     [hyperHandlerPath]: { suspendHyper, resumeHyper, trustPrivateDriveHostname, exportChatForTransfer, importChatFromPhone },
+    '../../src/backup/p2pmd-notes.js': { exportP2pmdNotes, importP2pmdNotes },
+    '../../src/backup/mobile-pairing.js': { assertMobilePairingAllowed, setPairedMobile },
     [ipfsHandlerPath]: { suspendIPFS, resumeIPFS }
   }
 
@@ -99,6 +106,8 @@ async function loadBackupManager (options = {}) {
       suspendIPFS,
       trustPrivateDriveHostname,
       importChatFromPhone,
+      exportP2pmdNotes,
+      importP2pmdNotes,
       isLivePairingNonce,
       forgetPairingNonce,
       identityTransfer
@@ -297,8 +306,9 @@ describe('backup-manager', function () {
     const openTabs = sinon.stub()
     const result = await backupManager.applyStaged(staged.stageId, { openTabs })
     expect(result).to.deep.include({ success: true, requiresRestart: false })
-    expect(result.added).to.deep.equal({ tabs: 1, bookmarks: 1, privateDrives: 1, chatRooms: 0 })
+    expect(result.added).to.deep.equal({ tabs: 1, bookmarks: 1, privateDrives: 1, chatRooms: 0, notes: 0 })
     expect(stubs.importChatFromPhone.called).to.equal(false)
+    expect(stubs.importP2pmdNotes.called).to.equal(false)
     expect(openTabs.calledOnceWith([{ url: 'https://t.example/', title: 'T' }])).to.equal(true)
     expect(JSON.parse(await readFile(path.join(userData, 'bookmarks.json'), 'utf8')).map((b) => b.url))
       .to.deep.equal(['https://mine.example/', 'https://b.example/'])
@@ -324,6 +334,52 @@ describe('backup-manager', function () {
     expect(importChatFromPhone.calledOnce).to.equal(true)
     expect(importChatFromPhone.firstCall.args[0]).to.deep.include({ label: 'desktop' })
     expect(result.added.chatRooms).to.equal(1)
+  })
+
+  it('shows how many P2PMD notes a phone sends, and hands them to P2PMD once confirmed', async function () {
+    const notes = {
+      version: 1,
+      name: 'Bea',
+      notes: [{ key: `hs://${'q'.repeat(52)}`, role: 'host', content: '# Trip' }, { key: 'not a key', role: 'client' }]
+    }
+    const importP2pmdNotes = sinon.stub().resolves({ ok: true, added: 1 })
+    const { backupManager } = await loadBackupManager({ ...phoneTransferOptions({ 'phone-p2pmd.json': notes }), importP2pmdNotes })
+
+    const staged = await backupManager.stageRestore(await downloadedZip())
+    expect(staged).to.include({ notes: 1 })
+    expect(importP2pmdNotes.called).to.equal(false)
+
+    const result = await backupManager.applyStaged(staged.stageId, { openTabs: async () => 1 })
+    expect(importP2pmdNotes.calledOnce).to.equal(true)
+    expect(importP2pmdNotes.firstCall.args[0].notes.map((note) => note.key)).to.deep.equal([`hs://${'q'.repeat(52)}`])
+    expect(result.added.notes).to.equal(1)
+  })
+
+  it('reads P2PMD notes only for a phone whose code says it takes them, before the stores close', async function () {
+    const notes = { version: 1, name: 'Ada', notes: [] }
+    const cases = [
+      [{ deviceType: 'mobile', notes: true }, notes],
+      [{ deviceType: 'mobile', notes: false }, null],
+      [{ deviceType: 'desktop', notes: true }, null]
+    ]
+    for (const [pairing, expected] of cases) {
+      const exportP2pmdNotes = sinon.stub().resolves(notes)
+      const { backupManager, stubs } = await loadBackupManager({
+        exportP2pmdNotes,
+        identityTransfer: {
+          decodePairingString: sinon.stub().returns(pairing),
+          createIdentityTransferZip: sinon.stub().resolves({ bytes: 1 })
+        }
+      })
+      await backupManager.createIdentityTransferBackup(path.join(os.tmpdir(), 'unused.zip'), { targetPairingPayload: 'code' })
+      const options = stubs.identityTransfer.createIdentityTransferZip.firstCall.args[2]
+      expect(options.notes).to.deep.equal(expected)
+      if (expected) {
+        expect(exportP2pmdNotes.calledBefore(stubs.suspendHyper)).to.equal(true)
+      } else {
+        expect(exportP2pmdNotes.called).to.equal(false)
+      }
+    }
   })
 
   it('counts only the phone tabs that were opened, not those already open here', async function () {

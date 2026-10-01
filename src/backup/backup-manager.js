@@ -8,7 +8,7 @@ import { app } from 'electron'
 import fsExtra from 'fs-extra'
 import { createLogger } from '../logger.js'
 import { readManifest, verifyManifest } from './backup-core.js'
-import { createIdentityTransferZip, decryptIdentityTransferZip, extractAndVerifyIdentityPayload, isIdentityTransferManifest } from './identity-transfer.js'
+import { createIdentityTransferZip, decodePairingString, decryptIdentityTransferZip, extractAndVerifyIdentityPayload, isIdentityTransferManifest } from './identity-transfer.js'
 import { assertMobilePairingAllowed, setPairedMobile } from './mobile-pairing.js'
 import { decryptEncryptedBackupZip, isEncryptedBackupManifest } from './encrypted-backup.js'
 import { suspendHyper, resumeHyper, trustPrivateDriveHostname, exportChatForTransfer, importChatFromPhone } from '../protocols/hyper-handler.js'
@@ -17,10 +17,23 @@ import { setPrivateDriveOwnership, currentPrivateDriveIds } from '../protocols/p
 import { listPrivateHyperdrives } from '../protocols/private-hyperdrive-registry.js'
 import { decodeDriveId } from './private-drive-export.js'
 import { applyPhoneSync, isPhoneSyncManifest, readPhoneSyncZip } from './phone-sync.js'
+import { exportP2pmdNotes, importP2pmdNotes } from './p2pmd-notes.js'
 import { forgetPairingNonce, isLivePairingNonce } from './pairing-sessions.js'
 import { ensureOwnNetworkKeys } from './network-keys.js'
 
 const log = createLogger('backup')
+
+// A person's recent P2PMD notes, for a phone whose code says it takes them.
+async function notesForPairing (payload) {
+  let pairing
+  try {
+    pairing = decodePairingString(payload)
+  } catch {
+    return null
+  }
+  if (!pairing.notes || pairing.deviceType !== 'mobile') return null
+  return exportP2pmdNotes()
+}
 
 const WORKER_PATH = fileURLToPath(new URL('./backup-worker.js', import.meta.url))
 
@@ -201,6 +214,9 @@ class BackupManager {
       userDataDir(),
       options.targetPairingPayload || options.targetEncryptionPublicKey
     )
+    // Read before the stores are suspended, and only for a phone whose code
+    // says it takes them: P2PMD's own page reads its notes.
+    const notes = await notesForPairing(options.targetPairingPayload || options.targetEncryptionPublicKey)
 
     await suspendHyper()
     await suspendIPFS()
@@ -208,7 +224,8 @@ class BackupManager {
       const result = await createIdentityTransferZip(userDataDir(), outPath, {
         ...options,
         peerskyVersion: app.getVersion(),
-        exportChat: exportChatForTransfer
+        exportChat: exportChatForTransfer,
+        notes
       })
       // Recorded only once the transfer exists. A failure part way through
       // must not leave the identity looking paired to a phone that never got
@@ -340,7 +357,8 @@ class BackupManager {
           bookmarks: sync.bookmarks.length,
           privateDrives: sync.privateDrives.length,
           chatRooms: sync.chat ? sync.chat.rooms.length : 0,
-          chatName: sync.chat?.profile?.username || ''
+          chatName: sync.chat?.profile?.username || '',
+          notes: sync.notes ? sync.notes.notes.length : 0
         }
       }
 
@@ -397,9 +415,11 @@ class BackupManager {
       }
       // PeerChat runs, so it takes the phone's name and rooms itself.
       const chat = staged.sync.chat ? await importChatFromPhone(staged.sync.chat) : null
+      // So does P2PMD, through its own page. Nothing here is replaced.
+      const notes = staged.sync.notes ? await importP2pmdNotes(staged.sync.notes) : null
       forgetPairingNonce(staged.nonce)
       this.dropStaged(staged)
-      log.info(`Added ${applied.bookmarksAdded} bookmarks, ${tabsAdded} tabs and ${chat?.added || 0} chat rooms from a phone`)
+      log.info(`Added ${applied.bookmarksAdded} bookmarks, ${tabsAdded} tabs, ${chat?.added || 0} chat rooms and ${notes?.added || 0} notes from a phone`)
       return {
         success: true,
         requiresRestart: false,
@@ -407,7 +427,8 @@ class BackupManager {
           tabs: tabsAdded,
           bookmarks: applied.bookmarksAdded,
           privateDrives: applied.privateDrivesAdded,
-          chatRooms: chat?.added || 0
+          chatRooms: chat?.added || 0,
+          notes: notes?.added || 0
         }
       }
     }

@@ -89,14 +89,16 @@ export async function createPairingSession (userDataDir, deviceType) {
   }
 }
 
-export function encodePairingString (session, { chat = false } = {}) {
+export function encodePairingString (session, { chat = false, notes = false } = {}) {
   const params = new URLSearchParams({
     deviceType: normalizeDeviceType(session.deviceType),
     nonce: session.nonce
   })
-  // This desktop takes PeerChat in a transfer. A device whose code does not
-  // say so refuses files it does not know, so it is sent none.
+  // This desktop takes PeerChat, and P2PMD notes, in a transfer. A device
+  // whose code does not say so refuses files it does not know, so it is sent
+  // none.
   if (chat) params.set('chat', '1')
+  if (notes) params.set('notes', '1')
   return `peersky-identity:${session.encryptionPublicKey}?${params}`
 }
 
@@ -116,7 +118,8 @@ export function decodePairingString (str) {
     deviceType: normalizeDeviceType(params.get('deviceType')),
     encryptionPublicKey: toHex(decodeEncryptionPublicKey(encryptionPublicKey)),
     nonce: nonce.toLowerCase(),
-    chat: params.get('chat') === '1'
+    chat: params.get('chat') === '1',
+    notes: params.get('notes') === '1'
   }
 }
 
@@ -206,7 +209,12 @@ export async function createIdentityTransferZip (userDataDir, outPath, options =
       isIdentityTransfer: true,
       targetDeviceType,
       includePrivate: options.includePrivate !== false,
-      chatTransfer: chat ? Buffer.from(JSON.stringify(chat)) : null
+      chatTransfer: chat ? Buffer.from(JSON.stringify(chat)) : null,
+      // P2PMD notes, read by the caller beforehand, go only to a phone whose
+      // code says it takes them.
+      notesTransfer: pairing.notes && targetDeviceType === 'mobile' && options.notes
+        ? Buffer.from(JSON.stringify(options.notes))
+        : null
     })
 
     const contentKey = crypto.randomBytes(32)
