@@ -201,9 +201,13 @@ to the sending desktop's keychain.
 
 A name, bio or picture changed on one device reaches the others the next time
 they share a room. Each profile a device sends carries a proof made with the
-link, and a device takes a newer profile only with a proof it can check, so
-nobody else can rename a person's devices. A room joined later on one device
-is not sent to the others; a new transfer or the room's link brings it.
+link and that device's network key, and a device takes a newer profile only
+with a proof it can check on that same connection, so nobody else can rename a
+person's devices or pass a proof on as theirs. Devices that have proved this to
+each other also send each other the rooms they are in, with their keys: a room
+joined on one device appears on the others that are online, or the next time
+they connect. A room left on a device stays left there, and a direct
+conversation goes along once the other person has accepted it.
 
 A desktop restored from another desktop starts with a copy of its stores, and
 the keys its network connections are made with come from those stores. Two
