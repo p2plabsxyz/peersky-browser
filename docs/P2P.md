@@ -85,6 +85,9 @@ async function publishToIPFS(files) {
 }
 ```
 
+> [!NOTE]
+> Writes from a website, a Hyper or IPFS site, or a local file need the user's consent. The first `PUT`, `POST` or `DELETE` to `hyper://`, `ipfs://` or `ipns://` from a site shows a **P2P publishing** prompt, and the answer is remembered for that site in site settings. Built-in `peersky://` apps write without a prompt. Writes from service workers are refused, since they cannot show one.
+
 Check our p2p apps in `/pages/p2p/`: https://github.com/p2plabsxyz/peersky-browser/tree/main/src/pages/p2p
 
 ## 🤖 LLM-powered P2P apps
@@ -171,7 +174,7 @@ npm install  # Automatically runs: git submodule update --init --recursive
 ```
 
 **Updating apps to latest versions:**
-- **Via UI**: Navigate to `peersky://p2p/` and click the "Update All" button at the bottom
+- **Via UI**: Navigate to `peersky://p2p/` and click the "Update All" button at the bottom. In a development checkout this runs the command below. An installed PeerSky never rewrites its own P2P apps: the button checks for a PeerSky update instead, and new app versions arrive with it, pinned and signed. It used to unpack each app's latest GitHub zip into `app.asar.unpacked`, but an installed app cannot see files added after it was built, and PeerSky stopped starting when an update added one.
 - **Via CLI**: `git submodule update --remote --merge`
 
 The update pulls the latest commit from each submodule's default branch. After updating, commit the new submodule pointers:

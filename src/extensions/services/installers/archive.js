@@ -3,7 +3,7 @@
 import path from 'path'
 import { promises as fs } from 'fs'
 import { randomBytes } from 'crypto'
-import { ensureDir, atomicReplaceDir } from '../../util.js'
+import { ensureDir, atomicReplaceDir, assertInstallSlotFree } from '../../util.js'
 import { extractZipFile, extractZipBuffer } from '../../zip.js'
 import { isCrx, extractCrx } from '../../crx.js'
 import { generateSecureExtensionId } from '../../utils/ids.js'
@@ -85,6 +85,7 @@ async function stage (manager, archivePath, isZip, stagingDir, tempDir) {
   }
 
   const provisionalId = generateSecureExtensionId(manifest)
+  assertInstallSlotFree(manager, provisionalId, manifest)
   const version = String(manifest.version || '').trim() || '0.0.0'
   const versionDirName = `${version}_0`
 

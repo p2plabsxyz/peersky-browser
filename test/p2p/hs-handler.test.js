@@ -1,4 +1,5 @@
 import { expect } from 'chai'
+import { EventEmitter } from 'events'
 import esmock from 'esmock'
 import fs from 'fs'
 import net from 'net'
@@ -435,6 +436,53 @@ describe('HS protocol handler', function () {
       expect(response.status, `rehost failed: ${data.error}`).to.equal(200)
       expect(data.key).to.equal(room.key)
       await protocolPost(restarted, 'close', {})
+    })
+  })
+
+  describe('a note on another of the person\'s devices', function () {
+    // Opening one looks for it on the other device first. Hosting it here from
+    // the saved seed as part of that look would answer the look itself, and
+    // the two devices would each host their own copy.
+    it('only joins when asked to look, even with a seed saved here', async function () {
+      const { data: room } = await protocolPost(handler, 'create', { secure: false, udp: false })
+      await protocolPost(handler, 'close', {})
+
+      const { handler: restarted } = await loadHsHandler(userDataDir)
+      const look = await protocolPost(restarted, 'join', { key: room.key, joinOnly: true })
+      expect(look.response.status, `join failed: ${look.data.error}`).to.equal(200)
+      expect(look.data.hosted, 'the look hosted the room from the saved seed').to.not.equal(true)
+      await protocolPost(restarted, 'close', {})
+
+      // A plain join of a room this device made still hosts it again.
+      const plain = await protocolPost(restarted, 'join', { key: room.key })
+      expect(plain.data.hosted).to.equal(true)
+      expect(plain.data.key).to.equal(room.key)
+      await protocolPost(restarted, 'close', {})
+    })
+
+    // A join binds the port the room's host advertised once ready() is done.
+    // A port already taken here used to throw in the main process.
+    it('answers with the port when the one to join on is busy, instead of throwing', async function () {
+      const { waitForClientProxy } = await importHsHandler(userDataDir)
+      const proxy = new EventEmitter()
+      const waiting = waitForClientProxy({ dht: { proxy, args: { port: 59677 }, state: 'waiting' } })
+      const busy = Object.assign(new Error('address already in use'), { code: 'EADDRINUSE' })
+      expect(() => proxy.emit('error', busy)).to.not.throw()
+      expect(await waiting).to.deep.include({ ok: false, port: 59677 })
+      // And nothing later gets through either.
+      expect(() => proxy.emit('error', new Error('reset'))).to.not.throw()
+
+      const fine = new EventEmitter()
+      const listening = waitForClientProxy({ dht: { proxy: fine, args: { port: 1 }, state: 'waiting' } })
+      fine.emit('listening')
+      expect(await listening).to.deep.equal({ ok: true })
+    })
+
+    it('says so when the room it joins is one this device is hosting', async function () {
+      const { data: room } = await protocolPost(handler, 'create', { secure: false, udp: false })
+      const { data } = await protocolPost(handler, 'join', { key: room.key, joinOnly: true })
+      expect(data.hosted).to.equal(true)
+      expect(data.localUrl).to.be.a('string')
     })
   })
 

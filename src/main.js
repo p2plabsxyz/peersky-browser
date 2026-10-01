@@ -12,6 +12,7 @@ import { createHandler as createWeb3Handler } from './protocols/web3-handler.js'
 import { createHandler as createFileHandler } from './protocols/file-handler.js'
 import { createHandler as createBittorrentHandler, setupBittorrentIpc, shutdownBittorrent, warmupBittorrent } from './protocols/bittorrent-handler.js'
 import { ipfsOptions, hyperOptions } from './protocols/config.js'
+import { gateRequest, stampVetted, requireVetted } from './protocols/request-gate.js'
 import { createMenuTemplate } from './actions.js'
 import WindowManager from './window-manager.js'
 import settingsManager from './settings-manager.js'
@@ -28,10 +29,11 @@ import { urlFromArgv, queueLaunchUrl, startDeliveringLaunchUrls } from './launch
 import extensionManager from './extensions/index.js'
 import { setupExtensionIpcHandlers } from './extensions/extensions-ipc.js'
 import { getBrowserSession, usePersist } from './session.js'
-import { setupPermissionHandler } from './permissions.js'
+import { setupPermissionHandler, requestSitePermission, permissionOriginFromUrl } from './permissions.js'
 import { setupSiteInfoIpc } from './site-info-ipc.js'
 import { setupP2pmdPdfExportIpc } from './pages/p2p/p2pmd/pdf-export-ipc.js'
 import { setupBackupIpc } from './backup/ipc.js'
+import { assertCaller } from './backup/ipc-caller.js'
 import backupManager from './backup/backup-manager.js'
 import { downloadBackupFromAddress } from './backup/p2p-backup.js'
 
@@ -282,10 +284,10 @@ app.whenReady().then(async () => {
     await windowManager.saveFinal()
   })
 
-  p2pAppRegistry.setupIpc()
+  p2pAppRegistry.setupIpc({ checkForAppUpdate: checkForUpdatesNow })
   installExtensionWebRequestBridge(userSession)
   setupBittorrentIpc()
-  setupBackupIpc()
+  setupBackupIpc({ getTabs: () => windowManager.getTabs() })
   setupSiteInfoIpc(userSession)
 
   userSession.on('will-download', (event, item, sessionWebContents) => {
@@ -650,16 +652,16 @@ async function setupProtocols (session) {
 
   sessionProtocol.handle('peersky', browserProtocolHandler)
   sessionProtocol.handle('browser', browserThemeHandler)
-  sessionProtocol.handle('ipfs', ipfsProtocolHandler)
-  sessionProtocol.handle('ipns', ipfsProtocolHandler)
-  sessionProtocol.handle('pubsub', ipfsProtocolHandler)
-  sessionProtocol.handle('hyper', hyperProtocolHandler)
-  sessionProtocol.handle('hs', hsProtocolHandler)
+  sessionProtocol.handle('ipfs', requireVetted(ipfsProtocolHandler))
+  sessionProtocol.handle('ipns', requireVetted(ipfsProtocolHandler))
+  sessionProtocol.handle('pubsub', requireVetted(ipfsProtocolHandler))
+  sessionProtocol.handle('hyper', requireVetted(hyperProtocolHandler))
+  sessionProtocol.handle('hs', requireVetted(hsProtocolHandler))
   sessionProtocol.handle('web3', web3ProtocolHandler)
   sessionProtocol.handle('file', fileProtocolHandler)
-  sessionProtocol.handle('bittorrent', bittorrentProtocolHandler)
-  sessionProtocol.handle('bt', bittorrentProtocolHandler)
-  sessionProtocol.handle('magnet', bittorrentProtocolHandler)
+  sessionProtocol.handle('bittorrent', requireVetted(bittorrentProtocolHandler))
+  sessionProtocol.handle('bt', requireVetted(bittorrentProtocolHandler))
+  sessionProtocol.handle('magnet', requireVetted(bittorrentProtocolHandler))
 }
 
 /**
@@ -679,6 +681,27 @@ function warmP2PBackends () {
       .then(warm)
       .catch((error) => log.warn(`${label} warm-up failed, will retry on first use:`, error?.message || error))
   }
+}
+
+async function isGatedRequestAllowed (details) {
+  try {
+    const verdict = gateRequest({
+      url: details.url,
+      method: details.method,
+      resourceType: details.resourceType,
+      initiatorOrigin: details.initiatorOrigin,
+      frameUrl: details.frame?.url
+    })
+    if (verdict.action === 'allow') return true
+    if (verdict.action === 'extension') return extensionManager.isP2PWriteAllowed(verdict.extensionId, verdict.scheme)
+    if (verdict.action === 'ask') {
+      const origin = permissionOriginFromUrl(verdict.caller)
+      return !!origin && await requestSitePermission(details.webContents, origin, 'p2pPublish')
+    }
+  } catch (err) {
+    log.warn('[webRequest] request gate failed:', err?.message || err)
+  }
+  return false
 }
 
 function installExtensionWebRequestBridge (session) {
@@ -705,6 +728,11 @@ function installExtensionWebRequestBridge (session) {
 
   session.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, async (details, callback) => {
     const url = details?.url || ''
+    if (!(await isGatedRequestAllowed(details))) {
+      log.warn(`[webRequest] blocked ${details.method} ${url.split(':')[0]}: request from ${details.initiatorOrigin || details.frame?.url || 'unknown'}`)
+      callback({ cancel: true }) // eslint-disable-line n/no-callback-literal
+      return
+    }
     if (!shouldForwardToExtensions(url)) {
       callback({}) // eslint-disable-line n/no-callback-literal
       return
@@ -732,6 +760,11 @@ function installExtensionWebRequestBridge (session) {
     { urls: ['<all_urls>'] },
     async (details, callback) => {
       const url = details?.url || ''
+      const stamped = stampVetted(details)
+      if (stamped) {
+        callback({ requestHeaders: stamped }) // eslint-disable-line n/no-callback-literal
+        return
+      }
       if (!shouldForwardToExtensions(url)) {
         callback({}) // eslint-disable-line n/no-callback-literal
         return
@@ -1163,6 +1196,7 @@ setupP2pmdPdfExportIpc()
 
 // Onboarding IPC handlers
 ipcMain.handle('onboarding-import-data', async (event, dataStr) => {
+  assertCaller(event, 'onboarding')
   try {
     const importData = JSON.parse(dataStr)
     if (!importData || typeof importData !== 'object') {
@@ -1289,6 +1323,7 @@ ipcMain.handle('onboarding-import-data', async (event, dataStr) => {
 })
 
 ipcMain.handle('onboarding-skip', async (event) => {
+  assertCaller(event, 'onboarding')
   try {
     settingsManager.settings.onboardingCompleted = true
     await settingsManager.saveSettings()
@@ -1310,6 +1345,7 @@ ipcMain.handle('onboarding-skip', async (event) => {
 })
 
 ipcMain.handle('onboarding-restore-backup', async (event, backupContent) => {
+  assertCaller(event, 'onboarding')
   try {
     const parsed = JSON.parse(backupContent)
     if (!parsed || typeof parsed !== 'object') {
@@ -1352,6 +1388,7 @@ async function finishOnboardingRestore () {
 }
 
 ipcMain.handle('onboarding-restore-zip', async (event, payload = {}) => {
+  assertCaller(event, 'onboarding')
   try {
     const zipPath = typeof payload === 'string' ? payload : payload?.zipPath
     const res = await backupManager.restoreBackup(zipPath, (data) => {
@@ -1368,29 +1405,83 @@ ipcMain.handle('onboarding-restore-zip', async (event, payload = {}) => {
   }
 })
 
+// A backup asked for by link goes straight in, with the passphrase given
+// beside it. A transfer, from a phone or another desktop, waits for the
+// person to compare the code on both screens (onboarding-apply-restore).
 ipcMain.handle('onboarding-restore-cid', async (event, payload = {}) => {
-  let zipPath
+  assertCaller(event, 'onboarding')
+  const onProgress = (data) => {
+    if (!event.sender.isDestroyed()) {
+      event.sender.send('backup-progress', { phase: 'restore', ...data })
+    }
+  }
   try {
     const address = typeof payload === 'string' ? payload : payload?.address
-    zipPath = await downloadBackupFromAddress(address, (status) => {
+    const zipPath = await downloadBackupFromAddress(address, (status) => {
       if (!event.sender.isDestroyed()) {
         event.sender.send('backup-progress', { phase: 'fetch', message: status.message })
       }
     })
-    const res = await backupManager.restoreBackup(zipPath, (data) => {
-      if (!event.sender.isDestroyed()) {
-        event.sender.send('backup-progress', { phase: 'restore', ...data })
-      }
-    }, { passphrase: payload?.passphrase })
+    const staged = await backupManager.stageRestore(zipPath, onProgress)
+    if (staged.kind !== 'backup') return { success: true, ...staged }
+
+    const res = await backupManager.applyStaged(staged.stageId, { passphrase: payload?.passphrase, onProgress })
     if (!res.success) return res
     await finishOnboardingRestore()
     return { success: true }
   } catch (error) {
     log.error('Onboarding CID restore failed:', error)
     return { success: false, error: error.message }
-  } finally {
-    if (zipPath) await fs.rm(zipPath, { force: true }).catch(() => {})
   }
+})
+
+// Onboarding happens in a tab of its own window. The window closes once the
+// person is through it.
+function onboardingWindowFor (event) {
+  return BrowserWindow.fromWebContents(event.sender) ||
+    (event.sender.hostWebContents ? BrowserWindow.fromWebContents(event.sender.hostWebContents) : null)
+}
+
+ipcMain.handle('onboarding-apply-restore', async (event, payload = {}) => {
+  assertCaller(event, 'onboarding')
+  try {
+    let phoneTabs = []
+    const res = await backupManager.applyStaged(payload?.stageId, {
+      openTabs: (tabs) => {
+        phoneTabs = tabs
+        return tabs.length
+      }
+    })
+    if (!res.success) return res
+    if (res.requiresRestart) {
+      await finishOnboardingRestore()
+      return { success: true }
+    }
+
+    // Tabs and bookmarks from a phone. Nothing restarts: onboarding is done,
+    // and the first window opens with the phone's tabs asleep beside Home.
+    settingsManager.settings.onboardingCompleted = true
+    await settingsManager.saveSettings()
+    const opened = windowManager.open({ url: 'peersky://home', isMainWindow: true })
+    if (phoneTabs.length > 0 && opened?.window) {
+      opened.window.webContents.once('did-finish-load', () => {
+        if (!opened.window.isDestroyed()) {
+          opened.window.webContents.send('add-tabs-from-main', { tabs: phoneTabs, group: 'Phone' })
+        }
+      })
+    }
+    onboardingWindowFor(event)?.close()
+    return { success: true, added: res.added }
+  } catch (error) {
+    log.error('Onboarding restore failed:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('onboarding-discard-restore', async (event, payload = {}) => {
+  assertCaller(event, 'onboarding')
+  backupManager.discardStaged(payload?.stageId)
+  return { success: true }
 })
 
 // Only a plain packaged build can ask for the http/https default. A dev run

@@ -7,7 +7,12 @@ import { uploadBackup, downloadBackupFromAddress } from './p2p-backup.js'
 import { getDeviceKeys, getPublicDeviceInfo } from './device-keys.js'
 import { createPairingSession, encodePairingString } from './identity-transfer.js'
 import { clearPairedMobile, readPairedMobile } from './mobile-pairing.js'
+import { rememberPairingNonce } from './pairing-sessions.js'
+import { tabsNotOpen } from './phone-sync.js'
+import { assertCaller } from './ipc-caller.js'
 import { listPrivateHyperdrives } from '../protocols/private-hyperdrive-registry.js'
+import { chatTakesTransfers } from '../protocols/hyper-handler.js'
+import { p2pmdTakesTransfers } from './p2pmd-notes.js'
 
 const log = createLogger('backup')
 
@@ -15,9 +20,37 @@ function ownerWindow (event) {
   return BrowserWindow.fromWebContents(event.sender) || null
 }
 
-// Register IPC handlers for the backup & restore UI.
-export function setupBackupIpc () {
-  ipcMain.handle('backup-create', async (event, payload = {}) => {
+// Tabs from a phone open in the window the Backup & Restore page is in. The
+// page is a tab itself, so the window is the one hosting it. A page already
+// open in any window is left out. Returns how many tabs were opened.
+async function openTabsBeside (event, tabs, getTabs) {
+  const host = event.sender.hostWebContents ||
+    ownerWindow(event)?.webContents ||
+    BrowserWindow.getFocusedWindow()?.webContents ||
+    BrowserWindow.getAllWindows()[0]?.webContents
+  if (!host || host.isDestroyed()) return 0
+  const windows = typeof getTabs === 'function' ? await getTabs().catch(() => null) : null
+  const fresh = tabsNotOpen(tabs, windows)
+  if (fresh.length > 0) host.send('add-tabs-from-main', { tabs: fresh, group: 'Phone' })
+  return fresh.length
+}
+
+// Register IPC handlers for the backup & restore UI. getTabs reads every
+// window's tabs, so a phone's tab already open here is not opened again.
+export function setupBackupIpc ({ getTabs } = {}) {
+  backupManager.clearLeftoverStaging().catch((error) => {
+    log.error(`Could not clear leftover restore staging: ${error.message}`)
+  })
+
+  // Every channel here is for the Backup & Restore page; onboarding also asks
+  // for this desktop's pairing code. These export and replace the identity,
+  // so a caller from any other page is refused before anything runs.
+  const handle = (channel, handler) => ipcMain.handle(channel, (event, ...args) => {
+    assertCaller(event, 'backup', ...(channel === 'backup-device-info' ? ['onboarding'] : []))
+    return handler(event, ...args)
+  })
+
+  handle('backup-create', async (event, payload = {}) => {
     try {
       const win = ownerWindow(event)
       const saveOptions = {
@@ -43,7 +76,7 @@ export function setupBackupIpc () {
     }
   })
 
-  ipcMain.handle('backup-validate', async (event) => {
+  handle('backup-validate', async (event) => {
     try {
       const win = ownerWindow(event)
       const openOptions = {
@@ -66,7 +99,7 @@ export function setupBackupIpc () {
     }
   })
 
-  ipcMain.handle('backup-restore', async (event, payload = {}) => {
+  handle('backup-restore', async (event, payload = {}) => {
     try {
       const zipPath = typeof payload === 'string' ? payload : payload?.zipPath
       if (!zipPath || typeof zipPath !== 'string') {
@@ -84,19 +117,20 @@ export function setupBackupIpc () {
     }
   })
 
-  ipcMain.handle('backup-device-info', async () => {
+  handle('backup-device-info', async () => {
     try {
       const keys = await getDeviceKeys(app.getPath('userData'))
       const device = getPublicDeviceInfo(keys)
       const session = await createPairingSession(app.getPath('userData'), 'desktop')
-      return { success: true, device, pairingPayload: encodePairingString(session) }
+      rememberPairingNonce(session.nonce)
+      return { success: true, device, pairingPayload: encodePairingString(session, { chat: chatTakesTransfers(), notes: p2pmdTakesTransfers() }) }
     } catch (error) {
       log.error(`Backup device info failed: ${error.message}`)
       return { success: false, error: error.message }
     }
   })
 
-  ipcMain.handle('backup-private-hyperdrives', async () => {
+  handle('backup-private-hyperdrives', async () => {
     try {
       const items = await listPrivateHyperdrives(app.getPath('userData'))
       return { success: true, items }
@@ -106,7 +140,7 @@ export function setupBackupIpc () {
     }
   })
 
-  ipcMain.handle('backup-identity-create', async (event, payload = {}) => {
+  handle('backup-identity-create', async (event, payload = {}) => {
     try {
       const { targetPairingPayload } = payload
       const win = ownerWindow(event)
@@ -132,7 +166,7 @@ export function setupBackupIpc () {
     }
   })
 
-  ipcMain.handle('backup-paired-mobile', async () => {
+  handle('backup-paired-mobile', async () => {
     try {
       return { success: true, paired: await readPairedMobile(app.getPath('userData')) }
     } catch (error) {
@@ -145,7 +179,7 @@ export function setupBackupIpc () {
   // wait to hear from the old phone: the usual reason to move is that it is
   // broken, sold or already wiped, and blocking on it would fail exactly when
   // this is needed. The caller warns the user to wipe the old phone first.
-  ipcMain.handle('backup-forget-mobile', async () => {
+  handle('backup-forget-mobile', async () => {
     try {
       await clearPairedMobile(app.getPath('userData'))
       log.info('Paired mobile cleared; a new phone can be paired')
@@ -156,7 +190,7 @@ export function setupBackupIpc () {
     }
   })
 
-  ipcMain.handle('backup-identity-upload-hyper', async (_event, payload = {}) => {
+  handle('backup-identity-upload-hyper', async (_event, payload = {}) => {
     const outPath = path.join(app.getPath('temp'), `peersky-identity-${Date.now()}.zip`)
     try {
       const { targetPairingPayload } = payload
@@ -175,30 +209,52 @@ export function setupBackupIpc () {
     }
   })
 
-  ipcMain.handle('backup-restore-cid', async (event, payload = {}) => {
-    let zipPath
+  // Restoring from the network is two steps. The download is checked first,
+  // and a transfer shows its code, so the person compares the two screens
+  // before anything here changes.
+  handle('backup-fetch-restore', async (event, payload = {}) => {
     try {
       const address = typeof payload === 'string' ? payload : payload?.address
-      zipPath = await downloadBackupFromAddress(address, (status) => {
+      const zipPath = await downloadBackupFromAddress(address, (status) => {
         if (!event.sender.isDestroyed()) {
           event.sender.send('backup-progress', { phase: 'fetch', message: status.message })
         }
       })
-      const result = await backupManager.restoreBackup(zipPath, (data) => {
+      const staged = await backupManager.stageRestore(zipPath, (data) => {
         if (!event.sender.isDestroyed()) {
           event.sender.send('backup-progress', { phase: 'restore', ...data })
         }
-      }, { passphrase: payload?.passphrase })
-      return result
+      })
+      return { success: true, ...staged }
     } catch (error) {
-      log.error(`Backup CID restore failed: ${error.message}`)
+      log.error(`Fetching a restore failed: ${error.message}`)
       return { success: false, error: error.message }
-    } finally {
-      if (zipPath) await fs.rm(zipPath, { force: true }).catch(() => {})
     }
   })
 
-  ipcMain.handle('backup-relaunch', async () => {
+  handle('backup-apply-restore', async (event, payload = {}) => {
+    try {
+      return await backupManager.applyStaged(payload?.stageId, {
+        passphrase: payload?.passphrase,
+        onProgress: (data) => {
+          if (!event.sender.isDestroyed()) {
+            event.sender.send('backup-progress', { phase: 'restore', ...data })
+          }
+        },
+        openTabs: (tabs) => openTabsBeside(event, tabs, getTabs)
+      })
+    } catch (error) {
+      log.error(`Applying a restore failed: ${error.message}`)
+      return { success: false, error: error.message }
+    }
+  })
+
+  handle('backup-discard-restore', async (_event, payload = {}) => {
+    backupManager.discardStaged(payload?.stageId)
+    return { success: true }
+  })
+
+  handle('backup-relaunch', async () => {
     const { windowManager } = await import('../main.js')
     if (windowManager) {
       windowManager.setSkipSaveOnQuit(true)

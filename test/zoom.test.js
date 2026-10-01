@@ -14,7 +14,8 @@ async function loadActions () {
   const module = await esmock.strict('../src/actions.js', {
     electron: {
       app: { name: 'Peersky', getVersion: () => '0.0.0' },
-      BrowserWindow: { getFocusedWindow: () => focusedWindow }
+      BrowserWindow: { getFocusedWindow: () => focusedWindow },
+      webContents: { fromId: () => null }
     },
     '../src/history-nav.js': { goBackActiveTab () {}, goForwardActiveTab () {} }
   })
@@ -134,7 +135,8 @@ describe('page zoom', function () {
       const module = await esmock.strict('../src/actions.js', {
         electron: {
           app: { name: 'Peersky', getVersion: () => '0.0.0' },
-          BrowserWindow: { getFocusedWindow: () => null }
+          BrowserWindow: { getFocusedWindow: () => null },
+          webContents: { fromId: () => null }
         },
         '../src/history-nav.js': { goBackActiveTab () {}, goForwardActiveTab () {} }
       })

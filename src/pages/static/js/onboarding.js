@@ -21,7 +21,7 @@ setTimeout(() => {
 }, 10000)
 
 const api = window.electronAPI || {}
-const { importOnboardingData, skipOnboarding, openExternalLink, restoreZip, restoreCid, getDeviceInfo } = api
+const { importOnboardingData, skipOnboarding, openExternalLink, restoreZip, restoreCid, applyRestore, discardRestore, getDeviceInfo } = api
 const restoreScreen = document.getElementById('restore-screen')
 
 const CHROME_STORE_URL = 'https://chromewebstore.google.com/detail/peersky-onboarding-extens/knegonpkagnjmkndlfhppgnpdmecklji'
@@ -118,6 +118,51 @@ function setRestoreBusy (busy) {
   zipDropZone.style.pointerEvents = busy ? 'none' : 'auto'
 }
 
+const restoreConfirm = document.getElementById('restore-confirm')
+const restoreConfirmTitle = document.getElementById('restore-confirm-title')
+const restoreConfirmCode = document.getElementById('restore-confirm-code')
+const restoreConfirmDetails = document.getElementById('restore-confirm-details')
+const restoreConfirmApply = document.getElementById('restore-confirm-apply')
+const restoreConfirmCancel = document.getElementById('restore-confirm-cancel')
+let waitingRestore = null
+
+function plural (count, noun) {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`
+}
+
+// A transfer is fetched and checked, then waits here for the person to
+// compare the code with the other device.
+function showRestoreConfirm (res) {
+  waitingRestore = res
+  restoreConfirmCode.textContent = res.verificationCode || ''
+  if (res.kind === 'phone') {
+    const parts = []
+    if (res.tabs) parts.push(plural(res.tabs, 'tab'))
+    if (res.bookmarks) parts.push(plural(res.bookmarks, 'bookmark'))
+    if (res.privateDrives) parts.push('access to its private files')
+    if (res.chatRooms) parts.push(plural(res.chatRooms, 'PeerChat room'))
+    if (res.notes) parts.push(plural(res.notes, 'P2PMD note'))
+    const list = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0]
+    restoreConfirmTitle.textContent = 'Does your phone show this code?'
+    restoreConfirmDetails.textContent = parts.length
+      ? `Adds ${list} from your phone.` + (res.chatName ? ` PeerChat takes your phone's name, ${res.chatName}.` : '')
+      : 'The phone sent no tabs or bookmarks.'
+    restoreConfirmApply.textContent = 'It matches, add them'
+  } else {
+    restoreConfirmTitle.textContent = 'Does the other device show this code?'
+    restoreConfirmDetails.textContent = 'Its tabs, identity and P2P data come to this desktop, and PeerSky restarts.'
+    restoreConfirmApply.textContent = 'It matches, restore'
+  }
+  restoreConfirm.hidden = false
+  restoreStatus.style.display = 'none'
+}
+
+function hideRestoreConfirm () {
+  waitingRestore = null
+  restoreConfirm.hidden = true
+  restoreConfirmCode.textContent = ''
+}
+
 cidRestoreBtn.addEventListener('click', async () => {
   const address = cidInput.value.trim()
   if (!address) {
@@ -125,17 +170,47 @@ cidRestoreBtn.addEventListener('click', async () => {
     return
   }
   if (!restoreCid) return
+  if (waitingRestore && discardRestore) discardRestore(waitingRestore.stageId).catch(() => {})
+  hideRestoreConfirm()
   setRestoreBusy(true)
-  setRestoreStatus('Fetching backup from the network...', 'success')
+  setRestoreStatus('Fetching from the network...', 'success')
   try {
     const res = await restoreCid(address, backupPassphrase.value || undefined)
-    if (res.success) setRestoreStatus('Restored. Restarting...', 'success')
-    else setRestoreStatus(res.error || 'Restore failed.', 'error')
+    if (!res.success) setRestoreStatus(res.error || 'Restore failed.', 'error')
+    else if (res.stageId) showRestoreConfirm(res)
+    else setRestoreStatus('Restored. Restarting...', 'success')
   } catch (err) {
     setRestoreStatus(err.message || 'Restore failed.', 'error')
   } finally {
     setRestoreBusy(false)
   }
+})
+
+restoreConfirmApply.addEventListener('click', async () => {
+  if (!waitingRestore || !applyRestore) return
+  const current = waitingRestore
+  restoreConfirmApply.disabled = true
+  setRestoreBusy(true)
+  try {
+    const res = await applyRestore(current.stageId)
+    if (!res.success) {
+      setRestoreStatus(res.error || 'Restore failed.', 'error')
+      return
+    }
+    hideRestoreConfirm()
+    setRestoreStatus(current.kind === 'phone' ? 'Added. Opening PeerSky...' : 'Restored. Restarting...', 'success')
+  } catch (err) {
+    setRestoreStatus(err.message || 'Restore failed.', 'error')
+  } finally {
+    restoreConfirmApply.disabled = false
+    setRestoreBusy(false)
+  }
+})
+
+restoreConfirmCancel.addEventListener('click', () => {
+  if (waitingRestore && discardRestore) discardRestore(waitingRestore.stageId).catch(() => {})
+  hideRestoreConfirm()
+  setRestoreStatus('Cancelled. Nothing was changed.', 'success')
 })
 
 zipDropZone.addEventListener('click', () => zipInput.click())
@@ -268,6 +343,11 @@ async function loadDeviceInfo () {
     const res = await getDeviceInfo()
     if (res.success) {
       identityDeviceKey.textContent = res.pairingPayload
+      const qr = document.getElementById('identity-device-qr')
+      if (qr && res.pairingPayload) {
+        qr.setAttribute('src', res.pairingPayload)
+        qr.hidden = false
+      }
     } else {
       identityDeviceKey.textContent = `Could not load device pairing code: ${res.error}`
     }

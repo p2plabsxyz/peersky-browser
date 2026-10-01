@@ -9,7 +9,12 @@ export const MANAGED_PERMISSIONS = [
   { id: 'notifications', label: 'Notifications' },
   { id: 'midi', label: 'MIDI devices' },
   { id: 'pointerLock', label: 'Pointer lock' },
-  { id: 'fullscreen', label: 'Full screen' }
+  { id: 'fullscreen', label: 'Full screen' },
+  {
+    id: 'p2pPublish',
+    label: 'P2P publishing',
+    detail: 'This site wants to create or change files in your Hyper drives, or add content to your IPFS node.'
+  }
 ]
 
 const PROMPT_PERMISSIONS = new Set(MANAGED_PERMISSIONS.map(p => p.id))
@@ -32,6 +37,7 @@ const MAX_FILE_BYTES = 512 * 1024
 const STATES = new Set(['allow', 'block', 'ask'])
 
 const permissionCache = new Map()
+const pendingPrompts = new Map()
 let saveTimeout = null
 
 function isManagedPermission (permission) {
@@ -218,6 +224,59 @@ async function loadPermissions () {
   }
 }
 
+/**
+ * Resolve a site's permission from its stored decision, or ask the user.
+ * Requests that arrive while a dialog is open share that dialog.
+ */
+export function requestSitePermission (webContents, origin, permission) {
+  if (!isManagedPermission(permission) || !isValidOrigin(origin)) return Promise.resolve(false)
+  const key = cacheKey(origin, permission)
+  const cached = permissionCache.get(key)
+  if (cached) return Promise.resolve(entryAllows(cached))
+  if (!pendingPrompts.has(key)) {
+    const prompt = promptForPermission(webContents, origin, permission)
+      .finally(() => pendingPrompts.delete(key))
+    pendingPrompts.set(key, prompt)
+  }
+  return pendingPrompts.get(key)
+}
+
+async function promptForPermission (webContents, origin, permission) {
+  const key = cacheKey(origin, permission)
+  const meta = MANAGED_PERMISSIONS.find(p => p.id === permission)
+  const options = {
+    type: 'question',
+    buttons: ['Allow always', 'Allow this time', 'Block'],
+    defaultId: 2,
+    title: 'Permission request',
+    message: `Allow "${PERMISSION_LABELS[permission] ?? permission}"?`,
+    detail: meta?.detail ? `${origin}\n\n${meta.detail}` : origin
+  }
+  try {
+    const host = webContents?.hostWebContents || webContents
+    const win = host ? BrowserWindow.fromWebContents(host) : null
+    const parent = win && !win.isDestroyed() ? win : BrowserWindow.getAllWindows()[0]
+    const { response } = await (parent ? dialog.showMessageBox(parent, options) : dialog.showMessageBox(options))
+    if (response === 0) {
+      permissionCache.set(key, { state: 'allow', permanent: true })
+      savePermissions()
+      return true
+    }
+    if (response === 1) {
+      permissionCache.set(key, { state: 'allow', permanent: false })
+      return true
+    }
+    if (response === 2) {
+      permissionCache.set(key, { state: 'block', permanent: true })
+      savePermissions()
+    }
+    // A dismissed dialog (response -1) denies once without persisting.
+    return false
+  } catch {
+    return false
+  }
+}
+
 export async function setupPermissionHandler (session) {
   await loadPermissions()
 
@@ -237,45 +296,7 @@ export async function setupPermissionHandler (session) {
       return
     }
 
-    const key = cacheKey(origin, permission)
-    const cached = permissionCache.get(key)
-    if (cached) {
-      callback(entryAllows(cached))
-      return
-    }
-
-    const label = PERMISSION_LABELS[permission] ?? permission
-    const win = BrowserWindow.fromWebContents(webContents)
-    const parent = win && !win.isDestroyed() ? win : BrowserWindow.getAllWindows()[0]
-    dialog
-      .showMessageBox(parent, {
-        type: 'question',
-        buttons: ['Allow always', 'Allow this time', 'Block'],
-        defaultId: 2,
-        title: 'Permission request',
-        message: `Allow "${label}"?`,
-        detail: origin
-      })
-      .then(({ response }) => {
-        if (response === 0) {
-          permissionCache.set(key, { state: 'allow', permanent: true })
-          savePermissions()
-          callback(true) // eslint-disable-line n/no-callback-literal
-        } else if (response === 1) {
-          permissionCache.set(key, { state: 'allow', permanent: false })
-          callback(true) // eslint-disable-line n/no-callback-literal
-        } else if (response === 2) {
-          permissionCache.set(key, { state: 'block', permanent: true })
-          savePermissions()
-          callback(false) // eslint-disable-line n/no-callback-literal
-        } else {
-          // Dialog dismissed (e.g. response === -1) — deny once, do not persist.
-          callback(false) // eslint-disable-line n/no-callback-literal
-        }
-      })
-      .catch(() => {
-        callback(false) // eslint-disable-line n/no-callback-literal
-      })
+    requestSitePermission(webContents, origin, permission).then(callback)
   })
 
   session.setPermissionCheckHandler((_webContents, permission, requestingOrigin) => {

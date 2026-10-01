@@ -11,6 +11,7 @@ import {
   decodePairingString,
   decryptIdentityTransferZip,
   deriveVerificationCode,
+  encodePairingString,
   extractAndVerifyIdentityPayload
 } from '../../src/backup/identity-transfer.js'
 import { extractBackupZip, readManifest } from '../../src/backup/backup-core.js'
@@ -20,6 +21,8 @@ async function makeTempDir (prefix) {
 }
 
 async function seedIdentityData (dir) {
+  await writeFile(path.join(dir, 'tabs.json'), JSON.stringify({ 1: { tabs: [{ url: 'https://example.com/', title: 'Example' }] } }))
+  await writeFile(path.join(dir, 'bookmarks.json'), JSON.stringify([{ url: 'https://example.com/', title: 'Example', dateAdded: '2026-01-01T00:00:00.000Z' }]))
   await writeFile(path.join(dir, 'peersky-ports.json'), JSON.stringify({ room: { seed: 'secret' } }))
   await writeFile(path.join(dir, 'peersky-chat-rooms.json'), JSON.stringify({ rooms: ['room'] }))
   await mkdir(path.join(dir, 'hyper'), { recursive: true })
@@ -66,14 +69,19 @@ describe('identity-transfer', function () {
     const payloadDir = await makeTempDir('peersky-id-payload-')
     const innerManifest = await extractAndVerifyIdentityPayload(innerZip, payloadDir)
     expect(Object.keys(innerManifest.files)).to.include.members([
-      'peersky-ports.json',
+      'tabs.json',
+      'bookmarks.json',
       'peersky-identity.json',
       'hyper-private',
       'privateHyperdrives.json'
     ])
+    // The phone throws these away, and hyper/ can run to gigabytes.
+    for (const name of ['hyper', 'peersky-ports.json', 'peersky-chat-rooms.json', 'lastOpened.json']) {
+      expect(innerManifest.files).not.to.have.property(name)
+    }
 
-    const ports = JSON.parse(await readFile(path.join(payloadDir, 'peersky-ports.json'), 'utf-8'))
-    expect(ports.room.seed).to.equal('secret')
+    const bookmarks = JSON.parse(await readFile(path.join(payloadDir, 'bookmarks.json'), 'utf-8'))
+    expect(bookmarks[0].url).to.equal('https://example.com/')
   })
 
   it('derives the same verification code as PeerSky Mobile', function () {
@@ -98,6 +106,86 @@ describe('identity-transfer', function () {
     expect(() => decodePairingString('44'.repeat(32))).to.throw(/device pairing code/i)
   })
 
+  it('says in its code that it takes PeerChat only when it does, and reads that from a code', function () {
+    const session = { deviceType: 'desktop', nonce: '55'.repeat(16), encryptionPublicKey: '44'.repeat(32) }
+    expect(decodePairingString(encodePairingString(session, { chat: true }))).to.deep.include({ deviceType: 'desktop', chat: true })
+    // A PeerChat without transfers says nothing, and neither does an older app.
+    expect(encodePairingString(session)).not.to.include('chat=')
+    expect(decodePairingString(encodePairingString(session)).chat).to.equal(false)
+    expect(decodePairingString(mobilePairingPayload('44'.repeat(32))).chat).to.equal(false)
+  })
+
+  it('sends PeerChat only to a device whose code says it takes it', async function () {
+    const source = await makeTempDir('peersky-id-chat-src-')
+    const target = await makeTempDir('peersky-id-chat-target-')
+    await seedIdentityData(source)
+    const targetInfo = getPublicDeviceInfo(await getDeviceKeys(target))
+    const chat = { version: 1, label: 'mobile', rooms: [{ roomKey: 'aa'.repeat(32) }] }
+    const asked = []
+    const exportChat = (deviceType) => {
+      asked.push(deviceType)
+      return chat
+    }
+
+    const contents = async (payload) => {
+      const outPath = path.join(await makeTempDir('peersky-id-chat-out-'), 'identity.zip')
+      await createIdentityTransferZip(source, outPath, { targetPairingPayload: payload, exportChat })
+      const extracted = await makeTempDir('peersky-id-chat-wrapper-')
+      await extractBackupZip(outPath, extracted)
+      const innerZip = path.join(await makeTempDir('peersky-id-chat-inner-'), 'inner.zip')
+      await decryptIdentityTransferZip(target, extracted, await readManifest(outPath), innerZip)
+      const payloadDir = await makeTempDir('peersky-id-chat-payload-')
+      const manifest = await extractAndVerifyIdentityPayload(innerZip, payloadDir)
+      return { manifest, payloadDir }
+    }
+
+    const older = await contents(mobilePairingPayload(targetInfo.encryptionPublicKey))
+    expect(asked).to.deep.equal([])
+    expect(older.manifest.files).not.to.have.property('peerchat-incoming.json')
+
+    const newer = await contents(`${mobilePairingPayload(targetInfo.encryptionPublicKey)}&chat=1`)
+    expect(asked).to.deep.equal(['mobile'])
+    expect(JSON.parse(await readFile(path.join(newer.payloadDir, 'peerchat-incoming.json'), 'utf8'))).to.deep.equal(chat)
+  })
+
+  it('says in its code that it takes P2PMD notes only when it does, and reads that from a code', function () {
+    const session = { deviceType: 'desktop', nonce: '55'.repeat(16), encryptionPublicKey: '44'.repeat(32) }
+    expect(decodePairingString(encodePairingString(session, { chat: true, notes: true }))).to.deep.include({ chat: true, notes: true })
+    expect(encodePairingString(session, { chat: true })).not.to.include('notes=')
+    expect(decodePairingString(encodePairingString(session)).notes).to.equal(false)
+  })
+
+  it('sends P2PMD notes only to a phone whose code says it takes them', async function () {
+    const source = await makeTempDir('peersky-id-notes-src-')
+    const target = await makeTempDir('peersky-id-notes-target-')
+    await seedIdentityData(source)
+    const targetInfo = getPublicDeviceInfo(await getDeviceKeys(target))
+    const notes = { version: 1, name: 'Ada', notes: [{ key: `hs://${'q'.repeat(52)}`, role: 'host', content: '# Plans', updatedAt: 1, openedAt: 2 }] }
+
+    const contents = async (payload) => {
+      const outPath = path.join(await makeTempDir('peersky-id-notes-out-'), 'identity.zip')
+      await createIdentityTransferZip(source, outPath, { targetPairingPayload: payload, notes })
+      const extracted = await makeTempDir('peersky-id-notes-wrapper-')
+      await extractBackupZip(outPath, extracted)
+      const innerZip = path.join(await makeTempDir('peersky-id-notes-inner-'), 'inner.zip')
+      await decryptIdentityTransferZip(target, extracted, await readManifest(outPath), innerZip)
+      // Read as the phone reads it. A desktop never takes notes in a transfer,
+      // and its own restore refuses the file.
+      const payloadDir = await makeTempDir('peersky-id-notes-payload-')
+      await extractBackupZip(innerZip, payloadDir)
+      const manifest = JSON.parse(await readFile(path.join(payloadDir, 'manifest.json'), 'utf8'))
+      return { manifest, payloadDir }
+    }
+
+    // A phone that does not say so refuses a file it does not know.
+    const older = await contents(mobilePairingPayload(targetInfo.encryptionPublicKey))
+    expect(older.manifest.files).not.to.have.property('p2pmd-incoming.json')
+
+    const newer = await contents(`${mobilePairingPayload(targetInfo.encryptionPublicKey)}&notes=1`)
+    expect(newer.manifest.files).to.have.property('p2pmd-incoming.json')
+    expect(JSON.parse(await readFile(path.join(newer.payloadDir, 'p2pmd-incoming.json'), 'utf8'))).to.deep.equal(notes)
+  })
+
   it('stores a stable random identity id', async function () {
     const source = await makeTempDir('peersky-id-stable-')
     const first = await computeIdentityId(source)
@@ -111,7 +199,7 @@ describe('identity-transfer', function () {
     const target = await makeTempDir('peersky-id-size-target-')
     await seedIdentityData(source)
     await writeFile(
-      path.join(source, 'hyper', 'large-core'),
+      path.join(source, 'hyper-private', 'large-core'),
       Buffer.alloc(50 * 1024 * 1024 + 1)
     )
     const targetInfo = getPublicDeviceInfo(await getDeviceKeys(target))
@@ -121,7 +209,7 @@ describe('identity-transfer', function () {
       targetPairingPayload: mobilePairingPayload(targetInfo.encryptionPublicKey)
     })
 
-    expect(created.bytes).to.be.greaterThan(100)
+    expect(created.bytes).to.be.greaterThan(50 * 1024)
     expect((await stat(outPath)).size).to.equal(created.bytes)
   })
 })

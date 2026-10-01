@@ -174,6 +174,33 @@ function toSeedBuffer (seed) {
 }
 
 // SECURITY: Redact sensitive data for logging
+const CLIENT_PROXY_BIND_MS = 3000
+
+// Whether a Holesail client's local proxy came up. It keeps an error listener
+// for good, so a later failure is logged rather than thrown.
+export function waitForClientProxy (instance, timeoutMs = CLIENT_PROXY_BIND_MS) {
+  const client = instance?.dht
+  const proxy = client?.proxy
+  if (!proxy || typeof proxy.on !== 'function') return Promise.resolve({ ok: true })
+  proxy.on('error', (error) => {
+    log.error('[p2pmd] Local proxy error:', error?.message || error)
+  })
+  if (client.state === 'listening') return Promise.resolve({ ok: true })
+
+  return new Promise((resolve) => {
+    let settled = false
+    const finish = (result) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve(result)
+    }
+    const timer = setTimeout(() => finish({ ok: true }), timeoutMs)
+    proxy.once('listening', () => finish({ ok: true }))
+    proxy.once('error', (error) => finish({ ok: false, error, port: client.args?.port }))
+  })
+}
+
 function redactKey (key) {
   if (!key || typeof key !== 'string') return null
   return key.length > 10 ? `${key.slice(0, 10)}...` : key
@@ -1900,6 +1927,10 @@ export async function createHandler () {
       const host = hostValue ? normalizeHost(hostValue) : null
       const keyPort = parsedKey?.port || null
       const port = keyPort || extractedPort || portInput || null
+      // A note on more than one of the person's devices is looked for on the
+      // others before it is hosted here, so this join must only join. The page
+      // hosts its own copy when nobody answers.
+      const joinOnly = body.joinOnly === true
       log.info('[p2pmd] join request', { key: redactKey(key), port })
 
       // If this room already has a running holesail server, don't destroy it.
@@ -1913,7 +1944,8 @@ export async function createHandler () {
           key,
           localHost: responseHost,
           localPort: sessionState.port,
-          localUrl
+          localUrl,
+          hosted: true
         })
       }
 
@@ -1922,7 +1954,7 @@ export async function createHandler () {
       const resolvedSecure = secure === null ? (parsedKey.secure === true) : secure
       const resolvedUdp = udp === null ? parseBoolean(parsedKey.udp, false) : udp
       const savedSeedBuffer = savedEntry?.seed ? Buffer.from(savedEntry.seed, 'hex') : null
-      if (savedSeedBuffer && !sessionState?.holesailServer && !sessionState?.holesailClient) {
+      if (!joinOnly && savedSeedBuffer && !sessionState?.holesailServer && !sessionState?.holesailClient) {
         if (!sessionState) {
           sessionState = createSession(key)
           roomSessions.set(key, sessionState)
@@ -1961,7 +1993,8 @@ export async function createHandler () {
           localPort: boundPort,
           localUrl: `http://${responseHost}:${boundPort}`,
           secure: resolvedSecure,
-          udp: resolvedUdp
+          udp: resolvedUdp,
+          hosted: true
         })
       }
 
@@ -1994,6 +2027,18 @@ export async function createHandler () {
       const holesailClient = new Holesail(clientOptions)
       sessionState.holesailClient = holesailClient
       await holesailClient.ready()
+      // The local end binds the port the host advertised only once ready()
+      // is done, and a port already in use here failed as an error event
+      // nobody listened for: an uncaught exception in the main process. Wait
+      // for the bind, and answer with what went wrong.
+      const bound = await waitForClientProxy(holesailClient)
+      if (!bound.ok) {
+        await stopHolesailClient(sessionState)
+        roomSessions.delete(key)
+        return buildJsonResponse(409, {
+          error: `Port ${bound.port || 'for this note'} is already in use on this device, so the note cannot be joined from here right now.`
+        })
+      }
       const boundPort = holesailClient.info?.port || requestedPort || 0
       sessionState.port = boundPort
       log.info('[p2pmd] join client ready', { port: boundPort })

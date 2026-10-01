@@ -29,6 +29,14 @@ function failedUrlBehindErrorPage (webview) {
   }
 }
 
+// This page runs with node integration, so markup built from any stored or
+// page-supplied string must go through here.
+function escapeHtml (value) {
+  return String(value ?? '').replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[c])
+}
+
 class TabBar extends HTMLElement {
   constructor () {
     super()
@@ -836,13 +844,6 @@ class TabBar extends HTMLElement {
         // Get webview to check memory usage (if available)
         const webview = this.webviews.get(tabId)
 
-        // Helper function to escape HTML
-        function escapeHtml (text) {
-          const div = document.createElement('div')
-          div.textContent = text
-          return div.innerHTML
-        }
-
         hoverCard.innerHTML = `
           <div class="hover-card-title">${escapeHtml(tab.title)}</div>
           <div class="hover-card-url">${escapeHtml(tab.url)}</div>
@@ -918,6 +919,29 @@ class TabBar extends HTMLElement {
   destroyHoverCard () {
     const card = document.querySelector('.tab-hover-card')
     if (card) card.remove()
+  }
+
+  // Tabs sent from another device, such as a phone. They open asleep, so a
+  // phone's worth of tabs costs nothing until one is picked, and together in
+  // a collapsed group so they do not bury the tabs already open here. A page
+  // already open in this window is not opened twice.
+  addSleepingTabs (tabs, { group } = {}) {
+    const ids = []
+    const open = new Set(this.tabs.map((tab) => tab.url))
+    for (const tab of Array.isArray(tabs) ? tabs : []) {
+      if (!tab || typeof tab.url !== 'string' || !tab.url || open.has(tab.url)) continue
+      open.add(tab.url)
+      const tabId = `tab-${this.tabCounter++}`
+      this.addTabWithId(tabId, tab.url, typeof tab.title === 'string' && tab.title ? tab.title : tab.url, { isSuspended: true })
+      ids.push(tabId)
+    }
+    if (ids.length === 0) return ids
+    if (group) {
+      this.createTabGroup(ids, { name: group, expanded: false })
+    } else {
+      this.saveTabsState()
+    }
+    return ids
   }
 
   addTab (url = 'peersky://home', title = 'Home') {
@@ -2938,7 +2962,7 @@ class TabBar extends HTMLElement {
     dialog.innerHTML = `
       <h1>${dialogTitle}</h1>
       <div class="dialog-row">
-        <input type="text" id="group-name" maxlength="24" value="${group.name || ''}" placeholder="Enter group name">
+        <input type="text" id="group-name" maxlength="24" value="${escapeHtml(group.name)}" placeholder="Enter group name">
       </div>
       <div class="dialog-row">
         <div class="color-options">
@@ -3127,9 +3151,9 @@ class TabBar extends HTMLElement {
     if (allGroups.size > 0) {
       for (const [groupId, group] of allGroups) {
         submenuHtml += `
-          <div class="context-menu-item" data-group-id="${groupId}">
-            <span class="menu-icon" style="background-color: ${group.color}; width: 10px; height: 10px; border-radius: 50%;"></span>
-            ${group.name || 'Unnamed group'}
+          <div class="context-menu-item" data-group-id="${escapeHtml(groupId)}">
+            <span class="menu-icon" style="background-color: ${escapeHtml(group.color)}; width: 10px; height: 10px; border-radius: 50%;"></span>
+            ${escapeHtml(group.name || 'Unnamed group')}
           </div>
         `
       }

@@ -11,12 +11,31 @@ function driveUrl (key) {
   return `hyper://${z32.encode(key)}/`
 }
 
+// Drives another device writes, by key: the files their peers hold, which
+// arrive here on update().
+const remoteDrives = new Map()
+
 class FakeHyperdrive {
   constructor (corestore, key, opts = {}) {
-    this.core = { key, length: 0 }
+    const peers = remoteDrives.get(key.toString('hex'))
+    this.core = {
+      key,
+      length: 0,
+      updates: 0,
+      findingPeers: () => () => {},
+      update: async () => {
+        this.core.updates += 1
+        if (!peers) return false
+        for (const [name, buffer] of peers) this.files.set(name, buffer)
+        this.core.length = peers.size
+        return true
+      }
+    }
+    this.writable = !peers
     this.encryptionKey = opts.encryptionKey || null
     this.url = driveUrl(key)
     this.files = new Map()
+    FakeHyperdrive.last = this
   }
 
   async ready () {}
@@ -59,9 +78,12 @@ async function load (registryEntries, options = {}) {
     joinCore: sinon.stub().callsFake((core) => joined.push(core))
   }
 
+  // Keys of drives other devices sent with keys of their own, by drive id.
+  const driveKeys = options.driveKeys || new Map()
   const module = await esmock('../../src/protocols/private-hyperdrive.js', {
     '../../src/backup/private-drive-key.js': {
-      getOrCreatePrivateDriveKey: async () => Buffer.alloc(32, 7)
+      getOrCreatePrivateDriveKey: async () => Buffer.alloc(32, 7),
+      getPrivateDriveKeyFor: async (_dir, driveId) => driveKeys.get(driveId) || null
     },
     '../../src/protocols/private-hyperdrive-registry.js': {
       listPrivateHyperdrives: async () => registryEntries
@@ -163,6 +185,93 @@ describe('private Hyperdrive keyed fetcher', function () {
     } finally {
       rmSync(userDataDir, { recursive: true, force: true })
     }
+  })
+
+  it('asks the peers of a drive another device writes for a file not here yet', async function () {
+    const key = crypto.randomBytes(32)
+    const url = driveUrl(key)
+    remoteDrives.set(key.toString('hex'), new Map([['/note.txt', Buffer.from('from the phone')]]))
+
+    try {
+      const { fetcher } = await load([
+        { name: 'PeerSky Mobile', url, timestamp: 1, encrypted: true }
+      ])
+
+      const response = await fetcher(`${url}note.txt`)
+      expect(response.status).to.equal(200)
+      expect(await response.text()).to.equal('from the phone')
+      expect(FakeHyperdrive.last.core.updates).to.equal(1)
+    } finally {
+      remoteDrives.delete(key.toString('hex'))
+    }
+  })
+
+  it('says a file is missing once the peers of such a drive have been asked', async function () {
+    const key = crypto.randomBytes(32)
+    const url = driveUrl(key)
+    remoteDrives.set(key.toString('hex'), new Map())
+
+    try {
+      const { fetcher } = await load([
+        { name: 'PeerSky Mobile', url, timestamp: 1, encrypted: true }
+      ])
+
+      const response = await fetcher(`${url}missing.txt`)
+      expect(response.status).to.equal(404)
+      expect(FakeHyperdrive.last.core.updates).to.equal(1)
+    } finally {
+      remoteDrives.delete(key.toString('hex'))
+    }
+  })
+
+  it('opens a drive another device sent with its own key using that key', async function () {
+    const key = crypto.randomBytes(32)
+    const url = driveUrl(key)
+    const phoneKey = Buffer.alloc(32, 9)
+    const { fetcher } = await load([
+      { name: 'PeerSky Mobile', url, timestamp: 1, encrypted: true }
+    ], { driveKeys: new Map([[key.toString('hex'), phoneKey]]) })
+
+    await fetcher(url)
+    expect(FakeHyperdrive.last.encryptionKey.equals(phoneKey)).to.equal(true)
+
+    // Any other encrypted drive still opens with this desktop's key.
+    const other = driveUrl(crypto.randomBytes(32))
+    const { fetcher: second } = await load([{ name: 'mine', url: other, timestamp: 1, encrypted: true }])
+    await second(other)
+    expect(FakeHyperdrive.last.encryptionKey.equals(Buffer.alloc(32, 7))).to.equal(true)
+  })
+
+  it('asks a drive\'s peers once for several missing files, and not again straight after', async function () {
+    const key = crypto.randomBytes(32)
+    const url = driveUrl(key)
+    remoteDrives.set(key.toString('hex'), new Map())
+
+    try {
+      const { fetcher } = await load([
+        { name: 'PeerSky Mobile', url, timestamp: 1, encrypted: true }
+      ])
+
+      const together = await Promise.all([fetcher(`${url}a.txt`), fetcher(`${url}b.txt`)])
+      expect(together.map((response) => response.status)).to.deep.equal([404, 404])
+      expect((await fetcher(`${url}c.txt`)).status).to.equal(404)
+      expect(FakeHyperdrive.last.core.updates).to.equal(1)
+    } finally {
+      remoteDrives.delete(key.toString('hex'))
+    }
+  })
+
+  it('answers a missing file in a drive made here without asking the network', async function () {
+    const key = crypto.randomBytes(32)
+    const url = driveUrl(key)
+    const { fetcher, writeFile } = await load([
+      { name: 'mine', url, timestamp: 1, encrypted: true }
+    ])
+
+    await writeFile(url, '/hello.txt', 'hello')
+    const response = await fetcher(`${url}missing.txt`)
+    expect(response.status).to.equal(404)
+    expect(FakeHyperdrive.last.core.updates).to.equal(0)
   })
 
   it('keeps writes enabled for drives created on this device', async function () {

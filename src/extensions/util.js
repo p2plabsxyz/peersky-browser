@@ -13,6 +13,7 @@
 import { promises as fs, existsSync } from 'fs'
 import path from 'path'
 import { randomBytes, createHash } from 'crypto'
+import { chromeIdFromKey } from './utils/ids.js'
 
 // Constants for Chrome Web Store validation
 /**
@@ -192,6 +193,31 @@ export async function atomicReplaceDir (fromDir, toDir) {
 
   // Move source to target
   await fs.rename(fromDir, toDir)
+}
+
+/**
+ * Refuse a package that would land on an installed extension. IDs come from
+ * public manifest fields and manifest.key, so a copied manifest would otherwise
+ * replace that extension's code and run with its permissions and storage.
+ * @param {Object} manager - ExtensionManager (uses extensionsBaseDir, loadedExtensions)
+ * @param {string} id - ID the package would be stored under
+ * @param {Object} manifest - The package's manifest
+ * @throws {Error} With code E_ALREADY_EXISTS
+ */
+export function assertInstallSlotFree (manager, id, manifest) {
+  const idDir = path.join(manager.extensionsBaseDir, id)
+  const keyId = chromeIdFromKey(manifest?.key)
+  for (const ext of manager.loadedExtensions?.values() ?? []) {
+    const owned = [ext.id, ext.electronId]
+    const rel = typeof ext.installedPath === 'string' ? path.relative(idDir, ext.installedPath) : '..'
+    const storedHere = !rel.startsWith('..') && !path.isAbsolute(rel)
+    if (owned.includes(id) || (keyId && owned.includes(keyId)) || storedHere) {
+      throw Object.assign(
+        new Error(`Extension ${ext.displayName || ext.name || ext.id} is already installed`),
+        { code: ERR.E_ALREADY_EXISTS }
+      )
+    }
+  }
 }
 
 /**
