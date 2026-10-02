@@ -39,6 +39,13 @@ import { downloadBackupFromAddress } from './backup/p2p-backup.js'
 
 const log = createLogger('main')
 
+// Electron 43 can put a waking extension's service worker into the spare
+// renderer Chromium warms up for link prefetching, then refuse it and stop
+// the whole app (SIGTRAP, "Unsuitable process reused for site"). Clicking
+// around a busy site with the preinstalled MV3 extensions is enough. Electron
+// 44 fixes it (electron/electron#53144); until then, prefetch gets no spare.
+app.commandLine.appendSwitch('enable-features', 'PrefetchUseContentRefactor:start_spare_renderer/false')
+
 const P2P_PROTOCOL = {
   standard: true,
   secure: true,
