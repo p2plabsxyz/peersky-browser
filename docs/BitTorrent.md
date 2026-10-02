@@ -35,7 +35,7 @@ You can drag and drop a local `.torrent` file directly onto the browser's addres
 
 ## Global Torrent Manager (`peersky://bt-manager`)
 
-Use `peersky://bt-manager` to manage all torrents from one page.
+Use `peersky://bt-manager` to manage all torrents from one page. Settings links to it as BitTorrent, right under Archive. The page also says how to start a torrent, and carries the same privacy notice as the torrent page.
 
 - View cached torrents and status (`downloading`, `paused`, `stopped`, `seeding`, `done`)
 - Open a torrent page (`bt://<infohash>`)

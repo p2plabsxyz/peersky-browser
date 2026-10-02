@@ -973,3 +973,32 @@ export default class FakeWebTorrent extends EventEmitter {
     })
   })
 })
+
+describe('BitTorrent pages', function () {
+  const pages = path.join(_testDir, '../../src/pages')
+  const read = (file) => fs.readFileSync(path.join(pages, file), 'utf8')
+
+  // Nothing in the browser pointed at the manager, so only someone who typed
+  // peersky://bt-manager ever found it.
+  it('Settings lists BitTorrent right under Archive', () => {
+    const settings = read('settings.html')
+    const archive = settings.indexOf('data-section="archive"')
+    const bittorrent = settings.indexOf('href="peersky://bt-manager"')
+    expect(archive).to.be.greaterThan(-1)
+    expect(bittorrent).to.be.greaterThan(archive)
+    expect(bittorrent).to.be.lessThan(settings.indexOf('id="history-nav-link"'))
+    expect(settings).to.match(/<a href="peersky:\/\/bt-manager" class="nav-item">\s*<img src="peersky:\/\/static\/assets\/svg\/bittorrent\.svg"/)
+    expect(fs.existsSync(path.join(pages, 'static/assets/svg/bittorrent.svg'))).to.equal(true)
+  })
+
+  it('the manager says how to start a torrent, with the privacy notice the torrent page shows', () => {
+    const manager = read('bt-manager.html')
+    for (const text of ['magnet:', 'bt://', 'bittorrent://', 'Start Torrent', 'Downloads/PeerskyTorrents']) {
+      expect(manager).to.include(text)
+    }
+    const torrentPage = fs.readFileSync(path.join(_testDir, '../../src/protocols/bt/torrentPage.js'), 'utf8')
+    const notice = torrentPage.match(/<div class="privacy-warning">\s*([\s\S]*?)\s*<\/div>/)[1]
+    expect(notice).to.include('Your IP address is visible to peers')
+    expect(manager).to.include(notice)
+  })
+})

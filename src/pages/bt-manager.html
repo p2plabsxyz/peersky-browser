@@ -72,6 +72,70 @@
     font-size: 0.85rem;
   }
 
+  .bt-start {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+    margin: 0 0 1.5rem;
+    padding: 1rem 1.25rem;
+    background: var(--settings-bg-secondary);
+    border: 1px solid var(--settings-border);
+    border-radius: 8px;
+  }
+
+  .bt-magnet {
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+  }
+
+  .bt-start h2 {
+    margin: 0 0 0.35rem;
+    font-size: 1rem;
+  }
+
+  /* The theme prints a markdown "##" before every h2. */
+  .bt-start h2::before {
+    content: none;
+  }
+
+  .bt-start p {
+    margin: 0 0 0.6rem;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: var(--settings-text-secondary);
+  }
+
+  .bt-start p:last-child {
+    margin-bottom: 0;
+  }
+
+  .bt-start code {
+    display: inline-block;
+    margin: 0 0.35rem 0.35rem 0;
+    padding: 0.1rem 0.4rem;
+    font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Code", "Droid Sans Mono", "Source Code Pro", monospace;
+    font-size: 0.78rem;
+    color: var(--settings-text-primary);
+    background: var(--settings-bg-primary);
+    border: 1px solid var(--settings-border);
+    border-radius: 4px;
+  }
+
+  .privacy-warning {
+    background: var(--peersky-nav-background, #27272a);
+    padding: 15px;
+    border-radius: 6px;
+    margin: 30px 0;
+    font-size: 0.85rem;
+    color: var(--settings-text-secondary, #9ca3af);
+    border: 1px solid var(--settings-border, #6b7280);
+  }
+
+  .privacy-warning strong {
+    color: var(--settings-danger-color, #e53935);
+  }
+
   .hash-text {
     font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Code", "Droid Sans Mono", "Source Code Pro", monospace;
     font-size: 0.82rem;
@@ -82,6 +146,21 @@
 <body>
   <div class="page-wrap">
     <h1 class="section-title">BitTorrent</h1>
+
+    <section class="bt-start" aria-labelledby="btStartTitle">
+      <svg class="bt-magnet" viewBox="-2 -2 52 52" aria-hidden="true">
+        <g transform="rotate(-45 24 24)">
+          <path d="M14 8v16a10 10 0 0 0 20 0V8" fill="none" stroke="#e5484d" stroke-width="8"/>
+          <path d="M14 8v6M34 8v6" fill="none" stroke="#c9ced6" stroke-width="8"/>
+        </g>
+      </svg>
+      <div>
+        <h2 id="btStartTitle">Start a torrent</h2>
+        <p>Open any magnet link, type a torrent's info hash after bt:// or bittorrent:// in the address bar, or drop a .torrent file on it. Press Start Torrent on the page that opens. Files land in Downloads/PeerskyTorrents, and every torrent you start shows up here.</p>
+        <p><code>magnet:?xt=urn:btih:…</code><code>bt://&lt;info hash&gt;</code><code>bittorrent://&lt;info hash&gt;</code></p>
+      </div>
+    </section>
+
     <div class="archive-filter-bar">
       <span class="filter-label">Manager</span>
       <span id="statusLine" class="status-text">Loading…</span>
@@ -93,6 +172,10 @@
     <p class="archive-note bt-note">Manage active and cached torrents.</p>
 
     <pagination-control id="bt-pagination" search-placeholder="Search torrents by name or hash..."></pagination-control>
+
+    <div class="privacy-warning">
+      <strong>Privacy Notice:</strong> BitTorrent is a peer-to-peer protocol. Your IP address is visible to peers while downloading, and while seeding if you explicitly enable it. PeerSky auto-stops completed torrents by default (no seeding), and provides explicit Start Seeding / Stop Seeding controls. This may bypass your proxy or VPN settings.
+    </div>
   </div>
 
   <script src="peersky://static/js/pagination.js" type="module"></script>
