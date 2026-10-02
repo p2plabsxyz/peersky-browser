@@ -37,6 +37,9 @@ const MAX_FILE_BYTES = 512 * 1024
 const STATES = new Set(['allow', 'block', 'ask'])
 
 const permissionCache = new Map()
+// Incognito answers, apart from the ones above, kept only until the last
+// incognito window closes.
+const incognitoCache = new Map()
 const pendingPrompts = new Map()
 let saveTimeout = null
 
@@ -109,23 +112,24 @@ function entryAllows (entry) {
   return entry?.state === 'allow'
 }
 
-function getPermissionState (origin, permission) {
+function getPermissionState (origin, permission, cache) {
   if (!isManagedPermission(permission) || !isValidOrigin(origin)) return 'ask'
-  const entry = permissionCache.get(cacheKey(origin, permission))
+  const entry = cache.get(cacheKey(origin, permission))
   if (!entry) return 'ask'
   if (entry.state === 'allow' && !entry.permanent) return 'allow-session'
   return entry.state
 }
 
-export function getPermissionsForOrigin (origin) {
+export function getPermissionsForOrigin (origin, { incognito = false } = {}) {
+  const cache = incognito ? incognitoCache : permissionCache
   const result = {}
   for (const { id } of MANAGED_PERMISSIONS) {
-    result[id] = getPermissionState(origin, id)
+    result[id] = getPermissionState(origin, id, cache)
   }
   return result
 }
 
-export function setPermission (origin, permission, state) {
+export function setPermission (origin, permission, state, { incognito = false } = {}) {
   if (!isValidOrigin(origin)) {
     return { ok: false, error: 'invalid origin' }
   }
@@ -137,6 +141,11 @@ export function setPermission (origin, permission, state) {
   }
 
   const key = cacheKey(origin, permission)
+  if (incognito) {
+    if (state === 'ask') incognitoCache.delete(key)
+    else incognitoCache.set(key, { state, permanent: false })
+    return { ok: true }
+  }
   if (state === 'ask') {
     if (permissionCache.has(key)) {
       permissionCache.delete(key)
@@ -150,18 +159,23 @@ export function setPermission (origin, permission, state) {
   return { ok: true }
 }
 
-export function resetPermissionsForOrigin (origin) {
+export function resetPermissionsForOrigin (origin, { incognito = false } = {}) {
   if (!isValidOrigin(origin)) return 0
+  const cache = incognito ? incognitoCache : permissionCache
   let cleared = 0
-  for (const key of [...permissionCache.keys()]) {
+  for (const key of [...cache.keys()]) {
     const parsed = parseCacheKey(key)
     if (parsed?.origin === origin) {
-      permissionCache.delete(key)
+      cache.delete(key)
       cleared++
     }
   }
-  if (cleared) savePermissions()
+  if (cleared && !incognito) savePermissions()
   return cleared
+}
+
+export function clearIncognitoPermissions () {
+  incognitoCache.clear()
 }
 
 export async function clearPersistedPermissions () {
@@ -228,26 +242,28 @@ async function loadPermissions () {
  * Resolve a site's permission from its stored decision, or ask the user.
  * Requests that arrive while a dialog is open share that dialog.
  */
-export function requestSitePermission (webContents, origin, permission) {
+export function requestSitePermission (webContents, origin, permission, { incognito = false } = {}) {
   if (!isManagedPermission(permission) || !isValidOrigin(origin)) return Promise.resolve(false)
   const key = cacheKey(origin, permission)
-  const cached = permissionCache.get(key)
+  const cached = (incognito ? incognitoCache : permissionCache).get(key)
   if (cached) return Promise.resolve(entryAllows(cached))
-  if (!pendingPrompts.has(key)) {
-    const prompt = promptForPermission(webContents, origin, permission)
-      .finally(() => pendingPrompts.delete(key))
-    pendingPrompts.set(key, prompt)
+  const pendingKey = incognito ? `incognito ${key}` : key
+  if (!pendingPrompts.has(pendingKey)) {
+    const prompt = promptForPermission(webContents, origin, permission, { incognito })
+      .finally(() => pendingPrompts.delete(pendingKey))
+    pendingPrompts.set(pendingKey, prompt)
   }
-  return pendingPrompts.get(key)
+  return pendingPrompts.get(pendingKey)
 }
 
-async function promptForPermission (webContents, origin, permission) {
+async function promptForPermission (webContents, origin, permission, { incognito = false } = {}) {
   const key = cacheKey(origin, permission)
   const meta = MANAGED_PERMISSIONS.find(p => p.id === permission)
   const options = {
     type: 'question',
-    buttons: ['Allow always', 'Allow this time', 'Block'],
-    defaultId: 2,
+    // Nothing in incognito is remembered past its last window.
+    buttons: incognito ? ['Allow', 'Block'] : ['Allow always', 'Allow this time', 'Block'],
+    defaultId: incognito ? 1 : 2,
     title: 'Permission request',
     message: `Allow "${PERMISSION_LABELS[permission] ?? permission}"?`,
     detail: meta?.detail ? `${origin}\n\n${meta.detail}` : origin
@@ -257,6 +273,12 @@ async function promptForPermission (webContents, origin, permission) {
     const win = host ? BrowserWindow.fromWebContents(host) : null
     const parent = win && !win.isDestroyed() ? win : BrowserWindow.getAllWindows()[0]
     const { response } = await (parent ? dialog.showMessageBox(parent, options) : dialog.showMessageBox(options))
+    if (incognito) {
+      if (response === 0 || response === 1) {
+        incognitoCache.set(key, { state: response === 0 ? 'allow' : 'block', permanent: false })
+      }
+      return response === 0
+    }
     if (response === 0) {
       permissionCache.set(key, { state: 'allow', permanent: true })
       savePermissions()
@@ -275,6 +297,29 @@ async function promptForPermission (webContents, origin, permission) {
   } catch {
     return false
   }
+}
+
+// Incognito asks the same way, but neither reads nor writes the decisions
+// above. P2P publishing is never asked there: the request gate refuses it.
+export function setupIncognitoPermissionHandler (session) {
+  session.setPermissionRequestHandler((webContents, permission, callback) => {
+    if (SILENT_GRANT_PERMISSIONS.has(permission)) {
+      callback(true) // eslint-disable-line n/no-callback-literal
+      return
+    }
+    const origin = originFromWebContents(webContents)
+    if (!PROMPT_PERMISSIONS.has(permission) || permission === 'p2pPublish' || !origin) {
+      callback(false) // eslint-disable-line n/no-callback-literal
+      return
+    }
+    requestSitePermission(webContents, origin, permission, { incognito: true }).then(callback)
+  })
+  session.setPermissionCheckHandler((_webContents, permission, requestingOrigin) => {
+    if (SILENT_GRANT_PERMISSIONS.has(permission)) return true
+    if (!PROMPT_PERMISSIONS.has(permission)) return false
+    const origin = permissionOriginFromUrl(requestingOrigin)
+    return !!origin && entryAllows(incognitoCache.get(cacheKey(origin, permission)))
+  })
 }
 
 export async function setupPermissionHandler (session) {

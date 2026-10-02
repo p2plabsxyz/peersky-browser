@@ -28,8 +28,8 @@ import { urlFromArgv, queueLaunchUrl, startDeliveringLaunchUrls } from './launch
 // Import and initialize extension system
 import extensionManager from './extensions/index.js'
 import { setupExtensionIpcHandlers } from './extensions/extensions-ipc.js'
-import { getBrowserSession, usePersist } from './session.js'
-import { setupPermissionHandler, requestSitePermission, permissionOriginFromUrl } from './permissions.js'
+import { getBrowserSession, getIncognitoSession, INCOGNITO_PARTITION, usePersist } from './session.js'
+import { setupIncognitoPermissionHandler, setupPermissionHandler, requestSitePermission, permissionOriginFromUrl } from './permissions.js'
 import { setupSiteInfoIpc } from './site-info-ipc.js'
 import { setupP2pmdPdfExportIpc } from './pages/p2p/p2pmd/pdf-export-ipc.js'
 import { setupBackupIpc } from './backup/ipc.js'
@@ -204,6 +204,8 @@ app.on('second-instance', (_event, argv) => {
   const url = urlFromArgv(argv)
   if (url) {
     queueLaunchUrl(url)
+  } else if (argv.includes('--incognito') && windowManager) {
+    openIncognitoWindow()
   } else if (argv.includes('--new-window') && windowManager) {
     windowManager.open({})
   } else {
@@ -219,6 +221,13 @@ app.on('open-url', (event, url) => {
 })
 
 queueLaunchUrl(urlFromArgv(process.argv))
+
+// Settles once the incognito session has its protocol handlers.
+let incognitoReady = null
+
+function openIncognitoWindow () {
+  Promise.resolve(incognitoReady).then(() => windowManager.open({ incognito: true, isMainWindow: false }))
+}
 
 function focusAnyWindow () {
   const win = BrowserWindow.getFocusedWindow() || windowManager?.all[0]?.window
@@ -297,73 +306,92 @@ app.whenReady().then(async () => {
   setupBackupIpc({ getTabs: () => windowManager.getTabs() })
   setupSiteInfoIpc(userSession)
 
-  userSession.on('will-download', (event, item, sessionWebContents) => {
-    const downloadId = crypto.randomUUID()
-    // The shell window that started this download. Progress goes to every
-    // window so an open popup or the downloads page stays current, but only
-    // this one may pop the panel open.
-    const originWindowWcId = shellWebContentsIdFor(sessionWebContents)
+  userSession.on('will-download', handleDownload({ keepHistory: true }))
+  incognitoReady = setupIncognitoSession().catch((error) => log.error('[startup] incognito session failed:', error?.stack || error))
 
-    activeDownloadItems.set(downloadId, item)
+  function handleDownload ({ keepHistory }) {
+    return (event, item, sessionWebContents) => {
+      const downloadId = crypto.randomUUID()
+      // The shell window that started this download. Progress goes to every
+      // window so an open popup or the downloads page stays current, but only
+      // this one may pop the panel open.
+      const originWindowWcId = shellWebContentsIdFor(sessionWebContents)
 
-    const broadcastProgress = (state, forcePaused = null) => {
-      const data = {
-        id: downloadId,
-        filename: item.getFilename(),
-        received: item.getReceivedBytes(),
-        total: item.getTotalBytes(),
-        state,
-        isPaused: forcePaused !== null ? forcePaused : item.isPaused(),
-        canResume: item.canResume(),
-        percent: item.getTotalBytes()
-          ? Math.round((item.getReceivedBytes() / item.getTotalBytes()) * 100)
-          : 0
+      activeDownloadItems.set(downloadId, item)
+
+      const broadcastProgress = (state, forcePaused = null) => {
+        const data = {
+          id: downloadId,
+          filename: item.getFilename(),
+          received: item.getReceivedBytes(),
+          total: item.getTotalBytes(),
+          state,
+          isPaused: forcePaused !== null ? forcePaused : item.isPaused(),
+          canResume: item.canResume(),
+          percent: item.getTotalBytes()
+            ? Math.round((item.getReceivedBytes() / item.getTotalBytes()) * 100)
+            : 0
+        }
+
+        trustedUIWebContents.forEach((id) => {
+          const wc = webContents.fromId(id)
+          if (wc && !wc.isDestroyed()) {
+            wc.send('download-progress', { ...data, isOrigin: id === originWindowWcId })
+          } else {
+            trustedUIWebContents.delete(id)
+          }
+        })
       }
 
-      trustedUIWebContents.forEach((id) => {
-        const wc = webContents.fromId(id)
-        if (wc && !wc.isDestroyed()) {
-          wc.send('download-progress', { ...data, isOrigin: id === originWindowWcId })
-        } else {
-          trustedUIWebContents.delete(id)
+      item.manualBroadcast = broadcastProgress
+
+      const progressInterval = setInterval(() => {
+        if (item.getState() === 'progressing') {
+          broadcastProgress(item.getState())
+        }
+      }, 100)
+
+      item.on('done', async (event, state) => {
+        clearInterval(progressInterval)
+
+        activeDownloadItems.delete(downloadId)
+        broadcastProgress(state)
+
+        if (state === 'completed') {
+          const downloadInfo = {
+            id: downloadId,
+            filename: item.getFilename(),
+            size: item.getTotalBytes(),
+            timestamp: Date.now(),
+            savePath: item.getSavePath(),
+            url: item.getURL()
+          }
+          if (keepHistory) await saveDownloadHistory(downloadInfo)
         }
       })
     }
+  }
 
-    item.manualBroadcast = broadcastProgress
-
-    const progressInterval = setInterval(() => {
-      if (item.getState() === 'progressing') {
-        broadcastProgress(item.getState())
-      }
-    }, 100)
-
-    item.on('done', async (event, state) => {
-      clearInterval(progressInterval)
-
-      activeDownloadItems.delete(downloadId)
-      broadcastProgress(state)
-
-      if (state === 'completed') {
-        const downloadInfo = {
-          id: downloadId,
-          filename: item.getFilename(),
-          size: item.getTotalBytes(),
-          timestamp: Date.now(),
-          savePath: item.getSavePath(),
-          url: item.getURL()
-        }
-        await saveDownloadHistory(downloadInfo)
-      }
-    })
-  })
+  // An incognito window's pages run in a session that lives in memory. It
+  // gets the same protocol handlers and request gate as the normal one, and
+  // no extensions, so nothing done there is kept or seen by them. Downloads
+  // still land in the downloads folder, but no record of them is kept.
+  async function setupIncognitoSession () {
+    const incognito = getIncognitoSession()
+    registerProtocolHandlers(incognito.protocol, await protocolHandlers)
+    installRequestGate(incognito, { incognito: true })
+    setupIncognitoPermissionHandler(incognito)
+    incognito.on('will-download', handleDownload({ keepHistory: false }))
+  }
 
   // Global webview partition alignment and security hardening
   app.on('web-contents-created', (_e, wc) => {
     attachWebviewTabShortcutNav(wc)
     wc.on('will-attach-webview', (_event, webPreferences, params) => {
-      // Force consistent partition when using persist mode
-      if (usePersist()) params.partition = 'persist:peersky'
+      // Pages in an incognito window get the in-memory session. Electron reads
+      // the partition from webPreferences, which it fills in before this event.
+      if (windowManager?.findWindowByWebContentsId(wc.id)?.incognito) webPreferences.partition = INCOGNITO_PARTITION
+      else if (usePersist()) params.partition = 'persist:peersky'
 
       // Basic hardening for webviews (safe defaults)
       webPreferences.nodeIntegration = false
@@ -391,6 +419,7 @@ app.whenReady().then(async () => {
 
   // Check for --new-window argument (from Windows taskbar jump list)
   const hasNewWindowArg = process.argv.includes('--new-window')
+  const hasIncognitoArg = process.argv.includes('--incognito')
 
   const onboardingCompleted = settingsManager.settings.onboardingCompleted
 
@@ -403,6 +432,7 @@ app.whenReady().then(async () => {
     if (windowManager.all.length === 0 || hasNewWindowArg) {
       windowManager.open({ isMainWindow: windowManager.all.length === 0 })
     }
+    if (hasIncognitoArg) openIncognitoWindow()
   }
   // Onboarding included: a link that arrives then opens beside it rather than
   // waiting for the user to finish.
@@ -469,6 +499,10 @@ app.whenReady().then(async () => {
         click: () => {
           windowManager.open({ isMainWindow: false })
         }
+      },
+      {
+        label: 'New Incognito Window',
+        click: () => openIncognitoWindow()
       }
     ])
     app.dock.setMenu(dockMenu)
@@ -482,6 +516,14 @@ app.whenReady().then(async () => {
         iconIndex: 0,
         title: 'New Window',
         description: 'Open a new browser window'
+      },
+      {
+        program: process.execPath,
+        arguments: '--incognito',
+        iconPath: process.execPath,
+        iconIndex: 0,
+        title: 'New Incognito Window',
+        description: 'Open a window that keeps no history, cookies or cache'
       }
     ])
   }
@@ -620,8 +662,16 @@ app.on('before-quit', async (event) => {
  * later still resolves — it just starts the backend on the way through — and
  * warmP2PBackends() boots them in the background once the UI is up.
  */
+// Created once and shared: the incognito session gets the same handlers, and
+// creating them twice would start a second IPFS node.
+let protocolHandlers = null
+
 async function setupProtocols (session) {
-  const { protocol: sessionProtocol } = session
+  protocolHandlers = createProtocolHandlers(session)
+  registerProtocolHandlers(session.protocol, await protocolHandlers)
+}
+
+async function createProtocolHandlers (session) {
   const isExtensionWriteAllowed = ({ extensionId, scheme }) =>
     extensionManager.isP2PWriteAllowed(extensionId, scheme)
   const lazy = true
@@ -656,7 +706,29 @@ async function setupProtocols (session) {
     createFileHandler(),
     createBittorrentHandler({ lazy })
   ])
+  return {
+    browserProtocolHandler,
+    browserThemeHandler,
+    ipfsProtocolHandler,
+    hyperProtocolHandler,
+    hsProtocolHandler,
+    web3ProtocolHandler,
+    fileProtocolHandler,
+    bittorrentProtocolHandler
+  }
+}
 
+function registerProtocolHandlers (sessionProtocol, handlers) {
+  const {
+    browserProtocolHandler,
+    browserThemeHandler,
+    ipfsProtocolHandler,
+    hyperProtocolHandler,
+    hsProtocolHandler,
+    web3ProtocolHandler,
+    fileProtocolHandler,
+    bittorrentProtocolHandler
+  } = handlers
   sessionProtocol.handle('peersky', browserProtocolHandler)
   sessionProtocol.handle('browser', browserThemeHandler)
   sessionProtocol.handle('ipfs', requireVetted(ipfsProtocolHandler))
@@ -690,7 +762,7 @@ function warmP2PBackends () {
   }
 }
 
-async function isGatedRequestAllowed (details) {
+async function isGatedRequestAllowed (details, { incognito = false } = {}) {
   try {
     const verdict = gateRequest({
       url: details.url,
@@ -700,6 +772,8 @@ async function isGatedRequestAllowed (details) {
       frameUrl: details.frame?.url
     })
     if (verdict.action === 'allow') return true
+    // Incognito has no extensions, and an answer there would be remembered.
+    if (incognito) return false
     if (verdict.action === 'extension') return extensionManager.isP2PWriteAllowed(verdict.extensionId, verdict.scheme)
     if (verdict.action === 'ask') {
       const origin = permissionOriginFromUrl(verdict.caller)
@@ -709,6 +783,18 @@ async function isGatedRequestAllowed (details) {
     log.warn('[webRequest] request gate failed:', err?.message || err)
   }
   return false
+}
+
+// The request gate on its own, for a session with no extensions to forward to.
+function installRequestGate (session, options) {
+  session.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, async (details, callback) => {
+    const allowed = await isGatedRequestAllowed(details, options)
+    callback(allowed ? {} : { cancel: true }) // eslint-disable-line n/no-callback-literal
+  })
+  session.webRequest.onBeforeSendHeaders({ urls: ['<all_urls>'] }, (details, callback) => {
+    const stamped = stampVetted(details)
+    callback(stamped ? { requestHeaders: stamped } : {}) // eslint-disable-line n/no-callback-literal
+  })
 }
 
 function installExtensionWebRequestBridge (session) {

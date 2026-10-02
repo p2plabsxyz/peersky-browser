@@ -60,6 +60,13 @@ export function createActions (windowManager) {
         }
       }
     },
+    NewIncognitoWindow: {
+      label: 'New Incognito Window',
+      accelerator: 'CommandOrControl+Shift+N',
+      click: () => {
+        windowManager.open({ incognito: true })
+      }
+    },
     NewTab: {
       label: 'New Tab',
       accelerator: 'CommandOrControl+T',
@@ -396,6 +403,7 @@ export function createMenuTemplate (windowManager) {
       label: 'File',
       submenu: [
         { ...actions.NewWindow },
+        { ...actions.NewIncognitoWindow },
         { ...actions.NewTab },
         { type: 'separator' },
         { ...actions.Print },

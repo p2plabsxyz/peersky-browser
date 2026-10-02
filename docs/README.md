@@ -43,6 +43,11 @@
     - Drag a tab onto another window, or out into one of its own
     - Preview card on hover
     - Memory saver: sleeps inactive tabs, with an exclusion list
+  - [x] Incognito windows, from the File menu (Cmd/Ctrl+Shift+N), the Dock or the Windows taskbar
+    - No history, saved tabs, download records or AI memory
+    - Cookies, cache and site permissions live in memory and go when the last incognito window closes
+    - Extensions stay out, and sites cannot publish to your drives from one
+    - `hyper://` and `ipfs://` content still goes through the same local nodes as normal windows
 
 - [x] Hypercore protocol handler:
 

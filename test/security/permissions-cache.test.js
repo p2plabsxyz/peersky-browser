@@ -1,7 +1,7 @@
 import { expect } from 'chai'
 import os from 'os'
 import path from 'path'
-import { mkdtemp } from 'fs/promises'
+import { mkdtemp, readFile } from 'fs/promises'
 import esmock from 'esmock'
 
 async function loadPermissions (dialog = { showMessageBox: async () => ({ response: 1 }) }) {
@@ -122,5 +122,71 @@ describe('permission cache', function () {
       requestHandler(wc, 'geolocation', () => resolve())
     })
     expect(getPermissionsForOrigin('https://example.com').geolocation).to.equal('allow-session')
+  })
+})
+
+describe('incognito permissions', function () {
+  async function loadIncognito (dialog) {
+    const mod = await loadPermissions(dialog)
+    let requestHandler = null
+    let checkHandler = null
+    mod.setupIncognitoPermissionHandler({
+      setPermissionRequestHandler (fn) { requestHandler = fn },
+      setPermissionCheckHandler (fn) { checkHandler = fn }
+    })
+    return { ...mod, incognitoRequest: requestHandler, incognitoCheck: checkHandler }
+  }
+
+  const ask = (handler, url, permission) => new Promise((resolve) => {
+    handler({ getURL: () => url }, permission, resolve)
+  })
+
+  it('asks with Allow and Block, and never touches the normal answers', async function () {
+    const seen = []
+    const { incognitoRequest, incognitoCheck, getPermissionsForOrigin, setPermission, userData } = await loadIncognito({
+      showMessageBox: async (...args) => { seen.push(args.at(-1).buttons); return { response: 0 } }
+    })
+    setPermission('https://example.com', 'media', 'block')
+
+    expect(await ask(incognitoRequest, 'https://example.com/call', 'media')).to.equal(true)
+    expect(seen).to.deep.equal([['Allow', 'Block']])
+    expect(incognitoCheck(null, 'media', 'https://example.com')).to.equal(true)
+    expect(getPermissionsForOrigin('https://example.com').media).to.equal('block')
+    expect(getPermissionsForOrigin('https://example.com', { incognito: true }).media).to.equal('allow-session')
+
+    // Nothing from incognito reaches the file the normal answers are saved in.
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    const saved = JSON.parse(await readFile(path.join(userData, 'permissions.json'), 'utf8'))
+    expect(saved).to.deep.equal({ 'https://example.com|media': false })
+  })
+
+  it('does not use what the normal profile allowed', async function () {
+    let prompts = 0
+    const { incognitoRequest, setPermission } = await loadIncognito({
+      showMessageBox: async () => { prompts++; return { response: 1 } }
+    })
+    setPermission('https://example.com', 'geolocation', 'allow')
+    expect(await ask(incognitoRequest, 'https://example.com/', 'geolocation')).to.equal(false)
+    expect(await ask(incognitoRequest, 'https://example.com/', 'geolocation')).to.equal(false)
+    expect(prompts).to.equal(1)
+  })
+
+  it('forgets every answer once incognito ends', async function () {
+    const { incognitoRequest, incognitoCheck, clearIncognitoPermissions } = await loadIncognito({
+      showMessageBox: async () => ({ response: 0 })
+    })
+    await ask(incognitoRequest, 'https://example.com/', 'fullscreen')
+    expect(incognitoCheck(null, 'fullscreen', 'https://example.com')).to.equal(true)
+    clearIncognitoPermissions()
+    expect(incognitoCheck(null, 'fullscreen', 'https://example.com')).to.equal(false)
+  })
+
+  it('never offers P2P publishing', async function () {
+    let prompts = 0
+    const { incognitoRequest } = await loadIncognito({
+      showMessageBox: async () => { prompts++; return { response: 0 } }
+    })
+    expect(await ask(incognitoRequest, 'hyper://abc/', 'p2pPublish')).to.equal(false)
+    expect(prompts).to.equal(0)
   })
 })

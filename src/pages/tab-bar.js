@@ -63,6 +63,8 @@ class TabBar extends HTMLElement {
     this.draggedTabId = null
     const params = new URLSearchParams(window.location.search)
     this.windowId = params.get('windowId') || 'main'
+    // An incognito window's tabs are never written down.
+    this.isIncognito = params.get('incognito') === '1'
     this.buildTabBar()
     this.setupBrowserCloseHandler()
     this.setupTabContextMenu()
@@ -567,7 +569,7 @@ class TabBar extends HTMLElement {
   }
 
   writeTabsStateNow () {
-    if (this._retired) return
+    if (this._retired || this.isIncognito) return
     try {
       const tabsData = this.getTabsStateForSaving()
       if (!tabsData) {

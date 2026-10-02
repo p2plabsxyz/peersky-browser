@@ -917,6 +917,8 @@ class ExtensionManager {
       return
     }
     if (!webContents) return // avoid registering shell UI or popups as tabs
+    // Extensions live in the normal session, so an incognito tab is never theirs.
+    if (this.session && webContents.session !== this.session) return
     try {
       if (SidePanelService.isSidePanelGuest(this, window, webContents)) {
         SidePanelService.registerSidePanelGuest(this, webContents.id)

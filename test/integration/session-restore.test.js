@@ -96,7 +96,8 @@ async function loadWindowManager (userDataPath) {
     electron,
     '../../src/extensions/index.js': { default: { addWindow: () => {}, removeWindow: () => {} } },
     '../../src/context-menu.js': { attachContextMenus: () => {}, setWindowManager: () => {} },
-    '../../src/session.js': { getPartition: () => 'persist:peersky', usePersist: () => true },
+    '../../src/session.js': { getPartition: () => 'persist:peersky', usePersist: () => true, getIncognitoSession: () => null, INCOGNITO_PARTITION: 'peersky-incognito' },
+    '../../src/permissions.js': { clearIncognitoPermissions: () => {} },
     '../../src/settings-manager.js': { default: { settings: {} } },
     '../../src/tab-drag-preview.js': { registerTabDragPreview: () => {} },
     '../../src/navigation-restore.js': { watchHost: () => {} }

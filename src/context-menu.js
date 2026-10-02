@@ -397,7 +397,9 @@ export function attachContextMenus (browserWindow, windowManager) {
             label: 'Open Link in New Window',
             click: () => {
               if (windowManagerInstance) {
-                windowManagerInstance.open({ url: params.linkURL, newWindow: true })
+                // A link from an incognito window opens in another incognito one.
+                const incognito = windowManagerInstance.findWindowByWebContentsId(browserWindow.webContents.id)?.incognito === true
+                windowManagerInstance.open({ url: params.linkURL, newWindow: true, incognito })
               } else {
                 console.error('WindowManager instance not set.')
               }

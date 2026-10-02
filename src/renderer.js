@@ -15,6 +15,8 @@ let sidePanelWebview = null
 const nav = document.querySelector('#navbox')
 const findMenu = document.querySelector('#find')
 const pageTitle = document.querySelector('title')
+const isIncognitoWindow = new URLSearchParams(window.location.search).get('incognito') === '1'
+const windowTitle = isIncognitoWindow ? 'Peersky Incognito' : 'Peersky Browser'
 
 function ensureSidePanel () {
   if (sidePanelEl) return sidePanelEl
@@ -292,6 +294,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   // in the right mode instead of flashing horizontal chrome for the IPC round
   // trip. The async settings reads below stay authoritative.
   const startupParams = new URLSearchParams(window.location.search)
+  if (isIncognitoWindow) {
+    document.body.classList.add('incognito-window')
+    document.title = windowTitle
+  }
   const verticalFromParams = startupParams.get('verticalTabs') === '1'
   if (verticalFromParams) {
     document.body.classList.add('vertical-tabs-layout')
@@ -586,7 +592,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const tab = tabBar.tabs.find(t => t.id === tabId)
     if (tab) {
-      pageTitle.innerText = `${tab.title} - Peersky Browser`
+      pageTitle.innerText = `${tab.title} - ${windowTitle}`
     }
 
     updateNavigationButtons(tabBar)
@@ -738,7 +744,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         ipcRenderer.invoke('delete-bookmark', { url })
       } else {
         const title = activeTab.title || pageTitle.innerText
-          .replace(' - Peersky Browser', '')
+          .replace(` - ${windowTitle}`, '')
           .trim()
 
         const parsedUrl = new URL(url)
@@ -869,8 +875,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Update page title
     webviewContainer.addEventListener('page-title-updated', (e) => {
       pageTitle.innerText = e.detail.title
-        ? `${e.detail.title} - Peersky Browser`
-        : 'Peersky Browser'
+        ? `${e.detail.title} - ${windowTitle}`
+        : windowTitle
     })
 
     // Find Menu Event Listeners

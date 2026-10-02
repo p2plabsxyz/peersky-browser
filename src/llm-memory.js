@@ -2,6 +2,7 @@ import { app, ipcMain } from 'electron'
 import { promises as fs } from 'fs'
 import path from 'path'
 import settingsManager from './settings-manager.js'
+import { getIncognitoSession } from './session.js'
 
 const LLM_MEMORY_FILE = path.join(app.getPath('userData'), 'llm.json')
 const MAX_ENTRIES = 2000
@@ -46,8 +47,10 @@ function isMemoryEnabled () {
 
 // ── IPC Handlers ────────────────────────────────────────────────────────────
 
-ipcMain.handle('llm-memory-add', async (_event, entry) => {
+ipcMain.handle('llm-memory-add', async (event, entry) => {
   if (!isMemoryEnabled()) return { ok: false, reason: 'memory_disabled' }
+  // An incognito window keeps nothing, chats with the AI included.
+  if (event.sender.session === getIncognitoSession()) return { ok: false, reason: 'incognito' }
 
   if (!entry || typeof entry !== 'object') return { ok: false, reason: 'invalid_entry' }
 

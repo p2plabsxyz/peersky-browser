@@ -33,6 +33,24 @@ input, button, textarea, select, select *, option  {
   box-sizing: border-box;
 }
 
+/* An incognito window says so, ahead of everything else in the bar. */
+body.incognito-window #navbox::before {
+  content: 'Incognito';
+  flex: 0 0 auto;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #5b4b8a;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Extensions never see an incognito window, so their buttons stay hidden. */
+body.incognito-window #extensions,
+body.incognito-window #extension-icons {
+  display: none;
+}
+
 .match-count {
   margin: 0 5px;
   font-size: 12px;
