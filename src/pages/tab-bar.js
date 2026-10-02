@@ -1071,7 +1071,13 @@ class TabBar extends HTMLElement {
       // Update last active time on interaction/loading
       const tab = this.tabs.find(t => t.id === tabId)
       if (tab) tab.lastActiveTime = Date.now()
+    })
 
+    // did-start-loading also fires for every iframe, ad and history.pushState,
+    // so a busy https page showed the spinner over and over. Only the page
+    // itself starting to load counts.
+    webview.addEventListener('did-start-navigation', (e) => {
+      if (!e.isMainFrame || e.isInPlace) return
       const tabElement = document.getElementById(tabId)
       if (tabElement) {
         tabElement.classList.add('loading')
@@ -1089,6 +1095,9 @@ class TabBar extends HTMLElement {
 
     webview.addEventListener('did-stop-loading', () => {
       const tabElement = document.getElementById(tabId)
+      // A frame finishing on a page that never showed the spinner has
+      // nothing to undo.
+      if (!tabElement?.classList.contains('loading')) return
       if (tabElement) {
         tabElement.classList.remove('loading')
 
@@ -1152,10 +1161,6 @@ class TabBar extends HTMLElement {
     })
 
     webview.addEventListener('did-navigate', () => {
-      this.saveTabsState()
-    })
-
-    webview.addEventListener('did-stop-loading', () => {
       this.saveTabsState()
     })
 

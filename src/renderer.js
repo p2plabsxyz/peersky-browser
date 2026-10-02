@@ -810,10 +810,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Handle webview loading events to toggle refresh/stop button
     if (webviewContainer.webviewElement) {
+      // The page itself, not each iframe or pushState, starts the spinner.
       webviewContainer.webviewElement.addEventListener(
-        'did-start-loading',
-        () => {
-          nav.setLoading(true)
+        'did-start-navigation',
+        (e) => {
+          if (e.isMainFrame && !e.isInPlace) nav.setLoading(true)
         }
       )
 
