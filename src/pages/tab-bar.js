@@ -1166,8 +1166,11 @@ class TabBar extends HTMLElement {
       this.saveTabsState()
     })
 
-    // Handle in-page navigation
+    // Handle in-page navigation. A frame inside the page fires this too when
+    // it changes its own address, and that address is not the tab's: Figma's
+    // sign-in frame put /login_iframe in the address bar and the saved tabs.
     webview.addEventListener('did-navigate-in-page', (e) => {
+      if (!e.isMainFrame) return
       const newUrl = e.url
       const tab = this.tabs.find(t => t.id === tabId)
       if (tab && tab.savedNavigation && tab.savedNavigation.entries) {

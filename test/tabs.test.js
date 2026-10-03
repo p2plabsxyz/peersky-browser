@@ -244,6 +244,18 @@ describe('navigation history', function () {
   })
 })
 
+// Figma's sign-in frame changed its own address, and the address bar and the
+// saved tabs showed /login_iframe instead of the page the tab was on.
+describe('in-page navigation', function () {
+  it("ignores frames inside the page, whose address is not the tab's", function () {
+    const handler = tabBar.slice(tabBar.indexOf("addEventListener('did-navigate-in-page'"), tabBar.indexOf('// Handle audio state changes'))
+    const guard = handler.indexOf('if (!e.isMainFrame) return')
+    expect(guard).to.be.above(-1)
+    expect(guard).to.be.below(handler.indexOf('savedNavigation.entries.push'))
+    expect(guard).to.be.below(handler.indexOf('this.updateTab(tabId, { url: newUrl })'))
+  })
+})
+
 // The same IPC was handled in main.js and in the window manager, so one send
 // opened two windows.
 describe('opening a window over IPC', function () {
