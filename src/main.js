@@ -28,6 +28,7 @@ import { urlFromArgv, queueLaunchUrl, startDeliveringLaunchUrls } from './launch
 // Import and initialize extension system
 import extensionManager from './extensions/index.js'
 import { setupExtensionIpcHandlers } from './extensions/extensions-ipc.js'
+import { isExemptFromBlockers } from './extensions/blocker-exemptions.js'
 import { getBrowserSession, getIncognitoSession, INCOGNITO_PARTITION, usePersist } from './session.js'
 import { setupIncognitoPermissionHandler, setupPermissionHandler, requestSitePermission, permissionOriginFromUrl } from './permissions.js'
 import { setupSiteInfoIpc } from './site-info-ipc.js'
@@ -805,11 +806,13 @@ function installExtensionWebRequestBridge (session) {
   // extension's to filter.
   const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]'])
 
-  const shouldForwardToExtensions = (rawUrl) => {
+  const shouldForwardToExtensions = (rawUrl, details) => {
     const url = typeof rawUrl === 'string' ? rawUrl : ''
     if (!url) return false
     if (url.startsWith('file://')) return false
     if (url.startsWith('chrome-extension://')) return false
+    // The few site requests whose blocking breaks the site, listed there.
+    if (isExemptFromBlockers(details)) return false
     try {
       const { protocol, hostname } = new URL(url)
       if (LOOPBACK_HOSTS.has(hostname)) return false
@@ -826,7 +829,7 @@ function installExtensionWebRequestBridge (session) {
       callback({ cancel: true }) // eslint-disable-line n/no-callback-literal
       return
     }
-    if (!shouldForwardToExtensions(url)) {
+    if (!shouldForwardToExtensions(url, details)) {
       callback({}) // eslint-disable-line n/no-callback-literal
       return
     }
@@ -858,7 +861,7 @@ function installExtensionWebRequestBridge (session) {
         callback({ requestHeaders: stamped }) // eslint-disable-line n/no-callback-literal
         return
       }
-      if (!shouldForwardToExtensions(url)) {
+      if (!shouldForwardToExtensions(url, details)) {
         callback({}) // eslint-disable-line n/no-callback-literal
         return
       }
@@ -882,7 +885,7 @@ function installExtensionWebRequestBridge (session) {
 
   session.webRequest.onSendHeaders({ urls: ['<all_urls>'] }, async (details) => {
     const url = details?.url || ''
-    if (!shouldForwardToExtensions(url)) {
+    if (!shouldForwardToExtensions(url, details)) {
       return
     }
     try {
@@ -896,7 +899,7 @@ function installExtensionWebRequestBridge (session) {
     { urls: ['<all_urls>'] },
     async (details, callback) => {
       const url = details?.url || ''
-      if (!shouldForwardToExtensions(url)) {
+      if (!shouldForwardToExtensions(url, details)) {
         callback({}) // eslint-disable-line n/no-callback-literal
         return
       }
@@ -920,7 +923,7 @@ function installExtensionWebRequestBridge (session) {
 
   session.webRequest.onBeforeRedirect({ urls: ['<all_urls>'] }, async (details) => {
     const url = details?.url || ''
-    if (!shouldForwardToExtensions(url)) {
+    if (!shouldForwardToExtensions(url, details)) {
       return
     }
     try {
@@ -932,7 +935,7 @@ function installExtensionWebRequestBridge (session) {
 
   session.webRequest.onResponseStarted({ urls: ['<all_urls>'] }, async (details) => {
     const url = details?.url || ''
-    if (!shouldForwardToExtensions(url)) {
+    if (!shouldForwardToExtensions(url, details)) {
       return
     }
     try {
@@ -949,7 +952,7 @@ function installExtensionWebRequestBridge (session) {
 
   session.webRequest.onCompleted({ urls: ['<all_urls>'] }, async (details) => {
     const url = details?.url || ''
-    if (!shouldForwardToExtensions(url)) {
+    if (!shouldForwardToExtensions(url, details)) {
       return
     }
     try {
@@ -961,7 +964,7 @@ function installExtensionWebRequestBridge (session) {
 
   session.webRequest.onErrorOccurred({ urls: ['<all_urls>'] }, async (details) => {
     const url = details?.url || ''
-    if (!shouldForwardToExtensions(url)) {
+    if (!shouldForwardToExtensions(url, details)) {
       return
     }
     try {
