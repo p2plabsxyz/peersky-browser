@@ -867,7 +867,7 @@ try {
 }
 
 // CSS injection logic (for pages that need it)
-window.addEventListener('DOMContentLoaded', async () => {
+async function injectPageStyles () {
   try {
     // Initialize theme on page load for internal pages
     if (isInternal) {
@@ -987,4 +987,13 @@ window.addEventListener('DOMContentLoaded', async () => {
   } catch (error) {
     console.error('Unified-preload: Error injecting default styles:', error)
   }
-})
+}
+
+// A page with no scripts of its own, like a raw code or text file, can be
+// parsed before this preload runs, and its DOMContentLoaded has gone by then.
+// Waiting for it left raw code on the browser's white page in the dark theme.
+if (document.readyState === 'loading') {
+  window.addEventListener('DOMContentLoaded', injectPageStyles)
+} else {
+  injectPageStyles()
+}
