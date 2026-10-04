@@ -28,6 +28,23 @@ const PERMISSION_LABELS = Object.fromEntries(
 // here on purpose: that one stays denied.
 const SILENT_GRANT_PERMISSIONS = new Set(['clipboard-sanitized-write'])
 
+/**
+ * A file the person chose in a save or open dialog, read or written by one of
+ * PeerSky's own pages. Electron asks here before a page may write to the file
+ * it was handed, and the deny-by-default branch refused: PeerChat's media
+ * viewer then fell back to a download link, which asked where to save all over
+ * again, and an attachment did not save at all. Only one file, and only for
+ * the browser's own pages; a website, or a whole folder, is refused as before.
+ */
+export function isOwnPageFileAccess (permission, details, fallbackUrl = '') {
+  if (permission !== 'fileSystem' || !details || details.isDirectory === true) return false
+  try {
+    return new URL(details.requestingUrl || fallbackUrl || '').protocol === 'peersky:'
+  } catch {
+    return false
+  }
+}
+
 // blob:/data:/about: have no stable host; do not share a cache key across them.
 const OPAQUE_SCHEMES = new Set(['blob:', 'data:', 'about:'])
 
@@ -302,8 +319,8 @@ async function promptForPermission (webContents, origin, permission, { incognito
 // Incognito asks the same way, but neither reads nor writes the decisions
 // above. P2P publishing is never asked there: the request gate refuses it.
 export function setupIncognitoPermissionHandler (session) {
-  session.setPermissionRequestHandler((webContents, permission, callback) => {
-    if (SILENT_GRANT_PERMISSIONS.has(permission)) {
+  session.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    if (SILENT_GRANT_PERMISSIONS.has(permission) || isOwnPageFileAccess(permission, details, webContents?.getURL?.())) {
       callback(true) // eslint-disable-line n/no-callback-literal
       return
     }
@@ -314,8 +331,8 @@ export function setupIncognitoPermissionHandler (session) {
     }
     requestSitePermission(webContents, origin, permission, { incognito: true }).then(callback)
   })
-  session.setPermissionCheckHandler((_webContents, permission, requestingOrigin) => {
-    if (SILENT_GRANT_PERMISSIONS.has(permission)) return true
+  session.setPermissionCheckHandler((_webContents, permission, requestingOrigin, details) => {
+    if (SILENT_GRANT_PERMISSIONS.has(permission) || isOwnPageFileAccess(permission, details, requestingOrigin)) return true
     if (!PROMPT_PERMISSIONS.has(permission)) return false
     const origin = permissionOriginFromUrl(requestingOrigin)
     return !!origin && entryAllows(incognitoCache.get(cacheKey(origin, permission)))
@@ -325,8 +342,8 @@ export function setupIncognitoPermissionHandler (session) {
 export async function setupPermissionHandler (session) {
   await loadPermissions()
 
-  session.setPermissionRequestHandler((webContents, permission, callback) => {
-    if (SILENT_GRANT_PERMISSIONS.has(permission)) {
+  session.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    if (SILENT_GRANT_PERMISSIONS.has(permission) || isOwnPageFileAccess(permission, details, webContents?.getURL?.())) {
       callback(true) // eslint-disable-line n/no-callback-literal
       return
     }
@@ -344,8 +361,8 @@ export async function setupPermissionHandler (session) {
     requestSitePermission(webContents, origin, permission).then(callback)
   })
 
-  session.setPermissionCheckHandler((_webContents, permission, requestingOrigin) => {
-    if (SILENT_GRANT_PERMISSIONS.has(permission)) return true
+  session.setPermissionCheckHandler((_webContents, permission, requestingOrigin, details) => {
+    if (SILENT_GRANT_PERMISSIONS.has(permission) || isOwnPageFileAccess(permission, details, requestingOrigin)) return true
     if (!PROMPT_PERMISSIONS.has(permission)) return false
     const origin = permissionOriginFromUrl(requestingOrigin)
     if (!origin) return false

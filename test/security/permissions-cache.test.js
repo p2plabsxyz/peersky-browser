@@ -82,6 +82,26 @@ describe('permission cache', function () {
     expect(checkHandler(null, 'clipboard-sanitized-write', 'peersky://settings')).to.equal(true)
   })
 
+  // PeerChat's media viewer saved through the save dialog, and the write that
+  // followed was refused, so it fell back to a download link that asked where
+  // to save a second time. The file the person picked is now writable, by the
+  // browser's own pages only.
+  it('lets the browser\'s own pages use a file the person picked, and nothing more', async function () {
+    const { requestHandler, checkHandler, isOwnPageFileAccess } = await loadPermissions()
+    const own = { getURL: () => 'peersky://p2p/peerchat/' }
+    const site = { getURL: () => 'https://example.com/' }
+    const ask = (webContents, details) => new Promise((resolve) => requestHandler(webContents, 'fileSystem', resolve, details))
+    const file = { filePath: '/Users/me/Downloads/photo.png', isDirectory: false, fileAccessType: 'writable' }
+    expect(await ask(own, { ...file, requestingUrl: 'peersky://p2p/peerchat/' })).to.equal(true)
+    expect(await ask(own, file)).to.equal(true)
+    expect(await ask(own, { ...file, isDirectory: true, requestingUrl: 'peersky://p2p/peerchat/' })).to.equal(false)
+    expect(await ask(site, { ...file, requestingUrl: 'https://example.com/' })).to.equal(false)
+    expect(checkHandler(own, 'fileSystem', 'peersky://p2p', { isDirectory: false })).to.equal(true)
+    expect(checkHandler(site, 'fileSystem', 'https://example.com', { isDirectory: false })).to.equal(false)
+    expect(isOwnPageFileAccess('media', { requestingUrl: 'peersky://p2p/peerchat/' })).to.equal(false)
+    expect(isOwnPageFileAccess('fileSystem', null, 'peersky://p2p/peerchat/')).to.equal(false)
+  })
+
   it('prompts on peersky pages instead of denying', async function () {
     const { requestHandler, getPermissionsForOrigin } = await loadPermissions()
     const wc = { getURL: () => 'peersky://backup' }
