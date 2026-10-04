@@ -27,6 +27,7 @@ import { listPrivateHyperdrives, rememberPrivateHyperdrive } from './private-hyp
 import { openPrivateDriveByName, makePrivateDriveFetcher, decodesWithKey } from './private-hyperdrive.js'
 import { setPrivateDriveOwnership } from './private-drive-ownership.js'
 import { getPrivateDriveKey } from '../backup/private-drive-key.js'
+import { shareDriveOpens } from './shared-drive-opens.js'
 import { isUnreadableDriveError, LINKED_PRIVATE_DRIVE_NAME, PRIVATE_DRIVE_ERROR } from './private-drive-errors.js'
 
 import { _suspendHyper, _hyperPublishFile, _hyperFetchToFile } from '../backup/hyper-backup.js'
@@ -200,7 +201,7 @@ async function startHyperSDK (options) {
 
   // A desktop restored from another one connects with keys of its own.
   const networkKeys = await readNetworkKeys(app.getPath('userData'))
-  sdk = await createSDK(withNetworkKey(options, networkKeys?.main))
+  sdk = shareDriveOpens(await createSDK(withNetworkKey(options, networkKeys?.main)))
 
   let lan = null
   try {
@@ -383,7 +384,7 @@ function initializePrivateHyperSDK (options) {
 async function startPrivateHyperSDK (options) {
   const privateOptions = getPrivateSDKOptions(options || savedSdkOptions, privateDeviceOnly)
   const networkKeys = await readNetworkKeys(app.getPath('userData'))
-  const openedSdk = await createSDK(withNetworkKey(privateOptions, networkKeys?.private))
+  const openedSdk = shareDriveOpens(await createSDK(withNetworkKey(privateOptions, networkKeys?.private)))
   try {
     const openedFetch = await makeHyperFetch({ sdk: openedSdk, writable: true })
     privateSdk = openedSdk

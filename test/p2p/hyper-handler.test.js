@@ -191,6 +191,10 @@ describe('Hyper protocol handler', function () {
       '../../src/protocols/private-hyperdrive-registry.js': {
         rememberPrivateHyperdrive
       },
+      // Tested on its own; here the stubbed SDKs are asked directly.
+      '../../src/protocols/shared-drive-opens.js': {
+        shareDriveOpens: (sdk) => sdk
+      },
       '../../src/pages/p2p/peerchat/p2p.js': {
         initChat,
         handleChatRequest,
