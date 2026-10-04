@@ -159,8 +159,30 @@ export function makePrivateDriveFetcher (sdk, userDataDir) {
   const opened = new Map()
   const catchUps = new Map()
 
-  function register (hostname, drive) {
-    opened.set(hostname, Promise.resolve({ drive, owned: true }))
+  // An upload asks for its drive by name. A Hyperdrive takes its core for
+  // itself, so opening one a reader or an earlier upload already had open
+  // waited forever, and the upload with it. The drive's address is read from
+  // its core, which Hyperdrive makes under the name "db", through a session
+  // that takes nothing for itself; that address shares the one open with
+  // every reader.
+  async function openByName (name) {
+    const namespace = sdk.corestore.namespace(name)
+    const core = namespace.get({ name: 'db' })
+    let hostname
+    try {
+      await core.ready()
+      hostname = z32.encode(core.key)
+    } finally {
+      await core.close().catch(() => {})
+      await namespace.close().catch(() => {})
+    }
+    if (!opened.has(hostname)) {
+      const opening = openPrivateDriveByName(sdk, name, { userDataDir, autoJoin: true })
+        .then((drive) => ({ drive, owned: true }))
+      opened.set(hostname, opening)
+      opening.catch(() => { if (opened.get(hostname) === opening) opened.delete(hostname) })
+    }
+    return (await opened.get(hostname)).drive
   }
 
   // Requests that miss while a catch-up runs wait on that one; one that
@@ -264,6 +286,6 @@ export function makePrivateDriveFetcher (sdk, userDataDir) {
     })
   }
 
-  handle.register = register
+  handle.openByName = openByName
   return handle
 }

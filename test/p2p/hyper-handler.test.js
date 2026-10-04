@@ -82,13 +82,21 @@ describe('Hyper protocol handler', function () {
         storage: {
           hasCore: sinon.stub().resolves(false)
         },
-        namespace: sinon.stub().returns({
+        // A drive opened by name gets the address FakeHyperdrive gives it.
+        namespace: sinon.stub().callsFake((name) => ({
           ns: Buffer.from('test'),
+          seed: name,
+          get: () => ({
+            key: crypto.createHash('sha256').update(String(name)).digest(),
+            ready: async () => {},
+            close: async () => {}
+          }),
+          close: async () => {},
           storage: {
             getAlias: sinon.stub().resolves(null),
             hasCore: sinon.stub().resolves(false)
           }
-        })
+        }))
       },
       getDrive: sinon.stub().callsFake(async (name) => ({
         writable: false,

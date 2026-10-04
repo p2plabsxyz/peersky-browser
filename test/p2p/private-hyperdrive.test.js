@@ -387,3 +387,67 @@ describe('a private drive this desktop learns of by reading it', () => {
     expect(read).to.match(/return new Response\(PRIVATE_DRIVE_ERROR, \{\s+status: 403,/)
   })
 })
+
+// An upload asks for its private drive by name. Asked again while a reader or
+// an earlier upload had it open, it opened a second Hyperdrive, which waits for
+// the first to let go of the core, so the upload hung for good.
+describe('a private drive asked for by name while it is open', function () {
+  this.timeout(30000)
+  let root
+  let store
+
+  beforeEach(async function () {
+    const { default: Corestore } = await import('corestore')
+    root = mkdtempSync(path.join(os.tmpdir(), 'peersky-by-name-'))
+    store = new Corestore(path.join(root, 'store'))
+  })
+
+  afterEach(async function () {
+    await store.close().catch(() => {})
+    rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+  })
+
+  // The real Hyperdrive and Corestore: the wait is theirs.
+  async function makeFetcher (registryEntries) {
+    const module = await esmock('../../src/protocols/private-hyperdrive.js', {
+      '../../src/backup/private-drive-key.js': {
+        getOrCreatePrivateDriveKey: async () => Buffer.alloc(32, 7),
+        getPrivateDriveKeyFor: async () => null
+      },
+      '../../src/protocols/private-hyperdrive-registry.js': {
+        listPrivateHyperdrives: async () => registryEntries
+      },
+      '../../src/protocols/private-drive-ownership.js': {
+        isOwnedPrivateDrive: async () => true
+      }
+    })
+    return module.makePrivateDriveFetcher({ corestore: store, joinCore () {} }, root)
+  }
+
+  const settle = (promise) => Promise.race([
+    promise,
+    new Promise((resolve, reject) => setTimeout(() => reject(new Error('still waiting for the drive')), 5000))
+  ])
+
+  it('hands a second upload the drive the first one opened', async function () {
+    const fetcher = await makeFetcher([])
+    const first = await settle(fetcher.openByName('photos'))
+    expect(await settle(fetcher.openByName('photos'))).to.equal(first)
+  })
+
+  it('hands an upload the drive a reader opened, still writable', async function () {
+    const earlier = await makeFetcher([])
+    const made = await settle(earlier.openByName('notes'))
+    const url = driveUrl(made.key)
+    await made.put('/old.txt', Buffer.from('old'))
+    await made.close()
+
+    // As after a restart: a restored tab reads the drive before the upload.
+    const fetcher = await makeFetcher([{ name: 'notes', url, timestamp: 1, encrypted: true }])
+    expect(await (await settle(fetcher(`${url}old.txt`))).text()).to.equal('old')
+    const drive = await settle(fetcher.openByName('notes'))
+    expect(driveUrl(drive.key)).to.equal(url)
+    expect((await settle(fetcher(`${url}new.txt`, { method: 'PUT', body: 'new' }))).status).to.equal(200)
+    expect(await (await settle(fetcher(`${url}new.txt`))).text()).to.equal('new')
+  })
+})

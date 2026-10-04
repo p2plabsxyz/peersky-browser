@@ -24,7 +24,7 @@ import { hyperCache, saveHyperCache } from './config.js'
 import { enforceExtensionWritePolicy } from '../extensions/request-policy.js'
 import { resolveHyperdriveUploadTarget } from './hyper-drive-visibility.js'
 import { listPrivateHyperdrives, rememberPrivateHyperdrive } from './private-hyperdrive-registry.js'
-import { openPrivateDriveByName, makePrivateDriveFetcher, decodesWithKey } from './private-hyperdrive.js'
+import { makePrivateDriveFetcher, decodesWithKey } from './private-hyperdrive.js'
 import { setPrivateDriveOwnership } from './private-drive-ownership.js'
 import { getPrivateDriveKey } from '../backup/private-drive-key.js'
 import { shareDriveOpens } from './shared-drive-opens.js'
@@ -595,14 +595,8 @@ export async function createHandler (options, securityOptions = {}) {
             await initializePrivateHyperSDK()
             drive = privateDeviceOnly
               ? await privateSdk.getDrive(target.driveName, { autoJoin: target.autoJoin })
-              : await openPrivateDriveByName(privateSdk, target.driveName, {
-                userDataDir: app.getPath('userData'),
-                autoJoin: true
-              })
+              : await privateKeyedFetch.openByName(target.driveName)
             rememberPrivateDrive(drive)
-            if (privateKeyedFetch?.register) {
-              privateKeyedFetch.register(new URL(drive.url).hostname, drive)
-            }
             await rememberPrivateHyperdrive(app.getPath('userData'), {
               name: keyName,
               url: drive.url,
