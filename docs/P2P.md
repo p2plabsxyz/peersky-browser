@@ -47,6 +47,8 @@ The Hyperdrive app asks for a visibility before creating an upload:
 
 Each upload name selects its own Hyperdrive, so sharing one public upload does not expose unrelated uploads. Private upload metadata is kept in a separate local registry and is never added to the shared Hyper cache.
 
+Only PeerSky's own pages, the drive's own pages and a tab you open it in can read or write a private drive (`mayUsePrivateDrive` in `src/protocols/request-gate.js`). Electron applies no CORS to `hyper://`, so without this any site that learned a private drive's address could read it with this desktop's key. The phone has the same rule.
+
 ```mermaid
 flowchart TD
     A[Choose a file or folder] --> B{Visibility}

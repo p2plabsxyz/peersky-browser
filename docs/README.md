@@ -47,6 +47,7 @@
     - No history, saved tabs, download records or AI memory
     - Cookies, cache and site permissions live in memory and go when the last incognito window closes
     - Extensions stay out, and sites cannot publish to your drives from one
+    - Their downloads show only in incognito windows, and their tabs cannot be dragged into a normal window
     - `hyper://` and `ipfs://` content still goes through the same local nodes as normal windows
 
 - [x] Hypercore protocol handler:
