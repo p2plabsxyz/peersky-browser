@@ -27,7 +27,7 @@ function parse (address) {
 }
 
 // A frame torn down mid-request throws on access instead of returning null.
-function frameUrlOf (details) {
+export function frameUrlOf (details) {
   try {
     return details?.frame?.url || ''
   } catch {

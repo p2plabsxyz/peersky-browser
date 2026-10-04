@@ -1,5 +1,9 @@
 import { expect } from 'chai'
+import { readFile } from 'fs/promises'
 import { gateRequest, stampVetted, requireVetted } from '../../src/protocols/request-gate.js'
+import { frameUrlOf } from '../../src/extensions/blocker-exemptions.js'
+
+const main = await readFile(new URL('../../src/main.js', import.meta.url), 'utf8')
 
 const fetchFrom = (url, callerUrl, method = 'GET', extra = {}) =>
   gateRequest({ url, method, resourceType: 'xhr', frameUrl: callerUrl, ...extra })
@@ -102,5 +106,24 @@ describe('request gate: vetted stamp', () => {
   it('passes ordinary reads without a stamp', async () => {
     const res = await echo(new Request('hyper://abc/index.html'))
     expect(res.status).to.equal(200)
+  })
+})
+
+// Reading the frame of a request whose frame was torn down throws. In the gate
+// that cancelled ordinary requests, and in the log line after a block it threw
+// before the request was answered, which left it hanging.
+describe('request gate: a frame torn down mid-request', () => {
+  const gone = { get url () { throw new Error('Render frame was disposed before WebFrameMain could be accessed') } }
+
+  it('reads as no frame, so ordinary requests pass and writes are still refused', () => {
+    expect(frameUrlOf({ frame: gone })).to.equal('')
+    const judge = (url, method) => gateRequest({ url, method, resourceType: 'xhr', frameUrl: frameUrlOf({ frame: gone }) }).action
+    expect(judge('https://example.com/app.js', 'GET')).to.equal('allow')
+    expect(judge('hyper://abc/x', 'PUT')).to.equal('block')
+  })
+
+  it('is how main.js reads every request frame', () => {
+    expect(main).to.not.match(/details\.frame\?*\.url/)
+    expect(main.match(/frameUrlOf\(details\)/g)).to.have.lengthOf(2)
   })
 })

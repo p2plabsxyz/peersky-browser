@@ -28,7 +28,7 @@ import { urlFromArgv, queueLaunchUrl, startDeliveringLaunchUrls } from './launch
 // Import and initialize extension system
 import extensionManager from './extensions/index.js'
 import { setupExtensionIpcHandlers } from './extensions/extensions-ipc.js'
-import { isExemptFromBlockers } from './extensions/blocker-exemptions.js'
+import { isExemptFromBlockers, frameUrlOf } from './extensions/blocker-exemptions.js'
 import { getBrowserSession, getIncognitoSession, INCOGNITO_PARTITION, usePersist } from './session.js'
 import { setupIncognitoPermissionHandler, setupPermissionHandler, requestSitePermission, permissionOriginFromUrl } from './permissions.js'
 import { setupSiteInfoIpc } from './site-info-ipc.js'
@@ -770,7 +770,7 @@ async function isGatedRequestAllowed (details, { incognito = false } = {}) {
       method: details.method,
       resourceType: details.resourceType,
       initiatorOrigin: details.initiatorOrigin,
-      frameUrl: details.frame?.url
+      frameUrl: frameUrlOf(details)
     })
     if (verdict.action === 'allow') return true
     // Incognito has no extensions, and an answer there would be remembered.
@@ -825,7 +825,7 @@ function installExtensionWebRequestBridge (session) {
   session.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, async (details, callback) => {
     const url = details?.url || ''
     if (!(await isGatedRequestAllowed(details))) {
-      log.warn(`[webRequest] blocked ${details.method} ${url.split(':')[0]}: request from ${details.initiatorOrigin || details.frame?.url || 'unknown'}`)
+      log.warn(`[webRequest] blocked ${details.method} ${url.split(':')[0]}: request from ${details.initiatorOrigin || frameUrlOf(details) || 'unknown'}`)
       callback({ cancel: true }) // eslint-disable-line n/no-callback-literal
       return
     }
