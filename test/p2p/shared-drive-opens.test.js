@@ -82,8 +82,10 @@ describe('opens of one drive at the same time', () => {
       const made = new Hyperdrive(phone.corestore.namespace('private'), null, { encryptionKey: crypto.randomBytes(32) })
       await made.ready()
       await made.put('/app-icon.png', Buffer.from('picture bytes'))
-      // Held open, so the block it fetched is the one the drive opens with.
+      // Held open, so the block it fetched is the one the drive opens with, and
+      // brought up to date first, so the store knows how long the drive is.
       const core = desktop.corestore.get({ key: made.key })
+      await core.update({ wait: true })
       await core.get(0, { timeout: 5000 })
 
       const address = `hyper://${z32.encode(made.key)}/`
