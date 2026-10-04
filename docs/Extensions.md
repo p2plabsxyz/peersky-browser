@@ -9,7 +9,8 @@ PeerSky’s `peersky://extensions` page is the control center for managing brows
 ![Extensions Management](./images/peersky-extensions-management.png)
 
 Highlights
-- Six MV3 extensions ship preinstalled (Dark Reader, Linguist, PeerSky History, Consent Autodeny, Ghostery, Wayback Machine) on first launch; they stay installed but can be disabled any time.
+- Five MV3 extensions ship preinstalled (Linguist, PeerSky History, Consent Autodeny, uBlock Origin, Wayback Machine) on first launch; they stay installed but can be disabled any time.
+- When a content blocker such as uBlock Origin blocks a page's own fetch, XHR or beacon, PeerSky answers it on the device with an empty response instead of a network error (`src/extensions/blocked-requests.js`). A page that waits on a blocked analytics call still works, and nothing is sent. Scripts, frames, images and the rest stay blocked.
 - **PeerSky History** (`peersky://history`) provides local-first browsing history with full-text search, accessible via the extension or directly at `peersky://history`.
 - Context-isolated preload exposes only what this page needs, keeping privileged APIs out of `peersky://extensions`.
 - Browser actions integrate with the toolbar/puzzle menu, support pinning up to six entries.
@@ -17,7 +18,7 @@ Highlights
 ## 2. User Guide
 
 Quick start
-- Preinstalled: six trusted extensions ship enabled and can be disabled but not removed: https://github.com/p2plabsxyz/essential-chromium-extensions
+- Preinstalled: five trusted extensions ship enabled and can be disabled but not removed: https://github.com/p2plabsxyz/essential-chromium-extensions
 - Install from Web Store: paste a Chrome Web Store URL, a `?id=` link, or the raw 32-character ID → Install.
 - Install from file: drag/drop a `.zip`, `.crx`, `.crx3` or use Choose File.
 

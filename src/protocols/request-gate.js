@@ -47,6 +47,18 @@ function isP2PWrite (target, method) {
   return P2P_WRITE_SCHEMES.has(target.protocol) && !SAFE_METHODS.has(method)
 }
 
+/**
+ * The address of the frame behind a webRequest, or '' when there is none. A
+ * frame torn down mid-request throws on access instead of returning null.
+ */
+export function frameUrlOf (details) {
+  try {
+    return details?.frame?.url || ''
+  } catch {
+    return ''
+  }
+}
+
 // initiatorOrigin is the security origin, so an about:blank frame counts as the
 // page that made it. Opaque origins read "null" and fall back to the frame URL.
 function callerOf (initiatorOrigin, frameUrl) {

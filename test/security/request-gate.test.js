@@ -1,7 +1,6 @@
 import { expect } from 'chai'
 import { readFile } from 'fs/promises'
-import { gateRequest, stampVetted, requireVetted, takeNavigationStamp, mayUsePrivateDrive } from '../../src/protocols/request-gate.js'
-import { frameUrlOf } from '../../src/extensions/blocker-exemptions.js'
+import { gateRequest, stampVetted, requireVetted, takeNavigationStamp, mayUsePrivateDrive, frameUrlOf } from '../../src/protocols/request-gate.js'
 
 const main = await readFile(new URL('../../src/main.js', import.meta.url), 'utf8')
 

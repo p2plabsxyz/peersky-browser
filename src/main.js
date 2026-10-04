@@ -12,7 +12,7 @@ import { createHandler as createWeb3Handler } from './protocols/web3-handler.js'
 import { createHandler as createFileHandler } from './protocols/file-handler.js'
 import { createHandler as createBittorrentHandler, setupBittorrentIpc, shutdownBittorrent, warmupBittorrent } from './protocols/bittorrent-handler.js'
 import { ipfsOptions, hyperOptions } from './protocols/config.js'
-import { gateRequest, stampVetted, requireVetted } from './protocols/request-gate.js'
+import { gateRequest, stampVetted, requireVetted, frameUrlOf } from './protocols/request-gate.js'
 import { createMenuTemplate } from './actions.js'
 import WindowManager from './window-manager.js'
 import settingsManager from './settings-manager.js'
@@ -28,7 +28,7 @@ import { urlFromArgv, queueLaunchUrl, startDeliveringLaunchUrls } from './launch
 // Import and initialize extension system
 import extensionManager from './extensions/index.js'
 import { setupExtensionIpcHandlers } from './extensions/extensions-ipc.js'
-import { isExemptFromBlockers, frameUrlOf } from './extensions/blocker-exemptions.js'
+import { BLOCKED_SCHEME, BLOCKED_SCHEME_PRIVILEGES, answerBlockedCall, blockedCallHandler } from './extensions/blocked-requests.js'
 import { getBrowserSession, getIncognitoSession, INCOGNITO_PARTITION, usePersist } from './session.js'
 import { setupIncognitoPermissionHandler, setupPermissionHandler, requestSitePermission, permissionOriginFromUrl } from './permissions.js'
 import { setupSiteInfoIpc } from './site-info-ipc.js'
@@ -170,7 +170,8 @@ globalProtocol.registerSchemesAsPrivileged([
   { scheme: 'file', privileges: FILE_PROTOCOL },
   { scheme: 'bittorrent', privileges: P2P_PROTOCOL },
   { scheme: 'bt', privileges: P2P_PROTOCOL },
-  { scheme: 'magnet', privileges: MAGNET_PROTOCOL }
+  { scheme: 'magnet', privileges: MAGNET_PROTOCOL },
+  { scheme: BLOCKED_SCHEME, privileges: BLOCKED_SCHEME_PRIVILEGES }
 ])
 
 /**
@@ -815,13 +816,14 @@ function installExtensionWebRequestBridge (session) {
   // extension's to filter.
   const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]'])
 
-  const shouldForwardToExtensions = (rawUrl, details) => {
+  // Where a page's blocked fetch, XHR or beacon gets its empty answer.
+  session.protocol.handle(BLOCKED_SCHEME, blockedCallHandler)
+
+  const shouldForwardToExtensions = (rawUrl) => {
     const url = typeof rawUrl === 'string' ? rawUrl : ''
     if (!url) return false
     if (url.startsWith('file://')) return false
     if (url.startsWith('chrome-extension://')) return false
-    // The few site requests whose blocking breaks the site, listed there.
-    if (isExemptFromBlockers(details)) return false
     try {
       const { protocol, hostname } = new URL(url)
       if (LOOPBACK_HOSTS.has(hostname)) return false
@@ -838,7 +840,7 @@ function installExtensionWebRequestBridge (session) {
       callback({ cancel: true }) // eslint-disable-line n/no-callback-literal
       return
     }
-    if (!shouldForwardToExtensions(url, details)) {
+    if (!shouldForwardToExtensions(url)) {
       callback({}) // eslint-disable-line n/no-callback-literal
       return
     }
@@ -858,7 +860,7 @@ function installExtensionWebRequestBridge (session) {
       result = { ...result, redirectURL: result.redirectUrl }
     }
 
-    callback(result)
+    callback(answerBlockedCall(details, result))
   })
 
   session.webRequest.onBeforeSendHeaders(
@@ -870,7 +872,7 @@ function installExtensionWebRequestBridge (session) {
         callback({ requestHeaders: stamped }) // eslint-disable-line n/no-callback-literal
         return
       }
-      if (!shouldForwardToExtensions(url, details)) {
+      if (!shouldForwardToExtensions(url)) {
         callback({}) // eslint-disable-line n/no-callback-literal
         return
       }
@@ -894,7 +896,7 @@ function installExtensionWebRequestBridge (session) {
 
   session.webRequest.onSendHeaders({ urls: ['<all_urls>'] }, async (details) => {
     const url = details?.url || ''
-    if (!shouldForwardToExtensions(url, details)) {
+    if (!shouldForwardToExtensions(url)) {
       return
     }
     try {
@@ -908,7 +910,7 @@ function installExtensionWebRequestBridge (session) {
     { urls: ['<all_urls>'] },
     async (details, callback) => {
       const url = details?.url || ''
-      if (!shouldForwardToExtensions(url, details)) {
+      if (!shouldForwardToExtensions(url)) {
         callback({}) // eslint-disable-line n/no-callback-literal
         return
       }
@@ -932,7 +934,7 @@ function installExtensionWebRequestBridge (session) {
 
   session.webRequest.onBeforeRedirect({ urls: ['<all_urls>'] }, async (details) => {
     const url = details?.url || ''
-    if (!shouldForwardToExtensions(url, details)) {
+    if (!shouldForwardToExtensions(url)) {
       return
     }
     try {
@@ -944,7 +946,7 @@ function installExtensionWebRequestBridge (session) {
 
   session.webRequest.onResponseStarted({ urls: ['<all_urls>'] }, async (details) => {
     const url = details?.url || ''
-    if (!shouldForwardToExtensions(url, details)) {
+    if (!shouldForwardToExtensions(url)) {
       return
     }
     try {
@@ -961,7 +963,7 @@ function installExtensionWebRequestBridge (session) {
 
   session.webRequest.onCompleted({ urls: ['<all_urls>'] }, async (details) => {
     const url = details?.url || ''
-    if (!shouldForwardToExtensions(url, details)) {
+    if (!shouldForwardToExtensions(url)) {
       return
     }
     try {
@@ -973,7 +975,7 @@ function installExtensionWebRequestBridge (session) {
 
   session.webRequest.onErrorOccurred({ urls: ['<all_urls>'] }, async (details) => {
     const url = details?.url || ''
-    if (!shouldForwardToExtensions(url, details)) {
+    if (!shouldForwardToExtensions(url)) {
       return
     }
     try {
