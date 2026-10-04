@@ -1,6 +1,6 @@
 import { expect } from 'chai'
 import { readFile } from 'fs/promises'
-import { gateRequest, stampVetted, requireVetted } from '../../src/protocols/request-gate.js'
+import { gateRequest, stampVetted, requireVetted, takeNavigationStamp, mayUsePrivateDrive } from '../../src/protocols/request-gate.js'
 import { frameUrlOf } from '../../src/extensions/blocker-exemptions.js'
 
 const main = await readFile(new URL('../../src/main.js', import.meta.url), 'utf8')
@@ -106,6 +106,57 @@ describe('request gate: vetted stamp', () => {
   it('passes ordinary reads without a stamp', async () => {
     const res = await echo(new Request('hyper://abc/index.html'))
     expect(res.status).to.equal(200)
+  })
+})
+
+// Electron hands a protocol handler no Sec-Fetch headers, so the gate marks a
+// tab loading a hyper:// page for the handler to tell from a page's fetch.
+describe('request gate: navigation stamp', () => {
+  const drive = `hyper://${'d'.repeat(52)}/note.txt`
+  const stamp = (details) => stampVetted({ url: drive, method: 'GET', requestHeaders: {}, ...details })
+
+  it('marks only a tab loading a hyper:// page', () => {
+    expect(stamp({ resourceType: 'mainFrame' })).to.have.property('x-peersky-navigation')
+    expect(stamp({ resourceType: 'subFrame' })).to.equal(null)
+    expect(stamp({ resourceType: 'xhr' })).to.equal(null)
+    expect(stamp({ resourceType: 'image' })).to.equal(null)
+    expect(stamp({ resourceType: 'mainFrame', url: 'https://example.com/' })).to.equal(null)
+    expect(stamp({ resourceType: 'mainFrame', method: 'POST' })).to.not.have.property('x-peersky-navigation')
+  })
+
+  it('replaces a stamp the page sent with the real one', () => {
+    const headers = stamp({ resourceType: 'mainFrame', requestHeaders: { 'X-Peersky-Navigation': 'guess', 'x-peersky-vetted': 'guess' } })
+    expect(Object.keys(headers).filter((name) => name.toLowerCase().startsWith('x-peersky'))).to.deep.equal(['x-peersky-navigation'])
+    expect(headers['x-peersky-navigation']).to.not.equal('guess')
+  })
+
+  it('reads the stamp once and takes it off', () => {
+    const request = new Request(drive, { headers: stamp({ resourceType: 'mainFrame' }) })
+    expect(takeNavigationStamp(request)).to.equal(true)
+    expect(request.headers.has('x-peersky-navigation')).to.equal(false)
+    expect(takeNavigationStamp(new Request(drive, { headers: { 'x-peersky-navigation': 'guess' } }))).to.equal(false)
+    expect(takeNavigationStamp(new Request(drive))).to.equal(false)
+  })
+})
+
+describe('request gate: who may use a private drive', () => {
+  const drive = `hyper://${'d'.repeat(52)}/note.txt`
+  const may = (initiatorOrigin, navigation) => mayUsePrivateDrive({ url: drive, initiatorOrigin, navigation })
+
+  it('lets the browser, its own pages and a tab opening it in', () => {
+    expect(may(undefined), 'the browser itself').to.equal(true)
+    expect(may('peersky://p2p'), 'a browser page').to.equal(true)
+    expect(may(`hyper://${'d'.repeat(52)}`), 'its own page').to.equal(true)
+    expect(may('https://site.example', true), 'a tab opening a link').to.equal(true)
+  })
+
+  it('keeps every other page out', () => {
+    expect(may('https://site.example')).to.equal(false)
+    expect(may(`hyper://${'e'.repeat(52)}`)).to.equal(false)
+    expect(may('file://')).to.equal(false)
+    expect(may('chrome-extension://abcdefghijklmnop')).to.equal(false)
+    expect(may('null'), 'an opaque origin').to.equal(false)
+    expect(may('')).to.equal(false)
   })
 })
 

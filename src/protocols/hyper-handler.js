@@ -29,6 +29,7 @@ import { setPrivateDriveOwnership } from './private-drive-ownership.js'
 import { getPrivateDriveKey } from '../backup/private-drive-key.js'
 import { shareDriveOpens } from './shared-drive-opens.js'
 import { isUnreadableDriveError, LINKED_PRIVATE_DRIVE_NAME, PRIVATE_DRIVE_ERROR } from './private-drive-errors.js'
+import { mayUsePrivateDrive, takeNavigationStamp } from './request-gate.js'
 
 import { _suspendHyper, _hyperPublishFile, _hyperFetchToFile } from '../backup/hyper-backup.js'
 
@@ -552,6 +553,7 @@ export async function createHandler (options, securityOptions = {}) {
   }
 
   return async function protocolHandler (req) {
+    const navigation = takeNavigationStamp(req)
     if (isSuspended) {
       return new Response('Hyper is unavailable while a backup is in progress', {
         status: 503,
@@ -677,7 +679,7 @@ export async function createHandler (options, securityOptions = {}) {
       if (protocol === 'hyper' && urlObj.hostname === 'chat') {
         return await handleChatRequestP2P(req, sdk)
       } else {
-        return await handleHyperRequest(req)
+        return await handleHyperRequest(req, { navigation })
       }
     } catch (err) {
       log.error('Failed to handle Hyper request:', err)
@@ -736,12 +738,19 @@ async function tryLinkedPrivateDrive (hostname) {
 }
 
 // Handle general hyper:// requests (not chat API).
-async function handleHyperRequest (req) {
+async function handleHyperRequest (req, { navigation = false } = {}) {
   const { url, method = 'GET', headers } = req
   const context = await getHyperRequestContext(url)
   const fetchFn = context.fetch
   const upperMethod = method.toUpperCase()
   const hasBody = upperMethod !== 'GET' && upperMethod !== 'HEAD'
+
+  if (context.private && !mayUsePrivateDrive({ url, initiatorOrigin: req.initiatorOrigin, navigation })) {
+    return new Response(PRIVATE_DRIVE_ERROR, {
+      status: 403,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+    })
+  }
 
   // Without this the first read of a drive races replication and hypercore-fetch
   // answers "Peers Not Found" against a core of length zero, which is why a page
@@ -767,7 +776,7 @@ async function handleHyperRequest (req) {
     if (!context.private && !hasBody && resp.status === 500) {
       const text = await resp.clone().text().catch(() => '')
       if (isUnreadableDriveError(text)) {
-        if (await adoptLinkedPrivateDrive(new URL(url).hostname)) return handleHyperRequest(req)
+        if (await adoptLinkedPrivateDrive(new URL(url).hostname)) return handleHyperRequest(req, { navigation })
         return new Response(PRIVATE_DRIVE_ERROR, {
           status: 403,
           headers: { 'Content-Type': 'text/plain; charset=utf-8' }

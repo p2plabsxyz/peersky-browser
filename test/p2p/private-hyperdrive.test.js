@@ -382,7 +382,7 @@ describe('a private drive this desktop learns of by reading it', () => {
     expect(adopt).to.contain('privateDriveHostnames.add(hostname)')
 
     const read = handler.slice(handler.indexOf('async function handleHyperRequest'))
-    expect(read).to.match(/if \(!context\.private && !hasBody && resp\.status === 500\) \{\s+const text = await resp\.clone\(\)\.text\(\)\.catch\(\(\) => ''\)\s+if \(isUnreadableDriveError\(text\)\) \{\s+if \(await adoptLinkedPrivateDrive\(new URL\(url\)\.hostname\)\) return handleHyperRequest\(req\)/)
+    expect(read).to.match(/if \(!context\.private && !hasBody && resp\.status === 500\) \{\s+const text = await resp\.clone\(\)\.text\(\)\.catch\(\(\) => ''\)\s+if \(isUnreadableDriveError\(text\)\) \{\s+if \(await adoptLinkedPrivateDrive\(new URL\(url\)\.hostname\)\) return handleHyperRequest\(req, \{ navigation \}\)/)
     // \s+, not \n: Windows checks the source out with CRLF line endings.
     expect(read).to.match(/return new Response\(PRIVATE_DRIVE_ERROR, \{\s+status: 403,/)
   })

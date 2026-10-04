@@ -8,6 +8,11 @@ import { randomBytes } from 'crypto'
 
 const VETTED_HEADER = 'x-peersky-vetted'
 const vettedToken = randomBytes(32).toString('hex')
+// Marks a tab loading a hyper:// page. A protocol handler cannot tell that from
+// a page's fetch: Electron passes it no Sec-Fetch headers.
+const NAVIGATION_HEADER = 'x-peersky-navigation'
+const navigationToken = randomBytes(32).toString('hex')
+const STAMP_HEADERS = new Set([VETTED_HEADER, NAVIGATION_HEADER])
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 const P2P_WRITE_SCHEMES = new Set(['hyper:', 'ipfs:', 'ipns:', 'pubsub:'])
@@ -83,14 +88,46 @@ function isSensitive (url, method) {
   return !!controlApiCallers(target) || isP2PWrite(target, String(method || 'GET').toUpperCase())
 }
 
-/** Request headers with the stamp added, or null when the request needs none. */
-export function stampVetted ({ url, method, requestHeaders }) {
-  if (!isSensitive(url, method)) return null
+/** Request headers with the stamps added, or null when the request needs none. */
+export function stampVetted ({ url, method, resourceType, requestHeaders }) {
+  const sensitive = isSensitive(url, method)
+  const navigation = resourceType === 'mainFrame' &&
+    SAFE_METHODS.has(String(method || 'GET').toUpperCase()) &&
+    parseUrl(url)?.protocol === 'hyper:'
+  if (!sensitive && !navigation) return null
   const headers = Object.fromEntries(
-    Object.entries(requestHeaders || {}).filter(([name]) => name.toLowerCase() !== VETTED_HEADER)
+    Object.entries(requestHeaders || {}).filter(([name]) => !STAMP_HEADERS.has(name.toLowerCase()))
   )
-  headers[VETTED_HEADER] = vettedToken
+  if (sensitive) headers[VETTED_HEADER] = vettedToken
+  if (navigation) headers[NAVIGATION_HEADER] = navigationToken
   return headers
+}
+
+/** Whether the request gate saw a request as a tab loading a page. Takes the stamp off. */
+export function takeNavigationStamp (request) {
+  const stamped = request.headers.get(NAVIGATION_HEADER) === navigationToken
+  request.headers.delete(NAVIGATION_HEADER)
+  return stamped
+}
+
+/**
+ * Whether a request may read or write a private drive: the phone's rule. The
+ * browser's own pages and the drive's own pages may, and so may a tab opening
+ * it, where the page that linked to it cannot read it. Any other page could
+ * only know the address, and as Electron applies no CORS to hyper://, it would
+ * otherwise read the drive with this device's keys.
+ * @param {{ url: string, initiatorOrigin?: string, navigation?: boolean }} request
+ */
+export function mayUsePrivateDrive ({ url, initiatorOrigin, navigation = false }) {
+  if (navigation) return true
+  // Absent when the browser made the request itself: a typed address, a
+  // bookmark, a restored tab.
+  if (initiatorOrigin === undefined) return true
+  const caller = parseUrl(initiatorOrigin)
+  const target = parseUrl(url)
+  if (!caller || !target) return false
+  if (caller.protocol === 'peersky:') return true
+  return caller.protocol === 'hyper:' && caller.hostname === target.hostname
 }
 
 /** Wrap a protocol handler so sensitive requests must carry the stamp. */

@@ -8,6 +8,7 @@ import { mkdtempSync } from 'fs'
 import z32 from 'z32'
 import { mkdtemp, readFile, rm, writeFile } from 'fs/promises'
 import { EventEmitter } from 'events'
+import * as requestGate from '../../src/protocols/request-gate.js'
 
 const TEST_USER_DATA = mkdtempSync(path.join(os.tmpdir(), 'peersky-test-userdata-'))
 
@@ -191,6 +192,8 @@ describe('Hyper protocol handler', function () {
       '../../src/protocols/private-hyperdrive-registry.js': {
         rememberPrivateHyperdrive
       },
+      // The instance the tests stamp requests with, so the stamps match.
+      '../../src/protocols/request-gate.js': requestGate,
       // Tested on its own; here the stubbed SDKs are asked directly.
       '../../src/protocols/shared-drive-opens.js': {
         shareDriveOpens: (sdk) => sdk
@@ -491,6 +494,34 @@ describe('Hyper protocol handler', function () {
     expect(await getResponse.text()).to.equal('private')
     expect(privateFetchStub.called).to.equal(false)
     expect(fetchStub.called).to.equal(false)
+  })
+
+  // A site that learned a private drive's address read it with this desktop's
+  // keys, as Electron applies no CORS to hyper://. The phone already refused it.
+  it('keeps a private drive from pages other than its own and the browser\'s', async function () {
+    const { module } = await loadHyperModule()
+    const handler = await module.createHandler({ storage: 'test-private-callers' })
+    const keyResponse = await handler(new Request('hyper://localhost/?key=private-callers&visibility=private', { method: 'POST' }))
+    const driveUrl = await keyResponse.text()
+    const fileUrl = new URL('/note.txt', driveUrl).href
+    expect((await handler(new Request(fileUrl, { method: 'PUT', body: 'private' }))).status).to.equal(200)
+
+    const from = (initiatorOrigin, init = {}) => Object.assign(new Request(fileUrl, init), { initiatorOrigin })
+    const opened = (initiatorOrigin) => from(initiatorOrigin, {
+      headers: requestGate.stampVetted({ url: fileUrl, method: 'GET', resourceType: 'mainFrame', requestHeaders: {} })
+    })
+
+    expect((await handler(from('https://site.example'))).status, 'a website').to.equal(403)
+    expect((await handler(from(`hyper://${'a'.repeat(52)}`))).status, 'another hyper site').to.equal(403)
+    expect((await handler(from('null'))).status, 'an opaque origin').to.equal(403)
+    expect((await handler(from('https://site.example', { method: 'PUT', body: 'x' }))).status, 'a website writing').to.equal(403)
+    const forged = from('https://site.example', { headers: { 'x-peersky-navigation': 'guess' } })
+    expect((await handler(forged)).status, 'a forged stamp').to.equal(403)
+
+    expect((await handler(from('peersky://p2p'))).status, 'the browser\'s own page').to.equal(200)
+    expect((await handler(from(`hyper://${new URL(driveUrl).hostname}`))).status, 'its own page').to.equal(200)
+    expect((await handler(opened('https://site.example'))).status, 'a tab opening a link to it').to.equal(200)
+    expect(await (await handler(new Request(fileUrl))).text(), 'a typed address').to.equal('private')
   })
 
   it('serves private drives from the encrypted runtime after restart', async function () {
