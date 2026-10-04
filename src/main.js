@@ -192,6 +192,11 @@ function shellWebContentsIdFor (wc) {
   return null
 }
 
+// Whether a window's shell, or a page inside it, belongs to an incognito window.
+function isIncognitoContents (wc) {
+  return windowManager?.findWindowByWebContentsId(shellWebContentsIdFor(wc))?.incognito === true
+}
+
 // One process per profile. A second launch, which is how Windows and Linux
 // hand over a link or a taskbar "new window", forwards its argv to the owner
 // and exits instead of booting a rival on the same profile.
@@ -307,10 +312,10 @@ app.whenReady().then(async () => {
   setupBackupIpc({ getTabs: () => windowManager.getTabs() })
   setupSiteInfoIpc(userSession)
 
-  userSession.on('will-download', handleDownload({ keepHistory: true }))
+  userSession.on('will-download', handleDownload({ incognito: false }))
   incognitoReady = setupIncognitoSession().catch((error) => log.error('[startup] incognito session failed:', error?.stack || error))
 
-  function handleDownload ({ keepHistory }) {
+  function handleDownload ({ incognito }) {
     return (event, item, sessionWebContents) => {
       const downloadId = crypto.randomUUID()
       // The shell window that started this download. Progress goes to every
@@ -318,6 +323,9 @@ app.whenReady().then(async () => {
       // this one may pop the panel open.
       const originWindowWcId = shellWebContentsIdFor(sessionWebContents)
 
+      // An incognito download is shown in incognito windows only, and any other
+      // download only outside them.
+      item.incognito = incognito
       activeDownloadItems.set(downloadId, item)
 
       const broadcastProgress = (state, forcePaused = null) => {
@@ -337,6 +345,7 @@ app.whenReady().then(async () => {
         trustedUIWebContents.forEach((id) => {
           const wc = webContents.fromId(id)
           if (wc && !wc.isDestroyed()) {
+            if (isIncognitoContents(wc) !== incognito) return
             wc.send('download-progress', { ...data, isOrigin: id === originWindowWcId })
           } else {
             trustedUIWebContents.delete(id)
@@ -367,7 +376,7 @@ app.whenReady().then(async () => {
             savePath: item.getSavePath(),
             url: item.getURL()
           }
-          if (keepHistory) await saveDownloadHistory(downloadInfo)
+          if (!incognito) await saveDownloadHistory(downloadInfo)
         }
       })
     }
@@ -382,7 +391,7 @@ app.whenReady().then(async () => {
     registerProtocolHandlers(incognito.protocol, await protocolHandlers)
     installRequestGate(incognito, { incognito: true })
     setupIncognitoPermissionHandler(incognito)
-    incognito.on('will-download', handleDownload({ keepHistory: false }))
+    incognito.on('will-download', handleDownload({ incognito: true }))
   }
 
   // Global webview partition alignment and security hardening
@@ -1121,9 +1130,11 @@ ipcMain.handle('get-downloads', async () => {
   }
 })
 
-ipcMain.handle('get-active-downloads', async () => {
+ipcMain.handle('get-active-downloads', async (event) => {
   const active = []
+  const incognito = isIncognitoContents(event.sender)
   for (const [id, item] of activeDownloadItems.entries()) {
+    if (item.incognito !== incognito) continue
     active.push({
       id,
       filename: item.getFilename(),
