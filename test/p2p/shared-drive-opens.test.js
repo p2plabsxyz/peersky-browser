@@ -63,7 +63,8 @@ describe('opens of one drive at the same time', () => {
       left.destroy()
       right.destroy()
       await Promise.allSettled([phone.close(), desktop.close()])
-      rmSync(root, { recursive: true, force: true })
+      // Windows can hold a closed store's files a moment longer.
+      rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
     }
   })
 
@@ -102,7 +103,8 @@ describe('opens of one drive at the same time', () => {
       left.destroy()
       right.destroy()
       await Promise.allSettled([phone.close(), desktop.close()])
-      rmSync(root, { recursive: true, force: true })
+      // Windows can hold a closed store's files a moment longer.
+      rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
     }
   })
 })

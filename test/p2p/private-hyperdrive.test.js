@@ -355,7 +355,8 @@ describe('a private drive this desktop learns of by reading it', () => {
       left.destroy()
       right.destroy()
       await Promise.allSettled([phone.close(), desktop.close(), privateStore.close()])
-      rmSync(root, { recursive: true, force: true })
+      // Windows can hold a closed store's files a moment longer.
+      rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
     }
   })
 
@@ -375,6 +376,7 @@ describe('a private drive this desktop learns of by reading it', () => {
 
     const read = handler.slice(handler.indexOf('async function handleHyperRequest'))
     expect(read).to.match(/if \(!context\.private && !hasBody && resp\.status === 500\) \{\s+const text = await resp\.clone\(\)\.text\(\)\.catch\(\(\) => ''\)\s+if \(isUnreadableDriveError\(text\)\) \{\s+if \(await adoptLinkedPrivateDrive\(new URL\(url\)\.hostname\)\) return handleHyperRequest\(req\)/)
-    expect(read).to.contain('return new Response(PRIVATE_DRIVE_ERROR, {\n          status: 403,')
+    // \s+, not \n: Windows checks the source out with CRLF line endings.
+    expect(read).to.match(/return new Response\(PRIVATE_DRIVE_ERROR, \{\s+status: 403,/)
   })
 })
