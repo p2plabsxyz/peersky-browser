@@ -163,10 +163,14 @@ class WindowManager {
 
     // Which other window, if any, is under a screen point. Used at the end of
     // a tab drag to decide between joining that window and opening a new one.
+    // Only a window of the same kind counts: a private tab dropped on a normal
+    // window would carry on in the saved session, and the other way round.
     ipcMain.handle('window-at-point', (event, { x, y }) => {
+      const incognito = this.findWindowBySenderId(event.sender.id)?.incognito === true
       for (const peersky of this.windows) {
         const win = peersky.window
         if (win.isDestroyed() || win.webContents.id === event.sender.id) continue
+        if (peersky.incognito !== incognito) continue
         const b = win.getBounds()
         if (x >= b.x && x < b.x + b.width && y >= b.y && y < b.y + b.height) return win.webContents.id
       }
@@ -178,6 +182,15 @@ class WindowManager {
     ipcMain.on('move-tab-to-window', (event, { targetId, closeSource, ...tab }) => {
       const target = this.findWindowBySenderId(targetId)
       if (!target || target.window.isDestroyed()) return
+      // window-at-point never offers a window of the other kind. A request
+      // naming one anyway gets a window of the sender's kind, since the sender
+      // has already let go of the tab.
+      const incognito = this.findWindowBySenderId(event.sender.id)?.incognito === true
+      if (target.incognito !== incognito) {
+        this.open({ isolate: true, incognito, singleTab: { url: tab.url, title: tab.title, navigation: tab.navigation } })
+        if (closeSource) BrowserWindow.fromWebContents(event.sender)?.close()
+        return
+      }
       target.window.webContents.send('add-tab-at-point', tab)
       const source = closeSource && BrowserWindow.fromWebContents(event.sender)
       if (source && !source.isDestroyed()) {

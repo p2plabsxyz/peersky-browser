@@ -3,7 +3,9 @@
 
 import { expect } from 'chai'
 import { readFile } from 'fs/promises'
+import { EventEmitter } from 'events'
 import esmock from 'esmock'
+import sinon from 'sinon'
 
 const tabBar = await readFile(new URL('../src/pages/tab-bar.js', import.meta.url), 'utf8')
 const windows = await readFile(new URL('../src/window-manager.js', import.meta.url), 'utf8')
@@ -48,6 +50,106 @@ describe('dragging a tab onto another window', function () {
     expect(insert).to.contain('this.moveTabToPosition(tabId, index)')
   })
 })
+
+// Private and normal windows took each other's tabs, so a private page carried
+// on in the saved session, its history and its tabs.json entry.
+describe('dragging a tab between private and normal windows', function () {
+  let manager, handlers, listeners
+
+  beforeEach(async function () {
+    ({ manager, handlers, listeners } = await loadWindowManager())
+  })
+
+  // Every window sits on the same spot, so the point is over all of them.
+  const open = (incognito) => {
+    const win = manager.open({ url: 'peersky://home', incognito })
+    win.window.getBounds = () => ({ x: 0, y: 0, width: 800, height: 600 })
+    return win
+  }
+  const from = (win) => ({ sender: win.window.webContents })
+
+  it('offers only a window of the same kind', function () {
+    const normal = open(false)
+    const priv = open(true)
+    const otherNormal = open(false)
+    const otherPrivate = open(true)
+    const windowAtPoint = handlers.get('window-at-point')
+
+    expect(windowAtPoint(from(normal), { x: 10, y: 10 })).to.equal(otherNormal.window.webContents.id)
+    expect(windowAtPoint(from(priv), { x: 10, y: 10 })).to.equal(otherPrivate.window.webContents.id)
+  })
+
+  it('finds no window when only the other kind is under the point', function () {
+    const normal = open(false)
+    const priv = open(true)
+    const windowAtPoint = handlers.get('window-at-point')
+
+    expect(windowAtPoint(from(normal), { x: 10, y: 10 })).to.equal(null)
+    expect(windowAtPoint(from(priv), { x: 10, y: 10 })).to.equal(null)
+  })
+
+  it('gives a tab sent to the other kind a window of its own kind', function () {
+    const priv = open(true)
+    const normal = open(false)
+    const tab = { url: 'https://example.com/', title: 'Example', navigation: { entries: [], index: 0 } }
+
+    listeners.get('move-tab-to-window')(from(priv), { targetId: normal.window.webContents.id, ...tab })
+
+    expect(normal.window.webContents.send.called, 'the normal window took a private tab').to.equal(false)
+    expect(manager.all).to.have.lengthOf(3)
+    expect(manager.all.at(-1).incognito).to.equal(true)
+  })
+})
+
+/** A WindowManager over stubbed Electron, for driving its IPC handlers. */
+async function loadWindowManager () {
+  const handlers = new Map()
+  const listeners = new Map()
+  let nextId = 1
+  class FakeBrowserWindow extends EventEmitter {
+    constructor () {
+      super()
+      const webContents = new EventEmitter()
+      webContents.id = nextId++
+      webContents.isDestroyed = () => false
+      webContents.send = sinon.stub()
+      this.webContents = webContents
+      this.isDestroyed = () => false
+      this.loadFile = () => {}
+      this.setVibrancy = () => {}
+      this.setBackgroundMaterial = () => {}
+      this.focus = () => {}
+      this.close = () => {}
+    }
+
+    static getAllWindows () { return [] }
+    static fromWebContents () { return null }
+  }
+  const { default: WindowManager } = await esmock.strict('../src/window-manager.js', {
+    electron: {
+      app: { getPath: () => '.test-tab-drag', isPackaged: true, on: () => {} },
+      BrowserWindow: FakeBrowserWindow,
+      ipcMain: {
+        on: (channel, handler) => listeners.set(channel, handler),
+        handle: (channel, handler) => handlers.set(channel, handler),
+        removeListener: () => {}
+      },
+      webContents: { getAllWebContents: () => [] },
+      session: { defaultSession: {} }
+    },
+    'fs-extra': { default: { pathExists: async () => false, readFileSync: () => '[]', existsSync: () => false } },
+    'scoped-fs': { default: class {} },
+    '../src/context-menu.js': { attachContextMenus: () => {}, setWindowManager: () => {} },
+    '../src/extensions/index.js': { default: { addWindow: () => {} } },
+    '../src/session.js': { getPartition: () => '', getIncognitoSession: () => null, INCOGNITO_PARTITION: 'peersky-incognito' },
+    '../src/permissions.js': { clearIncognitoPermissions: () => {} },
+    '../src/tab-drag-preview.js': { registerTabDragPreview: () => {} },
+    '../src/navigation-restore.js': { watchHost: () => {} },
+    '../src/settings-manager.js': { default: { settings: {} } },
+    '../src/logger.js': { createLogger: () => ({ info () {}, warn () {}, error () {}, debug () {} }) }
+  })
+  return { manager: new WindowManager(), handlers, listeners }
+}
 
 describe("dragging a window's only tab", function () {
   it('may leave, but only to join another window', function () {
