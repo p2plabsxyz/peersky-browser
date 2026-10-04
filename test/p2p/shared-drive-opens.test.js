@@ -79,9 +79,12 @@ describe('opens of one drive at the same time', () => {
     const right = desktop.corestore.replicate(false)
     left.pipe(right).pipe(left)
     try {
-      const made = new Hyperdrive(phone.corestore.namespace('private'), null, { encryptionKey: crypto.randomBytes(32) })
+      // To a device without its key, such a drive starts with a block that is
+      // not a drive's header. A real encrypted block is random bytes, which
+      // now and then read as a header after all, so this one never can.
+      const made = phone.corestore.get({ name: 'private-drive' })
       await made.ready()
-      await made.put('/app-icon.png', Buffer.from('picture bytes'))
+      await made.append(Buffer.from([0x07, 0x07]))
       // Held open, so the block it fetched is the one the drive opens with, and
       // brought up to date first, so the store knows how long the drive is.
       const core = desktop.corestore.get({ key: made.key })
