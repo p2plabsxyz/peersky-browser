@@ -323,15 +323,22 @@ describe('a private drive this desktop learns of by reading it', () => {
     left.pipe(right).pipe(left)
     try {
       const key = crypto.randomBytes(32)
-      const made = new Hyperdrive(phone.corestore.namespace('private'), null, { encryptionKey: key })
-      await made.ready()
-      await made.put('/app-icon.png', Buffer.from('picture bytes'))
-
       // The public store reads it without a key: the first block is ciphertext.
-      const seen = new Hyperdrive(desktop.corestore.namespace('seen'), made.key)
-      await seen.ready()
-      await seen.core.get(0, { timeout: 5000 })
-      const failure = await seen.db.getHeader({ wait: false }).then(() => null, (error) => error)
+      // That is random bytes, which now and then read as a header after all and
+      // leave nothing to test, so a drive like that is made again.
+      let made = null
+      let seen = null
+      let failure = null
+      for (let attempt = 0; !failure && attempt < 20; attempt++) {
+        if (seen) await seen.close()
+        made = new Hyperdrive(phone.corestore.namespace(`private-${attempt}`), null, { encryptionKey: key })
+        await made.ready()
+        await made.put('/app-icon.png', Buffer.from('picture bytes'))
+        seen = new Hyperdrive(desktop.corestore.namespace(`seen-${attempt}`), made.key)
+        await seen.ready()
+        await seen.core.get(0, { timeout: 5000 })
+        failure = await seen.db.getHeader({ wait: false }).then(() => null, (error) => error)
+      }
       expect(failure?.code, String(failure)).to.equal('DECODING_ERROR')
       // Once that block is here, as after a restart, opening the drive fails,
       // and the drive that failed keeps its core: no other Hyperdrive opens.
