@@ -593,6 +593,10 @@ class WindowManager {
     return [...this.windows.values()]
   }
 
+  hasIncognitoWindow () {
+    return this.all.some((window) => window.incognito)
+  }
+
   async clearSavedState () {
     try {
       log.info('Clearing saved session state (files and browser data)...')
@@ -653,6 +657,14 @@ class WindowManager {
       // the session files. We just leave whatever was last saved on disk.
       if (this.isQuitting || this.shutdownInProgress) {
         log.warn('No valid windows to save during quit – leaving window state file untouched.')
+        return
+      }
+
+      // Only private windows are open, and those are never written down.
+      // Closing the last normal window beside one used to save an empty
+      // session here, so the next launch restored nothing.
+      if (this.hasIncognitoWindow()) {
+        log.info('Only private windows are open, leaving window state file untouched.')
         return
       }
 
@@ -722,7 +734,7 @@ class WindowManager {
     log.debug('Starting saveAllTabsData...')
 
     try {
-      const { results, failed } = await this.collectTabs()
+      const { results, failed, attempted } = await this.collectTabs()
       const allTabsData = Object.keys(results).length > 0 ? results : null
       const TABS_FILE = path.join(USER_DATA_PATH, 'tabs.json')
 
@@ -738,6 +750,12 @@ class WindowManager {
         // is not a window without tabs.
         if (failed > 0) {
           log.warn(`Keeping tabs file: ${failed} window(s) did not report their tabs.`)
+          return
+        }
+
+        // Only private windows are open; see saveWindowStates.
+        if (attempted === 0 && this.hasIncognitoWindow()) {
+          log.info('Only private windows are open, leaving tabs file untouched.')
           return
         }
 
