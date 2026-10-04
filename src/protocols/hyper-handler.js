@@ -24,7 +24,10 @@ import { hyperCache, saveHyperCache } from './config.js'
 import { enforceExtensionWritePolicy } from '../extensions/request-policy.js'
 import { resolveHyperdriveUploadTarget } from './hyper-drive-visibility.js'
 import { listPrivateHyperdrives, rememberPrivateHyperdrive } from './private-hyperdrive-registry.js'
-import { openPrivateDriveByName, makePrivateDriveFetcher } from './private-hyperdrive.js'
+import { openPrivateDriveByName, makePrivateDriveFetcher, decodesWithKey } from './private-hyperdrive.js'
+import { setPrivateDriveOwnership } from './private-drive-ownership.js'
+import { getPrivateDriveKey } from '../backup/private-drive-key.js'
+import { isUnreadableDriveError, LINKED_PRIVATE_DRIVE_NAME, PRIVATE_DRIVE_ERROR } from './private-drive-errors.js'
 
 import { _suspendHyper, _hyperPublishFile, _hyperFetchToFile } from '../backup/hyper-backup.js'
 
@@ -685,6 +688,52 @@ export async function createHandler (options, securityOptions = {}) {
   }
 }
 
+// How long a drive found unreadable is given to answer under the profile key.
+const LINKED_DRIVE_PROBE_MS = 15000
+const adoptingLinkedDrives = new Map()
+
+/**
+ * A drive the public store could only read as ciphertext. A linked phone, or
+ * another desktop on the same identity, encrypts its private drives with the
+ * profile key, but this desktop only learns their addresses from a sync, so
+ * one made since read as a decoding error. If its first block decodes under
+ * that key, it is kept as a linked device's, read-only here, and its address
+ * routes to the private store.
+ */
+function adoptLinkedPrivateDrive (hostname) {
+  // A page asks for several files at once, and they share one try.
+  if (!adoptingLinkedDrives.has(hostname)) {
+    const adopting = tryLinkedPrivateDrive(hostname).catch(() => false)
+    adoptingLinkedDrives.set(hostname, adopting)
+    adopting.finally(() => adoptingLinkedDrives.delete(hostname))
+  }
+  return adoptingLinkedDrives.get(hostname)
+}
+
+async function tryLinkedPrivateDrive (hostname) {
+  if (privateDeviceOnly) return false
+  if (privateDriveHostnames.has(hostname)) return true
+  const key = decodeHyperdriveKey(hostname)
+  if (!key || !sdk) return false
+  const userDataDir = app.getPath('userData')
+  const profileKey = await getPrivateDriveKey(userDataDir)
+  if (!profileKey) return false
+  // Tried on the public copy, which holds the first block already. Opened in
+  // the private store to try, a drive that is not ours would stay there, and
+  // every later read of it would go to the private store.
+  if (!await decodesWithKey(sdk.corestore, key, profileKey, LINKED_DRIVE_PROBE_MS)) return false
+  await initializePrivateHyperSDK()
+  await rememberPrivateHyperdrive(userDataDir, {
+    name: LINKED_PRIVATE_DRIVE_NAME,
+    url: `hyper://${hostname}/`,
+    timestamp: Date.now(),
+    encrypted: true
+  })
+  await setPrivateDriveOwnership(userDataDir, key.toString('hex'), false)
+  privateDriveHostnames.add(hostname)
+  return true
+}
+
 // Handle general hyper:// requests (not chat API).
 async function handleHyperRequest (req) {
   const { url, method = 'GET', headers } = req
@@ -711,6 +760,19 @@ async function handleHyperRequest (req) {
     })
 
     log.info('Response received:', resp.status)
+    // A private drive a linked device made since it last synced: tried with the
+    // profile key, read again from the private store if that opens it, and
+    // otherwise said to be private rather than shown as a decoding error.
+    if (!context.private && !hasBody && resp.status === 500) {
+      const text = await resp.clone().text().catch(() => '')
+      if (isUnreadableDriveError(text)) {
+        if (await adoptLinkedPrivateDrive(new URL(url).hostname)) return handleHyperRequest(req)
+        return new Response(PRIVATE_DRIVE_ERROR, {
+          status: 403,
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+        })
+      }
+    }
     return resp
   } catch (err) {
     log.error('Failed to fetch from Hyper SDK:', err)

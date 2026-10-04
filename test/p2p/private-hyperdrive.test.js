@@ -287,3 +287,94 @@ describe('private Hyperdrive keyed fetcher', function () {
     expect(result.body).to.equal('hello')
   })
 })
+
+// A linked phone's private drive made since it last synced reached this desktop
+// only as an address. Read from the public store it was ciphertext, and the
+// page showed the decoding error. Now that error alone means a private drive:
+// the profile key is tried on it, it is kept as a linked device's if the key
+// fits, and otherwise it is said to be private.
+describe('a private drive this desktop learns of by reading it', () => {
+  it('counts only a decoding error as a private drive', async () => {
+    const { isUnreadableDriveError, PRIVATE_DRIVE_ERROR, LINKED_PRIVATE_DRIVE_NAME } = await import('../../src/protocols/private-drive-errors.js')
+    expect(isUnreadableDriveError('Error: Decoded message is not valid\n    at decode (messages.js:135)')).to.equal(true)
+    expect(isUnreadableDriveError({ code: 'DECODING_ERROR', message: 'DECODING_ERROR: Decoding error' })).to.equal(true)
+    // What the phone showed for a desktop's private drive, before this.
+    expect(isUnreadableDriveError('HypercoreError: DECODING_ERROR: Groups are not supported (discovery key: znzb49addd)\n    at Hypercore._decode')).to.equal(true)
+    expect(isUnreadableDriveError('HypercoreError: DECODING_ERROR: Unknown wire type: 6 (discovery key: 33ureiaiir)\n    at Hyperdrive._open')).to.equal(true)
+    expect(isUnreadableDriveError('Peers Not Found')).to.equal(false)
+    expect(isUnreadableDriveError('File not found')).to.equal(false)
+    expect(isUnreadableDriveError(undefined)).to.equal(false)
+    expect(PRIVATE_DRIVE_ERROR).to.equal('This drive is private. Only devices linked to the one that made it can open it.')
+    expect(LINKED_PRIVATE_DRIVE_NAME).to.equal('Private files from a linked device')
+  })
+
+  it('tries a key on the copy the public store holds, with nothing kept for a key that does not fit', async function () {
+    const { create } = await import('hyper-sdk')
+    const { default: Hyperdrive } = await import('hyperdrive')
+    const { default: hypercoreCrypto } = await import('hypercore-crypto')
+    const { decodesWithKey } = await import('../../src/protocols/private-hyperdrive.js')
+    const root = mkdtempSync(path.join(os.tmpdir(), 'peersky-linked-'))
+    const swarmOpts = { bootstrap: [], port: 0 }
+    const phone = await create({ storage: path.join(root, 'phone'), swarmOpts, autoJoin: false })
+    const desktop = await create({ storage: path.join(root, 'public'), swarmOpts, autoJoin: false })
+    const privateStore = await create({ storage: path.join(root, 'private'), swarmOpts, autoJoin: false })
+    const left = phone.corestore.replicate(true)
+    const right = desktop.corestore.replicate(false)
+    left.pipe(right).pipe(left)
+    try {
+      const key = crypto.randomBytes(32)
+      const made = new Hyperdrive(phone.corestore.namespace('private'), null, { encryptionKey: key })
+      await made.ready()
+      await made.put('/app-icon.png', Buffer.from('picture bytes'))
+
+      // The public store reads it without a key: the first block is ciphertext.
+      const seen = new Hyperdrive(desktop.corestore.namespace('seen'), made.key)
+      await seen.ready()
+      await seen.core.get(0, { timeout: 5000 })
+      const failure = await seen.db.getHeader({ wait: false }).then(() => null, (error) => error)
+      expect(failure?.code, String(failure)).to.equal('DECODING_ERROR')
+      // Once that block is here, as after a restart, opening the drive fails,
+      // and the drive that failed keeps its core: no other Hyperdrive opens.
+      const held = desktop.corestore.get({ key: made.key })
+      await held.ready()
+      await seen.close()
+      const stuck = new Hyperdrive(desktop.corestore.namespace('stuck'), made.key)
+      const openFailure = await stuck.ready().then(() => null, (error) => error)
+      expect(openFailure?.code).to.equal('DECODING_ERROR')
+
+      const probe = (encryptionKey) => Promise.race([
+        decodesWithKey(desktop.corestore, made.key, encryptionKey, 5000),
+        new Promise((resolve) => setTimeout(() => resolve('waited'), 8000))
+      ])
+      expect(await probe(crypto.randomBytes(32))).to.equal(false)
+      expect(await probe(key)).to.equal(true)
+      // And the private store was never asked: a drive opened there to try a
+      // key would stay there.
+      expect(await privateStore.corestore.storage.hasCore(hypercoreCrypto.discoveryKey(made.key))).to.equal(false)
+    } finally {
+      left.destroy()
+      right.destroy()
+      await Promise.allSettled([phone.close(), desktop.close(), privateStore.close()])
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('tries the profile key on the public copy, keeps the drive read-only, and reads it again privately', async () => {
+    const { readFile } = await import('fs/promises')
+    const handler = await readFile(new URL('../../src/protocols/hyper-handler.js', import.meta.url), 'utf8')
+    const adopt = handler.slice(handler.indexOf('function adoptLinkedPrivateDrive'), handler.indexOf('// Handle general hyper:// requests'))
+    // One try per drive, however many of its files a page asks for at once.
+    expect(adopt).to.match(/if \(!adoptingLinkedDrives\.has\(hostname\)\) \{\s+const adopting = tryLinkedPrivateDrive\(hostname\)\.catch\(\(\) => false\)/)
+    expect(adopt).to.contain('if (privateDeviceOnly) return false')
+    expect(adopt).to.contain('if (!await decodesWithKey(sdk.corestore, key, profileKey, LINKED_DRIVE_PROBE_MS)) return false')
+    expect(adopt).to.not.contain('openPrivateDriveByHostname')
+    expect(adopt).to.not.contain('getDrive(')
+    expect(adopt).to.contain('name: LINKED_PRIVATE_DRIVE_NAME')
+    expect(adopt).to.contain('await setPrivateDriveOwnership(userDataDir, key.toString(\'hex\'), false)')
+    expect(adopt).to.contain('privateDriveHostnames.add(hostname)')
+
+    const read = handler.slice(handler.indexOf('async function handleHyperRequest'))
+    expect(read).to.match(/if \(!context\.private && !hasBody && resp\.status === 500\) \{\s+const text = await resp\.clone\(\)\.text\(\)\.catch\(\(\) => ''\)\s+if \(isUnreadableDriveError\(text\)\) \{\s+if \(await adoptLinkedPrivateDrive\(new URL\(url\)\.hostname\)\) return handleHyperRequest\(req\)/)
+    expect(read).to.contain('return new Response(PRIVATE_DRIVE_ERROR, {\n          status: 403,')
+  })
+})

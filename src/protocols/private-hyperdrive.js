@@ -1,3 +1,4 @@
+import Hyperbee from 'hyperbee'
 import Hyperdrive from 'hyperdrive'
 import z32 from 'z32'
 import { getOrCreatePrivateDriveKey, getPrivateDriveKeyFor } from '../backup/private-drive-key.js'
@@ -92,6 +93,26 @@ export async function openPrivateDriveByHostname (sdk, hostname, { userDataDir, 
   await drive.ready()
   if (autoJoin && encryptionKey) sdk.joinCore(drive.core)
   return drive
+}
+
+/**
+ * Whether a drive's first block decodes under this key, tried on a session of
+ * the copy a store already holds. Nothing is written anywhere for a key that
+ * does not fit. The drive is not opened as a Hyperdrive to try: that takes
+ * its core for itself, and waits forever on one that failed to open there.
+ */
+export async function decodesWithKey (corestore, driveKey, encryptionKey, timeoutMs) {
+  const session = corestore.get({ key: driveKey, encryption: { key: encryptionKey } })
+  const bee = new Hyperbee(session)
+  try {
+    const header = await bee.getHeader({ wait: true, timeout: timeoutMs })
+    return header?.protocol === 'hyperbee'
+  } catch {
+    return false
+  } finally {
+    await bee.close().catch(() => {})
+    await session.close().catch(() => {})
+  }
 }
 
 // Bounded like the wait for a public drive: a phone that is switched off must
