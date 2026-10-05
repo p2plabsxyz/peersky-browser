@@ -105,7 +105,7 @@
     - Publish to IPFS/Hypercore
     - Peers dashboard with roles, live editing status, and edit history
   - [x] `peersky://p2p/peertunes/`
-    - iPod classic style music player with Cover Flow and click wheel
+    - Music player
     - Syncs songs from `hyper://` drives or local folders, with tags and album art
   - [x] `peersky://p2p/ai-chat/`
     - Chat with local AI models, with nothing leaving the device
