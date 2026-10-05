@@ -8,6 +8,17 @@ const navBoxIPC = (() => {
 // webUtils for getting file paths from dropped files (Electron 25+)
 const { webUtils } = require('electron')
 
+// The built-in engines by name. Their setting keys, like duckduckgo_noai, are
+// not for reading: the search box said "Search with Duckduckgo_noai".
+const SEARCH_ENGINE_NAMES = {
+  duckduckgo_noai: 'DuckDuckGo',
+  duckduckgo: 'DuckDuckGo',
+  brave: 'Brave Search',
+  ecosia: 'Ecosia',
+  kagi: 'Kagi',
+  startpage: 'Startpage'
+}
+
 // Window in which repeated "the browser actions changed" signals collapse into
 // one toolbar render.
 const BROWSER_ACTIONS_RENDER_COALESCE_MS = 16
@@ -829,7 +840,7 @@ class NavBox extends HTMLElement {
           name = 'Custom'
         }
       } else if (engineKey) {
-        name = this._titleCase(engineKey)
+        name = SEARCH_ENGINE_NAMES[engineKey] || this._titleCase(engineKey)
       } else {
         name = 'DuckDuckGo'
       }
