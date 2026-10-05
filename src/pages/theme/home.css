@@ -70,29 +70,40 @@ body::before {
   transform: scale(1.3);
 }
 
-.peerbar img, .peerbar .p2p-base-icon {
-  width: var(--peerbar-icon);
-  height: var(--peerbar-icon);
-  padding: calc(var(--peerbar-icon) * 0.125);
-  transition: filter 0.3s ease;
+/* Every app on a mint tile with an ink edge, as on the phone's home screen
+   and in the app icons, so it reads over any wallpaper. The logo fills the
+   middle two thirds; a line icon keeps its black lines. */
+.peerbar img, .peerbar .p2p-base-tile {
+  box-sizing: border-box;
+  width: calc(var(--peerbar-icon) * 1.14);
+  height: calc(var(--peerbar-icon) * 1.14);
+  background-color: #98f9ea;
+  /* The mint of the app icons, which are Display P3 images. */
+  background-color: color(display-p3 0.596 0.976 0.918);
+  border-radius: 24%;
+  box-shadow: inset 0 0 0 1.5px rgba(13, 13, 13, 0.55), 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.peerbar img {
+  padding: calc(var(--peerbar-icon) * 0.18);
   animation: scalePopIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
 }
 
-/* Line icons turn white; an app's own logo keeps its colors. */
-.peerbar img:not(.app-logo) {
-  filter: invert(100%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(100%) contrast(100%);
+.peerbar .p2p-base-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: pulseIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
 }
 
+/* The P2P Apps cube, in the deeper blue of the logos. */
 .peerbar .p2p-base-icon {
-  background-color: var(--browser-theme-primary-highlight, #3b82f6);
-  -webkit-mask: url("peersky://static/assets/svg/box.svg") no-repeat center;
-  mask: url("peersky://static/assets/svg/box.svg") no-repeat center;
-  -webkit-mask-size: var(--peerbar-icon);
-  mask-size: var(--peerbar-icon);
-  filter: drop-shadow(0.5px 0 0 var(--browser-theme-primary-highlight, #3b82f6)) drop-shadow(-0.5px 0 0 var(--browser-theme-primary-highlight, #3b82f6)) drop-shadow(0 0.5px 0 var(--browser-theme-primary-highlight, #3b82f6)) drop-shadow(0 -0.5px 0 var(--browser-theme-primary-highlight, #3b82f6));
-  animation: pulseIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
-  animation-delay: 0s;
-  box-sizing: content-box;
+  width: calc(var(--peerbar-icon) * 0.66);
+  height: calc(var(--peerbar-icon) * 0.66);
+  background-color: #216098;
+  -webkit-mask: url("peersky://static/assets/svg/box.svg") no-repeat center / contain;
+  mask: url("peersky://static/assets/svg/box.svg") no-repeat center / contain;
+  filter: drop-shadow(0.5px 0 0 #216098) drop-shadow(-0.5px 0 0 #216098) drop-shadow(0 0.5px 0 #216098) drop-shadow(0 -0.5px 0 #216098);
 }
 
 @keyframes scalePopIn {
