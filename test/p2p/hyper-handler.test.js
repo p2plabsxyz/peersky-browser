@@ -70,7 +70,7 @@ describe('Hyper protocol handler', function () {
     sinon.restore()
   })
 
-  async function loadHyperModule ({ fetchImpl, chatResponse, chatReject, throwOnFetch, lanReject, lanAttachResults, currentIP = '127.0.0.1', driveLength = 0, peerchat = {} } = {}) {
+  async function loadHyperModule ({ fetchImpl, chatResponse, chatReject, throwOnFetch, lanReject, lanReadyReject, lanAttachResults, currentIP = '127.0.0.1', driveLength = 0, peerchat = {} } = {}) {
     // Order matters for the peer-discovery regression: the drive must be given
     // a chance to replicate before the fetch that would 404 with no peers.
     const callOrder = []
@@ -114,7 +114,7 @@ describe('Hyper protocol handler', function () {
         url: `hyper://${String(name).replace(/[^a-z0-9]/gi, '').padEnd(52, 'a').slice(0, 52)}/`
       })),
       joinCore: sinon.stub().resolves(),
-      swarm: { flush: sinon.stub().resolves() },
+      swarm: { flush: sinon.stub().resolves(), keyPair: { publicKey: Buffer.alloc(32) } },
       suspend: sinon.stub().resolves(),
       resume: sinon.stub().resolves()
     })
@@ -144,6 +144,17 @@ describe('Hyper protocol handler', function () {
     } else {
       attachHyperSDK.resolves(lanMock)
     }
+
+    // The LAN swarm the handler makes and readies before attaching it.
+    const lanInstances = []
+    const LANSwarm = sinon.spy(function (opts) {
+      this.opts = opts
+      this.destroy = sinon.stub().resolves()
+      this.ready = lanReadyReject ? sinon.stub().rejects(lanReadyReject) : sinon.stub().resolves()
+      lanInstances.push(this)
+    })
+    LANSwarm.attachHyperSDK = attachHyperSDK
+    LANSwarm.selectLocalIPv4 = sinon.stub().returns(currentIP)
 
     const createFetchStub = () => sinon.stub().callsFake(async (url, options) => {
       callOrder.push('fetch')
@@ -185,10 +196,7 @@ describe('Hyper protocol handler', function () {
         create: createSDK
       },
       '@p2plabs/hyperdht-mdns': {
-        default: {
-          attachHyperSDK,
-          selectLocalIPv4: sinon.stub().returns(currentIP)
-        }
+        default: LANSwarm
       },
       'hypercore-fetch': {
         default: hyperFetchFactory
@@ -224,6 +232,8 @@ describe('Hyper protocol handler', function () {
       releasePeers,
       createSDK,
       attachHyperSDK,
+      LANSwarm,
+      lanInstances,
       fetchStub,
       privateFetchStub,
       hyperFetchFactory,
@@ -250,12 +260,31 @@ describe('Hyper protocol handler', function () {
   }
 
   it('attaches LAN discovery before initializing chat', async function () {
-    const { module, attachHyperSDK, initChat, sdk } = await loadHyperModule()
+    const { module, attachHyperSDK, lanInstances, initChat, sdk } = await loadHyperModule()
 
     await module.createHandler({ storage: 'test-lan' })
 
-    expect(attachHyperSDK.calledOnceWithExactly(sdk, {})).to.equal(true)
+    expect(lanInstances).to.have.length(1)
+    expect(lanInstances[0].opts.keyPair).to.equal(sdk.swarm.keyPair)
+    expect(lanInstances[0].ready.calledBefore(attachHyperSDK)).to.equal(true)
+    expect(attachHyperSDK.calledOnceWithExactly(sdk, { lan: lanInstances[0] })).to.equal(true)
     expect(attachHyperSDK.calledBefore(initChat)).to.equal(true)
+  })
+
+  // A second PeerSky on the same computer already holds the LAN port. The SDK
+  // was patched before the bind failed, so every later join went to the dead
+  // LAN swarm and creating a drive answered "address already in use".
+  it('leaves the SDK alone when the LAN port is taken', async function () {
+    const taken = new Error('LAN DHT port 49799 is already in use. Choose a different fixed port for another local instance.')
+    const { module, attachHyperSDK, lanInstances, initChat } = await loadHyperModule({ lanReadyReject: taken })
+
+    const handler = await module.createHandler({ storage: 'test-lan-taken' })
+
+    expect(attachHyperSDK.called).to.equal(false)
+    expect(lanInstances[0].destroy.calledOnce).to.equal(true)
+    expect(initChat.calledOnce).to.equal(true)
+    const response = await handler(new Request('hyper://localhost/?key=after-lan-failed', { method: 'POST' }))
+    expect(response.status).to.equal(200)
   })
 
   describe('first load of a drive that has not replicated yet', function () {
@@ -329,10 +358,11 @@ describe('Hyper protocol handler', function () {
     process.env.PEERSKY_LAN_PORT = '49800'
 
     try {
-      const { module, attachHyperSDK, sdk } = await loadHyperModule()
+      const { module, attachHyperSDK, lanInstances, sdk } = await loadHyperModule()
       await module.createHandler({ storage: 'test-lan-port' })
 
-      expect(attachHyperSDK.calledOnceWithExactly(sdk, { port: 49800 })).to.equal(true)
+      expect(lanInstances[0].opts.port).to.equal(49800)
+      expect(attachHyperSDK.calledOnceWithExactly(sdk, { lan: lanInstances[0] })).to.equal(true)
     } finally {
       if (previousPort === undefined) delete process.env.PEERSKY_LAN_PORT
       else process.env.PEERSKY_LAN_PORT = previousPort
@@ -469,7 +499,7 @@ describe('Hyper protocol handler', function () {
   })
 
   it('runs the private runtime announced and replicating under LAN isolation', async function () {
-    const { module, createSDK, attachHyperSDK, sdk, privateSdk } = await loadHyperModule()
+    const { module, createSDK, attachHyperSDK, lanInstances, sdk, privateSdk } = await loadHyperModule()
 
     await module.createHandler({ storage: path.join('profiles', 'hyper') })
 
@@ -479,7 +509,7 @@ describe('Hyper protocol handler', function () {
       autoJoin: true,
       doReplicate: true
     })
-    expect(attachHyperSDK.calledOnceWithExactly(sdk, {})).to.equal(true)
+    expect(attachHyperSDK.calledOnceWithExactly(sdk, { lan: lanInstances[0] })).to.equal(true)
     expect(attachHyperSDK.calledWith(privateSdk)).to.equal(false)
   })
 

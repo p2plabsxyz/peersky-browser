@@ -86,8 +86,19 @@ function wireLANEvents (instance) {
   return instance
 }
 
+// The LAN swarm binds its port before it is joined to the SDK. attachHyperSDK
+// patches sdk.join first and binds after, so with the port already taken (a
+// second PeerSky on this computer) every later join went to a LAN swarm that
+// never started, and creating a drive failed with "address already in use".
 async function attachLANDiscovery (activeSdk) {
-  const instance = await HyperDHTmDNS.attachHyperSDK(activeSdk, getLANOptions())
+  const lan = new HyperDHTmDNS({ ...getLANOptions(), keyPair: activeSdk.swarm.keyPair })
+  try {
+    await lan.ready()
+  } catch (err) {
+    await Promise.resolve().then(() => lan.destroy()).catch(() => {})
+    throw err
+  }
+  const instance = await HyperDHTmDNS.attachHyperSDK(activeSdk, { lan })
   return wireLANEvents(instance)
 }
 
