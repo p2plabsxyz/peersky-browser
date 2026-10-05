@@ -120,9 +120,10 @@ describe('Hyper protocol handler', function () {
     })
     const sdk = createMockSdk('sdk-test')
     const privateSdk = createMockSdk('private-sdk-test')
-    const createSDK = sinon.stub()
-    createSDK.onFirstCall().resolves(sdk)
-    createSDK.onSecondCall().resolves(privateSdk)
+    // The two runtimes start together and each reads a file first, so which
+    // asks first is down to timing. The private one is told apart by the
+    // replication setting only it is given.
+    const createSDK = sinon.stub().callsFake(async (opts) => (opts && 'doReplicate' in opts ? privateSdk : sdk))
 
     const lanMock = new EventEmitter()
     lanMock.id = 'lan-test'
@@ -527,8 +528,8 @@ describe('Hyper protocol handler', function () {
     await module.createHandler({ storage: path.join('profiles', 'hyper') })
 
     expect(createSDK.callCount).to.equal(2)
-    expect(createSDK.secondCall.args[0]).to.include({
-      storage: path.join('profiles', 'hyper-private'),
+    const privateCall = createSDK.getCalls().find((call) => call.args[0]?.storage === path.join('profiles', 'hyper-private'))
+    expect(privateCall.args[0]).to.include({
       autoJoin: true,
       doReplicate: true
     })
