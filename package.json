@@ -23,6 +23,7 @@
     "test:url-input": "mocha \"test/url-input.test.js\" --timeout 10000",
     "test:zoom": "mocha \"test/zoom.test.js\" --timeout 10000",
     "test:tabs": "mocha \"test/tabs.test.js\" --timeout 10000",
+    "test:settings": "mocha \"test/settings-broadcast.test.js\" --timeout 20000",
     "test:about": "mocha \"test/about-pages.test.js\" --timeout 10000",
     "test:integration": "mocha \"test/integration/**/*.test.js\" --timeout 300000",
     "test:p2pmd:gutter:e2e": "mocha \"test/integration/p2pmd-gutter-sync.e2e.test.js\" --timeout 300000 --exit",
