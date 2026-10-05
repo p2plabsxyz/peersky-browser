@@ -743,6 +743,15 @@ async function tryLinkedPrivateDrive (hostname) {
   return true
 }
 
+// hypercore-fetch answers a Range request with status 200 and a Content-Range
+// header. A page that reads the status takes that as the whole file: PeerTunes
+// kept only the first 128 KB of a song and cut its cover art short. The phone's
+// media proxy already answers 206, so this does the same here.
+function asPartialContent (resp) {
+  if (resp.status !== 200 || !resp.headers.get('Content-Range')) return resp
+  return new Response(resp.body, { status: 206, statusText: 'Partial Content', headers: resp.headers })
+}
+
 // Handle general hyper:// requests (not chat API).
 async function handleHyperRequest (req, { navigation = false } = {}) {
   const { url, method = 'GET', headers } = req
@@ -789,7 +798,7 @@ async function handleHyperRequest (req, { navigation = false } = {}) {
         })
       }
     }
-    return resp
+    return asPartialContent(resp)
   } catch (err) {
     log.error('Failed to fetch from Hyper SDK:', err)
     return new Response(`Error fetching data: ${err.message}`, {

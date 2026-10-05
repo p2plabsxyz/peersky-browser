@@ -431,6 +431,29 @@ describe('Hyper protocol handler', function () {
     expect(handleChatRequest.callCount).to.equal(0)
   })
 
+  // hypercore-fetch says 200 to a Range request. PeerTunes read that as the
+  // whole song, kept 128 KB of it, and drew only the top of the cover art.
+  it('answers a ranged read as Partial Content', async function () {
+    const { module, fetchStub } = await loadHyperModule({
+      fetchImpl: async (url, options) => {
+        const range = new Headers(options.headers).get('Range')
+        if (!range) return new Response('whole file', { status: 200, headers: { 'Content-Length': '10' } })
+        return new Response('part', { status: 200, headers: { 'Content-Range': 'bytes 0-3/10', 'Content-Length': '4' } })
+      }
+    })
+    const handler = await module.createHandler({ storage: 'test-range' })
+
+    const ranged = await handler(new Request(`hyper://${'d'.repeat(52)}/song.mp3`, { headers: { Range: 'bytes=0-3' } }))
+    expect(ranged.status).to.equal(206)
+    expect(ranged.headers.get('Content-Range')).to.equal('bytes 0-3/10')
+    expect(await ranged.text()).to.equal('part')
+
+    const whole = await handler(new Request(`hyper://${'d'.repeat(52)}/song.mp3`))
+    expect(whole.status).to.equal(200)
+    expect(await whole.text()).to.equal('whole file')
+    expect(fetchStub.callCount).to.equal(2)
+  })
+
   it('returns 500 response when Hyper fetch fails', async function () {
     const { module } = await loadHyperModule({ throwOnFetch: true })
     sinon.stub(console, 'error')
