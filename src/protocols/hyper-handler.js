@@ -30,6 +30,7 @@ import { getPrivateDriveKey } from '../backup/private-drive-key.js'
 import { shareDriveOpens } from './shared-drive-opens.js'
 import { isUnreadableDriveError, LINKED_PRIVATE_DRIVE_NAME, PRIVATE_DRIVE_ERROR } from './private-drive-errors.js'
 import { mayUsePrivateDrive, takeNavigationStamp } from './request-gate.js'
+import { toHyperFetchUrl } from './hyper-fetch-url.js'
 
 import { _suspendHyper, _hyperPublishFile, _hyperFetchToFile } from '../backup/hyper-backup.js'
 
@@ -529,7 +530,7 @@ export async function waitForDriveReady (url, timeoutMs = PEER_WAIT_MS) {
 export async function hyperFetchToFile (address, destPath, onStatus) {
   const context = await getHyperRequestContext(address)
   const prepare = context.private ? async () => {} : waitForDriveReady
-  return _hyperFetchToFile(context.fetch, prepare, address, destPath, onStatus)
+  return _hyperFetchToFile(context.fetch, prepare, toHyperFetchUrl(address), destPath, onStatus)
 }
 
 /**
@@ -756,7 +757,7 @@ async function handleHyperRequest (req, { navigation = false } = {}) {
 
   try {
     log.info(`[handleHyperRequest] Fetching: ${method} ${formatHyperUrlForLog(url)}`)
-    const resp = await fetchFn(url, {
+    const resp = await fetchFn(toHyperFetchUrl(url), {
       method,
       headers,
       body: hasBody ? getChunkedBody(req) : undefined,
