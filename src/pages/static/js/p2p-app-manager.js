@@ -145,6 +145,9 @@ class P2PAppManager extends HTMLElement {
               filter: invert(48%) sepia(9%) saturate(543%) hue-rotate(169deg) brightness(92%) contrast(87%);
             }
           }
+          .icon-cell img.app-logo {
+            filter: none;
+          }
           .icon-upload-btn {
             background: transparent;
             border: 1px solid var(--browser-theme-border, #333);
@@ -247,7 +250,7 @@ class P2PAppManager extends HTMLElement {
         const btnClass = app.pinned ? 'pin-btn pinned' : 'pin-btn'
         tableHtml += `
           <tr>
-            <td class="icon-cell"><img src="${this.escapeHTML(app.iconUrl)}" alt="${this.escapeHTML(app.name)} icon" /></td>
+            <td class="icon-cell"><img${app.logo ? ' class="app-logo"' : ''} src="${this.escapeHTML(app.iconUrl)}" alt="${this.escapeHTML(app.name)} icon" /></td>
             <td><button class="${this.escapeHTML(btnClass)}" data-id="${this.escapeHTML(app.id)}" data-pinned="${app.pinned}">${this.escapeHTML(btnLabel)}</button></td>
             <td><a href="${this.escapeHTML(app.url)}">${this.escapeHTML(app.name)}</a></td>
             <td>

@@ -54,6 +54,7 @@ class PeerBar extends HTMLElement {
         a.href = app.url
         const img = document.createElement('img')
         img.src = app.iconUrl || `peersky://static/assets/svg/${app.icon}`
+        if (app.logo) img.classList.add('app-logo')
         img.title = app.name
         img.alt = app.name
         img.style.animationDelay = `${(index + 1) * 0.1}s`

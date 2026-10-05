@@ -75,7 +75,8 @@ body::before {
   animation: scalePopIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
 }
 
-.peerbar img {
+/* Line icons turn white; an app's own logo keeps its colors. */
+.peerbar img:not(.app-logo) {
   filter: invert(100%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(100%) contrast(100%);
 }
 
