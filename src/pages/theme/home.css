@@ -44,22 +44,24 @@ body::before {
   transform: translateX(-50%);
   display: flex;
   flex-direction: row;
-  gap: 8px;
-  padding: 8px;
+  gap: 10px;
+  padding: 10px;
   z-index: 3;
   background-color: rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(10px) saturate(180%);
-  border-radius: 12px;
+  border-radius: 16px;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
+/* Each app at the size it used to reach only on hover, and hover takes it
+   further by the same amount. */
 .peerbar a {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: 52px;
+  height: 52px;
   transition: transform 0.3s ease;
 }
 
@@ -68,9 +70,9 @@ body::before {
 }
 
 .peerbar img, .peerbar .p2p-base-icon {
-  width: 30px;
-  height: 30px;
-  padding: 5px;
+  width: 40px;
+  height: 40px;
+  padding: 6px;
   transition: filter 0.3s ease;
   animation: scalePopIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
 }
@@ -81,12 +83,12 @@ body::before {
 }
 
 .peerbar .p2p-base-icon {
-  padding: 3px;
+  padding: 4px;
   background-color: var(--browser-theme-primary-highlight, #3b82f6);
   -webkit-mask: url("peersky://static/assets/svg/box.svg") no-repeat center;
   mask: url("peersky://static/assets/svg/box.svg") no-repeat center;
-  -webkit-mask-size: 30px;
-  mask-size: 30px;
+  -webkit-mask-size: 40px;
+  mask-size: 40px;
   filter: drop-shadow(0.5px 0 0 var(--browser-theme-primary-highlight, #3b82f6)) drop-shadow(-0.5px 0 0 var(--browser-theme-primary-highlight, #3b82f6)) drop-shadow(0 0.5px 0 var(--browser-theme-primary-highlight, #3b82f6)) drop-shadow(0 -0.5px 0 var(--browser-theme-primary-highlight, #3b82f6));
   animation: pulseIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
   animation-delay: 0s;
