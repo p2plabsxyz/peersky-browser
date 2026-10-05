@@ -32,6 +32,7 @@ import { BLOCKED_SCHEME, BLOCKED_SCHEME_PRIVILEGES, answerBlockedCall, blockedCa
 import { getBrowserSession, getIncognitoSession, INCOGNITO_PARTITION, usePersist } from './session.js'
 import { setupIncognitoPermissionHandler, setupPermissionHandler, requestSitePermission, permissionOriginFromUrl } from './permissions.js'
 import { setupSiteInfoIpc } from './site-info-ipc.js'
+import { startPeerChatPresence } from './peerchat-presence.js'
 import { setupP2pmdPdfExportIpc } from './pages/p2p/p2pmd/pdf-export-ipc.js'
 import { setupBackupIpc } from './backup/ipc.js'
 import { assertCaller } from './backup/ipc-caller.js'
@@ -312,6 +313,8 @@ app.whenReady().then(async () => {
   setupBittorrentIpc()
   setupBackupIpc({ getTabs: () => windowManager.getTabs() })
   setupSiteInfoIpc(userSession)
+  // People in a PeerChat room see a yellow dot while you are away.
+  startPeerChatPresence()
 
   userSession.on('will-download', handleDownload({ incognito: false }))
   incognitoReady = setupIncognitoSession().catch((error) => log.error('[startup] incognito session failed:', error?.stack || error))
