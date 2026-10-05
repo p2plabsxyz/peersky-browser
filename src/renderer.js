@@ -595,6 +595,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       pageTitle.innerText = `${tab.title} - ${windowTitle}`
     }
 
+    // Show stop or reload for the tab now in front. A tab that finished
+    // loading behind another one left the stop button up after switching.
+    try {
+      nav.setLoading(Boolean(tabBar.getActiveWebview()?.isLoading()))
+    } catch {
+      nav.setLoading(false)
+    }
+
     updateNavigationButtons(tabBar)
 
     // Update bookmark icon for the selected tab
