@@ -15,7 +15,7 @@
     <img src="/demo.png" width="800" alt="PeerSky Browser with its home page and PeerChat side by side">
 </div>
 
-💻 [Download](https://peersky.p2plabs.xyz/) 📜 [Docs](./docs/)
+💻 [Download](https://peersky.p2plabs.xyz/) 📜 [Docs](./docs/) 🔒 [Privacy](./PRIVACY.md)
 
 PeerSky is a gateway to the peer-to-peer web, not just a browser. It turns your computer into a node (a server for the network), so pages and apps can come from the people who have them rather than from one company's server. The everyday web works as usual, and alongside it PeerSky carries a full ecosystem of apps built on the same idea: chat, collaborative editing, file sharing, a music player, a local AI, and more. Most of these keep working on a local network with no internet at all.
 
