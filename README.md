@@ -12,7 +12,7 @@
     <a href="https://mastodon.social/@peersky"><img src="https://img.shields.io/mastodon/follow/113323887574214930" alt="Mastodon Follow"></a>
     <a href="https://deepwiki.com/p2plabsxyz/peersky-browser"><img src="https://img.shields.io/badge/Ask-DeepWiki-blue.svg" alt="Ask DeepWiki"></a>
     <a href="https://standardjs.com"><img src="https://img.shields.io/badge/code_style-standard-brightgreen.svg" alt="JavaScript Style Guide"></a>
-    <img src="/demo.png" width="800" alt="PeerSky Browser home page">
+    <img src="/demo.png" width="800" alt="PeerSky Browser with its home page and PeerChat side by side">
 </div>
 
 💻 [Download](https://peersky.p2plabs.xyz/) 📜 [Docs](./docs/)
