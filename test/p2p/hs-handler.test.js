@@ -56,10 +56,12 @@ class FakeHolesail {
   async ready () {
     if (this.options.server) {
       const port = Number(this.options.port || await getAvailablePort())
-      // Re-hosting with a known seed returns to the same room, which is the whole
-      // reason the seed is persisted.
+      // Re-hosting a public room with its seed returns to the same room, which
+      // is the whole reason the seed is persisted. A private room's address is
+      // its key, and like Holesail, a private server given no key makes one
+      // up, seed or not.
       const suppliedSeedHex = this.seed ? Buffer.from(this.seed).toString('hex') : null
-      const keyFromSeed = suppliedSeedHex ? FakeHolesail.seedToKey.get(suppliedSeedHex) : null
+      const keyFromSeed = suppliedSeedHex && !this.options.secure ? FakeHolesail.seedToKey.get(suppliedSeedHex) : null
       const key =
         keyFromSeed ||
         (typeof this.options.key === 'string' && this.options.key.length > 0
@@ -139,13 +141,15 @@ function deferredSafeStorage () {
   }
 }
 
-async function importHsHandler (userDataDir, safeStorage) {
+async function importHsHandler (userDataDir, safeStorage, { realHolesail = false } = {}) {
   fs.mkdirSync(userDataDir, { recursive: true })
 
   return esmock('../../src/protocols/hs-handler.js', {
-    holesail: {
-      default: FakeHolesail
-    },
+    ...(!realHolesail && {
+      holesail: {
+        default: FakeHolesail
+      }
+    }),
     electron: {
       app: {
         getAppPath: () => process.cwd(),
@@ -436,6 +440,67 @@ describe('HS protocol handler', function () {
       expect(response.status, `rehost failed: ${data.error}`).to.equal(200)
       expect(data.key).to.equal(room.key)
       await protocolPost(restarted, 'close', {})
+    })
+  })
+
+  describe('a private note hosted again', function () {
+    // Its address is its key. Hosting it from the saved seed with no key left
+    // Holesail to make one up, and the page saved the note's edits and line
+    // authors under that made-up address, so the next open lost them.
+    it('keeps its address after a restart, even when the page lost the private flag', async function () {
+      const { handler: first } = await loadHsHandler(userDataDir, encryptingSafeStorage)
+      const { data: room } = await protocolPost(first, 'create', { secure: true, udp: false })
+      expect(room.key, 'room was not created').to.be.a('string')
+      await protocolPost(first, 'close', {})
+      const ports = JSON.parse(fs.readFileSync(path.join(userDataDir, 'peersky-ports.json'), 'utf8'))
+      expect(ports[room.key]?.seed, 'no seed was saved, so this proves nothing').to.be.a('string')
+
+      const { handler: restarted } = await loadHsHandler(userDataDir, encryptingSafeStorage)
+      const { response, data } = await protocolPost(restarted, 'rehost', { key: room.key, secure: false })
+      expect(response.status, `rehost failed: ${data.error}`).to.equal(200)
+      expect(data.key).to.equal(room.key)
+      // A private key is never hosted in the open.
+      expect(data.secure).to.equal(true)
+      await protocolPost(restarted, 'close', {})
+    })
+
+    it('keeps its address when opening it hosts it again', async function () {
+      const { handler: first } = await loadHsHandler(userDataDir, encryptingSafeStorage)
+      const { data: room } = await protocolPost(first, 'create', { secure: true, udp: false })
+      await protocolPost(first, 'close', {})
+
+      const { handler: restarted } = await loadHsHandler(userDataDir, encryptingSafeStorage)
+      const { response, data } = await protocolPost(restarted, 'join', { key: room.key })
+      expect(response.status, `join failed: ${data.error}`).to.equal(200)
+      expect(data.hosted).to.equal(true)
+      expect(data.key).to.equal(room.key)
+      await protocolPost(restarted, 'close', {})
+    })
+
+    // The real library, without starting a network: what it makes of each plan.
+    it('comes back at the same address and keypair with the real Holesail', async function () {
+      const { default: Holesail } = await import('holesail')
+      const { rehostPlan } = await importHsHandler(userDataDir, null, { realHolesail: true })
+      const base = { server: true, host: '127.0.0.1', port: 9 }
+      const made = new Holesail({ ...base, secure: true })
+      const key = `hs://s000${made.key}`
+      const savedSeed = Buffer.from(made.seed, 'hex')
+
+      // What re-hosting did before: no key, the seed put back.
+      const before = new Holesail({ ...base, secure: true })
+      before.seed = made.seed
+      expect(before.key, 'Holesail kept the key, so this proves nothing').to.not.equal(made.key)
+
+      const plan = rehostPlan(key, { secure: false, savedSeed })
+      expect(plan).to.deep.equal({ secure: true, key, seed: null })
+      const again = new Holesail({ ...base, secure: plan.secure, key: plan.key })
+      expect(again.key).to.equal(made.key)
+      expect(again.seed).to.equal(made.seed)
+
+      // A public note's address is its public key, which gives no seed.
+      const publicKey = `hs://0000${'y'.repeat(52)}`
+      expect(rehostPlan(publicKey, { secure: false, savedSeed })).to.deep.equal({ secure: false, key: null, seed: savedSeed })
+      expect(rehostPlan(publicKey, { secure: false })).to.deep.equal({ secure: false, key: publicKey, seed: null })
     })
   })
 

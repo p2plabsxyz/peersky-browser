@@ -173,6 +173,27 @@ function toSeedBuffer (seed) {
   return buffer
 }
 
+/**
+ * How to host a note again at the address it already has.
+ *
+ * A private note's key is the secret its seed is hashed from, so the key alone
+ * brings the note back. A public note's key is its public key, which gives no
+ * seed, so the seed saved when it was made is put back instead. Putting a seed
+ * back on a private note left Holesail to make up a key of its own: the note
+ * stayed reachable at its real address, but this computer took the made-up one
+ * as the note's address and saved edits and line authors under it, where the
+ * next open never looked. A private key is never hosted in the open either.
+ */
+export function rehostPlan (key, { secure = null, savedSeed = null } = {}) {
+  const keyIsPrivate = Holesail.urlParser(key).secure === true
+  const seed = keyIsPrivate ? null : (savedSeed || null)
+  return {
+    secure: keyIsPrivate || secure === true,
+    key: seed ? null : key,
+    seed
+  }
+}
+
 // SECURITY: Redact sensitive data for logging
 const CLIENT_PROXY_BIND_MS = 3000
 
@@ -1823,8 +1844,9 @@ export async function createHandler () {
       if (!key) {
         return buildJsonResponse(400, { error: 'Missing key' })
       }
-      const parsedKey = Holesail.urlParser(key)
-      const secure = body.secure === undefined ? parsedKey.secure === true : parseBoolean(body.secure, true)
+      const secure = rehostPlan(key, {
+        secure: body.secure === undefined ? null : parseBoolean(body.secure, true)
+      }).secure
       const udp = parseBoolean(body.udp, false)
       const host = normalizeHost(body.host)
       const port = normalizePort(body.port)
@@ -1850,20 +1872,20 @@ export async function createHandler () {
       // Keep Y.Doc with peer edits if it exists
       initSessionCrdt(sessionState, sessionState.docState.content, initialYjsState, true)
 
-      // Use localhost for holesail and restore original seed for same room URL
+      // Use localhost for holesail, at the note's own address (rehostPlan).
       const savedReHostEntry = roomPorts.get(key) || null
-      const savedSeedBuffer = toSeedBuffer(savedReHostEntry?.seed)
+      const plan = rehostPlan(key, { secure, savedSeed: toSeedBuffer(savedReHostEntry?.seed) })
       const holesailServer = new Holesail({
         server: true,
-        secure,
+        secure: plan.secure,
         udp,
         host: '127.0.0.1',
         port: boundPort,
-        ...(savedSeedBuffer ? {} : { key }),
+        ...(plan.key ? { key: plan.key } : {}),
         log: 1
       })
-      if (savedSeedBuffer) {
-        holesailServer.seed = savedSeedBuffer
+      if (plan.seed) {
+        holesailServer.seed = plan.seed
       }
       await holesailServer.ready()
       const roomKey = holesailServer.info?.url || key
@@ -1951,7 +1973,7 @@ export async function createHandler () {
 
       // If this device has a saved port+seed for this room (creator), automatically rehost on the same port with the same seed
       const savedEntry = roomPorts.get(key) || null
-      const resolvedSecure = secure === null ? (parsedKey.secure === true) : secure
+      const resolvedSecure = rehostPlan(key, { secure }).secure
       const resolvedUdp = udp === null ? parseBoolean(parsedKey.udp, false) : udp
       const savedSeedBuffer = savedEntry?.seed ? Buffer.from(savedEntry.seed, 'hex') : null
       if (!joinOnly && savedSeedBuffer && !sessionState?.holesailServer && !sessionState?.holesailClient) {
@@ -1964,17 +1986,21 @@ export async function createHandler () {
           await stopDocServer(sessionState)
         }
         const { port: boundPort } = await ensureDocServer(sessionState, '127.0.0.1', savedEntry.port, resolvedSecure)
-        // Create Holesail server WITHOUT key, then inject the saved seed before ready()
-        // This makes Holesail generate the exact same keypair → same key → same connection string
+        // At the note's own address: its key for a private note, the saved
+        // seed for a public one (rehostPlan).
+        const plan = rehostPlan(key, { secure: resolvedSecure, savedSeed: savedSeedBuffer })
         const holesailServer = new Holesail({
           server: true,
-          secure: resolvedSecure,
+          secure: plan.secure,
           udp: resolvedUdp,
           host: '127.0.0.1',
           port: boundPort,
+          ...(plan.key ? { key: plan.key } : {}),
           log: 1
         })
-        holesailServer.seed = savedSeedBuffer
+        if (plan.seed) {
+          holesailServer.seed = plan.seed
+        }
         await holesailServer.ready()
         const rehostedKey = holesailServer.info?.url || key
         if (rehostedKey !== key) {
