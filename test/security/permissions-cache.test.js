@@ -210,3 +210,45 @@ describe('incognito permissions', function () {
     expect(prompts).to.equal(0)
   })
 })
+
+describe('the AI permission', function () {
+  it('asks only on the pages that get window.llm', async function () {
+    const { llmAccessFor } = await loadPermissions()
+    const expected = {
+      'peersky://p2p/ai-chat/': 'own',
+      'peersky://settings': 'own',
+      'peersky://myapps/app1/': 'ask',
+      'hyper://abc/': 'ask',
+      'ipfs://bafy/': 'ask',
+      'ipns://example.org/': 'ask',
+      'hs://abc/': 'ask',
+      'file:///tmp/page.html': 'ask',
+      'http://localhost:8080/': 'ask',
+      'https://agregore.mauve.moe/': 'ask',
+      'https://example.com/': 'none',
+      'http://localhost.example.com/': 'none',
+      'about:blank': 'none',
+      'not a url': 'none'
+    }
+    for (const [url, access] of Object.entries(expected)) {
+      expect(llmAccessFor(url), url).to.equal(access)
+    }
+  })
+
+  it('shows AI in the site panel only where a page can ask for it', async function () {
+    const { permissionsShownFor, MANAGED_PERMISSIONS } = await loadPermissions()
+    const rows = (url) => permissionsShownFor(url).map(p => p.id)
+    const others = MANAGED_PERMISSIONS.map(p => p.id).filter(id => id !== 'llm')
+    expect(rows('hyper://abc/')).to.include('llm')
+    expect(rows('ipfs://bafy/')).to.include('llm')
+    expect(rows('peersky://p2p/ai-chat/')).to.deep.equal(others)
+    expect(rows('https://example.com/')).to.deep.equal(others)
+  })
+
+  it('remembers an AI answer like any other permission', async function () {
+    const { setPermission, getPermissionsForOrigin } = await loadPermissions()
+    expect(getPermissionsForOrigin('hyper://abc').llm).to.equal('ask')
+    expect(setPermission('hyper://abc', 'llm', 'block')).to.deep.equal({ ok: true })
+    expect(getPermissionsForOrigin('hyper://abc').llm).to.equal('block')
+  })
+})

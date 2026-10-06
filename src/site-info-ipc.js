@@ -5,7 +5,8 @@ import {
   setPermission,
   resetPermissionsForOrigin,
   isValidOrigin,
-  permissionOriginFromUrl
+  permissionOriginFromUrl,
+  permissionsShownFor
 } from './permissions.js'
 import { connectionFor } from './utils.js'
 import extensionManager from './extensions/index.js'
@@ -148,7 +149,7 @@ export function setupSiteInfoIpc (session) {
       protocol: parsed.protocol,
       connection: connectionFor(parsed.protocol),
       permissions,
-      permissionMeta: MANAGED_PERMISSIONS,
+      permissionMeta: permissionsShownFor(parsed.href),
       canEditPermissions: parsed.originOk,
       cookies: {
         count: await cookieCount(store.session, cookieUrl)

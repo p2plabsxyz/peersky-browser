@@ -14,6 +14,11 @@ export const MANAGED_PERMISSIONS = [
     id: 'p2pPublish',
     label: 'P2P publishing',
     detail: 'This site wants to create or change files in your Hyper drives, or add content to your IPFS node.'
+  },
+  {
+    id: 'llm',
+    label: 'AI',
+    detail: 'This page wants to send prompts to the AI model set up in Settings and read its replies. A cloud model may charge you for each one.'
   }
 ]
 
@@ -99,6 +104,37 @@ export function permissionOriginFromUrl (raw) {
 export function isValidOrigin (origin) {
   if (typeof origin !== 'string' || !origin || origin.length >= 256) return false
   return permissionOriginFromUrl(origin) === origin
+}
+
+// Pages the preload hands window.llm to (src/pages/unified-preload.js), apart
+// from PeerSky's own. Keep the two lists in step.
+const LLM_ASK_SCHEMES = new Set(['hyper:', 'ipfs:', 'ipns:', 'hs:', 'file:'])
+const LLM_ASK_HOSTS = new Set(['localhost', 'agregore.mauve.moe'])
+
+/**
+ * Who may use window.llm: 'own' for PeerSky's own pages, which never ask;
+ * 'ask' for the other pages that get the bridge, which ask once per site;
+ * 'none' for everything else. Anyone can publish a hyper:// or ipfs:// page,
+ * and with a cloud model set up, every prompt it sends can cost money. Apps
+ * added under peersky://myapps came from somewhere else, so they ask too.
+ */
+export function llmAccessFor (raw) {
+  let url
+  try {
+    url = new URL(raw)
+  } catch {
+    return 'none'
+  }
+  if (url.protocol === 'peersky:') return url.hostname === 'myapps' ? 'ask' : 'own'
+  if (LLM_ASK_SCHEMES.has(url.protocol)) return 'ask'
+  if ((url.protocol === 'http:' || url.protocol === 'https:') && LLM_ASK_HOSTS.has(url.hostname)) return 'ask'
+  return 'none'
+}
+
+// The rows the site panel shows for a page. AI is left out where nothing would
+// ever ask: PeerSky's own pages always have it, and other websites never do.
+export function permissionsShownFor (pageUrl) {
+  return MANAGED_PERMISSIONS.filter(p => p.id !== 'llm' || llmAccessFor(pageUrl) === 'ask')
 }
 
 function cacheKey (origin, permission) {

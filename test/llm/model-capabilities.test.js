@@ -8,7 +8,8 @@ import { readFile } from 'fs/promises'
 const source = await readFile(new URL('../../src/llm.js', import.meta.url), 'utf8')
 const { detectVision } = await esmock.strict('../../src/llm.js', {
   electron: { ipcMain: { handle () {}, on () {} }, dialog: {}, shell: {} },
-  '../../src/settings-manager.js': { default: { settings: {} } }
+  '../../src/settings-manager.js': { default: { settings: {} } },
+  '../../src/llm-access.js': { mayUseLLM: async () => true }
 })
 
 describe('spotting an Ollama model that takes images', function () {

@@ -2,6 +2,7 @@
 import settingsManager from './settings-manager.js'
 import { ipcMain, dialog, shell } from 'electron'
 import { Agent, fetch as undiciFetch } from 'undici'
+import { mayUseLLM } from './llm-access.js'
 
 let isInitialized = false
 let initializedModel = null // Track which model we initialized with
@@ -21,6 +22,9 @@ let ollamaMissingNotified = false
 
 const DEFAULT_TEMPERATURE = 0.7
 const DEFAULT_MAX_TOKENS = 2048
+
+// What a page hears after it was refused at the prompt or in the site panel.
+export const NOT_ALLOWED = 'AI is blocked on this page. Allow it in the site panel by the address bar.'
 
 function isUsingLocalOllama (settings) {
   const baseURL = settings.llm?.baseURL || ''
@@ -96,16 +100,20 @@ export function detectVision (model, info = {}) {
   return visionFamily || projector || named
 }
 
-// IPC Handlers
+// IPC Handlers. Every call a page can make passes mayUseLLM after the enabled
+// check, so nothing asks while AI is off. PeerSky's own pages go straight
+// through; any other page is asked once per site.
 ipcMain.handle('llm-supported', async (event) => {
   const settings = settingsManager.settings || {}
   if (!settings.llm?.enabled) return false
+  if (!(await mayUseLLM(event, { ask: false }))) return false
   return isSupported()
 })
 
-ipcMain.handle('llm-model-info', async () => {
+ipcMain.handle('llm-model-info', async (event) => {
   const settings = settingsManager.settings || {}
   if (!settings.llm?.enabled) return { model: '', vision: false }
+  if (!(await mayUseLLM(event))) return { model: '', vision: false }
   const model = settings.llm.model || ''
   const isOllama = settings.llm.apiKey === 'ollama'
   let vision = false
@@ -126,12 +134,14 @@ ipcMain.handle('llm-model-info', async () => {
 ipcMain.handle('llm-chat', async (event, args) => {
   const settings = settingsManager.settings || {}
   if (!settings.llm?.enabled) return Promise.reject(new Error('LLM API is disabled'))
+  if (!(await mayUseLLM(event))) return Promise.reject(new Error(NOT_ALLOWED))
   return chat(args)
 })
 
 ipcMain.handle('llm-complete', async (event, args) => {
   const settings = settingsManager.settings || {}
   if (!settings.llm?.enabled) return Promise.reject(new Error('LLM API is disabled'))
+  if (!(await mayUseLLM(event))) return Promise.reject(new Error(NOT_ALLOWED))
   return complete(args)
 })
 
@@ -288,6 +298,7 @@ ipcMain.handle('llm-test-connection', async (event) => {
 ipcMain.handle('llm-chat-stream', async (event, args) => {
   const settings = settingsManager.settings || {}
   if (!settings.llm?.enabled) return Promise.reject(new Error('LLM API is disabled'))
+  if (!(await mayUseLLM(event))) return Promise.reject(new Error(NOT_ALLOWED))
   const id = streamId++
   const iterator = chatStream(args)
   inProgress.set(id, iterator)
@@ -297,6 +308,7 @@ ipcMain.handle('llm-chat-stream', async (event, args) => {
 ipcMain.handle('llm-complete-stream', async (event, args) => {
   const settings = settingsManager.settings || {}
   if (!settings.llm?.enabled) return Promise.reject(new Error('LLM API is disabled'))
+  if (!(await mayUseLLM(event))) return Promise.reject(new Error(NOT_ALLOWED))
   const id = streamId++
   const iterator = completeStream(args)
   inProgress.set(id, iterator)

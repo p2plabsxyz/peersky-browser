@@ -65,7 +65,10 @@ if (isBitTorrent || isPeerskyPage('bt-manager')) {
   })
 }
 
-// Expose LLM API for internal pages, P2P apps, and trusted domains
+// Expose LLM API for internal pages, P2P apps, and trusted domains. Whether a
+// call goes through is decided in the main process (src/llm-access.js):
+// PeerSky's own pages freely, every other page after asking. Keep these lists
+// in step with llmAccessFor in src/permissions.js.
 if (isInternal || isP2P || isUserP2PApp) {
   console.log('Unified-preload: Exposing LLM API for page:', url)
   // Iterator management for streaming
@@ -197,7 +200,8 @@ if (isInternal || isP2P || isUserP2PApp) {
   // Even for external pages, check if they might need LLM API (for testing)
   console.log('Unified-preload: External page, checking if LLM should be exposed:', url)
 
-  // We can add more trusted domains here if needed
+  // These pages are asked before they use AI. Keep in step with LLM_ASK_HOSTS
+  // in src/permissions.js.
   const trustedDomains = ['agregore.mauve.moe', 'localhost']
 
   let shouldExposeLLM = false

@@ -127,10 +127,11 @@ AI is off until you turn it on in Settings. With a model on your computer, such
 as Ollama, prompts and replies stay on your computer. If you point PeerSky at a
 cloud service such as OpenRouter, they go to that service under its own policy.
 An API key you enter is stored on your computer, encrypted with your system's
-keychain when one is available. Once AI is on, PeerSky's own apps, pages on
-`hyper://`, `ipfs://` and `ipns://`, and pages on localhost and
-agregore.mauve.moe can use it. AI memory is off unless you turn it on, and
-stays on your computer.
+keychain when one is available. Once AI is on, PeerSky's own apps can use it.
+Pages on `hyper://`, `ipfs://` and `ipns://`, local files, apps you added, and
+pages on localhost and agregore.mauve.moe have to ask you first, and you can
+change your answer in the site panel by the address bar. AI memory is off
+unless you turn it on, and stays on your computer.
 
 ## Preinstalled Extensions
 
