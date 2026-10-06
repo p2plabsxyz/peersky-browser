@@ -2,6 +2,7 @@ import { Menu, MenuItem, clipboard, dialog } from 'electron'
 import { isExternalScheme, openExternalScheme } from './external-scheme.js'
 import path from 'path'
 import extensionManager from './extensions/index.js'
+import { openDockedDevTools } from './devtools-dock.js'
 
 const isMac = process.platform === 'darwin'
 
@@ -240,6 +241,11 @@ export function attachContextMenus (browserWindow, windowManager) {
         new MenuItem({
           label: 'Inspect',
           click: () => {
+            // A page opens its DevTools docked in the window, not in one of their own.
+            if (webContents.getType() === 'webview') {
+              openDockedDevTools(webContents, { inspect: { x: params.x, y: params.y } })
+              return
+            }
             if (!webContents.isDevToolsOpened()) {
               webContents.openDevTools({ mode: 'detach' })
             }

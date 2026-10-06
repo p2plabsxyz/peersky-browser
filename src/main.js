@@ -33,6 +33,7 @@ import { getBrowserSession, getIncognitoSession, INCOGNITO_PARTITION, usePersist
 import { setupIncognitoPermissionHandler, setupPermissionHandler, requestSitePermission, permissionOriginFromUrl } from './permissions.js'
 import { setupSiteInfoIpc } from './site-info-ipc.js'
 import { startPeerChatPresence } from './peerchat-presence.js'
+import { setupDevToolsDock } from './devtools-dock.js'
 import { setupP2pmdPdfExportIpc } from './pages/p2p/p2pmd/pdf-export-ipc.js'
 import { setupBackupIpc } from './backup/ipc.js'
 import { assertCaller } from './backup/ipc-caller.js'
@@ -313,6 +314,7 @@ app.whenReady().then(async () => {
   setupBittorrentIpc()
   setupBackupIpc({ getTabs: () => windowManager.getTabs() })
   setupSiteInfoIpc(userSession)
+  setupDevToolsDock()
   // People in a PeerChat room see a yellow dot while you are away.
   startPeerChatPresence()
 

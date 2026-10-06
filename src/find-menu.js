@@ -237,6 +237,12 @@ class FindMenu extends HTMLElement {
     const { width } = this.getBoundingClientRect()
     if (width) right = Math.min(right, Math.round(window.innerWidth - width - margin))
 
+    // Left of docked DevTools: they are a native view, drawn over anything here.
+    if (document.body.classList.contains('devtools-dock-open')) {
+      const dock = document.getElementById('devtools-dock')?.getBoundingClientRect()
+      if (dock?.width) right = Math.max(right, Math.round(window.innerWidth - dock.left) + margin)
+    }
+
     this.style.top = `${Math.ceil(Math.max(rect.bottom + margin, nav.getBoundingClientRect().bottom))}px`
     this.style.right = `${Math.max(right, margin)}px`
   }

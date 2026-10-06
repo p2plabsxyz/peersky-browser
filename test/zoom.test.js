@@ -17,7 +17,8 @@ async function loadActions () {
       BrowserWindow: { getFocusedWindow: () => focusedWindow },
       webContents: { fromId: () => null }
     },
-    '../src/history-nav.js': { goBackActiveTab () {}, goForwardActiveTab () {} }
+    '../src/history-nav.js': { goBackActiveTab () {}, goForwardActiveTab () {} },
+    '../src/devtools-dock.js': { toggleDockedDevTools () {} }
   })
   return { actions: module.createActions({ all: [] }), executed }
 }
@@ -138,7 +139,8 @@ describe('page zoom', function () {
           BrowserWindow: { getFocusedWindow: () => null },
           webContents: { fromId: () => null }
         },
-        '../src/history-nav.js': { goBackActiveTab () {}, goForwardActiveTab () {} }
+        '../src/history-nav.js': { goBackActiveTab () {}, goForwardActiveTab () {} },
+        '../src/devtools-dock.js': { toggleDockedDevTools () {} }
       })
       const view = module.createMenuTemplate({ all: [] }).find((m) => m.label === 'View')
       const labels = view.submenu.map((i) => i.label).filter(Boolean)

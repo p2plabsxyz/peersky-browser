@@ -1,6 +1,7 @@
 import { app, BrowserWindow, webContents } from 'electron'
 import { createLogger } from './logger.js'
 import { goBackActiveTab, goForwardActiveTab } from './history-nav.js'
+import { toggleDockedDevTools } from './devtools-dock.js'
 const log = createLogger('actions')
 
 // A null step means reset.
@@ -34,7 +35,7 @@ export function createActions (windowManager) {
         ).catch(() => null)
         const guest = Number.isInteger(guestId) ? webContents.fromId(guestId) : null
         if (guest && guest.hostWebContents?.id === host.id) {
-          guest.openDevTools()
+          toggleDockedDevTools(guest)
         } else if (host.getLastWebPreferences()?.nodeIntegration !== true) {
           host.openDevTools({ mode: 'detach' })
         }
