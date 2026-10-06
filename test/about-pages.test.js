@@ -100,6 +100,14 @@ describe('Settings, About links the privacy policy and terms', function () {
     })
   }
 
+  it('promises to read every report, with no deadline a small team could not keep', function () {
+    for (const file of DOCS) {
+      const text = readFileSync(path.resolve(file), 'utf8')
+      expect(text, file).to.match(/we read every one\./)
+      expect(text, file).to.not.match(/24 hours/)
+    }
+  })
+
   it('keeps the links between the documents pointing at files that exist', function () {
     for (const file of DOCS) {
       const text = readFileSync(path.resolve(file), 'utf8')

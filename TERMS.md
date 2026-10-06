@@ -26,7 +26,7 @@ objectionable content or abusive users. Do not send or post:
   arrive hidden behind a warning.
 - You can block anyone. They can no longer message you directly.
 - You can report anyone from inside the app. Reports go to
-  contact@p2plabs.xyz and we read every one within 24 hours.
+  contact@p2plabs.xyz and we read every one.
 - In P2P Republic, the public room we run, we remove anyone who breaks these
   rules. Whoever creates any other room can remove people from it too.
 - PeerChat has no server, so nobody, us included, can delete a message from a
@@ -69,8 +69,8 @@ email contact@p2plabs.xyz with "Copyright" in the subject, and include:
 Please do not use the public issue form on GitHub for this, since a notice
 carries your name and address.
 
-We read every notice within 24 hours. For a valid one, in P2P Republic, the
-public room we run, we remove whoever shared it, and anyone who shares it again.
+We read every notice. For a valid one, in P2P Republic, the public room we run,
+we remove whoever shared it, and anyone who shares it again.
 
 What we cannot do: PeerSky cannot delete anything from someone else's device or
 from the network, and copies that already reached other devices stay there.

@@ -161,8 +161,7 @@ yourself work under their own privacy policies.
 Reporting someone in PeerChat opens an email to us, which you can read before
 you send it. It holds their name and peer ID, the room's name and a hash of its
 key (never the key itself), and the time. We use it only to act on the report,
-and we read every one within 24 hours. Nothing is sent unless you send that
-email.
+and we read every one. Nothing is sent unless you send that email.
 
 If you sent us a report, ask at contact@p2plabs.xyz and we delete it, unless
 the law requires us to keep it.
