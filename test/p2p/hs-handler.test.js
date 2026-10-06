@@ -504,6 +504,129 @@ describe('HS protocol handler', function () {
     })
   })
 
+  // A note is for a team, up to about 100 people. Every edit went out to
+  // everyone as the whole note, and every edit or cursor move as the whole
+  // people list with every line author in it: 100 people, 10 of them typing,
+  // was 334 MB a second out of the host.
+  describe('a note with many people in it', function () {
+    async function listen (localUrl, clientId, role = 'client') {
+      const conn = await connectPeerWithRetry(localUrl, clientId, role)
+      const events = []
+      const reader = conn.response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      ;(async () => {
+        try {
+          for (;;) {
+            const { value, done } = await reader.read()
+            if (done) break
+            buffer += decoder.decode(value, { stream: true })
+            let cut
+            while ((cut = buffer.indexOf('\n\n')) !== -1) {
+              const lines = buffer.slice(0, cut).split('\n')
+              buffer = buffer.slice(cut + 2)
+              const event = lines.find((line) => line.startsWith('event: '))?.slice(7)
+              const data = lines.filter((line) => line.startsWith('data: ')).map((line) => line.slice(6)).join('')
+              if (event) events.push({ event, data })
+            }
+          }
+        } catch {}
+      })()
+      return events
+    }
+
+    async function until (check, timeoutMs = 3000) {
+      const stop = Date.now() + timeoutMs
+      while (!check() && Date.now() < stop) await new Promise((resolve) => setTimeout(resolve, 20))
+      return check()
+    }
+
+    const named = (events, name) => events.filter((entry) => entry.event === name)
+
+    it('sends each edit as what it changed, not the whole note', async function () {
+      const { data: room } = await protocolPost(handler, 'create', { secure: false, udp: false })
+      const note = Array.from({ length: 400 }, (_, i) => `- line ${i} of a long note`).join('\n')
+      await setDoc(room.localUrl, { content: note, clientId: 'device-a', name: 'Mac' })
+      const events = await listen(room.localUrl, 'device-b')
+      expect(await until(() => named(events, 'yjsupdate').length === 1)).to.equal(true)
+      // Whoever joins gets the whole note once.
+      const watcher = new Y.Doc()
+      const whole = named(events, 'yjsupdate')[0].data
+      Y.applyUpdate(watcher, Buffer.from(whole, 'base64'))
+      expect(watcher.getText('content').toString()).to.equal(note)
+
+      // Someone else adds a word at the end.
+      const typist = new Y.Doc()
+      Y.applyUpdate(typist, Buffer.from((await getYjsState(room.localUrl)).yjsState, 'base64'))
+      const before = Y.encodeStateVector(typist)
+      typist.getText('content').insert(typist.getText('content').length, ' done')
+      await setDocUpdate(room.localUrl, {
+        update: Buffer.from(Y.encodeStateAsUpdate(typist, before)).toString('base64'),
+        clientId: 'device-c',
+        name: 'Phone'
+      })
+
+      expect(await until(() => named(events, 'yjsupdate').length === 2)).to.equal(true)
+      const change = named(events, 'yjsupdate')[1].data
+      expect(change.length).to.be.below(whole.length / 20)
+      Y.applyUpdate(watcher, Buffer.from(change, 'base64'))
+      expect(watcher.getText('content').toString()).to.equal(`${note} done`)
+    })
+
+    it('sends the people list a few times a second, not on every cursor move', async function () {
+      const { data: room } = await protocolPost(handler, 'create', { secure: false, udp: false })
+      await setDoc(room.localUrl, { content: 'Line 1', clientId: 'device-a', name: 'Mac' })
+      const events = await listen(room.localUrl, 'device-b')
+      await listen(room.localUrl, 'device-c')
+      expect(await until(() => named(events, 'peerlist').length >= 2)).to.equal(true)
+      await new Promise((resolve) => setTimeout(resolve, 300))
+      const listsBefore = named(events, 'peerlist').length
+
+      for (let column = 1; column <= 20; column += 1) {
+        await postPresence(room.localUrl, { clientId: 'device-c', role: 'client', name: 'Phone', cursorLine: 1, cursorColumn: column, isTyping: true })
+      }
+      expect(await until(() => named(events, 'peerlist').length > listsBefore)).to.equal(true)
+      await new Promise((resolve) => setTimeout(resolve, 400))
+      const lists = named(events, 'peerlist').slice(listsBefore)
+      expect(lists.length).to.be.at.most(3)
+      // The last one says where the cursor is now.
+      const phone = JSON.parse(lists.at(-1).data).find((peer) => peer.clientId === 'device-c')
+      expect(phone.cursorColumn).to.equal(20)
+    })
+
+    it('sends someone\'s line authors again only when they change, and in full to whoever joins', async function () {
+      const { data: room } = await protocolPost(handler, 'create', { secure: false, udp: false })
+      await setDoc(room.localUrl, { content: 'Line 1\nLine 2\nLine 3', clientId: 'device-a', name: 'Mac' })
+      const events = await listen(room.localUrl, 'device-b')
+      await listen(room.localUrl, 'device-c')
+      const authors = { 1: { name: 'Phone', color: '#229922' }, 2: { name: 'Phone', color: '#229922' } }
+      const phoneIn = (entry) => JSON.parse(entry.data).find((peer) => peer.clientId === 'device-c')
+      const latestPhone = () => {
+        const lists = named(events, 'peerlist')
+        return lists.length ? phoneIn(lists.at(-1)) : null
+      }
+
+      await postPresence(room.localUrl, { clientId: 'device-c', role: 'client', name: 'Phone', cursorLine: 1, cursorColumn: 1, lineAttributions: authors })
+      expect(await until(() => latestPhone()?.lineAttributions?.['2'] !== undefined)).to.equal(true)
+
+      // The same authors with a new cursor: the list says where, not who wrote what.
+      const listsBefore = named(events, 'peerlist').length
+      await postPresence(room.localUrl, { clientId: 'device-c', role: 'client', name: 'Phone', cursorLine: 2, cursorColumn: 3, lineAttributions: authors })
+      expect(await until(() => named(events, 'peerlist').length > listsBefore)).to.equal(true)
+      expect(latestPhone().cursorLine).to.equal(2)
+      expect(latestPhone().lineAttributions).to.equal(null)
+
+      // A new line of theirs goes out.
+      await postPresence(room.localUrl, { clientId: 'device-c', role: 'client', name: 'Phone', cursorLine: 3, cursorColumn: 1, lineAttributions: { ...authors, 3: { name: 'Phone', color: '#229922' } } })
+      expect(await until(() => latestPhone()?.lineAttributions?.['3'] !== undefined)).to.equal(true)
+
+      // Someone joining now gets them all.
+      const late = await listen(room.localUrl, 'device-d')
+      expect(await until(() => named(late, 'peerlist').length > 0)).to.equal(true)
+      expect(Object.keys(phoneIn(named(late, 'peerlist')[0]).lineAttributions)).to.deep.equal(['1', '2', '3'])
+    })
+  })
+
   describe('a note on another of the person\'s devices', function () {
     // Opening one looks for it on the other device first. Hosting it here from
     // the saved seed as part of that look would answer the look itself, and

@@ -354,7 +354,11 @@ function getPeerCount (session) {
   return count
 }
 
-function getPeerList (session) {
+// changedOnly: line authors only for the people whose authors changed since
+// the last list went out. Editors merge each list into what they have, so a
+// list without someone's authors takes nothing away. Anyone connecting gets
+// everyone's in full when their stream opens.
+function getPeerList (session, { changedOnly = false } = {}) {
   const now = Date.now()
   return Array.from(session.sseClients.values())
     .sort((a, b) => {
@@ -382,9 +386,19 @@ function getPeerList (session) {
         selectionEnd: Number.isFinite(Number(client.selectionEnd)) ? Number(client.selectionEnd) : null,
         joinedAt: Number.isFinite(Number(client.joinedAt)) ? Number(client.joinedAt) : Date.now(),
         updatedAt: Number.isFinite(Number(client.updatedAt)) ? Number(client.updatedAt) : Date.now(),
-        lineAttributions: client.lineAttributions || null
+        lineAttributions: changedOnly && !lineAttributionsUnsent(client)
+          ? null
+          : (client.lineAttributions || null)
       }
     })
+}
+
+function lineAttributionsUnsent (client) {
+  return (client.lineAttributionsVersion || 0) !== (client.lineAttributionsSentVersion || 0)
+}
+
+function markLineAttributionsChanged (target) {
+  target.lineAttributionsVersion = (target.lineAttributionsVersion || 0) + 1
 }
 
 function findClientByClientId (session, clientId) {
@@ -471,29 +485,38 @@ function mergeLineAttributions (target, lineAttributions, fallbackName = '') {
   if (!target || !lineAttributions || typeof lineAttributions !== 'object') return
   if (!target.lineAttributions) target.lineAttributions = {}
   const fallback = sanitizePeerName(fallbackName || '')
+  let changed = false
   for (const [line, info] of Object.entries(lineAttributions)) {
     const lineNum = Number(line)
     if (!Number.isFinite(lineNum) || lineNum < 1) continue
     if (!info || typeof info !== 'object' || typeof info.color !== 'string') continue
     const incomingName = sanitizePeerName(typeof info.name === 'string' ? info.name : '')
-    target.lineAttributions[String(Math.floor(lineNum))] = {
-      name: incomingName || fallback,
-      color: info.color
-    }
+    const key = String(Math.floor(lineNum))
+    const next = { name: incomingName || fallback, color: info.color }
+    const current = target.lineAttributions[key]
+    // An editor sends all its lines every time, so only a real change counts.
+    if (current && current.name === next.name && current.color === next.color) continue
+    target.lineAttributions[key] = next
+    changed = true
   }
+  if (changed) markLineAttributionsChanged(target)
 }
 
 function renameLineAttributionOwner (target, nextName) {
   if (!target || !target.lineAttributions || typeof target.lineAttributions !== 'object') return
   const sanitized = sanitizePeerName(nextName || '')
   if (!sanitized) return
+  let changed = false
   for (const [line, info] of Object.entries(target.lineAttributions)) {
     if (!info || typeof info !== 'object' || typeof info.color !== 'string') continue
+    if (info.name === sanitized) continue
     target.lineAttributions[line] = {
       name: sanitized,
       color: info.color
     }
+    changed = true
   }
+  if (changed) markLineAttributionsChanged(target)
 }
 
 function markEditedLineAttribution (session, actor, cursorLine) {
@@ -506,13 +529,18 @@ function markEditedLineAttribution (session, actor, cursorLine) {
     if (!client || client === actor || !client.lineAttributions) continue
     if (Object.prototype.hasOwnProperty.call(client.lineAttributions, lineKey)) {
       delete client.lineAttributions[lineKey]
+      markLineAttributionsChanged(client)
     }
   }
   if (!actor.lineAttributions) actor.lineAttributions = {}
-  actor.lineAttributions[lineKey] = {
+  const next = {
     name: getPeerDisplayName(actor),
     color: actor.color || getPeerColor(actor.clientId || actor.id)
   }
+  const current = actor.lineAttributions[lineKey]
+  if (current && current.name === next.name && current.color === next.color) return
+  actor.lineAttributions[lineKey] = next
+  markLineAttributionsChanged(actor)
 }
 
 function getOrCreateUnknownPeerId (session, sourceKey = '') {
@@ -600,10 +628,40 @@ function broadcastPeers (session) {
 }
 
 function broadcastPeerList (session) {
-  const payload = JSON.stringify(getPeerList(session))
+  if (session.peerListTimer) {
+    clearTimeout(session.peerListTimer)
+    session.peerListTimer = null
+  }
+  // A long note worked on by many people carries thousands of line authors,
+  // and sending them all with every list kept 100 people at 300 KB a second
+  // each.
+  const payload = JSON.stringify(getPeerList(session, { changedOnly: true }))
   for (const client of session.sseClients.values()) {
+    client.lineAttributionsSentVersion = client.lineAttributionsVersion || 0
     client.res.write(`event: peerlist\ndata: ${payload}\n\n`)
   }
+}
+
+// Typing and cursor moves come several times a second from each person, and
+// the list carries everyone in the note, so sending it on each one grew with
+// the square of the room: 100 people, 10 of them typing, was 334 MB a second
+// out of the host. It goes out four times a second, and less often in a big
+// room, where nobody follows every cursor: once a second at 100 people. Joins
+// and leaves still go out at once.
+const PEER_LIST_INTERVAL_MS = 250
+const PEER_LIST_MS_PER_PERSON = 10
+
+function peerListInterval (session) {
+  return Math.max(PEER_LIST_INTERVAL_MS, session.sseClients.size * PEER_LIST_MS_PER_PERSON)
+}
+
+function schedulePeerListBroadcast (session) {
+  if (session.peerListTimer) return
+  session.peerListTimer = setTimeout(() => {
+    session.peerListTimer = null
+    broadcastPeerList(session)
+  }, peerListInterval(session))
+  session.peerListTimer.unref?.()
 }
 
 function broadcastActivity (session, activity) {
@@ -1184,7 +1242,7 @@ function handleDocRequest (req, res, session) {
           actor.lastTypingAt = Date.now()
           actor.updatedAt = actor.lastTypingAt
           syncPeerMetaFromActor(session, actor)
-          broadcastPeerList(session)
+          schedulePeerListBroadcast(session)
         } else if (clientId) {
           const peerMeta = getOrCreatePeerMeta(session, clientId, {
             role: 'client',
@@ -1214,27 +1272,38 @@ function handleDocRequest (req, res, session) {
         }
 
         const beforeContent = session.ytext.toString()
-        let usedTextFallback = false
+        // Only what this update changed goes out. Sending the whole note after
+        // every edit grew with the note and the room: ten people in a 100 KB
+        // note each received 2.7 MB a second, and every device merged the
+        // whole note each time. Anyone joining or reconnecting is sent the
+        // whole note when their stream opens, so a change is all an editor
+        // ever lacks.
+        let delta = null
+        const collectDelta = (update) => { delta = delta ? Y.mergeUpdates([delta, update]) : update }
+        session.ydoc.on('update', collectDelta)
         try {
-          Y.applyUpdate(session.ydoc, updateBytes, 'client-update')
-        } catch (applyErr) {
-          console.warn('[p2pmd] /doc/update: Y.applyUpdate rejected payload:', applyErr.message)
-          // Fallback path: if client sends full text, reconcile using text diff.
-          if (typeof fullText === 'string') {
-            try {
-              applyTextDiffToYText(session.ytext, beforeContent, fullText)
-              usedTextFallback = true
-            } catch (fallbackErr) {
-              console.warn('[p2pmd] /doc/update fallback failed:', fallbackErr.message)
+          try {
+            Y.applyUpdate(session.ydoc, updateBytes, 'client-update')
+          } catch (applyErr) {
+            console.warn('[p2pmd] /doc/update: Y.applyUpdate rejected payload:', applyErr.message)
+            // Fallback path: if client sends full text, reconcile using text diff.
+            if (typeof fullText === 'string') {
+              try {
+                applyTextDiffToYText(session.ytext, beforeContent, fullText)
+              } catch (fallbackErr) {
+                console.warn('[p2pmd] /doc/update fallback failed:', fallbackErr.message)
+                res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
+                res.end(JSON.stringify({ ok: false, error: 'Invalid Yjs update payload' }))
+                return
+              }
+            } else {
               res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
               res.end(JSON.stringify({ ok: false, error: 'Invalid Yjs update payload' }))
               return
             }
-          } else {
-            res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
-            res.end(JSON.stringify({ ok: false, error: 'Invalid Yjs update payload' }))
-            return
           }
+        } finally {
+          session.ydoc.off('update', collectDelta)
         }
         const afterContent = session.ytext.toString()
 
@@ -1242,12 +1311,8 @@ function handleDocRequest (req, res, session) {
         session.docState.content = afterContent
         session.docState.updatedAt = Date.now()
 
-        // Broadcast canonical server state after any content change so
-        // reconnecting/diverged clients can re-converge safely.
-        if (usedTextFallback || contentChanged) {
-          const stateBytes = Y.encodeStateAsUpdate(session.ydoc)
-          const stateBase64 = Buffer.from(stateBytes).toString('base64')
-          broadcastYjsUpdate(session, stateBase64)
+        if (delta) broadcastYjsUpdate(session, Buffer.from(delta).toString('base64'))
+        if (contentChanged) {
           scheduleEditActivity(session, {
             clientId,
             peerId: actor?.id || null,
@@ -1312,7 +1377,7 @@ function handleDocRequest (req, res, session) {
           actor.lastTypingAt = Date.now()
           actor.updatedAt = actor.lastTypingAt
           syncPeerMetaFromActor(session, actor)
-          broadcastPeerList(session)
+          schedulePeerListBroadcast(session)
         } else if (clientId) {
           const peerMeta = getOrCreatePeerMeta(session, clientId, {
             role: 'client',
@@ -1421,7 +1486,8 @@ function handleDocRequest (req, res, session) {
       lastTypingAt: 0,
       lastEditAt: 0,
       // Preserve lineAttributions from peerMeta if available (fixes host reconnection bug)
-      lineAttributions: peerMeta?.lineAttributions || {}
+      lineAttributions: peerMeta?.lineAttributions || {},
+      lineAttributionsVersion: 1
     }
     session.sseClients.set(res, peerState)
     syncPeerMetaFromActor(session, peerState)
@@ -1563,7 +1629,7 @@ function handleDocRequest (req, res, session) {
           syncPeerMetaFromActor(session, actor)
         }
 
-        broadcastPeerList(session)
+        schedulePeerListBroadcast(session)
         res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
         res.end(JSON.stringify({ ok: true }))
       } catch {
@@ -1583,6 +1649,10 @@ function handleDocRequest (req, res, session) {
 
 async function stopDocServer (session) {
   if (!session?.server) return
+  if (session.peerListTimer) {
+    clearTimeout(session.peerListTimer)
+    session.peerListTimer = null
+  }
   if (session.editLogTimers && session.editLogTimers.size > 0) {
     for (const timer of session.editLogTimers.values()) {
       clearTimeout(timer)
