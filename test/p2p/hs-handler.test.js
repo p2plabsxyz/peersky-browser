@@ -594,6 +594,37 @@ describe('HS protocol handler', function () {
       expect(phone.cursorColumn).to.equal(20)
     })
 
+    // The phone's editor sends the whole note's authors as lineAttributions,
+    // which its own host keeps for the note, and its own lines as
+    // peerLineAttributions. Taken as the phone's own, everyone's lines were
+    // filed under the phone, and the phone showed Alice's lines as its own.
+    it('files only a phone\'s own lines under the phone', async function () {
+      const { data: room } = await protocolPost(handler, 'create', { secure: false, udp: false })
+      await setDoc(room.localUrl, { content: 'Line 1\nLine 2\nLine 3', clientId: 'device-a', name: 'Alice' })
+      await listen(room.localUrl, 'device-a', 'host')
+      await listen(room.localUrl, 'phone')
+      const alice = { name: 'Alice', color: '#1FC1A8' }
+      const sam = { name: 'Sam', color: '#59a6ff' }
+      await postPresence(room.localUrl, { clientId: 'device-a', role: 'host', name: 'Alice', cursorLine: 1, lineAttributions: { 1: alice, 2: alice } })
+
+      const typist = new Y.Doc()
+      Y.applyUpdate(typist, Buffer.from((await getYjsState(room.localUrl)).yjsState, 'base64'))
+      const before = Y.encodeStateVector(typist)
+      typist.getText('content').insert(typist.getText('content').length, '!')
+      await setDocUpdate(room.localUrl, {
+        update: Buffer.from(Y.encodeStateAsUpdate(typist, before)).toString('base64'),
+        clientId: 'phone',
+        role: 'client',
+        name: 'Sam',
+        cursorLine: 3,
+        lineAttributions: { 1: alice, 2: alice, 3: sam },
+        peerLineAttributions: { 3: sam }
+      })
+      const status = await getStatus(room.localUrl)
+      expect(Object.keys(findPeer(status, 'phone').lineAttributions)).to.deep.equal(['3'])
+      expect(Object.keys(findPeer(status, 'device-a').lineAttributions)).to.deep.equal(['1', '2'])
+    })
+
     it('sends someone\'s line authors again only when they change, and in full to whoever joins', async function () {
       const { data: room } = await protocolPost(handler, 'create', { secure: false, udp: false })
       await setDoc(room.localUrl, { content: 'Line 1\nLine 2\nLine 3', clientId: 'device-a', name: 'Mac' })

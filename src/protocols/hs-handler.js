@@ -397,6 +397,15 @@ function lineAttributionsUnsent (client) {
   return (client.lineAttributionsVersion || 0) !== (client.lineAttributionsSentVersion || 0)
 }
 
+// The sender's own lines. The phone's editor sends the whole note's authors
+// as lineAttributions, which its own host keeps for the note, and its own lines
+// as peerLineAttributions; the desktop editor sends only its own, as
+// lineAttributions. Reading lineAttributions as a phone's own filed everyone's
+// lines under that phone, and the phone then showed them as written on it.
+function senderLineAttributions (parsed) {
+  return parsed?.peerLineAttributions ?? parsed?.lineAttributions
+}
+
 function markLineAttributionsChanged (target) {
   target.lineAttributionsVersion = (target.lineAttributionsVersion || 0) + 1
 }
@@ -1236,7 +1245,7 @@ function handleDocRequest (req, res, session) {
           if (cursorColumn !== null) actor.cursorColumn = cursorColumn
           if (selectionStart !== null) actor.selectionStart = selectionStart
           if (selectionEnd !== null) actor.selectionEnd = selectionEnd
-          mergeLineAttributions(actor, parsed.lineAttributions, getPeerDisplayName(actor))
+          mergeLineAttributions(actor, senderLineAttributions(parsed), getPeerDisplayName(actor))
           markEditedLineAttribution(session, actor, cursorLine !== null ? cursorLine : actor.cursorLine)
           actor.isTyping = true
           actor.lastTypingAt = Date.now()
@@ -1252,9 +1261,9 @@ function handleDocRequest (req, res, session) {
             cursorColumn
           })
           // Merge line attributions even for peers without SSE connection yet
-          if (peerMeta && parsed.lineAttributions) {
+          if (peerMeta && senderLineAttributions(parsed)) {
             if (!peerMeta.lineAttributions) peerMeta.lineAttributions = {}
-            mergeLineAttributions(peerMeta, parsed.lineAttributions, getPeerDisplayName(peerMeta))
+            mergeLineAttributions(peerMeta, senderLineAttributions(parsed), getPeerDisplayName(peerMeta))
           }
         }
         if (!base64) {
@@ -1371,7 +1380,7 @@ function handleDocRequest (req, res, session) {
           if (cursorColumn !== null) actor.cursorColumn = cursorColumn
           if (selectionStart !== null) actor.selectionStart = selectionStart
           if (selectionEnd !== null) actor.selectionEnd = selectionEnd
-          mergeLineAttributions(actor, parsed.lineAttributions, getPeerDisplayName(actor))
+          mergeLineAttributions(actor, senderLineAttributions(parsed), getPeerDisplayName(actor))
           markEditedLineAttribution(session, actor, cursorLine !== null ? cursorLine : actor.cursorLine)
           actor.isTyping = true
           actor.lastTypingAt = Date.now()
@@ -1387,9 +1396,9 @@ function handleDocRequest (req, res, session) {
             cursorColumn
           })
           // Merge line attributions even for peers without SSE connection yet
-          if (peerMeta && parsed.lineAttributions) {
+          if (peerMeta && senderLineAttributions(parsed)) {
             if (!peerMeta.lineAttributions) peerMeta.lineAttributions = {}
-            mergeLineAttributions(peerMeta, parsed.lineAttributions, getPeerDisplayName(peerMeta))
+            mergeLineAttributions(peerMeta, senderLineAttributions(parsed), getPeerDisplayName(peerMeta))
           }
         }
         const beforeContent = session.ydoc && session.ytext ? session.ytext.toString() : session.docState.content
@@ -1600,7 +1609,7 @@ function handleDocRequest (req, res, session) {
             color: nextColor,
             cursorLine: parsed.cursorLine,
             cursorColumn: parsed.cursorColumn,
-            lineAttributions: parsed.lineAttributions
+            lineAttributions: senderLineAttributions(parsed)
           })
           : null
         if (!actor && !peerMeta) {
@@ -1616,7 +1625,7 @@ function handleDocRequest (req, res, session) {
         if (actor) actor.role = normalizePeerRole(parsed.role || actor.role || 'client')
         const nextTyping = parsed.isTyping === true
         if (actor) {
-          mergeLineAttributions(actor, parsed.lineAttributions, getPeerDisplayName(actor))
+          mergeLineAttributions(actor, senderLineAttributions(parsed), getPeerDisplayName(actor))
           actor.isTyping = nextTyping
           if (nextTyping) {
             actor.lastTypingAt = Date.now()
