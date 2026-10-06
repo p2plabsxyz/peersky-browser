@@ -186,7 +186,6 @@
 - [x] [Web extensions](https://github.com/p2plabsxyz/peersky-browser/issues/19):
   - [x] Ability to add and manage extensions
   - [x] [Default extensions](https://github.com/p2plabsxyz/essential-chromium-extensions)
-  - [ ] 🚧 [Decentralized Extension Distribution](https://github.com/p2plabsxyz/peersky-browser/issues/42)
 
 - [x] Bookmarks (peersky://bookmarks):
 
