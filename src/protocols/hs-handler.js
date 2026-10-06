@@ -1246,7 +1246,6 @@ function handleDocRequest (req, res, session) {
           if (selectionStart !== null) actor.selectionStart = selectionStart
           if (selectionEnd !== null) actor.selectionEnd = selectionEnd
           mergeLineAttributions(actor, senderLineAttributions(parsed), getPeerDisplayName(actor))
-          markEditedLineAttribution(session, actor, cursorLine !== null ? cursorLine : actor.cursorLine)
           actor.isTyping = true
           actor.lastTypingAt = Date.now()
           actor.updatedAt = actor.lastTypingAt
@@ -1319,6 +1318,10 @@ function handleDocRequest (req, res, session) {
         const contentChanged = beforeContent !== afterContent
         session.docState.content = afterContent
         session.docState.updatedAt = Date.now()
+        // A line is someone's once they change it. An update that changed no
+        // text, such as a sync on joining, gave whoever sent it the line under
+        // their cursor, and took it from whoever wrote it.
+        if (contentChanged && actor) markEditedLineAttribution(session, actor, cursorLine !== null ? cursorLine : actor.cursorLine)
 
         if (delta) broadcastYjsUpdate(session, Buffer.from(delta).toString('base64'))
         if (contentChanged) {
@@ -1381,7 +1384,6 @@ function handleDocRequest (req, res, session) {
           if (selectionStart !== null) actor.selectionStart = selectionStart
           if (selectionEnd !== null) actor.selectionEnd = selectionEnd
           mergeLineAttributions(actor, senderLineAttributions(parsed), getPeerDisplayName(actor))
-          markEditedLineAttribution(session, actor, cursorLine !== null ? cursorLine : actor.cursorLine)
           actor.isTyping = true
           actor.lastTypingAt = Date.now()
           actor.updatedAt = actor.lastTypingAt
@@ -1404,6 +1406,7 @@ function handleDocRequest (req, res, session) {
         const beforeContent = session.ydoc && session.ytext ? session.ytext.toString() : session.docState.content
         session.docState.content = content
         session.docState.updatedAt = Date.now()
+        if (beforeContent !== content && actor) markEditedLineAttribution(session, actor, cursorLine !== null ? cursorLine : actor.cursorLine)
         if (session.ydoc && session.ytext) {
           const current = session.ytext.toString()
           if (current !== content) {

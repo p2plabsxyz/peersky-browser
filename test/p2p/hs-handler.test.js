@@ -625,6 +625,34 @@ describe('HS protocol handler', function () {
       expect(Object.keys(findPeer(status, 'device-a').lineAttributions)).to.deep.equal(['1', '2'])
     })
 
+    // A line is someone's once they change it. The phone's editor sends an
+    // update on joining that changes no text, and that gave the phone the line
+    // under its cursor and took it from whoever wrote it.
+    it('does not give anyone a line for an update that changed no text', async function () {
+      const { data: room } = await protocolPost(handler, 'create', { secure: false, udp: false })
+      await setDoc(room.localUrl, { content: 'Line 1\nLine 2', clientId: 'device-a', name: 'Alice' })
+      await listen(room.localUrl, 'device-a', 'host')
+      await listen(room.localUrl, 'phone')
+      const alice = { name: 'Alice', color: '#1FC1A8' }
+      await postPresence(room.localUrl, { clientId: 'device-a', role: 'host', name: 'Alice', cursorLine: 1, lineAttributions: { 1: alice, 2: alice } })
+
+      const phone = new Y.Doc()
+      Y.applyUpdate(phone, Buffer.from((await getYjsState(room.localUrl)).yjsState, 'base64'))
+      const before = Y.encodeStateVector(phone)
+      phone.getMap('settings').set('latexModeEnabled', true)
+      await setDocUpdate(room.localUrl, {
+        update: Buffer.from(Y.encodeStateAsUpdate(phone, before)).toString('base64'),
+        clientId: 'phone',
+        role: 'client',
+        name: 'Sam',
+        cursorLine: 2
+      })
+
+      const status = await getStatus(room.localUrl)
+      expect(findPeer(status, 'phone').lineAttributions || {}).to.not.have.property('2')
+      expect(findPeer(status, 'device-a').lineAttributions).to.have.property('2')
+    })
+
     it('sends someone\'s line authors again only when they change, and in full to whoever joins', async function () {
       const { data: room } = await protocolPost(handler, 'create', { secure: false, udp: false })
       await setDoc(room.localUrl, { content: 'Line 1\nLine 2\nLine 3', clientId: 'device-a', name: 'Mac' })
