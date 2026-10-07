@@ -8,6 +8,7 @@ import { mkdtempSync } from 'fs'
 import z32 from 'z32'
 import { mkdtemp, readFile, rm, writeFile } from 'fs/promises'
 import { EventEmitter } from 'events'
+import * as requestGate from '../../src/protocols/request-gate.js'
 
 const TEST_USER_DATA = mkdtempSync(path.join(os.tmpdir(), 'peersky-test-userdata-'))
 
@@ -69,7 +70,7 @@ describe('Hyper protocol handler', function () {
     sinon.restore()
   })
 
-  async function loadHyperModule ({ fetchImpl, chatResponse, chatReject, throwOnFetch, lanReject, lanAttachResults, currentIP = '127.0.0.1', driveLength = 0 } = {}) {
+  async function loadHyperModule ({ fetchImpl, chatResponse, chatReject, throwOnFetch, lanReject, lanReadyReject, lanAttachResults, currentIP = '127.0.0.1', driveLength = 0, peerchat = {} } = {}) {
     // Order matters for the peer-discovery regression: the drive must be given
     // a chance to replicate before the fetch that would 404 with no peers.
     const callOrder = []
@@ -81,13 +82,21 @@ describe('Hyper protocol handler', function () {
         storage: {
           hasCore: sinon.stub().resolves(false)
         },
-        namespace: sinon.stub().returns({
+        // A drive opened by name gets the address FakeHyperdrive gives it.
+        namespace: sinon.stub().callsFake((name) => ({
           ns: Buffer.from('test'),
+          seed: name,
+          get: () => ({
+            key: crypto.createHash('sha256').update(String(name)).digest(),
+            ready: async () => {},
+            close: async () => {}
+          }),
+          close: async () => {},
           storage: {
             getAlias: sinon.stub().resolves(null),
             hasCore: sinon.stub().resolves(false)
           }
-        })
+        }))
       },
       getDrive: sinon.stub().callsFake(async (name) => ({
         writable: false,
@@ -105,15 +114,16 @@ describe('Hyper protocol handler', function () {
         url: `hyper://${String(name).replace(/[^a-z0-9]/gi, '').padEnd(52, 'a').slice(0, 52)}/`
       })),
       joinCore: sinon.stub().resolves(),
-      swarm: { flush: sinon.stub().resolves() },
+      swarm: { flush: sinon.stub().resolves(), keyPair: { publicKey: Buffer.alloc(32) } },
       suspend: sinon.stub().resolves(),
       resume: sinon.stub().resolves()
     })
     const sdk = createMockSdk('sdk-test')
     const privateSdk = createMockSdk('private-sdk-test')
-    const createSDK = sinon.stub()
-    createSDK.onFirstCall().resolves(sdk)
-    createSDK.onSecondCall().resolves(privateSdk)
+    // The two runtimes start together and each reads a file first, so which
+    // asks first is down to timing. The private one is told apart by the
+    // replication setting only it is given.
+    const createSDK = sinon.stub().callsFake(async (opts) => (opts && 'doReplicate' in opts ? privateSdk : sdk))
 
     const lanMock = new EventEmitter()
     lanMock.id = 'lan-test'
@@ -135,6 +145,17 @@ describe('Hyper protocol handler', function () {
     } else {
       attachHyperSDK.resolves(lanMock)
     }
+
+    // The LAN swarm the handler makes and readies before attaching it.
+    const lanInstances = []
+    const LANSwarm = sinon.spy(function (opts) {
+      this.opts = opts
+      this.destroy = sinon.stub().resolves()
+      this.ready = lanReadyReject ? sinon.stub().rejects(lanReadyReject) : sinon.stub().resolves()
+      lanInstances.push(this)
+    })
+    LANSwarm.attachHyperSDK = attachHyperSDK
+    LANSwarm.selectLocalIPv4 = sinon.stub().returns(currentIP)
 
     const createFetchStub = () => sinon.stub().callsFake(async (url, options) => {
       callOrder.push('fetch')
@@ -176,10 +197,7 @@ describe('Hyper protocol handler', function () {
         create: createSDK
       },
       '@p2plabs/hyperdht-mdns': {
-        default: {
-          attachHyperSDK,
-          selectLocalIPv4: sinon.stub().returns(currentIP)
-        }
+        default: LANSwarm
       },
       'hypercore-fetch': {
         default: hyperFetchFactory
@@ -191,10 +209,17 @@ describe('Hyper protocol handler', function () {
       '../../src/protocols/private-hyperdrive-registry.js': {
         rememberPrivateHyperdrive
       },
+      // The instance the tests stamp requests with, so the stamps match.
+      '../../src/protocols/request-gate.js': requestGate,
+      // Tested on its own; here the stubbed SDKs are asked directly.
+      '../../src/protocols/shared-drive-opens.js': {
+        shareDriveOpens: (sdk) => sdk
+      },
       '../../src/pages/p2p/peerchat/p2p.js': {
         initChat,
         handleChatRequest,
-        CHAT_STORAGE: 'test-chat-store'
+        CHAT_STORAGE: 'test-chat-store',
+        ...peerchat
       }
     }, {
       hyperdrive: {
@@ -208,6 +233,8 @@ describe('Hyper protocol handler', function () {
       releasePeers,
       createSDK,
       attachHyperSDK,
+      LANSwarm,
+      lanInstances,
       fetchStub,
       privateFetchStub,
       hyperFetchFactory,
@@ -234,12 +261,31 @@ describe('Hyper protocol handler', function () {
   }
 
   it('attaches LAN discovery before initializing chat', async function () {
-    const { module, attachHyperSDK, initChat, sdk } = await loadHyperModule()
+    const { module, attachHyperSDK, lanInstances, initChat, sdk } = await loadHyperModule()
 
     await module.createHandler({ storage: 'test-lan' })
 
-    expect(attachHyperSDK.calledOnceWithExactly(sdk, {})).to.equal(true)
+    expect(lanInstances).to.have.length(1)
+    expect(lanInstances[0].opts.keyPair).to.equal(sdk.swarm.keyPair)
+    expect(lanInstances[0].ready.calledBefore(attachHyperSDK)).to.equal(true)
+    expect(attachHyperSDK.calledOnceWithExactly(sdk, { lan: lanInstances[0] })).to.equal(true)
     expect(attachHyperSDK.calledBefore(initChat)).to.equal(true)
+  })
+
+  // A second PeerSky on the same computer already holds the LAN port. The SDK
+  // was patched before the bind failed, so every later join went to the dead
+  // LAN swarm and creating a drive answered "address already in use".
+  it('leaves the SDK alone when the LAN port is taken', async function () {
+    const taken = new Error('LAN DHT port 49799 is already in use. Choose a different fixed port for another local instance.')
+    const { module, attachHyperSDK, lanInstances, initChat } = await loadHyperModule({ lanReadyReject: taken })
+
+    const handler = await module.createHandler({ storage: 'test-lan-taken' })
+
+    expect(attachHyperSDK.called).to.equal(false)
+    expect(lanInstances[0].destroy.calledOnce).to.equal(true)
+    expect(initChat.calledOnce).to.equal(true)
+    const response = await handler(new Request('hyper://localhost/?key=after-lan-failed', { method: 'POST' }))
+    expect(response.status).to.equal(200)
   })
 
   describe('first load of a drive that has not replicated yet', function () {
@@ -313,10 +359,11 @@ describe('Hyper protocol handler', function () {
     process.env.PEERSKY_LAN_PORT = '49800'
 
     try {
-      const { module, attachHyperSDK, sdk } = await loadHyperModule()
+      const { module, attachHyperSDK, lanInstances, sdk } = await loadHyperModule()
       await module.createHandler({ storage: 'test-lan-port' })
 
-      expect(attachHyperSDK.calledOnceWithExactly(sdk, { port: 49800 })).to.equal(true)
+      expect(lanInstances[0].opts.port).to.equal(49800)
+      expect(attachHyperSDK.calledOnceWithExactly(sdk, { lan: lanInstances[0] })).to.equal(true)
     } finally {
       if (previousPort === undefined) delete process.env.PEERSKY_LAN_PORT
       else process.env.PEERSKY_LAN_PORT = previousPort
@@ -371,6 +418,41 @@ describe('Hyper protocol handler', function () {
     expect(await response.text()).to.equal('chat-routed')
     expect(handleChatRequest.callCount).to.equal(1)
     expect(handleChatRequest.firstCall.args[1]).to.equal(sdk)
+  })
+
+  it("serves a site's own /chat path from its drive, not the chat handler", async function () {
+    const { module, handleChatRequest } = await loadHyperModule({
+      fetchImpl: async () => new Response('site-page', { status: 200 })
+    })
+    const handler = await module.createHandler({ storage: 'test-chat-path' })
+
+    const response = await handler(new Request('hyper://example.org/chat.html', { method: 'GET' }))
+
+    expect(await response.text()).to.equal('site-page')
+    expect(handleChatRequest.callCount).to.equal(0)
+  })
+
+  // hypercore-fetch says 200 to a Range request. PeerTunes read that as the
+  // whole song, kept 128 KB of it, and drew only the top of the cover art.
+  it('answers a ranged read as Partial Content', async function () {
+    const { module, fetchStub } = await loadHyperModule({
+      fetchImpl: async (url, options) => {
+        const range = new Headers(options.headers).get('Range')
+        if (!range) return new Response('whole file', { status: 200, headers: { 'Content-Length': '10' } })
+        return new Response('part', { status: 200, headers: { 'Content-Range': 'bytes 0-3/10', 'Content-Length': '4' } })
+      }
+    })
+    const handler = await module.createHandler({ storage: 'test-range' })
+
+    const ranged = await handler(new Request(`hyper://${'d'.repeat(52)}/song.mp3`, { headers: { Range: 'bytes=0-3' } }))
+    expect(ranged.status).to.equal(206)
+    expect(ranged.headers.get('Content-Range')).to.equal('bytes 0-3/10')
+    expect(await ranged.text()).to.equal('part')
+
+    const whole = await handler(new Request(`hyper://${'d'.repeat(52)}/song.mp3`))
+    expect(whole.status).to.equal(200)
+    expect(await whole.text()).to.equal('whole file')
+    expect(fetchStub.callCount).to.equal(2)
   })
 
   it('returns 500 response when Hyper fetch fails', async function () {
@@ -441,17 +523,17 @@ describe('Hyper protocol handler', function () {
   })
 
   it('runs the private runtime announced and replicating under LAN isolation', async function () {
-    const { module, createSDK, attachHyperSDK, sdk, privateSdk } = await loadHyperModule()
+    const { module, createSDK, attachHyperSDK, lanInstances, sdk, privateSdk } = await loadHyperModule()
 
     await module.createHandler({ storage: path.join('profiles', 'hyper') })
 
     expect(createSDK.callCount).to.equal(2)
-    expect(createSDK.secondCall.args[0]).to.include({
-      storage: path.join('profiles', 'hyper-private'),
+    const privateCall = createSDK.getCalls().find((call) => call.args[0]?.storage === path.join('profiles', 'hyper-private'))
+    expect(privateCall.args[0]).to.include({
       autoJoin: true,
       doReplicate: true
     })
-    expect(attachHyperSDK.calledOnceWithExactly(sdk, {})).to.equal(true)
+    expect(attachHyperSDK.calledOnceWithExactly(sdk, { lan: lanInstances[0] })).to.equal(true)
     expect(attachHyperSDK.calledWith(privateSdk)).to.equal(false)
   })
 
@@ -474,6 +556,34 @@ describe('Hyper protocol handler', function () {
     expect(await getResponse.text()).to.equal('private')
     expect(privateFetchStub.called).to.equal(false)
     expect(fetchStub.called).to.equal(false)
+  })
+
+  // A site that learned a private drive's address read it with this desktop's
+  // keys, as Electron applies no CORS to hyper://. The phone already refused it.
+  it('keeps a private drive from pages other than its own and the browser\'s', async function () {
+    const { module } = await loadHyperModule()
+    const handler = await module.createHandler({ storage: 'test-private-callers' })
+    const keyResponse = await handler(new Request('hyper://localhost/?key=private-callers&visibility=private', { method: 'POST' }))
+    const driveUrl = await keyResponse.text()
+    const fileUrl = new URL('/note.txt', driveUrl).href
+    expect((await handler(new Request(fileUrl, { method: 'PUT', body: 'private' }))).status).to.equal(200)
+
+    const from = (initiatorOrigin, init = {}) => Object.assign(new Request(fileUrl, init), { initiatorOrigin })
+    const opened = (initiatorOrigin) => from(initiatorOrigin, {
+      headers: requestGate.stampVetted({ url: fileUrl, method: 'GET', resourceType: 'mainFrame', requestHeaders: {} })
+    })
+
+    expect((await handler(from('https://site.example'))).status, 'a website').to.equal(403)
+    expect((await handler(from(`hyper://${'a'.repeat(52)}`))).status, 'another hyper site').to.equal(403)
+    expect((await handler(from('null'))).status, 'an opaque origin').to.equal(403)
+    expect((await handler(from('https://site.example', { method: 'PUT', body: 'x' }))).status, 'a website writing').to.equal(403)
+    const forged = from('https://site.example', { headers: { 'x-peersky-navigation': 'guess' } })
+    expect((await handler(forged)).status, 'a forged stamp').to.equal(403)
+
+    expect((await handler(from('peersky://p2p'))).status, 'the browser\'s own page').to.equal(200)
+    expect((await handler(from(`hyper://${new URL(driveUrl).hostname}`))).status, 'its own page').to.equal(200)
+    expect((await handler(opened('https://site.example'))).status, 'a tab opening a link to it').to.equal(200)
+    expect(await (await handler(new Request(fileUrl))).text(), 'a typed address').to.equal('private')
   })
 
   it('serves private drives from the encrypted runtime after restart', async function () {
@@ -542,6 +652,37 @@ describe('Hyper protocol handler', function () {
     expect(privateSdk.joinCore.called).to.equal(false)
     expect(privateFetchStub.called).to.equal(false)
     expect(fetchStub.called).to.equal(false)
+  })
+
+  it('routes a registered private drive this desktop never opened, like a phone\'s, to the private store', async function () {
+    const { module, privateSdk, fetchStub } = await loadHyperModule()
+    const phoneUrl = `hyper://${'b'.repeat(52)}/`
+    await writeFile(
+      path.join(TEST_USER_DATA, 'privateHyperdrives.json'),
+      JSON.stringify([{ name: 'Private files from your phone', url: phoneUrl, timestamp: 1, encrypted: true }])
+    )
+    const handler = await module.createHandler({ storage: 'test-phone-private' })
+
+    const response = await handler(new Request(phoneUrl))
+
+    expect(response.status).to.equal(200)
+    expect(fetchStub.called).to.equal(false)
+    expect(privateSdk.joinCore.calledOnce).to.equal(true)
+  })
+
+  it('routes an address trusted while running to the private store', async function () {
+    const { module, fetchStub } = await loadHyperModule()
+    await writeFile(path.join(TEST_USER_DATA, 'privateHyperdrives.json'), '[]')
+    const handler = await module.createHandler({ storage: 'test-trusted-private' })
+    const hostname = 'c'.repeat(52)
+
+    await handler(new Request(`hyper://${hostname}/`))
+    expect(fetchStub.calledOnce).to.equal(true)
+
+    module.trustPrivateDriveHostname(hostname)
+    const response = await handler(new Request(`hyper://${hostname}/`))
+    expect(response.status).to.equal(200)
+    expect(fetchStub.calledOnce).to.equal(true)
   })
 
   it('announces private drives that carry the encryption flag', async function () {
@@ -688,6 +829,34 @@ describe('Hyper protocol handler', function () {
 
     expect(initChat.calledOnce).to.equal(true)
     expect(initChat.firstCall.args[0]).to.equal(sdk)
+  })
+
+  describe('PeerChat in transfers', function () {
+    it('loads with a PeerChat that has no transfers yet, and sends and takes none', async function () {
+      const { module } = await loadHyperModule({ peerchat: { exportChatTransfer: undefined, importChatTransfer: undefined } })
+      expect(module.chatTakesTransfers()).to.equal(false)
+      expect(module.exportChatForTransfer('mobile')).to.equal(null)
+      expect(await module.importChatFromPhone({ version: 1 })).to.deep.equal({ ok: false, added: 0 })
+    })
+
+    it('hands transfers to a PeerChat that takes them', async function () {
+      const exportChatTransfer = sinon.stub().returns({ version: 1, label: 'desktop1' })
+      const importChatTransfer = sinon.stub().resolves({ ok: true, added: 2, label: 'desktop' })
+      const { module } = await loadHyperModule({ peerchat: { exportChatTransfer, importChatTransfer } })
+      expect(module.chatTakesTransfers()).to.equal(true)
+      expect(module.exportChatForTransfer('desktop')).to.deep.equal({ version: 1, label: 'desktop1' })
+      expect(exportChatTransfer.calledOnceWith({ targetType: 'desktop' })).to.equal(true)
+      expect(await module.importChatFromPhone({ version: 1 })).to.deep.equal({ ok: true, added: 2, label: 'desktop' })
+    })
+
+    it('never names the transfer functions in its import from PeerChat', async function () {
+      // Installs follow PeerChat's newest commit. A named import of an export
+      // it does not have yet stops the handler loading, and every hyper://
+      // request with it.
+      const source = await readFile(new URL('../../src/protocols/hyper-handler.js', import.meta.url), 'utf8')
+      const named = [...source.matchAll(/import\s*\{([^}]*)\}\s*from\s*'\.\.\/pages\/p2p\/peerchat\/p2p\.js'/g)].map((match) => match[1]).join(',')
+      expect(named).not.to.match(/exportChatTransfer|importChatTransfer/)
+    })
   })
 
   it('wires up LAN error events correctly', async function () {

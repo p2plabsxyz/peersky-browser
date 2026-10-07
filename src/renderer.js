@@ -15,6 +15,8 @@ let sidePanelWebview = null
 const nav = document.querySelector('#navbox')
 const findMenu = document.querySelector('#find')
 const pageTitle = document.querySelector('title')
+const isIncognitoWindow = new URLSearchParams(window.location.search).get('incognito') === '1'
+const windowTitle = isIncognitoWindow ? 'Peersky Incognito' : 'Peersky Browser'
 
 function ensureSidePanel () {
   if (sidePanelEl) return sidePanelEl
@@ -111,6 +113,17 @@ ipcRenderer.on('add-tab-from-main', (event, url) => {
     tabBar.addTab(url)
   } else {
     tabsPendingFromMain.push(url)
+  }
+})
+
+// Tabs sent from another device, such as a phone, which open asleep.
+const sleepingTabsPendingFromMain = []
+ipcRenderer.on('add-tabs-from-main', (event, batch) => {
+  if (!batch || !Array.isArray(batch.tabs)) return
+  if (tabBar && typeof tabBar.addSleepingTabs === 'function') {
+    tabBar.addSleepingTabs(batch.tabs, { group: batch.group })
+  } else {
+    sleepingTabsPendingFromMain.push(batch)
   }
 })
 
@@ -281,6 +294,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   // in the right mode instead of flashing horizontal chrome for the IPC round
   // trip. The async settings reads below stay authoritative.
   const startupParams = new URLSearchParams(window.location.search)
+  if (isIncognitoWindow) {
+    document.body.classList.add('incognito-window')
+    document.title = windowTitle
+  }
   const verticalFromParams = startupParams.get('verticalTabs') === '1'
   if (verticalFromParams) {
     document.body.classList.add('vertical-tabs-layout')
@@ -385,6 +402,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   await tabBar.connectWebviewContainer(webviewContainer)
   while (tabsPendingFromMain.length) tabBar.addTab(tabsPendingFromMain.shift())
+  while (sleepingTabsPendingFromMain.length) {
+    const batch = sleepingTabsPendingFromMain.shift()
+    tabBar.addSleepingTabs(batch.tabs, { group: batch.group })
+  }
 
   // Setup error handling for all webviews
   tabBar.addEventListener('tab-created', (e) => {
@@ -571,7 +592,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const tab = tabBar.tabs.find(t => t.id === tabId)
     if (tab) {
-      pageTitle.innerText = `${tab.title} - Peersky Browser`
+      pageTitle.innerText = `${tab.title} - ${windowTitle}`
+    }
+
+    // Show stop or reload for the tab now in front. A tab that finished
+    // loading behind another one left the stop button up after switching.
+    try {
+      nav.setLoading(Boolean(tabBar.getActiveWebview()?.isLoading()))
+    } catch {
+      nav.setLoading(false)
     }
 
     updateNavigationButtons(tabBar)
@@ -723,7 +752,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         ipcRenderer.invoke('delete-bookmark', { url })
       } else {
         const title = activeTab.title || pageTitle.innerText
-          .replace(' - Peersky Browser', '')
+          .replace(` - ${windowTitle}`, '')
           .trim()
 
         const parsedUrl = new URL(url)
@@ -795,10 +824,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Handle webview loading events to toggle refresh/stop button
     if (webviewContainer.webviewElement) {
+      // The page itself, not each iframe or pushState, starts the spinner.
       webviewContainer.webviewElement.addEventListener(
-        'did-start-loading',
-        () => {
-          nav.setLoading(true)
+        'did-start-navigation',
+        (e) => {
+          if (e.isMainFrame && !e.isInPlace) nav.setLoading(true)
         }
       )
 
@@ -853,8 +883,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Update page title
     webviewContainer.addEventListener('page-title-updated', (e) => {
       pageTitle.innerText = e.detail.title
-        ? `${e.detail.title} - Peersky Browser`
-        : 'Peersky Browser'
+        ? `${e.detail.title} - ${windowTitle}`
+        : windowTitle
     })
 
     // Find Menu Event Listeners
@@ -862,7 +892,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const webview = tabBar.getActiveWebview()
       if (webview) {
         webview.executeJavaScript(
-          `window.find("${detail.value}", ${detail.findNext})`
+          `window.find(${JSON.stringify(String(detail.value))}, ${!!detail.findNext})`
         )
       }
     })
@@ -871,7 +901,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const webview = tabBar.getActiveWebview()
       if (webview) {
         webview.executeJavaScript(
-          `window.find("${detail.value}", ${detail.findNext}, true)`
+          `window.find(${JSON.stringify(String(detail.value))}, ${!!detail.findNext}, true)`
         )
       }
     })

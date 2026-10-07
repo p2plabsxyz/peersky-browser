@@ -55,7 +55,8 @@ async function loadLLM (origin) {
           aiMesh: { enabled: false, routeChat: false }
         }
       }
-    }
+    },
+    '../../src/llm-access.js': { mayUseLLM: async () => true }
   })
 }
 

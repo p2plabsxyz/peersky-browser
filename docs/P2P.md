@@ -47,6 +47,8 @@ The Hyperdrive app asks for a visibility before creating an upload:
 
 Each upload name selects its own Hyperdrive, so sharing one public upload does not expose unrelated uploads. Private upload metadata is kept in a separate local registry and is never added to the shared Hyper cache.
 
+Only PeerSky's own pages, the drive's own pages and a tab you open it in can read or write a private drive (`mayUsePrivateDrive` in `src/protocols/request-gate.js`). Electron applies no CORS to `hyper://`, so without this any site that learned a private drive's address could read it with this desktop's key. The phone has the same rule.
+
 ```mermaid
 flowchart TD
     A[Choose a file or folder] --> B{Visibility}
@@ -85,6 +87,9 @@ async function publishToIPFS(files) {
 }
 ```
 
+> [!NOTE]
+> Writes from a website, a Hyper or IPFS site, or a local file need the user's consent. The first `PUT`, `POST` or `DELETE` to `hyper://`, `ipfs://` or `ipns://` from a site shows a **P2P publishing** prompt, and the answer is remembered for that site in site settings. Built-in `peersky://` apps write without a prompt. Writes from service workers are refused, since they cannot show one.
+
 Check our p2p apps in `/pages/p2p/`: https://github.com/p2plabsxyz/peersky-browser/tree/main/src/pages/p2p
 
 ## 🤖 LLM-powered P2P apps
@@ -110,6 +115,14 @@ await server.ready();
 console.log("Share this key:", server.info.url);
 ```
 
+To host the same note again later, pass its key. A private key (`hs://s000…`) is the secret the server's keys are hashed from, so the key alone brings the same note back:
+
+```js
+const again = new Holesail({ server: true, key: "hs://s000yourkeyhere", port: 8989 });
+```
+
+A public key (`hs://0000…`) is the server's public key and gives no seed, so keep `server.dht.seed` from the first run and set it on a server made without a key, before `ready()`. Never do that for a private key: Holesail then makes up a key of its own, and `info.url` names an address nobody can reach while the note is still served at its real one.
+
 ### 2) Connect a client
 
 ```js
@@ -129,6 +142,8 @@ More: https://docs.holesail.io/
 ### 3) Sync realtime state
 
 Use HTTP endpoints (GET/POST) plus SSE/WebSocket for live updates. In PeerSky, a custom [hs-handler](https://github.com/p2plabsxyz/peersky-browser/blob/main/src/protocols/hs-handler.js) can expose these endpoints while keeping the transport peer-to-peer. Incremental Yjs CRDT updates are exchanged over HTTP/SSE, while peer presence metadata is sent through presence endpoints.
+
+With more than a few people, keep what goes out small. Send each change, not the whole state. Send presence, such as who is here and where their cursor is, on a timer a few times a second rather than on every keystroke. Send per-person data that rarely changes, such as who wrote which line, only when it changes, and in full to whoever joins. P2PMD does all three, so a note holds about 100 people: at 100 people with 10 typing, each device receives about 26 KB a second and the host sends about 2.5 MB a second.
 
 **Example:** See [p2pmd](https://github.com/p2plabsxyz/peersky-browser/tree/main/src/pages/p2p/p2pmd) for a complete real-time collaborative markdown editor implementation.
 
@@ -171,7 +186,7 @@ npm install  # Automatically runs: git submodule update --init --recursive
 ```
 
 **Updating apps to latest versions:**
-- **Via UI**: Navigate to `peersky://p2p/` and click the "Update All" button at the bottom
+- **Via UI**: Navigate to `peersky://p2p/` and click the "Update All" button at the bottom. In a development checkout this runs the command below. An installed PeerSky never rewrites its own P2P apps: the button checks for a PeerSky update instead, and new app versions arrive with it, pinned and signed. It used to unpack each app's latest GitHub zip into `app.asar.unpacked`, but an installed app cannot see files added after it was built, and PeerSky stopped starting when an update added one.
 - **Via CLI**: `git submodule update --remote --merge`
 
 The update pulls the latest commit from each submodule's default branch. After updating, commit the new submodule pointers:

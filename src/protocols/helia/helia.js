@@ -6,7 +6,6 @@ import { mplex } from "@libp2p/mplex";
 import { tls } from "@libp2p/tls";
 import { mdns } from "@libp2p/mdns";
 import { tcp } from "@libp2p/tcp";
-import { webRTC, webRTCDirect } from "@libp2p/webrtc";
 import { webSockets } from "@libp2p/websockets";
 import { circuitRelayTransport, circuitRelayServer } from "@libp2p/circuit-relay-v2";
 import { autoNAT } from "@libp2p/autonat";
@@ -56,13 +55,15 @@ export async function createNode() {
       userAgent: agentVersion
     },
     addresses: {
+      // No WebRTC: its native library (node-datachannel) took the whole
+      // browser down from its own threads, on a STUN packet reaching the
+      // webrtc-direct listener and on a WebRTC connection closing. TCP,
+      // WebSockets and relays reach the same peers.
       listen: [
         '/ip4/0.0.0.0/tcp/0',
         '/ip4/0.0.0.0/tcp/0/ws',
-        '/ip4/0.0.0.0/udp/0/webrtc-direct',
         '/ip6/::/tcp/0',
         '/ip6/::/tcp/0/ws',
-        '/ip6/::/udp/0/webrtc-direct',
         '/p2p-circuit'
       ],
     },
@@ -71,8 +72,6 @@ export async function createNode() {
         reservationConcurrency: 3
       }),
       tcp(),
-      webRTC(),
-      webRTCDirect(),
       webSockets(),
     ],
     connectionEncrypters: [noise(), tls()],

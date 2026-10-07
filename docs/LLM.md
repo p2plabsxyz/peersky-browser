@@ -121,7 +121,7 @@ Clearing P2P data (`Settings → Search → Reset P2P Data`) also wipes `llm.jso
 
 ### `window.llmMemory`
 
-Available in the same trusted contexts as `window.llm`.
+Available to `peersky://` pages only: the built-in pages and the apps under `peersky://p2p/` and `peersky://myapps/`. Other pages that get `window.llm` cannot read or clear the memory.
 
 #### Check if enabled
 
@@ -195,16 +195,19 @@ document.querySelector('llm-history').addEventListener('select-session', (e) => 
 });
 ```
 
-## Security and trusted domains
+## Security and permission
 
-- `window.llm` is exposed to PeerSky-native pages (`peersky://*`) and P2P protocols (`hyper://`, `ipfs://`, `ipns://`).
-- External origins must be on an allowlist (`localhost`, `agregore.mauve.moe`). This prevents arbitrary websites from silently running your local Ollama or burning cloud API credits.
+- `window.llm` is exposed to PeerSky's own pages (`peersky://*`), P2P pages (`hyper://`, `ipfs://`, `ipns://`, `hs://`), local files, apps added under `peersky://myapps`, and pages on `localhost` and `agregore.mauve.moe`. Other websites never get it.
+- PeerSky's own pages use it without asking. Every other page asks first, once per site, in the same prompt as camera or location: anyone can publish a `hyper://` or `ipfs://` page, and with a cloud model every prompt can cost money. The answer shows under **AI** in the site panel by the address bar and on the site settings page, where it can be changed.
+- `isSupported()` never shows the prompt. It says whether AI is on, or `false` on a page that was blocked, so a page can offer AI before asking; the prompt comes with the first `chat` or `complete`. A refused call rejects with an error.
+- The check runs in the main process ([src/llm-access.js](../src/llm-access.js)) against the frame that made the call, so a page cannot get around it from its own scripts.
 
 ## File reference
 
 | File | Purpose |
 |------|---------|
 | [src/llm.js](../src/llm.js) | Electron main-process bridge to Ollama/OpenRouter with dialogs & downloads |
+| [src/llm-access.js](../src/llm-access.js) | Decides which pages may use `window.llm`, asking once per site |
 | [src/llm-memory.js](../src/llm-memory.js) | Electron main-process IPC handlers for `llm.json` read/write/prune |
 | [src/pages/unified-preload.js](../src/pages/unified-preload.js) | Exposes `window.llm` and `window.llmMemory` to trusted pages via contextBridge |
 | [src/pages/settings.html](../src/pages/settings.html) | UI for LLM config and memory opt-in toggle |

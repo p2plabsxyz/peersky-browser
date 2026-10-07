@@ -9,7 +9,8 @@ PeerSky’s `peersky://extensions` page is the control center for managing brows
 ![Extensions Management](./images/peersky-extensions-management.png)
 
 Highlights
-- Six MV3 extensions ship preinstalled (Dark Reader, Linguist, PeerSky History, Consent Autodeny, Ghostery, Wayback Machine) on first launch; they stay installed but can be disabled any time.
+- Five MV3 extensions ship preinstalled (Linguist, PeerSky History, Consent Autodeny, uBlock Origin, Wayback Machine) on first launch; they stay installed but can be disabled any time.
+- When a content blocker such as uBlock Origin blocks a page's own fetch, XHR or beacon, PeerSky answers it on the device with an empty response instead of a network error (`src/extensions/blocked-requests.js`). A page that waits on a blocked analytics call still works, and nothing is sent. Scripts, frames, images and the rest stay blocked.
 - **PeerSky History** (`peersky://history`) provides local-first browsing history with full-text search, accessible via the extension or directly at `peersky://history`.
 - Context-isolated preload exposes only what this page needs, keeping privileged APIs out of `peersky://extensions`.
 - Browser actions integrate with the toolbar/puzzle menu, support pinning up to six entries.
@@ -17,7 +18,7 @@ Highlights
 ## 2. User Guide
 
 Quick start
-- Preinstalled: six trusted extensions ship enabled and can be disabled but not removed: https://github.com/p2plabsxyz/essential-chromium-extensions
+- Preinstalled: five trusted extensions ship enabled and can be disabled but not removed: https://github.com/p2plabsxyz/essential-chromium-extensions
 - Install from Web Store: paste a Chrome Web Store URL, a `?id=` link, or the raw 32-character ID → Install.
 - Install from file: drag/drop a `.zip`, `.crx`, `.crx3` or use Choose File.
 
@@ -83,7 +84,8 @@ Security highlights
 - ZIP/CRX extraction with zip-slip prevention (rejects on normalized path escape).
 - Manifest V3 required by default; permission and host-permission checks.
 - Icons streamed read-only via a custom protocol handler.
-- Web Store installs flow through `electron-chrome-web-store`, relying on Google-signed CRX verification; no extra signature layer beyond the store.
+- An install never replaces an installed extension: a package whose ID, `manifest.key` ID or folder belongs to one is refused before anything is written.
+- Web Store installs flow through `electron-chrome-web-store`, which downloads the CRX from Google over HTTPS and checks that its key matches the extension ID. It does not verify the CRX signature itself.
 
 
 ## 4. Extensions API: Preload + IPC
@@ -184,6 +186,7 @@ Validation & security
 - Manifest `permissions` and `host_permissions` are validated at install. Risky hosts (`*://*/*`, LAN ranges, etc.) surface warnings in `extension.warnings` for UI review.
 - Optional permission prompts (`chrome.permissions.request`) are currently blocked; calls reject with `E_INVALID_STATE` so extensions must declare needed hosts up front.
 - Runtime host-permission reviews are manual today—disable the extension or uninstall if the warning set looks unsafe.
+- Writing to `hyper://`, `ipfs://` or `ipns://` needs `p2pWrite`, `p2pWriteAll`, or a scoped `p2pWrite:<scheme>` (for example `p2pWrite:ipfs`) in the manifest `permissions`. Writes from extension pages are checked against it. Writes from background service workers are refused, because the browser cannot tell which extension sent them.
 
 ### Side panel
 

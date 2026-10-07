@@ -1,6 +1,7 @@
+import Hyperbee from 'hyperbee'
 import Hyperdrive from 'hyperdrive'
 import z32 from 'z32'
-import { getOrCreatePrivateDriveKey } from '../backup/private-drive-key.js'
+import { getOrCreatePrivateDriveKey, getPrivateDriveKeyFor } from '../backup/private-drive-key.js'
 import { decodeDriveId } from '../backup/private-drive-export.js'
 import { listPrivateHyperdrives } from './private-hyperdrive-registry.js'
 import { isOwnedPrivateDrive } from './private-drive-ownership.js'
@@ -80,8 +81,11 @@ export async function openPrivateDriveByHostname (sdk, hostname, { userDataDir, 
   if (!key) throw new Error('Invalid private Hyperdrive address')
   // Legacy drives (no `encrypted` flag in the registry) stay unencrypted and
   // device-only: opening them with the current profile key would fail to
-  // decrypt, and announcing a plaintext core would leak it to the DHT.
-  const encryptionKey = encrypted ? await getOrCreatePrivateDriveKey(userDataDir) : null
+  // decrypt, and announcing a plaintext core would leak it to the DHT. A
+  // drive another device sent with a key of its own opens with that key.
+  const encryptionKey = encrypted
+    ? (await getPrivateDriveKeyFor(userDataDir, key.toString('hex'))) || await getOrCreatePrivateDriveKey(userDataDir)
+    : null
   const corestore = name
     ? sdk.corestore.namespace(name)
     : sdk.corestore.namespace(key.toString('hex'))
@@ -91,26 +95,119 @@ export async function openPrivateDriveByHostname (sdk, hostname, { userDataDir, 
   return drive
 }
 
-async function statDrive (drive, pathname) {
+/**
+ * Whether a drive's first block decodes under this key, tried on a session of
+ * the copy a store already holds. Nothing is written anywhere for a key that
+ * does not fit. The drive is not opened as a Hyperdrive to try: that takes
+ * its core for itself, and waits forever on one that failed to open there.
+ */
+export async function decodesWithKey (corestore, driveKey, encryptionKey, timeoutMs) {
+  const session = corestore.get({ key: driveKey, encryption: { key: encryptionKey } })
+  const bee = new Hyperbee(session)
+  try {
+    const header = await bee.getHeader({ wait: true, timeout: timeoutMs })
+    return header?.protocol === 'hyperbee'
+  } catch {
+    return false
+  } finally {
+    await bee.close().catch(() => {})
+    await session.close().catch(() => {})
+  }
+}
+
+// Bounded like the wait for a public drive: a phone that is switched off must
+// not hold a tab open forever.
+const PEER_WAIT_MS = 15000
+// And asked at most this often per drive, so a page with several missing
+// files, or a phone that is off, costs one wait rather than one per file.
+const CATCH_UP_EVERY_MS = 30000
+
+async function statDrive (drive, pathname, { wait = false } = {}) {
   if (pathname === '/') return { isDirectory: () => true }
-  const node = await drive.entry(pathname, { wait: false }).catch(() => null)
+  const node = await drive.entry(pathname, wait ? { wait: true, timeout: PEER_WAIT_MS } : { wait: false }).catch(() => null)
   if (!node) return null
   return { isDirectory: () => node.value.blob === null }
 }
 
+// A drive another device writes, such as a phone's, is known here only by its
+// address until it is first read, and a file added to it since is not here
+// either. Its peers are asked for the latest before the file is looked for
+// again. findingPeers holds update() until the swarm has looked, as in
+// waitForDriveReady for public drives.
+async function catchUpWithPeers (sdk, drive) {
+  if (typeof drive.core?.update !== 'function') return
+  const done = typeof drive.core.findingPeers === 'function' ? drive.core.findingPeers() : null
+  let timer = null
+  try {
+    if (done) {
+      if (typeof sdk.swarm?.flush === 'function') sdk.swarm.flush().then(done, done)
+      else done()
+    }
+    await Promise.race([
+      drive.core.update({ wait: true }),
+      new Promise((resolve) => { timer = setTimeout(resolve, PEER_WAIT_MS) })
+    ])
+  } catch {
+    // Served from whatever is here, as when the wait runs out.
+  } finally {
+    if (timer) clearTimeout(timer)
+    if (done) done()
+  }
+}
+
 export function makePrivateDriveFetcher (sdk, userDataDir) {
   const opened = new Map()
+  const catchUps = new Map()
 
-  function register (hostname, drive) {
-    opened.set(hostname, Promise.resolve({ drive, owned: true }))
+  // An upload asks for its drive by name. A Hyperdrive takes its core for
+  // itself, so opening one a reader or an earlier upload already had open
+  // waited forever, and the upload with it. The drive's address is read from
+  // its core, which Hyperdrive makes under the name "db", through a session
+  // that takes nothing for itself; that address shares the one open with
+  // every reader.
+  async function openByName (name) {
+    const namespace = sdk.corestore.namespace(name)
+    const core = namespace.get({ name: 'db' })
+    let hostname
+    try {
+      await core.ready()
+      hostname = z32.encode(core.key)
+    } finally {
+      await core.close().catch(() => {})
+      await namespace.close().catch(() => {})
+    }
+    if (!opened.has(hostname)) {
+      const opening = openPrivateDriveByName(sdk, name, { userDataDir, autoJoin: true })
+        .then((drive) => ({ drive, owned: true }))
+      opened.set(hostname, opening)
+      opening.catch(() => { if (opened.get(hostname) === opening) opened.delete(hostname) })
+    }
+    return (await opened.get(hostname)).drive
+  }
+
+  // Requests that miss while a catch-up runs wait on that one; one that
+  // misses soon after it gets its answer straight away.
+  function catchUp (hostname, drive) {
+    const last = catchUps.get(hostname)
+    if (last?.running) return last.running
+    if (last && Date.now() - last.at < CATCH_UP_EVERY_MS) return null
+    const entry = { at: Date.now(), running: null }
+    entry.running = catchUpWithPeers(sdk, drive).finally(() => {
+      entry.running = null
+      entry.at = Date.now()
+    })
+    catchUps.set(hostname, entry)
+    return entry.running
   }
 
   async function open (url) {
     const hostname = new URL(url).hostname
     if (!opened.has(hostname)) {
-      const entries = await listPrivateHyperdrives(userDataDir).catch(() => [])
-      const match = entries.find((entry) => entry.url === `hyper://${hostname}/`)
-      opened.set(hostname, (async () => {
+      // Claimed before anything is awaited, so requests that arrive together
+      // share one drive. One that fails to open is tried again next time.
+      const opening = (async () => {
+        const entries = await listPrivateHyperdrives(userDataDir).catch(() => [])
+        const match = entries.find((entry) => entry.url === `hyper://${hostname}/`)
         const drive = await openPrivateDriveByHostname(sdk, hostname, {
           userDataDir,
           autoJoin: true,
@@ -119,7 +216,9 @@ export function makePrivateDriveFetcher (sdk, userDataDir) {
         })
         const owned = await isOwnedPrivateDrive(userDataDir, decodeDriveId(`hyper://${hostname}/`))
         return { drive, owned }
-      })())
+      })()
+      opened.set(hostname, opening)
+      opening.catch(() => { if (opened.get(hostname) === opening) opened.delete(hostname) })
     }
     return opened.get(hostname)
   }
@@ -153,7 +252,16 @@ export function makePrivateDriveFetcher (sdk, userDataDir) {
     }
 
     const name = pathname === '/' ? '' : pathname.split('/').pop()
-    const stat = await statDrive(drive, pathname)
+    let stat = await statDrive(drive, pathname)
+    const remote = !drive.writable
+    if (remote && (!stat || drive.core.length === 0)) {
+      const running = catchUp(parsed.hostname, drive)
+      if (running) {
+        await running
+        // Only worth waiting on blocks when a peer is there to send them.
+        stat = await statDrive(drive, pathname, { wait: drive.core.peers?.length > 0 })
+      }
+    }
 
     if (!stat) {
       return new Response('File not found', { status: 404, headers: { 'Content-Type': 'text/plain' } })
@@ -168,7 +276,7 @@ export function makePrivateDriveFetcher (sdk, userDataDir) {
       return new Response(listing, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } })
     }
 
-    const buffer = await drive.get(pathname)
+    const buffer = await drive.get(pathname, remote ? { timeout: PEER_WAIT_MS } : undefined)
     return new Response(buffer, {
       status: 200,
       headers: {
@@ -178,6 +286,6 @@ export function makePrivateDriveFetcher (sdk, userDataDir) {
     })
   }
 
-  handle.register = register
+  handle.openByName = openByName
   return handle
 }

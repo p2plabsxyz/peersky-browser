@@ -50,6 +50,14 @@ export function getBrowserSession () {
   }
 }
 
+// Incognito windows run their pages here. No "persist:" prefix, so it lives
+// in memory and nothing it holds reaches the disk.
+export const INCOGNITO_PARTITION = 'peersky-incognito'
+
+export function getIncognitoSession () {
+  return session.fromPartition(INCOGNITO_PARTITION)
+}
+
 /**
  * Runtime assertion to verify session consistency
  *

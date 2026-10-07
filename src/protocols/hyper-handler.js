@@ -13,12 +13,24 @@ import {
   handleChatRequest as handleChatRequestP2P,
   CHAT_STORAGE
 } from '../pages/p2p/peerchat/p2p.js'
+// PeerChat is a submodule that installs move to its newest commit, which can
+// be one without the transfer functions yet. Read through the namespace they
+// are only missing, and transfers go without PeerChat; a named import of a
+// missing export stops this whole module from loading.
+import * as peerchat from '../pages/p2p/peerchat/p2p.js'
+import { readNetworkKeys, withNetworkKey } from '../backup/network-keys.js'
 import { createLogger } from '../logger.js'
 import { hyperCache, saveHyperCache } from './config.js'
 import { enforceExtensionWritePolicy } from '../extensions/request-policy.js'
 import { resolveHyperdriveUploadTarget } from './hyper-drive-visibility.js'
-import { rememberPrivateHyperdrive } from './private-hyperdrive-registry.js'
-import { openPrivateDriveByName, makePrivateDriveFetcher } from './private-hyperdrive.js'
+import { listPrivateHyperdrives, rememberPrivateHyperdrive } from './private-hyperdrive-registry.js'
+import { makePrivateDriveFetcher, decodesWithKey } from './private-hyperdrive.js'
+import { setPrivateDriveOwnership } from './private-drive-ownership.js'
+import { getPrivateDriveKey } from '../backup/private-drive-key.js'
+import { shareDriveOpens } from './shared-drive-opens.js'
+import { isUnreadableDriveError, LINKED_PRIVATE_DRIVE_NAME, PRIVATE_DRIVE_ERROR } from './private-drive-errors.js'
+import { mayUsePrivateDrive, takeNavigationStamp } from './request-gate.js'
+import { toHyperFetchUrl } from './hyper-fetch-url.js'
 
 import { _suspendHyper, _hyperPublishFile, _hyperFetchToFile } from '../backup/hyper-backup.js'
 
@@ -74,8 +86,19 @@ function wireLANEvents (instance) {
   return instance
 }
 
+// The LAN swarm binds its port before it is joined to the SDK. attachHyperSDK
+// patches sdk.join first and binds after, so with the port already taken (a
+// second PeerSky on this computer) every later join went to a LAN swarm that
+// never started, and creating a drive failed with "address already in use".
 async function attachLANDiscovery (activeSdk) {
-  const instance = await HyperDHTmDNS.attachHyperSDK(activeSdk, getLANOptions())
+  const lan = new HyperDHTmDNS({ ...getLANOptions(), keyPair: activeSdk.swarm.keyPair })
+  try {
+    await lan.ready()
+  } catch (err) {
+    await Promise.resolve().then(() => lan.destroy()).catch(() => {})
+    throw err
+  }
+  const instance = await HyperDHTmDNS.attachHyperSDK(activeSdk, { lan })
   return wireLANEvents(instance)
 }
 
@@ -189,7 +212,9 @@ export async function warmupHyper () {
 async function startHyperSDK (options) {
   log.info('Initializing Hyper SDK...')
 
-  sdk = await createSDK(options)
+  // A desktop restored from another one connects with keys of its own.
+  const networkKeys = await readNetworkKeys(app.getPath('userData'))
+  sdk = shareDriveOpens(await createSDK(withNetworkKey(options, networkKeys?.main)))
 
   let lan = null
   try {
@@ -242,6 +267,38 @@ async function startHyperSDK (options) {
   return fetch
 }
 
+// Whether this PeerChat can go in a transfer and take one.
+export function chatTakesTransfers () {
+  return typeof peerchat.exportChatTransfer === 'function' &&
+    typeof peerchat.importChatTransfer === 'function'
+}
+
+// A person's PeerChat goes with their identity to their other devices: the
+// profile, every room with its key, and the label the other device takes.
+// Null when PeerChat has no profile yet, or cannot go in a transfer.
+export function exportChatForTransfer (targetDeviceType) {
+  if (!chatTakesTransfers()) return null
+  try {
+    return peerchat.exportChatTransfer({ targetType: targetDeviceType })
+  } catch (error) {
+    log.warn(`PeerChat could not be packed for a transfer: ${error.message}`)
+    return null
+  }
+}
+
+// What a phone sends: its PeerChat name and rooms, taken while PeerChat runs.
+// A desktop still in its first-run screen may not have started it yet.
+export async function importChatFromPhone (transfer) {
+  if (!chatTakesTransfers()) return { ok: false, added: 0 }
+  try {
+    await warmupHyper()
+    return await peerchat.importChatTransfer(transfer)
+  } catch (error) {
+    log.warn(`PeerChat from a phone was not taken: ${error.message}`)
+    return { ok: false, added: 0 }
+  }
+}
+
 function getPrivateSDKOptions (options, deviceOnly) {
   const { corestore, dnsCache, swarm, ...isolatedOptions } = options || {}
   const storage = isolatedOptions.storage || path.join(app.getPath('userData'), 'hyper')
@@ -268,6 +325,23 @@ function rememberPrivateDrive (drive) {
   } catch {}
 }
 
+// A private drive this desktop did not create, such as the one a phone sends
+// the address of, is not in the private store until it is first opened. Its
+// address is routed to the private store anyway, where it opens with the
+// profile key; the public store would only ever see ciphertext.
+export function trustPrivateDriveHostname (hostname) {
+  if (typeof hostname === 'string' && hostname) privateDriveHostnames.add(hostname)
+}
+
+async function trustRegisteredPrivateDrives () {
+  const entries = await listPrivateHyperdrives(app.getPath('userData')).catch(() => [])
+  for (const entry of entries) {
+    try {
+      privateDriveHostnames.add(new URL(entry.url).hostname)
+    } catch {}
+  }
+}
+
 function decodeHyperdriveKey (hostname) {
   try {
     if (hostname.length === 52) return z32.decode(hostname)
@@ -281,6 +355,7 @@ async function isStoredPrivateDrive (hostname) {
   const key = decodeHyperdriveKey(hostname)
   if (!key) return false
   await initializePrivateHyperSDK()
+  if (privateDriveHostnames.has(hostname)) return true
   const discoveryKey = hypercoreCrypto.discoveryKey(key)
   if (!await privateSdk.corestore.storage.hasCore(discoveryKey)) return false
   privateDriveHostnames.add(hostname)
@@ -321,12 +396,14 @@ function initializePrivateHyperSDK (options) {
 
 async function startPrivateHyperSDK (options) {
   const privateOptions = getPrivateSDKOptions(options || savedSdkOptions, privateDeviceOnly)
-  const openedSdk = await createSDK(privateOptions)
+  const networkKeys = await readNetworkKeys(app.getPath('userData'))
+  const openedSdk = shareDriveOpens(await createSDK(withNetworkKey(privateOptions, networkKeys?.private)))
   try {
     const openedFetch = await makeHyperFetch({ sdk: openedSdk, writable: true })
     privateSdk = openedSdk
     privateFetch = openedFetch
     privateKeyedFetch = makePrivateDriveFetcher(openedSdk, app.getPath('userData'))
+    await trustRegisteredPrivateDrives()
     return privateFetch
   } catch (error) {
     await openedSdk.close().catch(() => {})
@@ -464,7 +541,7 @@ export async function waitForDriveReady (url, timeoutMs = PEER_WAIT_MS) {
 export async function hyperFetchToFile (address, destPath, onStatus) {
   const context = await getHyperRequestContext(address)
   const prepare = context.private ? async () => {} : waitForDriveReady
-  return _hyperFetchToFile(context.fetch, prepare, address, destPath, onStatus)
+  return _hyperFetchToFile(context.fetch, prepare, toHyperFetchUrl(address), destPath, onStatus)
 }
 
 /**
@@ -488,6 +565,7 @@ export async function createHandler (options, securityOptions = {}) {
   }
 
   return async function protocolHandler (req) {
+    const navigation = takeNavigationStamp(req)
     if (isSuspended) {
       return new Response('Hyper is unavailable while a backup is in progress', {
         status: 503,
@@ -498,7 +576,6 @@ export async function createHandler (options, securityOptions = {}) {
     const { url, method } = req
     const urlObj = new URL(url)
     const protocol = urlObj.protocol.replace(':', '')
-    const pathname = urlObj.pathname
 
     // Intercept Hyperdrive key generation/retrieval
     const isKeyRequest = method === 'POST' && urlObj.searchParams.has('key')
@@ -530,14 +607,8 @@ export async function createHandler (options, securityOptions = {}) {
             await initializePrivateHyperSDK()
             drive = privateDeviceOnly
               ? await privateSdk.getDrive(target.driveName, { autoJoin: target.autoJoin })
-              : await openPrivateDriveByName(privateSdk, target.driveName, {
-                userDataDir: app.getPath('userData'),
-                autoJoin: true
-              })
+              : await privateKeyedFetch.openByName(target.driveName)
             rememberPrivateDrive(drive)
-            if (privateKeyedFetch?.register) {
-              privateKeyedFetch.register(new URL(drive.url).hostname, drive)
-            }
             await rememberPrivateHyperdrive(app.getPath('userData'), {
               name: keyName,
               url: drive.url,
@@ -611,13 +682,10 @@ export async function createHandler (options, securityOptions = {}) {
       })
       if (denied) return denied
 
-      if (
-        protocol === 'hyper' &&
-        (urlObj.hostname === 'chat' || pathname.startsWith('/chat'))
-      ) {
+      if (protocol === 'hyper' && urlObj.hostname === 'chat') {
         return await handleChatRequestP2P(req, sdk)
       } else {
-        return await handleHyperRequest(req)
+        return await handleHyperRequest(req, { navigation })
       }
     } catch (err) {
       log.error('Failed to handle Hyper request:', err)
@@ -629,13 +697,75 @@ export async function createHandler (options, securityOptions = {}) {
   }
 }
 
+// How long a drive found unreadable is given to answer under the profile key.
+const LINKED_DRIVE_PROBE_MS = 15000
+const adoptingLinkedDrives = new Map()
+
+/**
+ * A drive the public store could only read as ciphertext. A linked phone, or
+ * another desktop on the same identity, encrypts its private drives with the
+ * profile key, but this desktop only learns their addresses from a sync, so
+ * one made since read as a decoding error. If its first block decodes under
+ * that key, it is kept as a linked device's, read-only here, and its address
+ * routes to the private store.
+ */
+function adoptLinkedPrivateDrive (hostname) {
+  // A page asks for several files at once, and they share one try.
+  if (!adoptingLinkedDrives.has(hostname)) {
+    const adopting = tryLinkedPrivateDrive(hostname).catch(() => false)
+    adoptingLinkedDrives.set(hostname, adopting)
+    adopting.finally(() => adoptingLinkedDrives.delete(hostname))
+  }
+  return adoptingLinkedDrives.get(hostname)
+}
+
+async function tryLinkedPrivateDrive (hostname) {
+  if (privateDeviceOnly) return false
+  if (privateDriveHostnames.has(hostname)) return true
+  const key = decodeHyperdriveKey(hostname)
+  if (!key || !sdk) return false
+  const userDataDir = app.getPath('userData')
+  const profileKey = await getPrivateDriveKey(userDataDir)
+  if (!profileKey) return false
+  // Tried on the public copy, which holds the first block already. Opened in
+  // the private store to try, a drive that is not ours would stay there, and
+  // every later read of it would go to the private store.
+  if (!await decodesWithKey(sdk.corestore, key, profileKey, LINKED_DRIVE_PROBE_MS)) return false
+  await initializePrivateHyperSDK()
+  await rememberPrivateHyperdrive(userDataDir, {
+    name: LINKED_PRIVATE_DRIVE_NAME,
+    url: `hyper://${hostname}/`,
+    timestamp: Date.now(),
+    encrypted: true
+  })
+  await setPrivateDriveOwnership(userDataDir, key.toString('hex'), false)
+  privateDriveHostnames.add(hostname)
+  return true
+}
+
+// hypercore-fetch answers a Range request with status 200 and a Content-Range
+// header. A page that reads the status takes that as the whole file: PeerTunes
+// kept only the first 128 KB of a song and cut its cover art short. The phone's
+// media proxy already answers 206, so this does the same here.
+function asPartialContent (resp) {
+  if (resp.status !== 200 || !resp.headers.get('Content-Range')) return resp
+  return new Response(resp.body, { status: 206, statusText: 'Partial Content', headers: resp.headers })
+}
+
 // Handle general hyper:// requests (not chat API).
-async function handleHyperRequest (req) {
+async function handleHyperRequest (req, { navigation = false } = {}) {
   const { url, method = 'GET', headers } = req
   const context = await getHyperRequestContext(url)
   const fetchFn = context.fetch
   const upperMethod = method.toUpperCase()
   const hasBody = upperMethod !== 'GET' && upperMethod !== 'HEAD'
+
+  if (context.private && !mayUsePrivateDrive({ url, initiatorOrigin: req.initiatorOrigin, navigation })) {
+    return new Response(PRIVATE_DRIVE_ERROR, {
+      status: 403,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+    })
+  }
 
   // Without this the first read of a drive races replication and hypercore-fetch
   // answers "Peers Not Found" against a core of length zero, which is why a page
@@ -647,7 +777,7 @@ async function handleHyperRequest (req) {
 
   try {
     log.info(`[handleHyperRequest] Fetching: ${method} ${formatHyperUrlForLog(url)}`)
-    const resp = await fetchFn(url, {
+    const resp = await fetchFn(toHyperFetchUrl(url), {
       method,
       headers,
       body: hasBody ? getChunkedBody(req) : undefined,
@@ -655,7 +785,20 @@ async function handleHyperRequest (req) {
     })
 
     log.info('Response received:', resp.status)
-    return resp
+    // A private drive a linked device made since it last synced: tried with the
+    // profile key, read again from the private store if that opens it, and
+    // otherwise said to be private rather than shown as a decoding error.
+    if (!context.private && !hasBody && resp.status === 500) {
+      const text = await resp.clone().text().catch(() => '')
+      if (isUnreadableDriveError(text)) {
+        if (await adoptLinkedPrivateDrive(new URL(url).hostname)) return handleHyperRequest(req, { navigation })
+        return new Response(PRIVATE_DRIVE_ERROR, {
+          status: 403,
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+        })
+      }
+    }
+    return asPartialContent(resp)
   } catch (err) {
     log.error('Failed to fetch from Hyper SDK:', err)
     return new Response(`Error fetching data: ${err.message}`, {

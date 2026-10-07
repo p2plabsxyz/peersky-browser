@@ -1,12 +1,14 @@
+// Apps with a logo of their own show it in its colors (logo: true); the rest
+// are line icons that the page tints.
 const builtInP2PApps = [
-  { id: "ai-chat", name: "AI Chat", icon: "robot.svg", url: "peersky://p2p/ai-chat/" },
-  { id: "chat", name: "PeerChat", icon: "chat.svg", url: "peersky://p2p/peerchat/" },
-  { id: "editor", name: "PeerPad", icon: "file-code.svg", url: "peersky://p2p/peerpad/" },
-  { id: "p2pmd", name: "P2P Markdown", icon: "markdown.svg", url: "peersky://p2p/p2pmd/" },
-  { id: "music", name: "PeerTunes", icon: "music-player.svg", url: "peersky://p2p/peertunes/" },
+  { id: "ai-chat", name: "AI Chat", icon: "ai-chat.svg", logo: true, url: "peersky://p2p/ai-chat/" },
+  { id: "chat", name: "PeerChat", icon: "peerchat.svg", logo: true, url: "peersky://p2p/peerchat/" },
+  { id: "editor", name: "PeerPad", icon: "peerpad.svg", logo: true, url: "peersky://p2p/peerpad/" },
+  { id: "p2pmd", name: "P2P Markdown", icon: "p2pmd.svg", logo: true, url: "peersky://p2p/p2pmd/" },
+  { id: "music", name: "PeerTunes", icon: "peertunes.svg", logo: true, url: "peersky://p2p/peertunes/" },
   { id: "reader", name: "Social Reader", icon: "people.svg", url: "https://reader.distributed.press/" },
-  { id: "upload", name: "Hyperdrive", icon: "file-upload.svg", url: "peersky://p2p/hyperdrive/" },
-  { id: "wiki", name: "Wiki", icon: "wikipedia.svg", url: "peersky://p2p/wiki/" }
+  { id: "upload", name: "Hyperdrive", icon: "hyperdrive.svg", logo: true, url: "peersky://p2p/hyperdrive/" },
+  { id: "wiki", name: "Wiki", icon: "wiki.svg", logo: true, url: "peersky://p2p/wiki/" }
 ];
 
 const unpinnedByDefaultIds = new Set(["reader", "editor", "wiki"]);

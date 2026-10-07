@@ -1,4 +1,5 @@
 import { expect } from 'chai'
+import { EventEmitter } from 'events'
 import esmock from 'esmock'
 import fs from 'fs'
 import net from 'net'
@@ -55,10 +56,12 @@ class FakeHolesail {
   async ready () {
     if (this.options.server) {
       const port = Number(this.options.port || await getAvailablePort())
-      // Re-hosting with a known seed returns to the same room, which is the whole
-      // reason the seed is persisted.
+      // Re-hosting a public room with its seed returns to the same room, which
+      // is the whole reason the seed is persisted. A private room's address is
+      // its key, and like Holesail, a private server given no key makes one
+      // up, seed or not.
       const suppliedSeedHex = this.seed ? Buffer.from(this.seed).toString('hex') : null
-      const keyFromSeed = suppliedSeedHex ? FakeHolesail.seedToKey.get(suppliedSeedHex) : null
+      const keyFromSeed = suppliedSeedHex && !this.options.secure ? FakeHolesail.seedToKey.get(suppliedSeedHex) : null
       const key =
         keyFromSeed ||
         (typeof this.options.key === 'string' && this.options.key.length > 0
@@ -138,13 +141,15 @@ function deferredSafeStorage () {
   }
 }
 
-async function importHsHandler (userDataDir, safeStorage) {
+async function importHsHandler (userDataDir, safeStorage, { realHolesail = false } = {}) {
   fs.mkdirSync(userDataDir, { recursive: true })
 
   return esmock('../../src/protocols/hs-handler.js', {
-    holesail: {
-      default: FakeHolesail
-    },
+    ...(!realHolesail && {
+      holesail: {
+        default: FakeHolesail
+      }
+    }),
     electron: {
       app: {
         getAppPath: () => process.cwd(),
@@ -435,6 +440,296 @@ describe('HS protocol handler', function () {
       expect(response.status, `rehost failed: ${data.error}`).to.equal(200)
       expect(data.key).to.equal(room.key)
       await protocolPost(restarted, 'close', {})
+    })
+  })
+
+  describe('a private note hosted again', function () {
+    // Its address is its key. Hosting it from the saved seed with no key left
+    // Holesail to make one up, and the page saved the note's edits and line
+    // authors under that made-up address, so the next open lost them.
+    it('keeps its address after a restart, even when the page lost the private flag', async function () {
+      const { handler: first } = await loadHsHandler(userDataDir, encryptingSafeStorage)
+      const { data: room } = await protocolPost(first, 'create', { secure: true, udp: false })
+      expect(room.key, 'room was not created').to.be.a('string')
+      await protocolPost(first, 'close', {})
+      const ports = JSON.parse(fs.readFileSync(path.join(userDataDir, 'peersky-ports.json'), 'utf8'))
+      expect(ports[room.key]?.seed, 'no seed was saved, so this proves nothing').to.be.a('string')
+
+      const { handler: restarted } = await loadHsHandler(userDataDir, encryptingSafeStorage)
+      const { response, data } = await protocolPost(restarted, 'rehost', { key: room.key, secure: false })
+      expect(response.status, `rehost failed: ${data.error}`).to.equal(200)
+      expect(data.key).to.equal(room.key)
+      // A private key is never hosted in the open.
+      expect(data.secure).to.equal(true)
+      await protocolPost(restarted, 'close', {})
+    })
+
+    it('keeps its address when opening it hosts it again', async function () {
+      const { handler: first } = await loadHsHandler(userDataDir, encryptingSafeStorage)
+      const { data: room } = await protocolPost(first, 'create', { secure: true, udp: false })
+      await protocolPost(first, 'close', {})
+
+      const { handler: restarted } = await loadHsHandler(userDataDir, encryptingSafeStorage)
+      const { response, data } = await protocolPost(restarted, 'join', { key: room.key })
+      expect(response.status, `join failed: ${data.error}`).to.equal(200)
+      expect(data.hosted).to.equal(true)
+      expect(data.key).to.equal(room.key)
+      await protocolPost(restarted, 'close', {})
+    })
+
+    // The real library, without starting a network: what it makes of each plan.
+    it('comes back at the same address and keypair with the real Holesail', async function () {
+      const { default: Holesail } = await import('holesail')
+      const { rehostPlan } = await importHsHandler(userDataDir, null, { realHolesail: true })
+      const base = { server: true, host: '127.0.0.1', port: 9 }
+      const made = new Holesail({ ...base, secure: true })
+      const key = `hs://s000${made.key}`
+      const savedSeed = Buffer.from(made.seed, 'hex')
+
+      // What re-hosting did before: no key, the seed put back.
+      const before = new Holesail({ ...base, secure: true })
+      before.seed = made.seed
+      expect(before.key, 'Holesail kept the key, so this proves nothing').to.not.equal(made.key)
+
+      const plan = rehostPlan(key, { secure: false, savedSeed })
+      expect(plan).to.deep.equal({ secure: true, key, seed: null })
+      const again = new Holesail({ ...base, secure: plan.secure, key: plan.key })
+      expect(again.key).to.equal(made.key)
+      expect(again.seed).to.equal(made.seed)
+
+      // A public note's address is its public key, which gives no seed.
+      const publicKey = `hs://0000${'y'.repeat(52)}`
+      expect(rehostPlan(publicKey, { secure: false, savedSeed })).to.deep.equal({ secure: false, key: null, seed: savedSeed })
+      expect(rehostPlan(publicKey, { secure: false })).to.deep.equal({ secure: false, key: publicKey, seed: null })
+    })
+  })
+
+  // A note is for a team, up to about 100 people. Every edit went out to
+  // everyone as the whole note, and every edit or cursor move as the whole
+  // people list with every line author in it: 100 people, 10 of them typing,
+  // was 334 MB a second out of the host.
+  describe('a note with many people in it', function () {
+    async function listen (localUrl, clientId, role = 'client') {
+      const conn = await connectPeerWithRetry(localUrl, clientId, role)
+      const events = []
+      const reader = conn.response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      ;(async () => {
+        try {
+          for (;;) {
+            const { value, done } = await reader.read()
+            if (done) break
+            buffer += decoder.decode(value, { stream: true })
+            let cut
+            while ((cut = buffer.indexOf('\n\n')) !== -1) {
+              const lines = buffer.slice(0, cut).split('\n')
+              buffer = buffer.slice(cut + 2)
+              const event = lines.find((line) => line.startsWith('event: '))?.slice(7)
+              const data = lines.filter((line) => line.startsWith('data: ')).map((line) => line.slice(6)).join('')
+              if (event) events.push({ event, data })
+            }
+          }
+        } catch {}
+      })()
+      return events
+    }
+
+    async function until (check, timeoutMs = 3000) {
+      const stop = Date.now() + timeoutMs
+      while (!check() && Date.now() < stop) await new Promise((resolve) => setTimeout(resolve, 20))
+      return check()
+    }
+
+    const named = (events, name) => events.filter((entry) => entry.event === name)
+
+    it('sends each edit as what it changed, not the whole note', async function () {
+      const { data: room } = await protocolPost(handler, 'create', { secure: false, udp: false })
+      const note = Array.from({ length: 400 }, (_, i) => `- line ${i} of a long note`).join('\n')
+      await setDoc(room.localUrl, { content: note, clientId: 'device-a', name: 'Mac' })
+      const events = await listen(room.localUrl, 'device-b')
+      expect(await until(() => named(events, 'yjsupdate').length === 1)).to.equal(true)
+      // Whoever joins gets the whole note once.
+      const watcher = new Y.Doc()
+      const whole = named(events, 'yjsupdate')[0].data
+      Y.applyUpdate(watcher, Buffer.from(whole, 'base64'))
+      expect(watcher.getText('content').toString()).to.equal(note)
+
+      // Someone else adds a word at the end.
+      const typist = new Y.Doc()
+      Y.applyUpdate(typist, Buffer.from((await getYjsState(room.localUrl)).yjsState, 'base64'))
+      const before = Y.encodeStateVector(typist)
+      typist.getText('content').insert(typist.getText('content').length, ' done')
+      await setDocUpdate(room.localUrl, {
+        update: Buffer.from(Y.encodeStateAsUpdate(typist, before)).toString('base64'),
+        clientId: 'device-c',
+        name: 'Phone'
+      })
+
+      expect(await until(() => named(events, 'yjsupdate').length === 2)).to.equal(true)
+      const change = named(events, 'yjsupdate')[1].data
+      expect(change.length).to.be.below(whole.length / 20)
+      Y.applyUpdate(watcher, Buffer.from(change, 'base64'))
+      expect(watcher.getText('content').toString()).to.equal(`${note} done`)
+    })
+
+    it('sends the people list a few times a second, not on every cursor move', async function () {
+      const { data: room } = await protocolPost(handler, 'create', { secure: false, udp: false })
+      await setDoc(room.localUrl, { content: 'Line 1', clientId: 'device-a', name: 'Mac' })
+      const events = await listen(room.localUrl, 'device-b')
+      await listen(room.localUrl, 'device-c')
+      expect(await until(() => named(events, 'peerlist').length >= 2)).to.equal(true)
+      await new Promise((resolve) => setTimeout(resolve, 300))
+      const listsBefore = named(events, 'peerlist').length
+
+      for (let column = 1; column <= 20; column += 1) {
+        await postPresence(room.localUrl, { clientId: 'device-c', role: 'client', name: 'Phone', cursorLine: 1, cursorColumn: column, isTyping: true })
+      }
+      expect(await until(() => named(events, 'peerlist').length > listsBefore)).to.equal(true)
+      await new Promise((resolve) => setTimeout(resolve, 400))
+      const lists = named(events, 'peerlist').slice(listsBefore)
+      expect(lists.length).to.be.at.most(3)
+      // The last one says where the cursor is now.
+      const phone = JSON.parse(lists.at(-1).data).find((peer) => peer.clientId === 'device-c')
+      expect(phone.cursorColumn).to.equal(20)
+    })
+
+    // The phone's editor sends the whole note's authors as lineAttributions,
+    // which its own host keeps for the note, and its own lines as
+    // peerLineAttributions. Taken as the phone's own, everyone's lines were
+    // filed under the phone, and the phone showed Alice's lines as its own.
+    it('files only a phone\'s own lines under the phone', async function () {
+      const { data: room } = await protocolPost(handler, 'create', { secure: false, udp: false })
+      await setDoc(room.localUrl, { content: 'Line 1\nLine 2\nLine 3', clientId: 'device-a', name: 'Alice' })
+      await listen(room.localUrl, 'device-a', 'host')
+      await listen(room.localUrl, 'phone')
+      const alice = { name: 'Alice', color: '#1FC1A8' }
+      const sam = { name: 'Sam', color: '#59a6ff' }
+      await postPresence(room.localUrl, { clientId: 'device-a', role: 'host', name: 'Alice', cursorLine: 1, lineAttributions: { 1: alice, 2: alice } })
+
+      const typist = new Y.Doc()
+      Y.applyUpdate(typist, Buffer.from((await getYjsState(room.localUrl)).yjsState, 'base64'))
+      const before = Y.encodeStateVector(typist)
+      typist.getText('content').insert(typist.getText('content').length, '!')
+      await setDocUpdate(room.localUrl, {
+        update: Buffer.from(Y.encodeStateAsUpdate(typist, before)).toString('base64'),
+        clientId: 'phone',
+        role: 'client',
+        name: 'Sam',
+        cursorLine: 3,
+        lineAttributions: { 1: alice, 2: alice, 3: sam },
+        peerLineAttributions: { 3: sam }
+      })
+      const status = await getStatus(room.localUrl)
+      expect(Object.keys(findPeer(status, 'phone').lineAttributions)).to.deep.equal(['3'])
+      expect(Object.keys(findPeer(status, 'device-a').lineAttributions)).to.deep.equal(['1', '2'])
+    })
+
+    // A line is someone's once they change it. The phone's editor sends an
+    // update on joining that changes no text, and that gave the phone the line
+    // under its cursor and took it from whoever wrote it.
+    it('does not give anyone a line for an update that changed no text', async function () {
+      const { data: room } = await protocolPost(handler, 'create', { secure: false, udp: false })
+      await setDoc(room.localUrl, { content: 'Line 1\nLine 2', clientId: 'device-a', name: 'Alice' })
+      await listen(room.localUrl, 'device-a', 'host')
+      await listen(room.localUrl, 'phone')
+      const alice = { name: 'Alice', color: '#1FC1A8' }
+      await postPresence(room.localUrl, { clientId: 'device-a', role: 'host', name: 'Alice', cursorLine: 1, lineAttributions: { 1: alice, 2: alice } })
+
+      const phone = new Y.Doc()
+      Y.applyUpdate(phone, Buffer.from((await getYjsState(room.localUrl)).yjsState, 'base64'))
+      const before = Y.encodeStateVector(phone)
+      phone.getMap('settings').set('latexModeEnabled', true)
+      await setDocUpdate(room.localUrl, {
+        update: Buffer.from(Y.encodeStateAsUpdate(phone, before)).toString('base64'),
+        clientId: 'phone',
+        role: 'client',
+        name: 'Sam',
+        cursorLine: 2
+      })
+
+      const status = await getStatus(room.localUrl)
+      expect(findPeer(status, 'phone').lineAttributions || {}).to.not.have.property('2')
+      expect(findPeer(status, 'device-a').lineAttributions).to.have.property('2')
+    })
+
+    it('sends someone\'s line authors again only when they change, and in full to whoever joins', async function () {
+      const { data: room } = await protocolPost(handler, 'create', { secure: false, udp: false })
+      await setDoc(room.localUrl, { content: 'Line 1\nLine 2\nLine 3', clientId: 'device-a', name: 'Mac' })
+      const events = await listen(room.localUrl, 'device-b')
+      await listen(room.localUrl, 'device-c')
+      const authors = { 1: { name: 'Phone', color: '#229922' }, 2: { name: 'Phone', color: '#229922' } }
+      const phoneIn = (entry) => JSON.parse(entry.data).find((peer) => peer.clientId === 'device-c')
+      const latestPhone = () => {
+        const lists = named(events, 'peerlist')
+        return lists.length ? phoneIn(lists.at(-1)) : null
+      }
+
+      await postPresence(room.localUrl, { clientId: 'device-c', role: 'client', name: 'Phone', cursorLine: 1, cursorColumn: 1, lineAttributions: authors })
+      expect(await until(() => latestPhone()?.lineAttributions?.['2'] !== undefined)).to.equal(true)
+
+      // The same authors with a new cursor: the list says where, not who wrote what.
+      const listsBefore = named(events, 'peerlist').length
+      await postPresence(room.localUrl, { clientId: 'device-c', role: 'client', name: 'Phone', cursorLine: 2, cursorColumn: 3, lineAttributions: authors })
+      expect(await until(() => named(events, 'peerlist').length > listsBefore)).to.equal(true)
+      expect(latestPhone().cursorLine).to.equal(2)
+      expect(latestPhone().lineAttributions).to.equal(null)
+
+      // A new line of theirs goes out.
+      await postPresence(room.localUrl, { clientId: 'device-c', role: 'client', name: 'Phone', cursorLine: 3, cursorColumn: 1, lineAttributions: { ...authors, 3: { name: 'Phone', color: '#229922' } } })
+      expect(await until(() => latestPhone()?.lineAttributions?.['3'] !== undefined)).to.equal(true)
+
+      // Someone joining now gets them all.
+      const late = await listen(room.localUrl, 'device-d')
+      expect(await until(() => named(late, 'peerlist').length > 0)).to.equal(true)
+      expect(Object.keys(phoneIn(named(late, 'peerlist')[0]).lineAttributions)).to.deep.equal(['1', '2', '3'])
+    })
+  })
+
+  describe('a note on another of the person\'s devices', function () {
+    // Opening one looks for it on the other device first. Hosting it here from
+    // the saved seed as part of that look would answer the look itself, and
+    // the two devices would each host their own copy.
+    it('only joins when asked to look, even with a seed saved here', async function () {
+      const { data: room } = await protocolPost(handler, 'create', { secure: false, udp: false })
+      await protocolPost(handler, 'close', {})
+
+      const { handler: restarted } = await loadHsHandler(userDataDir)
+      const look = await protocolPost(restarted, 'join', { key: room.key, joinOnly: true })
+      expect(look.response.status, `join failed: ${look.data.error}`).to.equal(200)
+      expect(look.data.hosted, 'the look hosted the room from the saved seed').to.not.equal(true)
+      await protocolPost(restarted, 'close', {})
+
+      // A plain join of a room this device made still hosts it again.
+      const plain = await protocolPost(restarted, 'join', { key: room.key })
+      expect(plain.data.hosted).to.equal(true)
+      expect(plain.data.key).to.equal(room.key)
+      await protocolPost(restarted, 'close', {})
+    })
+
+    // A join binds the port the room's host advertised once ready() is done.
+    // A port already taken here used to throw in the main process.
+    it('answers with the port when the one to join on is busy, instead of throwing', async function () {
+      const { waitForClientProxy } = await importHsHandler(userDataDir)
+      const proxy = new EventEmitter()
+      const waiting = waitForClientProxy({ dht: { proxy, args: { port: 59677 }, state: 'waiting' } })
+      const busy = Object.assign(new Error('address already in use'), { code: 'EADDRINUSE' })
+      expect(() => proxy.emit('error', busy)).to.not.throw()
+      expect(await waiting).to.deep.include({ ok: false, port: 59677 })
+      // And nothing later gets through either.
+      expect(() => proxy.emit('error', new Error('reset'))).to.not.throw()
+
+      const fine = new EventEmitter()
+      const listening = waitForClientProxy({ dht: { proxy: fine, args: { port: 1 }, state: 'waiting' } })
+      fine.emit('listening')
+      expect(await listening).to.deep.equal({ ok: true })
+    })
+
+    it('says so when the room it joins is one this device is hosting', async function () {
+      const { data: room } = await protocolPost(handler, 'create', { secure: false, udp: false })
+      const { data } = await protocolPost(handler, 'join', { key: room.key, joinOnly: true })
+      expect(data.hosted).to.equal(true)
+      expect(data.localUrl).to.be.a('string')
     })
   })
 

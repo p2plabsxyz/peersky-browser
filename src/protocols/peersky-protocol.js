@@ -25,6 +25,11 @@ if (app.isPackaged) {
 
 const fs = new ScopedFS(pagesPath)
 
+// Where peersky:// pages are served from, P2P apps included.
+export function getPagesPath () {
+  return pagesPath
+}
+
 const CHECK_PATHS = [
   (path) => path,
   (path) => path + '/index.html',

@@ -7,7 +7,8 @@ import { fileURLToPath } from 'url'
 import { attachContextMenus } from './context-menu.js'
 import { randomUUID } from 'crypto'
 import settingsManager from './settings-manager.js'
-import { getPartition } from './session.js'
+import { getIncognitoSession, getPartition, INCOGNITO_PARTITION } from './session.js'
+import { clearIncognitoPermissions } from './permissions.js'
 import extensionManager from './extensions/index.js'
 import { createCoalescedTask } from './coalesce.js'
 import { goBackActiveTab, goForwardActiveTab } from './history-nav.js'
@@ -150,6 +151,8 @@ class WindowManager {
       log.info('Creating new window for torn off tab:', data.url)
       this.open({
         isolate: true,
+        // A tab torn out of an incognito window stays incognito.
+        incognito: this.findWindowByWebContentsId(event.sender.id)?.incognito === true,
         singleTab: {
           url: data.url,
           title: data.title,
@@ -160,10 +163,14 @@ class WindowManager {
 
     // Which other window, if any, is under a screen point. Used at the end of
     // a tab drag to decide between joining that window and opening a new one.
+    // Only a window of the same kind counts: a private tab dropped on a normal
+    // window would carry on in the saved session, and the other way round.
     ipcMain.handle('window-at-point', (event, { x, y }) => {
+      const incognito = this.findWindowBySenderId(event.sender.id)?.incognito === true
       for (const peersky of this.windows) {
         const win = peersky.window
         if (win.isDestroyed() || win.webContents.id === event.sender.id) continue
+        if (peersky.incognito !== incognito) continue
         const b = win.getBounds()
         if (x >= b.x && x < b.x + b.width && y >= b.y && y < b.y + b.height) return win.webContents.id
       }
@@ -175,6 +182,15 @@ class WindowManager {
     ipcMain.on('move-tab-to-window', (event, { targetId, closeSource, ...tab }) => {
       const target = this.findWindowBySenderId(targetId)
       if (!target || target.window.isDestroyed()) return
+      // window-at-point never offers a window of the other kind. A request
+      // naming one anyway gets a window of the sender's kind, since the sender
+      // has already let go of the tab.
+      const incognito = this.findWindowBySenderId(event.sender.id)?.incognito === true
+      if (target.incognito !== incognito) {
+        this.open({ isolate: true, incognito, singleTab: { url: tab.url, title: tab.title, navigation: tab.navigation } })
+        if (closeSource) BrowserWindow.fromWebContents(event.sender)?.close()
+        return
+      }
       target.window.webContents.send('add-tab-at-point', tab)
       const source = closeSource && BrowserWindow.fromWebContents(event.sender)
       if (source && !source.isDestroyed()) {
@@ -191,6 +207,7 @@ class WindowManager {
       log.info('Creating new window for torn off split pair')
       this.open({
         isolate: true,
+        incognito: this.findWindowByWebContentsId(event.sender.id)?.incognito === true,
         splitLeftUrl: data.leftUrl,
         splitLeftTitle: data.leftTitle,
         splitRightUrl: data.rightUrl,
@@ -484,8 +501,9 @@ class WindowManager {
   async collectTabs () {
     const results = {}
     let failed = 0
+    // Incognito windows are never written down.
     const validWindows = Array.from(this.windows).filter(w =>
-      w.window && !w.window.isDestroyed() && !w.window.webContents.isDestroyed()
+      !w.incognito && w.window && !w.window.isDestroyed() && !w.window.webContents.isDestroyed()
     )
 
     log.debug(`Getting tabs from ${validWindows.length} windows`)
@@ -537,6 +555,13 @@ class WindowManager {
     window.window.on('closed', () => {
       const wasLastWindow = this.windows.size === 1
       this.windows.delete(window)
+      // The last incognito window takes everything its pages kept with it.
+      if (window.incognito && !this.all.some((other) => other.incognito)) {
+        clearIncognitoPermissions()
+        const incognito = getIncognitoSession()
+        Promise.all([incognito.clearStorageData(), incognito.clearCache(), incognito.clearAuthCache()])
+          .catch((error) => log.warn('Unable to clear the incognito session:', error?.message || error))
+      }
       ipcMain.removeListener(
         `webview-did-navigate-${window.id}`,
         window.navigateListener
@@ -579,6 +604,10 @@ class WindowManager {
 
   get all () {
     return [...this.windows.values()]
+  }
+
+  hasIncognitoWindow () {
+    return this.all.some((window) => window.incognito)
   }
 
   async clearSavedState () {
@@ -624,7 +653,8 @@ class WindowManager {
     // Filter out destroyed windows BEFORE starting async operations
     const validWindows = Array.from(this.windows).filter(window => {
       try {
-        return !window.window.isDestroyed() &&
+        return !window.incognito &&
+          !window.window.isDestroyed() &&
           !window.window.webContents.isDestroyed()
       } catch (e) {
         log.error(`Error checking window ${window.id}:`, e)
@@ -640,6 +670,14 @@ class WindowManager {
       // the session files. We just leave whatever was last saved on disk.
       if (this.isQuitting || this.shutdownInProgress) {
         log.warn('No valid windows to save during quit – leaving window state file untouched.')
+        return
+      }
+
+      // Only private windows are open, and those are never written down.
+      // Closing the last normal window beside one used to save an empty
+      // session here, so the next launch restored nothing.
+      if (this.hasIncognitoWindow()) {
+        log.info('Only private windows are open, leaving window state file untouched.')
         return
       }
 
@@ -709,7 +747,7 @@ class WindowManager {
     log.debug('Starting saveAllTabsData...')
 
     try {
-      const { results, failed } = await this.collectTabs()
+      const { results, failed, attempted } = await this.collectTabs()
       const allTabsData = Object.keys(results).length > 0 ? results : null
       const TABS_FILE = path.join(USER_DATA_PATH, 'tabs.json')
 
@@ -725,6 +763,12 @@ class WindowManager {
         // is not a window without tabs.
         if (failed > 0) {
           log.warn(`Keeping tabs file: ${failed} window(s) did not report their tabs.`)
+          return
+        }
+
+        // Only private windows are open; see saveWindowStates.
+        if (attempted === 0 && this.hasIncognitoWindow()) {
+          log.info('Only private windows are open, leaving tabs file untouched.')
           return
         }
 
@@ -1026,7 +1070,7 @@ class WindowManager {
 
 class PeerskyWindow {
   constructor (options = {}, windowManager) {
-    const { url, isMainWindow = false, newWindow = false, windowId, savedTabs, isolate, singleTab, ...windowOptions } = options // eslint-disable-line no-unused-vars
+    const { url, isMainWindow = false, newWindow = false, windowId, savedTabs, isolate, singleTab, incognito, ...windowOptions } = options // eslint-disable-line no-unused-vars
     this.window = new BrowserWindow({
       width: 1280,
       height: 800,
@@ -1035,7 +1079,9 @@ class PeerskyWindow {
       frame: false,
       titleBarStyle: 'hidden',
       webPreferences: {
-        partition: getPartition(),
+        // The window itself loads favicons, so an incognito one stays in the
+        // in-memory session too.
+        partition: incognito ? INCOGNITO_PARTITION : getPartition(),
         nodeIntegration: true,
         contextIsolation: false,
         nativeWindowOpen: true,
@@ -1046,6 +1092,9 @@ class PeerskyWindow {
 
     this.id = this.window.webContents.id
     this.windowId = windowId || randomUUID()
+    // Its pages run in an in-memory session, its tabs are never saved, and
+    // extensions never see it.
+    this.incognito = incognito === true
     watchHost(this.window.webContents)
     this.savedTabs = savedTabs // Store saved tabs for restoration
 
@@ -1058,7 +1107,8 @@ class PeerskyWindow {
         ...(newWindow && { newWindow: 'true' }),
         windowId: this.windowId,
         ...(savedTabs && { restoreTabs: 'true' }),
-        ...(isolate && { isolate: 'true' }),
+        ...((isolate || incognito) && { isolate: 'true' }),
+        ...(incognito && { incognito: '1' }),
         ...(singleTab && {
           singleTabUrl: singleTab.url,
           singleTabTitle: singleTab.title,
@@ -1088,7 +1138,7 @@ class PeerskyWindow {
     // Register window with extension system for browser actions
     // Important: Do NOT register this.window.webContents as a tab - it's the shell UI.
     try {
-      extensionManager.addWindow(this.window)
+      if (!this.incognito) extensionManager.addWindow(this.window)
     } catch (error) {
       log.warn('Failed to register window with extension system:', error)
     }
@@ -1098,7 +1148,7 @@ class PeerskyWindow {
     try {
       this.window.webContents.on('did-attach-webview', (_event, webviewWebContents) => {
         try {
-          if (webviewWebContents && !webviewWebContents.isDestroyed()) {
+          if (!this.incognito && webviewWebContents && !webviewWebContents.isDestroyed()) {
             // addWindow skips side-panel guests (see SidePanelService.isSidePanelGuest).
             extensionManager.addWindow(this.window, webviewWebContents)
           }

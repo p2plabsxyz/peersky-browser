@@ -35,7 +35,7 @@ You can drag and drop a local `.torrent` file directly onto the browser's addres
 
 ## Global Torrent Manager (`peersky://bt-manager`)
 
-Use `peersky://bt-manager` to manage all torrents from one page.
+Use `peersky://bt-manager` to manage all torrents from one page. Settings links to it as BitTorrent, right under Archive. The page also says how to start a torrent, and carries the same privacy notice as the torrent page.
 
 - View cached torrents and status (`downloading`, `paused`, `stopped`, `seeding`, `done`)
 - Open a torrent page (`bt://<infohash>`)
@@ -53,7 +53,7 @@ Files are saved to `<Downloads>/PeerskyTorrents/` (your system's default Downloa
 
 ## API Endpoints
 
-The torrent page communicates with the handler via `bt://api?action=api&api=<action>`:
+The torrent page communicates with the handler via `bt://api?action=api&api=<action>`. Only torrent pages and `peersky://bt-manager` can call it. `list` and every action that changes a torrent need an `X-BT-Token` header; those pages get the token from `window.peerskyBT.apiToken()`, never over `bt://`.
 
 | API | Description |
 |-----|-------------|
@@ -62,7 +62,6 @@ The torrent page communicates with the handler via `bt://api?action=api&api=<act
 | `unseed` | Stop active seeding without removing from manager list. Params: `hash=<infohash>` |
 | `status` | Get cached status. Params: `hash=<infohash>` |
 | `list` | Get all cached torrent statuses for manager UI |
-| `token` | Issue UI API token for mutation requests from internal BT pages |
 | `pause` | Pause a torrent. Params: `hash=<infohash>` |
 | `resume` | Resume a paused torrent. Params: `hash=<infohash>` |
 | `stop` | Stop active torrent session but keep cached entry. Params: `hash=<infohash>` |

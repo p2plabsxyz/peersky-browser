@@ -37,19 +37,22 @@ body::before {
   z-index: 1;
 }
 
+/* Sized by the window: 40px icons in a 1280 by 712 window, smaller in a small
+   one and larger in a big one. Every space in the bar follows the icon. */
 .peerbar {
+  --peerbar-icon: clamp(28px, min(3.1vw, 5.6vh), 56px);
   position: absolute;
-  bottom: 20px;
+  bottom: calc(var(--peerbar-icon) / 2);
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   flex-direction: row;
-  gap: 8px;
-  padding: 8px;
+  gap: calc(var(--peerbar-icon) * 0.15);
+  padding: calc(var(--peerbar-icon) * 0.125);
   z-index: 3;
   background-color: rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(10px) saturate(180%);
-  border-radius: 12px;
+  border-radius: calc(var(--peerbar-icon) * 0.35);
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
@@ -58,8 +61,8 @@ body::before {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: calc(var(--peerbar-icon) * 1.25);
+  height: calc(var(--peerbar-icon) * 1.25);
   transition: transform 0.3s ease;
 }
 
@@ -67,29 +70,40 @@ body::before {
   transform: scale(1.3);
 }
 
-.peerbar img, .peerbar .p2p-base-icon {
-  width: 30px;
-  height: 30px;
-  padding: 5px;
-  transition: filter 0.3s ease;
-  animation: scalePopIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+/* Every app on a mint tile with an ink edge, as on the phone's home screen
+   and in the app icons, so it reads over any wallpaper. The logo fills the
+   middle two thirds; a line icon keeps its black lines. */
+.peerbar img, .peerbar .p2p-base-tile {
+  box-sizing: border-box;
+  width: calc(var(--peerbar-icon) * 1.14);
+  height: calc(var(--peerbar-icon) * 1.14);
+  background-color: #98f9ea;
+  /* The mint of the app icons, which are Display P3 images. */
+  background-color: color(display-p3 0.596 0.976 0.918);
+  border-radius: 24%;
+  box-shadow: inset 0 0 0 1.5px rgba(13, 13, 13, 0.55), 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 .peerbar img {
-  filter: invert(100%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(100%) contrast(100%);
+  padding: calc(var(--peerbar-icon) * 0.18);
+  animation: scalePopIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
 }
 
-.peerbar .p2p-base-icon {
-  padding: 3px;
-  background-color: var(--browser-theme-primary-highlight, #3b82f6);
-  -webkit-mask: url("peersky://static/assets/svg/box.svg") no-repeat center;
-  mask: url("peersky://static/assets/svg/box.svg") no-repeat center;
-  -webkit-mask-size: 30px;
-  mask-size: 30px;
-  filter: drop-shadow(0.5px 0 0 var(--browser-theme-primary-highlight, #3b82f6)) drop-shadow(-0.5px 0 0 var(--browser-theme-primary-highlight, #3b82f6)) drop-shadow(0 0.5px 0 var(--browser-theme-primary-highlight, #3b82f6)) drop-shadow(0 -0.5px 0 var(--browser-theme-primary-highlight, #3b82f6));
+.peerbar .p2p-base-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   animation: pulseIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
-  animation-delay: 0s;
-  box-sizing: content-box;
+}
+
+/* The P2P Apps cube, in the deeper blue of the logos. */
+.peerbar .p2p-base-icon {
+  width: calc(var(--peerbar-icon) * 0.66);
+  height: calc(var(--peerbar-icon) * 0.66);
+  background-color: #216098;
+  -webkit-mask: url("peersky://static/assets/svg/box.svg") no-repeat center / contain;
+  mask: url("peersky://static/assets/svg/box.svg") no-repeat center / contain;
+  filter: drop-shadow(0.5px 0 0 #216098) drop-shadow(-0.5px 0 0 #216098) drop-shadow(0 0.5px 0 #216098) drop-shadow(0 -0.5px 0 #216098);
 }
 
 @keyframes scalePopIn {

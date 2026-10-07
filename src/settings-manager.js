@@ -185,6 +185,16 @@ async function resetP2PData ({ resetIdentities = false } = {}) {
   }
 }
 
+// The home page's clock, wallpaper and pinned apps live in a tab, which is a
+// page of its own, not the window. Sent only to windows, a change made in
+// Settings or on the P2P apps page reached an open home tab only after it
+// was reloaded. Theme changes already went to every page this way.
+function sendToAllPages (channel, value) {
+  webContents.getAllWebContents().forEach((wc) => {
+    if (!wc.isDestroyed()) wc.send(channel, value)
+  })
+}
+
 class SettingsManager {
   constructor () {
     this.settings = { ...DEFAULT_SETTINGS }
@@ -721,25 +731,11 @@ class SettingsManager {
           }
         })
       } else if (key === 'showClock') {
-        // Notify windows of clock setting change
-        windows.forEach(window => {
-          if (window && !window.isDestroyed()) {
-            window.webContents.send('show-clock-changed', value)
-          }
-        })
+        sendToAllPages('show-clock-changed', value)
       } else if (key === 'clockFormat') {
-        windows.forEach(window => {
-          if (window && !window.isDestroyed()) {
-            window.webContents.send('clock-format-changed', value)
-          }
-        })
+        sendToAllPages('clock-format-changed', value)
       } else if (key === 'wallpaper') {
-        // Notify windows of wallpaper change
-        windows.forEach(window => {
-          if (window && !window.isDestroyed()) {
-            window.webContents.send('wallpaper-changed', value)
-          }
-        })
+        sendToAllPages('wallpaper-changed', value)
       } else if (key === 'verticalTabs') {
         windows.forEach(window => {
           if (window && !window.isDestroyed()) {
@@ -754,17 +750,9 @@ class SettingsManager {
         })
       } else if (key === 'wallpaperCustomPath') {
         // When custom path changes, also notify about wallpaper change
-        windows.forEach(window => {
-          if (window && !window.isDestroyed()) {
-            window.webContents.send('wallpaper-changed', this.settings.wallpaper)
-          }
-        })
+        sendToAllPages('wallpaper-changed', this.settings.wallpaper)
       } else if (key === 'pinnedP2PApps') {
-        windows.forEach(window => {
-          if (window && !window.isDestroyed()) {
-            window.webContents.send('pinned-apps-changed', value)
-          }
-        })
+        sendToAllPages('pinned-apps-changed', value)
       } else if (key === 'memorySaverEnabled' || key === 'memorySaverExclusions') {
         windows.forEach(window => {
           if (window && !window.isDestroyed()) {

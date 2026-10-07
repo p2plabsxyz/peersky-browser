@@ -81,3 +81,39 @@ describe('peersky://about lists the browser pages', function () {
     expect(about).to.contain('hyper://chat/?action=net-status')
   })
 })
+
+// Settings, About links the privacy policy and terms on GitHub, so a renamed or
+// missing file would only show up as a 404 in someone's browser.
+describe('Settings, About links the privacy policy and terms', function () {
+  const settings = readFileSync(path.join(PAGES, 'settings.html'), 'utf8')
+  const aboutSection = settings.slice(settings.indexOf('id="about-section"'))
+  const anchors = [...aboutSection.matchAll(/<a [^>]*>/g)].map(m => m[0])
+  const DOCS = ['PRIVACY.md', 'TERMS.md']
+
+  for (const file of DOCS) {
+    it(`links ${file}, which exists`, function () {
+      const href = `href="https://github.com/p2plabsxyz/peersky-browser/blob/main/${file}"`
+      const link = anchors.find(a => a.includes(href))
+      expect(link, `add a ${file} link to the About section of settings.html`).to.be.a('string')
+      expect(link).to.contain('target="_blank"').and.to.contain('rel="noreferrer"')
+      expect(existsSync(path.resolve(file)), `${file} is missing from the repository root`).to.equal(true)
+    })
+  }
+
+  it('promises to read every report, with no deadline a small team could not keep', function () {
+    for (const file of DOCS) {
+      const text = readFileSync(path.resolve(file), 'utf8')
+      expect(text, file).to.match(/we read every one\./)
+      expect(text, file).to.not.match(/24 hours/)
+    }
+  })
+
+  it('keeps the links between the documents pointing at files that exist', function () {
+    for (const file of DOCS) {
+      const text = readFileSync(path.resolve(file), 'utf8')
+      for (const [, target] of text.matchAll(/\]\(([^)#:]+)(?:#[^)]*)?\)/g)) {
+        expect(existsSync(path.resolve(target)), `${file} links to ${target}, which does not exist`).to.equal(true)
+      }
+    }
+  })
+})

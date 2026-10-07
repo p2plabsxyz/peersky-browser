@@ -667,12 +667,17 @@ class ExtensionManager {
           throw Object.assign(new Error(`Extension ${extensionData.id} is already installed`), { code: ERR.E_ALREADY_EXISTS })
         }
 
+        // The installer confirmed nothing installed lives in this folder, so a
+        // refused package can take it with it.
+        const discard = () => fs.rm(path.dirname(extensionData.installedPath), { recursive: true, force: true }).catch(() => {})
+
         // Use consolidated validation
         const validationResult = await this.manifestValidator.validateExtension(
           extensionData.installedPath,
           extensionData.manifest
-        )
+        ).catch(async (err) => { await discard(); throw err })
         if (validationResult.outcome === 'deny') {
+          await discard()
           throw new Error(`Extension validation failed: ${validationResult.errors.join(', ')}`)
         }
         // Attach warnings and risk info for UI/registry
@@ -912,6 +917,8 @@ class ExtensionManager {
       return
     }
     if (!webContents) return // avoid registering shell UI or popups as tabs
+    // Extensions live in the normal session, so an incognito tab is never theirs.
+    if (this.session && webContents.session !== this.session) return
     try {
       if (SidePanelService.isSidePanelGuest(this, window, webContents)) {
         SidePanelService.registerSidePanelGuest(this, webContents.id)

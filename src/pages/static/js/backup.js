@@ -75,13 +75,20 @@ function hideProgress () {
 }
 
 function setBusy (busy) {
-  if (createBtn) createBtn.disabled = busy
-  if (chooseBtn) chooseBtn.disabled = busy
-  if (restoreBtn) restoreBtn.disabled = busy
-  if (identityCreateBtn) identityCreateBtn.disabled = busy
-  if (identityUploadHyperBtn) identityUploadHyperBtn.disabled = busy
-  if (backupIncludePrivate) backupIncludePrivate.disabled = busy
-  if (identityIncludePrivate) identityIncludePrivate.disabled = busy
+  for (const control of [
+    createBtn,
+    chooseBtn,
+    restoreBtn,
+    identityCreateBtn,
+    identityUploadHyperBtn,
+    backupIncludePrivate,
+    identityIncludePrivate,
+    document.getElementById('backup-cid-download'),
+    document.getElementById('backup-incoming-apply'),
+    document.getElementById('backup-incoming-cancel')
+  ]) {
+    if (control) control.disabled = busy
+  }
 }
 
 // The summary doubles as the old warning line: it says whether the private
@@ -411,11 +418,14 @@ function stopQrScanner () {
 
 qrScannerCancel?.addEventListener('click', stopQrScanner)
 
-identityScanQrBtn?.addEventListener('click', async () => {
+// One camera view for both kinds of code. onCode returns true once it has
+// taken a code, which closes the camera; anything else keeps scanning.
+async function startQrScanner (onCode) {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     showStatus('Camera access is not supported by your system.', 'error')
     return
   }
+  stopQrScanner()
 
   try {
     qrScannerStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
@@ -423,6 +433,7 @@ identityScanQrBtn?.addEventListener('click', async () => {
     qrScannerVideo.setAttribute('playsinline', true)
     qrScannerVideo.play()
     qrScannerContainer.style.display = 'block'
+    reveal(qrScannerContainer)
 
     const canvasElement = document.createElement('canvas')
     const canvas = canvasElement.getContext('2d')
@@ -438,13 +449,9 @@ identityScanQrBtn?.addEventListener('click', async () => {
           inversionAttempts: 'dontInvert'
         })
 
-        if (code && code.data) {
-          if (code.data.startsWith('peersky-identity:')) {
-            identityTargetKey.value = code.data
-            stopQrScanner()
-            showStatus('Successfully scanned the receiving device pairing code.', 'success')
-            return
-          }
+        if (code && code.data && onCode(code.data)) {
+          stopQrScanner()
+          return
         }
       }
       qrScannerAnimationFrame = requestAnimationFrame(tick)
@@ -455,7 +462,14 @@ identityScanQrBtn?.addEventListener('click', async () => {
     showStatus(`Camera error: ${err.message}`, 'error')
     stopQrScanner()
   }
-})
+}
+
+identityScanQrBtn?.addEventListener('click', () => startQrScanner((text) => {
+  if (!text.startsWith('peersky-identity:')) return false
+  identityTargetKey.value = text
+  showStatus('Successfully scanned the receiving device pairing code.', 'success')
+  return true
+}))
 
 // Both identity buttons used to return silently when the pairing code box was
 // empty, so a click looked like the feature was broken. Point at the field that
@@ -535,37 +549,160 @@ identityUploadHyperBtn?.addEventListener('click', async () => {
 const cidInput = document.getElementById('backup-cid-input')
 const cidPassphrase = document.getElementById('backup-cid-passphrase')
 const cidDownloadBtn = document.getElementById('backup-cid-download')
+const cidScanBtn = document.getElementById('backup-cid-scan')
+const incomingSection = document.getElementById('backup-incoming-section')
+const incomingTitle = document.getElementById('backup-incoming-title')
+const incomingCode = document.getElementById('backup-incoming-code')
+const incomingDetails = document.getElementById('backup-incoming-details')
+const incomingApplyBtn = document.getElementById('backup-incoming-apply')
+const incomingCancelBtn = document.getElementById('backup-incoming-cancel')
+
+// What the last download turned out to be, waiting for the person to say yes.
+let incoming = null
+
+function plural (count, noun) {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`
+}
+
+// "3 tabs, 12 bookmarks and access to its private files", or null for none.
+function listPhoneSync ({ tabs, bookmarks, privateDrives, chatRooms, notes }) {
+  const parts = []
+  if (tabs) parts.push(plural(tabs, 'tab'))
+  if (bookmarks) parts.push(plural(bookmarks, 'bookmark'))
+  if (privateDrives) parts.push('access to its private files')
+  if (chatRooms) parts.push(plural(chatRooms, 'PeerChat room'))
+  if (notes) parts.push(plural(notes, 'P2PMD note'))
+  if (parts.length === 0) return null
+  return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0]
+}
+
+function describePhoneSync (res) {
+  const list = listPhoneSync(res)
+  if (!list && !res.chatName) return 'The phone sent no tabs or bookmarks.'
+  let text = list ? `Adds ${list} from your phone, skipping any already here.` : ''
+  // PeerChat takes the phone's name. Everything else here is kept.
+  text += res.chatName ? ` PeerChat here takes your phone's name, ${res.chatName}.` : ' Nothing here is replaced.'
+  if (res.tabs) text += ' The tabs open asleep in a group called Phone.'
+  return text.trim()
+}
+
+function showIncoming (res) {
+  incoming = res
+  incomingCode.hidden = !res.verificationCode
+  incomingCode.textContent = res.verificationCode || ''
+  if (res.kind === 'phone') {
+    incomingTitle.textContent = 'From your phone. Does it show this code?'
+    incomingDetails.textContent = describePhoneSync(res)
+    incomingApplyBtn.textContent = 'Add to this desktop'
+  } else if (res.kind === 'transfer') {
+    incomingTitle.textContent = 'Identity transfer. Does the other device show this code?'
+    incomingDetails.textContent = 'Replaces this desktop\'s tabs, identity and P2P data with the other device\'s, then restarts PeerSky.'
+    incomingApplyBtn.textContent = 'Restore'
+  } else {
+    incomingTitle.textContent = 'Backup'
+    incomingDetails.textContent = 'Replaces this desktop\'s tabs, identity and P2P data with the backup, then restarts PeerSky.' +
+      (res.encrypted ? ' It needs the passphrase it was made with.' : '')
+    incomingApplyBtn.textContent = 'Restore'
+  }
+  incomingSection.style.display = ''
+  reveal(incomingSection)
+}
+
+function hideIncoming () {
+  incoming = null
+  incomingSection.style.display = 'none'
+  incomingCode.textContent = ''
+}
+
+async function restartAfterRestore () {
+  showStatus('Restore complete. Restart to apply the restored data.', 'success')
+  if (window.confirm('Restore complete. Restart Peersky now?')) {
+    await api.relaunch()
+  } else {
+    showStatus('Browser must restart to apply backup. Forcing restart in 5 seconds...', 'error')
+    setTimeout(() => api.relaunch(), 5000)
+  }
+}
+
+cidScanBtn?.addEventListener('click', () => startQrScanner((text) => {
+  if (!text.trim().toLowerCase().startsWith('hyper://')) return false
+  cidInput.value = text.trim()
+  showStatus('Scanned. Press Download to get it.', 'success')
+  return true
+}))
 
 cidDownloadBtn?.addEventListener('click', async () => {
   if (!api || !cidInput.value.trim()) return
-  const ok = window.confirm(
-    'Restoring will overwrite your current tabs, P2P identities and Hyper data ' +
-    'with the backup contents. Peersky will restart. Continue?')
-  if (!ok) return
+  if (incoming) api.discardRestore(incoming.stageId).catch(() => {})
+  hideIncoming()
 
   setBusy(true)
-  showProgress('Fetching backup from the network...')
+  showProgress('Fetching from the network...')
   statusBox.style.display = 'none'
   try {
-    const res = await api.restoreCid(cidInput.value.trim(), cidPassphrase.value || undefined)
+    const res = await api.fetchRestore(cidInput.value.trim())
     if (res.success) {
       hideProgress()
-      showStatus('Restore complete. Restart to apply the restored data.', 'success')
-      if (window.confirm('Restore complete. Restart Peersky now?')) {
-        await api.relaunch()
-      } else {
-        showStatus('Browser must restart to apply backup. Forcing restart in 5 seconds...', 'error')
-        setTimeout(() => api.relaunch(), 5000)
-      }
+      showIncoming(res)
     } else {
-      showStatus(`Restore failed: ${res.error}`, 'error')
+      showStatus(`Could not get it: ${res.error}`, 'error')
     }
+  } catch (err) {
+    showStatus(`Could not get it: ${err.message}`, 'error')
+  } finally {
+    hideProgress()
+    setBusy(false)
+  }
+})
+
+incomingCancelBtn?.addEventListener('click', () => {
+  if (incoming) api.discardRestore(incoming.stageId).catch(() => {})
+  hideIncoming()
+  showStatus('Cancelled. Nothing was changed.', 'info')
+})
+
+incomingApplyBtn?.addEventListener('click', async () => {
+  if (!api || !incoming) return
+  const current = incoming
+  let passphrase
+  if (current.kind === 'backup' && current.encrypted) {
+    passphrase = cidPassphrase.value || await requestPassphrase({
+      confirmation: false,
+      description: 'Enter the passphrase used when this backup was created.'
+    })
+    if (passphrase === null) return
+  }
+
+  setBusy(true)
+  showProgress(current.kind === 'phone' ? 'Adding tabs and bookmarks...' : 'Restoring...')
+  statusBox.style.display = 'none'
+  try {
+    const res = await api.applyRestore(current.stageId, passphrase)
+    if (!res.success) {
+      showStatus(`Restore failed: ${res.error}`, 'error')
+      return
+    }
+    hideIncoming()
+    hideProgress()
+    if (res.requiresRestart) {
+      await restartAfterRestore()
+      return
+    }
+    const list = listPhoneSync(res.added || {})
+    showStatus(list ? `Added ${list} from your phone.` : 'Everything the phone sent was already here.', 'success')
+    // The code that was shown has been used. A fresh one is ready for next time.
+    loadDeviceInfo().catch(() => {})
   } catch (err) {
     showStatus(`Restore failed: ${err.message}`, 'error')
   } finally {
     hideProgress()
     setBusy(false)
   }
+})
+
+// Leaving the page drops anything still waiting, so it is not kept decrypted.
+window.addEventListener('pagehide', () => {
+  if (incoming) api?.discardRestore(incoming.stageId).catch(() => {})
 })
 
 restoreBtn?.addEventListener('click', async () => {

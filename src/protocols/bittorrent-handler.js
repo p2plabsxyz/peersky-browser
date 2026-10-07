@@ -441,8 +441,7 @@ export async function createHandler ({ lazy = false } = {}) {
 
       const displayName = queryParams.get('dn') || null
       const currentTheme = settingsManager.settings.theme || 'dark'
-      const apiToken = createUiApiToken()
-      const html = generateTorrentUI(magnetUri, infoHash, protocol, displayName, currentTheme, apiToken)
+      const html = generateTorrentUI(magnetUri, infoHash, protocol, displayName, currentTheme)
       return new Response(html, {
         status: 200,
         headers: { 'Content-Type': 'text/html; charset=utf-8' }
@@ -516,6 +515,23 @@ export function setupBittorrentIpc () {
       return null
     }
   })
+
+  // The API token is handed out here rather than over bt:// because any web
+  // page can fetch bt:// and read a response carrying CORS *.
+  ipcMain.handle('bt-api-token', (event) => {
+    if (!isTorrentUiUrl(event.senderFrame?.url)) throw new Error('Forbidden')
+    return createUiApiToken()
+  })
+}
+
+function isTorrentUiUrl (rawUrl) {
+  try {
+    const { protocol, hostname } = new URL(rawUrl)
+    if (protocol === 'peersky:') return hostname === 'bt-manager'
+    return protocol === 'bt:' || protocol === 'bittorrent:' || protocol === 'magnet:'
+  } catch {
+    return false
+  }
 }
 
 async function handleAPI (api, queryParams, infoHash, request) {
@@ -524,8 +540,8 @@ async function handleAPI (api, queryParams, infoHash, request) {
   const token = request.headers?.get('x-bt-token')
   log.info(`[BT] API call: ${api}, hash: ${hash}`)
 
-  // Security: validate request is from BitTorrent protocol
-  // Custom protocols don't send Origin/Referer headers in Electron, so check request.url
+  // This only rejects non-bt URLs; it cannot tell which page made the request.
+  // Any origin can reach this API, so the token is what gates access.
   const requestUrl = request.url || ''
   const isBTRequest = requestUrl.startsWith('bt://') || requestUrl.startsWith('bittorrent://') || requestUrl.startsWith('magnet:')
 
@@ -545,7 +561,7 @@ async function handleAPI (api, queryParams, infoHash, request) {
   if (isMutation && request.method !== 'POST') {
     return jsonResponse({ error: `${api} requires POST method` }, 405, { allowCors: false })
   }
-  if (isMutation && !isValidUiApiToken(token)) {
+  if ((isMutation || api === 'list') && !isValidUiApiToken(token)) {
     return jsonResponse({ error: 'Forbidden: invalid API token' }, 403, { allowCors: false })
   }
 
@@ -564,9 +580,6 @@ async function handleAPI (api, queryParams, infoHash, request) {
     } else if (api === 'list') {
       // Return all cached torrents for manager pages.
       return getCachedTorrentList()
-    } else if (api === 'token') {
-      // Allow internal manager pages to run mutation APIs.
-      return jsonResponse({ token: createUiApiToken() })
     } else if (api === 'pause') {
       return await pauseResumeTorrent('pause', hash, { allowCors: true })
     } else if (api === 'resume') {

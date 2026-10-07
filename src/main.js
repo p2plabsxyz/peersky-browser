@@ -12,6 +12,7 @@ import { createHandler as createWeb3Handler } from './protocols/web3-handler.js'
 import { createHandler as createFileHandler } from './protocols/file-handler.js'
 import { createHandler as createBittorrentHandler, setupBittorrentIpc, shutdownBittorrent, warmupBittorrent } from './protocols/bittorrent-handler.js'
 import { ipfsOptions, hyperOptions } from './protocols/config.js'
+import { gateRequest, stampVetted, requireVetted, frameUrlOf } from './protocols/request-gate.js'
 import { createMenuTemplate } from './actions.js'
 import WindowManager from './window-manager.js'
 import settingsManager from './settings-manager.js'
@@ -27,15 +28,26 @@ import { urlFromArgv, queueLaunchUrl, startDeliveringLaunchUrls } from './launch
 // Import and initialize extension system
 import extensionManager from './extensions/index.js'
 import { setupExtensionIpcHandlers } from './extensions/extensions-ipc.js'
-import { getBrowserSession, usePersist } from './session.js'
-import { setupPermissionHandler } from './permissions.js'
+import { BLOCKED_SCHEME, BLOCKED_SCHEME_PRIVILEGES, answerBlockedCall, blockedCallHandler } from './extensions/blocked-requests.js'
+import { getBrowserSession, getIncognitoSession, INCOGNITO_PARTITION, usePersist } from './session.js'
+import { setupIncognitoPermissionHandler, setupPermissionHandler, requestSitePermission, permissionOriginFromUrl } from './permissions.js'
 import { setupSiteInfoIpc } from './site-info-ipc.js'
+import { startPeerChatPresence } from './peerchat-presence.js'
+import { setupDevToolsDock } from './devtools-dock.js'
 import { setupP2pmdPdfExportIpc } from './pages/p2p/p2pmd/pdf-export-ipc.js'
 import { setupBackupIpc } from './backup/ipc.js'
+import { assertCaller } from './backup/ipc-caller.js'
 import backupManager from './backup/backup-manager.js'
 import { downloadBackupFromAddress } from './backup/p2p-backup.js'
 
 const log = createLogger('main')
+
+// Electron 43 can put a waking extension's service worker into the spare
+// renderer Chromium warms up for link prefetching, then refuse it and stop
+// the whole app (SIGTRAP, "Unsuitable process reused for site"). Clicking
+// around a busy site with the preinstalled MV3 extensions is enough. Electron
+// 44 fixes it (electron/electron#53144); until then, prefetch gets no spare.
+app.commandLine.appendSwitch('enable-features', 'PrefetchUseContentRefactor:start_spare_renderer/false')
 
 const P2P_PROTOCOL = {
   standard: true,
@@ -160,7 +172,8 @@ globalProtocol.registerSchemesAsPrivileged([
   { scheme: 'file', privileges: FILE_PROTOCOL },
   { scheme: 'bittorrent', privileges: P2P_PROTOCOL },
   { scheme: 'bt', privileges: P2P_PROTOCOL },
-  { scheme: 'magnet', privileges: MAGNET_PROTOCOL }
+  { scheme: 'magnet', privileges: MAGNET_PROTOCOL },
+  { scheme: BLOCKED_SCHEME, privileges: BLOCKED_SCHEME_PRIVILEGES }
 ])
 
 /**
@@ -182,6 +195,11 @@ function shellWebContentsIdFor (wc) {
   return null
 }
 
+// Whether a window's shell, or a page inside it, belongs to an incognito window.
+function isIncognitoContents (wc) {
+  return windowManager?.findWindowByWebContentsId(shellWebContentsIdFor(wc))?.incognito === true
+}
+
 // One process per profile. A second launch, which is how Windows and Linux
 // hand over a link or a taskbar "new window", forwards its argv to the owner
 // and exits instead of booting a rival on the same profile.
@@ -195,6 +213,8 @@ app.on('second-instance', (_event, argv) => {
   const url = urlFromArgv(argv)
   if (url) {
     queueLaunchUrl(url)
+  } else if (argv.includes('--incognito') && windowManager) {
+    openIncognitoWindow()
   } else if (argv.includes('--new-window') && windowManager) {
     windowManager.open({})
   } else {
@@ -210,6 +230,13 @@ app.on('open-url', (event, url) => {
 })
 
 queueLaunchUrl(urlFromArgv(process.argv))
+
+// Settles once the incognito session has its protocol handlers.
+let incognitoReady = null
+
+function openIncognitoWindow () {
+  Promise.resolve(incognitoReady).then(() => windowManager.open({ incognito: true, isMainWindow: false }))
+}
 
 function focusAnyWindow () {
   const win = BrowserWindow.getFocusedWindow() || windowManager?.all[0]?.window
@@ -282,79 +309,105 @@ app.whenReady().then(async () => {
     await windowManager.saveFinal()
   })
 
-  p2pAppRegistry.setupIpc()
+  p2pAppRegistry.setupIpc({ checkForAppUpdate: checkForUpdatesNow })
   installExtensionWebRequestBridge(userSession)
   setupBittorrentIpc()
-  setupBackupIpc()
+  setupBackupIpc({ getTabs: () => windowManager.getTabs() })
   setupSiteInfoIpc(userSession)
+  setupDevToolsDock()
+  // People in a PeerChat room see a yellow dot while you are away.
+  startPeerChatPresence()
 
-  userSession.on('will-download', (event, item, sessionWebContents) => {
-    const downloadId = crypto.randomUUID()
-    // The shell window that started this download. Progress goes to every
-    // window so an open popup or the downloads page stays current, but only
-    // this one may pop the panel open.
-    const originWindowWcId = shellWebContentsIdFor(sessionWebContents)
+  userSession.on('will-download', handleDownload({ incognito: false }))
+  incognitoReady = setupIncognitoSession().catch((error) => log.error('[startup] incognito session failed:', error?.stack || error))
 
-    activeDownloadItems.set(downloadId, item)
+  function handleDownload ({ incognito }) {
+    return (event, item, sessionWebContents) => {
+      const downloadId = crypto.randomUUID()
+      // The shell window that started this download. Progress goes to every
+      // window so an open popup or the downloads page stays current, but only
+      // this one may pop the panel open.
+      const originWindowWcId = shellWebContentsIdFor(sessionWebContents)
 
-    const broadcastProgress = (state, forcePaused = null) => {
-      const data = {
-        id: downloadId,
-        filename: item.getFilename(),
-        received: item.getReceivedBytes(),
-        total: item.getTotalBytes(),
-        state,
-        isPaused: forcePaused !== null ? forcePaused : item.isPaused(),
-        canResume: item.canResume(),
-        percent: item.getTotalBytes()
-          ? Math.round((item.getReceivedBytes() / item.getTotalBytes()) * 100)
-          : 0
+      // An incognito download is shown in incognito windows only, and any other
+      // download only outside them.
+      item.incognito = incognito
+      activeDownloadItems.set(downloadId, item)
+
+      const broadcastProgress = (state, forcePaused = null) => {
+        const data = {
+          id: downloadId,
+          filename: item.getFilename(),
+          received: item.getReceivedBytes(),
+          total: item.getTotalBytes(),
+          state,
+          isPaused: forcePaused !== null ? forcePaused : item.isPaused(),
+          canResume: item.canResume(),
+          percent: item.getTotalBytes()
+            ? Math.round((item.getReceivedBytes() / item.getTotalBytes()) * 100)
+            : 0
+        }
+
+        trustedUIWebContents.forEach((id) => {
+          const wc = webContents.fromId(id)
+          if (wc && !wc.isDestroyed()) {
+            if (isIncognitoContents(wc) !== incognito) return
+            wc.send('download-progress', { ...data, isOrigin: id === originWindowWcId })
+          } else {
+            trustedUIWebContents.delete(id)
+          }
+        })
       }
 
-      trustedUIWebContents.forEach((id) => {
-        const wc = webContents.fromId(id)
-        if (wc && !wc.isDestroyed()) {
-          wc.send('download-progress', { ...data, isOrigin: id === originWindowWcId })
-        } else {
-          trustedUIWebContents.delete(id)
+      item.manualBroadcast = broadcastProgress
+
+      const progressInterval = setInterval(() => {
+        if (item.getState() === 'progressing') {
+          broadcastProgress(item.getState())
+        }
+      }, 100)
+
+      item.on('done', async (event, state) => {
+        clearInterval(progressInterval)
+
+        activeDownloadItems.delete(downloadId)
+        broadcastProgress(state)
+
+        if (state === 'completed') {
+          const downloadInfo = {
+            id: downloadId,
+            filename: item.getFilename(),
+            size: item.getTotalBytes(),
+            timestamp: Date.now(),
+            savePath: item.getSavePath(),
+            url: item.getURL()
+          }
+          if (!incognito) await saveDownloadHistory(downloadInfo)
         }
       })
     }
+  }
 
-    item.manualBroadcast = broadcastProgress
-
-    const progressInterval = setInterval(() => {
-      if (item.getState() === 'progressing') {
-        broadcastProgress(item.getState())
-      }
-    }, 100)
-
-    item.on('done', async (event, state) => {
-      clearInterval(progressInterval)
-
-      activeDownloadItems.delete(downloadId)
-      broadcastProgress(state)
-
-      if (state === 'completed') {
-        const downloadInfo = {
-          id: downloadId,
-          filename: item.getFilename(),
-          size: item.getTotalBytes(),
-          timestamp: Date.now(),
-          savePath: item.getSavePath(),
-          url: item.getURL()
-        }
-        await saveDownloadHistory(downloadInfo)
-      }
-    })
-  })
+  // An incognito window's pages run in a session that lives in memory. It
+  // gets the same protocol handlers and request gate as the normal one, and
+  // no extensions, so nothing done there is kept or seen by them. Downloads
+  // still land in the downloads folder, but no record of them is kept.
+  async function setupIncognitoSession () {
+    const incognito = getIncognitoSession()
+    registerProtocolHandlers(incognito.protocol, await protocolHandlers)
+    installRequestGate(incognito, { incognito: true })
+    setupIncognitoPermissionHandler(incognito)
+    incognito.on('will-download', handleDownload({ incognito: true }))
+  }
 
   // Global webview partition alignment and security hardening
   app.on('web-contents-created', (_e, wc) => {
     attachWebviewTabShortcutNav(wc)
     wc.on('will-attach-webview', (_event, webPreferences, params) => {
-      // Force consistent partition when using persist mode
-      if (usePersist()) params.partition = 'persist:peersky'
+      // Pages in an incognito window get the in-memory session. Electron reads
+      // the partition from webPreferences, which it fills in before this event.
+      if (windowManager?.findWindowByWebContentsId(wc.id)?.incognito) webPreferences.partition = INCOGNITO_PARTITION
+      else if (usePersist()) params.partition = 'persist:peersky'
 
       // Basic hardening for webviews (safe defaults)
       webPreferences.nodeIntegration = false
@@ -382,6 +435,7 @@ app.whenReady().then(async () => {
 
   // Check for --new-window argument (from Windows taskbar jump list)
   const hasNewWindowArg = process.argv.includes('--new-window')
+  const hasIncognitoArg = process.argv.includes('--incognito')
 
   const onboardingCompleted = settingsManager.settings.onboardingCompleted
 
@@ -394,6 +448,7 @@ app.whenReady().then(async () => {
     if (windowManager.all.length === 0 || hasNewWindowArg) {
       windowManager.open({ isMainWindow: windowManager.all.length === 0 })
     }
+    if (hasIncognitoArg) openIncognitoWindow()
   }
   // Onboarding included: a link that arrives then opens beside it rather than
   // waiting for the user to finish.
@@ -460,6 +515,10 @@ app.whenReady().then(async () => {
         click: () => {
           windowManager.open({ isMainWindow: false })
         }
+      },
+      {
+        label: 'New Incognito Window',
+        click: () => openIncognitoWindow()
       }
     ])
     app.dock.setMenu(dockMenu)
@@ -473,6 +532,14 @@ app.whenReady().then(async () => {
         iconIndex: 0,
         title: 'New Window',
         description: 'Open a new browser window'
+      },
+      {
+        program: process.execPath,
+        arguments: '--incognito',
+        iconPath: process.execPath,
+        iconIndex: 0,
+        title: 'New Incognito Window',
+        description: 'Open a window that keeps no history, cookies or cache'
       }
     ])
   }
@@ -611,8 +678,16 @@ app.on('before-quit', async (event) => {
  * later still resolves — it just starts the backend on the way through — and
  * warmP2PBackends() boots them in the background once the UI is up.
  */
+// Created once and shared: the incognito session gets the same handlers, and
+// creating them twice would start a second IPFS node.
+let protocolHandlers = null
+
 async function setupProtocols (session) {
-  const { protocol: sessionProtocol } = session
+  protocolHandlers = createProtocolHandlers(session)
+  registerProtocolHandlers(session.protocol, await protocolHandlers)
+}
+
+async function createProtocolHandlers (session) {
   const isExtensionWriteAllowed = ({ extensionId, scheme }) =>
     extensionManager.isP2PWriteAllowed(extensionId, scheme)
   const lazy = true
@@ -647,19 +722,41 @@ async function setupProtocols (session) {
     createFileHandler(),
     createBittorrentHandler({ lazy })
   ])
+  return {
+    browserProtocolHandler,
+    browserThemeHandler,
+    ipfsProtocolHandler,
+    hyperProtocolHandler,
+    hsProtocolHandler,
+    web3ProtocolHandler,
+    fileProtocolHandler,
+    bittorrentProtocolHandler
+  }
+}
 
+function registerProtocolHandlers (sessionProtocol, handlers) {
+  const {
+    browserProtocolHandler,
+    browserThemeHandler,
+    ipfsProtocolHandler,
+    hyperProtocolHandler,
+    hsProtocolHandler,
+    web3ProtocolHandler,
+    fileProtocolHandler,
+    bittorrentProtocolHandler
+  } = handlers
   sessionProtocol.handle('peersky', browserProtocolHandler)
   sessionProtocol.handle('browser', browserThemeHandler)
-  sessionProtocol.handle('ipfs', ipfsProtocolHandler)
-  sessionProtocol.handle('ipns', ipfsProtocolHandler)
-  sessionProtocol.handle('pubsub', ipfsProtocolHandler)
-  sessionProtocol.handle('hyper', hyperProtocolHandler)
-  sessionProtocol.handle('hs', hsProtocolHandler)
+  sessionProtocol.handle('ipfs', requireVetted(ipfsProtocolHandler))
+  sessionProtocol.handle('ipns', requireVetted(ipfsProtocolHandler))
+  sessionProtocol.handle('pubsub', requireVetted(ipfsProtocolHandler))
+  sessionProtocol.handle('hyper', requireVetted(hyperProtocolHandler))
+  sessionProtocol.handle('hs', requireVetted(hsProtocolHandler))
   sessionProtocol.handle('web3', web3ProtocolHandler)
   sessionProtocol.handle('file', fileProtocolHandler)
-  sessionProtocol.handle('bittorrent', bittorrentProtocolHandler)
-  sessionProtocol.handle('bt', bittorrentProtocolHandler)
-  sessionProtocol.handle('magnet', bittorrentProtocolHandler)
+  sessionProtocol.handle('bittorrent', requireVetted(bittorrentProtocolHandler))
+  sessionProtocol.handle('bt', requireVetted(bittorrentProtocolHandler))
+  sessionProtocol.handle('magnet', requireVetted(bittorrentProtocolHandler))
 }
 
 /**
@@ -681,6 +778,41 @@ function warmP2PBackends () {
   }
 }
 
+async function isGatedRequestAllowed (details, { incognito = false } = {}) {
+  try {
+    const verdict = gateRequest({
+      url: details.url,
+      method: details.method,
+      resourceType: details.resourceType,
+      initiatorOrigin: details.initiatorOrigin,
+      frameUrl: frameUrlOf(details)
+    })
+    if (verdict.action === 'allow') return true
+    // Incognito has no extensions, and an answer there would be remembered.
+    if (incognito) return false
+    if (verdict.action === 'extension') return extensionManager.isP2PWriteAllowed(verdict.extensionId, verdict.scheme)
+    if (verdict.action === 'ask') {
+      const origin = permissionOriginFromUrl(verdict.caller)
+      return !!origin && await requestSitePermission(details.webContents, origin, 'p2pPublish')
+    }
+  } catch (err) {
+    log.warn('[webRequest] request gate failed:', err?.message || err)
+  }
+  return false
+}
+
+// The request gate on its own, for a session with no extensions to forward to.
+function installRequestGate (session, options) {
+  session.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, async (details, callback) => {
+    const allowed = await isGatedRequestAllowed(details, options)
+    callback(allowed ? {} : { cancel: true }) // eslint-disable-line n/no-callback-literal
+  })
+  session.webRequest.onBeforeSendHeaders({ urls: ['<all_urls>'] }, (details, callback) => {
+    const stamped = stampVetted(details)
+    callback(stamped ? { requestHeaders: stamped } : {}) // eslint-disable-line n/no-callback-literal
+  })
+}
+
 function installExtensionWebRequestBridge (session) {
   // Loopback carries the browser's own plumbing: the p2p gateways and local
   // servers backing peersky:// pages. Chromium sets no initiator on requests
@@ -688,6 +820,9 @@ function installExtensionWebRequestBridge (session) {
   // cancel it, breaking the browser itself. Internal transport is not the
   // extension's to filter.
   const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]'])
+
+  // Where a page's blocked fetch, XHR or beacon gets its empty answer.
+  session.protocol.handle(BLOCKED_SCHEME, blockedCallHandler)
 
   const shouldForwardToExtensions = (rawUrl) => {
     const url = typeof rawUrl === 'string' ? rawUrl : ''
@@ -705,6 +840,11 @@ function installExtensionWebRequestBridge (session) {
 
   session.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, async (details, callback) => {
     const url = details?.url || ''
+    if (!(await isGatedRequestAllowed(details))) {
+      log.warn(`[webRequest] blocked ${details.method} ${url.split(':')[0]}: request from ${details.initiatorOrigin || frameUrlOf(details) || 'unknown'}`)
+      callback({ cancel: true }) // eslint-disable-line n/no-callback-literal
+      return
+    }
     if (!shouldForwardToExtensions(url)) {
       callback({}) // eslint-disable-line n/no-callback-literal
       return
@@ -725,13 +865,18 @@ function installExtensionWebRequestBridge (session) {
       result = { ...result, redirectURL: result.redirectUrl }
     }
 
-    callback(result)
+    callback(answerBlockedCall(details, result))
   })
 
   session.webRequest.onBeforeSendHeaders(
     { urls: ['<all_urls>'] },
     async (details, callback) => {
       const url = details?.url || ''
+      const stamped = stampVetted(details)
+      if (stamped) {
+        callback({ requestHeaders: stamped }) // eslint-disable-line n/no-callback-literal
+        return
+      }
       if (!shouldForwardToExtensions(url)) {
         callback({}) // eslint-disable-line n/no-callback-literal
         return
@@ -992,9 +1137,11 @@ ipcMain.handle('get-downloads', async () => {
   }
 })
 
-ipcMain.handle('get-active-downloads', async () => {
+ipcMain.handle('get-active-downloads', async (event) => {
   const active = []
+  const incognito = isIncognitoContents(event.sender)
   for (const [id, item] of activeDownloadItems.entries()) {
+    if (item.incognito !== incognito) continue
     active.push({
       id,
       filename: item.getFilename(),
@@ -1163,6 +1310,7 @@ setupP2pmdPdfExportIpc()
 
 // Onboarding IPC handlers
 ipcMain.handle('onboarding-import-data', async (event, dataStr) => {
+  assertCaller(event, 'onboarding')
   try {
     const importData = JSON.parse(dataStr)
     if (!importData || typeof importData !== 'object') {
@@ -1289,6 +1437,7 @@ ipcMain.handle('onboarding-import-data', async (event, dataStr) => {
 })
 
 ipcMain.handle('onboarding-skip', async (event) => {
+  assertCaller(event, 'onboarding')
   try {
     settingsManager.settings.onboardingCompleted = true
     await settingsManager.saveSettings()
@@ -1310,6 +1459,7 @@ ipcMain.handle('onboarding-skip', async (event) => {
 })
 
 ipcMain.handle('onboarding-restore-backup', async (event, backupContent) => {
+  assertCaller(event, 'onboarding')
   try {
     const parsed = JSON.parse(backupContent)
     if (!parsed || typeof parsed !== 'object') {
@@ -1352,6 +1502,7 @@ async function finishOnboardingRestore () {
 }
 
 ipcMain.handle('onboarding-restore-zip', async (event, payload = {}) => {
+  assertCaller(event, 'onboarding')
   try {
     const zipPath = typeof payload === 'string' ? payload : payload?.zipPath
     const res = await backupManager.restoreBackup(zipPath, (data) => {
@@ -1368,29 +1519,83 @@ ipcMain.handle('onboarding-restore-zip', async (event, payload = {}) => {
   }
 })
 
+// A backup asked for by link goes straight in, with the passphrase given
+// beside it. A transfer, from a phone or another desktop, waits for the
+// person to compare the code on both screens (onboarding-apply-restore).
 ipcMain.handle('onboarding-restore-cid', async (event, payload = {}) => {
-  let zipPath
+  assertCaller(event, 'onboarding')
+  const onProgress = (data) => {
+    if (!event.sender.isDestroyed()) {
+      event.sender.send('backup-progress', { phase: 'restore', ...data })
+    }
+  }
   try {
     const address = typeof payload === 'string' ? payload : payload?.address
-    zipPath = await downloadBackupFromAddress(address, (status) => {
+    const zipPath = await downloadBackupFromAddress(address, (status) => {
       if (!event.sender.isDestroyed()) {
         event.sender.send('backup-progress', { phase: 'fetch', message: status.message })
       }
     })
-    const res = await backupManager.restoreBackup(zipPath, (data) => {
-      if (!event.sender.isDestroyed()) {
-        event.sender.send('backup-progress', { phase: 'restore', ...data })
-      }
-    }, { passphrase: payload?.passphrase })
+    const staged = await backupManager.stageRestore(zipPath, onProgress)
+    if (staged.kind !== 'backup') return { success: true, ...staged }
+
+    const res = await backupManager.applyStaged(staged.stageId, { passphrase: payload?.passphrase, onProgress })
     if (!res.success) return res
     await finishOnboardingRestore()
     return { success: true }
   } catch (error) {
     log.error('Onboarding CID restore failed:', error)
     return { success: false, error: error.message }
-  } finally {
-    if (zipPath) await fs.rm(zipPath, { force: true }).catch(() => {})
   }
+})
+
+// Onboarding happens in a tab of its own window. The window closes once the
+// person is through it.
+function onboardingWindowFor (event) {
+  return BrowserWindow.fromWebContents(event.sender) ||
+    (event.sender.hostWebContents ? BrowserWindow.fromWebContents(event.sender.hostWebContents) : null)
+}
+
+ipcMain.handle('onboarding-apply-restore', async (event, payload = {}) => {
+  assertCaller(event, 'onboarding')
+  try {
+    let phoneTabs = []
+    const res = await backupManager.applyStaged(payload?.stageId, {
+      openTabs: (tabs) => {
+        phoneTabs = tabs
+        return tabs.length
+      }
+    })
+    if (!res.success) return res
+    if (res.requiresRestart) {
+      await finishOnboardingRestore()
+      return { success: true }
+    }
+
+    // Tabs and bookmarks from a phone. Nothing restarts: onboarding is done,
+    // and the first window opens with the phone's tabs asleep beside Home.
+    settingsManager.settings.onboardingCompleted = true
+    await settingsManager.saveSettings()
+    const opened = windowManager.open({ url: 'peersky://home', isMainWindow: true })
+    if (phoneTabs.length > 0 && opened?.window) {
+      opened.window.webContents.once('did-finish-load', () => {
+        if (!opened.window.isDestroyed()) {
+          opened.window.webContents.send('add-tabs-from-main', { tabs: phoneTabs, group: 'Phone' })
+        }
+      })
+    }
+    onboardingWindowFor(event)?.close()
+    return { success: true, added: res.added }
+  } catch (error) {
+    log.error('Onboarding restore failed:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('onboarding-discard-restore', async (event, payload = {}) => {
+  assertCaller(event, 'onboarding')
+  backupManager.discardStaged(payload?.stageId)
+  return { success: true }
 })
 
 // Only a plain packaged build can ask for the http/https default. A dev run

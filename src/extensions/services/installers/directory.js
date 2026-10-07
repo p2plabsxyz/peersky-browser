@@ -3,7 +3,7 @@
 import path from 'path'
 import { promises as fs } from 'fs'
 import { randomBytes } from 'crypto'
-import { ensureDir, atomicReplaceDir } from '../../util.js'
+import { ensureDir, atomicReplaceDir, assertInstallSlotFree } from '../../util.js'
 import { generateSecureExtensionId } from '../../utils/ids.js'
 import { resolveManifestStrings } from '../../utils/strings.js'
 import { findExtensionManifest } from '../../utils/manifest-file.js'
@@ -26,6 +26,7 @@ export async function prepareFromDirectory (manager, dirPath) {
   }
 
   const extensionId = generateSecureExtensionId(manifest)
+  assertInstallSlotFree(manager, extensionId, manifest)
   const version = String(manifest.version || '').trim() || '0.0.0'
   const versionDirName = `${version}_0`
 

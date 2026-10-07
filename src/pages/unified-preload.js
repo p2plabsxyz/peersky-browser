@@ -41,7 +41,7 @@ const isBackup = isPeerskyPage('backup')
 const isTabsPage = isPeerskyPage('tabs')
 const isP2PPage = isPeerskyPage('p2p')
 const isUserP2PApp = isPeerskyPage('myapps')
-const isTrustedExternalHost = pageHost === 'agregore.mauve.moe'
+const isTrustedExternalHost = pageProtocol === 'https:' && pageHost === 'agregore.mauve.moe'
 const isInternal = (pageProtocol === 'peersky:' && !isUserP2PApp) || pageProtocol === 'file:' || isTrustedExternalHost
 const isExternal = !isInternal
 
@@ -59,7 +59,16 @@ if (isBitTorrent) {
   })
 }
 
-// Expose LLM API for internal pages, P2P apps, and trusted domains
+if (isBitTorrent || isPeerskyPage('bt-manager')) {
+  contextBridge.exposeInMainWorld('peerskyBT', {
+    apiToken: () => ipcRenderer.invoke('bt-api-token')
+  })
+}
+
+// Expose LLM API for internal pages, P2P apps, and trusted domains. Whether a
+// call goes through is decided in the main process (src/llm-access.js):
+// PeerSky's own pages freely, every other page after asking. Keep these lists
+// in step with llmAccessFor in src/permissions.js.
 if (isInternal || isP2P || isUserP2PApp) {
   console.log('Unified-preload: Exposing LLM API for page:', url)
   // Iterator management for streaming
@@ -106,8 +115,9 @@ if (isInternal || isP2P || isUserP2PApp) {
     iteratorReturn
   })
 
-  // LLM Memory: internal pages only
-  if (isInternal || isUserP2PApp) {
+  // LLM Memory: peersky: pages only. isInternal also covers file: pages and a
+  // trusted external host, neither of which should read the whole history.
+  if (pageProtocol === 'peersky:') {
     contextBridge.exposeInMainWorld('llmMemory', {
       add: (entry) => ipcRenderer.invoke('llm-memory-add', entry),
       list: (opts) => ipcRenderer.invoke('llm-memory-list', opts || {}),
@@ -190,7 +200,8 @@ if (isInternal || isP2P || isUserP2PApp) {
   // Even for external pages, check if they might need LLM API (for testing)
   console.log('Unified-preload: External page, checking if LLM should be exposed:', url)
 
-  // We can add more trusted domains here if needed
+  // These pages are asked before they use AI. Keep in step with LLM_ASK_HOSTS
+  // in src/permissions.js.
   const trustedDomains = ['agregore.mauve.moe', 'localhost']
 
   let shouldExposeLLM = false
@@ -477,7 +488,9 @@ const backupAPI = {
   create: (passphrase, includePrivate = false) => ipcRenderer.invoke('backup-create', { passphrase, includePrivate }),
   validate: () => ipcRenderer.invoke('backup-validate'),
   restore: (zipPath, passphrase) => ipcRenderer.invoke('backup-restore', { zipPath, passphrase }),
-  restoreCid: (address, passphrase) => ipcRenderer.invoke('backup-restore-cid', { address, passphrase }),
+  fetchRestore: (address) => ipcRenderer.invoke('backup-fetch-restore', { address }),
+  applyRestore: (stageId, passphrase) => ipcRenderer.invoke('backup-apply-restore', { stageId, passphrase }),
+  discardRestore: (stageId) => ipcRenderer.invoke('backup-discard-restore', { stageId }),
   getDeviceInfo: () => ipcRenderer.invoke('backup-device-info'),
   listPrivateHyperdrives: () => ipcRenderer.invoke('backup-private-hyperdrives'),
   createIdentityTransfer: (targetPairingPayload, includePrivate = true) => ipcRenderer.invoke('backup-identity-create', { targetPairingPayload, includePrivate }),
@@ -572,6 +585,8 @@ try {
       restoreBackup: (backupContent) => ipcRenderer.invoke('onboarding-restore-backup', backupContent),
       restoreZip: (zipPath, passphrase) => ipcRenderer.invoke('onboarding-restore-zip', { zipPath, passphrase }),
       restoreCid: (address, passphrase) => ipcRenderer.invoke('onboarding-restore-cid', { address, passphrase }),
+      applyRestore: (stageId) => ipcRenderer.invoke('onboarding-apply-restore', { stageId }),
+      discardRestore: (stageId) => ipcRenderer.invoke('onboarding-discard-restore', { stageId }),
       getPathForFile: (file) => webUtils.getPathForFile(file),
       openExternalLink: (url) => ipcRenderer.invoke('open-external-link', url),
       getDeviceInfo: () => ipcRenderer.invoke('backup-device-info'),
@@ -856,7 +871,7 @@ try {
 }
 
 // CSS injection logic (for pages that need it)
-window.addEventListener('DOMContentLoaded', async () => {
+async function injectPageStyles () {
   try {
     // Initialize theme on page load for internal pages
     if (isInternal) {
@@ -976,4 +991,13 @@ window.addEventListener('DOMContentLoaded', async () => {
   } catch (error) {
     console.error('Unified-preload: Error injecting default styles:', error)
   }
-})
+}
+
+// A page with no scripts of its own, like a raw code or text file, can be
+// parsed before this preload runs, and its DOMContentLoaded has gone by then.
+// Waiting for it left raw code on the browser's white page in the dark theme.
+if (document.readyState === 'loading') {
+  window.addEventListener('DOMContentLoaded', injectPageStyles)
+} else {
+  injectPageStyles()
+}

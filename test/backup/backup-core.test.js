@@ -79,6 +79,7 @@ function buildRawZip (entryName, content) {
 
 async function seedUserData (dir) {
   await writeFile(path.join(dir, 'tabs.json'), JSON.stringify({ windows: [{ tabs: ['peersky://home'] }] }))
+  await writeFile(path.join(dir, 'bookmarks.json'), JSON.stringify([{ url: 'https://example.com/', title: 'Example', dateAdded: '2026-01-01T00:00:00.000Z' }]))
   await writeFile(path.join(dir, 'lastOpened.json'), JSON.stringify({ x: 1 }))
   await mkdir(path.join(dir, 'ipfs', 'blocks'), { recursive: true })
   await writeFile(path.join(dir, 'ipfs', 'blocks', 'block-a'), 'block-a-content')
@@ -113,7 +114,7 @@ describe('backup-core', function () {
     expect(info.size).to.be.greaterThan(0)
     expect(result.uncompressedBytes).to.be.greaterThan(0)
     expect(result.manifest.peerskyVersion).to.equal('9.9.9')
-    expect(Object.keys(result.manifest.files)).to.include.members(['tabs.json', 'hyper'])
+    expect(Object.keys(result.manifest.files)).to.include.members(['tabs.json', 'bookmarks.json', 'hyper'])
     expect(result.manifest.files).not.to.have.property('ipfs')
     expect(result.manifest.files).not.to.have.property('hyper-private')
     expect(result.manifest.files).not.to.have.property('privateHyperdrives.json')
@@ -279,10 +280,76 @@ describe('private-drive-export', function () {
     expect(record.entries[0].driveId).to.equal(driveId.toLowerCase())
     expect(record.entries[1].driveId).to.equal(Buffer.from(z32.decode('a'.repeat(52))).toString('hex'))
 
-    const mobileBytes = await buildPrivateDriveKeyExport(userData, 1700000000000, { mobileSafe: true })
+    const mobileBytes = await buildPrivateDriveKeyExport(userData, 1700000000000, { forPhone: true })
     const mobileRecord = JSON.parse(mobileBytes.toString('utf-8'))
     expect(mobileRecord.entries).to.have.length(2)
     expect(mobileRecord.driveId).to.equal(driveId.toLowerCase())
+  })
+
+  it('gives a phone the key even before there are private drives', async function () {
+    const userData = await makeTempDir('peersky-bk-keyexport-phone-')
+
+    expect(await buildPrivateDriveKeyExport(userData, 1700000000000)).to.equal(null)
+
+    const bytes = await buildPrivateDriveKeyExport(userData, 1700000000000, { forPhone: true })
+    const record = JSON.parse(bytes.toString('utf-8'))
+    expect(record.version).to.equal(3)
+    expect(record.key).to.match(/^[0-9a-f]{64}$/)
+    expect(record.encrypted).to.equal(true)
+    expect(record.entries).to.deep.equal([])
+    expect(record).not.to.have.property('driveId')
+
+    // The same key the desktop encrypts its own private drives with.
+    const stored = JSON.parse(await readFile(path.join(userData, 'private-drive-key.json'), 'utf-8'))
+    expect(stored.key).to.equal(record.key)
+  })
+
+  it('sends a phone only what it keeps', async function () {
+    const userData = await makeTempDir('peersky-bk-phone-targets-')
+    await seedUserData(userData)
+    await writeFile(path.join(userData, 'peersky-identity.json'), JSON.stringify({ version: 1, identityId: 'a'.repeat(64) }))
+    await writeFile(path.join(userData, 'peersky-ports.json'), '{}')
+    await writeFile(path.join(userData, 'peersky-chat-rooms.json'), '{}')
+
+    const outPath = path.join(await makeTempDir('peersky-bk-phone-out-'), 'identity.zip')
+    const result = await createBackupZip(userData, outPath, {
+      isIdentityTransfer: true,
+      targetDeviceType: 'mobile',
+      includePrivate: true
+    })
+
+    expect(Object.keys(result.manifest.files).sort()).to.deep.equal([
+      'bookmarks.json',
+      'hyper-private',
+      'peersky-identity.json',
+      'private-drive-key.json',
+      'privateHyperdrives.json',
+      'tabs.json'
+    ])
+
+    // Another desktop still gets the whole profile.
+    const desktopOut = path.join(await makeTempDir('peersky-bk-desktop-out-'), 'identity.zip')
+    const desktop = await createBackupZip(userData, desktopOut, { isIdentityTransfer: true, targetDeviceType: 'desktop' })
+    expect(Object.keys(desktop.manifest.files)).to.include.members(['hyper', 'bookmarks.json', 'lastOpened.json', 'peersky-ports.json'])
+  })
+
+  it('adds PeerChat for the other device to a transfer, and never to a backup', async function () {
+    const userData = await makeTempDir('peersky-bk-chat-')
+    await seedUserData(userData)
+    const chat = Buffer.from(JSON.stringify({ version: 1, label: 'mobile', rooms: [] }))
+
+    const outPath = path.join(await makeTempDir('peersky-bk-chat-out-'), 'identity.zip')
+    const transfer = await createBackupZip(userData, outPath, { isIdentityTransfer: true, targetDeviceType: 'mobile', chatTransfer: chat })
+    expect(transfer.manifest.files['peerchat-incoming.json']).to.equal(`sha256:${crypto.createHash('sha256').update(chat).digest('hex')}`)
+    const dest = await makeTempDir('peersky-bk-chat-dest-')
+    await extractBackupZip(outPath, dest)
+    await verifyManifest(dest, await readManifest(outPath))
+    expect(await readFile(path.join(dest, 'peerchat-incoming.json'))).to.deep.equal(chat)
+
+    // A backup comes back to this same device, which has its own chat file.
+    const backupOut = path.join(await makeTempDir('peersky-bk-chat-backup-'), 'backup.zip')
+    const backup = await createBackupZip(userData, backupOut, { chatTransfer: chat })
+    expect(backup.manifest.files).not.to.have.property('peerchat-incoming.json')
   })
 
   it('returns null when the registry has no decodable drive', async function () {

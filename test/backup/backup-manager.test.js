@@ -2,7 +2,10 @@ import { expect } from 'chai'
 import { EventEmitter } from 'events'
 import os from 'os'
 import path from 'path'
-import { mkdtemp, mkdir, readFile, writeFile } from 'fs/promises'
+import { access, mkdtemp, mkdir, readdir, readFile, writeFile } from 'fs/promises'
+import { createWriteStream } from 'fs'
+import crypto from 'crypto'
+import archiver from 'archiver'
 import sinon from 'sinon'
 import esmock from 'esmock'
 
@@ -16,8 +19,25 @@ async function loadBackupManager (options = {}) {
   const copy = options.copy || sinon.stub().callsFake(async (_src, dest) => {
     await mkdir(dest, { recursive: true })
   })
-  const readManifest = sinon.stub().resolves(manifest)
+  const readManifest = options.readManifest || sinon.stub().resolves(manifest)
   const verifyManifest = options.verifyManifest || sinon.stub().resolves()
+  const trustPrivateDriveHostname = sinon.stub()
+  const exportChatForTransfer = sinon.stub().returns(null)
+  const importChatFromPhone = options.importChatFromPhone || sinon.stub().resolves({ ok: true, added: 0 })
+  const exportP2pmdNotes = options.exportP2pmdNotes || sinon.stub().resolves(null)
+  const importP2pmdNotes = options.importP2pmdNotes || sinon.stub().resolves({ ok: true, added: 0 })
+  const assertMobilePairingAllowed = sinon.stub().resolves(null)
+  const setPairedMobile = sinon.stub().resolves()
+  const isLivePairingNonce = options.isLivePairingNonce || sinon.stub().returns(true)
+  const forgetPairingNonce = sinon.stub()
+  const identityTransfer = {
+    createIdentityTransferZip: sinon.stub(),
+    decodePairingString: sinon.stub().returns({ deviceType: 'desktop', chat: false, notes: false }),
+    decryptIdentityTransferZip: sinon.stub(),
+    extractAndVerifyIdentityPayload: sinon.stub(),
+    isIdentityTransferManifest: sinon.stub().returns(false),
+    ...options.identityTransfer
+  }
   // Relative specifiers, not absolute paths: path.join yields native separators,
   // and esmock fails to detect an ESM module behind a Windows path, falling back
   // to a CommonJS wrapper that expects a default export.
@@ -58,17 +78,15 @@ async function loadBackupManager (options = {}) {
       readManifest,
       verifyManifest
     },
-    [identityTransferPath]: {
-      createIdentityTransferZip: sinon.stub(),
-      decryptIdentityTransferZip: sinon.stub(),
-      extractAndVerifyIdentityPayload: sinon.stub(),
-      isIdentityTransferManifest: sinon.stub().returns(false)
-    },
+    [identityTransferPath]: identityTransfer,
+    '../../src/backup/pairing-sessions.js': { isLivePairingNonce, forgetPairingNonce },
     [encryptedBackupPath]: {
       decryptEncryptedBackupZip: sinon.stub(),
       isEncryptedBackupManifest: sinon.stub().returns(false)
     },
-    [hyperHandlerPath]: { suspendHyper, resumeHyper },
+    [hyperHandlerPath]: { suspendHyper, resumeHyper, trustPrivateDriveHostname, exportChatForTransfer, importChatFromPhone },
+    '../../src/backup/p2pmd-notes.js': { exportP2pmdNotes, importP2pmdNotes },
+    '../../src/backup/mobile-pairing.js': { assertMobilePairingAllowed, setPairedMobile },
     [ipfsHandlerPath]: { suspendIPFS, resumeIPFS }
   }
 
@@ -85,10 +103,78 @@ async function loadBackupManager (options = {}) {
       resumeHyper,
       resumeIPFS,
       suspendHyper,
-      suspendIPFS
+      suspendIPFS,
+      trustPrivateDriveHostname,
+      importChatFromPhone,
+      exportP2pmdNotes,
+      importP2pmdNotes,
+      isLivePairingNonce,
+      forgetPairingNonce,
+      identityTransfer
     },
     workerCalls
   }
+}
+
+// The decrypted inner zip of a transfer from a phone.
+async function writePhoneInnerZip (zipPath, files) {
+  const output = createWriteStream(zipPath)
+  const archive = archiver('zip')
+  const done = new Promise((resolve, reject) => {
+    output.on('close', resolve)
+    archive.on('error', reject)
+  })
+  archive.pipe(output)
+  const listed = {}
+  for (const [name, value] of Object.entries(files)) {
+    const bytes = Buffer.from(JSON.stringify(value))
+    archive.append(bytes, { name })
+    listed[name] = `sha256:${crypto.createHash('sha256').update(bytes).digest('hex')}`
+  }
+  archive.append(JSON.stringify({ version: '1.0.0', source: 'mobile', files: listed }), { name: 'manifest.json' })
+  await archive.finalize()
+  await done
+}
+
+async function exists (filePath) {
+  try {
+    await access(filePath)
+    return true
+  } catch {
+    return false
+  }
+}
+
+const TRANSFER_MANIFEST = { kind: 'peersky-identity-transfer', identityTransfer: { nonce: 'ab'.repeat(16) } }
+
+// A phone transfer as the manager sees it once the outer layer is checked:
+// readManifest answers for the wrapper, then for the decrypted inner zip.
+function phoneTransferOptions (extraFiles = {}) {
+  const readManifest = sinon.stub()
+  readManifest.onFirstCall().resolves(TRANSFER_MANIFEST)
+  readManifest.resolves({ version: '1.0.0', source: 'mobile', files: {} })
+  return {
+    readManifest,
+    identityTransfer: {
+      isIdentityTransferManifest: sinon.stub().callsFake((manifest) => manifest?.kind === 'peersky-identity-transfer'),
+      decryptIdentityTransferZip: sinon.stub().callsFake(async (_userData, _dir, _manifest, innerZipPath) => {
+        await mkdir(path.dirname(innerZipPath), { recursive: true })
+        await writePhoneInnerZip(innerZipPath, {
+          'phone-tabs.json': { version: 1, tabs: [{ url: 'https://t.example/', title: 'T' }] },
+          'phone-bookmarks.json': { version: 1, bookmarks: [{ url: 'https://b.example/', title: 'B', createdAt: 1700000000000 }] },
+          'phone-private-drives.json': { version: 1, drives: [{ driveId: 'e'.repeat(64) }] },
+          ...extraFiles
+        })
+        return { verificationCode: 'ABC123' }
+      })
+    }
+  }
+}
+
+async function downloadedZip () {
+  const zipPath = path.join(await mkdtemp(path.join(os.tmpdir(), 'peersky-bm-dl-')), 'backup.zip')
+  await writeFile(zipPath, 'downloaded')
+  return zipPath
 }
 
 describe('backup-manager', function () {
@@ -97,7 +183,7 @@ describe('backup-manager', function () {
   })
 
   it('leaves P2P services stopped after a successful restore', async function () {
-    const { backupManager, stubs } = await loadBackupManager()
+    const { backupManager, stubs, userData } = await loadBackupManager()
 
     const result = await backupManager.restoreBackup('/tmp/backup.zip')
 
@@ -106,6 +192,8 @@ describe('backup-manager', function () {
     expect(stubs.suspendIPFS.calledOnce).to.equal(true)
     expect(stubs.resumeHyper.called).to.equal(false)
     expect(stubs.resumeIPFS.called).to.equal(false)
+    // A backup is this same desktop again, on the keys it had.
+    expect(await exists(path.join(userData, 'peersky-network-keys.json'))).to.equal(false)
   })
 
   it('resumes P2P services when restore fails before data is applied', async function () {
@@ -197,6 +285,235 @@ describe('backup-manager', function () {
     expect(error?.code).to.equal('ENOENT')
     expect(await readFile(path.join(userData, 'tabs.json'), 'utf-8')).to.equal('live tabs')
     expect(await readFile(path.join(userData, 'lastOpened.json'), 'utf-8')).to.equal('live window')
+  })
+
+  it('stages tabs and bookmarks from a phone with its code, and adds them without a restart', async function () {
+    const { backupManager, userData, stubs } = await loadBackupManager(phoneTransferOptions())
+    await writeFile(path.join(userData, 'bookmarks.json'), JSON.stringify([
+      { url: 'https://mine.example/', title: 'Mine', dateAdded: '2025-01-01T00:00:00.000Z' }
+    ]))
+    const zipPath = await downloadedZip()
+
+    const staged = await backupManager.stageRestore(zipPath)
+    expect(staged).to.include({ kind: 'phone', verificationCode: 'ABC123', tabs: 1, bookmarks: 1, privateDrives: 1 })
+    expect(stubs.isLivePairingNonce.calledWith('ab'.repeat(16))).to.equal(true)
+    // Nothing is decided yet: the download is gone, the profile untouched.
+    expect(await exists(zipPath)).to.equal(false)
+    expect(JSON.parse(await readFile(path.join(userData, 'bookmarks.json'), 'utf8'))).to.have.length(1)
+    // A phone's tabs are read into memory; nothing decrypted is left on disk.
+    expect((await readdir(userData)).filter((name) => name.startsWith('.peersky-incoming-'))).to.deep.equal([])
+
+    const openTabs = sinon.stub()
+    const result = await backupManager.applyStaged(staged.stageId, { openTabs })
+    expect(result).to.deep.include({ success: true, requiresRestart: false })
+    expect(result.added).to.deep.equal({ tabs: 1, bookmarks: 1, privateDrives: 1, chatRooms: 0, notes: 0 })
+    expect(stubs.importChatFromPhone.called).to.equal(false)
+    expect(stubs.importP2pmdNotes.called).to.equal(false)
+    expect(openTabs.calledOnceWith([{ url: 'https://t.example/', title: 'T' }])).to.equal(true)
+    expect(JSON.parse(await readFile(path.join(userData, 'bookmarks.json'), 'utf8')).map((b) => b.url))
+      .to.deep.equal(['https://mine.example/', 'https://b.example/'])
+    expect(stubs.trustPrivateDriveHostname.calledOnce).to.equal(true)
+    expect(stubs.forgetPairingNonce.calledWith('ab'.repeat(16))).to.equal(true)
+    expect(stubs.suspendHyper.called).to.equal(false)
+
+    // Used once: the same stage cannot be applied again.
+    const again = await backupManager.applyStaged(staged.stageId).catch((error) => error)
+    expect(again.message).to.match(/no longer waiting/)
+  })
+
+  it('shows the PeerChat name and rooms a phone sends, and hands them to PeerChat once confirmed', async function () {
+    const chat = { version: 1, label: 'desktop', link: { key: 'ab'.repeat(32) }, profile: { username: 'ada' }, rooms: [{ roomKey: 'aa'.repeat(32) }, { roomKey: 'bb'.repeat(32) }] }
+    const importChatFromPhone = sinon.stub().resolves({ ok: true, added: 1, label: 'desktop' })
+    const { backupManager } = await loadBackupManager({ ...phoneTransferOptions({ 'phone-peerchat.json': chat }), importChatFromPhone })
+
+    const staged = await backupManager.stageRestore(await downloadedZip())
+    expect(staged).to.include({ chatRooms: 2, chatName: 'ada' })
+    expect(importChatFromPhone.called).to.equal(false)
+
+    const result = await backupManager.applyStaged(staged.stageId, { openTabs: async () => 1 })
+    expect(importChatFromPhone.calledOnce).to.equal(true)
+    expect(importChatFromPhone.firstCall.args[0]).to.deep.include({ label: 'desktop' })
+    expect(result.added.chatRooms).to.equal(1)
+  })
+
+  it('shows how many P2PMD notes a phone sends, and hands them to P2PMD once confirmed', async function () {
+    const notes = {
+      version: 1,
+      name: 'Bea',
+      notes: [{ key: `hs://${'q'.repeat(52)}`, role: 'host', content: '# Trip' }, { key: 'not a key', role: 'client' }]
+    }
+    const importP2pmdNotes = sinon.stub().resolves({ ok: true, added: 1 })
+    const { backupManager } = await loadBackupManager({ ...phoneTransferOptions({ 'phone-p2pmd.json': notes }), importP2pmdNotes })
+
+    const staged = await backupManager.stageRestore(await downloadedZip())
+    expect(staged).to.include({ notes: 1 })
+    expect(importP2pmdNotes.called).to.equal(false)
+
+    const result = await backupManager.applyStaged(staged.stageId, { openTabs: async () => 1 })
+    expect(importP2pmdNotes.calledOnce).to.equal(true)
+    expect(importP2pmdNotes.firstCall.args[0].notes.map((note) => note.key)).to.deep.equal([`hs://${'q'.repeat(52)}`])
+    expect(result.added.notes).to.equal(1)
+  })
+
+  it('reads P2PMD notes only for a phone whose code says it takes them, before the stores close', async function () {
+    const notes = { version: 1, name: 'Ada', notes: [] }
+    const cases = [
+      [{ deviceType: 'mobile', notes: true }, notes],
+      [{ deviceType: 'mobile', notes: false }, null],
+      [{ deviceType: 'desktop', notes: true }, null]
+    ]
+    for (const [pairing, expected] of cases) {
+      const exportP2pmdNotes = sinon.stub().resolves(notes)
+      const { backupManager, stubs } = await loadBackupManager({
+        exportP2pmdNotes,
+        identityTransfer: {
+          decodePairingString: sinon.stub().returns(pairing),
+          createIdentityTransferZip: sinon.stub().resolves({ bytes: 1 })
+        }
+      })
+      await backupManager.createIdentityTransferBackup(path.join(os.tmpdir(), 'unused.zip'), { targetPairingPayload: 'code' })
+      const options = stubs.identityTransfer.createIdentityTransferZip.firstCall.args[2]
+      expect(options.notes).to.deep.equal(expected)
+      if (expected) {
+        expect(exportP2pmdNotes.calledBefore(stubs.suspendHyper)).to.equal(true)
+      } else {
+        expect(exportP2pmdNotes.called).to.equal(false)
+      }
+    }
+  })
+
+  it('counts only the phone tabs that were opened, not those already open here', async function () {
+    const { backupManager } = await loadBackupManager(phoneTransferOptions())
+    const staged = await backupManager.stageRestore(await downloadedZip())
+    expect(staged.tabs).to.equal(1)
+
+    // The page was already open, so the window opened none of them.
+    const result = await backupManager.applyStaged(staged.stageId, { openTabs: async () => 0 })
+    expect(result.added.tabs).to.equal(0)
+  })
+
+  it('refuses a transfer made for a code this desktop is not showing, before decrypting it', async function () {
+    const options = phoneTransferOptions()
+    const { backupManager, stubs } = await loadBackupManager({ ...options, isLivePairingNonce: sinon.stub().returns(false) })
+    const zipPath = await downloadedZip()
+
+    const error = await backupManager.stageRestore(zipPath).catch((caught) => caught)
+    expect(error.message).to.match(/code this desktop is no longer showing/)
+    expect(stubs.identityTransfer.decryptIdentityTransferZip.called).to.equal(false)
+    expect(await exists(zipPath)).to.equal(false)
+  })
+
+  it('shows the code of a transfer from another desktop, and replaces the profile only once confirmed', async function () {
+    const readManifest = sinon.stub()
+    readManifest.onFirstCall().resolves(TRANSFER_MANIFEST)
+    readManifest.resolves({ version: '1.0.0', files: { 'tabs.json': 'sha256:test' } })
+    const { backupManager, userData, stubs } = await loadBackupManager({
+      readManifest,
+      identityTransfer: {
+        isIdentityTransferManifest: sinon.stub().callsFake((manifest) => manifest?.kind === 'peersky-identity-transfer'),
+        decryptIdentityTransferZip: sinon.stub().resolves({ verificationCode: 'DEF456' }),
+        extractAndVerifyIdentityPayload: sinon.stub().resolves({ files: { 'tabs.json': 'sha256:test' } })
+      }
+    })
+    await writeFile(path.join(userData, 'tabs.json'), 'live tabs')
+
+    const staged = await backupManager.stageRestore(await downloadedZip())
+    expect(staged).to.deep.include({ kind: 'transfer', verificationCode: 'DEF456', contents: ['tabs.json'] })
+    expect(stubs.suspendHyper.called).to.equal(false)
+    expect(await readFile(path.join(userData, 'tabs.json'), 'utf8')).to.equal('live tabs')
+
+    const result = await backupManager.applyStaged(staged.stageId)
+    expect(result).to.include({ success: true, requiresRestart: true })
+    expect(stubs.suspendHyper.calledOnce).to.equal(true)
+    expect(stubs.resumeHyper.called).to.equal(false)
+    expect(stubs.forgetPairingNonce.calledWith('ab'.repeat(16))).to.equal(true)
+    // The other desktop's stores came with its network keys. This one
+    // connects with its own from the restart on.
+    expect(await exists(path.join(userData, 'peersky-network-keys.json'))).to.equal(true)
+  })
+
+  it('holds a backup download until the person says to restore it', async function () {
+    const { backupManager } = await loadBackupManager()
+    const zipPath = await downloadedZip()
+
+    const staged = await backupManager.stageRestore(zipPath)
+    expect(staged).to.include({ kind: 'backup', encrypted: false })
+    expect(await exists(zipPath)).to.equal(true)
+
+    backupManager.discardStaged('some other id')
+    expect(await exists(zipPath)).to.equal(true)
+
+    const result = await backupManager.applyStaged(staged.stageId)
+    expect(result).to.include({ success: true, requiresRestart: true })
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(await exists(zipPath)).to.equal(false)
+  })
+
+  it('a cancel drops what was fetched', async function () {
+    const { backupManager } = await loadBackupManager()
+    const zipPath = await downloadedZip()
+    const staged = await backupManager.stageRestore(zipPath)
+
+    backupManager.discardStaged(staged.stageId)
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(await exists(zipPath)).to.equal(false)
+    const error = await backupManager.applyStaged(staged.stageId).catch((caught) => caught)
+    expect(error.message).to.match(/no longer waiting/)
+  })
+
+  it('says where to add a phone\'s tabs when one is opened as a backup', async function () {
+    const options = phoneTransferOptions()
+    const { backupManager, stubs } = await loadBackupManager(options)
+
+    const error = await backupManager.restoreBackup('/tmp/backup.zip').catch((caught) => caught)
+    expect(error.message).to.match(/tabs and bookmarks from a phone, not a backup/)
+    expect(stubs.resumeHyper.calledOnce).to.equal(true)
+  })
+
+  it('a stage being put in place is not dropped by a cancel, or replaced by a new fetch', async function () {
+    let finishRestore
+    const copy = sinon.stub().callsFake(async (_src, dest) => {
+      await new Promise((resolve) => { finishRestore = resolve })
+      await mkdir(dest, { recursive: true })
+    })
+    const readManifest = sinon.stub()
+    readManifest.onFirstCall().resolves(TRANSFER_MANIFEST)
+    readManifest.resolves({ version: '1.0.0', files: { 'tabs.json': 'sha256:test' } })
+    const { backupManager } = await loadBackupManager({
+      copy,
+      readManifest,
+      identityTransfer: {
+        isIdentityTransferManifest: sinon.stub().callsFake((manifest) => manifest?.kind === 'peersky-identity-transfer'),
+        decryptIdentityTransferZip: sinon.stub().resolves({ verificationCode: 'DEF456' }),
+        extractAndVerifyIdentityPayload: sinon.stub().callsFake(async (_zip, dir) => {
+          await mkdir(path.join(dir, 'tabs.json'), { recursive: true })
+          return { files: { 'tabs.json': 'sha256:test' } }
+        })
+      }
+    })
+
+    const staged = await backupManager.stageRestore(await downloadedZip())
+    const applying = backupManager.applyStaged(staged.stageId)
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    backupManager.discardStaged(staged.stageId)
+    const second = await backupManager.stageRestore(await downloadedZip()).catch((error) => error)
+    expect(second.message).to.match(/Still putting the last restore in place/)
+
+    finishRestore()
+    const result = await applying
+    expect(result).to.include({ success: true, requiresRestart: true })
+    expect(backupManager.staged).to.equal(null)
+  })
+
+  it('clears staging a crash left behind', async function () {
+    const { backupManager, userData } = await loadBackupManager()
+    await mkdir(path.join(userData, '.peersky-incoming-abc123', 'inner'), { recursive: true })
+    await writeFile(path.join(userData, 'tabs.json'), 'live tabs')
+
+    await backupManager.clearLeftoverStaging()
+    expect(await exists(path.join(userData, '.peersky-incoming-abc123'))).to.equal(false)
+    expect(await exists(path.join(userData, 'tabs.json'))).to.equal(true)
   })
 
   it('marks drives new to this device as adopted after a restore', async function () {

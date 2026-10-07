@@ -18,6 +18,7 @@ export const MANIFEST_NAME = 'manifest.json'
 export const STANDARD_BACKUP_TARGETS = [
   { name: 'lastOpened.json', type: 'file' },
   { name: 'tabs.json', type: 'file' },
+  { name: 'bookmarks.json', type: 'file' },
   { name: 'ensCache.json', type: 'file' },
   { name: 'ipfsCache.json', type: 'file' },
   { name: 'hyperCache.json', type: 'file' },
@@ -29,12 +30,13 @@ export const STANDARD_BACKUP_TARGETS = [
 
 export const IDENTITY_BACKUP_TARGETS = STANDARD_BACKUP_TARGETS
 
+// Only what a phone keeps. It merges the tabs and bookmarks into its own and
+// keeps the identity; the rest of a desktop profile means nothing there.
+// hyper/ in particular is this desktop's own corestore, which can run to
+// gigabytes, and the phone threw it away on arrival.
 export const MOBILE_IDENTITY_BACKUP_TARGETS = [
-  { name: 'lastOpened.json', type: 'file' },
   { name: 'tabs.json', type: 'file' },
-  { name: 'hyper', type: 'dir' },
-  { name: 'peersky-chat-rooms.json', type: 'file' },
-  { name: 'peersky-ports.json', type: 'file' },
+  { name: 'bookmarks.json', type: 'file' },
   { name: 'peersky-identity.json', type: 'file' }
 ]
 
@@ -43,10 +45,19 @@ export const PRIVATE_HYPER_BACKUP_TARGETS = [
   { name: 'hyper-private', type: 'dir' }
 ]
 
+// A person's PeerChat for another of their devices: the profile, every room
+// with its key, the link their devices share and the label this one takes.
+// PeerChat reads it once on its next start (CHAT_INCOMING in its p2p.js).
+export const CHAT_TRANSFER_FILE = 'peerchat-incoming.json'
+
+// A person's recent P2PMD notes, for their phone (p2pmd-notes.js).
+export const NOTES_TRANSFER_FILE = 'p2pmd-incoming.json'
+
 const RESTORABLE_BACKUP_TARGETS = [
   ...IDENTITY_BACKUP_TARGETS,
   ...PRIVATE_HYPER_BACKUP_TARGETS,
-  { name: PRIVATE_DRIVE_KEY_FILE, type: 'file' }
+  { name: PRIVATE_DRIVE_KEY_FILE, type: 'file' },
+  { name: CHAT_TRANSFER_FILE, type: 'file' }
 ]
 
 // Skip live DB lock/log files. CORESTORE is left in to stabilize manifest
@@ -258,13 +269,26 @@ export async function createBackupZip (userDataDir, outPath, options = {}) {
 
     if (includePrivate) {
       const keyBytes = await buildPrivateDriveKeyExport(userDataDir, Date.now(), {
-        mobileSafe: isIdentityTransfer && targetDeviceType === 'mobile'
+        forPhone: isIdentityTransfer && targetDeviceType === 'mobile'
       })
       if (keyBytes) {
         manifest.files[PRIVATE_DRIVE_KEY_FILE] = `sha256:${hashPrivateDriveKeyExport(keyBytes)}`
         archive.append(keyBytes, { name: PRIVATE_DRIVE_KEY_FILE })
         uncompressedBytes += keyBytes.length
       }
+    }
+
+    // Only in a transfer: a backup is restored on the same device, and its
+    // own chat file is already in it.
+    if (isIdentityTransfer && Buffer.isBuffer(options.chatTransfer)) {
+      manifest.files[CHAT_TRANSFER_FILE] = `sha256:${crypto.createHash('sha256').update(options.chatTransfer).digest('hex')}`
+      archive.append(options.chatTransfer, { name: CHAT_TRANSFER_FILE })
+      uncompressedBytes += options.chatTransfer.length
+    }
+    if (isIdentityTransfer && Buffer.isBuffer(options.notesTransfer)) {
+      manifest.files[NOTES_TRANSFER_FILE] = `sha256:${crypto.createHash('sha256').update(options.notesTransfer).digest('hex')}`
+      archive.append(options.notesTransfer, { name: NOTES_TRANSFER_FILE })
+      uncompressedBytes += options.notesTransfer.length
     }
 
     const manifestBytes = Buffer.from(JSON.stringify(manifest, null, 2))

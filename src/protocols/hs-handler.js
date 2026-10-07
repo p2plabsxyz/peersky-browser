@@ -173,7 +173,55 @@ function toSeedBuffer (seed) {
   return buffer
 }
 
+/**
+ * How to host a note again at the address it already has.
+ *
+ * A private note's key is the secret its seed is hashed from, so the key alone
+ * brings the note back. A public note's key is its public key, which gives no
+ * seed, so the seed saved when it was made is put back instead. Putting a seed
+ * back on a private note left Holesail to make up a key of its own: the note
+ * stayed reachable at its real address, but this computer took the made-up one
+ * as the note's address and saved edits and line authors under it, where the
+ * next open never looked. A private key is never hosted in the open either.
+ */
+export function rehostPlan (key, { secure = null, savedSeed = null } = {}) {
+  const keyIsPrivate = Holesail.urlParser(key).secure === true
+  const seed = keyIsPrivate ? null : (savedSeed || null)
+  return {
+    secure: keyIsPrivate || secure === true,
+    key: seed ? null : key,
+    seed
+  }
+}
+
 // SECURITY: Redact sensitive data for logging
+const CLIENT_PROXY_BIND_MS = 3000
+
+// Whether a Holesail client's local proxy came up. It keeps an error listener
+// for good, so a later failure is logged rather than thrown.
+export function waitForClientProxy (instance, timeoutMs = CLIENT_PROXY_BIND_MS) {
+  const client = instance?.dht
+  const proxy = client?.proxy
+  if (!proxy || typeof proxy.on !== 'function') return Promise.resolve({ ok: true })
+  proxy.on('error', (error) => {
+    log.error('[p2pmd] Local proxy error:', error?.message || error)
+  })
+  if (client.state === 'listening') return Promise.resolve({ ok: true })
+
+  return new Promise((resolve) => {
+    let settled = false
+    const finish = (result) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve(result)
+    }
+    const timer = setTimeout(() => finish({ ok: true }), timeoutMs)
+    proxy.once('listening', () => finish({ ok: true }))
+    proxy.once('error', (error) => finish({ ok: false, error, port: client.args?.port }))
+  })
+}
+
 function redactKey (key) {
   if (!key || typeof key !== 'string') return null
   return key.length > 10 ? `${key.slice(0, 10)}...` : key
@@ -306,7 +354,11 @@ function getPeerCount (session) {
   return count
 }
 
-function getPeerList (session) {
+// changedOnly: line authors only for the people whose authors changed since
+// the last list went out. Editors merge each list into what they have, so a
+// list without someone's authors takes nothing away. Anyone connecting gets
+// everyone's in full when their stream opens.
+function getPeerList (session, { changedOnly = false } = {}) {
   const now = Date.now()
   return Array.from(session.sseClients.values())
     .sort((a, b) => {
@@ -334,9 +386,28 @@ function getPeerList (session) {
         selectionEnd: Number.isFinite(Number(client.selectionEnd)) ? Number(client.selectionEnd) : null,
         joinedAt: Number.isFinite(Number(client.joinedAt)) ? Number(client.joinedAt) : Date.now(),
         updatedAt: Number.isFinite(Number(client.updatedAt)) ? Number(client.updatedAt) : Date.now(),
-        lineAttributions: client.lineAttributions || null
+        lineAttributions: changedOnly && !lineAttributionsUnsent(client)
+          ? null
+          : (client.lineAttributions || null)
       }
     })
+}
+
+function lineAttributionsUnsent (client) {
+  return (client.lineAttributionsVersion || 0) !== (client.lineAttributionsSentVersion || 0)
+}
+
+// The sender's own lines. The phone's editor sends the whole note's authors
+// as lineAttributions, which its own host keeps for the note, and its own lines
+// as peerLineAttributions; the desktop editor sends only its own, as
+// lineAttributions. Reading lineAttributions as a phone's own filed everyone's
+// lines under that phone, and the phone then showed them as written on it.
+function senderLineAttributions (parsed) {
+  return parsed?.peerLineAttributions ?? parsed?.lineAttributions
+}
+
+function markLineAttributionsChanged (target) {
+  target.lineAttributionsVersion = (target.lineAttributionsVersion || 0) + 1
 }
 
 function findClientByClientId (session, clientId) {
@@ -423,29 +494,38 @@ function mergeLineAttributions (target, lineAttributions, fallbackName = '') {
   if (!target || !lineAttributions || typeof lineAttributions !== 'object') return
   if (!target.lineAttributions) target.lineAttributions = {}
   const fallback = sanitizePeerName(fallbackName || '')
+  let changed = false
   for (const [line, info] of Object.entries(lineAttributions)) {
     const lineNum = Number(line)
     if (!Number.isFinite(lineNum) || lineNum < 1) continue
     if (!info || typeof info !== 'object' || typeof info.color !== 'string') continue
     const incomingName = sanitizePeerName(typeof info.name === 'string' ? info.name : '')
-    target.lineAttributions[String(Math.floor(lineNum))] = {
-      name: incomingName || fallback,
-      color: info.color
-    }
+    const key = String(Math.floor(lineNum))
+    const next = { name: incomingName || fallback, color: info.color }
+    const current = target.lineAttributions[key]
+    // An editor sends all its lines every time, so only a real change counts.
+    if (current && current.name === next.name && current.color === next.color) continue
+    target.lineAttributions[key] = next
+    changed = true
   }
+  if (changed) markLineAttributionsChanged(target)
 }
 
 function renameLineAttributionOwner (target, nextName) {
   if (!target || !target.lineAttributions || typeof target.lineAttributions !== 'object') return
   const sanitized = sanitizePeerName(nextName || '')
   if (!sanitized) return
+  let changed = false
   for (const [line, info] of Object.entries(target.lineAttributions)) {
     if (!info || typeof info !== 'object' || typeof info.color !== 'string') continue
+    if (info.name === sanitized) continue
     target.lineAttributions[line] = {
       name: sanitized,
       color: info.color
     }
+    changed = true
   }
+  if (changed) markLineAttributionsChanged(target)
 }
 
 function markEditedLineAttribution (session, actor, cursorLine) {
@@ -458,13 +538,18 @@ function markEditedLineAttribution (session, actor, cursorLine) {
     if (!client || client === actor || !client.lineAttributions) continue
     if (Object.prototype.hasOwnProperty.call(client.lineAttributions, lineKey)) {
       delete client.lineAttributions[lineKey]
+      markLineAttributionsChanged(client)
     }
   }
   if (!actor.lineAttributions) actor.lineAttributions = {}
-  actor.lineAttributions[lineKey] = {
+  const next = {
     name: getPeerDisplayName(actor),
     color: actor.color || getPeerColor(actor.clientId || actor.id)
   }
+  const current = actor.lineAttributions[lineKey]
+  if (current && current.name === next.name && current.color === next.color) return
+  actor.lineAttributions[lineKey] = next
+  markLineAttributionsChanged(actor)
 }
 
 function getOrCreateUnknownPeerId (session, sourceKey = '') {
@@ -552,10 +637,40 @@ function broadcastPeers (session) {
 }
 
 function broadcastPeerList (session) {
-  const payload = JSON.stringify(getPeerList(session))
+  if (session.peerListTimer) {
+    clearTimeout(session.peerListTimer)
+    session.peerListTimer = null
+  }
+  // A long note worked on by many people carries thousands of line authors,
+  // and sending them all with every list kept 100 people at 300 KB a second
+  // each.
+  const payload = JSON.stringify(getPeerList(session, { changedOnly: true }))
   for (const client of session.sseClients.values()) {
+    client.lineAttributionsSentVersion = client.lineAttributionsVersion || 0
     client.res.write(`event: peerlist\ndata: ${payload}\n\n`)
   }
+}
+
+// Typing and cursor moves come several times a second from each person, and
+// the list carries everyone in the note, so sending it on each one grew with
+// the square of the room: 100 people, 10 of them typing, was 334 MB a second
+// out of the host. It goes out four times a second, and less often in a big
+// room, where nobody follows every cursor: once a second at 100 people. Joins
+// and leaves still go out at once.
+const PEER_LIST_INTERVAL_MS = 250
+const PEER_LIST_MS_PER_PERSON = 10
+
+function peerListInterval (session) {
+  return Math.max(PEER_LIST_INTERVAL_MS, session.sseClients.size * PEER_LIST_MS_PER_PERSON)
+}
+
+function schedulePeerListBroadcast (session) {
+  if (session.peerListTimer) return
+  session.peerListTimer = setTimeout(() => {
+    session.peerListTimer = null
+    broadcastPeerList(session)
+  }, peerListInterval(session))
+  session.peerListTimer.unref?.()
 }
 
 function broadcastActivity (session, activity) {
@@ -1130,13 +1245,12 @@ function handleDocRequest (req, res, session) {
           if (cursorColumn !== null) actor.cursorColumn = cursorColumn
           if (selectionStart !== null) actor.selectionStart = selectionStart
           if (selectionEnd !== null) actor.selectionEnd = selectionEnd
-          mergeLineAttributions(actor, parsed.lineAttributions, getPeerDisplayName(actor))
-          markEditedLineAttribution(session, actor, cursorLine !== null ? cursorLine : actor.cursorLine)
+          mergeLineAttributions(actor, senderLineAttributions(parsed), getPeerDisplayName(actor))
           actor.isTyping = true
           actor.lastTypingAt = Date.now()
           actor.updatedAt = actor.lastTypingAt
           syncPeerMetaFromActor(session, actor)
-          broadcastPeerList(session)
+          schedulePeerListBroadcast(session)
         } else if (clientId) {
           const peerMeta = getOrCreatePeerMeta(session, clientId, {
             role: 'client',
@@ -1146,9 +1260,9 @@ function handleDocRequest (req, res, session) {
             cursorColumn
           })
           // Merge line attributions even for peers without SSE connection yet
-          if (peerMeta && parsed.lineAttributions) {
+          if (peerMeta && senderLineAttributions(parsed)) {
             if (!peerMeta.lineAttributions) peerMeta.lineAttributions = {}
-            mergeLineAttributions(peerMeta, parsed.lineAttributions, getPeerDisplayName(peerMeta))
+            mergeLineAttributions(peerMeta, senderLineAttributions(parsed), getPeerDisplayName(peerMeta))
           }
         }
         if (!base64) {
@@ -1166,40 +1280,51 @@ function handleDocRequest (req, res, session) {
         }
 
         const beforeContent = session.ytext.toString()
-        let usedTextFallback = false
+        // Only what this update changed goes out. Sending the whole note after
+        // every edit grew with the note and the room: ten people in a 100 KB
+        // note each received 2.7 MB a second, and every device merged the
+        // whole note each time. Anyone joining or reconnecting is sent the
+        // whole note when their stream opens, so a change is all an editor
+        // ever lacks.
+        let delta = null
+        const collectDelta = (update) => { delta = delta ? Y.mergeUpdates([delta, update]) : update }
+        session.ydoc.on('update', collectDelta)
         try {
-          Y.applyUpdate(session.ydoc, updateBytes, 'client-update')
-        } catch (applyErr) {
-          console.warn('[p2pmd] /doc/update: Y.applyUpdate rejected payload:', applyErr.message)
-          // Fallback path: if client sends full text, reconcile using text diff.
-          if (typeof fullText === 'string') {
-            try {
-              applyTextDiffToYText(session.ytext, beforeContent, fullText)
-              usedTextFallback = true
-            } catch (fallbackErr) {
-              console.warn('[p2pmd] /doc/update fallback failed:', fallbackErr.message)
+          try {
+            Y.applyUpdate(session.ydoc, updateBytes, 'client-update')
+          } catch (applyErr) {
+            console.warn('[p2pmd] /doc/update: Y.applyUpdate rejected payload:', applyErr.message)
+            // Fallback path: if client sends full text, reconcile using text diff.
+            if (typeof fullText === 'string') {
+              try {
+                applyTextDiffToYText(session.ytext, beforeContent, fullText)
+              } catch (fallbackErr) {
+                console.warn('[p2pmd] /doc/update fallback failed:', fallbackErr.message)
+                res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
+                res.end(JSON.stringify({ ok: false, error: 'Invalid Yjs update payload' }))
+                return
+              }
+            } else {
               res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
               res.end(JSON.stringify({ ok: false, error: 'Invalid Yjs update payload' }))
               return
             }
-          } else {
-            res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
-            res.end(JSON.stringify({ ok: false, error: 'Invalid Yjs update payload' }))
-            return
           }
+        } finally {
+          session.ydoc.off('update', collectDelta)
         }
         const afterContent = session.ytext.toString()
 
         const contentChanged = beforeContent !== afterContent
         session.docState.content = afterContent
         session.docState.updatedAt = Date.now()
+        // A line is someone's once they change it. An update that changed no
+        // text, such as a sync on joining, gave whoever sent it the line under
+        // their cursor, and took it from whoever wrote it.
+        if (contentChanged && actor) markEditedLineAttribution(session, actor, cursorLine !== null ? cursorLine : actor.cursorLine)
 
-        // Broadcast canonical server state after any content change so
-        // reconnecting/diverged clients can re-converge safely.
-        if (usedTextFallback || contentChanged) {
-          const stateBytes = Y.encodeStateAsUpdate(session.ydoc)
-          const stateBase64 = Buffer.from(stateBytes).toString('base64')
-          broadcastYjsUpdate(session, stateBase64)
+        if (delta) broadcastYjsUpdate(session, Buffer.from(delta).toString('base64'))
+        if (contentChanged) {
           scheduleEditActivity(session, {
             clientId,
             peerId: actor?.id || null,
@@ -1258,13 +1383,12 @@ function handleDocRequest (req, res, session) {
           if (cursorColumn !== null) actor.cursorColumn = cursorColumn
           if (selectionStart !== null) actor.selectionStart = selectionStart
           if (selectionEnd !== null) actor.selectionEnd = selectionEnd
-          mergeLineAttributions(actor, parsed.lineAttributions, getPeerDisplayName(actor))
-          markEditedLineAttribution(session, actor, cursorLine !== null ? cursorLine : actor.cursorLine)
+          mergeLineAttributions(actor, senderLineAttributions(parsed), getPeerDisplayName(actor))
           actor.isTyping = true
           actor.lastTypingAt = Date.now()
           actor.updatedAt = actor.lastTypingAt
           syncPeerMetaFromActor(session, actor)
-          broadcastPeerList(session)
+          schedulePeerListBroadcast(session)
         } else if (clientId) {
           const peerMeta = getOrCreatePeerMeta(session, clientId, {
             role: 'client',
@@ -1274,14 +1398,15 @@ function handleDocRequest (req, res, session) {
             cursorColumn
           })
           // Merge line attributions even for peers without SSE connection yet
-          if (peerMeta && parsed.lineAttributions) {
+          if (peerMeta && senderLineAttributions(parsed)) {
             if (!peerMeta.lineAttributions) peerMeta.lineAttributions = {}
-            mergeLineAttributions(peerMeta, parsed.lineAttributions, getPeerDisplayName(peerMeta))
+            mergeLineAttributions(peerMeta, senderLineAttributions(parsed), getPeerDisplayName(peerMeta))
           }
         }
         const beforeContent = session.ydoc && session.ytext ? session.ytext.toString() : session.docState.content
         session.docState.content = content
         session.docState.updatedAt = Date.now()
+        if (beforeContent !== content && actor) markEditedLineAttribution(session, actor, cursorLine !== null ? cursorLine : actor.cursorLine)
         if (session.ydoc && session.ytext) {
           const current = session.ytext.toString()
           if (current !== content) {
@@ -1373,7 +1498,8 @@ function handleDocRequest (req, res, session) {
       lastTypingAt: 0,
       lastEditAt: 0,
       // Preserve lineAttributions from peerMeta if available (fixes host reconnection bug)
-      lineAttributions: peerMeta?.lineAttributions || {}
+      lineAttributions: peerMeta?.lineAttributions || {},
+      lineAttributionsVersion: 1
     }
     session.sseClients.set(res, peerState)
     syncPeerMetaFromActor(session, peerState)
@@ -1486,7 +1612,7 @@ function handleDocRequest (req, res, session) {
             color: nextColor,
             cursorLine: parsed.cursorLine,
             cursorColumn: parsed.cursorColumn,
-            lineAttributions: parsed.lineAttributions
+            lineAttributions: senderLineAttributions(parsed)
           })
           : null
         if (!actor && !peerMeta) {
@@ -1502,7 +1628,7 @@ function handleDocRequest (req, res, session) {
         if (actor) actor.role = normalizePeerRole(parsed.role || actor.role || 'client')
         const nextTyping = parsed.isTyping === true
         if (actor) {
-          mergeLineAttributions(actor, parsed.lineAttributions, getPeerDisplayName(actor))
+          mergeLineAttributions(actor, senderLineAttributions(parsed), getPeerDisplayName(actor))
           actor.isTyping = nextTyping
           if (nextTyping) {
             actor.lastTypingAt = Date.now()
@@ -1515,7 +1641,7 @@ function handleDocRequest (req, res, session) {
           syncPeerMetaFromActor(session, actor)
         }
 
-        broadcastPeerList(session)
+        schedulePeerListBroadcast(session)
         res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
         res.end(JSON.stringify({ ok: true }))
       } catch {
@@ -1535,6 +1661,10 @@ function handleDocRequest (req, res, session) {
 
 async function stopDocServer (session) {
   if (!session?.server) return
+  if (session.peerListTimer) {
+    clearTimeout(session.peerListTimer)
+    session.peerListTimer = null
+  }
   if (session.editLogTimers && session.editLogTimers.size > 0) {
     for (const timer of session.editLogTimers.values()) {
       clearTimeout(timer)
@@ -1796,8 +1926,9 @@ export async function createHandler () {
       if (!key) {
         return buildJsonResponse(400, { error: 'Missing key' })
       }
-      const parsedKey = Holesail.urlParser(key)
-      const secure = body.secure === undefined ? parsedKey.secure === true : parseBoolean(body.secure, true)
+      const secure = rehostPlan(key, {
+        secure: body.secure === undefined ? null : parseBoolean(body.secure, true)
+      }).secure
       const udp = parseBoolean(body.udp, false)
       const host = normalizeHost(body.host)
       const port = normalizePort(body.port)
@@ -1823,20 +1954,20 @@ export async function createHandler () {
       // Keep Y.Doc with peer edits if it exists
       initSessionCrdt(sessionState, sessionState.docState.content, initialYjsState, true)
 
-      // Use localhost for holesail and restore original seed for same room URL
+      // Use localhost for holesail, at the note's own address (rehostPlan).
       const savedReHostEntry = roomPorts.get(key) || null
-      const savedSeedBuffer = toSeedBuffer(savedReHostEntry?.seed)
+      const plan = rehostPlan(key, { secure, savedSeed: toSeedBuffer(savedReHostEntry?.seed) })
       const holesailServer = new Holesail({
         server: true,
-        secure,
+        secure: plan.secure,
         udp,
         host: '127.0.0.1',
         port: boundPort,
-        ...(savedSeedBuffer ? {} : { key }),
+        ...(plan.key ? { key: plan.key } : {}),
         log: 1
       })
-      if (savedSeedBuffer) {
-        holesailServer.seed = savedSeedBuffer
+      if (plan.seed) {
+        holesailServer.seed = plan.seed
       }
       await holesailServer.ready()
       const roomKey = holesailServer.info?.url || key
@@ -1900,6 +2031,10 @@ export async function createHandler () {
       const host = hostValue ? normalizeHost(hostValue) : null
       const keyPort = parsedKey?.port || null
       const port = keyPort || extractedPort || portInput || null
+      // A note on more than one of the person's devices is looked for on the
+      // others before it is hosted here, so this join must only join. The page
+      // hosts its own copy when nobody answers.
+      const joinOnly = body.joinOnly === true
       log.info('[p2pmd] join request', { key: redactKey(key), port })
 
       // If this room already has a running holesail server, don't destroy it.
@@ -1913,16 +2048,17 @@ export async function createHandler () {
           key,
           localHost: responseHost,
           localPort: sessionState.port,
-          localUrl
+          localUrl,
+          hosted: true
         })
       }
 
       // If this device has a saved port+seed for this room (creator), automatically rehost on the same port with the same seed
       const savedEntry = roomPorts.get(key) || null
-      const resolvedSecure = secure === null ? (parsedKey.secure === true) : secure
+      const resolvedSecure = rehostPlan(key, { secure }).secure
       const resolvedUdp = udp === null ? parseBoolean(parsedKey.udp, false) : udp
       const savedSeedBuffer = savedEntry?.seed ? Buffer.from(savedEntry.seed, 'hex') : null
-      if (savedSeedBuffer && !sessionState?.holesailServer && !sessionState?.holesailClient) {
+      if (!joinOnly && savedSeedBuffer && !sessionState?.holesailServer && !sessionState?.holesailClient) {
         if (!sessionState) {
           sessionState = createSession(key)
           roomSessions.set(key, sessionState)
@@ -1932,17 +2068,21 @@ export async function createHandler () {
           await stopDocServer(sessionState)
         }
         const { port: boundPort } = await ensureDocServer(sessionState, '127.0.0.1', savedEntry.port, resolvedSecure)
-        // Create Holesail server WITHOUT key, then inject the saved seed before ready()
-        // This makes Holesail generate the exact same keypair → same key → same connection string
+        // At the note's own address: its key for a private note, the saved
+        // seed for a public one (rehostPlan).
+        const plan = rehostPlan(key, { secure: resolvedSecure, savedSeed: savedSeedBuffer })
         const holesailServer = new Holesail({
           server: true,
-          secure: resolvedSecure,
+          secure: plan.secure,
           udp: resolvedUdp,
           host: '127.0.0.1',
           port: boundPort,
+          ...(plan.key ? { key: plan.key } : {}),
           log: 1
         })
-        holesailServer.seed = savedSeedBuffer
+        if (plan.seed) {
+          holesailServer.seed = plan.seed
+        }
         await holesailServer.ready()
         const rehostedKey = holesailServer.info?.url || key
         if (rehostedKey !== key) {
@@ -1961,7 +2101,8 @@ export async function createHandler () {
           localPort: boundPort,
           localUrl: `http://${responseHost}:${boundPort}`,
           secure: resolvedSecure,
-          udp: resolvedUdp
+          udp: resolvedUdp,
+          hosted: true
         })
       }
 
@@ -1994,6 +2135,18 @@ export async function createHandler () {
       const holesailClient = new Holesail(clientOptions)
       sessionState.holesailClient = holesailClient
       await holesailClient.ready()
+      // The local end binds the port the host advertised only once ready()
+      // is done, and a port already in use here failed as an error event
+      // nobody listened for: an uncaught exception in the main process. Wait
+      // for the bind, and answer with what went wrong.
+      const bound = await waitForClientProxy(holesailClient)
+      if (!bound.ok) {
+        await stopHolesailClient(sessionState)
+        roomSessions.delete(key)
+        return buildJsonResponse(409, {
+          error: `Port ${bound.port || 'for this note'} is already in use on this device, so the note cannot be joined from here right now.`
+        })
+      }
       const boundPort = holesailClient.info?.port || requestedPort || 0
       sessionState.port = boundPort
       log.info('[p2pmd] join client ready', { port: boundPort })

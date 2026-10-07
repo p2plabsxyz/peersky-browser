@@ -34,14 +34,17 @@ class PeerBar extends HTMLElement {
       const container = document.createElement('div')
       container.className = 'peerbar'
 
-      // 1. Always visible P2P base icon
+      // 1. Always visible P2P base icon, on a tile like the apps after it
       const baseLink = document.createElement('a')
       baseLink.href = 'peersky://p2p/'
       baseLink.setAttribute('aria-label', 'P2P Apps')
+      const baseTile = document.createElement('span')
+      baseTile.className = 'p2p-base-tile'
       const baseDiv = document.createElement('div')
       baseDiv.className = 'p2p-base-icon'
       baseDiv.title = 'P2P Apps'
-      baseLink.appendChild(baseDiv)
+      baseTile.appendChild(baseDiv)
+      baseLink.appendChild(baseTile)
       container.appendChild(baseLink)
 
       // 2. Pinned P2P apps
@@ -54,6 +57,7 @@ class PeerBar extends HTMLElement {
         a.href = app.url
         const img = document.createElement('img')
         img.src = app.iconUrl || `peersky://static/assets/svg/${app.icon}`
+        if (app.logo) img.classList.add('app-logo')
         img.title = app.name
         img.alt = app.name
         img.style.animationDelay = `${(index + 1) * 0.1}s`

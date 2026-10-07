@@ -1,24 +1,49 @@
 import { promises as fs } from 'fs'
 import path from 'path'
 import os from 'os'
+import crypto from 'crypto'
 import { fileURLToPath } from 'url'
 import { Worker } from 'worker_threads'
 import { app } from 'electron'
 import fsExtra from 'fs-extra'
 import { createLogger } from '../logger.js'
 import { readManifest, verifyManifest } from './backup-core.js'
-import { createIdentityTransferZip, decryptIdentityTransferZip, extractAndVerifyIdentityPayload, isIdentityTransferManifest } from './identity-transfer.js'
+import { createIdentityTransferZip, decodePairingString, decryptIdentityTransferZip, extractAndVerifyIdentityPayload, isIdentityTransferManifest } from './identity-transfer.js'
 import { assertMobilePairingAllowed, setPairedMobile } from './mobile-pairing.js'
 import { decryptEncryptedBackupZip, isEncryptedBackupManifest } from './encrypted-backup.js'
-import { suspendHyper, resumeHyper } from '../protocols/hyper-handler.js'
+import { suspendHyper, resumeHyper, trustPrivateDriveHostname, exportChatForTransfer, importChatFromPhone } from '../protocols/hyper-handler.js'
 import { suspendIPFS, resumeIPFS } from '../protocols/ipfs-handler.js'
 import { setPrivateDriveOwnership, currentPrivateDriveIds } from '../protocols/private-drive-ownership.js'
 import { listPrivateHyperdrives } from '../protocols/private-hyperdrive-registry.js'
 import { decodeDriveId } from './private-drive-export.js'
+import { applyPhoneSync, isPhoneSyncManifest, readPhoneSyncZip } from './phone-sync.js'
+import { exportP2pmdNotes, importP2pmdNotes } from './p2pmd-notes.js'
+import { forgetPairingNonce, isLivePairingNonce } from './pairing-sessions.js'
+import { ensureOwnNetworkKeys } from './network-keys.js'
 
 const log = createLogger('backup')
 
+// A person's recent P2PMD notes, for a phone whose code says it takes them.
+async function notesForPairing (payload) {
+  let pairing
+  try {
+    pairing = decodePairingString(payload)
+  } catch {
+    return null
+  }
+  if (!pairing.notes || pairing.deviceType !== 'mobile') return null
+  return exportP2pmdNotes()
+}
+
 const WORKER_PATH = fileURLToPath(new URL('./backup-worker.js', import.meta.url))
+
+// Something fetched over the network waits here, checked and decrypted, until
+// the person has compared the code on both screens. Inside the profile folder
+// rather than the system temp folder, because an identity transfer decrypts
+// to secret keys; anything left behind by a crash is cleared at the next start.
+const INCOMING_DIR_PREFIX = '.peersky-incoming-'
+const STAGED_TTL_MS = 30 * 60 * 1000
+const PHONE_SYNC_ELSEWHERE = 'This is tabs and bookmarks from a phone, not a backup. Add it from Settings > Backup & Restore, under Restore from the network.'
 
 function userDataDir () {
   return app.getPath('userData')
@@ -109,6 +134,21 @@ export async function adoptRestoredPrivateDriveCopies (dest, previousIds) {
   }
 }
 
+// Puts an extracted and verified restore in place. The caller has suspended
+// the P2P services and restarts once this returns.
+async function applyVerifiedRestore (dest, applyDir, applyManifest, { identityTransfer = false } = {}) {
+  const names = Object.keys(applyManifest.files)
+  const previousPrivateDriveIds = await currentPrivateDriveIds(dest)
+  await applyRestoreTransaction(dest, applyDir, names)
+  if (names.includes('privateHyperdrives.json')) {
+    await adoptRestoredPrivateDriveCopies(dest, previousPrivateDriveIds)
+  }
+  // Another desktop's stores, and with them its network keys. This desktop
+  // connects with its own from its next start, so the two are two members.
+  // A backup is this same desktop again and keeps its keys.
+  if (identityTransfer) await ensureOwnNetworkKeys(dest)
+}
+
 export function defaultBackupName () {
   return `peersky-backup-${timestamp()}.zip`
 }
@@ -134,6 +174,13 @@ function runWorker (data, onProgress) {
 }
 
 class BackupManager {
+  constructor () {
+    this.staged = null
+    // The stage being put in place. It cannot be dropped, or replaced by a
+    // new fetch, until that finishes.
+    this.applying = null
+  }
+
   // Create a .zip of persistent data at outPath. onProgress: ({processedBytes,...}).
   async createBackup (outPath, passphrase, onProgress, options = {}) {
     log.info(`Creating backup at ${outPath}`)
@@ -167,13 +214,18 @@ class BackupManager {
       userDataDir(),
       options.targetPairingPayload || options.targetEncryptionPublicKey
     )
+    // Read before the stores are suspended, and only for a phone whose code
+    // says it takes them: P2PMD's own page reads its notes.
+    const notes = await notesForPairing(options.targetPairingPayload || options.targetEncryptionPublicKey)
 
     await suspendHyper()
     await suspendIPFS()
     try {
       const result = await createIdentityTransferZip(userDataDir(), outPath, {
         ...options,
-        peerskyVersion: app.getVersion()
+        peerskyVersion: app.getVersion(),
+        exportChat: exportChatForTransfer,
+        notes
       })
       // Recorded only once the transfer exists. A failure part way through
       // must not leave the identity looking paired to a phone that never got
@@ -214,6 +266,7 @@ class BackupManager {
         const innerZipPath = path.join(tempDir, 'identity-transfer-inner.zip')
         const innerDir = path.join(tempDir, 'identity-transfer-inner')
         identityTransfer = await decryptIdentityTransferZip(dest, tempDir, manifest, innerZipPath)
+        if (isPhoneSyncManifest(await readManifest(innerZipPath))) throw new Error(PHONE_SYNC_ELSEWHERE)
         applyManifest = await extractAndVerifyIdentityPayload(innerZipPath, innerDir)
         applyDir = innerDir
       } else if (isEncryptedBackupManifest(manifest)) {
@@ -226,14 +279,7 @@ class BackupManager {
         await verifyManifest(tempDir, manifest)
       }
 
-      const previousPrivateDriveIds = await currentPrivateDriveIds(dest)
-
-      await applyRestoreTransaction(dest, applyDir, Object.keys(applyManifest.files))
-
-      if (Object.keys(applyManifest.files).includes('privateHyperdrives.json')) {
-        await adoptRestoredPrivateDriveCopies(dest, previousPrivateDriveIds)
-      }
-
+      await applyVerifiedRestore(dest, applyDir, applyManifest, { identityTransfer: !!identityTransfer })
       resumeServices = false
 
       log.info('Backup restored; restart required')
@@ -248,6 +294,187 @@ class BackupManager {
       if (resumeServices) {
         await resumeHyper().catch((err) => log.error(`Failed to resume hyper after failed restore: ${err.message}`))
         await resumeIPFS().catch((err) => log.error(`Failed to resume IPFS after failed restore: ${err.message}`))
+      }
+    }
+  }
+
+  /**
+   * The first half of a restore from the network: the download is read and,
+   * for a transfer, checked, decrypted and verified, but nothing in the
+   * profile changes. Returns what the page shows before asking to go ahead,
+   * including the code for a transfer. Takes ownership of zipPath.
+   */
+  async stageRestore (zipPath, onProgress) {
+    if (this.applying) {
+      await fs.rm(zipPath, { force: true }).catch(() => {})
+      throw new Error('Still putting the last restore in place. Try again when it finishes.')
+    }
+    this.discardStaged()
+    const id = crypto.randomBytes(8).toString('hex')
+    let dir = null
+
+    try {
+      let manifest
+      try {
+        manifest = await readManifest(zipPath)
+      } catch {
+        throw new Error('That address does not lead to a PeerSky backup or transfer.')
+      }
+      if (!isIdentityTransferManifest(manifest)) {
+        // A backup. It is only decrypted once the person says to restore it,
+        // with the passphrase they give then.
+        this.staged = { id, kind: 'backup', zipPath, stagedAt: Date.now() }
+        return {
+          stageId: id,
+          kind: 'backup',
+          encrypted: isEncryptedBackupManifest(manifest),
+          createdAt: typeof manifest.createdAt === 'string' ? manifest.createdAt : null
+        }
+      }
+
+      // Sent over the network to the code this desktop is showing. One made
+      // for any other code is refused before it is decrypted.
+      const nonce = manifest.identityTransfer?.nonce
+      if (!isLivePairingNonce(nonce)) {
+        throw new Error('This transfer was made for a code this desktop is no longer showing. Open Backup & Restore again and send it to the code shown there.')
+      }
+
+      dir = await fs.mkdtemp(path.join(userDataDir(), INCOMING_DIR_PREFIX))
+      await runWorker({ op: 'extract', zipPath, destDir: dir }, onProgress)
+      const innerZipPath = path.join(dir, 'identity-transfer-inner.zip')
+      const decrypted = await decryptIdentityTransferZip(userDataDir(), dir, manifest, innerZipPath)
+
+      if (isPhoneSyncManifest(await readManifest(innerZipPath))) {
+        const sync = await readPhoneSyncZip(innerZipPath)
+        await fs.rm(dir, { recursive: true, force: true })
+        dir = null
+        this.staged = { id, kind: 'phone', sync, nonce, stagedAt: Date.now() }
+        return {
+          stageId: id,
+          kind: 'phone',
+          verificationCode: decrypted.verificationCode,
+          tabs: sync.tabs.length,
+          bookmarks: sync.bookmarks.length,
+          privateDrives: sync.privateDrives.length,
+          chatRooms: sync.chat ? sync.chat.rooms.length : 0,
+          chatName: sync.chat?.profile?.username || '',
+          notes: sync.notes ? sync.notes.notes.length : 0
+        }
+      }
+
+      const applyDir = path.join(dir, 'identity-transfer-inner')
+      const applyManifest = await extractAndVerifyIdentityPayload(innerZipPath, applyDir)
+      this.staged = { id, kind: 'transfer', dir, applyDir, applyManifest, nonce, stagedAt: Date.now() }
+      return {
+        stageId: id,
+        kind: 'transfer',
+        verificationCode: decrypted.verificationCode,
+        contents: Object.keys(applyManifest.files)
+      }
+    } catch (error) {
+      if (dir) await fs.rm(dir, { recursive: true, force: true }).catch(() => {})
+      throw error
+    } finally {
+      if (this.staged?.id !== id || this.staged.kind !== 'backup') {
+        await fs.rm(zipPath, { force: true }).catch(() => {})
+      }
+    }
+  }
+
+  /**
+   * The second half, once the person has said to go ahead. A phone's tabs and
+   * bookmarks are added in place and nothing restarts; tabs go to openTabs.
+   * A transfer or backup replaces the profile and needs a restart. Whatever
+   * goes wrong, the staged copy is kept so the person can try again or cancel.
+   */
+  async applyStaged (stageId, { passphrase, onProgress, openTabs } = {}) {
+    const staged = this.staged
+    if (!staged || staged.id !== stageId || this.applying) throw new Error('That restore is no longer waiting. Fetch it again.')
+    if (Date.now() - staged.stagedAt > STAGED_TTL_MS) {
+      this.discardStaged()
+      throw new Error('That restore waited too long. Fetch it again.')
+    }
+
+    this.applying = staged.id
+    try {
+      return await this.applyStagedNow(staged, { passphrase, onProgress, openTabs })
+    } finally {
+      this.applying = null
+    }
+  }
+
+  async applyStagedNow (staged, { passphrase, onProgress, openTabs }) {
+    if (staged.kind === 'phone') {
+      const applied = await applyPhoneSync(userDataDir(), staged.sync)
+      for (const hostname of applied.privateHostnames) trustPrivateDriveHostname(hostname)
+      // openTabs says how many it opened: a tab already open here is left out.
+      let tabsAdded = 0
+      if (typeof openTabs === 'function' && staged.sync.tabs.length > 0) {
+        const opened = await openTabs(staged.sync.tabs)
+        tabsAdded = Number.isInteger(opened) ? opened : staged.sync.tabs.length
+      }
+      // PeerChat runs, so it takes the phone's name and rooms itself.
+      const chat = staged.sync.chat ? await importChatFromPhone(staged.sync.chat) : null
+      // So does P2PMD, through its own page. Nothing here is replaced.
+      const notes = staged.sync.notes ? await importP2pmdNotes(staged.sync.notes) : null
+      forgetPairingNonce(staged.nonce)
+      this.dropStaged(staged)
+      log.info(`Added ${applied.bookmarksAdded} bookmarks, ${tabsAdded} tabs, ${chat?.added || 0} chat rooms and ${notes?.added || 0} notes from a phone`)
+      return {
+        success: true,
+        requiresRestart: false,
+        added: {
+          tabs: tabsAdded,
+          bookmarks: applied.bookmarksAdded,
+          privateDrives: applied.privateDrivesAdded,
+          chatRooms: chat?.added || 0,
+          notes: notes?.added || 0
+        }
+      }
+    }
+
+    if (staged.kind === 'backup') {
+      const result = await this.restoreBackup(staged.zipPath, onProgress, { passphrase })
+      this.dropStaged(staged)
+      return result
+    }
+
+    const dest = userDataDir()
+    await suspendHyper()
+    await suspendIPFS()
+    try {
+      await applyVerifiedRestore(dest, staged.applyDir, staged.applyManifest, { identityTransfer: true })
+    } catch (error) {
+      await resumeHyper().catch((err) => log.error(`Failed to resume hyper after failed restore: ${err.message}`))
+      await resumeIPFS().catch((err) => log.error(`Failed to resume IPFS after failed restore: ${err.message}`))
+      throw error
+    }
+    forgetPairingNonce(staged.nonce)
+    this.dropStaged(staged)
+    log.info('Identity transfer restored; restart required')
+    return { success: true, requiresRestart: true, manifest: staged.applyManifest }
+  }
+
+  discardStaged (stageId) {
+    const staged = this.staged
+    if (!staged || (stageId !== undefined && staged.id !== stageId)) return
+    if (this.applying === staged.id) return
+    this.dropStaged(staged)
+  }
+
+  dropStaged (staged) {
+    if (this.staged === staged) this.staged = null
+    if (staged.dir) fs.rm(staged.dir, { recursive: true, force: true }).catch(() => {})
+    if (staged.zipPath) fs.rm(staged.zipPath, { force: true }).catch(() => {})
+  }
+
+  // Staging left behind by a crash or a quit part way through.
+  async clearLeftoverStaging () {
+    const dest = userDataDir()
+    const names = await fs.readdir(dest).catch(() => [])
+    for (const name of names) {
+      if (name.startsWith(INCOMING_DIR_PREFIX)) {
+        await fs.rm(path.join(dest, name), { recursive: true, force: true }).catch(() => {})
       }
     }
   }

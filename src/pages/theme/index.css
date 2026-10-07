@@ -33,6 +33,24 @@ input, button, textarea, select, select *, option  {
   box-sizing: border-box;
 }
 
+/* An incognito window says so, ahead of everything else in the bar. */
+body.incognito-window #navbox::before {
+  content: 'Incognito';
+  flex: 0 0 auto;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #5b4b8a;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Extensions never see an incognito window, so their buttons stay hidden. */
+body.incognito-window #extensions,
+body.incognito-window #extension-icons {
+  display: none;
+}
+
 .match-count {
   margin: 0 5px;
   font-size: 12px;
@@ -1508,4 +1526,109 @@ body {
   color: var(--peersky-nav-button-color);
   white-space: nowrap;
   -webkit-app-region: no-drag;
+}
+
+/* DevTools for the page on screen, docked on the right (src/pages/devtools-dock.js).
+   The DevTools are a native view laid over .devtools-dock-body; its top follows
+   the pages', set from script. */
+.devtools-dock {
+  position: fixed;
+  top: 88px;
+  right: 0;
+  bottom: 0;
+  width: var(--devtools-dock-width, 480px);
+  z-index: 30;
+  display: none;
+  flex-direction: row;
+  background: var(--browser-theme-background);
+  color: var(--browser-theme-text-color);
+}
+
+body.devtools-dock-open .devtools-dock {
+  display: flex;
+}
+
+body.extension-side-panel-open .devtools-dock {
+  right: var(--extension-side-panel-width, 380px);
+}
+
+body.devtools-dock-open .webview-container,
+body.devtools-dock-open.vertical-tabs-layout .webview-container,
+body.devtools-dock-open.vertical-tabs-layout.vertical-tabs-expanded .webview-container {
+  right: var(--devtools-dock-width, 480px);
+  width: auto;
+}
+
+body.devtools-dock-open.extension-side-panel-open .webview-container,
+body.devtools-dock-open.extension-side-panel-open.vertical-tabs-layout .webview-container,
+body.devtools-dock-open.extension-side-panel-open.vertical-tabs-layout.vertical-tabs-expanded .webview-container {
+  right: calc(var(--devtools-dock-width, 480px) + var(--extension-side-panel-width, 380px));
+  width: auto;
+}
+
+.devtools-dock-resizer {
+  flex: 0 0 5px;
+  cursor: col-resize;
+  background: var(--settings-border, #3f3f46);
+  -webkit-app-region: no-drag;
+}
+
+.devtools-dock-resizer:hover,
+body.devtools-dock-resizing .devtools-dock-resizer {
+  background: var(--browser-theme-primary-highlight);
+}
+
+body.devtools-dock-resizing,
+body.devtools-dock-resizing * {
+  cursor: col-resize !important;
+  user-select: none;
+}
+
+/* A page under the pointer takes the drag for itself otherwise. */
+body.devtools-dock-resizing webview {
+  pointer-events: none;
+}
+
+.devtools-dock-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.devtools-dock-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 28px;
+  padding: 0 4px 0 10px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--settings-border, #3f3f46);
+  -webkit-app-region: no-drag;
+}
+
+.devtools-dock-title {
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.devtools-dock-close {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 18px;
+  line-height: 1;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.devtools-dock-close:hover {
+  background: rgba(127, 127, 127, 0.18);
+}
+
+.devtools-dock-body {
+  flex: 1;
+  min-height: 0;
 }

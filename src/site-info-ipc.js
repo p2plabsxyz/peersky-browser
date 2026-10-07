@@ -5,10 +5,12 @@ import {
   setPermission,
   resetPermissionsForOrigin,
   isValidOrigin,
-  permissionOriginFromUrl
+  permissionOriginFromUrl,
+  permissionsShownFor
 } from './permissions.js'
 import { connectionFor } from './utils.js'
 import extensionManager from './extensions/index.js'
+import { getIncognitoSession } from './session.js'
 
 const SITE_STORAGES = [
   'cookies',
@@ -33,6 +35,13 @@ function isTrustedSiteInfoSender (event) {
   } catch {
     return false
   }
+}
+
+// In an incognito window the panel shows and changes that window's cookies and
+// answers, never the normal profile's.
+function storeFor (event, session) {
+  const incognito = event?.sender?.session === getIncognitoSession()
+  return { incognito, session: incognito ? event.sender.session : session }
 }
 
 function parsePageUrl (raw) {
@@ -122,9 +131,10 @@ export function setupSiteInfoIpc (session) {
   ipcMain.handle('site-info-get', async (event, pageUrl) => {
     const parsed = parsePageUrl(pageUrl)
     if (!parsed.ok) return { ok: false, error: parsed.error }
+    const store = storeFor(event, session)
 
     const permissions = parsed.originOk
-      ? getPermissionsForOrigin(parsed.origin)
+      ? getPermissionsForOrigin(parsed.origin, store)
       : Object.fromEntries(MANAGED_PERMISSIONS.map(p => [p.id, 'ask']))
 
     const cookieUrl = parsed.origin
@@ -139,10 +149,10 @@ export function setupSiteInfoIpc (session) {
       protocol: parsed.protocol,
       connection: connectionFor(parsed.protocol),
       permissions,
-      permissionMeta: MANAGED_PERMISSIONS,
+      permissionMeta: permissionsShownFor(parsed.href),
       canEditPermissions: parsed.originOk,
       cookies: {
-        count: await cookieCount(session, cookieUrl)
+        count: await cookieCount(store.session, cookieUrl)
       },
       privacy: await getPrivacyStatus(event)
     }
@@ -153,7 +163,7 @@ export function setupSiteInfoIpc (session) {
       return { ok: false, error: 'unauthorized' }
     }
     const { origin, permission, state } = payload
-    return setPermission(origin, permission, state)
+    return setPermission(origin, permission, state, storeFor(event, session))
   })
 
   ipcMain.handle('site-info-reset-permissions', async (event, origin) => {
@@ -163,7 +173,7 @@ export function setupSiteInfoIpc (session) {
     if (!isValidOrigin(origin)) {
       return { ok: false, error: 'invalid origin' }
     }
-    return { ok: true, cleared: resetPermissionsForOrigin(origin) }
+    return { ok: true, cleared: resetPermissionsForOrigin(origin, storeFor(event, session)) }
   })
 
   ipcMain.handle('site-info-clear-data', async (event, origin) => {
@@ -174,7 +184,7 @@ export function setupSiteInfoIpc (session) {
       return { ok: false, error: 'invalid origin' }
     }
     try {
-      await session.clearStorageData({ origin, storages: SITE_STORAGES })
+      await storeFor(event, session).session.clearStorageData({ origin, storages: SITE_STORAGES })
       return { ok: true }
     } catch (err) {
       return { ok: false, error: err?.message || 'clear failed' }

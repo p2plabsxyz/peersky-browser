@@ -24,6 +24,7 @@ import electron from 'electron'
 import { ERR, validateInstallSource, sha256Hex } from './util.js'
 import path from 'path'
 import { clearSidePanelState, syncSidePanelForActiveTab, registerSidePanelGuest } from './services/side-panel.js'
+import { historyLookupScript, rankHistorySuggestions } from '../history-suggestions.js'
 const { ipcMain, BrowserWindow, dialog, app } = electron
 
 // Simple in-memory rate limiter for install attempts per sender WebContents
@@ -776,85 +777,19 @@ export function setupExtensionIpcHandlers (extensionManager) {
           return { success: true, results: [], message: 'History extension background not found' }
         }
 
-        // Execute search in the extension's context
-        // The peersky-history extension exposes globalThis.db and globalThis.search
-        // search(query, maxResults, signal) is an async generator
-        const searchScript = `
-          (async function() {
-            try {
-              // Check if the search function is available on globalThis
-              if (typeof globalThis.search !== 'function') {
-                // Fallback: try to access the db directly and search manually
-                if (globalThis.db) {
-                  const query = ${JSON.stringify(trimmedQuery)};
-                  const results = [];
-                  const seen = new Set();
-                  
-                  // Build fuzzy matching - use simple includes check to avoid ReDoS
-                  // Split query into terms and check if all terms appear in the search field
-                  const terms = query.toLowerCase().split(/\\s+/).filter(t => t).slice(0, 10); // Limit to 10 terms
-                  const matchesAllTerms = (text) => {
-                    const lowerText = text.toLowerCase();
-                    return terms.every(term => lowerText.includes(term));
-                  };
-                  
-                  // Open cursor on timestamp index (newest first)
-                  const tx = globalThis.db.transaction('navigated', 'readonly');
-                  const store = tx.objectStore('navigated');
-                  const index = store.index('timestamp');
-                  
-                  let cursor = await index.openCursor(null, 'prev');
-                  while (cursor && results.length < 8) {
-                    const entry = cursor.value;
-                    const searchField = entry.search || (entry.url + ' ' + entry.title);
-                    
-                    if (!seen.has(entry.url) && matchesAllTerms(searchField)) {
-                      seen.add(entry.url);
-                      results.push({
-                        url: entry.url || '',
-                        title: entry.title || '',
-                        host: entry.host || '',
-                        timestamp: entry.timestamp || 0
-                      });
-                    }
-                    cursor = await cursor.continue();
-                  }
-                  
-                  return { results };
-                }
-                return { error: 'search function and db not available' };
-              }
-              
-              const query = ${JSON.stringify(trimmedQuery)};
-              const maxResults = 8;
-              const results = [];
-              
-              // Use the extension's search generator
-              for await (const entry of globalThis.search(query, maxResults)) {
-                results.push({
-                  url: entry.url || '',
-                  title: entry.title || '',
-                  host: entry.host || '',
-                  timestamp: entry.timestamp || 0
-                });
-              }
-              
-              return { results };
-            } catch (err) {
-              console.error('[peersky-history] Search error:', err);
-              return { error: err.message || 'Search failed' };
-            }
-          })();
-        `
-
-        const searchResult = await serviceWorkerWC.executeJavaScript(searchScript, true)
+        // Run the lookup in the extension's context, where its database is,
+        // and put matching sites ahead of single pages.
+        const searchResult = await serviceWorkerWC.executeJavaScript(historyLookupScript(trimmedQuery), true)
 
         if (searchResult.error) {
           console.warn('[ExtensionIPC] history-search: Search error:', searchResult.error)
           return { success: false, error: searchResult.error, results: [] }
         }
 
-        return { success: true, results: searchResult.results || [] }
+        return {
+          success: true,
+          results: rankHistorySuggestions(trimmedQuery, searchResult.pages, searchResult.sites)
+        }
       } catch (error) {
         console.error('[ExtensionIPC] history-search failed:', error)
         return {

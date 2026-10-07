@@ -1,10 +1,13 @@
 import crypto from 'crypto'
 import z32 from 'z32'
 import { listPrivateHyperdrives } from '../protocols/private-hyperdrive-registry.js'
-import { getOrCreatePrivateDriveKey } from './private-drive-key.js'
+import { getOrCreatePrivateDriveKey, getPrivateDriveKeyFor } from './private-drive-key.js'
 
 export const PRIVATE_DRIVE_KEY_FILE = 'private-drive-key.json'
 
+// forPhone: a phone is receiving this, so the key goes even when there are no
+// private drives yet. The phone encrypts its own private uploads with it, and
+// that is what lets this desktop open them too.
 export async function buildPrivateDriveKeyExport (userDataDir, now = Date.now(), options = {}) {
   let entries
   try {
@@ -12,17 +15,18 @@ export async function buildPrivateDriveKeyExport (userDataDir, now = Date.now(),
   } catch {
     return null
   }
-  if (entries.length === 0) return null
 
+  // A drive with a key of its own, such as a phone's, carries it: the device
+  // this goes to opens that drive with it rather than with this desktop's key.
   const drives = []
   for (const entry of entries) {
     const driveId = decodeDriveId(entry.url)
     if (!driveId) continue
-    drives.push({ driveId, createdAt: entry.timestamp || null })
+    const driveKey = await getPrivateDriveKeyFor(userDataDir, driveId)
+    drives.push({ driveId, createdAt: entry.timestamp || null, ...(driveKey ? { key: driveKey.toString('hex') } : {}) })
   }
-  if (drives.length === 0) return null
+  if (drives.length === 0 && !options.forPhone) return null
 
-  const primary = drives[0].driveId
   const key = await getOrCreatePrivateDriveKey(userDataDir)
   const deviceOnly = process.env.PEERSKY_PRIVATE_DEVICE_ONLY === '1'
 
@@ -30,7 +34,7 @@ export async function buildPrivateDriveKeyExport (userDataDir, now = Date.now(),
     version: 3,
     createdAt: new Date(now).toISOString(),
     key: key.toString('hex'),
-    driveId: primary,
+    ...(drives.length > 0 ? { driveId: drives[0].driveId } : {}),
     encrypted: !deviceOnly,
     announce: !deviceOnly,
     source: 'desktop',

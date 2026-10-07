@@ -96,7 +96,8 @@ async function loadWindowManager (userDataPath) {
     electron,
     '../../src/extensions/index.js': { default: { addWindow: () => {}, removeWindow: () => {} } },
     '../../src/context-menu.js': { attachContextMenus: () => {}, setWindowManager: () => {} },
-    '../../src/session.js': { getPartition: () => 'persist:peersky', usePersist: () => true },
+    '../../src/session.js': { getPartition: () => 'persist:peersky', usePersist: () => true, getIncognitoSession: () => null, INCOGNITO_PARTITION: 'peersky-incognito' },
+    '../../src/permissions.js': { clearIncognitoPermissions: () => {} },
     '../../src/settings-manager.js': { default: { settings: {} } },
     '../../src/tab-drag-preview.js': { registerTabDragPreview: () => {} },
     '../../src/navigation-restore.js': { watchHost: () => {} }
@@ -502,6 +503,41 @@ describe('Session restore across restart', function () {
       expect(attempted).to.equal(2)
       expect(failed).to.equal(1)
       expect(Object.keys(results)).to.deep.equal(['win-a'])
+    })
+  })
+
+  describe('private windows', function () {
+    function privateWindow () {
+      const win = makeWindow({
+        windowId: 'win-private',
+        url: 'https://example.com/',
+        position: [60, 60],
+        size: [1000, 700],
+        tabs: makeTabs(['https://example.com/', 'https://example.org/'])
+      })
+      win.incognito = true
+      return win
+    }
+
+    it('keeps the session when the last normal window closes beside a private one', async function () {
+      const manager = new WindowManager()
+      await saveSession(manager, fourWindows())
+      const windowsBefore = await readJson('lastOpened.json')
+      const tabsBefore = await readJson('tabs.json')
+
+      await saveSession(manager, [privateWindow()])
+
+      expect(await readJson('lastOpened.json'), 'window state was wiped').to.deep.equal(windowsBefore)
+      expect(await readJson('tabs.json'), 'tabs were wiped').to.deep.equal(tabsBefore)
+    })
+
+    it('never writes a private window down', async function () {
+      const manager = new WindowManager()
+      const [normal] = fourWindows()
+      await saveSession(manager, [normal, privateWindow()])
+
+      expect((await readJson('lastOpened.json')).map(w => w.windowId)).to.deep.equal(['win-a'])
+      expect(Object.keys(await readJson('tabs.json'))).to.deep.equal(['win-a'])
     })
   })
 
