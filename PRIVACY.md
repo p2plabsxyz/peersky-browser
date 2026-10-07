@@ -53,9 +53,8 @@ the address bar come from your own history, on your computer.
 
 ## Peer-to-Peer Networks
 
-Peer-to-peer is the part worth understanding. When PeerSky starts, it joins the
-IPFS, Hyper and BitTorrent networks in the background, so addresses open
-quickly. From then on, the public nodes that help computers find each other can
+When PeerSky starts, it joins the IPFS, Hyper and BitTorrent networks in the
+background, so addresses open quickly. From then on, the public nodes that help computers find each other can
 see your IP address, even before you open anything peer-to-peer, and so can the
 peers you connect to. There is no onion routing to hide it. A VPN or proxy
 extension covers websites only; peer-to-peer connections go around it. A VPN
@@ -93,8 +92,8 @@ address.
 ## PeerChat
 
 PeerChat rooms and direct messages are encrypted with a key only the people in
-them hold, and attachments with a key derived from it. Two honest limits: a
-room key is a shared secret, so anybody who has it can read that room including
+them hold, and attachments with a key derived from it. Two limits: a room key
+is a shared secret, so anybody who has it can read that room including
 its past messages, and it never rotates, meaning somebody removed from a room
 still holds the key. What is encrypted is the content, not the fact that two
 computers are talking.
