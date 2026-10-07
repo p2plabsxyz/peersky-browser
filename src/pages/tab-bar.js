@@ -380,6 +380,8 @@ class TabBar extends HTMLElement {
     })
 
     this.tabContainer.addEventListener('pointerdown', this.handlePointerDown.bind(this))
+    // Nothing in the strip starts a native drag either, for the same reason.
+    this.tabContainer.addEventListener('dragstart', (e) => e.preventDefault())
 
     // Don't add first tab automatically here anymore
     // Will be handled in restoreOrCreateInitialTabs
@@ -737,7 +739,10 @@ class TabBar extends HTMLElement {
     tab.className = 'tab opening'
     tab.id = tabId
     tab.dataset.url = url
-    tab.draggable = true
+    // Not draggable the HTML way. The strip drags tabs itself with pointer
+    // events, and a native drag that began on a slow first move cancelled
+    // them, so a drag often did nothing and had to be tried again.
+    tab.draggable = false
 
     const tabTitle = document.createElement('span')
     tabTitle.className = 'tab-title'
