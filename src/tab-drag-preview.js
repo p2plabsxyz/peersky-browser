@@ -78,7 +78,9 @@ async function prepare (sender, spec) {
   preview = win
   win.setIgnoreMouseEvents(true)
   win.setAlwaysOnTop(true, 'pop-up-menu')
-  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  // Without skipTransformProcessType, macOS briefly turns the app into a
+  // background app, which can send its windows behind other apps mid-drag.
+  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true })
   sender.removeListener('destroyed', destroy)
   sender.once('destroyed', destroy)
   try {
