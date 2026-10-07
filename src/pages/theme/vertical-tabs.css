@@ -255,13 +255,15 @@
   color: var(--browser-theme-text-color);
 }
 
-/* Tab group headers in vertical mode */
+/* Tab group headers in vertical mode. A tab has 6px above it and none below,
+   so the header takes 8px above and 2px below: the same 8px gap on both
+   sides, where an even 4px left it crowded against the tab above. */
 .tabbar.vertical-tabs .tab-group-header {
   width: 40px;
   height: 20px;
   min-height: 20px;
   max-height: 20px;
-  margin: 4px;
+  margin: 8px 4px 2px;
   padding: 0;
   gap: 0;
   justify-content: center;
