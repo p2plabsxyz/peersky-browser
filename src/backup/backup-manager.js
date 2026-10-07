@@ -227,16 +227,24 @@ class BackupManager {
         exportChat: exportChatForTransfer,
         notes
       })
-      // Recorded only once the transfer exists. A failure part way through
-      // must not leave the identity looking paired to a phone that never got
-      // it, or the user would have to move-to-new-phone to retry.
-      if (mobileKey) await setPairedMobile(userDataDir(), mobileKey)
+      // Not recorded here. A transfer that is built but never leaves this
+      // desktop, because the upload failed, was quit or the app crashed part
+      // way, must not leave the identity looking paired to a phone that never
+      // got it, or a different phone would need Move to a new phone first.
+      // The caller records it with recordPairedMobile once the transfer is out.
+      result.mobileKey = mobileKey
       log.info(`Identity transfer backup created: ${result.bytes} bytes`)
       return result
     } finally {
       await resumeHyper().catch((err) => log.error(`Failed to resume hyper after identity transfer backup: ${err.message}`))
       await resumeIPFS().catch((err) => log.error(`Failed to resume IPFS after identity transfer backup: ${err.message}`))
     }
+  }
+
+  // Called once an identity transfer has left this desktop: saved as a file,
+  // or published for the phone to fetch.
+  async recordPairedMobile (mobileKey) {
+    if (mobileKey) await setPairedMobile(userDataDir(), mobileKey)
   }
 
   // Read the manifest from a backup zip for preview/validation before restoring.
