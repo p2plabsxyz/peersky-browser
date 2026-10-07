@@ -3283,6 +3283,17 @@ class TabBar extends HTMLElement {
     })
   }
 
+  // Where an element sits in the layout, leaving out the transform a reorder
+  // animation has on it for the moment. Hit-testing the animated position made
+  // the drop point flip back and forth while the neighbouring tabs moved.
+  layoutRect (el) {
+    const rect = el.getBoundingClientRect()
+    const transform = getComputedStyle(el).transform
+    if (!transform || transform === 'none') return rect
+    const { m41, m42 } = new DOMMatrixReadOnly(transform)
+    return { left: rect.left - m41, top: rect.top - m42, width: rect.width, height: rect.height }
+  }
+
   get isVertical () {
     return document.body.classList.contains('vertical-tabs-layout') || getComputedStyle(this.tabContainer).flexDirection === 'column'
   }
@@ -3408,8 +3419,11 @@ class TabBar extends HTMLElement {
         totalHeight = Math.max(...rects.map(r => r.height))
       }
 
-      this.dragOffsetLeft = e.clientX - rects[0].left
-      this.dragOffsetTop = e.clientY - rects[0].top
+      // Measured from where the button went down, not from here: the drag
+      // only starts 3px later, and using this point made the tab jump by
+      // that much instead of staying under the same spot of the pointer.
+      this.dragOffsetLeft = this.dragStartX - rects[0].left
+      this.dragOffsetTop = this.dragStartY - rects[0].top
 
       this.placeholder = document.createElement('div')
       this.placeholder.className = 'tab-placeholder'
@@ -3447,7 +3461,12 @@ class TabBar extends HTMLElement {
 
     if (this.isDragging) {
       if (isVert) {
-        this.isOutsideContainer = Math.abs(dx) > 40
+        // Out means past the side of the strip, not 40px from where the drag
+        // began. In an expanded strip, a tab dragged up or down with the
+        // pointer drifting sideways kept counting as torn off, so the drop
+        // point stopped following it and the tab landed somewhere else.
+        const strip = this.tabContainer.getBoundingClientRect()
+        this.isOutsideContainer = e.clientX < strip.left - 40 || e.clientX > strip.right + 40
       } else {
         this.isOutsideContainer = Math.abs(dy) > 30
       }
@@ -3495,8 +3514,8 @@ class TabBar extends HTMLElement {
           if (tab.classList.contains('split-left')) {
             const nextTab = tabs[i + 1]
             if (nextTab && nextTab.classList.contains('split-right')) {
-              const r1 = tab.getBoundingClientRect()
-              const r2 = nextTab.getBoundingClientRect()
+              const r1 = this.layoutRect(tab)
+              const r2 = this.layoutRect(nextTab)
 
               logicalTargets.push({
                 elementToInsertBefore: tab,
@@ -3515,7 +3534,7 @@ class TabBar extends HTMLElement {
 
           logicalTargets.push({
             elementToInsertBefore: tab,
-            rect: tab.getBoundingClientRect()
+            rect: this.layoutRect(tab)
           })
         }
 
