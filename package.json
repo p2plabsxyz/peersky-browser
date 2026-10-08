@@ -22,7 +22,7 @@
     "test:launch-url": "mocha \"test/launch-url.test.js\" --timeout 10000",
     "test:url-input": "mocha \"test/url-input.test.js\" --timeout 10000",
     "test:zoom": "mocha \"test/zoom.test.js\" --timeout 10000",
-    "test:tabs": "mocha \"test/tabs.test.js\" \"test/tab-groups.test.js\" --timeout 10000",
+    "test:tabs": "mocha \"test/tabs.test.js\" \"test/tab-groups.test.js\" \"test/tab-selection.test.js\" --timeout 10000",
     "test:settings": "mocha \"test/settings-broadcast.test.js\" --timeout 20000",
     "test:presence": "mocha \"test/peerchat-presence.test.js\" --timeout 10000",
     "test:about": "mocha \"test/about-pages.test.js\" --timeout 10000",

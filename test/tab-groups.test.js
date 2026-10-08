@@ -89,7 +89,8 @@ describe('the strip uses those rules', function () {
     expect(down).to.contain("e.target.closest('.tab-group-toggle, .tab-group-edit, .tab-group-close')")
     expect(down).to.contain('this.dragGroupId = groupId')
     const move = tabBar.slice(tabBar.indexOf('  handlePointerMove (e) {'), tabBar.indexOf('  handlePointerUp (e) {'))
-    expect(move).to.contain('if (!this.dragGroupId) this.startDragPreview(rects[0])')
+    // rects[lead] is the tab in the hand: the first, unless picked tabs travel together.
+    expect(move).to.contain('if (!this.dragGroupId) this.startDragPreview(rects[lead])')
     expect(move).to.match(/if \(this\.dragGroupId\) \{\s*this\.isOutsideContainer = false/)
     expect(move).to.contain('this.dragGroupId ? this.groupDropTargets() : this.tabDropTargets()')
   })

@@ -251,6 +251,12 @@
   color: var(--browser-theme-text-color);
 }
 
+.tabbar.vertical-tabs .tab.multi-selected:not(.active) {
+  background-color: color-mix(in srgb, var(--settings-bg-primary) 55%, transparent);
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1px var(--settings-border);
+}
+
 .tabbar.vertical-tabs .tab.active .close-tab {
   color: var(--browser-theme-text-color);
 }

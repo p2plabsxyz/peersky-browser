@@ -48,6 +48,7 @@ class TabBar extends HTMLElement {
     this._tabsStateTimer = null // Pending coalesced saveTabsState write
     this.webviewContainer = null // Will be set by connectWebviewContainer
     this.pinnedTabs = new Set() // Track pinned tabs
+    this.selectedTabIds = new Set() // Tabs picked with Cmd or Ctrl to move together
     this.tabGroups = new Map() // Store tab groups
     this.tabGroupAssignments = new Map() // Track tab group assignments
     // const rootStyle = getComputedStyle(document.documentElement);
@@ -425,6 +426,23 @@ class TabBar extends HTMLElement {
       return
     }
 
+    // Several picked tabs dragged out of another window, in their order.
+    let movedTabs = []
+    try { movedTabs = JSON.parse(searchParams.get('movedTabs') || '[]') } catch (_) {}
+    if (isIsolated && Array.isArray(movedTabs) && movedTabs.length) {
+      let first = null
+      for (const tab of movedTabs) {
+        if (!tab || typeof tab.url !== 'string') continue
+        const tabId = `tab-${this.tabCounter++}`
+        this.addTabWithId(tabId, tab.url, tab.title || 'New Tab', { navigation: tab.navigation || null })
+        first = first || tabId
+      }
+      if (first) {
+        this.selectTab(first, true)
+        return
+      }
+    }
+
     if (isIsolated && (singleTabUrl || initialUrl)) {
       // For isolated windows, ONLY create the specified tab and don't load any persisted tabs
       const tabUrl = singleTabUrl || initialUrl
@@ -768,7 +786,7 @@ class TabBar extends HTMLElement {
     tab.appendChild(tabTitle)
     tab.appendChild(closeButton)
 
-    tab.addEventListener('click', () => this.selectTab(tabId))
+    tab.addEventListener('click', (e) => this.handleTabClick(tabId, e))
 
     tab.addEventListener('mousemove', (e) => {
       const rect = tab.getBoundingClientRect()
@@ -1312,6 +1330,8 @@ class TabBar extends HTMLElement {
 
     // Remove tab from group
     this.removeTabFromGroup(tabId)
+    this.selectedTabIds.delete(tabId)
+    if (this.selectedTabIds.size < 2) this.clearTabSelection()
 
     // If we closed the active tab, select another one
     if (this.activeTabId === tabId) {
@@ -1406,6 +1426,8 @@ class TabBar extends HTMLElement {
 
   // Update the selectTab method to handle display properly
   selectTab (tabId, isNewTab = false) {
+    // Picked tabs always include the one on screen.
+    if (this.selectedTabIds?.size && !this.selectedTabIds.has(tabId)) this.clearTabSelection()
     // The find bar belongs to the tab it was opened over; addTab selects too.
     // Focus must stay put: activeTabId still points at the outgoing tab here.
     if (tabId !== this.activeTabId) document.querySelector('#find')?.hide?.({ restoreFocus: false })
@@ -2186,6 +2208,81 @@ class TabBar extends HTMLElement {
     })
   }
 
+  // Cmd-click (Ctrl-click off macOS) picks a tab as well as the ones already
+  // picked, or puts it back; Shift-click picks every tab from the active one to
+  // it. A plain click picks one tab again. Picked tabs drag together, and into
+  // a window of their own when dropped outside the strip.
+  handleTabClick (tabId, e) {
+    const adds = process.platform === 'darwin' ? e.metaKey : e.ctrlKey
+    if (adds) return this.toggleTabSelection(tabId)
+    if (e.shiftKey) return this.selectTabRange(tabId)
+    // The click a drag ends on keeps what was dragged picked.
+    if (Date.now() - (this.dragEndedAt || 0) > 300) this.clearTabSelection()
+    this.selectTab(tabId)
+  }
+
+  toggleTabSelection (tabId) {
+    if (!this.tabs.some(t => t.id === tabId)) return
+    if (!this.selectedTabIds.size && this.activeTabId) this.selectedTabIds.add(this.activeTabId)
+    if (!this.selectedTabIds.has(tabId)) this.selectedTabIds.add(tabId)
+    // The tab on screen stays picked.
+    else if (tabId !== this.activeTabId) this.selectedTabIds.delete(tabId)
+    if (this.selectedTabIds.size < 2) this.selectedTabIds.clear()
+    this.renderTabSelection()
+  }
+
+  selectTabRange (tabId) {
+    const order = [...this.tabContainer.querySelectorAll(':scope > .tab')].map(el => el.id)
+    const from = order.indexOf(this.activeTabId)
+    const to = order.indexOf(tabId)
+    if (from === -1 || to === -1) return this.selectTab(tabId)
+    this.selectedTabIds = new Set(order.slice(Math.min(from, to), Math.max(from, to) + 1))
+    if (this.selectedTabIds.size < 2) this.selectedTabIds.clear()
+    this.renderTabSelection()
+  }
+
+  clearTabSelection () {
+    if (!this.selectedTabIds.size) return
+    this.selectedTabIds.clear()
+    this.renderTabSelection()
+  }
+
+  renderTabSelection () {
+    for (const el of this.tabContainer.querySelectorAll('.tab')) {
+      el.classList.toggle('multi-selected', this.selectedTabIds.has(el.id))
+    }
+  }
+
+  // The picked tabs in strip order, each split with its other half, or null
+  // when fewer than two are picked or the tab in the hand is not one of them.
+  selectionToDrag (tab) {
+    if (this.selectedTabIds.size < 2 || !this.selectedTabIds.has(tab.id)) return null
+    const ids = new Set(this.selectedTabIds)
+    for (const id of [...ids]) {
+      const split = this.getSplitForTab(id)
+      if (split) {
+        ids.add(split.leftTabId)
+        ids.add(split.rightTabId)
+      }
+    }
+    const elements = [...this.tabContainer.querySelectorAll(':scope > .tab')].filter(el => ids.has(el.id))
+    return elements.length > 1 ? elements : null
+  }
+
+  // Picked tabs dropped outside the strip: over another Peersky window they
+  // join it, anywhere else they get a window of their own, in their order. A
+  // split among them comes apart, as two tabs.
+  async moveTabsOut (tabIds, screenX, screenY) {
+    const targetId = await this.windowAt(screenX, screenY)
+    for (const id of tabIds) if (this.getSplitForTab(id)) this.breakSplitView(id)
+    const moved = tabIds.map(id => this.detachTab(id)).filter(Boolean)
+    this.clearTabSelection()
+    if (!moved.length) return
+    const { ipcRenderer } = require('electron')
+    if (targetId === null) ipcRenderer.send('new-window-with-tabs', { tabs: moved })
+    else ipcRenderer.send('move-tabs-to-window', { targetId, tabs: moved, x: screenX, y: screenY })
+  }
+
   // Takes a tab out of this window and returns what another window needs to
   // recreate it. Refuses the last tab.
   detachTab (tabId, { last = false } = {}) {
@@ -2212,6 +2309,7 @@ class TabBar extends HTMLElement {
     }
     this.pinnedTabs.delete(tabId)
     this.removeTabFromGroup(tabId)
+    this.selectedTabIds.delete(tabId)
 
     if (this.activeTabId === tabId && this.tabs.length) {
       this.selectTab(this.tabs[Math.max(0, tabIndex - 1)].id)
@@ -2276,6 +2374,24 @@ class TabBar extends HTMLElement {
     this.selectTab(tabId, true)
     this.saveTabsState()
     return tabId
+  }
+
+  // Several tabs dragged here from another window, side by side where they
+  // were dropped, in the order they had there.
+  insertTabsAtPoint ({ tabs, x, y }) {
+    const list = Array.isArray(tabs) ? tabs.filter(tab => tab && typeof tab.url === 'string') : []
+    if (!list.length) return []
+    const ids = [this.insertTabAtPoint({ ...list[0], x, y })]
+    let index = this.tabs.findIndex(t => t.id === ids[0])
+    for (const tab of list.slice(1)) {
+      const tabId = `tab-${this.tabCounter++}`
+      this.addTabWithId(tabId, tab.url, tab.title, { navigation: tab.navigation })
+      this.moveTabToPosition(tabId, ++index)
+      ids.push(tabId)
+    }
+    this.selectTab(ids[0], true)
+    this.saveTabsState()
+    return ids
   }
 
   // Toggle pin state of a tab
@@ -3452,7 +3568,8 @@ class TabBar extends HTMLElement {
     const preview = this.dragPreview
     if (!preview?.ready) return
     const { ipcRenderer } = require('electron')
-    ipcRenderer.send('tab-drag-preview', { type: 'move', x: e.screenX - this.dragOffsetLeft, y: e.screenY - this.dragOffsetTop })
+    const shift = this.dragPreviewShift || { x: 0, y: 0 }
+    ipcRenderer.send('tab-drag-preview', { type: 'move', x: e.screenX - this.dragOffsetLeft + shift.x, y: e.screenY - this.dragOffsetTop + shift.y })
     if (preview.shown) return
     preview.shown = true
     this.draggedElements.forEach(el => { el.style.visibility = 'hidden' })
@@ -3478,6 +3595,7 @@ class TabBar extends HTMLElement {
     if (e.button !== 0 || e.target.closest('.close-tab') || e.target.closest('.add-tab-button')) return
 
     this.dragGroupId = null
+    this.dragSelection = false
     const header = e.target.closest('.tab-group-header')
     if (header) {
       // A group moves by its header, taking all its tabs along. The header's
@@ -3493,7 +3611,11 @@ class TabBar extends HTMLElement {
       if (!tab) return
 
       const split = this.getSplitForTab(tab.id)
-      if (split) {
+      const picked = this.selectionToDrag(tab)
+      if (picked) {
+        this.draggedElements = picked
+        this.dragSelection = true
+      } else if (split) {
         const leftTab = document.getElementById(split.leftTabId)
         const rightTab = document.getElementById(split.rightTabId)
         this.draggedElements = [leftTab, rightTab].filter(Boolean)
@@ -3559,6 +3681,23 @@ class TabBar extends HTMLElement {
       // that much instead of staying under the same spot of the pointer.
       this.dragOffsetLeft = this.dragStartX - rects[0].left
       this.dragOffsetTop = this.dragStartY - rects[0].top
+      // Picked tabs travel as one block in strip order, however far apart they
+      // were, with the tab in the hand staying under the pointer.
+      let stacked = null
+      let lead = 0
+      this.dragPreviewShift = { x: 0, y: 0 }
+      if (this.dragSelection) {
+        let along = 0
+        stacked = rects.map(r => {
+          const at = along
+          along += isVert ? r.height : r.width
+          return at
+        })
+        lead = Math.max(0, this.draggedElements.indexOf(this.primaryDragTarget))
+        this.dragOffsetLeft = this.dragStartX - rects[lead].left + (isVert ? 0 : stacked[lead])
+        this.dragOffsetTop = this.dragStartY - rects[lead].top + (isVert ? stacked[lead] : 0)
+        this.dragPreviewShift = isVert ? { x: 0, y: stacked[lead] } : { x: stacked[lead], y: 0 }
+      }
 
       this.placeholder = document.createElement('div')
       this.placeholder.className = 'tab-placeholder'
@@ -3585,8 +3724,13 @@ class TabBar extends HTMLElement {
         el.style.width = `${rects[index].width}px`
         el.style.height = `${rects[index].height}px`
 
-        el.dataset.dragOffsetX = index === 0 ? 0 : (rects[index].left - rects[0].left)
-        el.dataset.dragOffsetY = index === 0 ? 0 : (rects[index].top - rects[0].top)
+        if (stacked) {
+          el.dataset.dragOffsetX = isVert ? 0 : stacked[index]
+          el.dataset.dragOffsetY = isVert ? stacked[index] : 0
+        } else {
+          el.dataset.dragOffsetX = index === 0 ? 0 : (rects[index].left - rects[0].left)
+          el.dataset.dragOffsetY = index === 0 ? 0 : (rects[index].top - rects[0].top)
+        }
       })
 
       this.dragTotalWidth = totalWidth
@@ -3597,7 +3741,7 @@ class TabBar extends HTMLElement {
       this.dragLeadSize = this.dragGroupId ? (isVert ? rects[0].height : rects[0].width) : null
       // A group only moves within the strip, so it never needs the window
       // that carries a tab past the edge.
-      if (!this.dragGroupId) this.startDragPreview(rects[0])
+      if (!this.dragGroupId) this.startDragPreview(rects[lead])
     }
 
     if (this.isDragging) {
@@ -3696,6 +3840,9 @@ class TabBar extends HTMLElement {
 
     try { this.primaryDragTarget.releasePointerCapture(e.pointerId) } catch (err) {}
     this.isDragging = false
+    this.dragEndedAt = Date.now()
+    const selection = this.dragSelection
+    this.dragSelection = false
 
     const idsToMove = this.draggedElements.map(el => el.id)
 
@@ -3711,7 +3858,9 @@ class TabBar extends HTMLElement {
 
     if (this.isOutsideContainer && this.tabs.length > this.draggedElements.length) {
       this.discardDraggedElements()
-      if (idsToMove.length === 1) {
+      if (selection) {
+        this.moveTabsOut(idsToMove, e.screenX, e.screenY)
+      } else if (idsToMove.length === 1) {
         this.moveTabOut(idsToMove[0], e.screenX, e.screenY)
       } else if (idsToMove.length === 2) {
         this.moveSplitGroupToNewWindow(idsToMove)

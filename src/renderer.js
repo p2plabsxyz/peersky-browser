@@ -132,6 +132,11 @@ ipcRenderer.on('add-tab-at-point', (event, tab) => {
   tabBar?.insertTabAtPoint?.(tab)
 })
 
+// Several picked tabs dragged here together.
+ipcRenderer.on('add-tabs-at-point', (event, batch) => {
+  tabBar?.insertTabsAtPoint?.(batch)
+})
+
 // Get initial URL from search params
 const searchParams = new URL(window.location.href).searchParams
 const toNavigate = searchParams.has('url') ? searchParams.get('url') : DEFAULT_PAGE
