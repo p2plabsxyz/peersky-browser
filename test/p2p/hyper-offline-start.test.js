@@ -22,13 +22,16 @@ describe('starting with no internet', () => {
       const started = Date.now()
       sdk = await create({ storage, swarmOpts: { bootstrap: [{ host: '127.0.0.1', port: silent.address().port }] } })
       expect(Date.now() - started).to.be.below(3000)
-      const drive = await sdk.getDrive('notes')
+      // A drive this device writes waits to announce itself when it joins the
+      // network, about 12 s here with nothing answering, and a test gets 20 s.
+      // Reading it locally needs no network.
+      const drive = await sdk.getDrive('notes', { autoJoin: false })
       await drive.put('/hello.txt', Buffer.from('still here'))
       expect((await drive.get('/hello.txt')).toString()).to.equal('still here')
     } finally {
       await sdk?.close()
       silent.close()
-      rmSync(storage, { recursive: true, force: true })
+      rmSync(storage, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
     }
   })
 

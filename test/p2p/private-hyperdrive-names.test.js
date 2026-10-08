@@ -27,7 +27,7 @@ describe('private file names with spaces and brackets', function () {
 
   after(async () => {
     await sdk?.close()
-    rmSync(userData, { recursive: true, force: true })
+    rmSync(userData, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
   })
 
   it('saves the file under its name, and opens it every way it is reached', async () => {

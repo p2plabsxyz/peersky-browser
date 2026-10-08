@@ -7,8 +7,11 @@ import { readFile } from 'fs/promises'
 
 await import('../src/pages/tab-group-layout.js')
 const { arrangeStrip, groupForDrop } = globalThis.TabGroupLayout
-const tabBar = await readFile(new URL('../src/pages/tab-bar.js', import.meta.url), 'utf8')
-const page = await readFile(new URL('../src/pages/index.html', import.meta.url), 'utf8')
+// Windows checks the repo out with CRLF line endings, and some checks below
+// span a line break.
+const source = async (file) => (await readFile(new URL(file, import.meta.url), 'utf8')).replace(/\r\n/g, '\n')
+const tabBar = await source('../src/pages/tab-bar.js')
+const page = await source('../src/pages/index.html')
 
 const shown = (entries) => entries.map(e => e.type === 'header' ? `[${e.groupId}]` : e.id).join(' ')
 
