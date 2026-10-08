@@ -72,25 +72,45 @@ body::before {
 }
 
 /* Every app on a mint tile, as on the phone's home screen and in the app
-   icons, so it reads over any wallpaper. The edge is glass rather than an ink
-   line: a bright rim where light catches the top, a soft white edge all
-   round, a faint shade along the bottom and a sheen across the upper half.
-   The logo fills the middle two thirds; a line icon keeps its black lines. */
+   icons, so it reads over any wallpaper, an icon of your own included. The
+   edge is a hairline of light rather than a white border, as on Apple's
+   icons: brightest where it turns the top left corner, a softer glint at the
+   bottom right, almost nothing along the sides. It is the tile's own border
+   painted with a gradient, since an <img> takes no overlay. Under it, a
+   sheen across the upper half and a faint shade along the bottom. The logo
+   fills the middle two thirds; a line icon keeps its black lines. */
 .peerbar img, .peerbar .p2p-base-tile {
   box-sizing: border-box;
   width: calc(var(--peerbar-icon) * 1.14);
   height: calc(var(--peerbar-icon) * 1.14);
-  background-color: #98f9ea;
-  /* The mint of the app icons, which are Display P3 images. */
-  background-color: color(display-p3 0.596 0.976 0.918);
-  background-image: linear-gradient(160deg, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0.14) 42%, rgba(255, 255, 255, 0) 58%);
+  border: 0.5px solid transparent;
   border-radius: 24%;
+  --peerbar-mint: #98f9ea;
+  --peerbar-sheen: linear-gradient(160deg, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0.12) 42%, rgba(255, 255, 255, 0) 58%);
+  --peerbar-rim: conic-gradient(from 315deg,
+    rgba(255, 255, 255, 0.95) 0deg,
+    rgba(255, 255, 255, 0.3) 40deg,
+    rgba(255, 255, 255, 0.06) 100deg,
+    rgba(255, 255, 255, 0.5) 180deg,
+    rgba(255, 255, 255, 0.06) 260deg,
+    rgba(255, 255, 255, 0.3) 320deg,
+    rgba(255, 255, 255, 0.95) 360deg);
+  background:
+    var(--peerbar-sheen) padding-box,
+    linear-gradient(var(--peerbar-mint), var(--peerbar-mint)) padding-box,
+    var(--peerbar-rim) border-box,
+    var(--peerbar-mint);
   box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.95),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.45),
-    inset 0 -2px 3px rgba(0, 70, 60, 0.18),
-    0 0 0 0.5px rgba(255, 255, 255, 0.5),
+    inset 0 0.5px 0.5px rgba(255, 255, 255, 0.7),
+    inset 0 -2px 3px rgba(0, 70, 60, 0.16),
     0 3px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* The mint of the app icons, which are Display P3 images. */
+@supports (color: color(display-p3 0 0 0)) {
+  .peerbar img, .peerbar .p2p-base-tile {
+    --peerbar-mint: color(display-p3 0.596 0.976 0.918);
+  }
 }
 
 .peerbar img {
