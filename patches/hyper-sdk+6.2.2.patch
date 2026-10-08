@@ -1,0 +1,18 @@
+diff --git a/node_modules/hyper-sdk/index.js b/node_modules/hyper-sdk/index.js
+index 14008d8..93b05f5 100644
+--- a/node_modules/hyper-sdk/index.js
++++ b/node_modules/hyper-sdk/index.js
+@@ -492,9 +492,11 @@ export class SDK extends EventEmitter {
+   }
+ 
+   async ready () {
+-    // Wait for the network to be configured?
+     await this.corestore.ready()
+-    await this.swarm.listen()
++    // Not waited for. Listening waits for the first announce to the public
++    // DHT, which with no internet takes seconds and then fails, and every
++    // local read waited on it. A topic joined to be found waits for it there.
++    this.swarm.listen().catch(() => {})
+   }
+ 
+   async close () {
