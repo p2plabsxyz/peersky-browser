@@ -134,17 +134,23 @@ describe('Hyper protocol handler', function () {
       lanMock.destroyed = true
     })
 
-    const attachHyperSDK = sinon.stub()
-    if (lanAttachResults) {
-      for (const [index, result] of lanAttachResults.entries()) {
-        if (result instanceof Error) attachHyperSDK.onCall(index).rejects(result)
-        else attachHyperSDK.onCall(index).resolves(result)
-      }
-    } else if (lanReject) {
-      attachHyperSDK.rejects(new Error('LAN bind failed'))
-    } else {
-      attachHyperSDK.resolves(lanMock)
-    }
+    // The private store has a LAN swarm of its own, which always attaches
+    // here. The public store's attaches go through what a test gives.
+    const privateLanMock = new EventEmitter()
+    privateLanMock.id = 'private-lan-test'
+    privateLanMock.host = currentIP
+    privateLanMock.port = 49800
+    privateLanMock.destroyed = false
+    privateLanMock.destroy = sinon.stub().resolves()
+    let publicAttaches = 0
+    const attachHyperSDK = sinon.stub().callsFake(async (targetSdk) => {
+      if (targetSdk === privateSdk) return privateLanMock
+      const result = lanAttachResults ? lanAttachResults[publicAttaches] : lanReject ? new Error('LAN bind failed') : lanMock
+      publicAttaches++
+      if (result instanceof Error) throw result
+      return result
+    })
+    const publicAttachCount = () => attachHyperSDK.getCalls().filter((call) => call.args[0] === sdk).length
 
     // The LAN swarm the handler makes and readies before attaching it.
     const lanInstances = []
@@ -233,6 +239,8 @@ describe('Hyper protocol handler', function () {
       releasePeers,
       createSDK,
       attachHyperSDK,
+      publicAttachCount,
+      privateLanMock,
       LANSwarm,
       lanInstances,
       fetchStub,
@@ -265,11 +273,12 @@ describe('Hyper protocol handler', function () {
 
     await module.createHandler({ storage: 'test-lan' })
 
-    expect(lanInstances).to.have.length(1)
-    expect(lanInstances[0].opts.keyPair).to.equal(sdk.swarm.keyPair)
-    expect(lanInstances[0].ready.calledBefore(attachHyperSDK)).to.equal(true)
-    expect(attachHyperSDK.calledOnceWithExactly(sdk, { lan: lanInstances[0] })).to.equal(true)
-    expect(attachHyperSDK.calledBefore(initChat)).to.equal(true)
+    const publicLan = lanInstances.find((instance) => instance.opts.keyPair === sdk.swarm.keyPair)
+    expect(publicLan).to.not.equal(undefined)
+    expect(publicLan.ready.calledBefore(attachHyperSDK)).to.equal(true)
+    const publicAttach = attachHyperSDK.getCalls().find((call) => call.args[0] === sdk)
+    expect(publicAttach.args[1]).to.deep.equal({ lan: publicLan })
+    expect(publicAttach.calledBefore(initChat.firstCall)).to.equal(true)
   })
 
   // A second PeerSky on the same computer already holds the LAN port. The SDK
@@ -359,11 +368,15 @@ describe('Hyper protocol handler', function () {
     process.env.PEERSKY_LAN_PORT = '49800'
 
     try {
-      const { module, attachHyperSDK, lanInstances, sdk } = await loadHyperModule()
+      const { module, attachHyperSDK, lanInstances, sdk, privateSdk } = await loadHyperModule()
       await module.createHandler({ storage: 'test-lan-port' })
 
-      expect(lanInstances[0].opts.port).to.equal(49800)
-      expect(attachHyperSDK.calledOnceWithExactly(sdk, { lan: lanInstances[0] })).to.equal(true)
+      const publicLan = lanInstances.find((instance) => instance.opts.keyPair === sdk.swarm.keyPair)
+      const privateLan = lanInstances.find((instance) => instance.opts.keyPair === privateSdk.swarm.keyPair)
+      expect(publicLan.opts.port).to.equal(49800)
+      // The private store's LAN swarm takes the next port.
+      expect(privateLan.opts.port).to.equal(49801)
+      expect(attachHyperSDK.calledWithExactly(sdk, { lan: publicLan })).to.equal(true)
     } finally {
       if (previousPort === undefined) delete process.env.PEERSKY_LAN_PORT
       else process.env.PEERSKY_LAN_PORT = previousPort
@@ -374,7 +387,7 @@ describe('Hyper protocol handler', function () {
     const clock = sinon.useFakeTimers()
     const first = createLanMock('192.168.1.2')
     const second = createLanMock('192.168.2.2')
-    const { module, attachHyperSDK } = await loadHyperModule({
+    const { module, publicAttachCount } = await loadHyperModule({
       lanAttachResults: [first, second],
       currentIP: second.host
     })
@@ -382,7 +395,7 @@ describe('Hyper protocol handler', function () {
     await module.createHandler({ storage: 'test-lan-recovery' })
     await clock.tickAsync(10_000)
 
-    expect(attachHyperSDK.callCount).to.equal(2)
+    expect(publicAttachCount()).to.equal(2)
     expect(second.listenerCount('warning')).to.equal(1)
     expect(second.listenerCount('error')).to.equal(1)
     expect(() => second.emit('error', new Error('mDNS socket failed'))).not.to.throw()
@@ -392,17 +405,17 @@ describe('Hyper protocol handler', function () {
     const clock = sinon.useFakeTimers()
     const first = createLanMock('192.168.1.2')
     const recovered = createLanMock('192.168.2.2')
-    const { module, attachHyperSDK } = await loadHyperModule({
+    const { module, publicAttachCount } = await loadHyperModule({
       lanAttachResults: [first, new Error('LAN re-attach failed'), recovered],
       currentIP: recovered.host
     })
 
     await module.createHandler({ storage: 'test-lan-retry' })
     await clock.tickAsync(10_000)
-    expect(attachHyperSDK.callCount).to.equal(2)
+    expect(publicAttachCount()).to.equal(2)
 
     await clock.tickAsync(10_000)
-    expect(attachHyperSDK.callCount).to.equal(3)
+    expect(publicAttachCount()).to.equal(3)
     expect(recovered.listenerCount('error')).to.equal(1)
   })
 
@@ -522,7 +535,10 @@ describe('Hyper protocol handler', function () {
     expect(privateSdk.corestore.namespace.calledWithExactly('second-file')).to.equal(true)
   })
 
-  it('runs the private runtime announced and replicating under LAN isolation', async function () {
+  // Announced and replicated like the public store, and on the LAN like it
+  // too. Kept off it, a private file would not come over Wi-Fi with the
+  // internet down, though messages did.
+  it('runs the private runtime announced, replicating and on the LAN with its own key', async function () {
     const { module, createSDK, attachHyperSDK, lanInstances, sdk, privateSdk } = await loadHyperModule()
 
     await module.createHandler({ storage: path.join('profiles', 'hyper') })
@@ -533,8 +549,22 @@ describe('Hyper protocol handler', function () {
       autoJoin: true,
       doReplicate: true
     })
-    expect(attachHyperSDK.calledOnceWithExactly(sdk, { lan: lanInstances[0] })).to.equal(true)
-    expect(attachHyperSDK.calledWith(privateSdk)).to.equal(false)
+    const publicLan = lanInstances.find((instance) => instance.opts.keyPair === sdk.swarm.keyPair)
+    const privateLan = lanInstances.find((instance) => instance.opts.keyPair === privateSdk.swarm.keyPair)
+    expect(attachHyperSDK.calledWithExactly(sdk, { lan: publicLan })).to.equal(true)
+    expect(attachHyperSDK.calledWithExactly(privateSdk, { lan: privateLan })).to.equal(true)
+    expect(privateLan.opts.port).to.equal(49800)
+  })
+
+  it('keeps a device-only private store off every network, the LAN included', async function () {
+    const { module, attachHyperSDK, privateSdk } = await loadHyperModule()
+    module.setPrivateHyperdriveDeviceOnly(true)
+    try {
+      await module.createHandler({ storage: path.join('profiles', 'hyper-device-only') })
+      expect(attachHyperSDK.calledWith(privateSdk)).to.equal(false)
+    } finally {
+      module.setPrivateHyperdriveDeviceOnly(false)
+    }
   })
 
   it('routes private drive writes and reads through the encrypted runtime', async function () {
@@ -860,12 +890,14 @@ describe('Hyper protocol handler', function () {
   })
 
   it('wires up LAN error events correctly', async function () {
-    const { module, attachHyperSDK } = await loadHyperModule()
+    const { module, attachHyperSDK, sdk, privateSdk } = await loadHyperModule()
 
     await module.createHandler({ storage: 'test-lan-events' })
 
-    const lanMock = await attachHyperSDK.firstCall.returnValue
-    expect(lanMock.listenerCount('error')).to.equal(1)
-    expect(lanMock.listenerCount('warning')).to.equal(1)
+    for (const store of [sdk, privateSdk]) {
+      const lanMock = await attachHyperSDK.getCalls().find((call) => call.args[0] === store).returnValue
+      expect(lanMock.listenerCount('error')).to.equal(1)
+      expect(lanMock.listenerCount('warning')).to.equal(1)
+    }
   })
 })
