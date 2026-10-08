@@ -31,6 +31,19 @@ describe('picking several tabs', function () {
   })
 })
 
+// Dragged while its first page was still loading, a tab arrived in the other
+// window blank: its history held only an empty entry, and that is what the
+// other window restored, over the address it was opening.
+describe('moving a tab that has not loaded yet', function () {
+  it('sends its address rather than a history with no page in it', function () {
+    const detach = between(tabBar, '  detachTab (tabId', '  moveTabToNewWindow (tabId) {')
+    const check = "if (navigation && !navigation.entries?.some(entry => entry.url && entry.url !== 'about:blank')) navigation = null"
+    expect(detach).to.contain(check)
+    expect(detach.indexOf(check)).to.be.above(detach.indexOf("navigation = ipcRenderer.sendSync('get-tab-navigation'"))
+    expect(detach).to.contain('return { url: tab.url, title: tab.title, navigation }')
+  })
+})
+
 describe('dragging picked tabs', function () {
   const down = between(tabBar, '  handlePointerDown (e) {', '  handlePointerMove (e) {')
   const move = between(tabBar, '  handlePointerMove (e) {', '  handlePointerUp (e) {')

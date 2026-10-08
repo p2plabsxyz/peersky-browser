@@ -2298,6 +2298,9 @@ class TabBar extends HTMLElement {
         navigation = ipcRenderer.sendSync('get-tab-navigation', webview.getWebContentsId())
       } catch (_) {}
     }
+    // A tab still loading its first page has no page in its history yet, and
+    // the other window restored that as a blank tab. It opens the address.
+    if (navigation && !navigation.entries?.some(entry => entry.url && entry.url !== 'about:blank')) navigation = null
 
     document.getElementById(tabId)?.remove()
     const tabIndex = this.tabs.findIndex(t => t.id === tabId)
