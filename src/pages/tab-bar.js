@@ -3,6 +3,23 @@
 // calls a single tab action produces.
 const TAB_STATE_SAVE_DEBOUNCE_MS = 150
 
+// A title for a page that never gave one: the file's name, or the site's.
+// Opened straight, a video, a sound or any other file Chromium does not name
+// has no title of its own, and the tab kept the one before it, so a hyper://
+// video opened in a new tab said "Home". A picture gets Chromium's own name,
+// "cat.png (40×30)", which is kept.
+function titleFromAddress (url) {
+  try {
+    const parsed = new URL(url)
+    const name = parsed.pathname.split('/').filter(Boolean).pop() || ''
+    let decoded = name
+    try { decoded = decodeURIComponent(name) } catch {}
+    return decoded || parsed.host || url
+  } catch {
+    return ''
+  }
+}
+
 // A failed load is shown by navigating the tab to peersky://error.html, so a
 // plain reload reloads the error page and the address that failed is never
 // tried again. The scheme is checked because the url parameter travels in a
@@ -1125,6 +1142,16 @@ class TabBar extends HTMLElement {
       // A frame finishing on a page that never showed the spinner has
       // nothing to undo.
       if (!tabElement?.classList.contains('loading')) return
+      // A page that names itself has done so by now. One that has not, as a
+      // video or sound opened straight has not, takes the title Chromium made
+      // for it, or its file's name, never the last page's.
+      const loaded = this.tabs.find(t => t.id === tabId)
+      if (loaded && loaded.pageNamedItself === false) {
+        const url = webview.getURL()
+        const made = webview.getTitle()
+        const title = made && made !== url ? made : titleFromAddress(url)
+        if (title) this.updateTab(tabId, { title })
+      }
       if (tabElement) {
         tabElement.classList.remove('loading')
 
@@ -1153,6 +1180,7 @@ class TabBar extends HTMLElement {
     webview.addEventListener('page-title-updated', (e) => {
       const newTitle = e.title || 'Untitled'
       const tab = this.tabs.find(t => t.id === tabId)
+      if (tab) tab.pageNamedItself = true
       if (tab && tab.savedNavigation && tab.savedNavigation.entries && tab.savedNavigation.entries[tab.savedNavigation.activeIndex]) {
         tab.savedNavigation.entries[tab.savedNavigation.activeIndex].title = newTitle
       }
@@ -1162,6 +1190,8 @@ class TabBar extends HTMLElement {
     webview.addEventListener('did-navigate', (e) => {
       const newUrl = e.url
       const tab = this.tabs.find(t => t.id === tabId)
+      // Until the new page gives a title, the tab's is the last page's.
+      if (tab) tab.pageNamedItself = false
       if (tab && tab.savedNavigation && tab.savedNavigation.entries) {
         if (tab.isFallbackNavigating) {
           tab.isFallbackNavigating = false
