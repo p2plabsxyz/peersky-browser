@@ -73,9 +73,21 @@ function createLANAdapter () {
   return withPeerLocalHost(new Adapter())
 }
 
-function getLANOptions () {
-  const port = Number.parseInt(process.env.PEERSKY_LAN_PORT || '', 10)
-  const options = Number.isInteger(port) && port > 0 && port <= 65535 ? { port } : {}
+const DEFAULT_LAN_PORT = HyperDHTmDNS.DEFAULT_PORT || 49799
+
+function lanPort (value) {
+  const port = Number.parseInt(value || '', 10)
+  return Number.isInteger(port) && port > 0 && port <= 65535 ? port : null
+}
+
+// The private store has a network key of its own, so it gets a LAN swarm of
+// its own, on the port after the public one's.
+function getLANOptions ({ privateStore = false } = {}) {
+  const publicPort = lanPort(process.env.PEERSKY_LAN_PORT)
+  const port = privateStore
+    ? lanPort(process.env.PEERSKY_PRIVATE_LAN_PORT) || (publicPort || DEFAULT_LAN_PORT) + 1
+    : publicPort
+  const options = port ? { port } : {}
   const adapter = createLANAdapter()
   return adapter ? { ...options, adapter } : options
 }
@@ -90,8 +102,8 @@ function wireLANEvents (instance) {
 // patches sdk.join first and binds after, so with the port already taken (a
 // second PeerSky on this computer) every later join went to a LAN swarm that
 // never started, and creating a drive failed with "address already in use".
-async function attachLANDiscovery (activeSdk) {
-  const lan = new HyperDHTmDNS({ ...getLANOptions(), keyPair: activeSdk.swarm.keyPair })
+async function attachLANDiscovery (activeSdk, lanOptions = {}) {
+  const lan = new HyperDHTmDNS({ ...getLANOptions(lanOptions), keyPair: activeSdk.swarm.keyPair })
   try {
     await lan.ready()
   } catch (err) {
@@ -100,6 +112,55 @@ async function attachLANDiscovery (activeSdk) {
   }
   const instance = await HyperDHTmDNS.attachHyperSDK(activeSdk, { lan })
   return wireLANEvents(instance)
+}
+
+// Local discovery for one store's swarm, started again on the new address
+// when this computer moves to another network, until that store is closed.
+async function keepLANDiscovery (activeSdk, { label = 'LAN', lanOptions = {} } = {}) {
+  let lan = null
+  try {
+    lan = await attachLANDiscovery(activeSdk, lanOptions)
+    log.info(`[${label}] Listening on ${lan.host || '0.0.0.0'}:${lan.port}`)
+  } catch (err) {
+    log.warn(`[${label}] Local discovery unavailable, continuing without it: ${err.message}`)
+    return null
+  }
+
+  let lastKnownIP = lan.host
+  let cycling = false
+  const NETWORK_CHECK_MS = 10_000
+  const timer = setInterval(async () => {
+    if (activeSdk.swarm.destroyed) {
+      clearInterval(timer)
+      return
+    }
+    if (cycling) return
+    try {
+      const currentIP = HyperDHTmDNS.selectLocalIPv4()
+      if (currentIP === lastKnownIP) return
+      log.info(`[${label}] Network change detected: ${lastKnownIP} -> ${currentIP}`)
+      cycling = true
+
+      try {
+        const previous = lan
+        lan = null
+        if (previous && !previous.destroyed) await previous.destroy()
+        const next = await attachLANDiscovery(activeSdk, lanOptions)
+        lan = next
+        lastKnownIP = next.host
+        log.info(`[${label}] Restarted discovery on ${next.host}:${next.port}`)
+      } catch (err) {
+        lan = null
+        log.warn(`[${label}] Network change recovery failed: ${err.message}`)
+      } finally {
+        cycling = false
+      }
+    } catch {
+      // No usable interface, ignore
+    }
+  }, NETWORK_CHECK_MS)
+  timer.unref()
+  return lan
 }
 
 function isWebReadableStream (body) {
@@ -215,52 +276,17 @@ async function startHyperSDK (options) {
   // A desktop restored from another one connects with keys of its own.
   const networkKeys = await readNetworkKeys(app.getPath('userData'))
   sdk = shareDriveOpens(await createSDK(withNetworkKey(options, networkKeys?.main)))
-
-  let lan = null
-  try {
-    lan = await attachLANDiscovery(sdk)
-    log.info(`[LAN] Listening on ${lan.host || '0.0.0.0'}:${lan.port}`)
-  } catch (err) {
-    log.warn(`[LAN] Local discovery unavailable, continuing without it: ${err.message}`)
-  }
-
-  if (lan) {
-    let lastKnownIP = lan.host
-    let cycling = false
-    const NETWORK_CHECK_MS = 10_000
-    setInterval(async () => {
-      if (cycling) return
-      try {
-        const currentIP = HyperDHTmDNS.selectLocalIPv4()
-        if (currentIP === lastKnownIP) return
-        log.info(`[LAN] Network change detected: ${lastKnownIP} -> ${currentIP}`)
-        cycling = true
-
-        try {
-          const previous = lan
-          lan = null
-          if (previous && !previous.destroyed) await previous.destroy()
-          const next = await attachLANDiscovery(sdk)
-          lan = next
-          lastKnownIP = next.host
-          log.info(`[LAN] Restarted discovery on ${next.host}:${next.port}`)
-        } catch (err) {
-          lan = null
-          log.warn(`[LAN] Network change recovery failed: ${err.message}`)
-        } finally {
-          cycling = false
-        }
-      } catch {
-        // No usable interface, ignore
-      }
-    }, NETWORK_CHECK_MS).unref()
-  }
+  await keepLANDiscovery(sdk)
 
   fetch = await makeHyperFetch({ sdk, writable: true })
 
   initChat(sdk, {
     safeStorage,
-    storagePath: path.join(app.getPath('userData'), CHAT_STORAGE)
+    storagePath: path.join(app.getPath('userData'), CHAT_STORAGE),
+    // The pair it connects with, which signs what this desktop writes in
+    // PeerChat. A restored desktop's is its own and not in its stores, so
+    // without it nothing it wrote could be checked by anyone else.
+    keyPair: networkKeys?.main
   })
 
   log.info('Hyper SDK initialized.')
@@ -398,6 +424,11 @@ async function startPrivateHyperSDK (options) {
   const privateOptions = getPrivateSDKOptions(options || savedSdkOptions, privateDeviceOnly)
   const networkKeys = await readNetworkKeys(app.getPath('userData'))
   const openedSdk = shareDriveOpens(await createSDK(withNetworkKey(privateOptions, networkKeys?.private)))
+  // Found over Wi-Fi as well as the internet, as the public store is. Without
+  // it a private file could not be fetched with the internet down, though
+  // messages went through, and opening a private drive waited on the public
+  // DHT. A store kept on this device alone goes on no network at all.
+  if (!privateDeviceOnly) await keepLANDiscovery(openedSdk, { label: 'LAN private', lanOptions: { privateStore: true } })
   try {
     const openedFetch = await makeHyperFetch({ sdk: openedSdk, writable: true })
     privateSdk = openedSdk

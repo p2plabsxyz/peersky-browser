@@ -1835,6 +1835,15 @@ function getResponseHost (session) {
 
 let portsLoaded = false
 
+const P2PMD_PAGE = 'peersky://p2p/p2pmd/'
+const NOTE_KEY = /^[a-z0-9]{32,256}$/i
+
+// hs://<key>, a note's key, or null for anything else.
+export function noteKeyOf (urlObj) {
+  const key = urlObj?.hostname || ''
+  return NOTE_KEY.test(key) ? `hs://${key}` : null
+}
+
 export async function createHandler () {
   // Deliberately not at import time: seeds are encrypted with safeStorage, and
   // safeStorage.isEncryptionAvailable() is false until the app is ready. Reading
@@ -1851,6 +1860,11 @@ export async function createHandler () {
     const action = urlObj.searchParams.get('action')
 
     if (urlObj.hostname !== 'p2pmd') {
+      // A note's link, as shared in a chat or on a page, is a key to join, not
+      // a page. It answered "Unknown hs target"; P2PMD now opens with the key
+      // in its join box, as on the phone.
+      const note = noteKeyOf(urlObj)
+      if (note) return Response.redirect(`${P2PMD_PAGE}?join=${encodeURIComponent(note)}`, 302)
       return buildTextResponse(404, 'Unknown hs target')
     }
 

@@ -109,4 +109,17 @@ describe('the address bar suggestions', function () {
     expect(search).to.contain('this._autocompleteEpoch++')
     expect(dismiss).to.contain('this._autocompleteEpoch++')
   })
+
+  // Picked with the down key, then cut down to github.com/p2plabsxyz/peerchat/,
+  // Enter still opened the picked .../pulls/10.
+  it('lets go of a picked suggestion as soon as the address is edited', function () {
+    expect(search).to.match(/if \(this\._autocompleteSelectedIndex !== -1\) \{\s+this\._autocompleteSelectedIndex = -1\s+this\._updateAutocompleteSelection\(\)/)
+    // Before the search waits, not after it comes back.
+    expect(search.indexOf('this._autocompleteSelectedIndex = -1')).to.be.below(search.indexOf('setTimeout('))
+  })
+
+  it('opens a suggestion on Enter only while the address bar still shows it', function () {
+    const keys = navBox.slice(navBox.indexOf('_handleAutocompleteKeydown (e)'), navBox.indexOf('_renderAutocompleteResults ()'))
+    expect(keys).to.contain("if (selected && this.querySelector('#url')?.value === selected.url) {")
+  })
 })

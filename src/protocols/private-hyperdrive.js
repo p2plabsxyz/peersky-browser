@@ -226,7 +226,20 @@ export function makePrivateDriveFetcher (sdk, userDataDir) {
   async function handle (url, options = {}) {
     const parsed = new URL(url)
     const { drive, owned } = await open(url)
-    const pathname = parsed.pathname === '' || parsed.pathname === '/' ? '/' : parsed.pathname
+    // A path arrives percent-encoded. It was used as it came, so a private file
+    // was saved under its encoded name, the drive's list encoded that again,
+    // and the file opened from there said "File not found". Decoded the way
+    // hypercore-fetch decodes it for public drives, and read on the phone.
+    const rawPath = parsed.pathname === '' || parsed.pathname === '/' ? '/' : parsed.pathname
+    let pathname
+    try {
+      pathname = decodeURI(rawPath)
+    } catch {
+      return new Response('Bad file path', { status: 400, headers: { 'Content-Type': 'text/plain' } })
+    }
+    // Where to look: the name, then the encoded one a file saved before this
+    // was fixed has.
+    const places = pathname === rawPath ? [pathname] : [pathname, rawPath]
     const method = (options.method || 'GET').toUpperCase()
 
     if (method === 'PUT' || method === 'POST') {
@@ -247,36 +260,44 @@ export function makePrivateDriveFetcher (sdk, userDataDir) {
       if (!owned) {
         return new Response('This private drive is read-only on this device', { status: 403 })
       }
-      await drive.del(pathname).catch(() => {})
+      for (const place of places) await drive.del(place).catch(() => {})
       return new Response('', { status: 200 })
     }
 
     const name = pathname === '/' ? '' : pathname.split('/').pop()
-    let stat = await statDrive(drive, pathname)
+    const find = async (opts) => {
+      for (const place of places) {
+        const stat = await statDrive(drive, place, opts)
+        if (stat) return { stat, place }
+      }
+      return null
+    }
+    let found = await find()
     const remote = !drive.writable
-    if (remote && (!stat || drive.core.length === 0)) {
+    if (remote && (!found || drive.core.length === 0)) {
       const running = catchUp(parsed.hostname, drive)
       if (running) {
         await running
         // Only worth waiting on blocks when a peer is there to send them.
-        stat = await statDrive(drive, pathname, { wait: drive.core.peers?.length > 0 })
+        found = await find({ wait: drive.core.peers?.length > 0 })
       }
     }
 
-    if (!stat) {
+    if (!found) {
       return new Response('File not found', { status: 404, headers: { 'Content-Type': 'text/plain' } })
     }
+    const { stat, place } = found
 
     if (stat.isDirectory()) {
       const children = []
-      for await (const child of await drive.readdir(pathname)) {
+      for await (const child of await drive.readdir(place)) {
         children.push(typeof child === 'string' ? child : child.name)
       }
       const listing = renderPrivateListing(parsed.hostname, children, { readOnly: !owned })
       return new Response(listing, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } })
     }
 
-    const buffer = await drive.get(pathname, remote ? { timeout: PEER_WAIT_MS } : undefined)
+    const buffer = await drive.get(place, remote ? { timeout: PEER_WAIT_MS } : undefined)
     return new Response(buffer, {
       status: 200,
       headers: {

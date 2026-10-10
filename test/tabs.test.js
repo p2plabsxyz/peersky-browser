@@ -400,3 +400,25 @@ describe('a loading tab in the vertical strip', function () {
     expect(verticalCss).to.not.match(/\.tab\.loading[^{]*::after/)
   })
 })
+
+// A video or sound opened straight has no title of its own, and the tab kept the
+// last page's: a hyper:// video opened in a new tab said "Home".
+describe('a page with no title of its own', function () {
+  const start = tabBar.indexOf('function titleFromAddress (')
+  const source = tabBar.slice(start, tabBar.indexOf('\n}\n', start) + 2)
+  // eslint-disable-next-line no-new-func
+  const titleFromAddress = new Function(`${source}; return titleFromAddress`)()
+
+  it('is named after its file, or its site', function () {
+    expect(titleFromAddress('hyper://abc/photos/cat%20one.png')).to.equal('cat one.png')
+    expect(titleFromAddress('hyper://blog.example/')).to.equal('blog.example')
+    expect(titleFromAddress('hyper://abc/bad%E0%A4%A.png')).to.equal('bad%E0%A4%A.png')
+    expect(titleFromAddress('not a url')).to.equal('')
+  })
+
+  it('takes that title only when the page gave none since it navigated', function () {
+    expect(tabBar).to.contain('if (tab) tab.pageNamedItself = false')
+    expect(tabBar).to.contain('if (tab) tab.pageNamedItself = true')
+    expect(tabBar).to.match(/loaded\.pageNamedItself === false[\s\S]{0,300}titleFromAddress\(url\)/)
+  })
+})

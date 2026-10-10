@@ -200,6 +200,32 @@ class WindowManager {
       }
       target.window.focus()
     })
+    // Several picked tabs dragged out together: a window of their own, or the
+    // window they were dropped on, in the order they had.
+    ipcMain.on('new-window-with-tabs', (event, data) => {
+      const tabs = movedTabsFrom(data?.tabs)
+      if (!tabs.length) return
+      log.info(`Creating new window for ${tabs.length} torn off tabs`)
+      this.open({
+        isolate: true,
+        incognito: this.findWindowByWebContentsId(event.sender.id)?.incognito === true,
+        ...(tabs.length === 1 ? { singleTab: tabs[0] } : { movedTabs: tabs })
+      })
+    })
+
+    ipcMain.on('move-tabs-to-window', (event, { targetId, tabs, x, y }) => {
+      const list = movedTabsFrom(tabs)
+      if (!list.length) return
+      const target = this.findWindowBySenderId(targetId)
+      const incognito = this.findWindowBySenderId(event.sender.id)?.incognito === true
+      // The sender has let go of them already, so they need somewhere to go.
+      if (!target || target.window.isDestroyed() || target.incognito !== incognito) {
+        this.open({ isolate: true, incognito, ...(list.length === 1 ? { singleTab: list[0] } : { movedTabs: list }) })
+        return
+      }
+      target.window.webContents.send('add-tabs-at-point', { tabs: list, x, y })
+      target.window.focus()
+    })
     registerTabDragPreview()
 
     // Handles tearing off a split tab pair into a new window
@@ -1068,9 +1094,25 @@ class WindowManager {
   }
 }
 
+// What a window is handed for tabs moved into it: their address, title and
+// history, nothing else, and at most a window's worth.
+const MAX_MOVED_TABS = 100
+
+function movedTabsFrom (list) {
+  if (!Array.isArray(list)) return []
+  return list
+    .filter((tab) => tab && typeof tab.url === 'string' && tab.url)
+    .slice(0, MAX_MOVED_TABS)
+    .map((tab) => ({
+      url: tab.url,
+      title: typeof tab.title === 'string' ? tab.title : '',
+      ...(tab.navigation && typeof tab.navigation === 'object' && { navigation: tab.navigation })
+    }))
+}
+
 class PeerskyWindow {
   constructor (options = {}, windowManager) {
-    const { url, isMainWindow = false, newWindow = false, windowId, savedTabs, isolate, singleTab, incognito, ...windowOptions } = options // eslint-disable-line no-unused-vars
+    const { url, isMainWindow = false, newWindow = false, windowId, savedTabs, isolate, singleTab, movedTabs, incognito, ...windowOptions } = options // eslint-disable-line no-unused-vars
     this.window = new BrowserWindow({
       width: 1280,
       height: 800,
@@ -1114,6 +1156,7 @@ class PeerskyWindow {
           singleTabTitle: singleTab.title,
           ...(singleTab.navigation && { singleTabNavigation: JSON.stringify(singleTab.navigation) })
         }),
+        ...(movedTabs?.length && { movedTabs: JSON.stringify(movedTabs) }),
         ...(options.splitLeftUrl && {
           splitLeftUrl: options.splitLeftUrl,
           splitLeftTitle: options.splitLeftTitle,
