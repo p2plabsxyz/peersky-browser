@@ -282,7 +282,11 @@ async function startHyperSDK (options) {
 
   initChat(sdk, {
     safeStorage,
-    storagePath: path.join(app.getPath('userData'), CHAT_STORAGE)
+    storagePath: path.join(app.getPath('userData'), CHAT_STORAGE),
+    // The pair it connects with, which signs what this desktop writes in
+    // PeerChat. A restored desktop's is its own and not in its stores, so
+    // without it nothing it wrote could be checked by anyone else.
+    keyPair: networkKeys?.main
   })
 
   log.info('Hyper SDK initialized.')

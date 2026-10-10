@@ -297,6 +297,24 @@ describe('Hyper protocol handler', function () {
     expect(response.status).to.equal(200)
   })
 
+  // A desktop restored from another connects with keys of its own, which its
+  // stores do not hold. PeerChat signs what this desktop writes with that pair,
+  // or nobody it reaches through somebody else could check who wrote it.
+  it('hands PeerChat the key a restored desktop connects with', async function () {
+    const keysFile = path.join(TEST_USER_DATA, 'peersky-network-keys.json')
+    const main = { publicKey: 'ab'.repeat(32), secretKey: 'cd'.repeat(64) }
+    await writeFile(keysFile, JSON.stringify({ version: 1, main, private: { publicKey: 'ef'.repeat(32), secretKey: '12'.repeat(64) } }))
+    try {
+      const { module, initChat } = await loadHyperModule()
+      await module.createHandler({ storage: 'test-own-keys' })
+      const { keyPair } = initChat.firstCall.args[1]
+      expect(keyPair.publicKey.toString('hex')).to.equal(main.publicKey)
+      expect(keyPair.secretKey.toString('hex')).to.equal(main.secretKey)
+    } finally {
+      await rm(keysFile, { force: true })
+    }
+  })
+
   describe('first load of a drive that has not replicated yet', function () {
     it('waits for peers before fetching, so the first read is not a 404', async function () {
       const { module, callOrder, releasePeers, fetchStub } = await loadHyperModule()
