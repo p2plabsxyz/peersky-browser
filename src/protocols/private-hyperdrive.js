@@ -308,5 +308,8 @@ export function makePrivateDriveFetcher (sdk, userDataDir) {
   }
 
   handle.openByName = openByName
+  // The drive at an address, through the same opens reads share. The private
+  // sync opens a linked device's drive this way to list and copy it.
+  handle.openDrive = async (url) => (await open(url)).drive
   return handle
 }

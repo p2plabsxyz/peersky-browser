@@ -111,6 +111,7 @@
     - Chat with local AI models, with nothing leaving the device
   - [x] `peersky://p2p/hyperdrive/`
     - Decentralized file storage, published as a public or private drive
+    - Private files from your phone show up on their own, with a copy kept on this computer, and yours show up on the phone
   - [x] And several others, including a website builder, a Wikipedia reader over
     IPFS, and the [Social Reader](https://reader.distributed.press/) ActivityPub
     client for the fediverse.

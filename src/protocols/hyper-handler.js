@@ -31,6 +31,7 @@ import { shareDriveOpens } from './shared-drive-opens.js'
 import { isUnreadableDriveError, LINKED_PRIVATE_DRIVE_NAME, PRIVATE_DRIVE_ERROR } from './private-drive-errors.js'
 import { mayUsePrivateDrive, takeNavigationStamp } from './request-gate.js'
 import { toHyperFetchUrl } from './hyper-fetch-url.js'
+import { deviceSyncSnapshot, startDesktopDeviceSync } from './desktop-device-sync.js'
 
 import { _suspendHyper, _hyperPublishFile, _hyperFetchToFile } from '../backup/hyper-backup.js'
 
@@ -38,6 +39,9 @@ const log = createLogger('protocols:hyper')
 
 // Single SDK and swarm for the app lifecycle (hyper:// browsing + chat share the same swarm).
 let sdk, fetch, privateSdk, privateFetch, privateKeyedFetch, savedSdkOptions
+// The private sync with the person's other devices, on the private store.
+let privateDeviceSync = null
+let privateDeviceSyncStarting = null
 const privateDriveHostnames = new Set()
 const ephemeralPublishers = new Set()
 
@@ -268,6 +272,11 @@ export async function warmupHyper () {
   if (isSuspended) return
   if (!savedSdkOptions && sdk == null) return
   await initializeHyperSDK()
+  // A profile with private files meets its other devices as soon as it is up,
+  // so a phone's new private files arrive without anything being opened here.
+  if (!privateDeviceOnly && await getPrivateDriveKey(app.getPath('userData'))) {
+    await initializePrivateHyperSDK()
+  }
 }
 
 async function startHyperSDK (options) {
@@ -420,6 +429,62 @@ function initializePrivateHyperSDK (options) {
   return privateSdkStarting
 }
 
+// Meets the person's other devices on the private store, once this profile has
+// a private drive key. Never on a store kept on this device alone.
+async function ensurePrivateDeviceSync () {
+  if (privateDeviceSync || privateDeviceOnly || !privateSdk || !privateKeyedFetch) return privateDeviceSync
+  if (!privateDeviceSyncStarting) {
+    const startedOn = privateSdk
+    privateDeviceSyncStarting = startDesktopDeviceSync(startedOn, {
+      userDataDir: app.getPath('userData'),
+      // Through the private store's own opens, so a phone's drive is opened
+      // once, whether the sync or a page asked for it first.
+      openPrivateDrive: (url) => privateSdk === startedOn ? privateKeyedFetch.openDrive(url) : null,
+      trustHostname: trustPrivateDriveHostname,
+      logger: log
+    }).then((sync) => {
+      if (privateSdk !== startedOn) {
+        sync?.close().catch(() => {})
+        return null
+      }
+      privateDeviceSync = sync
+      return sync
+    }).catch((error) => {
+      log.warn(`Private sync with linked devices did not start: ${error.message}`)
+      return null
+    }).finally(() => {
+      privateDeviceSyncStarting = null
+    })
+  }
+  return privateDeviceSyncStarting
+}
+
+async function stopPrivateDeviceSync () {
+  const sync = privateDeviceSync
+  privateDeviceSync = null
+  await sync?.close().catch(() => {})
+}
+
+/**
+ * Brings up the private store and the sync with linked devices, when this
+ * profile has a private drive key: after a phone's send, which adds its drive
+ * here, there is a phone to meet.
+ */
+export async function startPrivateSync () {
+  if (isSuspended || privateDeviceOnly) return null
+  if (!await getPrivateDriveKey(app.getPath('userData'))) return null
+  await initializePrivateHyperSDK()
+  return ensurePrivateDeviceSync()
+}
+
+/**
+ * The devices this desktop has met under its private drive key and the files
+ * at the top of their private drives, for the Hyperdrive app.
+ */
+export function getDeviceSyncSnapshot () {
+  return deviceSyncSnapshot(app.getPath('userData'), privateDeviceSync ? privateDeviceSync.online : new Set())
+}
+
 async function startPrivateHyperSDK (options) {
   const privateOptions = getPrivateSDKOptions(options || savedSdkOptions, privateDeviceOnly)
   const networkKeys = await readNetworkKeys(app.getPath('userData'))
@@ -435,6 +500,7 @@ async function startPrivateHyperSDK (options) {
     privateFetch = openedFetch
     privateKeyedFetch = makePrivateDriveFetcher(openedSdk, app.getPath('userData'))
     await trustRegisteredPrivateDrives()
+    await ensurePrivateDeviceSync()
     return privateFetch
   } catch (error) {
     await openedSdk.close().catch(() => {})
@@ -461,6 +527,7 @@ async function getHyperRequestContext (url) {
 // turns back into a torn one, so shutdown passes recover: false.
 export async function suspendHyper ({ recover = true } = {}) {
   isSuspended = true
+  await stopPrivateDeviceSync()
   const results = await Promise.allSettled([
     _suspendHyper(privateSdk, () => {
       privateSdk = null
@@ -646,6 +713,12 @@ export async function createHandler (options, securityOptions = {}) {
               timestamp: Date.now(),
               encrypted: !privateDeviceOnly
             })
+            // The first private drive makes this profile's key, which is what
+            // the sync meets under; the other devices hear of every new drive.
+            if (!privateDeviceOnly) {
+              const sync = await ensurePrivateDeviceSync()
+              await sync?.drivesChanged().catch(() => {})
+            }
           } else {
             drive = await sdk.getDrive(target.driveName, { autoJoin: target.autoJoin })
           }

@@ -124,6 +124,11 @@ Moving your identity to another device goes over a temporary Hyper drive that
 is deleted after 15 minutes at the most. It is encrypted so that only the
 receiving device can open it.
 
+Your private Hyperdrive uploads also go to your own devices that hold your
+identity's key, such as your phone: they find each other directly, list each
+other's private files, and this computer keeps a copy of your phone's. They
+stay encrypted, and nobody else can open them.
+
 ## AI
 
 AI is off until you turn it on in Settings. With a model on your computer, such

@@ -818,7 +818,12 @@ try {
     contextBridge.exposeInMainWorld('electronAPI', {
       settings: settingsAPI,
       onPinnedAppsChanged: (callback) => createEventListener('pinned-apps-changed', callback),
-      p2pApps: p2pAppsAPI
+      p2pApps: p2pAppsAPI,
+      // The person's other devices and their private files, for the Hyperdrive
+      // app. The main process answers that page alone.
+      devices: {
+        list: () => ipcRenderer.invoke('device-sync-list')
+      }
     })
 
     console.log('Unified-preload: P2P page API exposed (pinnedP2PApps settings)')

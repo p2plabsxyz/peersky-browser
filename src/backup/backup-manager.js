@@ -11,7 +11,7 @@ import { readManifest, verifyManifest } from './backup-core.js'
 import { createIdentityTransferZip, decodePairingString, decryptIdentityTransferZip, extractAndVerifyIdentityPayload, isIdentityTransferManifest } from './identity-transfer.js'
 import { assertMobilePairingAllowed, setPairedMobile } from './mobile-pairing.js'
 import { decryptEncryptedBackupZip, isEncryptedBackupManifest } from './encrypted-backup.js'
-import { suspendHyper, resumeHyper, trustPrivateDriveHostname, exportChatForTransfer, importChatFromPhone } from '../protocols/hyper-handler.js'
+import { suspendHyper, resumeHyper, trustPrivateDriveHostname, exportChatForTransfer, importChatFromPhone, startPrivateSync } from '../protocols/hyper-handler.js'
 import { suspendIPFS, resumeIPFS } from '../protocols/ipfs-handler.js'
 import { setPrivateDriveOwnership, currentPrivateDriveIds } from '../protocols/private-drive-ownership.js'
 import { listPrivateHyperdrives } from '../protocols/private-hyperdrive-registry.js'
@@ -415,6 +415,8 @@ class BackupManager {
     if (staged.kind === 'phone') {
       const applied = await applyPhoneSync(userDataDir(), staged.sync)
       for (const hostname of applied.privateHostnames) trustPrivateDriveHostname(hostname)
+      // From now on the phone's private files come here on their own.
+      startPrivateSync().catch((err) => log.warn(`Private sync did not start after a phone's send: ${err.message}`))
       // openTabs says how many it opened: a tab already open here is left out.
       let tabsAdded = 0
       if (typeof openTabs === 'function' && staged.sync.tabs.length > 0) {

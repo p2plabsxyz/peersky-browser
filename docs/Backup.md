@@ -167,7 +167,9 @@ for a drive stays. A drive this desktop made is left alone whatever a phone
 lists: it is never renamed, made read-only, or given another key.
 
 The phone's drive lives on the phone, so a file in it is not on this desktop
-until it is first read. When a private drive this desktop cannot write does
+until it is first read, unless both run a version with the private sync, which
+copies the phone's files here as they arrive (Private files from your other
+devices in [P2P.md](P2P.md)). When a private drive this desktop cannot write does
 not have a file, its peers are asked for the latest before the answer is
 File not found, for up to 15 seconds, as for a public drive, and at most once
 every 30 seconds per drive (`src/protocols/private-hyperdrive.js`).
