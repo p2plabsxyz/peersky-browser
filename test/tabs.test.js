@@ -7,19 +7,22 @@ import { EventEmitter } from 'events'
 import esmock from 'esmock'
 import sinon from 'sinon'
 
-const tabBar = await readFile(new URL('../src/pages/tab-bar.js', import.meta.url), 'utf8')
-const windows = await readFile(new URL('../src/window-manager.js', import.meta.url), 'utf8')
-const renderer = await readFile(new URL('../src/renderer.js', import.meta.url), 'utf8')
-const main = await readFile(new URL('../src/main.js', import.meta.url), 'utf8')
-const vertical = await readFile(new URL('../src/pages/vertical-tabs.js', import.meta.url), 'utf8')
-const verticalCss = await readFile(new URL('../src/pages/theme/vertical-tabs.css', import.meta.url), 'utf8')
+// Windows checks the repo out with CRLF line endings, and some checks below
+// span a line break.
+const source = async (file) => (await readFile(new URL(file, import.meta.url), 'utf8')).replace(/\r\n/g, '\n')
+const tabBar = await source('../src/pages/tab-bar.js')
+const windows = await source('../src/window-manager.js')
+const renderer = await source('../src/renderer.js')
+const main = await source('../src/main.js')
+const vertical = await source('../src/pages/vertical-tabs.js')
+const verticalCss = await source('../src/pages/theme/vertical-tabs.css')
 
 // The preview module creates windows, so electron is stubbed out.
 const preview = await esmock.strict('../src/tab-drag-preview.js', {
   electron: { BrowserWindow: class {}, ipcMain: { handle () {}, on () {} } },
   '../src/session.js': { getPartition: () => 'persist:test' }
 })
-const previewSource = await readFile(new URL('../src/tab-drag-preview.js', import.meta.url), 'utf8')
+const previewSource = await source('../src/tab-drag-preview.js')
 
 // A tab dragged onto another window opened a new window instead of joining it.
 describe('dragging a tab onto another window', function () {
@@ -315,7 +318,7 @@ describe('navigation history', function () {
   })
 
   it('forgets a queued restore that nothing ever claims', async function () {
-    const preview = await readFile(new URL('../src/navigation-restore.js', import.meta.url), 'utf8')
+    const preview = await source('../src/navigation-restore.js')
     const queue = preview.slice(preview.indexOf("'queue-navigation-restore'"), preview.indexOf("'restore-navigation-history'"))
     expect(queue).to.contain('setTimeout(() => pending.delete(token), 30000)')
     expect(queue).to.contain('if (expiry.unref) expiry.unref()')
@@ -405,9 +408,9 @@ describe('a loading tab in the vertical strip', function () {
 // last page's: a hyper:// video opened in a new tab said "Home".
 describe('a page with no title of its own', function () {
   const start = tabBar.indexOf('function titleFromAddress (')
-  const source = tabBar.slice(start, tabBar.indexOf('\n}\n', start) + 2)
+  const body = tabBar.slice(start, tabBar.indexOf('\n}\n', start) + 2)
   // eslint-disable-next-line no-new-func
-  const titleFromAddress = new Function(`${source}; return titleFromAddress`)()
+  const titleFromAddress = new Function(`${body}; return titleFromAddress`)()
 
   it('is named after its file, or its site', function () {
     expect(titleFromAddress('hyper://abc/photos/cat%20one.png')).to.equal('cat one.png')
