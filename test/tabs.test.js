@@ -425,3 +425,51 @@ describe('a page with no title of its own', function () {
     expect(tabBar).to.match(/loaded\.pageNamedItself === false[\s\S]{0,300}titleFromAddress\(url\)/)
   })
 })
+
+// A PDF, or any page without an icon of its own, kept the last page's icon.
+describe('a page with no icon of its own', function () {
+  const navigated = tabBar.slice(
+    tabBar.indexOf("webview.addEventListener('did-navigate', (e) => {"),
+    tabBar.indexOf("webview.addEventListener('did-navigate', () => {")
+  )
+  const stopped = tabBar.slice(
+    tabBar.indexOf("webview.addEventListener('did-stop-loading', () => {"),
+    tabBar.indexOf("webview.addEventListener('page-title-updated'")
+  )
+
+  it('drops the last page\'s icon once the new page is in, unless the tab showed that page before', function () {
+    expect(navigated).to.contain("document.getElementById(tabId)?.querySelector('.tab-favicon')")
+    expect(navigated).to.contain('const known = this.faviconsByTab.get(tabId)?.get(newUrl)')
+    // eslint-disable-next-line no-template-curly-in-string
+    expect(navigated).to.contain("faviconElement.style.backgroundImage = known ? `url(${known})` : ''")
+  })
+
+  // A page reached with Back or Forward does not send its icon again, so the
+  // tab keeps the icons of the pages it showed.
+  it('keeps the icon of each page the tab showed, the newest 50', function () {
+    expect(tabBar).to.contain('if (faviconUrl) this.rememberFavicon(tabId, webview.getURL(), faviconUrl)')
+    const start = tabBar.indexOf('  rememberFavicon (tabId, url, favicon) {')
+    const body = tabBar.slice(tabBar.indexOf('{', start) + 1, tabBar.indexOf('\n  }\n', start))
+    // eslint-disable-next-line no-new-func
+    const remember = new Function('tabId', 'url', 'favicon', body)
+    const bar = { faviconsByTab: new Map() }
+    for (let i = 0; i < 60; i++) remember.call(bar, 'tab-1', `https://site.example/${i}`, `icon-${i}`)
+    remember.call(bar, 'tab-1', 'https://site.example/55', 'icon-55-new')
+    remember.call(bar, 'tab-1', '', 'icon-of-nothing')
+    const icons = bar.faviconsByTab.get('tab-1')
+    expect(icons.size).to.equal(50)
+    expect(icons.has('https://site.example/9')).to.equal(false)
+    expect(icons.get('https://site.example/10')).to.equal('icon-10')
+    expect([...icons].pop()).to.deep.equal(['https://site.example/55', 'icon-55-new'])
+  })
+
+  it('forgets a tab\'s icons with the tab, and carries them when the strip changes layout', function () {
+    expect(tabBar.match(/this\.zoomLevels\.delete\(tabId\)\n\s*this\.faviconsByTab\.delete\(tabId\)/g)).to.have.length(4)
+    expect(tabBar).to.contain('this.faviconsByTab = faviconsByTab || new Map()')
+    expect(renderer).to.contain('faviconsByTab: oldBar.faviconsByTab')
+  })
+
+  it('shows the default icon when the page gave none by the time it loaded', function () {
+    expect(stopped).to.match(/if \(!faviconElement\.style\.backgroundImage \|\| [^)]*\) \{\s*faviconElement\.style\.backgroundImage = 'url\(peersky:\/\/static\/assets\/icon16\.png\)'/)
+  })
+})

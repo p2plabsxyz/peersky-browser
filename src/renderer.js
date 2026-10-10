@@ -501,6 +501,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           state: oldBar.getTabsStateForSaving(),
           webviews: oldBar.webviews,
           zoomLevels: oldBar.zoomLevels,
+          faviconsByTab: oldBar.faviconsByTab,
           activeTabId: oldBar.activeTabId,
           favicons: new Map(oldBar.tabs.map((t) => [t.id, document.getElementById(t.id)?.querySelector('.tab-favicon')?.style.backgroundImage]))
         }

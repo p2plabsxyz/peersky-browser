@@ -62,6 +62,7 @@ class TabBar extends HTMLElement {
     this.tabCounter = 0
     this.webviews = new Map() // Store webviews by tab ID
     this.zoomLevels = new Map() // Zoom level by tab ID
+    this.faviconsByTab = new Map() // By tab ID, the icons of pages it showed, by address
     this._tabsStateTimer = null // Pending coalesced saveTabsState write
     this.webviewContainer = null // Will be set by connectWebviewContainer
     this.pinnedTabs = new Set() // Track pinned tabs
@@ -253,6 +254,7 @@ class TabBar extends HTMLElement {
     webview.remove()
     this.webviews.delete(tabId)
     this.zoomLevels.delete(tabId)
+    this.faviconsByTab.delete(tabId)
 
     // Unregister extension cleanly (reuse the already-captured id)
     if (webContentsId != null) {
@@ -578,6 +580,20 @@ class TabBar extends HTMLElement {
     }
   }
 
+  // Kept for Back and Forward, which bring a page back without sending its
+  // icon again: the newest 50 addresses in each tab.
+  rememberFavicon (tabId, url, favicon) {
+    if (!url) return
+    let icons = this.faviconsByTab.get(tabId)
+    if (!icons) {
+      icons = new Map()
+      this.faviconsByTab.set(tabId, icons)
+    }
+    icons.delete(url)
+    icons.set(url, favicon)
+    if (icons.size > 50) icons.delete(icons.keys().next().value)
+  }
+
   /**
    * Persist the tab state.
    *
@@ -639,9 +655,10 @@ class TabBar extends HTMLElement {
 
   // The webviews live in the container, not the strip, so switching between
   // horizontal and vertical tabs only needs to rebuild the strip around them.
-  adoptTabs ({ state, webviews, zoomLevels, activeTabId, favicons }, webviewContainer) {
+  adoptTabs ({ state, webviews, zoomLevels, faviconsByTab, activeTabId, favicons }, webviewContainer) {
     this.webviews = webviews
     this.zoomLevels = zoomLevels || new Map()
+    this.faviconsByTab = faviconsByTab || new Map()
     // No container while rebuilding, so addTabWithId creates no webviews, and
     // no history for live tabs, so nothing is replayed into them.
     this.webviewContainer = null
@@ -1192,6 +1209,16 @@ class TabBar extends HTMLElement {
       const tab = this.tabs.find(t => t.id === tabId)
       // Until the new page gives a title, the tab's is the last page's.
       if (tab) tab.pageNamedItself = false
+      // The last page's icon goes too: a PDF or any page without an icon of
+      // its own kept it. A new icon comes in page-favicon-updated, and
+      // did-stop-loading puts the default in a slot left empty. A page this
+      // tab showed before gets its icon back, since a page reached with Back
+      // or Forward does not send it again.
+      const faviconElement = document.getElementById(tabId)?.querySelector('.tab-favicon')
+      if (faviconElement) {
+        const known = this.faviconsByTab.get(tabId)?.get(newUrl)
+        faviconElement.style.backgroundImage = known ? `url(${known})` : ''
+      }
       if (tab && tab.savedNavigation && tab.savedNavigation.entries) {
         if (tab.isFallbackNavigating) {
           tab.isFallbackNavigating = false
@@ -1273,6 +1300,7 @@ class TabBar extends HTMLElement {
 
       // Get the first favicon URL from the event
       const faviconUrl = e.favicons && e.favicons.length > 0 ? e.favicons[0] : null
+      if (faviconUrl) this.rememberFavicon(tabId, webview.getURL(), faviconUrl)
 
       // Find or create favicon element
       let faviconElement = tabElement.querySelector('.tab-favicon')
@@ -1356,6 +1384,7 @@ class TabBar extends HTMLElement {
       webview.remove()
       this.webviews.delete(tabId)
       this.zoomLevels.delete(tabId)
+      this.faviconsByTab.delete(tabId)
     }
 
     // Remove tab from group
@@ -2210,6 +2239,7 @@ class TabBar extends HTMLElement {
         webview.remove()
         this.webviews.delete(tabId)
         this.zoomLevels.delete(tabId)
+        this.faviconsByTab.delete(tabId)
       }
 
       this.pinnedTabs.delete(tabId)
@@ -2339,6 +2369,7 @@ class TabBar extends HTMLElement {
       webview.remove()
       this.webviews.delete(tabId)
       this.zoomLevels.delete(tabId)
+      this.faviconsByTab.delete(tabId)
     }
     this.pinnedTabs.delete(tabId)
     this.removeTabFromGroup(tabId)
