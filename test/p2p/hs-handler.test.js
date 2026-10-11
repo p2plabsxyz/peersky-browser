@@ -748,6 +748,18 @@ describe('HS protocol handler', function () {
     expect(data.error.length).to.be.greaterThan(0)
   })
 
+  // A note's link, clicked in a chat or on a page, said "Unknown hs target".
+  it('opens P2PMD with a note link\'s key in the join box', async function () {
+    const key = 's000' + 'ab'.repeat(32)
+    const response = await handler(new Request(`hs://${key}/`))
+    expect(response.status).to.equal(302)
+    expect(response.headers.get('Location')).to.equal(`peersky://p2p/p2pmd/?join=${encodeURIComponent(`hs://${key}`)}`)
+    // Anything that is no key is still nothing here.
+    const other = await handler(new Request('hs://not-a-key/'))
+    expect(other.status).to.equal(404)
+    expect(await other.text()).to.equal('Unknown hs target')
+  })
+
   it('keeps peer edits when host disconnects and reconnects', async function () {
     const { response: createResponse, data: room } = await protocolPost(handler, 'create', { secure: false, udp: false })
     expect(createResponse.status).to.equal(200)

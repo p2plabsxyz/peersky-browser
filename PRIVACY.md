@@ -91,12 +91,16 @@ address.
 
 ## PeerChat
 
-PeerChat rooms and direct messages are encrypted with a key only the people in
-them hold, and attachments with a key derived from it. Two limits: a room key
-is a shared secret, so anybody who has it can read that room including
-its past messages, and it never rotates, meaning somebody removed from a room
-still holds the key. What is encrypted is the content, not the fact that two
-computers are talking.
+PeerChat rooms and direct messages are encrypted with keys only the people in
+them hold. In those made since PeerChat began rotating keys (PeerSky Mobile
+0.1.2, and the desktop release that ships with it), the key changes every hour
+and each file has a key of its own, so somebody who gets hold of a room's key
+later cannot read what was said before. Those made earlier keep one key for
+good, so anybody who has it can read that room, past messages included. Either
+way, somebody removed from a room still holds its key. Every message is signed
+by its sender, and a message can reach you through another computer in the
+room, still encrypted and checked against that signature. What is encrypted is
+the content, not the fact that two computers are talking.
 
 Your PeerChat name, bio and photo are seen by everyone in the rooms you join. A
 new PeerChat profile starts in P2P Republic, a public room anyone can join, so
@@ -119,6 +123,11 @@ a forgotten one.
 Moving your identity to another device goes over a temporary Hyper drive that
 is deleted after 15 minutes at the most. It is encrypted so that only the
 receiving device can open it.
+
+Your private Hyperdrive uploads also go to your own devices that hold your
+identity's key, such as your phone: they find each other directly, list each
+other's private files, and this computer keeps a copy of your phone's. They
+stay encrypted, and nobody else can open them.
 
 ## AI
 

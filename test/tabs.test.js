@@ -7,19 +7,22 @@ import { EventEmitter } from 'events'
 import esmock from 'esmock'
 import sinon from 'sinon'
 
-const tabBar = await readFile(new URL('../src/pages/tab-bar.js', import.meta.url), 'utf8')
-const windows = await readFile(new URL('../src/window-manager.js', import.meta.url), 'utf8')
-const renderer = await readFile(new URL('../src/renderer.js', import.meta.url), 'utf8')
-const main = await readFile(new URL('../src/main.js', import.meta.url), 'utf8')
-const vertical = await readFile(new URL('../src/pages/vertical-tabs.js', import.meta.url), 'utf8')
-const verticalCss = await readFile(new URL('../src/pages/theme/vertical-tabs.css', import.meta.url), 'utf8')
+// Windows checks the repo out with CRLF line endings, and some checks below
+// span a line break.
+const source = async (file) => (await readFile(new URL(file, import.meta.url), 'utf8')).replace(/\r\n/g, '\n')
+const tabBar = await source('../src/pages/tab-bar.js')
+const windows = await source('../src/window-manager.js')
+const renderer = await source('../src/renderer.js')
+const main = await source('../src/main.js')
+const vertical = await source('../src/pages/vertical-tabs.js')
+const verticalCss = await source('../src/pages/theme/vertical-tabs.css')
 
 // The preview module creates windows, so electron is stubbed out.
 const preview = await esmock.strict('../src/tab-drag-preview.js', {
   electron: { BrowserWindow: class {}, ipcMain: { handle () {}, on () {} } },
   '../src/session.js': { getPartition: () => 'persist:test' }
 })
-const previewSource = await readFile(new URL('../src/tab-drag-preview.js', import.meta.url), 'utf8')
+const previewSource = await source('../src/tab-drag-preview.js')
 
 // A tab dragged onto another window opened a new window instead of joining it.
 describe('dragging a tab onto another window', function () {
@@ -315,7 +318,7 @@ describe('navigation history', function () {
   })
 
   it('forgets a queued restore that nothing ever claims', async function () {
-    const preview = await readFile(new URL('../src/navigation-restore.js', import.meta.url), 'utf8')
+    const preview = await source('../src/navigation-restore.js')
     const queue = preview.slice(preview.indexOf("'queue-navigation-restore'"), preview.indexOf("'restore-navigation-history'"))
     expect(queue).to.contain('setTimeout(() => pending.delete(token), 30000)')
     expect(queue).to.contain('if (expiry.unref) expiry.unref()')
@@ -398,5 +401,75 @@ describe('a loading tab in the vertical strip', function () {
     expect(verticalCss).to.not.contain('animation: spin')
     expect(verticalCss).to.not.contain('@keyframes spin')
     expect(verticalCss).to.not.match(/\.tab\.loading[^{]*::after/)
+  })
+})
+
+// A video or sound opened straight has no title of its own, and the tab kept the
+// last page's: a hyper:// video opened in a new tab said "Home".
+describe('a page with no title of its own', function () {
+  const start = tabBar.indexOf('function titleFromAddress (')
+  const body = tabBar.slice(start, tabBar.indexOf('\n}\n', start) + 2)
+  // eslint-disable-next-line no-new-func
+  const titleFromAddress = new Function(`${body}; return titleFromAddress`)()
+
+  it('is named after its file, or its site', function () {
+    expect(titleFromAddress('hyper://abc/photos/cat%20one.png')).to.equal('cat one.png')
+    expect(titleFromAddress('hyper://blog.example/')).to.equal('blog.example')
+    expect(titleFromAddress('hyper://abc/bad%E0%A4%A.png')).to.equal('bad%E0%A4%A.png')
+    expect(titleFromAddress('not a url')).to.equal('')
+  })
+
+  it('takes that title only when the page gave none since it navigated', function () {
+    expect(tabBar).to.contain('if (tab) tab.pageNamedItself = false')
+    expect(tabBar).to.contain('if (tab) tab.pageNamedItself = true')
+    expect(tabBar).to.match(/loaded\.pageNamedItself === false[\s\S]{0,300}titleFromAddress\(url\)/)
+  })
+})
+
+// A PDF, or any page without an icon of its own, kept the last page's icon.
+describe('a page with no icon of its own', function () {
+  const navigated = tabBar.slice(
+    tabBar.indexOf("webview.addEventListener('did-navigate', (e) => {"),
+    tabBar.indexOf("webview.addEventListener('did-navigate', () => {")
+  )
+  const stopped = tabBar.slice(
+    tabBar.indexOf("webview.addEventListener('did-stop-loading', () => {"),
+    tabBar.indexOf("webview.addEventListener('page-title-updated'")
+  )
+
+  it('drops the last page\'s icon once the new page is in, unless the tab showed that page before', function () {
+    expect(navigated).to.contain("document.getElementById(tabId)?.querySelector('.tab-favicon')")
+    expect(navigated).to.contain('const known = this.faviconsByTab.get(tabId)?.get(newUrl)')
+    // eslint-disable-next-line no-template-curly-in-string
+    expect(navigated).to.contain("faviconElement.style.backgroundImage = known ? `url(${known})` : ''")
+  })
+
+  // A page reached with Back or Forward does not send its icon again, so the
+  // tab keeps the icons of the pages it showed.
+  it('keeps the icon of each page the tab showed, the newest 50', function () {
+    expect(tabBar).to.contain('if (faviconUrl) this.rememberFavicon(tabId, webview.getURL(), faviconUrl)')
+    const start = tabBar.indexOf('  rememberFavicon (tabId, url, favicon) {')
+    const body = tabBar.slice(tabBar.indexOf('{', start) + 1, tabBar.indexOf('\n  }\n', start))
+    // eslint-disable-next-line no-new-func
+    const remember = new Function('tabId', 'url', 'favicon', body)
+    const bar = { faviconsByTab: new Map() }
+    for (let i = 0; i < 60; i++) remember.call(bar, 'tab-1', `https://site.example/${i}`, `icon-${i}`)
+    remember.call(bar, 'tab-1', 'https://site.example/55', 'icon-55-new')
+    remember.call(bar, 'tab-1', '', 'icon-of-nothing')
+    const icons = bar.faviconsByTab.get('tab-1')
+    expect(icons.size).to.equal(50)
+    expect(icons.has('https://site.example/9')).to.equal(false)
+    expect(icons.get('https://site.example/10')).to.equal('icon-10')
+    expect([...icons].pop()).to.deep.equal(['https://site.example/55', 'icon-55-new'])
+  })
+
+  it('forgets a tab\'s icons with the tab, and carries them when the strip changes layout', function () {
+    expect(tabBar.match(/this\.zoomLevels\.delete\(tabId\)\n\s*this\.faviconsByTab\.delete\(tabId\)/g)).to.have.length(4)
+    expect(tabBar).to.contain('this.faviconsByTab = faviconsByTab || new Map()')
+    expect(renderer).to.contain('faviconsByTab: oldBar.faviconsByTab')
+  })
+
+  it('shows the default icon when the page gave none by the time it loaded', function () {
+    expect(stopped).to.match(/if \(!faviconElement\.style\.backgroundImage \|\| [^)]*\) \{\s*faviconElement\.style\.backgroundImage = 'url\(peersky:\/\/static\/assets\/icon16\.png\)'/)
   })
 })

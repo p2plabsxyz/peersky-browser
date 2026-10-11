@@ -476,7 +476,7 @@ identityScanQrBtn?.addEventListener('click', () => startQrScanner((text) => {
 // is actually missing instead.
 function requireIdentityTargetKey () {
   if (identityTargetKey?.value.trim()) return true
-  showStatus('Paste the phone pairing code first, or scan the QR code from PeerSky Mobile (Settings > Link Device).', 'error')
+  showStatus('Paste or scan the receiving device\'s pairing code first. PeerSky Mobile shows it under Settings > Link Device, and PeerSky Desktop under Backup & Restore > This device pairing code.', 'error')
   identityTargetKey?.focus()
   identityTargetKey?.scrollIntoView({ block: 'center', behavior: 'smooth' })
   return false
@@ -534,7 +534,7 @@ identityUploadHyperBtn?.addEventListener('click', async () => {
       }
       cidRow.style.display = ''
       await refreshPairedMobile()
-      showIdentityTransferStatus(`Encrypted identity transfer uploaded to Hyper.\n\nVERIFICATION CODE: ${res.verificationCode}\n\nScan the QR code below with PeerSky Mobile (Settings > Link Device) to restore identity automatically.\n\nNote: Ensure the verification code matches exactly.`)
+      showIdentityTransferStatus(`Encrypted identity transfer uploaded to Hyper.\n\nVERIFICATION CODE: ${res.verificationCode}\n\nOn a phone, scan the QR code below with PeerSky Mobile (Settings > Link Device). On a computer, open Backup & Restore in PeerSky Desktop. Under Restore from the network, paste the identity transfer address shown below or scan the QR code, then press Download.\n\nNote: Ensure the verification code matches exactly.`)
     } else {
       showStatus(`Identity transfer upload failed: ${res.error}`, 'error')
     }

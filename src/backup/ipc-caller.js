@@ -13,3 +13,15 @@ export function isPeerskyPage (rawUrl, ...pages) {
 export function assertCaller (event, ...pages) {
   if (!isPeerskyPage(event?.senderFrame?.url, ...pages)) throw new Error('Forbidden')
 }
+
+// A page in one folder of one of PeerSky's hosts, such as one P2P app: the P2P
+// apps share a host, so their channels check the folder too.
+export function isPeerskyAppPage (rawUrl, hostname, folder) {
+  try {
+    const url = new URL(rawUrl)
+    return url.protocol === 'peersky:' && url.hostname === hostname &&
+      (url.pathname === `/${folder}` || url.pathname.startsWith(`/${folder}/`))
+  } catch {
+    return false
+  }
+}

@@ -11,7 +11,7 @@ import { readManifest, verifyManifest } from './backup-core.js'
 import { createIdentityTransferZip, decodePairingString, decryptIdentityTransferZip, extractAndVerifyIdentityPayload, isIdentityTransferManifest } from './identity-transfer.js'
 import { assertMobilePairingAllowed, setPairedMobile } from './mobile-pairing.js'
 import { decryptEncryptedBackupZip, isEncryptedBackupManifest } from './encrypted-backup.js'
-import { suspendHyper, resumeHyper, trustPrivateDriveHostname, exportChatForTransfer, importChatFromPhone } from '../protocols/hyper-handler.js'
+import { suspendHyper, resumeHyper, trustPrivateDriveHostname, exportChatForTransfer, importChatFromPhone, startPrivateSync } from '../protocols/hyper-handler.js'
 import { suspendIPFS, resumeIPFS } from '../protocols/ipfs-handler.js'
 import { setPrivateDriveOwnership, currentPrivateDriveIds } from '../protocols/private-drive-ownership.js'
 import { listPrivateHyperdrives } from '../protocols/private-hyperdrive-registry.js'
@@ -227,16 +227,24 @@ class BackupManager {
         exportChat: exportChatForTransfer,
         notes
       })
-      // Recorded only once the transfer exists. A failure part way through
-      // must not leave the identity looking paired to a phone that never got
-      // it, or the user would have to move-to-new-phone to retry.
-      if (mobileKey) await setPairedMobile(userDataDir(), mobileKey)
+      // Not recorded here. A transfer that is built but never leaves this
+      // desktop, because the upload failed, was quit or the app crashed part
+      // way, must not leave the identity looking paired to a phone that never
+      // got it, or a different phone would need Move to a new phone first.
+      // The caller records it with recordPairedMobile once the transfer is out.
+      result.mobileKey = mobileKey
       log.info(`Identity transfer backup created: ${result.bytes} bytes`)
       return result
     } finally {
       await resumeHyper().catch((err) => log.error(`Failed to resume hyper after identity transfer backup: ${err.message}`))
       await resumeIPFS().catch((err) => log.error(`Failed to resume IPFS after identity transfer backup: ${err.message}`))
     }
+  }
+
+  // Called once an identity transfer has left this desktop: saved as a file,
+  // or published for the phone to fetch.
+  async recordPairedMobile (mobileKey) {
+    if (mobileKey) await setPairedMobile(userDataDir(), mobileKey)
   }
 
   // Read the manifest from a backup zip for preview/validation before restoring.
@@ -407,6 +415,8 @@ class BackupManager {
     if (staged.kind === 'phone') {
       const applied = await applyPhoneSync(userDataDir(), staged.sync)
       for (const hostname of applied.privateHostnames) trustPrivateDriveHostname(hostname)
+      // From now on the phone's private files come here on their own.
+      startPrivateSync().catch((err) => log.warn(`Private sync did not start after a phone's send: ${err.message}`))
       // openTabs says how many it opened: a tab already open here is left out.
       let tabsAdded = 0
       if (typeof openTabs === 'function' && staged.sync.tabs.length > 0) {

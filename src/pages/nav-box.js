@@ -1148,6 +1148,13 @@ class NavBox extends HTMLElement {
       clearTimeout(this._autocompleteDebounceTimer)
     }
     this._autocompleteEpoch++
+    // What is typed is what Enter opens now. A suggestion picked with the arrow
+    // keys stayed picked until the next search came back, and Enter in that
+    // moment opened it instead of the address just edited.
+    if (this._autocompleteSelectedIndex !== -1) {
+      this._autocompleteSelectedIndex = -1
+      this._updateAutocompleteSelection()
+    }
 
     const query = value.trim()
 
@@ -1231,17 +1238,20 @@ class NavBox extends HTMLElement {
         this._updateAutocompleteSelection(true)
         break
 
-      case 'Enter':
-        if (this._autocompleteSelectedIndex >= 0) {
+      case 'Enter': {
+        // Only while the address bar still shows the suggestion: anything else
+        // is an address the person changed, and goes as they typed it.
+        const selected = this._autocompleteSelectedIndex >= 0
+          ? this._autocompleteResults[this._autocompleteSelectedIndex]
+          : null
+        if (selected && this.querySelector('#url')?.value === selected.url) {
           e.preventDefault()
-          const selected = this._autocompleteResults[this._autocompleteSelectedIndex]
-          if (selected) {
-            this._selectAutocompleteItem(selected)
-          }
+          this._selectAutocompleteItem(selected)
         } else {
           this._dismissAutocomplete()
         }
         break
+      }
 
       case 'Escape':
         e.preventDefault()

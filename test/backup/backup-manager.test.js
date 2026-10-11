@@ -24,6 +24,7 @@ async function loadBackupManager (options = {}) {
   const trustPrivateDriveHostname = sinon.stub()
   const exportChatForTransfer = sinon.stub().returns(null)
   const importChatFromPhone = options.importChatFromPhone || sinon.stub().resolves({ ok: true, added: 0 })
+  const startPrivateSync = sinon.stub().resolves(null)
   const exportP2pmdNotes = options.exportP2pmdNotes || sinon.stub().resolves(null)
   const importP2pmdNotes = options.importP2pmdNotes || sinon.stub().resolves({ ok: true, added: 0 })
   const assertMobilePairingAllowed = sinon.stub().resolves(null)
@@ -84,7 +85,7 @@ async function loadBackupManager (options = {}) {
       decryptEncryptedBackupZip: sinon.stub(),
       isEncryptedBackupManifest: sinon.stub().returns(false)
     },
-    [hyperHandlerPath]: { suspendHyper, resumeHyper, trustPrivateDriveHostname, exportChatForTransfer, importChatFromPhone },
+    [hyperHandlerPath]: { suspendHyper, resumeHyper, trustPrivateDriveHostname, exportChatForTransfer, importChatFromPhone, startPrivateSync },
     '../../src/backup/p2pmd-notes.js': { exportP2pmdNotes, importP2pmdNotes },
     '../../src/backup/mobile-pairing.js': { assertMobilePairingAllowed, setPairedMobile },
     [ipfsHandlerPath]: { suspendIPFS, resumeIPFS }

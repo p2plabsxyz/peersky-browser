@@ -159,6 +159,7 @@ export function setupBackupIpc ({ getTabs } = {}) {
         targetPairingPayload,
         includePrivate: payload.includePrivate !== false
       })
+      await backupManager.recordPairedMobile(result.mobileKey)
       return { success: true, filePath: result.filePath, bytes: result.bytes, manifest: result.manifest }
     } catch (error) {
       log.error(`Identity transfer create failed: ${error.message}`)
@@ -200,6 +201,8 @@ export function setupBackupIpc ({ getTabs } = {}) {
       })
       const ttlMs = result.manifest.identityTransfer.expiresAt - Date.now()
       const upload = await uploadBackup(result.filePath, 'hyper', { ephemeral: true, ttlMs })
+      // Only now is the transfer out where the phone can fetch it.
+      await backupManager.recordPairedMobile(result.mobileKey)
       return { success: true, bytes: result.bytes, manifest: result.manifest, verificationCode: result.verificationCode, ...upload }
     } catch (error) {
       log.error(`Identity transfer Hyper upload failed: ${error.message}`)

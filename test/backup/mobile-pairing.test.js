@@ -128,6 +128,23 @@ describe('mobile pairing cap', () => {
     }
   })
 
+  it('records the phone only once the transfer has left the desktop', async () => {
+    // It used to be recorded as soon as the transfer was built, before the
+    // upload. An upload that failed, was quit or crashed part way left the
+    // identity paired to a phone that never got it.
+    const manager = await fs.readFile(new URL('../../src/backup/backup-manager.js', import.meta.url), 'utf8')
+    const build = manager.slice(manager.indexOf('async createIdentityTransferBackup'), manager.indexOf('async recordPairedMobile'))
+    expect(build).to.not.contain('setPairedMobile(')
+    expect(build).to.contain('result.mobileKey = mobileKey')
+
+    const ipc = await fs.readFile(new URL('../../src/backup/ipc.js', import.meta.url), 'utf8')
+    const upload = ipc.slice(ipc.indexOf("handle('backup-identity-upload-hyper'"), ipc.indexOf("handle('backup-fetch-restore'"))
+    expect(upload.indexOf('await uploadBackup(')).to.be.greaterThan(-1)
+    expect(upload.indexOf('recordPairedMobile(result.mobileKey)')).to.be.greaterThan(upload.indexOf('await uploadBackup('))
+    const zip = ipc.slice(ipc.indexOf("handle('backup-identity-create'"), ipc.indexOf("handle('backup-paired-mobile'"))
+    expect(zip.indexOf('recordPairedMobile(result.mobileKey)')).to.be.greaterThan(zip.indexOf('createIdentityTransferBackup('))
+  })
+
   it('ignores junk in place of a pairing code', async () => {
     for (const value of ['', 'not-a-pairing-code', undefined, null]) {
       expect(await assertMobilePairingAllowed(dir, value)).to.equal(null)

@@ -132,6 +132,11 @@ ipcRenderer.on('add-tab-at-point', (event, tab) => {
   tabBar?.insertTabAtPoint?.(tab)
 })
 
+// Several picked tabs dragged here together.
+ipcRenderer.on('add-tabs-at-point', (event, batch) => {
+  tabBar?.insertTabsAtPoint?.(batch)
+})
+
 // Get initial URL from search params
 const searchParams = new URL(window.location.href).searchParams
 const toNavigate = searchParams.has('url') ? searchParams.get('url') : DEFAULT_PAGE
@@ -496,6 +501,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           state: oldBar.getTabsStateForSaving(),
           webviews: oldBar.webviews,
           zoomLevels: oldBar.zoomLevels,
+          faviconsByTab: oldBar.faviconsByTab,
           activeTabId: oldBar.activeTabId,
           favicons: new Map(oldBar.tabs.map((t) => [t.id, document.getElementById(t.id)?.querySelector('.tab-favicon')?.style.backgroundImage]))
         }

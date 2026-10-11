@@ -31,6 +31,7 @@ import { shareDriveOpens } from './shared-drive-opens.js'
 import { isUnreadableDriveError, LINKED_PRIVATE_DRIVE_NAME, PRIVATE_DRIVE_ERROR } from './private-drive-errors.js'
 import { mayUsePrivateDrive, takeNavigationStamp } from './request-gate.js'
 import { toHyperFetchUrl } from './hyper-fetch-url.js'
+import { deviceSyncSnapshot, startDesktopDeviceSync } from './desktop-device-sync.js'
 
 import { _suspendHyper, _hyperPublishFile, _hyperFetchToFile } from '../backup/hyper-backup.js'
 
@@ -38,6 +39,9 @@ const log = createLogger('protocols:hyper')
 
 // Single SDK and swarm for the app lifecycle (hyper:// browsing + chat share the same swarm).
 let sdk, fetch, privateSdk, privateFetch, privateKeyedFetch, savedSdkOptions
+// The private sync with the person's other devices, on the private store.
+let privateDeviceSync = null
+let privateDeviceSyncStarting = null
 const privateDriveHostnames = new Set()
 const ephemeralPublishers = new Set()
 
@@ -73,9 +77,21 @@ function createLANAdapter () {
   return withPeerLocalHost(new Adapter())
 }
 
-function getLANOptions () {
-  const port = Number.parseInt(process.env.PEERSKY_LAN_PORT || '', 10)
-  const options = Number.isInteger(port) && port > 0 && port <= 65535 ? { port } : {}
+const DEFAULT_LAN_PORT = HyperDHTmDNS.DEFAULT_PORT || 49799
+
+function lanPort (value) {
+  const port = Number.parseInt(value || '', 10)
+  return Number.isInteger(port) && port > 0 && port <= 65535 ? port : null
+}
+
+// The private store has a network key of its own, so it gets a LAN swarm of
+// its own, on the port after the public one's.
+function getLANOptions ({ privateStore = false } = {}) {
+  const publicPort = lanPort(process.env.PEERSKY_LAN_PORT)
+  const port = privateStore
+    ? lanPort(process.env.PEERSKY_PRIVATE_LAN_PORT) || (publicPort || DEFAULT_LAN_PORT) + 1
+    : publicPort
+  const options = port ? { port } : {}
   const adapter = createLANAdapter()
   return adapter ? { ...options, adapter } : options
 }
@@ -90,8 +106,8 @@ function wireLANEvents (instance) {
 // patches sdk.join first and binds after, so with the port already taken (a
 // second PeerSky on this computer) every later join went to a LAN swarm that
 // never started, and creating a drive failed with "address already in use".
-async function attachLANDiscovery (activeSdk) {
-  const lan = new HyperDHTmDNS({ ...getLANOptions(), keyPair: activeSdk.swarm.keyPair })
+async function attachLANDiscovery (activeSdk, lanOptions = {}) {
+  const lan = new HyperDHTmDNS({ ...getLANOptions(lanOptions), keyPair: activeSdk.swarm.keyPair })
   try {
     await lan.ready()
   } catch (err) {
@@ -100,6 +116,55 @@ async function attachLANDiscovery (activeSdk) {
   }
   const instance = await HyperDHTmDNS.attachHyperSDK(activeSdk, { lan })
   return wireLANEvents(instance)
+}
+
+// Local discovery for one store's swarm, started again on the new address
+// when this computer moves to another network, until that store is closed.
+async function keepLANDiscovery (activeSdk, { label = 'LAN', lanOptions = {} } = {}) {
+  let lan = null
+  try {
+    lan = await attachLANDiscovery(activeSdk, lanOptions)
+    log.info(`[${label}] Listening on ${lan.host || '0.0.0.0'}:${lan.port}`)
+  } catch (err) {
+    log.warn(`[${label}] Local discovery unavailable, continuing without it: ${err.message}`)
+    return null
+  }
+
+  let lastKnownIP = lan.host
+  let cycling = false
+  const NETWORK_CHECK_MS = 10_000
+  const timer = setInterval(async () => {
+    if (activeSdk.swarm.destroyed) {
+      clearInterval(timer)
+      return
+    }
+    if (cycling) return
+    try {
+      const currentIP = HyperDHTmDNS.selectLocalIPv4()
+      if (currentIP === lastKnownIP) return
+      log.info(`[${label}] Network change detected: ${lastKnownIP} -> ${currentIP}`)
+      cycling = true
+
+      try {
+        const previous = lan
+        lan = null
+        if (previous && !previous.destroyed) await previous.destroy()
+        const next = await attachLANDiscovery(activeSdk, lanOptions)
+        lan = next
+        lastKnownIP = next.host
+        log.info(`[${label}] Restarted discovery on ${next.host}:${next.port}`)
+      } catch (err) {
+        lan = null
+        log.warn(`[${label}] Network change recovery failed: ${err.message}`)
+      } finally {
+        cycling = false
+      }
+    } catch {
+      // No usable interface, ignore
+    }
+  }, NETWORK_CHECK_MS)
+  timer.unref()
+  return lan
 }
 
 function isWebReadableStream (body) {
@@ -207,6 +272,11 @@ export async function warmupHyper () {
   if (isSuspended) return
   if (!savedSdkOptions && sdk == null) return
   await initializeHyperSDK()
+  // A profile with private files meets its other devices as soon as it is up,
+  // so a phone's new private files arrive without anything being opened here.
+  if (!privateDeviceOnly && await getPrivateDriveKey(app.getPath('userData'))) {
+    await initializePrivateHyperSDK()
+  }
 }
 
 async function startHyperSDK (options) {
@@ -215,52 +285,17 @@ async function startHyperSDK (options) {
   // A desktop restored from another one connects with keys of its own.
   const networkKeys = await readNetworkKeys(app.getPath('userData'))
   sdk = shareDriveOpens(await createSDK(withNetworkKey(options, networkKeys?.main)))
-
-  let lan = null
-  try {
-    lan = await attachLANDiscovery(sdk)
-    log.info(`[LAN] Listening on ${lan.host || '0.0.0.0'}:${lan.port}`)
-  } catch (err) {
-    log.warn(`[LAN] Local discovery unavailable, continuing without it: ${err.message}`)
-  }
-
-  if (lan) {
-    let lastKnownIP = lan.host
-    let cycling = false
-    const NETWORK_CHECK_MS = 10_000
-    setInterval(async () => {
-      if (cycling) return
-      try {
-        const currentIP = HyperDHTmDNS.selectLocalIPv4()
-        if (currentIP === lastKnownIP) return
-        log.info(`[LAN] Network change detected: ${lastKnownIP} -> ${currentIP}`)
-        cycling = true
-
-        try {
-          const previous = lan
-          lan = null
-          if (previous && !previous.destroyed) await previous.destroy()
-          const next = await attachLANDiscovery(sdk)
-          lan = next
-          lastKnownIP = next.host
-          log.info(`[LAN] Restarted discovery on ${next.host}:${next.port}`)
-        } catch (err) {
-          lan = null
-          log.warn(`[LAN] Network change recovery failed: ${err.message}`)
-        } finally {
-          cycling = false
-        }
-      } catch {
-        // No usable interface, ignore
-      }
-    }, NETWORK_CHECK_MS).unref()
-  }
+  await keepLANDiscovery(sdk)
 
   fetch = await makeHyperFetch({ sdk, writable: true })
 
   initChat(sdk, {
     safeStorage,
-    storagePath: path.join(app.getPath('userData'), CHAT_STORAGE)
+    storagePath: path.join(app.getPath('userData'), CHAT_STORAGE),
+    // The pair it connects with, which signs what this desktop writes in
+    // PeerChat. A restored desktop's is its own and not in its stores, so
+    // without it nothing it wrote could be checked by anyone else.
+    keyPair: networkKeys?.main
   })
 
   log.info('Hyper SDK initialized.')
@@ -394,16 +429,78 @@ function initializePrivateHyperSDK (options) {
   return privateSdkStarting
 }
 
+// Meets the person's other devices on the private store, once this profile has
+// a private drive key. Never on a store kept on this device alone.
+async function ensurePrivateDeviceSync () {
+  if (privateDeviceSync || privateDeviceOnly || !privateSdk || !privateKeyedFetch) return privateDeviceSync
+  if (!privateDeviceSyncStarting) {
+    const startedOn = privateSdk
+    privateDeviceSyncStarting = startDesktopDeviceSync(startedOn, {
+      userDataDir: app.getPath('userData'),
+      // Through the private store's own opens, so a phone's drive is opened
+      // once, whether the sync or a page asked for it first.
+      openPrivateDrive: (url) => privateSdk === startedOn ? privateKeyedFetch.openDrive(url) : null,
+      trustHostname: trustPrivateDriveHostname,
+      logger: log
+    }).then((sync) => {
+      if (privateSdk !== startedOn) {
+        sync?.close().catch(() => {})
+        return null
+      }
+      privateDeviceSync = sync
+      return sync
+    }).catch((error) => {
+      log.warn(`Private sync with linked devices did not start: ${error.message}`)
+      return null
+    }).finally(() => {
+      privateDeviceSyncStarting = null
+    })
+  }
+  return privateDeviceSyncStarting
+}
+
+async function stopPrivateDeviceSync () {
+  const sync = privateDeviceSync
+  privateDeviceSync = null
+  await sync?.close().catch(() => {})
+}
+
+/**
+ * Brings up the private store and the sync with linked devices, when this
+ * profile has a private drive key: after a phone's send, which adds its drive
+ * here, there is a phone to meet.
+ */
+export async function startPrivateSync () {
+  if (isSuspended || privateDeviceOnly) return null
+  if (!await getPrivateDriveKey(app.getPath('userData'))) return null
+  await initializePrivateHyperSDK()
+  return ensurePrivateDeviceSync()
+}
+
+/**
+ * The devices this desktop has met under its private drive key and the files
+ * at the top of their private drives, for the Hyperdrive app.
+ */
+export function getDeviceSyncSnapshot () {
+  return deviceSyncSnapshot(app.getPath('userData'), privateDeviceSync ? privateDeviceSync.online : new Set())
+}
+
 async function startPrivateHyperSDK (options) {
   const privateOptions = getPrivateSDKOptions(options || savedSdkOptions, privateDeviceOnly)
   const networkKeys = await readNetworkKeys(app.getPath('userData'))
   const openedSdk = shareDriveOpens(await createSDK(withNetworkKey(privateOptions, networkKeys?.private)))
+  // Found over Wi-Fi as well as the internet, as the public store is. Without
+  // it a private file could not be fetched with the internet down, though
+  // messages went through, and opening a private drive waited on the public
+  // DHT. A store kept on this device alone goes on no network at all.
+  if (!privateDeviceOnly) await keepLANDiscovery(openedSdk, { label: 'LAN private', lanOptions: { privateStore: true } })
   try {
     const openedFetch = await makeHyperFetch({ sdk: openedSdk, writable: true })
     privateSdk = openedSdk
     privateFetch = openedFetch
     privateKeyedFetch = makePrivateDriveFetcher(openedSdk, app.getPath('userData'))
     await trustRegisteredPrivateDrives()
+    await ensurePrivateDeviceSync()
     return privateFetch
   } catch (error) {
     await openedSdk.close().catch(() => {})
@@ -430,6 +527,7 @@ async function getHyperRequestContext (url) {
 // turns back into a torn one, so shutdown passes recover: false.
 export async function suspendHyper ({ recover = true } = {}) {
   isSuspended = true
+  await stopPrivateDeviceSync()
   const results = await Promise.allSettled([
     _suspendHyper(privateSdk, () => {
       privateSdk = null
@@ -615,6 +713,12 @@ export async function createHandler (options, securityOptions = {}) {
               timestamp: Date.now(),
               encrypted: !privateDeviceOnly
             })
+            // The first private drive makes this profile's key, which is what
+            // the sync meets under; the other devices hear of every new drive.
+            if (!privateDeviceOnly) {
+              const sync = await ensurePrivateDeviceSync()
+              await sync?.drivesChanged().catch(() => {})
+            }
           } else {
             drive = await sdk.getDrive(target.driveName, { autoJoin: target.autoJoin })
           }
