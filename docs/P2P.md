@@ -149,7 +149,7 @@ More: https://docs.holesail.io/
 
 Use HTTP endpoints (GET/POST) plus SSE/WebSocket for live updates. In PeerSky, a custom [hs-handler](https://github.com/p2plabsxyz/peersky-browser/blob/main/src/protocols/hs-handler.js) can expose these endpoints while keeping the transport peer-to-peer. Incremental Yjs CRDT updates are exchanged over HTTP/SSE, while peer presence metadata is sent through presence endpoints.
 
-With more than a few people, keep what goes out small. Send each change, not the whole state. Send presence, such as who is here and where their cursor is, on a timer a few times a second rather than on every keystroke. Send per-person data that rarely changes, such as who wrote which line, only when it changes, and in full to whoever joins. P2PMD does all three, so a note holds about 100 people: at 100 people with 10 typing, each device receives about 26 KB a second and the host sends about 2.5 MB a second.
+With more than a few people, keep what goes out small. Send each change, not the whole state. Send presence, such as who is here and where their cursor is, on a timer a few times a second rather than on every keystroke. Send per-person data that rarely changes, such as who wrote which line, only when it changes, and in full to whoever joins. P2PMD does all three, so a note holds about 100 people: at 100 people with 10 typing, each device receives about 33 KB a second and the host sends about 3.4 MB a second, headers and replies included, and every copy ends the same (`npm run test:load:p2pmd`, run on 2026-10-12; see `test/load/p2pmd/README.md`).
 
 **Example:** See [p2pmd](https://github.com/p2plabsxyz/peersky-browser/tree/main/src/pages/p2p/p2pmd) for a complete real-time collaborative markdown editor implementation.
 
