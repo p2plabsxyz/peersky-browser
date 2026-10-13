@@ -53,6 +53,10 @@ A profile's private uploads also show up on the person's other devices, and thei
 
 A phone's drive is added to the private drives as `Private files from your phone`, read-only, the way Link Device adds it, and every file in it is copied here as it arrives, so it opens with the phone asleep. The copying waits while the phone says it is on a cellular connection. The Hyperdrive app lists the files under **From your devices** (`device-sync-list`, answered for `peersky://p2p/hyperdrive/` alone). A new private drive made here is announced to the devices online at once. The private store now starts with Hyper when the profile has a private key, so a phone is met without anything private being opened first. The phone's docs, `docs/hyper.md`, have the frames, the limits and what happens at the edges.
 
+#### Your own private uploads
+
+The Hyperdrive app lists this desktop's own private uploads under **Your private uploads**, newest first and at most 100, so they are still there after a restart, the way the phone keeps its own under Recent (`private-files-list`, answered for `peersky://p2p/hyperdrive/` alone). Each private upload goes in a drive named after it, which the registry keeps (`privateHyperdrives.json`), and the list is read from the top of each drive this desktop made (`src/protocols/own-private-files.js`), as the phone lists them under From your devices. Notes P2PMD publishes in private are in its `p2pmd` drive, so they are listed too. Drives from other devices, and ones a restore brought here, are left out. A shared folder's link opens as a list of what is in it.
+
 Only PeerSky's own pages, the drive's own pages and a tab you open it in can read or write a private drive (`mayUsePrivateDrive` in `src/protocols/request-gate.js`). Electron applies no CORS to `hyper://`, so without this any site that learned a private drive's address could read it with this desktop's key. The phone has the same rule.
 
 ```mermaid

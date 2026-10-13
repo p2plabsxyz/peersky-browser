@@ -43,12 +43,26 @@ function escapeHtml (value) {
   })[character])
 }
 
-function renderPrivateListing (hostname, children, { readOnly = false } = {}) {
+/**
+ * The address of a file or folder in a private drive, from the drive's address
+ * and the item's path. Encoded the way this store decodes it, with decodeURI,
+ * which leaves an escaped comma escaped: the phone builds its links the same.
+ */
+export function privateFileUrl (driveUrl, itemPath) {
+  const base = driveUrl.replace(/\/+$/, '')
+  return base + itemPath.split('/').map((part) => encodeURI(part).replace(/[?#]/g, encodeURIComponent)).join('/')
+}
+
+// Each link goes under the folder listed. Only the top of a drive used to
+// open as a list, so every link went to the top.
+function renderPrivateListing (hostname, folder, children, { readOnly = false } = {}) {
+  const parent = folder.endsWith('/') ? folder : `${folder}/`
   const rows = children.map((entry) => {
     const name = typeof entry === 'string' ? entry : entry.name
     const kind = typeof entry === 'string' ? 'file' : entry.type
     const suffix = kind === 'directory' ? '/' : ''
-    return `<li><a href="hyper://${hostname}/${encodeURIComponent(name)}${suffix}">${escapeHtml(name)}</a></li>`
+    const href = privateFileUrl(`hyper://${hostname}/`, `${parent}${name}${suffix}`)
+    return `<li><a href="${escapeHtml(href)}">${escapeHtml(name)}</a></li>`
   }).join('\n')
   const banner = readOnly
     ? '<p class="private-drive-readonly">Read-only: the original drive stays writable only on the device that created it.</p>'
@@ -124,9 +138,25 @@ const CATCH_UP_EVERY_MS = 30000
 
 async function statDrive (drive, pathname, { wait = false } = {}) {
   if (pathname === '/') return { isDirectory: () => true }
-  const node = await drive.entry(pathname, wait ? { wait: true, timeout: PEER_WAIT_MS } : { wait: false }).catch(() => null)
-  if (!node) return null
-  return { isDirectory: () => node.value.blob === null }
+  const options = wait ? { wait: true, timeout: PEER_WAIT_MS } : { wait: false }
+  const node = await drive.entry(pathname, options).catch(() => null)
+  if (node) return { isDirectory: () => node.value.blob === null }
+  // A folder is no entry of its own, only the start of its files' paths, so a
+  // shared folder's link said "File not found".
+  return await holdsFiles(drive, pathname, options) ? { isDirectory: () => true } : null
+}
+
+async function holdsFiles (drive, pathname, options) {
+  const iterator = drive.readdir(pathname, options)[Symbol.asyncIterator]()
+  try {
+    return !(await iterator.next()).done
+  } catch {
+    return false
+  } finally {
+    try {
+      await iterator.return?.()
+    } catch {}
+  }
 }
 
 // A drive another device writes, such as a phone's, is known here only by its
@@ -293,7 +323,7 @@ export function makePrivateDriveFetcher (sdk, userDataDir) {
       for await (const child of await drive.readdir(place)) {
         children.push(typeof child === 'string' ? child : child.name)
       }
-      const listing = renderPrivateListing(parsed.hostname, children, { readOnly: !owned })
+      const listing = renderPrivateListing(parsed.hostname, place, children, { readOnly: !owned })
       return new Response(listing, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } })
     }
 

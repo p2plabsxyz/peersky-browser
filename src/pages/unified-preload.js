@@ -823,6 +823,10 @@ try {
       // app. The main process answers that page alone.
       devices: {
         list: () => ipcRenderer.invoke('device-sync-list')
+      },
+      // The private files this computer shared, for the same page alone.
+      privateFiles: {
+        list: () => ipcRenderer.invoke('private-files-list')
       }
     })
 

@@ -32,6 +32,7 @@ import { isUnreadableDriveError, LINKED_PRIVATE_DRIVE_NAME, PRIVATE_DRIVE_ERROR 
 import { mayUsePrivateDrive, takeNavigationStamp } from './request-gate.js'
 import { toHyperFetchUrl } from './hyper-fetch-url.js'
 import { deviceSyncSnapshot, startDesktopDeviceSync } from './desktop-device-sync.js'
+import { listOwnPrivateDrives, listOwnPrivateFiles } from './own-private-files.js'
 
 import { _suspendHyper, _hyperPublishFile, _hyperFetchToFile } from '../backup/hyper-backup.js'
 
@@ -483,6 +484,23 @@ export async function startPrivateSync () {
  */
 export function getDeviceSyncSnapshot () {
   return deviceSyncSnapshot(app.getPath('userData'), privateDeviceSync ? privateDeviceSync.online : new Set())
+}
+
+/**
+ * The private files this desktop shared, newest first, for the Hyperdrive app.
+ * Listed from the drives themselves, so they are there after a restart.
+ */
+export async function getOwnPrivateFiles () {
+  if (isSuspended) throw new Error('Hyper is unavailable while a backup is in progress')
+  const userDataDir = app.getPath('userData')
+  if ((await listOwnPrivateDrives(userDataDir)).length === 0) return []
+  await initializePrivateHyperSDK()
+  const openedSdk = privateSdk
+  const openedFetch = privateKeyedFetch
+  // Opened the way a read of the same drive opens it, so the two share one
+  // open: a store kept on this device alone reads through the SDK's drives.
+  const openDrive = (url) => privateDeviceOnly ? openedSdk.getDrive(url) : openedFetch.openDrive(url)
+  return listOwnPrivateFiles(userDataDir, { openDrive, logger: log })
 }
 
 async function startPrivateHyperSDK (options) {

@@ -112,6 +112,7 @@
   - [x] `peersky://p2p/hyperdrive/`
     - Decentralized file storage, published as a public or private drive
     - Private files from your phone show up on their own, with a copy kept on this computer, and yours show up on the phone
+    - Your own private uploads stay listed after a restart, newest first
   - [x] And several others, including a website builder, a Wikipedia reader over
     IPFS, and the [Social Reader](https://reader.distributed.press/) ActivityPub
     client for the fediverse.

@@ -450,4 +450,30 @@ describe('a private drive asked for by name while it is open', function () {
     expect((await settle(fetcher(`${url}new.txt`, { method: 'PUT', body: 'new' }))).status).to.equal(200)
     expect(await (await settle(fetcher(`${url}new.txt`))).text()).to.equal('new')
   })
+
+  // A folder has no entry of its own, so the link to a shared folder said
+  // "File not found", and the drive's list linked everything from the top.
+  it('opens a folder as a list of what is in it, linked under the folder', async function () {
+    const fetcher = await makeFetcher([])
+    const drive = await settle(fetcher.openByName('Trip'))
+    const url = driveUrl(drive.key)
+    for (const [name, text] of [['Trip/a.jpg', 'a'], ['Trip/b, c.jpg', 'b'], ['Trip/inner/d.txt', 'd']]) {
+      const address = url + name.split('/').map(encodeURIComponent).join('/')
+      expect((await settle(fetcher(address, { method: 'PUT', body: text }))).status).to.equal(200)
+    }
+
+    const top = await (await settle(fetcher(url))).text()
+    expect(top).to.contain(`href="${url}Trip"`)
+    const folder = await settle(fetcher(`${url}Trip/`))
+    expect(folder.status).to.equal(200)
+    const listing = await folder.text()
+    expect(listing).to.contain(`href="${url}Trip/a.jpg"`)
+    expect(listing).to.contain(`href="${url}Trip/inner"`)
+    expect(await (await settle(fetcher(`${url}Trip/a.jpg`))).text()).to.equal('a')
+    // Every link in the list opens what it names.
+    for (const [, href] of listing.matchAll(/href="([^"]+)"/g)) {
+      expect((await settle(fetcher(href.replace(/&amp;/g, '&')))).status, href).to.equal(200)
+    }
+    expect((await settle(fetcher(`${url}Nothing/`))).status).to.equal(404)
+  })
 })
