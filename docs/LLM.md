@@ -117,7 +117,7 @@ PeerSky includes opt-in local memory so apps can remember prompts and responses 
 
 Go to `peersky://settings/llm` and toggle **Enable LLM Memory**. All reads and writes are gated by this flag.
 
-Clearing P2P data (`Settings → Search → Reset P2P Data`) also wipes `llm.json`.
+Clearing P2P data (`Settings → P2P data → Reset P2P Data`) also wipes `llm.json`.
 
 ### `window.llmMemory`
 

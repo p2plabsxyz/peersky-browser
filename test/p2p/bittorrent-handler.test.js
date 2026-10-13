@@ -980,12 +980,12 @@ describe('BitTorrent pages', function () {
 
   // Nothing in the browser pointed at the manager, so only someone who typed
   // peersky://bt-manager ever found it.
-  it('Settings lists BitTorrent right under Archive', () => {
+  it('Settings lists BitTorrent right under P2P data', () => {
     const settings = read('settings.html')
-    const archive = settings.indexOf('data-section="archive"')
+    const p2pData = settings.indexOf('data-section="p2p-data"')
     const bittorrent = settings.indexOf('href="peersky://bt-manager"')
-    expect(archive).to.be.greaterThan(-1)
-    expect(bittorrent).to.be.greaterThan(archive)
+    expect(p2pData).to.be.greaterThan(-1)
+    expect(bittorrent).to.be.greaterThan(p2pData)
     expect(bittorrent).to.be.lessThan(settings.indexOf('id="history-nav-link"'))
     expect(settings).to.match(/<a href="peersky:\/\/bt-manager" class="nav-item">\s*<img src="peersky:\/\/static\/assets\/svg\/bittorrent\.svg"/)
     expect(fs.existsSync(path.join(pages, 'static/assets/svg/bittorrent.svg'))).to.equal(true)

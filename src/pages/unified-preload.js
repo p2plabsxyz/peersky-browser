@@ -360,8 +360,10 @@ function createSettingsAPI (pageContext) {
       reset: () => ipcRenderer.invoke('settings-reset'),
       // NEW: browser-only cache
       clearBrowserCache: () => ipcRenderer.invoke('settings-clear-cache'),
-      // NEW: P2P reset (identities preserved by default)
+      // P2P reset. The IPFS identity is kept unless asked.
       resetP2P: (opts = {}) => ipcRenderer.invoke('settings-reset-p2p', opts),
+      // How much space P2P data takes, for the P2P data section
+      getP2PStorage: () => ipcRenderer.invoke('settings-get-p2p-storage'),
       uploadWallpaper: (fileData) => {
         if (!fileData || !fileData.name || !fileData.content) {
           throw new Error('File data must include name and content')

@@ -197,8 +197,9 @@
 
   - [x] Option to generate a QR code for any page, from the address bar.
 
-- [x] Archive (peersky://archive):
+- [x] P2P data (peersky://settings/p2p-data), called Archive before:
 
+  - [x] How much space P2P data takes on this computer in total, with public and private Hyper drives, PeerChat, IPFS and P2P apps each on a line, and Reset P2P Data beside it.
   - [x] List and showcase published content from `peersky://p2p/` apps for enhanced discoverability.
   - [x] Provide metadata (e.g., creation date, content type) to improve navigation and usability.
   - [x] Ability to download all the hashes of published data in a .json file.
