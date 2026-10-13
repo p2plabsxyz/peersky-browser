@@ -18,13 +18,16 @@
       color: var(--settings-text-primary);
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       user-select: none;
-      overflow: hidden;
     }
 
+    /* A step taller than the window scrolls, as Restore Backup is on a small
+       screen or with an on-screen keyboard up. It is centred with auto
+       margins, not align-items, which pushed the top of a tall step out of
+       reach above the window. */
     body {
       display: flex;
       justify-content: center;
-      align-items: center;
+      overflow-y: auto;
     }
 
     /* Step 1: Welcome */
@@ -86,6 +89,7 @@
       align-items: center;
       width: 100%;
       max-width: 480px;
+      margin: auto 0;
       padding: 40px 24px;
       opacity: 0;
       transform: translateY(12px);
@@ -190,7 +194,8 @@
       color: var(--settings-text-secondary);
     }
 
-    #file-input {
+    #file-input,
+    #zip-input {
       display: none;
     }
 
@@ -252,11 +257,11 @@
 
     /* Section label */
     .section-label {
-      font-size: 0.7rem;
+      font-size: 0.85rem;
       text-transform: uppercase;
-      letter-spacing: 1px;
-      color: var(--settings-text-secondary);
-      font-weight: 500;
+      letter-spacing: 0.6px;
+      color: var(--settings-text-primary);
+      font-weight: 600;
       margin-bottom: 10px;
       width: 100%;
       text-align: left;
@@ -404,7 +409,7 @@
     <input type="file" id="zip-input" accept=".zip">
 
     <div class="divider-or"></div>
-    <div class="section-label">This device pairing code</div>
+    <div class="section-label">This device's pairing code</div>
     <p class="restore-hint">Scan this with your other device, then paste the link it shows above.</p>
     <qr-code id="identity-device-qr" hidden style="pointer-events: none; width: 160px; height: 160px; background: white; padding: 8px; box-sizing: border-box; margin: 0 auto 10px;" data-bg="white" data-fg="black"></qr-code>
     <div class="status-msg" id="identity-device-key" style="display:block; background: var(--settings-card-bg); border: 1px solid var(--settings-border); color: var(--settings-text-primary); user-select: text; word-break: break-all; margin-bottom: 6px;">Loading...</div>
