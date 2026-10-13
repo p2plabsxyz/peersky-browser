@@ -657,7 +657,19 @@ export async function waitForDriveReady (url, timeoutMs = PEER_WAIT_MS) {
 export async function hyperFetchToFile (address, destPath, onStatus) {
   const context = await getHyperRequestContext(address)
   const prepare = context.private ? async () => {} : waitForDriveReady
-  return _hyperFetchToFile(context.fetch, prepare, toHyperFetchUrl(address), destPath, onStatus)
+  return _hyperFetchToFile(context.fetch, prepare, toHyperFetchUrl(address), destPath, onStatus, {
+    lookAgain: context.private ? undefined : () => lookForDrivePeers(address)
+  })
+}
+
+// Runs a drive's peer lookup again, for a download that went quiet because
+// the device sending it dropped off for a while and came back.
+async function lookForDrivePeers (address) {
+  if (!sdk) return
+  const { hostname } = new URL(address)
+  const drive = await sdk.getDrive(`hyper://${hostname}/`)
+  if (typeof drive.core.discovery?.refresh === 'function') await drive.core.discovery.refresh()
+  else if (typeof sdk.swarm?.flush === 'function') await sdk.swarm.flush()
 }
 
 /**

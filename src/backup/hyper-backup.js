@@ -60,40 +60,153 @@ export async function _hyperPublishFile (fetchFn, sdk, filePath, fileName = 'bac
   return { key: driveKey, fileName, address: `hyper://${driveKey}/${fileName}` }
 }
 
-export async function _hyperFetchToFile (fetchFn, waitForDriveReady, address, destPath, onStatus) {
+// A download that goes quiet is looked for again, then given up on. A phone
+// that locks its screen or goes to the background stops sending, and the
+// connection it had is gone when it comes back. Without looking again, the
+// download sat on its first message until hyperswarm's next refresh, about
+// ten minutes later, or for good.
+export const STALL_LOOK_AGAIN_MS = 15 * 1000
+export const STALL_GIVE_UP_MS = 2 * 60 * 1000
+
+export const NOBODY_SHARING = 'Nobody is sharing this right now. Open PeerSky on the device that sent it, keep it open with its screen on, and press Download again. A link from Link Device works for 15 minutes.'
+export const STOPPED_SENDING = 'The other device stopped sending. Open PeerSky on it, keep it open with its screen on, and press Download again.'
+export const NOT_ANSWERING = 'The other device is not answering. Open PeerSky on it, keep it open with its screen on, and press Download again.'
+const WAITING = 'Waiting for the other device. Keep PeerSky open on it, with its screen on.'
+
+/**
+ * @param {Function} fetchFn
+ * @param {Function} waitForDriveReady
+ * @param {string} address
+ * @param {string} destPath
+ * @param {Function} [onStatus] Gets a line of text to show.
+ * @param {object} [options]
+ * @param {Function} [options.lookAgain] Looks for the drive's peers again.
+ * @param {number} [options.retryDelayMs] The wait before the second try,
+ *   growing by as much again for each try after.
+ */
+export async function _hyperFetchToFile (fetchFn, waitForDriveReady, address, destPath, onStatus, options = {}) {
   // The Hyperswarm DHT needs time to discover the hosting peer, especially
   // across different networks. Retry with backoff before giving up.
   const MAX_ATTEMPTS = 5
-  const BASE_DELAY_MS = 3000
+  const BASE_DELAY_MS = options.retryDelayMs ?? 3000
+  const status = (message) => { if (typeof onStatus === 'function') onStatus(message) }
   let lastError
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     // Wait for drive readiness INSIDE the retry loop so peers are re-discovered
     await waitForDriveReady(address)
 
-    const resp = await fetchFn(address)
+    // A device found but not answering, such as a phone whose screen locked,
+    // holds the request open, so it is watched like a quiet download.
+    const resp = await untilAnswered(fetchFn(address), status, options)
     if (resp.ok && resp.body) {
-      const { createWriteStream } = await import('fs')
-      const { Readable } = await import('stream')
-      const { pipeline } = await import('stream/promises')
-      await pipeline(Readable.fromWeb(resp.body), createWriteStream(destPath))
+      await saveDownload(resp, destPath, status, options)
       return destPath
     }
 
-    lastError = new Error(
-      resp.status === 404
-        ? `Hyper fetch failed: 404. The file was not found at the address '${address}'.`
-        : `Hyper fetch failed: ${resp.status}`
-    )
+    lastError = new Error(resp.status === 404 ? NOBODY_SHARING : `Hyper fetch failed: ${resp.status}`)
 
     if (attempt < MAX_ATTEMPTS) {
       const delay = BASE_DELAY_MS * attempt
-      if (typeof onStatus === 'function') {
-        onStatus(`Attempt ${attempt} of ${MAX_ATTEMPTS} failed (status ${resp.status}). Retrying in ${delay / 1000}s...`)
-      }
+      status(resp.status === 404
+        ? `Looking for the device that sent it (try ${attempt + 1} of ${MAX_ATTEMPTS})...`
+        : `Attempt ${attempt} of ${MAX_ATTEMPTS} failed (status ${resp.status}). Retrying in ${delay / 1000}s...`)
       log.info(`Hyper fetch attempt ${attempt}/${MAX_ATTEMPTS} returned ${resp.status}, retrying in ${delay}ms...`)
       await new Promise(resolve => setTimeout(resolve, delay))
     }
   }
   throw lastError
+}
+
+function watchOptions (options) {
+  return {
+    lookAgain: options.lookAgain || (async () => {}),
+    stallMs: options.stallMs ?? STALL_LOOK_AGAIN_MS,
+    giveUpMs: options.giveUpMs ?? STALL_GIVE_UP_MS,
+    tickMs: options.tickMs ?? 1000
+  }
+}
+
+function lookAgainNow (lookAgain) {
+  Promise.resolve().then(lookAgain).catch((error) => log.warn(`Looking for peers again failed: ${error.message}`))
+}
+
+async function untilAnswered (request, status, options) {
+  const { lookAgain, stallMs, giveUpMs, tickMs } = watchOptions(options)
+  const started = Date.now()
+  let lookedAt = 0
+  let watch = null
+  const gaveUp = new Promise((resolve, reject) => {
+    watch = setInterval(() => {
+      const waited = Date.now() - started
+      if (waited >= giveUpMs) {
+        reject(new Error(NOT_ANSWERING))
+      } else if (waited >= stallMs && Date.now() - lookedAt >= stallMs) {
+        lookedAt = Date.now()
+        status(WAITING)
+        lookAgainNow(lookAgain)
+      }
+    }, tickMs)
+  })
+  try {
+    return await Promise.race([request, gaveUp])
+  } finally {
+    clearInterval(watch)
+  }
+}
+
+async function saveDownload (resp, destPath, status, options) {
+  const { lookAgain, stallMs, giveUpMs, tickMs } = watchOptions(options)
+  const { createWriteStream } = await import('fs')
+  const { Readable, Transform } = await import('stream')
+  const { pipeline } = await import('stream/promises')
+
+  const total = Number(resp.headers?.get?.('content-length')) || 0
+  let received = 0
+  let lastByteAt = Date.now()
+  let shownAt = 0
+  let lookedAt = 0
+  let stopped = null
+  const controller = new AbortController()
+
+  status(describeDownload(0, total))
+  const counter = new Transform({
+    transform (chunk, _encoding, done) {
+      received += chunk.length
+      lastByteAt = Date.now()
+      if (lastByteAt - shownAt >= 500) {
+        shownAt = lastByteAt
+        status(describeDownload(received, total))
+      }
+      done(null, chunk)
+    }
+  })
+  const watch = setInterval(() => {
+    const quiet = Date.now() - lastByteAt
+    if (quiet >= giveUpMs) {
+      stopped = new Error(STOPPED_SENDING)
+      controller.abort(stopped)
+    } else if (quiet >= stallMs && Date.now() - lookedAt >= stallMs) {
+      lookedAt = Date.now()
+      status(WAITING)
+      lookAgainNow(lookAgain)
+    }
+  }, tickMs)
+
+  try {
+    await pipeline(Readable.fromWeb(resp.body), counter, createWriteStream(destPath), { signal: controller.signal })
+  } catch (error) {
+    throw stopped || error
+  } finally {
+    clearInterval(watch)
+  }
+}
+
+export function describeDownload (received, total) {
+  const mb = (bytes) => {
+    const value = bytes / (1024 * 1024)
+    return value < 10 ? value.toFixed(1) : String(Math.round(value))
+  }
+  if (total > 0) return `Downloading: ${mb(received)} of ${mb(total)} MB`
+  return received > 0 ? `Downloading: ${mb(received)} MB` : 'Downloading...'
 }

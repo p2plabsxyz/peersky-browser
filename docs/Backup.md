@@ -80,6 +80,17 @@ A transfer fetched this way must have been made for a pairing code this
 desktop showed in the last hour (`src/backup/pairing-sessions.js`). A code
 answers one transfer; once it is used, the page shows a fresh one.
 
+The download says how much has come. The device sending it can go quiet part
+way, as a phone does when its screen locks or PeerSky goes to the background,
+and the connection it had is gone when it comes back. After 15 seconds without
+a byte the page says it is waiting for the other device and looks for it again
+(the drive's peer lookup runs again), so the download carries on within
+seconds of the phone coming back, instead of after hyperswarm's next refresh
+about ten minutes later. After two minutes it stops with a message saying to
+open PeerSky on the other device and press Download again. A device that was
+found but never answers is watched the same way, and a link nobody shares any
+more says so in plain words (`src/backup/hyper-backup.js`).
+
 ## Identity transfer
 
 Identity transfer is intended for moving the identity to a specific receiving

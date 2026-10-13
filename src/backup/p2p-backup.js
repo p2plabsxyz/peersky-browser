@@ -75,7 +75,7 @@ export async function downloadBackupFromAddress (address, onStatus) {
         trimmed = `hyper://${urlObj.hostname}/backup.zip`
       }
     } catch (e) {}
-    notify('Connecting to Hyper peer...')
+    notify('Connecting to the device that shared it...')
     log.info(`Fetching backup from Hyper: ${trimmed}`)
     await hyperFetchToFile(trimmed, dest, notify)
 
