@@ -866,13 +866,14 @@ async function tryLinkedPrivateDrive (hostname) {
   // every later read of it would go to the private store.
   if (!await decodesWithKey(sdk.corestore, key, profileKey, LINKED_DRIVE_PROBE_MS)) return false
   await initializePrivateHyperSDK()
+  // Read-only before it is listed, so it never reads as this desktop's own.
+  await setPrivateDriveOwnership(userDataDir, key.toString('hex'), false)
   await rememberPrivateHyperdrive(userDataDir, {
     name: LINKED_PRIVATE_DRIVE_NAME,
     url: `hyper://${hostname}/`,
     timestamp: Date.now(),
     encrypted: true
   })
-  await setPrivateDriveOwnership(userDataDir, key.toString('hex'), false)
   privateDriveHostnames.add(hostname)
   return true
 }

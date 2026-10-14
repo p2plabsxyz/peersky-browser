@@ -42,6 +42,22 @@ describe('private drive ownership', function () {
     }
   })
 
+  it('keeps both marks when two drives are marked at once', async function () {
+    const userDataDir = await mkdtemp(path.join(os.tmpdir(), 'peersky-own-'))
+    try {
+      await Promise.all([
+        setPrivateDriveOwnership(userDataDir, DRIVE_A, false),
+        setPrivateDriveOwnership(userDataDir, DRIVE_B, false)
+      ])
+      expect(await readPrivateDriveOwnership(userDataDir)).to.deep.equal({
+        [DRIVE_A]: { owned: false },
+        [DRIVE_B]: { owned: false }
+      })
+    } finally {
+      await rm(userDataDir, { recursive: true, force: true })
+    }
+  })
+
   it('ignores malformed drive ids and records when writing', async function () {
     const userDataDir = await mkdtemp(path.join(os.tmpdir(), 'peersky-own-'))
     try {

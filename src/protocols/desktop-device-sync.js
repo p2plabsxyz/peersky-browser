@@ -46,6 +46,10 @@ export async function takeLinkedDrive (userDataDir, { id, key = null, identityKe
   if (key && (!identityKey || !Buffer.from(key).equals(Buffer.from(identityKey)))) {
     await rememberPrivateDriveKeyFor(userDataDir, id, Buffer.from(key).toString('hex'))
   }
+  // Marked read-only before it is listed. Listed first, it would read as one
+  // this desktop made until the mark was written, and for good if that write
+  // failed or PeerSky stopped in between.
+  await setPrivateDriveOwnership(userDataDir, id, false)
   if (!known) {
     await rememberPrivateHyperdrive(userDataDir, {
       name: device === 'phone' ? PHONE_PRIVATE_DRIVE_NAME : LINKED_PRIVATE_DRIVE_NAME,
@@ -54,7 +58,6 @@ export async function takeLinkedDrive (userDataDir, { id, key = null, identityKe
       encrypted: true
     })
   }
-  await setPrivateDriveOwnership(userDataDir, id, false)
   return true
 }
 
