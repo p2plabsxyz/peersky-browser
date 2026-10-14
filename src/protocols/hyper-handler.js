@@ -732,6 +732,15 @@ export async function createHandler (options, securityOptions = {}) {
           }
           let drive
           if (visibility === 'private') {
+            // A private drive is opened by its name, so a page that may not
+            // use private drives must not open one by the name P2PMD or the
+            // Hyperdrive app gave it.
+            if (!mayUsePrivateDrive({ url, initiatorOrigin: req.initiatorOrigin, navigation })) {
+              return new Response(PRIVATE_DRIVE_ERROR, {
+                status: 403,
+                headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+              })
+            }
             await initializePrivateHyperSDK()
             drive = privateDeviceOnly
               ? await privateSdk.getDrive(target.driveName, { autoJoin: target.autoJoin })

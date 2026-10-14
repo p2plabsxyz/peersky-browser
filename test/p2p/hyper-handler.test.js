@@ -625,6 +625,12 @@ describe('Hyper protocol handler', function () {
     expect((await handler(from(`hyper://${'a'.repeat(52)}`))).status, 'another hyper site').to.equal(403)
     expect((await handler(from('null'))).status, 'an opaque origin').to.equal(403)
     expect((await handler(from('https://site.example', { method: 'PUT', body: 'x' }))).status, 'a website writing').to.equal(403)
+    expect((await handler(from('peersky://myapps'))).status, 'an app someone added').to.equal(403)
+    expect((await handler(from('peersky://myapps', { method: 'PUT', body: 'x' }))).status, 'an app someone added, writing').to.equal(403)
+    const byName = (initiatorOrigin) => Object.assign(new Request('hyper://localhost/?key=private-callers&visibility=private', { method: 'POST' }), { initiatorOrigin })
+    expect((await handler(byName('peersky://myapps'))).status, 'an app someone added, opening it by name').to.equal(403)
+    expect((await handler(byName('https://site.example'))).status, 'a website opening it by name').to.equal(403)
+    expect(await (await handler(byName('peersky://p2p'))).text(), 'the browser\'s own page opening it by name').to.equal(driveUrl)
     const forged = from('https://site.example', { headers: { 'x-peersky-navigation': 'guess' } })
     expect((await handler(forged)).status, 'a forged stamp').to.equal(403)
 

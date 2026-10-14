@@ -14,6 +14,17 @@ export function assertCaller (event, ...pages) {
   if (!isPeerskyPage(event?.senderFrame?.url, ...pages)) throw new Error('Forbidden')
 }
 
+// Any of PeerSky's own pages. An app someone added under peersky://myapps is
+// served on the same scheme but came from somewhere else, so it is not one.
+export function isOwnPeerskyPage (rawUrl) {
+  try {
+    const { protocol, hostname } = new URL(rawUrl)
+    return protocol === 'peersky:' && hostname !== '' && hostname.toLowerCase() !== 'myapps'
+  } catch {
+    return false
+  }
+}
+
 // A page in one folder of one of PeerSky's hosts, such as one P2P app: the P2P
 // apps share a host, so their channels check the folder too.
 export function isPeerskyAppPage (rawUrl, hostname, folder) {

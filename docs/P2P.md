@@ -57,7 +57,7 @@ A phone's drive is added to the private drives as `Private files from your phone
 
 The Hyperdrive app lists this desktop's own private uploads under **Your private uploads**, newest first and at most 100, so they are still there after a restart, the way the phone keeps its own under Recent (`private-files-list`, answered for `peersky://p2p/hyperdrive/` alone). Each private upload goes in a drive named after it, which the registry keeps (`privateHyperdrives.json`), and the list is read from the top of each drive this desktop made (`src/protocols/own-private-files.js`), as the phone lists them under From your devices. Notes P2PMD publishes in private are in its `p2pmd` drive, so they are listed too. Drives from other devices, and ones a restore brought here, are left out. A shared folder's link opens as a list of what is in it.
 
-Only PeerSky's own pages, the drive's own pages and a tab you open it in can read or write a private drive (`mayUsePrivateDrive` in `src/protocols/request-gate.js`). Electron applies no CORS to `hyper://`, so without this any site that learned a private drive's address could read it with this desktop's key. The phone has the same rule.
+Only PeerSky's own pages, the drive's own pages and a tab you open it in can make, read or write a private drive (`mayUsePrivateDrive` in `src/protocols/request-gate.js`). Electron applies no CORS to `hyper://`, so without this any site that learned a private drive's address could read it with this desktop's key. An app added under `peersky://myapps/` is not one of PeerSky's own pages: a private drive is opened by its name, so such an app could otherwise open the drive P2PMD keeps private notes in by asking for it by name. The phone has the same rule.
 
 ```mermaid
 flowchart TD
@@ -98,7 +98,7 @@ async function publishToIPFS(files) {
 ```
 
 > [!NOTE]
-> Writes from a website, a Hyper or IPFS site, or a local file need the user's consent. The first `PUT`, `POST` or `DELETE` to `hyper://`, `ipfs://` or `ipns://` from a site shows a **P2P publishing** prompt, and the answer is remembered for that site in site settings. Built-in `peersky://` apps write without a prompt. Writes from service workers are refused, since they cannot show one.
+> Writes from a website, a Hyper or IPFS site, or a local file need the user's consent. The first `PUT`, `POST` or `DELETE` to `hyper://`, `ipfs://` or `ipns://` from a site shows a **P2P publishing** prompt, and the answer is remembered for that site in site settings. Built-in `peersky://` apps write without a prompt. An app added under `peersky://myapps/` asks like any site. Writes from service workers are refused, since they cannot show one.
 
 Check our p2p apps in `/pages/p2p/`: https://github.com/p2plabsxyz/peersky-browser/tree/main/src/pages/p2p
 
@@ -183,7 +183,7 @@ The page at `peersky://p2p/` (`pages/p2p/index.html`) serves as the core P2P app
 Pin/unpin changes are persisted via the main-process settings system (`pinnedP2PApps` key), updating the home screen P2P bar dynamically.
 
 **To register a new P2P app:**
-1. **(Users)** Easily drag-and-drop any standard HTML/CSS/JS web folder directly onto the dropzone via the UI. The application gets locally wrapped and assigned a `peersky://myapps/...` protocol URL.
+1. **(Users)** Easily drag-and-drop any standard HTML/CSS/JS web folder directly onto the dropzone via the UI. The application gets locally wrapped and assigned a `peersky://myapps/...` protocol URL. It came from somewhere else, so it is treated like a website: it asks before it publishes or uses AI, and it cannot use private drives or read the AI memory.
 2. **(Core Developers)** Add the folder for native components in `./src/pages/p2p/`, and explicitly register it into the `p2pApps` list located in `p2p-list.js`.
 
 ## Git Submodules for Built-in P2P Apps

@@ -115,9 +115,10 @@ if (isInternal || isP2P || isUserP2PApp) {
     iteratorReturn
   })
 
-  // LLM Memory: peersky: pages only. isInternal also covers file: pages and a
-  // trusted external host, neither of which should read the whole history.
-  if (pageProtocol === 'peersky:') {
+  // LLM Memory: PeerSky's own pages only. isInternal also covers file: pages
+  // and a trusted external host, and an app added under peersky://myapps came
+  // from somewhere else: none of them should read the whole history.
+  if (pageProtocol === 'peersky:' && !isUserP2PApp) {
     contextBridge.exposeInMainWorld('llmMemory', {
       add: (entry) => ipcRenderer.invoke('llm-memory-add', entry),
       list: (opts) => ipcRenderer.invoke('llm-memory-list', opts || {}),

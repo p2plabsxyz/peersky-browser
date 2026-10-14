@@ -121,7 +121,7 @@ Clearing P2P data (`Settings → P2P data → Reset P2P Data`) also wipes `llm.j
 
 ### `window.llmMemory`
 
-Available to `peersky://` pages only: the built-in pages and the apps under `peersky://p2p/` and `peersky://myapps/`. Other pages that get `window.llm` cannot read or clear the memory.
+Available to PeerSky's own pages only: the built-in pages and the apps under `peersky://p2p/`. An app added under `peersky://myapps/` came from somewhere else, so it cannot read or clear the memory, and neither can other pages that get `window.llm`. The main process checks the calling page too (`src/llm-memory.js`).
 
 #### Check if enabled
 

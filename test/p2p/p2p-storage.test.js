@@ -304,6 +304,16 @@ describe('Reset P2P data, and the space read after it', function () {
     expect(existsSync(path.join(profile, 'private-drive-key.json'))).to.equal(true)
   })
 
+  it('resets only when Settings asks', async function () {
+    const reset = handlers.get('settings-reset-p2p')
+    for (const url of ['peersky://p2p/hyperdrive/', 'peersky://myapps/notes/', 'peersky://home/', 'hyper://settings/', 'https://example.com/', undefined]) {
+      let error = null
+      await reset({ senderFrame: { url } }, { resetIdentities: true }).catch((caught) => { error = caught })
+      expect(error?.message, String(url)).to.equal('Forbidden')
+    }
+    expect(existsSync(path.join(profile, 'ipfs')), 'nothing was deleted').to.equal(true)
+  })
+
   it('tells only Settings how much space P2P data takes', async function () {
     const measure = handlers.get('settings-get-p2p-storage')
     expect((await measure({ senderFrame: { url: 'peersky://settings' } })).total).to.be.above(0)

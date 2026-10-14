@@ -403,7 +403,9 @@ class SettingsManager {
       }
     })
 
-    ipcMain.handle('settings-reset-p2p', async (_event, opts = {}) => {
+    // Settings alone asks, as for the space below: this deletes P2P data.
+    ipcMain.handle('settings-reset-p2p', async (event, opts = {}) => {
+      if (!isPeerskyPage(event?.senderFrame?.url, 'settings')) throw new Error('Forbidden')
       try {
         await resetP2PData({ resetIdentities: !!opts.resetIdentities })
         return {
