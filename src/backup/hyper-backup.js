@@ -1,4 +1,6 @@
+import path from 'path'
 import { createLogger } from '../logger.js'
+import { downloadLimit } from './download-limit.js'
 
 const log = createLogger('backup:hyper')
 
@@ -67,6 +69,9 @@ export async function _hyperPublishFile (fetchFn, sdk, filePath, fileName = 'bac
 // ten minutes later, or for good.
 export const STALL_LOOK_AGAIN_MS = 15 * 1000
 export const STALL_GIVE_UP_MS = 2 * 60 * 1000
+// What has to come within STALL_GIVE_UP_MS for a download to count as going.
+// A few bytes now and then is not a transfer, and kept one open for good.
+export const PROGRESS_BYTES = 64 * 1024
 
 export const NOBODY_SHARING = 'Nobody is sharing this right now. Open PeerSky on the device that sent it, keep it open with its screen on, and press Download again. A link from Link Device works for 15 minutes.'
 export const STOPPED_SENDING = 'The other device stopped sending. Open PeerSky on it, keep it open with its screen on, and press Download again.'
@@ -83,6 +88,7 @@ const WAITING = 'Waiting for the other device. Keep PeerSky open on it, with its
  * @param {Function} [options.lookAgain] Looks for the drive's peers again.
  * @param {number} [options.retryDelayMs] The wait before the second try,
  *   growing by as much again for each try after.
+ * @param {Function} [options.freeBytes] Free bytes in a folder, for tests.
  */
 export async function _hyperFetchToFile (fetchFn, waitForDriveReady, address, destPath, onStatus, options = {}) {
   // The Hyperswarm DHT needs time to discover the hosting peer, especially
@@ -100,7 +106,14 @@ export async function _hyperFetchToFile (fetchFn, waitForDriveReady, address, de
     // holds the request open, so it is watched like a quiet download.
     const resp = await untilAnswered(fetchFn(address), status, options)
     if (resp.ok && resp.body) {
-      await saveDownload(resp, destPath, status, options)
+      try {
+        await saveDownload(resp, destPath, status, options)
+      } catch (error) {
+        // What came is of no use, and can be large.
+        const { rm } = await import('fs/promises')
+        await rm(destPath, { force: true }).catch(() => {})
+        throw error
+      }
       return destPath
     }
 
@@ -162,8 +175,11 @@ async function saveDownload (resp, destPath, status, options) {
   const { pipeline } = await import('stream/promises')
 
   const total = Number(resp.headers?.get?.('content-length')) || 0
+  const { limit, overLimit } = await downloadLimit(path.dirname(destPath), total, options.freeBytes)
   let received = 0
   let lastByteAt = Date.now()
+  let progressAt = lastByteAt
+  let progressBytes = 0
   let shownAt = 0
   let lookedAt = 0
   let stopped = null
@@ -173,7 +189,16 @@ async function saveDownload (resp, destPath, status, options) {
   const counter = new Transform({
     transform (chunk, _encoding, done) {
       received += chunk.length
+      if (received > limit) {
+        stopped = new Error(overLimit)
+        done(stopped)
+        return
+      }
       lastByteAt = Date.now()
+      if (received - progressBytes >= PROGRESS_BYTES) {
+        progressAt = lastByteAt
+        progressBytes = received
+      }
       if (lastByteAt - shownAt >= 500) {
         shownAt = lastByteAt
         status(describeDownload(received, total))
@@ -183,7 +208,7 @@ async function saveDownload (resp, destPath, status, options) {
   })
   const watch = setInterval(() => {
     const quiet = Date.now() - lastByteAt
-    if (quiet >= giveUpMs) {
+    if (Date.now() - progressAt >= giveUpMs) {
       stopped = new Error(STOPPED_SENDING)
       controller.abort(stopped)
     } else if (quiet >= stallMs && Date.now() - lookedAt >= stallMs) {

@@ -89,7 +89,15 @@ seconds of the phone coming back, instead of after hyperswarm's next refresh
 about ten minutes later. After two minutes it stops with a message saying to
 open PeerSky on the other device and press Download again. A device that was
 found but never answers is watched the same way, and a link nobody shares any
-more says so in plain words (`src/backup/hyper-backup.js`).
+more says so in plain words (`src/backup/hyper-backup.js`). A few bytes now and
+then do not count as sending: less than 64 KB in two minutes stops it too.
+
+A link pasted here can lead anywhere, and the download is written to disk
+before anything reads it. So it takes no more than the size it said it would
+send, and is refused at once when that would leave less than 512 MB free. One
+that says no size, and an `ipfs://` address, stop before they leave less than
+512 MB free. Whatever came of a download that stopped is deleted
+(`src/backup/download-limit.js`).
 
 ## Identity transfer
 

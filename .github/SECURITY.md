@@ -70,6 +70,7 @@ In October 2026, before the v1 release, the changes since then went through a se
 Fixed as a result:
 
 - An app added under `peersky://myapps` was trusted like PeerSky's own pages. It could open a private drive by its name and read it, P2PMD's private notes included, write to drives without the P2P publishing prompt, and read or clear the AI memory.
+- A link pasted into Restore from the network could write to disk until the disk was full, and a sender giving a few bytes now and then kept the download going for good.
 - Reset P2P data did not check which page asked for it. Only Settings could reach it, through the preload.
 
 Not covered in depth: native modules and upstream libraries beyond advisory triage.

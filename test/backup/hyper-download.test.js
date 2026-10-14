@@ -1,7 +1,9 @@
 import { expect } from 'chai'
-import { mkdtempSync, readFileSync, rmSync } from 'fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import path from 'path'
+import { CID } from 'multiformats/cid'
+import { sha256 } from 'multiformats/hashes/sha2'
 
 import {
   _hyperFetchToFile,
@@ -10,6 +12,8 @@ import {
   NOT_ANSWERING,
   STOPPED_SENDING
 } from '../../src/backup/hyper-backup.js'
+import { _ipfsFetchToFile } from '../../src/backup/ipfs-backup.js'
+import { DISK_FULL, KEEP_FREE_BYTES, SENT_TOO_MUCH, tooBigFor } from '../../src/backup/download-limit.js'
 
 // Downloading a backup or a transfer from another device. The other device
 // can go quiet part way, as a phone does when its screen locks, and the
@@ -104,6 +108,65 @@ describe('downloading from another device', function () {
       path.join(dir, 'out.zip'), (message) => messages.push(message), { retryDelayMs: 1 }).catch((error) => { failure = error })
     expect(failure?.message).to.equal(NOBODY_SHARING)
     expect(messages[0]).to.equal('Looking for the device that sent it (try 2 of 5)...')
+  })
+
+  // A link pasted into Restore from the network can lead anywhere.
+  describe('from a device that will not stop', function () {
+    const fails = (promise) => promise.then(() => null, (error) => error)
+
+    it('stops a download that sends more than it said, and leaves no file behind', async function () {
+      const dest = path.join(dir, 'out.zip')
+      const failure = await fails(_hyperFetchToFile(
+        async () => new Response(new Uint8Array(256 * 1024), { headers: { 'content-length': '10' } }),
+        ready, 'hyper://abc/backup.zip', dest, null))
+      expect(failure?.message).to.equal(SENT_TOO_MUCH)
+      expect(existsSync(dest)).to.equal(false)
+    })
+
+    it('refuses one bigger than the free space before writing any of it', async function () {
+      const dest = path.join(dir, 'out.zip')
+      let fetched = false
+      const failure = await fails(_hyperFetchToFile(
+        async () => { fetched = true; return new Response(new Uint8Array(1000), { headers: { 'content-length': '1000' } }) },
+        ready, 'hyper://abc/backup.zip', dest, null, { freeBytes: async () => KEEP_FREE_BYTES + 100 }))
+      expect(fetched).to.equal(true)
+      expect(failure?.message).to.equal(tooBigFor(1000))
+      expect(existsSync(dest)).to.equal(false)
+    })
+
+    it('stops one that says no size before it fills the disk', async function () {
+      const dest = path.join(dir, 'out.zip')
+      const failure = await fails(_hyperFetchToFile(
+        async () => new Response(new Uint8Array(256 * 1024)),
+        ready, 'hyper://abc/backup.zip', dest, null, { freeBytes: async () => KEEP_FREE_BYTES + 1000 }))
+      expect(failure?.message).to.equal(DISK_FULL)
+      expect(existsSync(dest)).to.equal(false)
+    })
+
+    it('gives up on one that sends a byte now and then, as if it had stopped', async function () {
+      let sent = 0
+      const body = new ReadableStream({
+        async pull (controller) {
+          await new Promise((resolve) => setTimeout(resolve, 5))
+          if (sent++ < 400) controller.enqueue(new Uint8Array(1))
+          else controller.close()
+        }
+      })
+      const dest = path.join(dir, 'out.zip')
+      const failure = await fails(_hyperFetchToFile(async () => new Response(body), ready, 'hyper://abc/backup.zip', dest, null,
+        { stallMs: 40, giveUpMs: 150, tickMs: 10 }))
+      expect(failure?.message).to.equal(STOPPED_SENDING)
+      expect(existsSync(dest)).to.equal(false)
+    })
+
+    it('gives an IPFS address no more than the free space either', async function () {
+      const cid = CID.create(1, 0x55, await sha256.digest(new Uint8Array([1]))).toString()
+      const unixFs = { async * cat () { for (let i = 0; i < 8; i++) yield new Uint8Array(64 * 1024) } }
+      const dest = path.join(dir, 'out.zip')
+      const failure = await fails(_ipfsFetchToFile(unixFs, cid, dest, null, { freeBytes: async () => KEEP_FREE_BYTES + 1000 }))
+      expect(failure?.message).to.equal(DISK_FULL)
+      expect(existsSync(dest)).to.equal(false)
+    })
   })
 
   it('writes sizes a person can read', function () {
