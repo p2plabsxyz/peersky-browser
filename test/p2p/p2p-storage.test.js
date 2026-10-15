@@ -295,6 +295,17 @@ describe('Reset P2P data, and the space read after it', function () {
     expect(after.total).to.be.below(before.total)
   })
 
+  // The Hyperdrive app's views keep pictures of public drives in their page's
+  // storage, and drop them when this number changes.
+  it('tells the Hyperdrive app\'s views to drop what they kept, each time', async function () {
+    const epoch = () => JSON.parse(readFileSync(path.join(profile, 'hyperdrive-views.json'), 'utf8')).epoch
+    await handlers.get('settings-reset-p2p')(fromSettings, {})
+    const first = epoch()
+    expect(first).to.be.above(0)
+    await handlers.get('settings-reset-p2p')(fromSettings, { resetIdentities: true })
+    expect(epoch()).to.be.above(first)
+  })
+
   it('keeps them as well when the identities go too', async function () {
     await handlers.get('settings-reset-p2p')(fromSettings, { resetIdentities: true })
     expect(existsSync(path.join(profile, 'hyper'))).to.equal(false)
@@ -312,6 +323,7 @@ describe('Reset P2P data, and the space read after it', function () {
       expect(error?.message, String(url)).to.equal('Forbidden')
     }
     expect(existsSync(path.join(profile, 'ipfs')), 'nothing was deleted').to.equal(true)
+    expect(existsSync(path.join(profile, 'hyperdrive-views.json')), 'the views kept what they had').to.equal(false)
   })
 
   it('tells only Settings how much space P2P data takes', async function () {

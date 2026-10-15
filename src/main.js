@@ -37,6 +37,7 @@ import { setupDevToolsDock } from './devtools-dock.js'
 import { setupP2pmdPdfExportIpc } from './pages/p2p/p2pmd/pdf-export-ipc.js'
 import { setupBackupIpc } from './backup/ipc.js'
 import { setupDeviceSyncIpc } from './protocols/device-sync-ipc.js'
+import { setupHyperdriveViewsIpc } from './protocols/hyperdrive-views-ipc.js'
 import { assertCaller } from './backup/ipc-caller.js'
 import backupManager from './backup/backup-manager.js'
 import { downloadBackupFromAddress } from './backup/p2p-backup.js'
@@ -315,6 +316,7 @@ app.whenReady().then(async () => {
   setupBittorrentIpc()
   setupBackupIpc({ getTabs: () => windowManager.getTabs() })
   setupDeviceSyncIpc()
+  setupHyperdriveViewsIpc()
   setupSiteInfoIpc(userSession)
   setupDevToolsDock()
   // People in a PeerChat room see a yellow dot while you are away.

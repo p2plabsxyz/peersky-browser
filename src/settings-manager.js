@@ -12,6 +12,7 @@ import { clearPersistedPermissions } from './permissions.js'
 import p2pAppRegistry from './p2p-app-registry.js'
 import { measureP2PStorage, oneAtATime } from './p2p-storage.js'
 import { isPeerskyPage } from './backup/ipc-caller.js'
+import { bumpCacheEpoch } from './protocols/hyperdrive-views.js'
 
 const SETTINGS_FILE = path.join(app.getPath('userData'), 'settings.json')
 const DEBUG_LOG = path.join(os.homedir(), '.peersky', 'debug.log')
@@ -168,6 +169,10 @@ async function resetP2PData ({ resetIdentities = false } = {}) {
   await fs.rm(btState, { recursive: true, force: true }).catch(() => {})
   await fs.rm(portsFile, { recursive: true, force: true }).catch(() => {})
   await fs.rm(chatRooms, { recursive: true, force: true }).catch(() => {})
+
+  // The Hyperdrive app's views keep pictures and details of public drives in
+  // their page's storage. A new number tells them to drop all of it.
+  await bumpCacheEpoch(USER_DATA).catch((e) => logDebug(`Failed to clear the Hyperdrive views: ${e.message}`))
 
   // Wipe internal P2P User App Registry data and cleanly re-sync it
   await p2pAppRegistry.reset()

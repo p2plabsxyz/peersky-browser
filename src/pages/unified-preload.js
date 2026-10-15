@@ -49,6 +49,18 @@ const isP2P = ['hyper:', 'ipfs:', 'ipns:', 'hs:'].includes(pageProtocol)
 
 const isBitTorrent = ['bt:', 'bittorrent:', 'magnet:'].includes(pageProtocol)
 
+// The Hyperdrive app's Files, Photos and Videos views, which allow no inline
+// scripts: the window.llm script below would only be refused there.
+function pathOf (href) {
+  try {
+    return new URL(href).pathname
+  } catch (_) {
+    return ''
+  }
+}
+const isHyperdriveViews = pageProtocol === 'peersky:' && pageHost === 'p2p' &&
+  /^\/hyperdrive\/(files|photos|videos|viewer)(\/|$)/.test(pathOf(url))
+
 console.log('Unified-preload: URL detection', { url, isInternal, isExternal })
 
 // Expose minimal API for BitTorrent pages to open files in new tabs
@@ -183,6 +195,7 @@ if (isInternal || isP2P || isUserP2PApp) {
 
   // Wait for DOM to be ready before injecting script
   const attachScript = () => {
+    if (isHyperdriveViews) return
     if (document.head) {
       document.head.appendChild(script)
     } else {
@@ -830,6 +843,13 @@ try {
       // The private files this computer shared, for the same page alone.
       privateFiles: {
         list: () => ipcRenderer.invoke('private-files-list')
+      },
+      // A drive's files for its Files, Photos and Videos views, the number
+      // their stored pictures go with, and a download. Those pages alone.
+      hyperdrive: {
+        list: (url, options) => ipcRenderer.invoke('hyperdrive-list', url, options),
+        cacheEpoch: () => ipcRenderer.invoke('hyperdrive-cache-epoch'),
+        download: (url) => ipcRenderer.invoke('hyperdrive-download', url)
       }
     })
 

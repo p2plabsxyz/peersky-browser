@@ -197,7 +197,7 @@ document.querySelector('llm-history').addEventListener('select-session', (e) => 
 
 ## Security and permission
 
-- `window.llm` is exposed to PeerSky's own pages (`peersky://*`), P2P pages (`hyper://`, `ipfs://`, `ipns://`, `hs://`), local files, apps added under `peersky://myapps`, and pages on `localhost` and `agregore.mauve.moe`. Other websites never get it.
+- `window.llm` is exposed to PeerSky's own pages (`peersky://*`), P2P pages (`hyper://`, `ipfs://`, `ipns://`, `hs://`), local files, apps added under `peersky://myapps`, and pages on `localhost` and `agregore.mauve.moe`. Other websites never get it. The Hyperdrive app's Files, Photos and Videos views (`peersky://p2p/hyperdrive/files/`, `photos/`, `videos/` and `viewer/`) do not get it either: they allow no inline scripts, and an inline script is how the preload adds it.
 - PeerSky's own pages use it without asking. Every other page asks first, once per site, in the same prompt as camera or location: anyone can publish a `hyper://` or `ipfs://` page, and with a cloud model every prompt can cost money. The answer shows under **AI** in the site panel by the address bar and on the site settings page, where it can be changed.
 - `isSupported()` never shows the prompt. It says whether AI is on, or `false` on a page that was blocked, so a page can offer AI before asking; the prompt comes with the first `chat` or `complete`. A refused call rejects with an error.
 - The check runs in the main process ([src/llm-access.js](../src/llm-access.js)) against the frame that made the call, so a page cannot get around it from its own scripts.

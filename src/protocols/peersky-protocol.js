@@ -1,6 +1,5 @@
 import path from 'path'
 import { createLogger } from '../logger.js'
-import { fileURLToPath } from 'url'
 import mime from 'mime-types'
 import ScopedFS from 'scoped-fs'
 import { app } from 'electron'
@@ -8,27 +7,21 @@ import { createReadStream, promises as fsPromises } from 'fs'
 import { Readable } from 'stream'
 import extensionManager from '../extensions/index.js'
 import { resolveFileCached, respondWithFile } from './static-file.js'
+import { getPagesPath } from './pages-path.js'
+import { VIEWER_PAGE } from './hyperdrive-views.js'
 
 const log = createLogger('protocols:peersky')
 
-const __dirname = fileURLToPath(new URL('./', import.meta.url))
-
-// In packaged builds, serve from app.asar.unpacked so we can read updated P2P apps
-let pagesPath
-if (app.isPackaged) {
-  const appPath = app.getAppPath()
-  const unpackedPath = appPath.replace(/\.asar$/, '.asar.unpacked')
-  pagesPath = path.join(unpackedPath, 'src', 'pages')
-} else {
-  pagesPath = path.join(__dirname, '../pages')
-}
+const pagesPath = getPagesPath()
 
 const fs = new ScopedFS(pagesPath)
 
 // Where peersky:// pages are served from, P2P apps included.
-export function getPagesPath () {
-  return pagesPath
-}
+export { getPagesPath }
+
+// The Hyperdrive app's Files, Photos and Videos views, each alone or with a
+// drive and folder after it. They are one page, which reads its own address.
+const HYPERDRIVE_VIEW = /^p2p\/hyperdrive\/(files|photos|videos)(\/|$)/
 
 const CHECK_PATHS = [
   (path) => path,
@@ -290,6 +283,10 @@ export async function createHandler () {
     // Handle settings subpaths - map all /settings/* to settings.html
     if (filePath.startsWith('settings/')) {
       filePath = 'settings'
+    }
+
+    if (HYPERDRIVE_VIEW.test(filePath)) {
+      filePath = VIEWER_PAGE
     }
 
     try {

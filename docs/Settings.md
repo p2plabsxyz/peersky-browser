@@ -135,6 +135,7 @@ Each section is built using simple HTML blocks styled with internal and theme-pr
   - Deletes `ipfs/` and `hyper/` whole, the IPFS peer identity included
   - A new IPFS identity is made on next launch
 - **Either way, keeps:** `hyper-private/` with the private drive records and key, so private drives stay, and torrent downloads
+- **Either way, also:** raises the number in `hyperdrive-views.json`, so the Hyperdrive app's Files, Photos and Videos views drop the pictures and details of drives they keep in their page's storage
 
 
 ### Extensions Management

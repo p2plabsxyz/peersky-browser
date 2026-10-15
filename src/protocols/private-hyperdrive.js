@@ -140,7 +140,7 @@ async function statDrive (drive, pathname, { wait = false } = {}) {
   if (pathname === '/') return { isDirectory: () => true }
   const options = wait ? { wait: true, timeout: PEER_WAIT_MS } : { wait: false }
   const node = await drive.entry(pathname, options).catch(() => null)
-  if (node) return { isDirectory: () => node.value.blob === null }
+  if (node) return { isDirectory: () => node.value.blob === null, node }
   // A folder is no entry of its own, only the start of its files' paths, so a
   // shared folder's link said "File not found".
   return await holdsFiles(drive, pathname, options) ? { isDirectory: () => true } : null
@@ -164,7 +164,7 @@ async function holdsFiles (drive, pathname, options) {
 // either. Its peers are asked for the latest before the file is looked for
 // again. findingPeers holds update() until the swarm has looked, as in
 // waitForDriveReady for public drives.
-async function catchUpWithPeers (sdk, drive) {
+export async function catchUpWithPeers (sdk, drive) {
   if (typeof drive.core?.update !== 'function') return
   const done = typeof drive.core.findingPeers === 'function' ? drive.core.findingPeers() : null
   let timer = null
@@ -183,6 +183,30 @@ async function catchUpWithPeers (sdk, drive) {
     if (timer) clearTimeout(timer)
     if (done) done()
   }
+}
+
+// The one byte range of a file of `size` bytes a Range header asks for:
+// bytes=start-end, bytes=start- or bytes=-length. Null when there is none to
+// honour, several ranges or one that makes no sense, so the whole file goes.
+// False when the file cannot meet it.
+function byteRange (header, size) {
+  const match = /^\s*bytes\s*=\s*(\d*)\s*-\s*(\d*)\s*$/i.exec(String(header || ''))
+  if (!match || (!match[1] && !match[2])) return null
+  if (!match[1]) {
+    const length = Number(match[2])
+    return length > 0 && size > 0 ? { start: Math.max(0, size - length), end: size - 1 } : false
+  }
+  const start = Number(match[1])
+  if (match[2] && Number(match[2]) < start) return null
+  if (start >= size) return false
+  return { start, end: match[2] ? Math.min(Number(match[2]), size - 1) : size - 1 }
+}
+
+// When a file was written, kept as hypercore-fetch keeps it for public
+// drives: the Last-Modified a page sends with it, or the time of the write.
+function writtenAt (headers) {
+  const sent = Date.parse(headers.get('Last-Modified') || '')
+  return Number.isFinite(sent) ? sent : Date.now()
 }
 
 export function makePrivateDriveFetcher (sdk, userDataDir) {
@@ -271,6 +295,7 @@ export function makePrivateDriveFetcher (sdk, userDataDir) {
     // was fixed has.
     const places = pathname === rawPath ? [pathname] : [pathname, rawPath]
     const method = (options.method || 'GET').toUpperCase()
+    const requestHeaders = new Headers(options.headers || undefined)
 
     if (method === 'PUT' || method === 'POST') {
       if (!owned) {
@@ -281,7 +306,7 @@ export function makePrivateDriveFetcher (sdk, userDataDir) {
         await drive.putEntry(pathname, {})
       } else {
         const buffer = typeof body === 'string' ? Buffer.from(body) : Buffer.from(await new Response(body).arrayBuffer())
-        await drive.put(pathname, buffer)
+        await drive.put(pathname, buffer, { metadata: { mtime: writtenAt(requestHeaders) } })
       }
       return new Response('', { status: 200 })
     }
@@ -324,17 +349,37 @@ export function makePrivateDriveFetcher (sdk, userDataDir) {
         children.push(typeof child === 'string' ? child : child.name)
       }
       const listing = renderPrivateListing(parsed.hostname, place, children, { readOnly: !owned })
-      return new Response(listing, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } })
+      // Named as hypercore-fetch names a folder it lists, so a tab opening
+      // one gets the Hyperdrive app's views, as for a public folder.
+      const folder = privateFileUrl(`hyper://${parsed.hostname}/`, place.endsWith('/') ? place : `${place}/`)
+      const headers = { 'Content-Type': 'text/html; charset=utf-8', Link: `<${folder}>; rel="canonical"` }
+      return new Response(method === 'HEAD' ? null : listing, { status: 200, headers })
     }
 
-    const buffer = await drive.get(place, remote ? { timeout: PEER_WAIT_MS } : undefined)
-    return new Response(buffer, {
-      status: 200,
-      headers: {
-        'Content-Type': contentTypeFor(name),
-        'Accept-Ranges': 'none'
-      }
-    })
+    // A range is answered with just those bytes, as for a public file, so a
+    // private video seeks and the views read only the start of a photo.
+    const { node } = stat
+    const size = node.value.blob.byteLength
+    const range = byteRange(requestHeaders.get('Range'), size)
+    if (range === false) {
+      return new Response(null, { status: 416, headers: { 'Accept-Ranges': 'bytes', 'Content-Range': `bytes */${size}` } })
+    }
+    const start = range ? range.start : 0
+    const end = range ? range.end : size - 1
+    const length = size === 0 ? 0 : end - start + 1
+    const headers = {
+      'Content-Type': contentTypeFor(name),
+      'Accept-Ranges': 'bytes',
+      'Content-Length': String(length)
+    }
+    if (range) headers['Content-Range'] = `bytes ${start}-${end}/${size}`
+    const mtime = node.value.metadata?.mtime
+    const written = Number.isFinite(mtime) ? new Date(mtime) : null
+    if (written && !Number.isNaN(written.getTime())) headers['Last-Modified'] = written.toUTCString()
+    const status = range ? 206 : 200
+    if (method === 'HEAD' || length === 0) return new Response(null, { status, headers })
+    const body = drive.createReadStream(place, { start, end, ...(remote ? { timeout: PEER_WAIT_MS } : {}) })
+    return new Response(body, { status, headers })
   }
 
   handle.openByName = openByName

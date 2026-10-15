@@ -54,6 +54,7 @@
 
   - [x] Run a local [hyper](https://holepunch.to/) node
   - [x] `hyper://` native URLs support
+  - [x] Folders open in Files, Photos or Videos views, with a readme under the list (`?raw` skips them)
 
 - [x] BitTorrent protocol handler:
 
