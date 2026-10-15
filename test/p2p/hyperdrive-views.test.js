@@ -478,7 +478,7 @@ describe('Hyperdrive views', function () {
 
     it('is set up by main', async function () {
       const main = await readFile(new URL('../../src/main.js', import.meta.url), 'utf8')
-      expect(main).to.match(/\n {2}setupHyperdriveViewsIpc\(\)\n/)
+      expect(main).to.match(/\r?\n {2}setupHyperdriveViewsIpc\(\)\r?\n/)
     })
   })
 
