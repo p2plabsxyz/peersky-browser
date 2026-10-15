@@ -55,9 +55,11 @@ A phone's drive is added to the private drives as `Private files from your phone
 
 #### Your own private uploads
 
-The Hyperdrive app lists this desktop's own private uploads under **Your private uploads**, newest first and at most 100, so they are still there after a restart, the way the phone keeps its own under Recent (`private-files-list`, answered for `peersky://p2p/hyperdrive/` alone). Each private upload goes in a drive named after it, which the registry keeps (`privateHyperdrives.json`), and the list is read from the top of each drive this desktop made (`src/protocols/own-private-files.js`), as the phone lists them under From your devices. Notes P2PMD publishes in private are in its `p2pmd` drive, so they are listed too. Drives from other devices, and ones a restore brought here, are left out. A shared folder's link opens as a list of what is in it.
+The Hyperdrive app lists this desktop's own private uploads under **Your private uploads**, newest first and at most 100, so they are still there after a restart, the way the phone keeps its own under Recent (`private-files-list`, answered for `peersky://p2p/hyperdrive/` alone). Each private upload goes in a drive named after it, which the registry keeps (`privateHyperdrives.json`), and the list is read from the top of each drive this desktop made (`src/protocols/own-private-files.js`), as the phone lists them under From your devices. Notes P2PMD publishes in private are in its `p2pmd` drive, so they are listed too. Drives from other devices, and ones a restore brought here, are left out. A shared folder's link opens in the Files, Photos or Videos view, as any folder does (below).
 
 Only PeerSky's own pages, the drive's own pages and a tab you open it in can make, read or write a private drive (`mayUsePrivateDrive` in `src/protocols/request-gate.js`). Electron applies no CORS to `hyper://`, so without this any site that learned a private drive's address could read it with this desktop's key. An app added under `peersky://myapps/` is not one of PeerSky's own pages: a private drive is opened by its name, so such an app could otherwise open the drive P2PMD keeps private notes in by asking for it by name. The phone has the same rule.
+
+The private store sends a file the way public files are sent (`src/protocols/private-hyperdrive.js`). It answers a `Range` request (`bytes=start-end`, `bytes=start-` or `bytes=-length`) with `206` and just those bytes, read from the drive as they go out, so a private video seeks and a page reading the start of a photo gets only that. A range past the end gets `416`, and a `HEAD` gets the length and `Accept-Ranges: bytes` without the bytes. A file written there keeps when it was written, as hypercore-fetch keeps it for public drives: the `Last-Modified` the page sent, or the time of the write. Reads send it back as `Last-Modified`. Files written before this have no time.
 
 ```mermaid
 flowchart TD
@@ -72,6 +74,25 @@ flowchart TD
 ```
 
 Private uploads are excluded from normal backups by default. Identity transfers include them by default because they move data to another user-owned device. Both controls are explicit: if private uploads are excluded, the Backup page shows how many will be left behind. The same page lists the private uploads currently stored on the device. The transfer ships the drive's encryption key file (`private-drive-key.json`) beside the synced store; on arrival the receiving device adopts the drive into that keyed, synced corestore, so the same encrypted drive can be opened and written on both sides. The key file is what binds a received drive to a device — without it the drive's blocks remain encrypted no matter how far they replicate.
+
+#### Folders open in Files, Photos or Videos
+
+A tab that opens a `hyper://` folder that is no website gets the Hyperdrive app's views instead of the plain list of its files. That is a folder hypercore-fetch answers with its list, or with a readme it serves in place of the list: `README.md`, `README.org`, `index.md`, `index.gmi`, `index.gemini` or `index.org`, in any case, which the views show under the list. `src/protocols/hyper-handler.js` answers the tab with a redirect to `peersky://p2p/hyperdrive/files/<host><folder>?auto`: `<host>` is the address's host in lower case, and each name in `<folder>` is encoded on its own with `encodeURIComponent`. With `?auto`, the views pick Files, Photos or Videos from what the folder holds. `peersky://p2p/hyperdrive/files/`, `photos/` and `videos/`, alone or with a drive and folder after them, all serve one page, `viewer/index.html` in the Hyperdrive app (`src/pages/p2p/hyperdrive`), whose files are under `peersky://p2p/hyperdrive/viewer/`.
+
+What stays as it was:
+
+- A page's own `fetch()` of a folder, a `HEAD`, a frame and a service worker get the list. Only a tab loading the folder is sent to the views (the request gate's navigation stamp).
+- A public folder with an `index.html` is a website and shows it. hypercore-fetch never serves `index.htm` for a folder, so a folder with only that lists, and opens in the views like any other. The private store serves no index files, so a private folder always opens in the views.
+- A readme's own address, such as `hyper://<host>/notes/README.md`, opens the file.
+- `?raw`, and hypercore-fetch's own `?noResolve`, never go to the views: `?raw` gets what hypercore-fetch serves, a readme included, and `?noResolve` the plain list. The views link to it as Raw listing.
+- A private drive keeps its rules on who may read it. A tab may, so a private folder opens in the views too, and a site that knows the address still gets a 403. The private store names a folder it lists in a `Link` header, as hypercore-fetch does, which is how a list is told from a page.
+- A Hyperdrive app without the views, an older submodule, leaves every folder as the plain list.
+
+The views ask the main process through `window.electronAPI.hyperdrive`. The preload hands it to the P2P app pages, and the main process answers pages under `peersky://p2p/hyperdrive/` alone (`src/protocols/hyperdrive-views-ipc.js`):
+
+- `list(url, { recursive })` (`hyperdrive-list`) gives every file under the folder as `{ entries: [{ path, size, mtime }], truncated, private, writable }`. `path` is the file's path in the drive, not encoded. `size` is in bytes, and `mtime` in milliseconds or `null` when the drive has none. Files only, at most 50,000, and `truncated` says there were more. At the top of a drive this computer made, the answer also has `name`, the name it was made under: an upload's or a backup's in the Hyper cache, or a private drive's in its registry. There is no `name` for any other drive, or for a public upload given no name of its own, and none is ever made up from the address. The views show it in place of the shortened key. The drive opens as a tab's read of it does: a public one after up to 30 seconds of looking for peers, a private one from the private store, a linked device's with the profile key. When it cannot list, it answers `{ code, message }`, with `code` one of `not-found`, `no-peers`, `private`, `timeout` and `unknown`.
+- `cacheEpoch()` (`hyperdrive-cache-epoch`) gives a number kept in `hyperdrive-views.json` in the profile. Reset P2P Data raises it, and the views drop the pictures and details they keep when it changes.
+- `download(url)` (`hyperdrive-download`) saves a drive's file like any other download. An `<a download>` link on a `peersky://` page to a `hyper://` file would open the file in the tab instead, since Chromium ignores `download` for another origin's file.
 
 ### Publish to IPFS
 
