@@ -174,13 +174,13 @@ function openResetP2PModal () {
 
         <div class="modal-body">
           <div class="copy">
-            This will clear all IPFS/Hyper/BitTorrent data while <span class="emphasis">preserving</span> your peer identities by default.
+            This clears the IPFS and public Hyper data on this computer, with PeerChat's rooms, profile and messages here. PeerChat and Hyper start fresh, so other people see this computer as a <span class="emphasis">new device</span>. Your private drives and torrent downloads are kept.
           </div>
 
           <label class="checkbox-row">
             <input type="checkbox" id="modal-reset-identities">
             <span>
-              Also reset identities (<code>libp2p-key</code> & <code>swarm-keypair.json</code>) — not recommended
+              Also reset the IPFS peer identity (<code>libp2p-key</code>), not recommended
             </span>
           </label>
         </div>
@@ -257,6 +257,7 @@ function createFallbackAPI (ipc) {
       reset: () => ipc.invoke('settings-reset'),
       clearBrowserCache: () => ipc.invoke('settings-clear-cache'),
       resetP2P: (opts = {}) => ipc.invoke('settings-reset-p2p', opts),
+      getP2PStorage: () => ipc.invoke('settings-get-p2p-storage'),
       uploadWallpaper: (filePath) => ipc.invoke('settings-upload-wallpaper', filePath),
       getArchiveData: () => ipc.invoke('settings-get-archive-data'),
       exportArchive: (jsonContent) => ipc.invoke('settings-export-archive', jsonContent),
@@ -515,6 +516,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       showSettingsSavedMessage(`Failed to reset P2P data: ${err.message}`, 'error')
     } finally {
       resetP2PBtn.disabled = false
+      // What is left, after a reset that worked or one that stopped halfway.
+      loadP2PStorage()
     }
   })
 
@@ -1055,19 +1058,13 @@ function initializeSidebarNavigation () {
   })
 
   // Parse URL subpath and navigate to appropriate section
-  const currentPath = window.location.pathname
-  const currentHref = window.location.href
-  // Read the hash on its own: pathname is "/" here, so "pathname || hash" never
-  // reached it and every #section deep link opened Appearance.
-  const hashSection = window.location.hash.replace('#', '')
-  let targetSection = 'appearance' // default
+  const targetSection = sectionForLocation(window.location)
 
-  // Check for URL subpath (e.g., /settings/search or peersky://settings/search)
-  const subpathMatch = currentPath.match(/\/settings\/(\w+)/) || currentHref.match(/\/settings\/(\w+)/)
-  if (subpathMatch) {
-    targetSection = subpathMatch[1]
-  } else if (hashSection && isKnownSection(hashSection)) {
-    targetSection = hashSection
+  // An old link, such as one to Archive, shows the section's address now.
+  if (SECTION_ALIASES.has(requestedSection(window.location))) {
+    try {
+      window.history.replaceState({ section: targetSection }, '', `peersky://settings/${targetSection}`)
+    } catch (_) {}
   }
 
   // Update UI to show the determined section (don't trigger navigation on page load)
@@ -1075,25 +1072,38 @@ function initializeSidebarNavigation () {
 
   // Handle browser back/forward navigation
   window.addEventListener('popstate', (event) => {
-    let sectionFromHistory = 'appearance' // default
-
-    if (event.state && event.state.section) {
-      sectionFromHistory = event.state.section
-    } else {
-      // Parse current URL to determine section
-      const currentPath = window.location.pathname
-      const currentHref = window.location.href
-      const hashSection = window.location.hash.replace('#', '')
-      const subpathMatch = currentPath.match(/\/settings\/(\w+)/) || currentHref.match(/\/settings\/(\w+)/)
-      if (subpathMatch) {
-        sectionFromHistory = subpathMatch[1]
-      } else if (hashSection && isKnownSection(hashSection)) {
-        sectionFromHistory = hashSection
-      }
-    }
-
-    updateSectionUI(sectionFromHistory)
+    const fromHistory = event.state && event.state.section
+    updateSectionUI(fromHistory
+      ? SECTION_ALIASES.get(fromHistory) || fromHistory
+      : sectionForLocation(window.location))
   })
+
+  // Back on a settings tab left on P2P data, its numbers are read again.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return
+    if (document.getElementById('p2p-data-section')?.classList.contains('active')) loadP2PStorage()
+  })
+}
+
+// Sections under an old name, so a link made before a rename still opens
+// them. Archive is P2P data now.
+const SECTION_ALIASES = new Map([['archive', 'p2p-data']])
+
+// The section an address asks for, as peersky://settings/<name> or #<name>.
+// Read the hash on its own: pathname is "/" for peersky://settings#name, so
+// "pathname || hash" never reached it and every #section deep link opened
+// Appearance.
+function requestedSection ({ pathname = '', href = '', hash = '' } = {}) {
+  const subpath = pathname.match(/\/settings\/([\w-]+)/) || href.match(/\/settings\/([\w-]+)/)
+  return subpath ? subpath[1] : hash.replace('#', '')
+}
+
+// The section to show for an address, under its name now, or Appearance when
+// the address names none on this page.
+function sectionForLocation (location) {
+  const requested = requestedSection(location)
+  const section = SECTION_ALIASES.get(requested) || requested
+  return section && isKnownSection(section) ? section : 'appearance'
 }
 
 // Navigate to a specific settings section
@@ -1146,9 +1156,10 @@ function updateSectionUI (sectionName) {
     targetPage.classList.add('active')
   }
 
-  // Load data for Archive section
-  if (sectionName === 'archive') {
+  // Load data for the P2P data section, called Archive before
+  if (sectionName === 'p2p-data') {
     loadArchiveData()
+    loadP2PStorage()
 
     // Attach export button handler
     const exportBtn = document.getElementById('export-archive-btn')
@@ -1164,8 +1175,8 @@ function updateSectionUI (sectionName) {
         const filter = document.getElementById('export-time-filter')?.value || 'all'
         const isAll = filter === 'all'
         const confirmMsg = isAll
-          ? 'Are you sure you want to clear all archive data? This cannot be undone.'
-          : 'Are you sure you want to clear archive data for the selected time range? This cannot be undone.'
+          ? 'Clear everything from these lists? The P2P data itself stays. This cannot be undone.'
+          : 'Clear the entries from the selected time range? The P2P data itself stays. This cannot be undone.'
         if (!confirm(confirmMsg)) return
         const now = Date.now()
         const durations = { '15m': 15 * 60 * 1000, '1h': 60 * 60 * 1000, '1d': 24 * 60 * 60 * 1000, '1w': 7 * 24 * 60 * 60 * 1000 }
@@ -1174,14 +1185,14 @@ function updateSectionUI (sectionName) {
           const result = await settingsAPI.settings.clearArchive(cutoff)
           if (!result || result.success === false) {
             const errorMsg = result && result.error ? String(result.error) : 'Unknown error'
-            showSettingsSavedMessage('Failed to clear archive: ' + errorMsg, 'error')
+            showSettingsSavedMessage('Failed to clear the lists: ' + errorMsg, 'error')
             return
           }
           loadArchiveData()
-          showSettingsSavedMessage(isAll ? 'Archive cleared successfully' : 'Filtered archive entries cleared')
+          showSettingsSavedMessage(isAll ? 'Lists cleared' : 'Entries from that time range cleared')
         } catch (err) {
           const errorMsg = err && err.message ? err.message : String(err)
-          showSettingsSavedMessage('Failed to clear archive: ' + errorMsg, 'error')
+          showSettingsSavedMessage('Failed to clear the lists: ' + errorMsg, 'error')
         }
       })
       clearBtn.dataset.bound = 'true'
@@ -1204,6 +1215,42 @@ function updateClearBtnLabel () {
   const filter = document.getElementById('export-time-filter')?.value || 'all'
   const clearBtn = document.getElementById('clear-archive-btn')
   if (clearBtn) clearBtn.textContent = filter === 'all' ? 'Clear All' : 'Clear'
+}
+
+// How much space P2P data takes, read again each time P2P data opens. The
+// main process adds up the folders, so a big store keeps the numbers from
+// before, or "Calculating...", on screen a little longer and holds up nothing
+// else. An answer to an older request never replaces a newer one.
+let p2pStorageRequest = 0
+async function loadP2PStorage () {
+  const total = document.getElementById('p2p-storage-total')
+  if (!total || !settingsAPI?.settings?.getP2PStorage) return
+  const request = ++p2pStorageRequest
+  try {
+    const storage = await settingsAPI.settings.getP2PStorage()
+    if (request !== p2pStorageRequest) return
+    total.textContent = formatStorageSize(storage?.total)
+    for (const cell of document.querySelectorAll('[data-storage-part]')) {
+      cell.textContent = formatStorageSize(storage?.parts?.[cell.dataset.storagePart])
+    }
+  } catch (error) {
+    if (request !== p2pStorageRequest) return
+    console.error('Failed to measure P2P data:', error)
+    total.textContent = 'Could not be measured'
+    for (const cell of document.querySelectorAll('[data-storage-part]')) cell.textContent = '-'
+  }
+}
+
+function formatStorageSize (bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
+  const KB = 1024
+  const MB = KB * 1024
+  const GB = MB * 1024
+  if (bytes < KB) return `${bytes} B`
+  // Each unit as it will read once rounded, so 1023.8 KB says 1.0 MB, not 1024 KB.
+  if (Math.round(bytes / KB) < 1024) return `${Math.round(bytes / KB)} KB`
+  if (Number((bytes / MB).toFixed(1)) < 1024) return `${(bytes / MB).toFixed(1)} MB`
+  return `${(bytes / GB).toFixed(2)} GB`
 }
 
 // Read the sections off the page so a new one cannot be missed here.

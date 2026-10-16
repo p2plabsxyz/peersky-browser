@@ -3,6 +3,7 @@ import { promises as fs } from 'fs'
 import path from 'path'
 import settingsManager from './settings-manager.js'
 import { getIncognitoSession } from './session.js'
+import { isOwnPeerskyPage } from './backup/ipc-caller.js'
 
 const LLM_MEMORY_FILE = path.join(app.getPath('userData'), 'llm.json')
 const MAX_ENTRIES = 2000
@@ -45,9 +46,16 @@ function isMemoryEnabled () {
   return !!(settingsManager.settings?.llm?.memoryEnabled)
 }
 
+// The memory holds every chat with the AI. The preload hands it to PeerSky's
+// own pages only, and this holds even if another page got hold of it.
+function assertOwnPage (event) {
+  if (!isOwnPeerskyPage(event?.senderFrame?.url)) throw new Error('Forbidden')
+}
+
 // ── IPC Handlers ────────────────────────────────────────────────────────────
 
 ipcMain.handle('llm-memory-add', async (event, entry) => {
+  assertOwnPage(event)
   if (!isMemoryEnabled()) return { ok: false, reason: 'memory_disabled' }
   // An incognito window keeps nothing, chats with the AI included.
   if (event.sender.session === getIncognitoSession()) return { ok: false, reason: 'incognito' }
@@ -76,7 +84,8 @@ ipcMain.handle('llm-memory-add', async (event, entry) => {
   return { ok: true }
 })
 
-ipcMain.handle('llm-memory-list', async (_event, opts = {}) => {
+ipcMain.handle('llm-memory-list', async (event, opts = {}) => {
+  assertOwnPage(event)
   if (!isMemoryEnabled()) return []
 
   const data = await load()
@@ -99,7 +108,8 @@ ipcMain.handle('llm-memory-list', async (_event, opts = {}) => {
   return entries
 })
 
-ipcMain.handle('llm-memory-list-sessions', async (_event, opts = {}) => {
+ipcMain.handle('llm-memory-list-sessions', async (event, opts = {}) => {
+  assertOwnPage(event)
   if (!isMemoryEnabled()) return []
 
   const data = await load()
@@ -141,7 +151,8 @@ ipcMain.handle('llm-memory-list-sessions', async (_event, opts = {}) => {
   return sessions
 })
 
-ipcMain.handle('llm-memory-clear', async (_event, opts = {}) => {
+ipcMain.handle('llm-memory-clear', async (event, opts = {}) => {
+  assertOwnPage(event)
   const data = await load()
 
   if (opts.appId) {
@@ -156,7 +167,8 @@ ipcMain.handle('llm-memory-clear', async (_event, opts = {}) => {
   return { ok: true }
 })
 
-ipcMain.handle('llm-memory-enabled', async () => {
+ipcMain.handle('llm-memory-enabled', async (event) => {
+  assertOwnPage(event)
   return isMemoryEnabled()
 })
 

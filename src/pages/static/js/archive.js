@@ -11,7 +11,8 @@ const P2P_APP_DRIVE_NAMES = new Set([
   'peerchat'
 ])
 
-// Load archive data for the Archive section
+// The lists of what was published, in the P2P data section (called Archive
+// before, which these names come from)
 async function loadArchiveData () { // eslint-disable-line no-unused-vars
   if (!settingsAPI?.settings?.getArchiveData) return
   try {
@@ -194,7 +195,7 @@ async function loadArchiveData () { // eslint-disable-line no-unused-vars
   }
 }
 
-// Export archive data as JSON with time filtering
+// Export the lists as JSON with time filtering
 async function exportArchiveData () { // eslint-disable-line no-unused-vars
   if (!settingsAPI?.settings?.getArchiveData) return
   try {
@@ -243,7 +244,7 @@ async function exportArchiveData () { // eslint-disable-line no-unused-vars
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `peersky-archive-${new Date().toISOString().slice(0, 10)}.json`
+      a.download = `peersky-p2p-data-${new Date().toISOString().slice(0, 10)}.json`
       a.click()
       URL.revokeObjectURL(url)
       showSettingsSavedMessage(`Exported ${totalEntries} entries`)

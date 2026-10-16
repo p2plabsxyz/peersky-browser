@@ -49,6 +49,18 @@ const isP2P = ['hyper:', 'ipfs:', 'ipns:', 'hs:'].includes(pageProtocol)
 
 const isBitTorrent = ['bt:', 'bittorrent:', 'magnet:'].includes(pageProtocol)
 
+// The Hyperdrive app's Files, Photos and Videos views, which allow no inline
+// scripts: the window.llm script below would only be refused there.
+function pathOf (href) {
+  try {
+    return new URL(href).pathname
+  } catch (_) {
+    return ''
+  }
+}
+const isHyperdriveViews = pageProtocol === 'peersky:' && pageHost === 'p2p' &&
+  /^\/hyperdrive\/(files|photos|videos|viewer)(\/|$)/.test(pathOf(url))
+
 console.log('Unified-preload: URL detection', { url, isInternal, isExternal })
 
 // Expose minimal API for BitTorrent pages to open files in new tabs
@@ -115,9 +127,10 @@ if (isInternal || isP2P || isUserP2PApp) {
     iteratorReturn
   })
 
-  // LLM Memory: peersky: pages only. isInternal also covers file: pages and a
-  // trusted external host, neither of which should read the whole history.
-  if (pageProtocol === 'peersky:') {
+  // LLM Memory: PeerSky's own pages only. isInternal also covers file: pages
+  // and a trusted external host, and an app added under peersky://myapps came
+  // from somewhere else: none of them should read the whole history.
+  if (pageProtocol === 'peersky:' && !isUserP2PApp) {
     contextBridge.exposeInMainWorld('llmMemory', {
       add: (entry) => ipcRenderer.invoke('llm-memory-add', entry),
       list: (opts) => ipcRenderer.invoke('llm-memory-list', opts || {}),
@@ -182,6 +195,7 @@ if (isInternal || isP2P || isUserP2PApp) {
 
   // Wait for DOM to be ready before injecting script
   const attachScript = () => {
+    if (isHyperdriveViews) return
     if (document.head) {
       document.head.appendChild(script)
     } else {
@@ -360,8 +374,10 @@ function createSettingsAPI (pageContext) {
       reset: () => ipcRenderer.invoke('settings-reset'),
       // NEW: browser-only cache
       clearBrowserCache: () => ipcRenderer.invoke('settings-clear-cache'),
-      // NEW: P2P reset (identities preserved by default)
+      // P2P reset. The IPFS identity is kept unless asked.
       resetP2P: (opts = {}) => ipcRenderer.invoke('settings-reset-p2p', opts),
+      // How much space P2P data takes, for the P2P data section
+      getP2PStorage: () => ipcRenderer.invoke('settings-get-p2p-storage'),
       uploadWallpaper: (fileData) => {
         if (!fileData || !fileData.name || !fileData.content) {
           throw new Error('File data must include name and content')
@@ -823,6 +839,17 @@ try {
       // app. The main process answers that page alone.
       devices: {
         list: () => ipcRenderer.invoke('device-sync-list')
+      },
+      // The private files this computer shared, for the same page alone.
+      privateFiles: {
+        list: () => ipcRenderer.invoke('private-files-list')
+      },
+      // A drive's files for its Files, Photos and Videos views, the number
+      // their stored pictures go with, and a download. Those pages alone.
+      hyperdrive: {
+        list: (url, options) => ipcRenderer.invoke('hyperdrive-list', url, options),
+        cacheEpoch: () => ipcRenderer.invoke('hyperdrive-cache-epoch'),
+        download: (url) => ipcRenderer.invoke('hyperdrive-download', url)
       }
     })
 

@@ -222,13 +222,14 @@ export async function applyPhoneSync (userDataDir, sync, { now = Date.now() } = 
     if (known.has(url) && await isOwnedPrivateDrive(userDataDir, drive.driveId)) continue
     if (!known.has(url)) privateDrivesAdded += 1
     if (drive.key) await rememberPrivateDriveKeyFor(userDataDir, drive.driveId, drive.key)
+    // Read-only before it is listed, so it never reads as this desktop's own.
+    await setPrivateDriveOwnership(userDataDir, drive.driveId, false)
     await rememberPrivateHyperdrive(userDataDir, {
       name: PHONE_PRIVATE_DRIVE_NAME,
       url,
       timestamp: now,
       encrypted: true
     })
-    await setPrivateDriveOwnership(userDataDir, drive.driveId, false)
     privateHostnames.push(hostname)
   }
 

@@ -1,6 +1,6 @@
 # PeerSky Privacy Policy
 
-Last updated: October 6, 2026
+Last updated: October 13, 2026
 
 PeerSky is a web and peer-to-peer browser for macOS, Windows and Linux. There
 are no accounts, no analytics and no servers of ours, so there is nowhere for us
@@ -24,10 +24,13 @@ PeerSky also keeps a log file on your computer to help find problems. It can
 include addresses you opened over IPFS, Hyper, ENS and BitTorrent. It stays on
 your computer unless you send it to someone yourself.
 
-Settings, Search has two buttons for clearing data. Clear Cache removes
-the browser cache, cookies and site storage. Reset P2P Data removes PeerChat
-rooms, P2P app data, the ENS cache, torrent state, AI memory, and the IPFS and
-Hyper data on your computer, and can also reset your peer-to-peer identities.
+Settings has two buttons for clearing data. Clear Cache, under Search, removes
+the browser cache, cookies and site storage. Reset P2P Data, under P2P data,
+removes PeerChat rooms, P2P app data, the ENS cache, torrent state, AI memory,
+and the IPFS and public Hyper data on your computer, and with them the key
+PeerChat and Hyper use on the network, so other people see a new device. It can
+also reset your IPFS peer identity. It keeps your private drives, and the files
+torrents saved in your Downloads folder.
 History is kept by the PeerSky History extension, and Delete All on its page
 removes it.
 
@@ -177,7 +180,7 @@ the law requires us to keep it.
 ## Deleting Your Data
 
 There is no account on a server to delete. Reset P2P Data and Clear Cache in
-Settings, Search remove what is described above, and uninstalling
+Settings remove what is described above, and uninstalling
 PeerSky and deleting its data folder removes the rest. Messages you already
 sent stay on the computers of the people you sent them to, and we have no way
 to reach them.

@@ -23,6 +23,12 @@ const BLOCK = { action: 'block' }
 
 const isP2PApp = (caller) => caller.protocol === 'peersky:' && caller.hostname === 'p2p'
 
+// PeerSky's own pages. An app someone added under peersky://myapps is served on
+// the same scheme but came from somewhere else, so it is treated like any other
+// site: it asks before it writes, and never uses a private drive.
+const isOwnPage = (caller) =>
+  caller.protocol === 'peersky:' && caller.hostname !== '' && caller.hostname.toLowerCase() !== 'myapps'
+
 const isTorrentUi = (caller) =>
   (caller.protocol === 'peersky:' && caller.hostname === 'bt-manager') ||
   TORRENT_SCHEMES.has(caller.protocol)
@@ -87,7 +93,7 @@ export function gateRequest ({ url, method, resourceType, initiatorOrigin, frame
 
   if (!isP2PWrite(target, verb)) return ALLOW
   if (!caller) return BLOCK
-  if (caller.protocol === 'peersky:') return ALLOW
+  if (isOwnPage(caller)) return ALLOW
   if (caller.protocol === 'chrome-extension:') {
     return { action: 'extension', extensionId: caller.hostname, scheme: target.protocol.slice(0, -1) }
   }
@@ -123,11 +129,12 @@ export function takeNavigationStamp (request) {
 }
 
 /**
- * Whether a request may read or write a private drive: the phone's rule. The
- * browser's own pages and the drive's own pages may, and so may a tab opening
- * it, where the page that linked to it cannot read it. Any other page could
- * only know the address, and as Electron applies no CORS to hyper://, it would
- * otherwise read the drive with this device's keys.
+ * Whether a request may make, read or write a private drive: the phone's rule.
+ * The browser's own pages and the drive's own pages may, and so may a tab
+ * opening it, where the page that linked to it cannot read it. Any other page,
+ * an app added under peersky://myapps included, could only know the address or
+ * the name, and as Electron applies no CORS to hyper://, it would otherwise
+ * read the drive with this device's keys.
  * @param {{ url: string, initiatorOrigin?: string, navigation?: boolean }} request
  */
 export function mayUsePrivateDrive ({ url, initiatorOrigin, navigation = false }) {
@@ -138,7 +145,7 @@ export function mayUsePrivateDrive ({ url, initiatorOrigin, navigation = false }
   const caller = parseUrl(initiatorOrigin)
   const target = parseUrl(url)
   if (!caller || !target) return false
-  if (caller.protocol === 'peersky:') return true
+  if (isOwnPage(caller)) return true
   return caller.protocol === 'hyper:' && caller.hostname === target.hostname
 }
 

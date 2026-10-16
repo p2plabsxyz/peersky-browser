@@ -273,7 +273,7 @@ class P2PAppManager extends HTMLElement {
           <div class="update-info">Click to update all built-in P2P apps to their latest versions from GitHub</div>
         </div>
         <div style="margin-top: 15px; font-size: 0.9em; color: var(--text-secondary);">
-          To delete myapps, go to <a href="peersky://settings/search">Settings -&gt; Search</a> -&gt; Reset P2P Data.
+          To delete myapps, go to <a href="peersky://settings/p2p-data">Settings -&gt; P2P data</a> -&gt; Reset P2P Data.
         </div>
       `
 
