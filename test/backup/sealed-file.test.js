@@ -27,6 +27,8 @@ import {
   recordDriveListing,
   resetDeviceSyncStateCache
 } from '../../src/protocols/device-sync-state.js'
+import { createBackupZip, extractBackupZip, openSealedBackupFiles, verifyManifest } from '../../src/backup/backup-core.js'
+import { buildPrivateDriveKeyExport } from '../../src/backup/private-drive-export.js'
 
 // The private drive key sat in a plain file: whoever could read the profile
 // folder could copy it and open every private drive, and act as one of the
@@ -152,5 +154,87 @@ describe('private files locked with safe storage', function () {
       expect(JSON.parse(fs.readFileSync(path.join(dir, 'x.json'), 'utf8'))).to.deep.equal({ a: 1 })
       expect((await readSealedJson(path.join(dir, 'x.json'))).sealed).to.equal(false)
     }
+  })
+})
+
+// A backup or a Link Device transfer is opened on another device, which
+// cannot open what this one locked. Locked files go in opened, as the phone
+// packs its own, and the device that restores them locks them with its own.
+describe('backups and transfers with locked files', function () {
+  let userData
+  let out
+  const drive = `hyper://${'ab'.repeat(32)}/`
+
+  beforeEach(async function () {
+    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'peersky-sealed-backup-'))
+    out = fs.mkdtempSync(path.join(os.tmpdir(), 'peersky-sealed-backup-out-'))
+    setSealerForTests(fakeSafeStorage())
+    await rememberPrivateHyperdrive(userData, { name: 'passport-scan.jpg', url: drive, timestamp: 1, encrypted: true })
+    await getOrCreatePrivateDriveKey(userData)
+    expect(fs.readFileSync(path.join(userData, PRIVATE_HYPERDRIVE_REGISTRY_FILE), 'utf8')).to.not.include('passport')
+  })
+
+  afterEach(function () {
+    setSealerForTests(undefined)
+  })
+
+  async function unpack (zip) {
+    const dest = fs.mkdtempSync(path.join(os.tmpdir(), 'peersky-sealed-backup-dest-'))
+    await extractBackupZip(zip, dest)
+    return dest
+  }
+
+  it('a backup carries the list of private files and the key opened', async function () {
+    const key = await getPrivateDriveKey(userData)
+    const result = await createBackupZip(userData, path.join(out, 'b.zip'), { includePrivate: true })
+    const dest = await unpack(path.join(out, 'b.zip'))
+    await verifyManifest(dest, result.manifest)
+    const list = JSON.parse(fs.readFileSync(path.join(dest, PRIVATE_HYPERDRIVE_REGISTRY_FILE), 'utf8'))
+    expect(list[0]).to.include({ name: 'passport-scan.jpg', url: drive })
+    expect(JSON.parse(fs.readFileSync(path.join(dest, PRIVATE_DRIVE_KEY_FILE), 'utf8')).key).to.equal(key.toString('hex'))
+  })
+
+  it('a transfer to another desktop or a phone carries them opened too', async function () {
+    for (const targetDeviceType of ['desktop', 'mobile']) {
+      const zip = path.join(out, `${targetDeviceType}.zip`)
+      await createBackupZip(userData, zip, { isIdentityTransfer: true, targetDeviceType, includePrivate: true })
+      const dest = await unpack(zip)
+      expect(fs.readFileSync(path.join(dest, PRIVATE_HYPERDRIVE_REGISTRY_FILE), 'utf8')).to.include('passport-scan.jpg')
+    }
+  })
+
+  it('the computer it is restored on reads it and locks it with its own safe storage', async function () {
+    await createBackupZip(userData, path.join(out, 'b.zip'), { includePrivate: true })
+    const dest = await unpack(path.join(out, 'b.zip'))
+    const other = fakeSafeStorage()
+    other.encryptString = (text) => Buffer.concat([Buffer.from('v11'), Buffer.from(text, 'utf8')])
+    other.decryptString = (bytes) => bytes.subarray(3).toString('utf8')
+    setSealerForTests(other)
+    expect(await sealFilesAtRest(dest, [PRIVATE_HYPERDRIVE_REGISTRY_FILE, PRIVATE_DRIVE_KEY_FILE])).to.have.members([PRIVATE_HYPERDRIVE_REGISTRY_FILE, PRIVATE_DRIVE_KEY_FILE])
+    expect((await listPrivateHyperdrives(dest))[0].name).to.equal('passport-scan.jpg')
+  })
+
+  it('a backup made where safe storage is out of reach, as in a worker, stops instead of packing a file nobody can open', async function () {
+    setSealerForTests(null)
+    let error = null
+    await createBackupZip(userData, path.join(out, 'b.zip'), { includePrivate: true }).catch((caught) => { error = caught })
+    expect(error?.code).to.equal('SEALED_FILE_LOCKED')
+  })
+
+  it('a backup made in a worker is handed the files opened on the main thread', async function () {
+    const openedFiles = await openSealedBackupFiles(userData, { includePrivate: true })
+    const privateKeyExport = await buildPrivateDriveKeyExport(userData, Date.now())
+    expect(Object.keys(openedFiles)).to.deep.equal([PRIVATE_HYPERDRIVE_REGISTRY_FILE])
+    // What the worker sees: Uint8Arrays, and no safe storage.
+    setSealerForTests(null)
+    const result = await createBackupZip(userData, path.join(out, 'b.zip'), {
+      includePrivate: true,
+      openedFiles: { [PRIVATE_HYPERDRIVE_REGISTRY_FILE]: new Uint8Array(openedFiles[PRIVATE_HYPERDRIVE_REGISTRY_FILE]) },
+      privateKeyExport: new Uint8Array(privateKeyExport)
+    })
+    const dest = await unpack(path.join(out, 'b.zip'))
+    await verifyManifest(dest, result.manifest)
+    expect(fs.readFileSync(path.join(dest, PRIVATE_HYPERDRIVE_REGISTRY_FILE), 'utf8')).to.include('passport-scan.jpg')
+    expect(fs.existsSync(path.join(dest, PRIVATE_DRIVE_KEY_FILE))).to.equal(true)
   })
 })

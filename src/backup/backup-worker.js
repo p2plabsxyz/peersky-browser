@@ -8,11 +8,14 @@ async function run () {
   const { op } = workerData
 
   if (op === 'create') {
-    const { userDataDir, outPath, peerskyVersion, passphrase, includePrivate } = workerData
+    const { userDataDir, outPath, peerskyVersion, passphrase, includePrivate, openedFiles, privateKeyExport } = workerData
     const result = await createEncryptedBackupZip(userDataDir, outPath, {
       peerskyVersion,
       passphrase,
       includePrivate: includePrivate === true,
+      // Opened on the main thread, where safe storage works (backup-core.js).
+      openedFiles,
+      privateKeyExport,
       onProgress: (data) => parentPort.postMessage({ type: 'progress', data })
     })
     return { filePath: result.filePath, bytes: result.bytes, manifest: result.manifest }

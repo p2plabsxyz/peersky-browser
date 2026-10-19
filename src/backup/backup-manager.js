@@ -7,7 +7,7 @@ import { Worker } from 'worker_threads'
 import { app } from 'electron'
 import fsExtra from 'fs-extra'
 import { createLogger } from '../logger.js'
-import { readManifest, verifyManifest } from './backup-core.js'
+import { openSealedBackupFiles, readManifest, verifyManifest } from './backup-core.js'
 import { createIdentityTransferZip, decodePairingString, decryptIdentityTransferZip, extractAndVerifyIdentityPayload, isIdentityTransferManifest } from './identity-transfer.js'
 import { assertMobilePairingAllowed, setPairedMobile } from './mobile-pairing.js'
 import { decryptEncryptedBackupZip, isEncryptedBackupManifest } from './encrypted-backup.js'
@@ -15,7 +15,7 @@ import { suspendHyper, resumeHyper, trustPrivateDriveHostname, exportChatForTran
 import { suspendIPFS, resumeIPFS } from '../protocols/ipfs-handler.js'
 import { setPrivateDriveOwnership, currentPrivateDriveIds } from '../protocols/private-drive-ownership.js'
 import { listPrivateHyperdrives } from '../protocols/private-hyperdrive-registry.js'
-import { decodeDriveId } from './private-drive-export.js'
+import { buildPrivateDriveKeyExport, decodeDriveId } from './private-drive-export.js'
 import { applyPhoneSync, isPhoneSyncManifest, readPhoneSyncZip } from './phone-sync.js'
 import { exportP2pmdNotes, importP2pmdNotes } from './p2pmd-notes.js'
 import { forgetPairingNonce, isLivePairingNonce } from './pairing-sessions.js'
@@ -189,13 +189,20 @@ class BackupManager {
     await suspendHyper()
     await suspendIPFS()
     try {
+      // The worker has no safe storage: files locked with it, and the private
+      // drive key, are opened here and handed over (backup-core.js).
+      const includePrivate = options.includePrivate === true
+      const openedFiles = await openSealedBackupFiles(userDataDir(), { includePrivate })
+      const privateKeyExport = includePrivate ? await buildPrivateDriveKeyExport(userDataDir(), Date.now()) : undefined
       const result = await runWorker({
         op: 'create',
         userDataDir: userDataDir(),
         outPath,
         peerskyVersion: app.getVersion(),
         passphrase,
-        includePrivate: options.includePrivate === true
+        includePrivate,
+        openedFiles,
+        privateKeyExport
       }, onProgress)
       log.info(`Backup created: ${result.bytes} bytes`)
       return result
