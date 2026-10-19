@@ -1,4 +1,4 @@
-import { app, session, protocol as globalProtocol, ipcMain, BrowserWindow, Menu, webContents, shell } from 'electron' // eslint-disable-line no-unused-vars
+import { app, session, protocol as globalProtocol, ipcMain, BrowserWindow, Menu, webContents, shell, safeStorage } from 'electron' // eslint-disable-line no-unused-vars
 import { createLogger } from './logger.js'
 import fs from 'fs/promises'
 import path from 'path'
@@ -11,6 +11,7 @@ import { createHandler as createHSHandler } from './protocols/hs-handler.js'
 import { createHandler as createWeb3Handler } from './protocols/web3-handler.js'
 import { createHandler as createFileHandler } from './protocols/file-handler.js'
 import { attachTrackpadZoom, handlePinchZoom } from './trackpad-zoom.js'
+import { applyPasswordStore, choosePasswordStore } from './linux-keyring.js'
 import { sealFilesAtRest } from './backup/sealed-file.js'
 import { PRIVATE_DRIVE_KEY_FILE } from './backup/private-drive-key.js'
 import { PRIVATE_HYPERDRIVE_REGISTRY_FILE } from './protocols/private-hyperdrive-registry.js'
@@ -55,6 +56,11 @@ const log = createLogger('main')
 // around a busy site with the preinstalled MV3 extensions is enough. Electron
 // 44 fixes it (electron/electron#53144); until then, prefetch gets no spare.
 app.commandLine.appendSwitch('enable-features', 'PrefetchUseContentRefactor:start_spare_renderer/false')
+
+// On a Linux desktop Electron does not know, the system keyring chosen at an
+// earlier start (linux-keyring.js). Set before the app is ready, or it is not
+// used.
+applyPasswordStore(app.commandLine, { userDataDir: app.getPath('userData') })
 
 const P2P_PROTOCOL = {
   standard: true,
@@ -301,6 +307,19 @@ app.whenReady().then(async () => {
   await sealFilesAtRest(app.getPath('userData'), [PRIVATE_DRIVE_KEY_FILE, PRIVATE_HYPERDRIVE_REGISTRY_FILE, DEVICE_SYNC_FILE])
     .then((sealed) => { if (sealed.length) log.info('[startup] locked with safe storage:', sealed.join(', ')) })
     .catch((error) => log.warn('[startup] could not lock private files:', error?.message || error))
+
+  // Electron fell back to its built-in password on this Linux desktop: if the
+  // keyring is open, it is used from the next start (linux-keyring.js). Asked
+  // once the window is up, so the question never holds up the first paint.
+  if (process.platform === 'linux') {
+    setTimeout(() => {
+      let backend = null
+      try { backend = safeStorage.getSelectedStorageBackend() } catch {}
+      if (choosePasswordStore({ userDataDir: app.getPath('userData'), backend })) {
+        log.info('[startup] the system keyring is open: private keys are locked with it from the next start')
+      }
+    }, 10000).unref?.()
+  }
 
   const startupTasks = [
     ['protocols', setupProtocols(userSession)],
