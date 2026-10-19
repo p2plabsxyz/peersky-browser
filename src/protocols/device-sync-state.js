@@ -1,11 +1,12 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs'
 import { join } from 'path'
+import { readSealedJsonSync, writeSealedJsonSync } from '../backup/sealed-file.js'
 import { DEVICE_TYPES, MAX_ANNOUNCED_DRIVES } from './device-sync-protocol.js'
 
 // The person's other devices this desktop has met, and what is in the private
 // drives they write, so the Hyperdrive app can list their files with nobody
 // online. Kept in the profile folder, outside any store: nothing in it is a
-// key, only network keys, drive addresses and file names. The same file as
+// key, only network keys, drive addresses and file names, and those names
+// are locked with the system's safe storage. The same file as
 // backend/hyper/device-sync-state.mjs keeps on the phone.
 export const DEVICE_SYNC_FILE = 'device-sync.json'
 export const MAX_SYNCED_DEVICES = 16
@@ -91,7 +92,11 @@ export function readDeviceSyncState (directory) {
   let state = emptyState()
   try {
     const filePath = join(directory, DEVICE_SYNC_FILE)
-    if (existsSync(filePath)) state = normalizeState(JSON.parse(readFileSync(filePath, 'utf8')))
+    // What each device's private drives hold, by name and size, so locked
+    // like the key (sealed-file.js). One that cannot be opened is only a
+    // listing, and is heard again from the devices.
+    const read = readSealedJsonSync(filePath)
+    if (read) state = normalizeState(read.value)
   } catch {}
   cache.set(directory, state)
   return state
@@ -100,11 +105,7 @@ export function readDeviceSyncState (directory) {
 function writeState (directory, state) {
   const normalized = normalizeState(state)
   try {
-    mkdirSync(directory, { recursive: true })
-    const filePath = join(directory, DEVICE_SYNC_FILE)
-    const temporary = `${filePath}.tmp`
-    writeFileSync(temporary, JSON.stringify(normalized, null, 2), { mode: 0o600 })
-    renameSync(temporary, filePath)
+    writeSealedJsonSync(join(directory, DEVICE_SYNC_FILE), normalized)
   } catch {
     return readDeviceSyncState(directory)
   }

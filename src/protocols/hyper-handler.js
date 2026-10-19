@@ -277,7 +277,9 @@ export async function warmupHyper () {
   await initializeHyperSDK()
   // A profile with private files meets its other devices as soon as it is up,
   // so a phone's new private files arrive without anything being opened here.
-  if (!privateDeviceOnly && await getPrivateDriveKey(app.getPath('userData'))) {
+  // A key locked with safe storage that will not open (sealed-file.js) is
+  // no key here: the private store waits rather than failing the start.
+  if (!privateDeviceOnly && await getPrivateDriveKey(app.getPath('userData')).catch(() => null)) {
     await initializePrivateHyperSDK()
   }
 }
@@ -475,7 +477,7 @@ async function stopPrivateDeviceSync () {
  */
 export async function startPrivateSync () {
   if (isSuspended || privateDeviceOnly) return null
-  if (!await getPrivateDriveKey(app.getPath('userData'))) return null
+  if (!await getPrivateDriveKey(app.getPath('userData')).catch(() => null)) return null
   await initializePrivateHyperSDK()
   return ensurePrivateDeviceSync()
 }

@@ -11,6 +11,10 @@ import { createHandler as createHSHandler } from './protocols/hs-handler.js'
 import { createHandler as createWeb3Handler } from './protocols/web3-handler.js'
 import { createHandler as createFileHandler } from './protocols/file-handler.js'
 import { attachTrackpadZoom } from './trackpad-zoom.js'
+import { sealFilesAtRest } from './backup/sealed-file.js'
+import { PRIVATE_DRIVE_KEY_FILE } from './backup/private-drive-key.js'
+import { PRIVATE_HYPERDRIVE_REGISTRY_FILE } from './protocols/private-hyperdrive-registry.js'
+import { DEVICE_SYNC_FILE } from './protocols/device-sync-state.js'
 import { createHandler as createBittorrentHandler, setupBittorrentIpc, shutdownBittorrent, warmupBittorrent } from './protocols/bittorrent-handler.js'
 import { ipfsOptions, hyperOptions } from './protocols/config.js'
 import { gateRequest, stampVetted, requireVetted, frameUrlOf } from './protocols/request-gate.js'
@@ -290,6 +294,12 @@ app.whenReady().then(async () => {
   // onboarding vs. restore, and the permission handler.
   // Settled, not all: a browser whose protocols failed to register is still a
   // browser that must be able to update itself to a build where they work.
+  // The private drive key and the names of private files, locked with the
+  // system's safe storage before anything reads them (sealed-file.js).
+  await sealFilesAtRest(app.getPath('userData'), [PRIVATE_DRIVE_KEY_FILE, PRIVATE_HYPERDRIVE_REGISTRY_FILE, DEVICE_SYNC_FILE])
+    .then((sealed) => { if (sealed.length) log.info('[startup] locked with safe storage:', sealed.join(', ')) })
+    .catch((error) => log.warn('[startup] could not lock private files:', error?.message || error))
+
   const startupTasks = [
     ['protocols', setupProtocols(userSession)],
     ['p2p app registry', p2pAppRegistry.init()],

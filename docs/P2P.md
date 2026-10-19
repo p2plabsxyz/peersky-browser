@@ -47,6 +47,10 @@ The Hyperdrive app asks for a visibility before creating an upload:
 
 Each upload name selects its own Hyperdrive, so sharing one public upload does not expose unrelated uploads. Private upload metadata is kept in a separate local registry and is never added to the shared Hyper cache.
 
+#### Private keys and names on this computer
+
+The private drive key (`private-drive-key.json`), the names of private drives (`privateHyperdrives.json`) and the names and sizes of the files in your other devices' private drives (`device-sync.json`) are locked with the system's safe storage: the Keychain on macOS, DPAPI on Windows, the keyring on Linux, through Electron's `safeStorage` (`src/backup/sealed-file.js`). A copy of those files taken off the disk shows nothing, and nobody is asked for a password: only PeerSky, run by the same user on the same computer, opens them. Files from an earlier version are locked at the first start after the update, and one a restore puts back is locked the first time it is read. A locked key file that cannot be opened stops private drives rather than making a new key, which would lose every private drive. A backup or an identity transfer carries the key unlocked inside its own encryption, since the computer it goes to has a safe storage of its own. On Linux with no keyring, Electron's fallback locks with a key built into every copy, so these files stay as they were there.
+
 #### Private files from your other devices
 
 A profile's private uploads also show up on the person's other devices, and theirs here, with no link to send. The devices that hold this profile's private drive key, which Link Device carries to the phone, meet on the private store's swarm under a topic made from that key, prove on each connection that they hold it, and only then say whether they are a phone or a desktop and which private drives they write (`src/protocols/device-sync*.js`, the same protocol as PeerSky Mobile's `backend/hyper/device-sync*.mjs`, with a shared test vector).
