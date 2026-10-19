@@ -184,6 +184,16 @@ With more than a few people, keep what goes out small. Send each change, not the
 
 **Example:** See [p2pmd](https://github.com/p2plabsxyz/peersky-browser/tree/main/src/pages/p2p/p2pmd) for a complete real-time collaborative markdown editor implementation.
 
+### With no internet
+
+Holesail finds a host on the public HyperDHT, which is on the internet, so with the router's cable out a note did not open even with both devices on the same Wi-Fi, and a note could not even be hosted. PeerSky now also hosts every `hs://` note on the local network DHT that Hyperdrive and PeerChat already use over Wi-Fi (`src/protocols/p2pmd-lan.js`):
+
+- The host listens there under the note's own key pair and says over mDNS that it has a topic made from the note's key. Only someone who has the link can work out the topic, and a private note still lets in only the key its link carries.
+- A device joining looks on the local network first (2.5 seconds, under a second when no other PeerSky is around) and uses it if the host answers there within 3 seconds. Otherwise it goes to the internet as before, as on a Wi-Fi that keeps devices apart.
+- With no internet, hosting goes on after 3 seconds with the note on the local network alone, and keeps trying the internet every minute.
+
+The tunnel is the same Noise-encrypted one Holesail opens, so nothing in between can read the note. Notes hosted over UDP stay internet-only. Tests: `test/p2p/p2pmd-lan.test.js`.
+
 ## Web3 protocol
 
 For `web3://` examples (contract reads, HTML resources, and `fetch` usage), see [`docs/web3.md`](./web3.md).

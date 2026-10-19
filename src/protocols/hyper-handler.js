@@ -271,6 +271,17 @@ function initializeHyperSDK (options) {
  *
  * @returns {Promise<void>}
  */
+// The local network discovery Hyperdrive and PeerChat find each other on over
+// Wi-Fi, so P2PMD notes are found there too, with no internet (p2pmd-lan.js).
+// Null when Hyper is not running or has no local network.
+export async function getHyperLAN () {
+  try {
+    if (!isSuspended && (sdk || savedSdkOptions)) await initializeHyperSDK()
+  } catch {}
+  const lan = sdk?.localSwarm
+  return lan && !lan.destroyed ? lan : null
+}
+
 export async function warmupHyper () {
   if (isSuspended) return
   if (!savedSdkOptions && sdk == null) return

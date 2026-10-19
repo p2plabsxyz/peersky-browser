@@ -1,5 +1,6 @@
 import Holesail from 'holesail'
 import { createLogger } from '../logger.js'
+import { findNoteOnLan, noteKeys, openNoteOnLan, reachNoteOnLan, startNoteHost } from './p2pmd-lan.js'
 import http from 'http'
 import fs from 'fs'
 import path from 'path'
@@ -1758,7 +1759,104 @@ async function ensureDocServer (session, host, port, secure) {
   throw lastError || new Error('Failed to bind server after retries')
 }
 
+// Hosting starts on the local network as soon as Holesail has made the note's
+// key pair, so a note on the same Wi-Fi opens with the internet down. When
+// Holesail's own start fails for want of the internet, it is tried again in
+// the background, with the same key, until the internet answers
+// (p2pmd-lan.js).
+const INTERNET_RETRY_MS = 60 * 1000
+
+// Hyper's local network discovery, loaded when a note needs it rather than
+// with this module, which runs without Hyper.
+async function getNotesLAN () {
+  try {
+    const { getHyperLAN } = await import('./hyper-handler.js')
+    return await getHyperLAN()
+  } catch {
+    return null
+  }
+}
+
+async function startHolesailHost (sessionState, holesailServer, { port, udp, secure }) {
+  const started = await startNoteHost(holesailServer, { lan: await getNotesLAN(), port, udp })
+  sessionState.lanHost = started.lanHost
+  if (!started.internet) {
+    log.info('[p2pmd] hosting on the local network until the internet answers')
+    started.ready.catch(() => keepTryingInternetHost(sessionState, { port, udp, secure }))
+  }
+}
+
+function keepTryingInternetHost (sessionState, { port, udp, secure }) {
+  if (sessionState.internetRetry) return
+  const stop = () => {
+    clearInterval(sessionState.internetRetry)
+    sessionState.internetRetry = null
+  }
+  let trying = false
+  sessionState.internetRetry = setInterval(async () => {
+    if (trying) return
+    trying = true
+    const current = sessionState.holesailServer
+    try {
+      if (!current || !sessionState.key) return stop()
+      const plan = rehostPlan(sessionState.key, { secure, savedSeed: current.dht?.seed || null })
+      const fresh = new Holesail({
+        server: true,
+        secure: plan.secure,
+        udp,
+        host: '127.0.0.1',
+        port,
+        ...(plan.key ? { key: plan.key } : {}),
+        log: 1
+      })
+      if (plan.seed) fresh.seed = plan.seed
+      try {
+        await fresh.ready()
+      } catch {
+        await fresh.close().catch(() => {})
+        return
+      }
+      if (sessionState.holesailServer !== current) {
+        await fresh.close().catch(() => {})
+        return stop()
+      }
+      sessionState.holesailServer = fresh
+      await current.close().catch(() => {})
+      log.info('[p2pmd] the internet answered: the note is hosted there too')
+      stop()
+    } finally {
+      trying = false
+    }
+  }, INTERNET_RETRY_MS)
+  sessionState.internetRetry.unref?.()
+}
+
+// A note whose host is on this Wi-Fi opens over it, internet or not. Null when
+// none is found there, and the join goes to the internet as before.
+async function joinNoteOnLan (key, secure, { host, port }) {
+  try {
+    const lan = await getNotesLAN()
+    if (!lan) return null
+    const keys = noteKeys(key, secure)
+    const address = await findNoteOnLan(lan, keys.publicKey)
+    if (!address) return null
+    if (!await reachNoteOnLan(lan, { publicKey: keys.publicKey, keyPair: keys.keyPair, address })) return null
+    return await openNoteOnLan(lan, { publicKey: keys.publicKey, keyPair: keys.keyPair, address, host, port: port || 0 })
+  } catch (error) {
+    log.warn('[p2pmd] local network join failed, trying the internet:', error?.message || error)
+    return null
+  }
+}
+
 async function stopHolesailServer (session) {
+  if (session?.internetRetry) {
+    clearInterval(session.internetRetry)
+    session.internetRetry = null
+  }
+  if (session?.lanHost) {
+    await session.lanHost.close().catch(() => {})
+    session.lanHost = null
+  }
   if (!session?.holesailServer) return
   try {
     await session.holesailServer.close()
@@ -1896,7 +1994,7 @@ export async function createHandler () {
         port: boundPort,
         log: 1
       })
-      await holesailServer.ready()
+      await startHolesailHost(sessionState, holesailServer, { port: boundPort, udp, secure })
       const roomKey = holesailServer.info?.url || null
       // SECURITY: Redact sensitive data in logs
       log.info('[p2pmd] holesail server ready', { key: redactKey(roomKey), port: boundPort })
@@ -1983,7 +2081,7 @@ export async function createHandler () {
       if (plan.seed) {
         holesailServer.seed = plan.seed
       }
-      await holesailServer.ready()
+      await startHolesailHost(sessionState, holesailServer, { port: boundPort, udp, secure: plan.secure })
       const roomKey = holesailServer.info?.url || key
       log.info('[p2pmd] rehost server ready', { key: redactKey(roomKey), port: boundPort })
       if (roomKey !== key) {
@@ -2097,7 +2195,7 @@ export async function createHandler () {
         if (plan.seed) {
           holesailServer.seed = plan.seed
         }
-        await holesailServer.ready()
+        await startHolesailHost(sessionState, holesailServer, { port: boundPort, udp: resolvedUdp, secure: plan.secure })
         const rehostedKey = holesailServer.info?.url || key
         if (rehostedKey !== key) {
           roomSessions.delete(key)
@@ -2143,29 +2241,38 @@ export async function createHandler () {
       if (secure !== null) clientOptions.secure = secure
       if (udp !== null) clientOptions.udp = udp
       if (requestedPort) clientOptions.port = requestedPort
-      if (DEBUG) {
-        log.info('[p2pmd] join creating client', { port: requestedPort })
-      }
-      const holesailClient = new Holesail(clientOptions)
-      sessionState.holesailClient = holesailClient
-      await holesailClient.ready()
-      // The local end binds the port the host advertised only once ready()
-      // is done, and a port already in use here failed as an error event
-      // nobody listened for: an uncaught exception in the main process. Wait
-      // for the bind, and answer with what went wrong.
-      const bound = await waitForClientProxy(holesailClient)
-      if (!bound.ok) {
-        await stopHolesailClient(sessionState)
-        roomSessions.delete(key)
-        return buildJsonResponse(409, {
-          error: `Port ${bound.port || 'for this note'} is already in use on this device, so the note cannot be joined from here right now.`
-        })
-      }
-      const boundPort = holesailClient.info?.port || requestedPort || 0
-      sessionState.port = boundPort
-      log.info('[p2pmd] join client ready', { port: boundPort })
-      if (DEBUG) {
-        log.info('  Client info:', JSON.stringify(holesailClient.info, null, 2))
+      let boundPort
+      const lanClient = udp ? null : await joinNoteOnLan(key, secure, { host: finalHost, port: requestedPort })
+      if (lanClient) {
+        sessionState.holesailClient = lanClient
+        boundPort = lanClient.info.port
+        sessionState.port = boundPort
+        log.info('[p2pmd] join over the local network', { port: boundPort })
+      } else {
+        if (DEBUG) {
+          log.info('[p2pmd] join creating client', { port: requestedPort })
+        }
+        const holesailClient = new Holesail(clientOptions)
+        sessionState.holesailClient = holesailClient
+        await holesailClient.ready()
+        // The local end binds the port the host advertised only once ready()
+        // is done, and a port already in use here failed as an error event
+        // nobody listened for: an uncaught exception in the main process. Wait
+        // for the bind, and answer with what went wrong.
+        const bound = await waitForClientProxy(holesailClient)
+        if (!bound.ok) {
+          await stopHolesailClient(sessionState)
+          roomSessions.delete(key)
+          return buildJsonResponse(409, {
+            error: `Port ${bound.port || 'for this note'} is already in use on this device, so the note cannot be joined from here right now.`
+          })
+        }
+        boundPort = holesailClient.info?.port || requestedPort || 0
+        sessionState.port = boundPort
+        log.info('[p2pmd] join client ready', { port: boundPort })
+        if (DEBUG) {
+          log.info('  Client info:', JSON.stringify(holesailClient.info, null, 2))
+        }
       }
 
       await new Promise(resolve => setTimeout(resolve, 500))
