@@ -3,6 +3,8 @@
 
 import { expect } from 'chai'
 import esmock from 'esmock'
+import { EventEmitter } from 'events'
+import { attachTrackpadZoom, PINCH_ZOOM_LIMITS, WHEEL_ZOOM_INTERVAL_MS } from '../src/trackpad-zoom.js'
 
 async function loadActions () {
   const executed = []
@@ -148,5 +150,53 @@ describe('page zoom', function () {
       expect(labels).to.include('Zoom Out')
       expect(labels).to.include('Actual Size')
     })
+  })
+})
+
+// A trackpad did nothing: Electron turns pinching and Ctrl with the wheel off
+// in a page.
+describe('trackpad and wheel zoom', function () {
+  function page (type = 'webview') {
+    const wc = new EventEmitter()
+    wc.limits = []
+    wc.scripts = []
+    wc.getType = () => type
+    wc.isDestroyed = () => false
+    wc.setVisualZoomLevelLimits = (...limits) => wc.limits.push(limits)
+    wc.hostWebContents = {
+      isDestroyed: () => false,
+      executeJavaScript: (script) => { wc.scripts.push(script); return Promise.resolve() }
+    }
+    return wc
+  }
+
+  it('lets a pinch magnify every page a tab loads', function () {
+    const wc = page()
+    attachTrackpadZoom(wc)
+    wc.emit('dom-ready')
+    wc.emit('did-navigate')
+    expect(wc.limits).to.deep.equal([PINCH_ZOOM_LIMITS, PINCH_ZOOM_LIMITS])
+  })
+
+  it('zooms the tab with Ctrl and the wheel, one step per gesture burst', function () {
+    let clock = 1000
+    const wc = page()
+    attachTrackpadZoom(wc, { now: () => clock })
+    wc.emit('zoom-changed', {}, 'in')
+    wc.emit('zoom-changed', {}, 'in')
+    clock += WHEEL_ZOOM_INTERVAL_MS
+    wc.emit('zoom-changed', {}, 'out')
+    expect(wc.scripts).to.have.lengthOf(2)
+    expect(wc.scripts[0]).to.contain('tabBar.zoomActiveTab(0.5)')
+    expect(wc.scripts[1]).to.contain('tabBar.zoomActiveTab(-0.5)')
+  })
+
+  it('leaves the browser window itself alone', function () {
+    const wc = page('window')
+    attachTrackpadZoom(wc)
+    wc.emit('dom-ready')
+    wc.emit('zoom-changed', {}, 'in')
+    expect(wc.limits).to.deep.equal([])
+    expect(wc.scripts).to.deep.equal([])
   })
 })

@@ -10,6 +10,7 @@ import { createHandler as createHyperHandler, warmupHyper, suspendHyper } from '
 import { createHandler as createHSHandler } from './protocols/hs-handler.js'
 import { createHandler as createWeb3Handler } from './protocols/web3-handler.js'
 import { createHandler as createFileHandler } from './protocols/file-handler.js'
+import { attachTrackpadZoom } from './trackpad-zoom.js'
 import { createHandler as createBittorrentHandler, setupBittorrentIpc, shutdownBittorrent, warmupBittorrent } from './protocols/bittorrent-handler.js'
 import { ipfsOptions, hyperOptions } from './protocols/config.js'
 import { gateRequest, stampVetted, requireVetted, frameUrlOf } from './protocols/request-gate.js'
@@ -112,6 +113,7 @@ app.on('browser-window-created', (event, win) => {
 
 app.on('web-contents-created', (event, wc) => {
   const wcId = wc.id
+  attachTrackpadZoom(wc)
   wc.on('did-navigate', (e, url) => {
     if (url.startsWith('peersky://downloads')) {
       trustedUIWebContents.add(wcId)

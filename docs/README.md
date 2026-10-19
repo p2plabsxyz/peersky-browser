@@ -30,6 +30,7 @@
     - Kagi
     - Startpage
   - [x] Page zoom, per tab, with a percentage readout
+  - [x] Trackpad zoom: pinch to magnify, Ctrl or Cmd with the scroll wheel to zoom the page
   - [x] Address bar suggestions drawn from browsing history
   - [x] Downloads, with progress in the toolbar (peersky://downloads)
     - Pause, resume or cancel a download in progress
