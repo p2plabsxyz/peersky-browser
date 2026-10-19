@@ -3,7 +3,8 @@ import Hyperdrive from 'hyperdrive'
 import z32 from 'z32'
 import { getOrCreatePrivateDriveKey, getPrivateDriveKeyFor } from '../backup/private-drive-key.js'
 import { decodeDriveId } from '../backup/private-drive-export.js'
-import { listPrivateHyperdrives } from './private-hyperdrive-registry.js'
+import { pipeline } from 'stream/promises'
+import { listPrivateHyperdrives, replacePrivateHyperdrive } from './private-hyperdrive-registry.js'
 import { isOwnedPrivateDrive } from './private-drive-ownership.js'
 
 const MIME_TYPES = {
@@ -387,4 +388,79 @@ export function makePrivateDriveFetcher (sdk, userDataDir) {
   // sync opens a linked device's drive this way to list and copy it.
   handle.openDrive = async (url) => (await open(url)).drive
   return handle
+}
+
+// Private drives made before private uploads were encrypted (a list entry with
+// no `encrypted`) sat on this computer as plain blocks. They never went on a
+// network, but anyone who could read the disk could read them. Each is copied
+// once into a new encrypted drive, the old one's blocks are cleared, and the
+// list points at the new one. Done in that order so that stopping part way
+// loses nothing: a copy left half done is made again from the old drive, and
+// one whose old drive is already cleared is put on the list on the next start.
+export const LEGACY_COPY_SUFFIX = ':encrypted'
+
+export async function encryptLegacyPrivateDrives (sdk, { userDataDir, onError = () => {} } = {}) {
+  const entries = await listPrivateHyperdrives(userDataDir).catch(() => [])
+  const moved = []
+  for (const entry of entries.filter((item) => !item.encrypted)) {
+    try {
+      const result = await encryptLegacyPrivateDrive(sdk, entry, userDataDir)
+      if (result) moved.push(result)
+    } catch (error) {
+      onError(entry, error)
+    }
+  }
+  return moved
+}
+
+async function encryptLegacyPrivateDrive (sdk, entry, userDataDir) {
+  const legacyKey = decodeHostname(new URL(entry.url).hostname)
+  if (!legacyKey) return null
+  const encryptionKey = await getOrCreatePrivateDriveKey(userDataDir)
+
+  const copy = new Hyperdrive(sdk.corestore.namespace(`${entry.name}${LEGACY_COPY_SUFFIX}`), null, { encryptionKey })
+  await copy.ready()
+  try {
+    // Hypercore here cannot delete a core, so the old drive's blocks are
+    // cleared: the files' bytes first, then their names, leaving only hashes.
+    // A drive a run before this already cleared has nothing left to copy, and
+    // is not copied over the copy.
+    const legacy = new Hyperdrive(sdk.corestore.namespace(entry.name), legacyKey, { encryptionKey: null })
+    await legacy.ready()
+    try {
+      const db = legacy.core
+      const dbThere = db.length > 0 && await db.has(0)
+      const blobs = dbThere && legacy.blobs ? legacy.blobs.core : null
+      const blobsThere = !blobs || blobs.length === 0 || await blobs.has(0)
+      if (dbThere && blobsThere) await copyDriveFiles(legacy, copy)
+      if (blobs && blobs.length > 0) await blobs.clear(0, blobs.length)
+      if (db.length > 0) await db.clear(0, db.length)
+    } finally {
+      await legacy.close().catch(() => {})
+    }
+
+    const kept = copy.core.length > 0
+    await replacePrivateHyperdrive(userDataDir, entry.url, kept
+      ? { name: entry.name, url: copy.url.endsWith('/') ? copy.url : `${copy.url}/`, timestamp: entry.timestamp, encrypted: true }
+      : null)
+    return { from: entry.url, to: kept ? copy.url : null }
+  } finally {
+    await copy.close().catch(() => {})
+  }
+}
+
+async function copyDriveFiles (from, to) {
+  for await (const file of from.list('/', { recursive: true })) {
+    const value = file.value || {}
+    if (value.linkname) {
+      await to.symlink(file.key, value.linkname)
+    } else if (value.blob) {
+      await pipeline(
+        from.createReadStream(file.key),
+        to.createWriteStream(file.key, { executable: value.executable, metadata: value.metadata })
+      )
+    } else {
+      await to.put(file.key, Buffer.alloc(0), { executable: value.executable, metadata: value.metadata })
+    }
+  }
 }

@@ -634,3 +634,110 @@ describe('a private file read in parts, and when it was written', function () {
     expect(entries.find((entry) => entry.path === '/old.jpg').mtime).to.equal(null)
   })
 })
+
+// Private drives from before private uploads were encrypted sat on the disk
+// as plain blocks. Each is copied into an encrypted drive and the old blocks
+// are deleted, with the real Hyperdrive and Corestore.
+describe('old private drives made before encryption', function () {
+  this.timeout(30000)
+  let root
+  let store
+
+  beforeEach(async function () {
+    const { default: Corestore } = await import('corestore')
+    root = mkdtempSync(path.join(os.tmpdir(), 'peersky-legacy-'))
+    store = new Corestore(path.join(root, 'store'))
+  })
+
+  afterEach(async function () {
+    await store.close().catch(() => {})
+    rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+  })
+
+  const encryptionKey = Buffer.alloc(32, 9)
+
+  async function loadModule () {
+    return esmock('../../src/protocols/private-hyperdrive.js', {
+      '../../src/backup/private-drive-key.js': {
+        getOrCreatePrivateDriveKey: async () => encryptionKey,
+        getPrivateDriveKeyFor: async () => null
+      }
+    })
+  }
+
+  async function makeLegacyDrive (name, files) {
+    const { default: Hyperdrive } = await import('hyperdrive')
+    const drive = new Hyperdrive(store.namespace(name), null)
+    await drive.ready()
+    for (const [file, text] of Object.entries(files)) await drive.put(file, Buffer.from(text), { metadata: { mtime: 1700000000000 } })
+    const url = `hyper://${z32.encode(drive.key)}/`
+    await drive.close()
+    const { rememberPrivateHyperdrive } = await import('../../src/protocols/private-hyperdrive-registry.js')
+    await rememberPrivateHyperdrive(root, { name, url, timestamp: 1700000000000 })
+    return url
+  }
+
+  it('copies each into an encrypted drive, lists that one instead, and clears the old blocks', async function () {
+    const { default: Hyperdrive } = await import('hyperdrive')
+    const { listPrivateHyperdrives } = await import('../../src/protocols/private-hyperdrive-registry.js')
+    const oldUrl = await makeLegacyDrive('passport', { '/passport-scan.jpg': 'scan bytes', '/notes/visa.txt': 'visa' })
+    const { encryptLegacyPrivateDrives, decodesWithKey } = await loadModule()
+
+    const errors = []
+    const moved = await encryptLegacyPrivateDrives({ corestore: store }, { userDataDir: root, onError: (_, error) => errors.push(error) })
+    expect(errors).to.deep.equal([])
+    expect(moved).to.have.lengthOf(1)
+
+    const [entry] = await listPrivateHyperdrives(root)
+    expect(entry.encrypted).to.equal(true)
+    expect(entry.name).to.equal('passport')
+    expect(entry.url).to.not.equal(oldUrl)
+
+    const newKey = Buffer.from(z32.decode(new URL(entry.url).hostname))
+    const opened = new Hyperdrive(store.namespace('reader'), newKey, { encryptionKey })
+    await opened.ready()
+    expect((await opened.get('/passport-scan.jpg')).toString()).to.equal('scan bytes')
+    expect((await opened.get('/notes/visa.txt')).toString()).to.equal('visa')
+    expect((await opened.entry('/passport-scan.jpg')).value.metadata).to.deep.equal({ mtime: 1700000000000 })
+    await opened.close()
+    expect(await decodesWithKey(store, newKey, Buffer.alloc(32, 1), 2000)).to.equal(false)
+
+    // The old drive keeps only hashes: no names, no bytes.
+    const oldKey = Buffer.from(z32.decode(new URL(oldUrl).hostname))
+    const old = new Hyperdrive(store.namespace('check'), oldKey)
+    await old.ready()
+    for (let i = 0; i < old.core.length; i++) expect(await old.core.has(i)).to.equal(false)
+    await old.close()
+  })
+
+  it('finishes a run that stopped after the old blocks were cleared', async function () {
+    const { listPrivateHyperdrives } = await import('../../src/protocols/private-hyperdrive-registry.js')
+    await makeLegacyDrive('lease', { '/lease.pdf': 'lease' })
+    const { encryptLegacyPrivateDrives, LEGACY_COPY_SUFFIX } = await loadModule()
+    // The copy made and the old drive gone, but the list not yet changed.
+    const { default: Hyperdrive } = await import('hyperdrive')
+    const [legacy] = await listPrivateHyperdrives(root)
+    const copy = new Hyperdrive(store.namespace(`lease${LEGACY_COPY_SUFFIX}`), null, { encryptionKey })
+    await copy.ready()
+    await copy.put('/lease.pdf', Buffer.from('lease'))
+    await copy.close()
+    const old = new Hyperdrive(store.namespace('lease'), Buffer.from(z32.decode(new URL(legacy.url).hostname)))
+    await old.ready()
+    if (old.blobs) await old.blobs.core.clear(0, old.blobs.core.length)
+    await old.core.clear(0, old.core.length)
+    await old.close()
+
+    await encryptLegacyPrivateDrives({ corestore: store }, { userDataDir: root })
+    const [entry] = await listPrivateHyperdrives(root)
+    expect(entry.encrypted).to.equal(true)
+    expect(entry.url).to.not.equal(legacy.url)
+  })
+
+  it('leaves encrypted drives alone', async function () {
+    const { rememberPrivateHyperdrive, listPrivateHyperdrives } = await import('../../src/protocols/private-hyperdrive-registry.js')
+    await rememberPrivateHyperdrive(root, { name: 'new', url: `hyper://${'b'.repeat(52)}/`, timestamp: 1, encrypted: true })
+    const { encryptLegacyPrivateDrives } = await loadModule()
+    expect(await encryptLegacyPrivateDrives({ corestore: store }, { userDataDir: root })).to.deep.equal([])
+    expect((await listPrivateHyperdrives(root))[0].url).to.equal(`hyper://${'b'.repeat(52)}/`)
+  })
+})

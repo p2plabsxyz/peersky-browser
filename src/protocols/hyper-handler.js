@@ -24,7 +24,7 @@ import { hyperCache, saveHyperCache } from './config.js'
 import { enforceExtensionWritePolicy } from '../extensions/request-policy.js'
 import { resolveHyperdriveUploadTarget } from './hyper-drive-visibility.js'
 import { listPrivateHyperdrives, rememberPrivateHyperdrive } from './private-hyperdrive-registry.js'
-import { makePrivateDriveFetcher, decodesWithKey, catchUpWithPeers } from './private-hyperdrive.js'
+import { makePrivateDriveFetcher, decodesWithKey, catchUpWithPeers, encryptLegacyPrivateDrives } from './private-hyperdrive.js'
 import { isOwnedPrivateDrive, setPrivateDriveOwnership } from './private-drive-ownership.js'
 import { getPrivateDriveKey } from '../backup/private-drive-key.js'
 import { decodeDriveId } from '../backup/private-drive-export.js'
@@ -516,6 +516,15 @@ async function startPrivateHyperSDK (options) {
   // messages went through, and opening a private drive waited on the public
   // DHT. A store kept on this device alone goes on no network at all.
   if (!privateDeviceOnly) await keepLANDiscovery(openedSdk, { label: 'LAN private', lanOptions: { privateStore: true } })
+  // Drives from before private uploads were encrypted are copied into
+  // encrypted ones before anything opens them (private-hyperdrive.js).
+  if (!privateDeviceOnly) {
+    const moved = await encryptLegacyPrivateDrives(openedSdk, {
+      userDataDir: app.getPath('userData'),
+      onError: (entry, error) => log.warn('[hyper] could not encrypt an old private drive:', error?.message || error)
+    }).catch(() => [])
+    if (moved.length) log.info(`[hyper] encrypted ${moved.length} private drive(s) from before encryption`)
+  }
   try {
     const openedFetch = await makeHyperFetch({ sdk: openedSdk, writable: true })
     privateSdk = openedSdk

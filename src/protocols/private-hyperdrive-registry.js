@@ -95,3 +95,31 @@ export function rememberPrivateHyperdrive (userDataDir, entry) {
   registryWrite = update
   return update
 }
+
+/**
+ * Puts entry in place of the drive at oldUrl, where it was in the list, or
+ * takes that drive off the list when entry is null.
+ */
+export function replacePrivateHyperdrive (userDataDir, oldUrl, entry) {
+  const normalized = entry === null ? null : normalizePrivateHyperdrive(entry)
+  if (entry !== null && !normalized) return Promise.reject(new Error('Private Hyperdrive metadata is invalid'))
+
+  const update = registryWrite
+    .catch(() => {})
+    .then(async () => {
+      const existing = await listPrivateHyperdrives(userDataDir)
+      const entries = []
+      for (const item of existing) {
+        if (item.url === oldUrl) {
+          if (normalized) entries.push(normalized)
+        } else if (!normalized || item.url !== normalized.url) {
+          entries.push(item)
+        }
+      }
+      await writePrivateHyperdrives(userDataDir, entries)
+      return normalized
+    })
+
+  registryWrite = update
+  return update
+}
