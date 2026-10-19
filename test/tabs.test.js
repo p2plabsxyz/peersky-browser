@@ -473,3 +473,66 @@ describe('a page with no icon of its own', function () {
     expect(stopped).to.match(/if \(!faviconElement\.style\.backgroundImage \|\| [^)]*\) \{\s*faviconElement\.style\.backgroundImage = 'url\(peersky:\/\/static\/assets\/icon16\.png\)'/)
   })
 })
+
+// A link opened in a new tab went to the end of the strip, far from the page
+// it came from. Other browsers put it right after that tab.
+describe('a link opened in a new tab', function () {
+  const start = tabBar.indexOf('  addTabFromLink (url, openerWebContentsId = null) {')
+  const end = tabBar.indexOf('\n  findTabByWebContentsId (')
+  const body = tabBar.slice(tabBar.indexOf('{', start) + 1, tabBar.lastIndexOf('}', end))
+  // eslint-disable-next-line no-new-func
+  const addTabFromLink = new Function('url', 'openerWebContentsId', body)
+
+  function strip (ids, { active = ids[0], pinned = [], groups = {} } = {}) {
+    let counter = 0
+    const bar = {
+      tabs: ids.map((id) => ({ id })),
+      activeTabId: active,
+      pinnedTabs: new Set(pinned),
+      tabGroups: new Map(Object.values(groups).map((g) => [g, { id: g }])),
+      tabGroupAssignments: new Map(Object.entries(groups)),
+      webviews: new Map(),
+      addTab () {
+        const id = `new-${++counter}`
+        this.tabs.push({ id })
+        return id
+      },
+      moveTabToPosition (id, position) {
+        const [tab] = this.tabs.splice(this.tabs.findIndex((t) => t.id === id), 1)
+        this.tabs.splice(position, 0, tab)
+      },
+      findTabByWebContentsId: () => null,
+      addTabToGroup (id, group) { this.tabGroupAssignments.set(id, group) },
+      normalizeGroupLayout () {},
+      updateGroupedTabsUI () {},
+      saveTabsState () {}
+    }
+    const open = (url = 'https://example.com/') => addTabFromLink.call(bar, url, null)
+    const order = () => bar.tabs.map((t) => t.id)
+    return { bar, open, order }
+  }
+
+  it('goes right after the tab it came from, and the next one after it', function () {
+    const { open, order } = strip(['a', 'b', 'c'], { active: 'a' })
+    open()
+    expect(order()).to.deep.equal(['a', 'new-1', 'b', 'c'])
+    open()
+    expect(order()).to.deep.equal(['a', 'new-1', 'new-2', 'b', 'c'])
+  })
+
+  it('from a pinned tab, goes after the pinned ones', function () {
+    const { open, order } = strip(['p1', 'p2', 'a'], { active: 'p1', pinned: ['p1', 'p2'] })
+    open()
+    expect(order()).to.deep.equal(['p1', 'p2', 'new-1', 'a'])
+  })
+
+  it('joins the group of the tab it came from', function () {
+    const { bar, open } = strip(['a', 'b'], { active: 'a', groups: { a: 'trip' } })
+    const id = open()
+    expect(bar.tabGroupAssignments.get(id)).to.equal('trip')
+  })
+
+  it('is what the link menu and a page opening a tab use', function () {
+    expect(tabBar).to.contain('this.addTabFromLink(e.url,')
+  })
+})

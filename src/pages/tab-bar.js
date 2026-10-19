@@ -1291,7 +1291,7 @@ class TabBar extends HTMLElement {
 
     webview.addEventListener('new-window', (e) => {
       e.preventDefault()
-      this.addTab(e.url, 'New Tab')
+      this.addTabFromLink(e.url, typeof webview.getWebContentsId === 'function' ? webview.getWebContentsId() : null)
     })
 
     webview.addEventListener('page-favicon-updated', (e) => {
@@ -2205,6 +2205,50 @@ class TabBar extends HTMLElement {
   }
 
   // Add new tab to the right of specified tab
+  // A link opened in a new tab goes right after the tab it came from, and the
+  // next link from that tab after the one before, as in other browsers. It
+  // joins the group its tab is in. A tab of its own (the + button, Ctrl+T)
+  // still goes at the end.
+  addTabFromLink (url, openerWebContentsId = null) {
+    const opener = this.findTabByWebContentsId(openerWebContentsId) ||
+      this.tabs.find(t => t.id === this.activeTabId)
+    const tabId = this.addTab(url, 'New Tab')
+    if (!opener || opener.id === tabId) return tabId
+
+    const newTab = this.tabs.find(t => t.id === tabId)
+    if (newTab) newTab.openerTabId = opener.id
+    let index = this.tabs.findIndex(t => t.id === opener.id)
+    if (index === -1) return tabId
+    const pinned = this.pinnedTabs.has(opener.id)
+    // From a pinned tab, after the pinned ones, where the other tabs start.
+    if (pinned) {
+      while (index + 1 < this.tabs.length && this.pinnedTabs.has(this.tabs[index + 1].id)) index++
+    }
+    while (index + 1 < this.tabs.length && this.tabs[index + 1].id !== tabId &&
+      this.tabs[index + 1].openerTabId === opener.id) index++
+    this.moveTabToPosition(tabId, index + 1)
+
+    const groupId = pinned ? null : this.tabGroupAssignments.get(opener.id)
+    if (groupId && this.tabGroups.has(groupId)) {
+      this.addTabToGroup(tabId, groupId)
+      this.normalizeGroupLayout()
+      this.updateGroupedTabsUI()
+    }
+    this.saveTabsState()
+    return tabId
+  }
+
+  findTabByWebContentsId (webContentsId) {
+    if (webContentsId == null) return null
+    for (const tab of this.tabs) {
+      const webview = this.webviews.get(tab.id)
+      try {
+        if (webview && typeof webview.getWebContentsId === 'function' && webview.getWebContentsId() === webContentsId) return tab
+      } catch {}
+    }
+    return null
+  }
+
   addTabToTheRight (tabId) {
     const newTabId = this.addTab('peersky://home', 'Home')
 

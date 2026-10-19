@@ -31,6 +31,7 @@ Vertical tabs, kept expanded, are the default since v1. A profile from an earlie
 
 - **New tab button** (`+`): opens `peersky://home`
 - **Keyboard shortcut** (`CommandOrControl+T`) / context menus: open a URL directly in a new tab
+- **Links**: a link opened in a new tab (Open Link in New Tab, a middle or Cmd/Ctrl click, a page opening one) goes right after the tab it came from, and the next one from that tab after it, as in other browsers. It joins that tab's group; from a pinned tab it goes after the pinned tabs. The `+` button and `CommandOrControl+T` still add the tab at the end.
 
 ### Switching Tabs
 
