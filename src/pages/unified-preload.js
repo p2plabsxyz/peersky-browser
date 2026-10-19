@@ -10,7 +10,7 @@
  * Security Model: Principle of least privilege with granular access control.
  */
 
-const { contextBridge, ipcRenderer, webUtils } = require('electron')
+const { contextBridge, ipcRenderer, webFrame, webUtils } = require('electron')
 
 // Context detection using window.location for immediate synchronous access
 const url = window.location.href
@@ -62,6 +62,25 @@ const isHyperdriveViews = pageProtocol === 'peersky:' && pageHost === 'p2p' &&
   /^\/hyperdrive\/(files|photos|videos|viewer)(\/|$)/.test(pathOf(url))
 
 console.log('Unified-preload: URL detection', { url, isInternal, isExternal })
+
+// A trackpad pinch on a Mac comes to the page as Ctrl with the wheel, and
+// Electron's own pinch zoom does nothing for a page in a tab, so it is handed
+// to PeerSky, which zooms the tab (trackpad-zoom.js). A page that uses the
+// pinch itself, as a map does, cancels the event and keeps it. Elsewhere
+// Chromium turns Ctrl with the wheel into zoom itself.
+if (process.platform === 'darwin') {
+  window.addEventListener('wheel', (event) => {
+    if (!event.isTrusted || !event.ctrlKey || !event.deltaY) return
+    // Looked at once every listener has had it, so the page's own can still
+    // cancel it wherever it listens.
+    setTimeout(() => {
+      if (event.defaultPrevented) return
+      // In CSS pixels, which grow as the page is zoomed: back to the
+      // fingers' own movement, so a pinch zooms as much at any size.
+      ipcRenderer.send('peersky-pinch-zoom', event.deltaY * webFrame.getZoomFactor())
+    }, 0)
+  }, { passive: true })
+}
 
 // Expose minimal API for BitTorrent pages to open files in new tabs
 // Note: window.open() doesn't work for file:// URLs from custom protocols due to Electron security

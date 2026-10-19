@@ -62,6 +62,7 @@ class TabBar extends HTMLElement {
     this.tabCounter = 0
     this.webviews = new Map() // Store webviews by tab ID
     this.zoomLevels = new Map() // Zoom level by tab ID
+    this.listenForPinchZoom()
     this.faviconsByTab = new Map() // By tab ID, the icons of pages it showed, by address
     this._tabsStateTimer = null // Pending coalesced saveTabsState write
     this.webviewContainer = null // Will be set by connectWebviewContainer
@@ -1867,16 +1868,47 @@ class TabBar extends HTMLElement {
   // The zoom calls throw until the webview is dom-ready, and dom-ready reapplies
   // the tab's level, so it is safe to give up here.
   zoomActiveTab (step) {
-    const webview = this.getActiveWebview()
-    if (!webview) return
+    this.zoomTab(this.activeTabId, step)
+  }
+
+  zoomTab (tabId, step) {
+    const webview = this.webviews.get(tabId)
+    if (!webview || !Number.isFinite(step)) return
     try {
       const level = Math.max(-7, Math.min(9, webview.getZoomLevel() + step))
-      this.zoomLevels.set(this.activeTabId, level)
+      this.zoomLevels.set(tabId, level)
       webview.setZoomLevel(level)
     } catch (_) {
       return
     }
-    this.emitZoomChanged()
+    if (tabId === this.activeTabId) this.emitZoomChanged()
+  }
+
+  // A pinch over a page, which main hands on from the page's own preload
+  // (trackpad-zoom.js). In split view it may be the tab that is not active.
+  zoomTabForWebContents (webContentsId, step) {
+    const tab = this.findTabByWebContentsId(webContentsId)
+    if (tab) this.zoomTab(tab.id, step)
+  }
+
+  // A trackpad pinch on a Mac comes to a page as Ctrl with the wheel, and
+  // Electron's own pinch zoom does nothing for a page in a tab. One that
+  // reaches this window over a tab zooms that tab, as much as the fingers
+  // moved (pinchZoomStep in trackpad-zoom.js). Elsewhere Chromium turns Ctrl
+  // with the wheel into zoom itself.
+  listenForPinchZoom () {
+    if (typeof process === 'undefined' || process.platform !== 'darwin') return
+    window.addEventListener('wheel', (event) => {
+      if (!event.isTrusted || !event.ctrlKey || event.defaultPrevented || !event.deltaY) return
+      const target = event.target
+      if (!target || target.tagName !== 'WEBVIEW') return
+      for (const [tabId, webview] of this.webviews) {
+        if (webview === target) {
+          this.zoomTab(tabId, -event.deltaY / (100 * Math.log(1.2)))
+          return
+        }
+      }
+    }, { passive: true, capture: true })
   }
 
   resetActiveTabZoom () {

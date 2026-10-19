@@ -10,7 +10,7 @@ import { createHandler as createHyperHandler, warmupHyper, suspendHyper } from '
 import { createHandler as createHSHandler } from './protocols/hs-handler.js'
 import { createHandler as createWeb3Handler } from './protocols/web3-handler.js'
 import { createHandler as createFileHandler } from './protocols/file-handler.js'
-import { attachTrackpadZoom } from './trackpad-zoom.js'
+import { attachTrackpadZoom, handlePinchZoom } from './trackpad-zoom.js'
 import { sealFilesAtRest } from './backup/sealed-file.js'
 import { PRIVATE_DRIVE_KEY_FILE } from './backup/private-drive-key.js'
 import { PRIVATE_HYPERDRIVE_REGISTRY_FILE } from './protocols/private-hyperdrive-registry.js'
@@ -114,6 +114,8 @@ app.on('browser-window-created', (event, win) => {
   trustedUIWebContents.add(wcId)
   win.webContents.once('destroyed', () => trustedUIWebContents.delete(wcId))
 })
+
+handlePinchZoom(ipcMain)
 
 app.on('web-contents-created', (event, wc) => {
   const wcId = wc.id
