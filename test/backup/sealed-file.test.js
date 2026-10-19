@@ -70,7 +70,10 @@ describe('private files locked with safe storage', function () {
     expect(onDisk).to.not.include(key.toString('hex'))
     expect(onDisk).to.include('peersky-sealed')
     expect((await getPrivateDriveKey(dir)).equals(key)).to.equal(true)
-    expect(fs.statSync(path.join(dir, PRIVATE_DRIVE_KEY_FILE)).mode & 0o777).to.equal(0o600)
+    // Windows keeps no Unix modes: a file there always reads as 0o666.
+    if (process.platform !== 'win32') {
+      expect(fs.statSync(path.join(dir, PRIVATE_DRIVE_KEY_FILE)).mode & 0o777).to.equal(0o600)
+    }
   })
 
   it('reads a key written before locking came in, and locks it at once', async function () {
