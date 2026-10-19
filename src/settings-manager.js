@@ -61,8 +61,11 @@ const DEFAULT_SETTINGS = {
   theme: 'dark',
   showClock: true,
   clockFormat: '24h',
-  verticalTabs: false,
-  keepTabsExpanded: false,
+  // Tabs down the side, kept open, since v1.
+  verticalTabs: true,
+  keepTabsExpanded: true,
+  // Set once a profile has been moved to the v1 tab layout (loadSettings).
+  tabLayoutV1: true,
   wallpaper: 'ten_lakes',
   wallpaperCustomPath: null,
   pinnedP2PApps: null,
@@ -613,6 +616,16 @@ class SettingsManager {
         } else {
           this.settings[key] = loaded[key]
         }
+      }
+
+      // Every profile from before v1 has horizontal tabs written down, chosen or
+      // not, because the whole settings object is saved. Each moves to the v1
+      // layout once; whatever it picks after that is kept.
+      if (loaded && loaded.tabLayoutV1 !== true) {
+        this.settings.verticalTabs = true
+        this.settings.keepTabsExpanded = true
+        this.settings.tabLayoutV1 = true
+        await this.saveSettings()
       }
 
       logDebug(`Settings loaded successfully: ${Object.keys(loaded).length} keys`)
