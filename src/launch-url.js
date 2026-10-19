@@ -11,7 +11,7 @@
 // renders without declaring. A test keeps this in step with build.protocols.
 export const LAUNCH_SCHEMES = new Set([
   'http:', 'https:', 'peersky:', 'browser:', 'ipfs:', 'ipns:', 'ipld:',
-  'hyper:', 'dat:', 'web3:', 'bittorrent:', 'bt:', 'magnet:', 'hs:', 'pubsub:'
+  'hyper:', 'dat:', 'web3:', 'bittorrent:', 'bt:', 'magnet:', 'webtorrent:', 'hs:', 'pubsub:'
 ])
 
 // argv[0] is the executable; in dev argv[1] is the app path, which fails to

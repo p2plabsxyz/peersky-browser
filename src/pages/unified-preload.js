@@ -47,7 +47,7 @@ const isExternal = !isInternal
 
 const isP2P = ['hyper:', 'ipfs:', 'ipns:', 'hs:'].includes(pageProtocol)
 
-const isBitTorrent = ['bt:', 'bittorrent:', 'magnet:'].includes(pageProtocol)
+const isBitTorrent = ['bt:', 'bittorrent:', 'magnet:', 'webtorrent:'].includes(pageProtocol)
 
 // The Hyperdrive app's Files, Photos and Videos views, which allow no inline
 // scripts: the window.llm script below would only be refused there.

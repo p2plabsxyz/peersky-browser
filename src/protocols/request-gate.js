@@ -17,6 +17,9 @@ const STAMP_HEADERS = new Set([VETTED_HEADER, NAVIGATION_HEADER])
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 const P2P_WRITE_SCHEMES = new Set(['hyper:', 'ipfs:', 'ipns:', 'pubsub:'])
 const TORRENT_SCHEMES = new Set(['bt:', 'bittorrent:', 'magnet:'])
+// Pages that show a torrent and call its API: a webtorrent: link opens the
+// same page, but has no API of its own.
+const TORRENT_UI_SCHEMES = new Set([...TORRENT_SCHEMES, 'webtorrent:'])
 
 const ALLOW = { action: 'allow' }
 const BLOCK = { action: 'block' }
@@ -31,7 +34,7 @@ const isOwnPage = (caller) =>
 
 const isTorrentUi = (caller) =>
   (caller.protocol === 'peersky:' && caller.hostname === 'bt-manager') ||
-  TORRENT_SCHEMES.has(caller.protocol)
+  TORRENT_UI_SCHEMES.has(caller.protocol)
 
 function parseUrl (raw) {
   try {

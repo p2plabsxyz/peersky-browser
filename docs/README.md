@@ -59,7 +59,7 @@
 - [x] BitTorrent protocol handler:
 
   - [x] [WebTorrent](https://webtorrent.io/) in isolated child process
-  - [x] `bittorrent://` / `bt://` / `magnet:` native URLs support
+  - [x] `bittorrent://` / `bt://` / `magnet:` / `webtorrent:` native URLs support
   - [x] Real-time download progress UI with pause/resume
   - [x] Auto-destroy torrent on completion (no seeding)
   - [x] Optional `bt://` seeding

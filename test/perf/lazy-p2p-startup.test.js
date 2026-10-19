@@ -150,7 +150,8 @@ describe('Startup: p2p backends do not block the first window', function () {
       child_process: { fork },
       electron: {
         app: { getPath: (type) => (type === 'userData' ? '.test-perf-bt' : '.test-perf-bt-dl') },
-        ipcMain: { handle: sinon.stub() }
+        ipcMain: { handle: sinon.stub() },
+        net: { fetch: sinon.stub() }
       },
       '../../src/logger.js': { createLogger: () => ({ info () {}, warn () {}, error () {}, debug () {} }) },
       '../../src/settings-manager.js': { default: { settings: { theme: 'dark' } } }

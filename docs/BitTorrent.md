@@ -11,8 +11,13 @@ Peersky supports BitTorrent downloading and streaming natively using [WebTorrent
 - `bittorrent://<infohash>` — open a torrent by info hash
 - `bt://<infohash>` — shorthand for `bittorrent://`
 - `magnet:?xt=urn:btih:<infohash>` — standard magnet links
+- `webtorrent:<http or https address of a .torrent file>` — the form the Internet Archive links, for example `webtorrent:https://ia800702.us.archive.org/7/items/mysterious-mose_1930/mysterious-mose_1930_archive.torrent`
 
-All three schemes load the same torrent download UI.
+All four schemes load the same torrent download UI.
+
+### `webtorrent:` links
+
+PeerSky fetches the `.torrent` file the link points to (up to 10 MB, http or https only), reads its info hash, name, trackers and web seeds, and opens its torrent page. The magnet it starts carries the trackers (`tr`), the web seeds (`ws`) and the file's address (`xs`), so the download can start from a web seed and get the file list from that address even when no peer has the torrent. Internet Archive torrents are mostly web seeds. Nothing downloads until you press Start Torrent.
 
 Peersky also provides a global BitTorrent manager page at `peersky://bt-manager` for viewing and controlling all cached torrents in one place.
 
@@ -23,7 +28,7 @@ You can drag and drop a local `.torrent` file directly onto the browser's addres
 
 ## How It Works
 
-1. **Navigate** to a `bt://`, `bittorrent://`, or `magnet:` URL
+1. **Navigate** to a `bt://`, `bittorrent://`, `magnet:` or `webtorrent:` URL
 2. **Click "Start Torrent"** to begin downloading
 3. **Monitor progress** — real-time stats (speed, peers, ETA) update every 2 seconds
 4. **Pause / Resume** — pause stops all peer connections and data transfer

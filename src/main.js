@@ -175,6 +175,7 @@ globalProtocol.registerSchemesAsPrivileged([
   { scheme: 'bittorrent', privileges: P2P_PROTOCOL },
   { scheme: 'bt', privileges: P2P_PROTOCOL },
   { scheme: 'magnet', privileges: MAGNET_PROTOCOL },
+  { scheme: 'webtorrent', privileges: MAGNET_PROTOCOL },
   { scheme: BLOCKED_SCHEME, privileges: BLOCKED_SCHEME_PRIVILEGES }
 ])
 
@@ -700,7 +701,7 @@ async function createProtocolHandlers (session) {
   // Electron binary, which opens Electron's welcome window instead of Peersky
   // and steals the schemes from the installed copy.
   if (app.isPackaged) {
-    for (const scheme of ['peersky', 'browser', 'ipfs', 'ipns', 'hyper', 'hs', 'web3', 'bittorrent', 'bt', 'magnet']) {
+    for (const scheme of ['peersky', 'browser', 'ipfs', 'ipns', 'hyper', 'hs', 'web3', 'bittorrent', 'bt', 'magnet', 'webtorrent']) {
       app.setAsDefaultProtocolClient(scheme)
     }
   } else {
@@ -761,6 +762,7 @@ function registerProtocolHandlers (sessionProtocol, handlers) {
   sessionProtocol.handle('bittorrent', requireVetted(bittorrentProtocolHandler))
   sessionProtocol.handle('bt', requireVetted(bittorrentProtocolHandler))
   sessionProtocol.handle('magnet', requireVetted(bittorrentProtocolHandler))
+  sessionProtocol.handle('webtorrent', requireVetted(bittorrentProtocolHandler))
 }
 
 /**

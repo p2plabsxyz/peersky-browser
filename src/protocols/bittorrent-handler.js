@@ -3,7 +3,7 @@ import path from 'path'
 import { createLogger } from '../logger.js'
 import { fileURLToPath } from 'url'
 import fs from 'fs-extra'
-import { app, ipcMain } from 'electron'
+import { app, ipcMain, net } from 'electron'
 import { generateTorrentUI } from './bt/torrentPage.js'
 import settingsManager from '../settings-manager.js'
 import parseTorrent from 'parse-torrent'
@@ -370,8 +370,71 @@ async function sendCommand (action, params = {}) {
   })
 }
 
+const WEBTORRENT_PREFIX = 'webtorrent:'
+const MAX_TORRENT_FILE_BYTES = 10 * 1024 * 1024
+const TORRENT_FILE_TIMEOUT_MS = 30000
+
 /**
- * Build the bt:// / bittorrent:// / magnet: protocol handler.
+ * A magnet link for a read .torrent file, carrying what makes it quick to get:
+ * its trackers, its web seeds (ws), and where the file itself is (xs), which
+ * the worker fetches the file list from when no peer has it yet. The Internet
+ * Archive's torrents are mostly web seeds.
+ */
+export function magnetFromTorrent (parsed, { source = null } = {}) {
+  let magnetUri = `magnet:?xt=urn:btih:${parsed.infoHash}`
+  if (parsed.name) magnetUri += `&dn=${encodeURIComponent(parsed.name)}`
+  for (const tracker of parsed.announce || []) magnetUri += `&tr=${encodeURIComponent(tracker)}`
+  for (const seed of parsed.urlList || []) magnetUri += `&ws=${encodeURIComponent(seed)}`
+  if (source) magnetUri += `&xs=${encodeURIComponent(source)}`
+  return magnetUri
+}
+
+/**
+ * webtorrent:<http(s) address of a .torrent file>, the form the Internet
+ * Archive and other sites link. The file is fetched and read here, and its
+ * torrent opens on the same page a magnet link does.
+ */
+export async function resolveWebtorrentUrl (rawUrl, { fetch = net.fetch } = {}) {
+  const source = String(rawUrl || '').slice(WEBTORRENT_PREFIX.length).trim()
+  let sourceUrl
+  try {
+    sourceUrl = new URL(source)
+  } catch {
+    throw new Error('A webtorrent: link needs the http or https address of a .torrent file after it.')
+  }
+  if (sourceUrl.protocol !== 'https:' && sourceUrl.protocol !== 'http:') {
+    throw new Error('A webtorrent: link needs the http or https address of a .torrent file after it.')
+  }
+
+  const response = await fetch(sourceUrl.href, { signal: AbortSignal.timeout(TORRENT_FILE_TIMEOUT_MS) })
+  if (!response.ok) throw new Error(`The torrent file could not be fetched (${response.status}).`)
+  const declared = Number(response.headers.get('content-length'))
+  if (declared > MAX_TORRENT_FILE_BYTES) throw new Error('That torrent file is too big to be one.')
+  // Read in pieces, so a server that lies about the length cannot fill memory.
+  const chunks = []
+  let size = 0
+  for await (const chunk of response.body) {
+    size += chunk.length
+    if (size > MAX_TORRENT_FILE_BYTES) throw new Error('That torrent file is too big to be one.')
+    chunks.push(Buffer.from(chunk))
+  }
+
+  let parsed
+  try {
+    parsed = await parseTorrent(Buffer.concat(chunks))
+  } catch {
+    parsed = null
+  }
+  if (!parsed?.infoHash) throw new Error('That address did not give a .torrent file.')
+  return {
+    infoHash: parsed.infoHash,
+    name: parsed.name || null,
+    magnetUri: magnetFromTorrent(parsed, { source: sourceUrl.href })
+  }
+}
+
+/**
+ * Build the bt:// / bittorrent:// / magnet: / webtorrent: protocol handler.
  *
  * @param {object} [options]
  * @param {boolean} [options.lazy] - Fork the WebTorrent worker on the first
@@ -387,6 +450,15 @@ export async function createHandler ({ lazy = false } = {}) {
     log.info(`[BT] Handling request: ${request.method} ${rawUrl}`)
 
     try {
+      if (rawUrl.startsWith(WEBTORRENT_PREFIX)) {
+        const torrent = await resolveWebtorrentUrl(rawUrl)
+        const html = generateTorrentUI(torrent.magnetUri, torrent.infoHash, 'webtorrent', torrent.name, settingsManager.settings.theme || 'dark')
+        return new Response(html, {
+          status: 200,
+          headers: { 'Content-Type': 'text/html; charset=utf-8' }
+        })
+      }
+
       // Determine protocol from the raw URL
       let protocol; let infoHash; let magnetUri; let queryParams; let requestedTorrentPath = ''
 
@@ -495,21 +567,7 @@ export function setupBittorrentIpc () {
         throw new Error('Could not extract infoHash from file')
       }
 
-      // Build magnet URI with trackers from the .torrent file
-      let magnetUri = `magnet:?xt=urn:btih:${parsed.infoHash}`
-
-      // Add display name if available
-      if (parsed.name) {
-        magnetUri += `&dn=${encodeURIComponent(parsed.name)}`
-      }
-
-      // Add tracker URLs from the .torrent file — this is what makes it fast
-      if (parsed.announce && parsed.announce.length > 0) {
-        const trackers = parsed.announce.map(tr => `&tr=${encodeURIComponent(tr)}`).join('')
-        magnetUri += trackers
-      }
-
-      return magnetUri
+      return magnetFromTorrent(parsed)
     } catch (err) {
       log.error('[BT] IPC Error resolving torrent:', err.message)
       return null
@@ -528,7 +586,7 @@ function isTorrentUiUrl (rawUrl) {
   try {
     const { protocol, hostname } = new URL(rawUrl)
     if (protocol === 'peersky:') return hostname === 'bt-manager'
-    return protocol === 'bt:' || protocol === 'bittorrent:' || protocol === 'magnet:'
+    return protocol === 'bt:' || protocol === 'bittorrent:' || protocol === 'magnet:' || protocol === 'webtorrent:'
   } catch {
     return false
   }

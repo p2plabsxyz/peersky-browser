@@ -15,7 +15,7 @@ const log = createLogger('external-scheme')
 const INTERNAL_SCHEMES = new Set([
   'http:', 'https:', 'about:', 'file:', 'blob:', 'data:',
   'peersky:', 'browser:', 'ipfs:', 'ipns:', 'pubsub:',
-  'hyper:', 'hs:', 'web3:', 'bittorrent:', 'bt:', 'magnet:'
+  'hyper:', 'hs:', 'web3:', 'bittorrent:', 'bt:', 'magnet:', 'webtorrent:'
 ])
 
 // Forwarding these is how a page would run code or read disk through another

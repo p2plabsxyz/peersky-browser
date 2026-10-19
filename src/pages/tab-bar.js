@@ -26,7 +26,7 @@ function titleFromAddress (url) {
 // URL a page can craft.
 const RELOADABLE_SCHEMES = new Set([
   'http:', 'https:', 'peersky:', 'browser:', 'ipfs:', 'ipns:', 'pubsub:',
-  'hyper:', 'hs:', 'web3:', 'bittorrent:', 'bt:', 'magnet:', 'file:'
+  'hyper:', 'hs:', 'web3:', 'bittorrent:', 'bt:', 'magnet:', 'webtorrent:', 'file:'
 ])
 
 function failedUrlBehindErrorPage (webview) {
@@ -4102,7 +4102,7 @@ class TabBar extends HTMLElement {
     if (url.startsWith('web3://')) {
       return 'web3'
     }
-    if (url.startsWith('bt://') || url.startsWith('bittorrent://') || url.startsWith('magnet:')) {
+    if (url.startsWith('bt://') || url.startsWith('bittorrent://') || url.startsWith('magnet:') || url.startsWith('webtorrent:')) {
       return 'bt'
     }
     if (url.startsWith('peersky://') || url.startsWith('browser://')) {

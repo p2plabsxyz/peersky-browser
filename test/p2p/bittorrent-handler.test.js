@@ -7,6 +7,8 @@ import os from 'os'
 import { fileURLToPath } from 'url'
 import path from 'path'
 import { EventEmitter } from 'events'
+import createTorrent from 'create-torrent'
+import parseTorrent from 'parse-torrent'
 
 const _testDir = path.dirname(fileURLToPath(import.meta.url))
 const TRACKERS_JSON = path.join(_testDir, '../../src/protocols/bt/trackers.json')
@@ -154,7 +156,7 @@ describe('BitTorrent protocol handler', function () {
   })
 
   async function loadHandler (opts = {}) {
-    const { userDataDir, downloadsDir, replyAs } = opts
+    const { userDataDir, downloadsDir, replyAs, fetch } = opts
     let ud = userDataDir
     let dd = downloadsDir
     if (!ud) {
@@ -179,7 +181,8 @@ describe('BitTorrent protocol handler', function () {
             return path.join(ud, t)
           }
         },
-        ipcMain
+        ipcMain,
+        net: { fetch: fetch || (async () => { throw new Error('No network in this test') }) }
       },
       '../../src/logger.js': {
         createLogger: () => ({ info () {}, warn () {}, error () {} })
@@ -802,6 +805,79 @@ describe('BitTorrent protocol handler', function () {
     const { handler } = await loadHandler()
     const html = await (await handler(new Request(`bt://${b32}/`))).text()
     expect(html).to.include('magnet:?xt=urn:btih:')
+  })
+
+  // The Internet Archive links its torrents as webtorrent:<address of the
+  // .torrent file>. Its torrents are mostly web seeds.
+  describe('webtorrent: links', function () {
+    const SOURCE = 'https://archive.example/items/mose/mose_archive.torrent'
+    let torrentFile
+
+    before(async function () {
+      torrentFile = await new Promise((resolve, reject) => {
+        const file = Buffer.from('Mysterious Mose, 1930')
+        file.name = 'mose.txt'
+        createTorrent(file, {
+          name: 'mysterious-mose_1930',
+          announceList: [['https://tracker.example/announce']],
+          urlList: ['https://archive.example/download/']
+        }, (error, torrent) => (error ? reject(error) : resolve(torrent)))
+      })
+    })
+
+    function serving (body, init = {}) {
+      const calls = []
+      const fetch = async (url) => {
+        calls.push(url)
+        return new Response(body, init)
+      }
+      return { fetch, calls }
+    }
+
+    it('fetches the .torrent file and opens its torrent with trackers, web seeds and the file address', async () => {
+      const { fetch, calls } = serving(torrentFile)
+      const { handler } = await loadHandler({ fetch })
+      const res = await handler(new Request(`webtorrent:${SOURCE}`))
+      expect(res.status).to.equal(200)
+      expect(calls).to.deep.equal([SOURCE])
+
+      const parsed = await parseTorrent(torrentFile)
+      const html = await res.text()
+      expect(html).to.include(parsed.infoHash)
+      expect(html).to.include('mysterious-mose_1930')
+      expect(html).to.include(`tr=${encodeURIComponent('https://tracker.example/announce')}`)
+      expect(html).to.include(`ws=${encodeURIComponent('https://archive.example/download/')}`)
+      expect(html).to.include(`xs=${encodeURIComponent(SOURCE)}`)
+    })
+
+    it('refuses an address that is not http or https, and anything that is not a torrent file', async () => {
+      const { fetch, calls } = serving('<html>not a torrent</html>')
+      const { handler } = await loadHandler({ fetch })
+      for (const url of ['webtorrent:', 'webtorrent:file:///etc/passwd', 'webtorrent:hyper://abc/x.torrent']) {
+        const res = await handler(new Request(url))
+        expect(res.status, url).to.equal(500)
+        expect(await res.text(), url).to.include('http or https address')
+      }
+      expect(calls).to.deep.equal([])
+
+      const html = await handler(new Request(`webtorrent:${SOURCE}`))
+      expect(await html.text()).to.include('did not give a .torrent file')
+    })
+
+    it('stops reading a file far bigger than any torrent file', async () => {
+      const huge = new ReadableStream({
+        pull (controller) { controller.enqueue(new Uint8Array(1024 * 1024)) }
+      })
+      const { fetch } = serving(huge)
+      const { handler } = await loadHandler({ fetch })
+      const res = await handler(new Request(`webtorrent:${SOURCE}`))
+      expect(await res.text()).to.include('too big')
+    })
+
+    it('a webtorrent: page may ask for the API token', async () => {
+      const loaded = await loadHandler()
+      expect(tokenIpc(loaded)(`webtorrent:${SOURCE}`)).to.be.a('string').with.lengthOf(48)
+    })
   })
 })
 

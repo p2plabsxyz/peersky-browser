@@ -36,7 +36,7 @@
   // that failed. The scheme is checked because the parameter arrives in a URL.
   const RETRY_SCHEMES = new Set([
     'http:', 'https:', 'peersky:', 'browser:', 'ipfs:', 'ipns:', 'pubsub:',
-    'hyper:', 'hs:', 'web3:', 'bittorrent:', 'bt:', 'magnet:', 'file:'
+    'hyper:', 'hs:', 'web3:', 'bittorrent:', 'bt:', 'magnet:', 'webtorrent:', 'file:'
   ])
 
   const retryTarget = (() => {

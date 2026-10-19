@@ -191,7 +191,8 @@
         "schemes": [
           "bittorrent",
           "bt",
-          "magnet"
+          "magnet",
+          "webtorrent"
         ],
         "role": "Viewer"
       }

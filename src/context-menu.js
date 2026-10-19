@@ -15,7 +15,7 @@ export function setWindowManager (instance) {
 
 const NAVIGABLE_SCHEMES = new Set([
   'http:', 'https:', 'peersky:', 'ipfs:', 'ipns:', 'pubsub:',
-  'hyper:', 'hs:', 'web3:', 'bittorrent:', 'bt:', 'magnet:'
+  'hyper:', 'hs:', 'web3:', 'bittorrent:', 'bt:', 'magnet:', 'webtorrent:'
 ])
 
 // Text is navigable if it parses as a supported URL, or reads as a bare
