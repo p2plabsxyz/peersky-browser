@@ -54,6 +54,9 @@ describe('P2PMD notes over the local network, with no internet', function () {
   const lans = []
   const closers = []
 
+  // Each test's ports are below 32768, which neither macOS nor Linux hands out
+  // on its own. One already taken failed the test, and an instance that never
+  // started is not freed by destroying it, so it held the run open.
   async function device (port) {
     const lan = new HyperDHTmDNS({ host: '127.0.0.1', port, allowLoopback: true, adapter: new MemoryAdapter(bus) })
     await lan.ready()
@@ -103,7 +106,7 @@ describe('P2PMD notes over the local network, with no internet', function () {
   })
 
   it('a private note opens over the Wi-Fi from its link alone', async function () {
-    const base = 41000 + (process.pid % 2000)
+    const base = 11000 + (process.pid % 2000)
     const host = await device(base)
     const joiner = await device(base + 1)
     const notePort = await noteServer('# Trip plan')
@@ -123,7 +126,7 @@ describe('P2PMD notes over the local network, with no internet', function () {
   })
 
   it('a private note does not open for a key that is not the link\'s', async function () {
-    const base = 43000 + (process.pid % 2000)
+    const base = 13000 + (process.pid % 2000)
     const host = await device(base)
     const joiner = await device(base + 1)
     const notePort = await noteServer('secret')
@@ -163,7 +166,7 @@ describe('P2PMD notes over the local network, with no internet', function () {
     })
 
     it('is told to a joiner, which then listens on the same port', async function () {
-      const base = 48000 + (process.pid % 1000)
+      const base = 18000 + (process.pid % 1000)
       const host = await device(base)
       const joiner = await device(base + 1)
       const notePort = await noteServer('# Same address')
@@ -177,7 +180,7 @@ describe('P2PMD notes over the local network, with no internet', function () {
     })
 
     it('of a private note is told only to the link\'s key', async function () {
-      const base = 49000 + (process.pid % 1000)
+      const base = 19000 + (process.pid % 1000)
       const host = await device(base)
       const joiner = await device(base + 1)
       const notePort = await noteServer('secret')
@@ -193,7 +196,7 @@ describe('P2PMD notes over the local network, with no internet', function () {
     })
 
     it('is not told by an older host, and the join takes any free port as before', async function () {
-      const base = 50000 + (process.pid % 1000)
+      const base = 20000 + (process.pid % 1000)
       const host = await device(base)
       const joiner = await device(base + 1)
       const server = publicNote()
@@ -216,7 +219,7 @@ describe('P2PMD notes over the local network, with no internet', function () {
   // back, while online it carried on.
   describe('when the local network starts again', function () {
     it('a guest finds its host again where the host came back, and the note opens', async function () {
-      const base = 51000 + (process.pid % 1000)
+      const base = 21000 + (process.pid % 1000)
       const first = await device(base)
       const guestLan = await device(base + 1)
       const notePort = await noteServer('# Still here')
@@ -250,7 +253,7 @@ describe('P2PMD notes over the local network, with no internet', function () {
     // the browser no connection to the note at all.
     it('drops a long request whose host\'s instance was destroyed outright, instead of keeping it open forever', async function () {
       this.timeout(40000)
-      const base = 53000 + (process.pid % 1000)
+      const base = 23000 + (process.pid % 1000)
       const hostLan = await device(base)
       const guestLan = await device(base + 1)
       // Like the note's event stream: headers, then nothing for a long while.
@@ -279,7 +282,7 @@ describe('P2PMD notes over the local network, with no internet', function () {
     })
 
     it('a guest whose own instance went drops each connection instead of throwing, and carries on on the new one', async function () {
-      const base = 52000 + (process.pid % 1000)
+      const base = 22000 + (process.pid % 1000)
       const hostLan = await device(base)
       let guestLan = await device(base + 1)
       const notePort = await noteServer('# On the new one')
@@ -303,7 +306,7 @@ describe('P2PMD notes over the local network, with no internet', function () {
   })
 
   it('finds nothing when no host has the note, so the join goes to the internet', async function () {
-    const base = 45000 + (process.pid % 2000)
+    const base = 15000 + (process.pid % 2000)
     await device(base)
     const joiner = await device(base + 1)
     expect(await findNoteOnLan(joiner, crypto.randomBytes(32), { timeoutMs: 800 })).to.equal(null)
@@ -324,7 +327,7 @@ describe('P2PMD notes over the local network, with no internet', function () {
   }
 
   it('hosts a note on the local network while the internet does not answer, and it opens there', async function () {
-    const base = 47000 + (process.pid % 2000)
+    const base = 17000 + (process.pid % 2000)
     const host = await device(base)
     const joiner = await device(base + 1)
     const notePort = await noteServer('# Offline')
