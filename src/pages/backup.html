@@ -70,8 +70,12 @@
     /* Rows in My devices sit in a list of their own, so only the card's
        first row goes without a line above it. */
     .ld-card > .ld-row:first-child { border-top: 0; }
-    button.ld-row { cursor: pointer; }
-    button.ld-row:hover, button.ld-row:focus-visible { background: var(--ld-hover); outline: none; }
+    button.ld-row, a.ld-row { cursor: pointer; }
+    /* The theme turns every link blue with light text on hover. A row that
+       is a link hovers as the other rows do. */
+    a.ld-row, a.ld-row:visited { color: var(--settings-text-primary); text-decoration: none; }
+    button.ld-row:hover, button.ld-row:focus-visible,
+    a.ld-row:hover, a.ld-row:focus-visible { background: var(--ld-hover); color: var(--settings-text-primary); outline: none; }
     button.ld-row:disabled { cursor: default; opacity: 0.6; }
     .ld-row-icon { flex-shrink: 0; width: 20px; height: 20px; color: var(--settings-text-secondary); }
     .ld-row-text { flex: 1; min-width: 0; }
@@ -370,7 +374,7 @@
 
         <div class="ld-label">Download</div>
         <div class="ld-card">
-          <a class="ld-row" href="https://peersky.p2plabs.xyz/" target="_blank" rel="noopener noreferrer" style="text-decoration: none;">
+          <a class="ld-row" href="https://peersky.p2plabs.xyz/" target="_blank" rel="noopener noreferrer">
             <svg class="ld-row-icon"><use href="#i-phone"/></svg>
             <div class="ld-row-text">
               <div class="ld-row-title">Get PeerSky on your phone</div>
