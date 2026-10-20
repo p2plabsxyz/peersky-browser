@@ -357,6 +357,37 @@ describe('Hyper protocol handler', function () {
       expect(releasePeers.called).to.equal(true)
     })
 
+    it('looks again for a drive published a moment ago, instead of answering at once from an empty core', async function () {
+      // The publisher's announcement lands after the first lookup, and the
+      // swarm would not look again for ten minutes: only a second look finds it.
+      const { module, sdk, fetchStub } = await loadHyperModule()
+      let announced = false
+      const drive = {
+        writable: false,
+        core: {
+          length: 0,
+          peers: [],
+          findingPeers: () => () => {},
+          update: async () => {
+            if (!announced) return false
+            drive.core.length = 2
+            drive.core.peers = [{}]
+            return true
+          },
+          discovery: { refresh: sinon.stub().callsFake(async () => { announced = true }) }
+        }
+      }
+      const handler = await module.createHandler({ storage: 'test-look-again' })
+      sdk.getDrive.callsFake(async () => drive)
+
+      const response = await handler(new Request(`hyper://${'c'.repeat(52)}/index.html`, { method: 'GET' }))
+
+      expect(drive.core.discovery.refresh.calledOnce).to.equal(true)
+      expect(drive.core.length).to.equal(2)
+      expect(response.status).to.equal(200)
+      expect(fetchStub.calledOnce).to.equal(true)
+    })
+
     it('asks the core to wait rather than answering from an empty core', async function () {
       const { module, sdk } = await loadHyperModule()
       const handler = await module.createHandler({ storage: 'test-peer-wait-opts' })

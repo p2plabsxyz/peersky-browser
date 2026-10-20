@@ -660,6 +660,12 @@ export async function stopHyperPublish (address) {
 // A drive nobody is seeding must not hold a tab open forever, so the wait is
 // bounded and the caller serves whatever the drive has once it expires.
 const PEER_WAIT_MS = 15000
+// A drive published a moment ago is often not announced yet when the first
+// lookup runs, and the swarm looks again only every ten minutes: a link opened
+// on another device right after it was published said "Peers Not Found", and
+// said it at once on every reload for minutes. The lookup runs again this
+// often until a peer answers or the wait runs out.
+const LOOK_AGAIN_MS = 2000
 
 export async function waitForDriveReady (url, timeoutMs = PEER_WAIT_MS) {
   if (!sdk) return
@@ -670,28 +676,41 @@ export async function waitForDriveReady (url, timeoutMs = PEER_WAIT_MS) {
     if (drive.writable || drive.core.length > 0) return
 
     log.info(`Waiting for peers for ${hostname}...`)
-    // findingPeers() hands back the release callback, and holding it open is
-    // the only thing that makes update() wait for a peer rather than return
-    // straight away against a core that has replicated nothing yet. Awaiting
-    // the callback instead of calling it, as this did before, both skipped the
-    // wait and leaked the counter. Releasing twice is safe: it is once-guarded.
-    const done = typeof drive.core.findingPeers === 'function'
-      ? drive.core.findingPeers()
-      : null
+    const deadline = Date.now() + timeoutMs
+    for (let attempt = 0; Date.now() < deadline; attempt++) {
+      if (attempt > 0) {
+        await new Promise((resolve) => setTimeout(resolve, Math.min(LOOK_AGAIN_MS, Math.max(0, deadline - Date.now()))))
+        if (Date.now() >= deadline) break
+      }
+      // findingPeers() hands back the release callback, and holding it open is
+      // the only thing that makes update() wait for a peer rather than return
+      // straight away against a core that has replicated nothing yet. Awaiting
+      // the callback instead of calling it, as this did before, both skipped the
+      // wait and leaked the counter. Releasing twice is safe: it is once-guarded.
+      const done = typeof drive.core.findingPeers === 'function'
+        ? drive.core.findingPeers()
+        : null
 
-    let timer = null
-    try {
-      // Inside the try: if the SDK is torn down by a backup between here and
-      // the race, the throw must still reach the finally that releases the
-      // counter, or this drive waits the full timeout on every later request.
-      if (done) sdk.swarm.flush().then(done, done)
-      await Promise.race([
-        drive.core.update({ wait: true }),
-        new Promise((resolve) => { timer = setTimeout(resolve, timeoutMs) })
-      ])
-    } finally {
-      if (timer) clearTimeout(timer)
-      if (done) done()
+      let timer = null
+      let updated = false
+      try {
+        // Inside the try: if the SDK is torn down by a backup between here and
+        // the race, the throw must still reach the finally that releases the
+        // counter, or this drive waits the full timeout on every later request.
+        const lookup = attempt > 0 && typeof drive.core.discovery?.refresh === 'function'
+          ? drive.core.discovery.refresh()
+          : sdk.swarm.flush()
+        if (done) Promise.resolve(lookup).then(done, done)
+        updated = await Promise.race([
+          drive.core.update({ wait: true }),
+          new Promise((resolve) => { timer = setTimeout(() => resolve(false), Math.max(0, deadline - Date.now())) })
+        ])
+      } finally {
+        if (timer) clearTimeout(timer)
+        if (done) done()
+      }
+      // Answered: by a peer with the drive, even an empty one.
+      if (updated || drive.core.length > 0 || drive.core.peers?.length > 0) break
     }
     log.info(`Finished waiting for peers for ${hostname}, core length is now ${drive.core.length}`)
   } catch (err) {
