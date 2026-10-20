@@ -443,6 +443,46 @@ describe('HS protocol handler', function () {
     })
   })
 
+  // A note has one address on every device: the host keeps its port, and a
+  // joiner listens on the host's, which Holesail reads from the host's record.
+  describe('the port a note is on', function () {
+    it('stays the same when the host restarts', async function () {
+      const { data: room } = await protocolPost(handler, 'create', { secure: true, udp: false })
+      expect(room.localPort).to.be.a('number')
+      await protocolPost(handler, 'close', {})
+
+      const { handler: restarted } = await loadHsHandler(userDataDir)
+      const { data: rehosted } = await protocolPost(restarted, 'rehost', { key: room.key })
+      expect(rehosted.localPort).to.equal(room.localPort)
+      await protocolPost(restarted, 'close', {})
+
+      // Opening the note again hosts it again, on the same port too.
+      const { handler: reopened } = await loadHsHandler(userDataDir)
+      const { data: joined } = await protocolPost(reopened, 'join', { key: room.key })
+      expect(joined.hosted).to.equal(true)
+      expect(joined.localPort).to.equal(room.localPort)
+      await protocolPost(reopened, 'close', {})
+    })
+
+    it('is the host\'s on a device that joins, again after that device restarts', async function () {
+      const { data: room } = await protocolPost(handler, 'create', { secure: true, udp: false })
+      const otherDir = fs.mkdtempSync(path.join(os.tmpdir(), 'peersky-hs-joiner-'))
+      try {
+        const { handler: joiner } = await loadHsHandler(otherDir)
+        const { data: joined } = await protocolPost(joiner, 'join', { key: room.key, joinOnly: true })
+        expect(joined.localPort).to.equal(room.localPort)
+        await protocolPost(joiner, 'close', {})
+
+        const { handler: restarted } = await loadHsHandler(otherDir)
+        const { data: again } = await protocolPost(restarted, 'join', { key: room.key, joinOnly: true })
+        expect(again.localPort).to.equal(room.localPort)
+        await protocolPost(restarted, 'close', {})
+      } finally {
+        fs.rmSync(otherDir, { recursive: true, force: true })
+      }
+    })
+  })
+
   describe('a private note hosted again', function () {
     // Its address is its key. Hosting it from the saved seed with no key left
     // Holesail to make one up, and the page saved the note's edits and line

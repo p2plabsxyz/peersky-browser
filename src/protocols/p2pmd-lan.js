@@ -27,6 +27,21 @@ export function noteTopic (publicKey) {
   return crypto.createHash('sha256').update('peersky-p2pmd-lan/1').update(publicKey).digest()
 }
 
+// How long a join waits for the host to say which port it keeps the note on.
+export const LAN_PORT_MS = 1500
+
+/**
+ * The key pair a host answers "which port?" under on the LAN DHT. Over the
+ * internet a joiner reads the port from the host's record and listens on the
+ * same one, so a note has one address on every device; on the local network
+ * there is no record, and each join took whatever port was free. Worked out
+ * from the note's public key, so every device with the link works it out, the
+ * phone too (backend/holesail/lan.mjs there).
+ */
+export function notePortKeyPair (publicKey) {
+  return HyperDHT.keyPair(crypto.createHash('sha256').update('peersky-p2pmd-lan-port/1').update(publicKey).digest())
+}
+
 /**
  * The note's public key, and for a private note the key pair a joiner proves
  * it has, worked out from the link the way Holesail works them out.
@@ -51,6 +66,16 @@ export async function hostNoteOnLan (lan, holesailServer, { host = '127.0.0.1', 
     libNet.pipeTcpServer(connection, { port, host }, { isServer: true, compress: false }, {})
   })
   await lanServer.listen(keyPair)
+  // Lets in the same keys as the note: a private note's port goes only to
+  // someone with its link.
+  let portServer = lan.dht.createServer({ firewall, reusableSocket: true }, (socket) => {
+    socket.on('error', () => {})
+    socket.end(b4a.from(JSON.stringify({ port })))
+  })
+  await portServer.listen(notePortKeyPair(keyPair.publicKey)).catch(async () => {
+    await portServer.close().catch(() => {})
+    portServer = null
+  })
   const topic = noteTopic(keyPair.publicKey)
   lan.join(topic, { server: true, client: false })
   let closed = false
@@ -60,8 +85,52 @@ export async function hostNoteOnLan (lan, holesailServer, { host = '127.0.0.1', 
       closed = true
       await Promise.resolve().then(() => lan.leave(topic)).catch(() => {})
       await lanServer.close().catch(() => {})
+      await portServer?.close().catch(() => {})
     }
   }
+}
+
+/**
+ * The port the host found at address keeps the note on, or null from a host
+ * that does not say, as an older PeerSky, or not in time.
+ */
+export function askNotePortOnLan (lan, { publicKey, keyPair = null, address, timeoutMs = LAN_PORT_MS }) {
+  if (!lan?.dht || lan.destroyed) return Promise.resolve(null)
+  return new Promise((resolve) => {
+    let done = false
+    let socket = null
+    let text = ''
+    const finish = (port) => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      socket?.destroy()
+      resolve(port)
+    }
+    const timer = setTimeout(() => finish(null), timeoutMs)
+    try {
+      socket = lan.dht.connect(notePortKeyPair(publicKey).publicKey, {
+        ...(keyPair ? { keyPair } : {}),
+        relayAddresses: [address],
+        reusableSocket: true
+      })
+    } catch {
+      return finish(null)
+    }
+    socket.on('data', (chunk) => {
+      text += b4a.toString(chunk)
+      if (text.length > 64) finish(null)
+    })
+    socket.once('end', () => {
+      let port = null
+      try {
+        port = JSON.parse(text).port
+      } catch {}
+      finish(Number.isInteger(port) && port > 0 && port < 65536 ? port : null)
+    })
+    socket.once('error', () => finish(null))
+    socket.once('close', () => finish(null))
+  })
 }
 
 /** The host's address on the local network, or null when no host says so in time. */

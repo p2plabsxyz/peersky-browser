@@ -1,6 +1,6 @@
 import Holesail from 'holesail'
 import { createLogger } from '../logger.js'
-import { findNoteOnLan, hostNoteOnLan, noteKeys, openNoteOnLan, reachNoteOnLan, startNoteHost } from './p2pmd-lan.js'
+import { askNotePortOnLan, findNoteOnLan, hostNoteOnLan, noteKeys, openNoteOnLan, reachNoteOnLan, startNoteHost } from './p2pmd-lan.js'
 import http from 'http'
 import fs from 'fs'
 import path from 'path'
@@ -1873,8 +1873,20 @@ async function joinNoteOnLan (key, secure, { host, port }) {
     const keys = noteKeys(key, secure)
     const address = await findNoteOnLan(lan, keys.publicKey)
     if (!address) return null
-    if (!await reachNoteOnLan(lan, { publicKey: keys.publicKey, keyPair: keys.keyPair, address })) return null
-    return await openNoteOnLan(lan, { publicKey: keys.publicKey, keyPair: keys.keyPair, address, host, port: port || 0 })
+    const route = { publicKey: keys.publicKey, keyPair: keys.keyPair, address }
+    // Asked while the host is checked: the port it keeps the note on, so the
+    // note has the same address here, as a join over the internet has.
+    const [reached, hostPort] = await Promise.all([
+      reachNoteOnLan(lan, route),
+      port ? null : askNotePortOnLan(lan, route)
+    ])
+    if (!reached) return null
+    if (hostPort) {
+      // Taken here, as on the host's own computer: any free port, as before.
+      const client = await openNoteOnLan(lan, { ...route, host, port: hostPort }).catch(() => null)
+      if (client) return client
+    }
+    return await openNoteOnLan(lan, { ...route, host, port: port || 0 })
   } catch (error) {
     log.warn('[p2pmd] local network join failed, trying the internet:', error?.message || error)
     return null

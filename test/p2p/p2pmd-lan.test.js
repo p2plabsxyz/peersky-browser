@@ -3,7 +3,7 @@ import crypto from 'crypto'
 import http from 'http'
 import { createRequire } from 'module'
 import HyperDHTmDNS from '@p2plabs/hyperdht-mdns'
-import { findNoteOnLan, hostNoteOnLan, noteKeys, openNoteOnLan, reachNoteOnLan, startNoteHost } from '../../src/protocols/p2pmd-lan.js'
+import { askNotePortOnLan, findNoteOnLan, hostNoteOnLan, noteKeys, notePortKeyPair, noteTopic, openNoteOnLan, reachNoteOnLan, startNoteHost } from '../../src/protocols/p2pmd-lan.js'
 
 const require = createRequire(import.meta.url)
 
@@ -143,6 +143,72 @@ describe('P2PMD notes over the local network, with no internet', function () {
       text = await Promise.race([get(stranger.info.port), new Promise((resolve) => setTimeout(() => resolve(null), 4000))])
     } catch {}
     expect(text).to.not.equal('secret')
+  })
+
+  // Over the internet a joiner listens on the port in the host's record, so a
+  // note has one address everywhere. On the local network each join took any
+  // free port, a new one every time.
+  describe('the port a note is on', function () {
+    // A public note's link is its public key.
+    function publicNote () {
+      const HyperDHT = require('hyperdht')
+      const z32 = require('z32')
+      const keyPair = HyperDHT.keyPair()
+      return { link: `hs://0000${z32.encode(keyPair.publicKey)}`, dht: { keyPair, secure: false } }
+    }
+
+    it('is worked out the same on the phone (backend/holesail/lan.mjs there)', function () {
+      expect(notePortKeyPair(Buffer.alloc(32, 1)).publicKey.toString('hex'))
+        .to.equal('34ae754ccc5daf1768b69dc12407461e7ecbdb5259a738f5883b458a95d745e3')
+    })
+
+    it('is told to a joiner, which then listens on the same port', async function () {
+      const base = 48000 + (process.pid % 1000)
+      const host = await device(base)
+      const joiner = await device(base + 1)
+      const notePort = await noteServer('# Same address')
+      const server = publicNote()
+      const hosted = await hostNoteOnLan(host, server, { port: notePort })
+      closers.push(() => hosted.close())
+
+      const keys = noteKeys(server.link)
+      const address = await findNoteOnLan(joiner, keys.publicKey, { timeoutMs: 10000 })
+      expect(await askNotePortOnLan(joiner, { publicKey: keys.publicKey, address })).to.equal(notePort)
+    })
+
+    it('of a private note is told only to the link\'s key', async function () {
+      const base = 49000 + (process.pid % 1000)
+      const host = await device(base)
+      const joiner = await device(base + 1)
+      const notePort = await noteServer('secret')
+      const server = holesailServer(true)
+      const hosted = await hostNoteOnLan(host, server, { port: notePort })
+      closers.push(() => hosted.close())
+
+      const keys = noteKeys(server.link)
+      const address = await findNoteOnLan(joiner, keys.publicKey, { timeoutMs: 10000 })
+      expect(await askNotePortOnLan(joiner, { publicKey: keys.publicKey, keyPair: keys.keyPair, address })).to.equal(notePort)
+      const HyperDHT = require('hyperdht')
+      expect(await askNotePortOnLan(joiner, { publicKey: keys.publicKey, keyPair: HyperDHT.keyPair(), address })).to.equal(null)
+    })
+
+    it('is not told by an older host, and the join takes any free port as before', async function () {
+      const base = 50000 + (process.pid % 1000)
+      const host = await device(base)
+      const joiner = await device(base + 1)
+      const server = publicNote()
+      // As hosts did before: the note only, no answer about its port.
+      const old = host.dht.createServer({ reusableSocket: true }, (socket) => socket.destroy())
+      await old.listen(server.dht.keyPair)
+      host.join(noteTopic(server.dht.keyPair.publicKey), { server: true, client: false })
+      closers.push(() => old.close())
+
+      const keys = noteKeys(server.link)
+      const address = await findNoteOnLan(joiner, keys.publicKey, { timeoutMs: 10000 })
+      const started = Date.now()
+      expect(await askNotePortOnLan(joiner, { publicKey: keys.publicKey, address })).to.equal(null)
+      expect(Date.now() - started).to.be.below(2000)
+    })
   })
 
   it('finds nothing when no host has the note, so the join goes to the internet', async function () {
