@@ -46,6 +46,22 @@ function failedUrlBehindErrorPage (webview) {
   }
 }
 
+// A tab whose page gave no icon. icon16.png, the one named here before, is not
+// in static/assets, so those tabs showed an empty slot.
+const DEFAULT_TAB_ICON = 'url(peersky://static/assets/favicon.ico)'
+
+// Two addresses on one site: scheme and host. URL.origin gives "null" for
+// peersky: and the P2P schemes, so it cannot be used.
+function sameSite (a, b) {
+  try {
+    const left = new URL(a)
+    const right = new URL(b)
+    return left.protocol === right.protocol && left.host === right.host
+  } catch {
+    return false
+  }
+}
+
 // This page runs with node integration, so markup built from any stored or
 // page-supplied string must go through here.
 function escapeHtml (value) {
@@ -64,6 +80,11 @@ class TabBar extends HTMLElement {
     this.zoomLevels = new Map() // Zoom level by tab ID
     this.listenForPinchZoom()
     this.faviconsByTab = new Map() // By tab ID, the icons of pages it showed, by address
+    // By webview, the page it last showed, and that page's icon while the new
+    // page has sent none. The tab's url is no use for the first: typing an
+    // address sets it before the page loads.
+    this.lastPageUrl = new WeakMap()
+    this.iconBeforeNavigation = new WeakMap()
     this._tabsStateTimer = null // Pending coalesced saveTabsState write
     this.webviewContainer = null // Will be set by connectWebviewContainer
     this.pinnedTabs = new Set() // Track pinned tabs
@@ -806,7 +827,7 @@ class TabBar extends HTMLElement {
     // favicon element
     const faviconElement = document.createElement('div')
     faviconElement.className = 'tab-favicon'
-    faviconElement.style.backgroundImage = 'url(peersky://static/assets/icon16.png)'
+    faviconElement.style.backgroundImage = DEFAULT_TAB_ICON
     faviconElement.style.display = 'block'
 
     const closeButton = document.createElement('span')
@@ -1181,8 +1202,9 @@ class TabBar extends HTMLElement {
           }
           // Only set default icon if no background image is set
           if (!faviconElement.style.backgroundImage || faviconElement.style.backgroundImage === 'none') {
-            faviconElement.style.backgroundImage = 'url(peersky://static/assets/icon16.png)'
+            faviconElement.style.backgroundImage = this.iconBeforeNavigation.get(webview) || DEFAULT_TAB_ICON
           }
+          this.iconBeforeNavigation.delete(webview)
         }
       }
 
@@ -1218,8 +1240,17 @@ class TabBar extends HTMLElement {
       const faviconElement = document.getElementById(tabId)?.querySelector('.tab-favicon')
       if (faviconElement) {
         const known = this.faviconsByTab.get(tabId)?.get(newUrl)
+        // Chromium sends no page-favicon-updated when a page's icons are the
+        // same as the last page's, as between two pages of one site, so every
+        // link on Wikipedia left the tab with no icon, as did Home to
+        // peersky://version. Kept here, did-stop-loading puts it back for a
+        // page of the same site that sent none.
+        const before = faviconElement.style.backgroundImage
+        if (before && before !== 'none' && sameSite(this.lastPageUrl.get(webview), newUrl)) this.iconBeforeNavigation.set(webview, before)
+        else this.iconBeforeNavigation.delete(webview)
         faviconElement.style.backgroundImage = known ? `url(${known})` : ''
       }
+      this.lastPageUrl.set(webview, newUrl)
       if (tab && tab.savedNavigation && tab.savedNavigation.entries) {
         if (tab.isFallbackNavigating) {
           tab.isFallbackNavigating = false
@@ -1296,6 +1327,7 @@ class TabBar extends HTMLElement {
     })
 
     webview.addEventListener('page-favicon-updated', (e) => {
+      this.iconBeforeNavigation.delete(webview)
       const tabElement = document.getElementById(tabId)
       if (!tabElement) return
 
@@ -1324,7 +1356,7 @@ class TabBar extends HTMLElement {
         faviconElement.style.display = 'block'
       } else {
         // Use default icon if no favicon is available
-        faviconElement.style.backgroundImage = 'url(peersky://static/assets/icon16.png)'
+        faviconElement.style.backgroundImage = DEFAULT_TAB_ICON
         faviconElement.style.display = 'block'
       }
     })

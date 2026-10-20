@@ -1347,6 +1347,24 @@ ipcMain.handle('check-built-in-engine', (event, template) => {
 
 setupP2pmdPdfExportIpc()
 
+// peersky://version's System Information, which showed nothing: the page has
+// no access to Node, and it asked for none. Paths on this computer go only to
+// that page.
+const OS_NAMES = { darwin: 'macOS', win32: 'Windows', linux: 'Linux' }
+ipcMain.handle('version-system-info', (event) => {
+  assertCaller(event, 'version')
+  return {
+    version: app.getVersion(),
+    os: `${OS_NAMES[process.platform] || process.platform} ${process.getSystemVersion()} (${process.arch})`,
+    electron: process.versions.electron,
+    chromium: process.versions.chrome,
+    node: process.versions.node,
+    v8: process.versions.v8,
+    execPath: process.execPath,
+    profilePath: app.getPath('userData')
+  }
+})
+
 // Onboarding IPC handlers
 ipcMain.handle('onboarding-import-data', async (event, dataStr) => {
   assertCaller(event, 'onboarding')

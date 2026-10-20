@@ -184,7 +184,7 @@ describe('the floating tab preview', function () {
   })
 
   it('shows favicons from the browser schemes and nothing else', function () {
-    expect(preview.previewPage({ favicon: 'peersky://static/assets/icon16.png', width: 100, height: 30 })).to.contain('url("peersky://static/assets/icon16.png")')
+    expect(preview.previewPage({ favicon: 'peersky://static/assets/favicon.ico', width: 100, height: 30 })).to.contain('url("peersky://static/assets/favicon.ico")')
     expect(preview.previewPage({ favicon: 'javascript:alert(1)', width: 100, height: 30 })).to.contain('background: none')
     expect(preview.previewPage({ favicon: 'https://x.test/a".png', width: 100, height: 30 })).to.contain('url("https://x.test/a%22.png")')
   })
@@ -470,7 +470,36 @@ describe('a page with no icon of its own', function () {
   })
 
   it('shows the default icon when the page gave none by the time it loaded', function () {
-    expect(stopped).to.match(/if \(!faviconElement\.style\.backgroundImage \|\| [^)]*\) \{\s*faviconElement\.style\.backgroundImage = 'url\(peersky:\/\/static\/assets\/icon16\.png\)'/)
+    expect(stopped).to.match(/if \(!faviconElement\.style\.backgroundImage \|\| [^)]*\) \{\s*faviconElement\.style\.backgroundImage = this\.iconBeforeNavigation\.get\(webview\) \|\| DEFAULT_TAB_ICON/)
+  })
+
+  // The default named icon16.png, which is not in static/assets, so a tab with
+  // no icon of its own showed an empty slot.
+  it('names only icons that are there', async function () {
+    const { existsSync } = await import('fs')
+    const named = [...`${tabBar}\n${await source('../src/pages/vertical-tabs.js')}`.matchAll(/peersky:\/\/static\/assets\/([\w.-]+)/g)].map((m) => m[1])
+    expect(named).to.include('favicon.ico')
+    for (const file of new Set(named)) {
+      expect(existsSync(new URL(`../src/pages/static/assets/${file}`, import.meta.url)), file).to.equal(true)
+    }
+  })
+
+  // Chromium sends no page-favicon-updated when a page's icons are the same as
+  // the last page's: every link on Wikipedia, or Home to peersky://version,
+  // left the tab with no icon.
+  it('keeps the last page\'s icon for a page of the same site that sent none', function () {
+    expect(navigated).to.contain("if (before && before !== 'none' && sameSite(this.lastPageUrl.get(webview), newUrl)) this.iconBeforeNavigation.set(webview, before)")
+    expect(navigated.indexOf('this.lastPageUrl.set(webview, newUrl)')).to.be.greaterThan(navigated.indexOf('sameSite(this.lastPageUrl.get(webview), newUrl)'))
+    expect(tabBar).to.contain("webview.addEventListener('page-favicon-updated', (e) => {\n      this.iconBeforeNavigation.delete(webview)")
+    const start = tabBar.indexOf('function sameSite (a, b) {')
+    const body = tabBar.slice(tabBar.indexOf('{', start) + 1, tabBar.indexOf('\n}\n', start))
+    // eslint-disable-next-line no-new-func
+    const sameSite = new Function('a', 'b', body)
+    expect(sameSite('https://en.wikipedia.org/wiki/Lake', 'https://en.wikipedia.org/wiki/River')).to.equal(true)
+    expect(sameSite('peersky://home/', 'peersky://home/?x=1')).to.equal(true)
+    expect(sameSite('peersky://home/', 'peersky://version/')).to.equal(false)
+    expect(sameSite('https://example.com/', 'file:///tmp/a.pdf')).to.equal(false)
+    expect(sameSite(undefined, 'https://example.com/')).to.equal(false)
   })
 })
 

@@ -41,6 +41,7 @@ const isBackup = isPeerskyPage('backup')
 const isTabsPage = isPeerskyPage('tabs')
 const isP2PPage = isPeerskyPage('p2p')
 const isUserP2PApp = isPeerskyPage('myapps')
+const isVersionPage = isPeerskyPage('version')
 const isTrustedExternalHost = pageProtocol === 'https:' && pageHost === 'agregore.mauve.moe'
 const isInternal = (pageProtocol === 'peersky:' && !isUserP2PApp) || pageProtocol === 'file:' || isTrustedExternalHost
 const isExternal = !isInternal
@@ -485,6 +486,13 @@ function createEventListener (eventName, callback) {
 
   ipcRenderer.on(eventName, wrappedCallback)
   return () => ipcRenderer.removeListener(eventName, wrappedCallback)
+}
+
+// peersky://version reads its System Information from here, and no other page.
+if (isVersionPage) {
+  contextBridge.exposeInMainWorld('peerskyVersion', {
+    systemInfo: () => ipcRenderer.invoke('version-system-info')
+  })
 }
 
 // Static APIs for different contexts
