@@ -206,6 +206,17 @@ describe('backups and transfers with locked files', function () {
     }
   })
 
+  it('a backup carries the PeerChat file opened, which PeerChat locks whole as these files are', async function () {
+    // As PeerChat's p2p.js writes it, with the same safe storage.
+    const chat = { v: 2, plain: true, profile: { username: 'ada' }, link: { key: 'ef'.repeat(32) }, rooms: { ['cd'.repeat(32)]: { roomKey: 'cd'.repeat(32), name: 'Trip planning' } } }
+    const data = fakeSafeStorage().encryptString(JSON.stringify(chat)).toString('base64')
+    fs.writeFileSync(path.join(userData, 'peersky-chat-rooms.json'), JSON.stringify({ 'peersky-sealed': 1, data }))
+    const result = await createBackupZip(userData, path.join(out, 'b.zip'))
+    const dest = await unpack(path.join(out, 'b.zip'))
+    await verifyManifest(dest, result.manifest)
+    expect(JSON.parse(fs.readFileSync(path.join(dest, 'peersky-chat-rooms.json'), 'utf8'))).to.deep.equal(chat)
+  })
+
   it('the computer it is restored on reads it and locks it with its own safe storage', async function () {
     await createBackupZip(userData, path.join(out, 'b.zip'), { includePrivate: true })
     const dest = await unpack(path.join(out, 'b.zip'))
