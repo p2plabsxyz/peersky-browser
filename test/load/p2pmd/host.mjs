@@ -3,7 +3,9 @@
 // electron and holesail for stubs, so nothing starts Electron or Holesail, and
 // every app data path is the run's temp folder. The note is made with
 // hs://p2pmd?action=create, as the P2PMD page does, and its server binds
-// 127.0.0.1. run.mjs starts this process and asks it for measurements.
+// 127.0.0.1. With --lan, hs-handler.js also hosts it on a local network
+// instance (lan.mjs), as with no internet. run.mjs starts this process and
+// asks it for measurements.
 import dc from 'node:diagnostics_channel'
 import { register } from 'node:module'
 import { monitorEventLoopDelay, performance } from 'node:perf_hooks'
@@ -25,7 +27,7 @@ answer({
     return {}
   }
 })
-process.send({ type: 'ready', url: room.localUrl, host: 'desktop' })
+process.send({ type: 'ready', url: room.localUrl, host: 'desktop', lan: process.env.P2PMD_LOAD_LAN ? { address: room.key } : null })
 
 // A request to the hs://p2pmd protocol, as the P2PMD page makes it.
 async function protocol (action, body) {

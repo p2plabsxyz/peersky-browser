@@ -3,9 +3,11 @@
 // cost. See README.md.
 //
 //   npm run test:load:p2pmd -- --people 20 --typing 3 --seconds 20
+//   npm run test:load:p2pmd -- --lan
 //
 // run.mjs and editors.mjs are the same in PeerSky Mobile and PeerSky Desktop.
-// host.mjs runs the checkout's own host.
+// host.mjs runs the checkout's own host, and lan.mjs its own local network
+// tunnels.
 import { fork } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
@@ -16,7 +18,8 @@ import { parseArgs } from 'node:util'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const EDITORS_PER_PROCESS = 25
-// One person joins every 20 ms, so 100 take two seconds.
+// One person joins every 20 ms, so 100 take two seconds, unless --join-every
+// says otherwise.
 const JOIN_GAP_MS = 20
 // How long the copies get to agree once typing stops.
 const SAME_TEXT_WAIT_MS = 30000
@@ -37,6 +40,10 @@ const USAGE = `Usage: node test/load/p2pmd/run.mjs [options]
   --typing <n>     how many of them type (default 10)
   --seconds <n>    how long they type (default 60)
   --editor <kind>  desktop or phone: which P2PMD editor they act like (default desktop)
+  --lan            each editor a device of its own, reaching the note through a
+                   tunnel on the local network, as with no internet
+  --join-every <ms>
+                   one person joins every <ms> (default ${JOIN_GAP_MS})
   --out <file>     also write the results to a JSON file`
 
 const options = readOptions()
@@ -62,17 +69,20 @@ try {
 process.exit(code)
 
 async function run () {
-  const { people, typing, seconds, editor: mode } = options
+  const { people, typing, seconds, editor: mode, lan } = options
   const startedAt = new Date()
   const loadAverage = os.loadavg()[0]
   const typists = pickTypists(typing, people)
   const nameOf = (index) => `Person ${index + 1}`
 
   // Anything the host saves goes in the temp folder, removed at the end.
-  const host = start('host.mjs', 'the host', { P2PMD_LOAD_DIR: dir, PEERSKY_LOG_LEVEL: 'warn' })
+  const host = start('host.mjs', 'the host', { P2PMD_LOAD_DIR: dir, PEERSKY_LOG_LEVEL: 'warn', P2PMD_LOAD_LAN: lan ? '1' : '' })
   const ready = await firstMessage(host, 'ready')
+  // The host's own address for the note, which is how its own editor reaches
+  // it. With --lan everyone else goes through a tunnel to it (lan.mjs).
   const { url } = ready
-  status(`P2PMD load test: ${ready.host} host, ${mode} editors, ${people} people, ${typing} typing, ${seconds} s`)
+  if (lan && !ready.lan) throw new Error('The host did not put the note on the local network')
+  status(`P2PMD load test: ${ready.host} host, ${mode} editors, ${people} people, ${typing} typing, ${seconds} s${lan ? ', over the local network' : ''}`)
 
   await post(url, '/doc', buildNote([...typists].map(nameOf)))
   const noteAtStart = await measureNote(url)
@@ -88,8 +98,9 @@ async function run () {
   const joins = await Promise.all(groups.map(({ child, indexes }) => ask(child, {
     type: 'join',
     url,
+    lan: lan ? ready.lan : null,
     mode,
-    gapMs: JOIN_GAP_MS,
+    gapMs: options.joinEvery,
     editors: indexes.map((index) => ({ index, name: nameOf(index), typist: typists.has(index) }))
   })))
   const joinMs = Date.now() - joinStartedAt
@@ -124,7 +135,7 @@ async function run () {
   const reports = await Promise.all(groups.map(({ child }) => ask(child, { type: 'report' })))
 
   const results = summarize({
-    ready, mode, people, typing, startedAt, loadAverage, peers, joinMs, beforeJoining, atStart, ticks, atEnd, sameText, noteAtStart, noteAtEnd, reports
+    ready, mode, lan, people, typing, startedAt, loadAverage, peers, joinMs, beforeJoining, atStart, ticks, atEnd, sameText, noteAtStart, noteAtEnd, reports
   })
   console.log(formatResults(results))
   if (options.out) {
@@ -136,7 +147,7 @@ async function run () {
   return results.ok ? 0 : 1
 }
 
-function summarize ({ ready, mode, people, typing, startedAt, loadAverage, peers, joinMs, beforeJoining, atStart, ticks, atEnd, sameText, noteAtStart, noteAtEnd, reports }) {
+function summarize ({ ready, mode, lan, people, typing, startedAt, loadAverage, peers, joinMs, beforeJoining, atStart, ticks, atEnd, sameText, noteAtStart, noteAtEnd, reports }) {
   const seconds = (atEnd.at - atStart.at) / 1000
   const cpuPercent = (from, to) => round((to.cpuMicros - from.cpuMicros) / ((to.at - from.at) * 1000) * 100, 1)
   const marks = [atStart, ...ticks, atEnd]
@@ -181,6 +192,8 @@ function summarize ({ ready, mode, people, typing, startedAt, loadAverage, peers
   const results = {
     host: ready.host,
     editor: mode,
+    // Whether the editors came in through tunnels on the local network.
+    lan,
     people,
     typing,
     seconds: round(seconds, 2),
@@ -224,10 +237,13 @@ function summarize ({ ready, mode, people, typing, startedAt, loadAverage, peers
     },
     note: { atStart: noteAtStart, atEnd: noteAtEnd },
     joining: {
+      everyMs: options.joinEvery,
       seconds: round(joinMs / 1000, 1),
       hostOutMB: round((atStart.written - beforeJoining.written) / 1e6, 2),
       hostCpuSeconds: round((atStart.cpuMicros - beforeJoining.cpuMicros) / 1e6, 2),
-      inPerEditorKB: round(total(editors, (editor) => bytesIn(editor.joining)) / editors.length / 1000, 1)
+      inPerEditorKB: round(total(editors, (editor) => bytesIn(editor.joining)) / editors.length / 1000, 1),
+      // People whose first press of Join failed, and who pressed it again.
+      triedAgain: editors.filter((editor) => editor.joinTries > 1).length
     },
     editorProcesses: {
       count: reports.length,
@@ -258,6 +274,7 @@ function formatResults (r) {
   const rows = [
     ['People connected', r.peopleConnected === r.people ? String(r.people) : `${r.peopleConnected} of ${r.people}`],
     ['Typing', String(r.typing)],
+    ...(r.joining.triedAgain > 0 ? [['Joins that needed another try', `${r.joining.triedAgain} of ${r.people}`]] : []),
     ['Edits sent', editsText],
     ['Every editor ended with the host\'s text', r.sameText.same ? 'yes' : `no, ${r.sameText.differing} of ${r.people} differ`],
     ['Time until every editor saw an edit', delayText],
@@ -272,7 +289,7 @@ function formatResults (r) {
     .map(([kind, label]) => [label, fixed(data.byKind[kind], 2)])
 
   const lines = [
-    `P2PMD load test: ${r.host} host, ${r.editor} editors, ${r.seconds} s of typing`,
+    `P2PMD load test: ${r.host} host, ${r.editor} editors, ${r.seconds} s of typing${r.lan ? ', over the local network' : ''}`,
     '',
     '| Measure | Result |',
     '|---|---|',
@@ -444,6 +461,8 @@ function readOptions () {
         typing: { type: 'string', default: '10' },
         seconds: { type: 'string', default: '60' },
         editor: { type: 'string', default: 'desktop' },
+        lan: { type: 'boolean', default: false },
+        'join-every': { type: 'string', default: String(JOIN_GAP_MS) },
         out: { type: 'string' },
         help: { type: 'boolean', short: 'h' }
       }
@@ -459,16 +478,18 @@ function readOptions () {
   const people = Number(values.people)
   const typing = Number(values.typing)
   const seconds = Number(values.seconds)
+  const joinEvery = Number(values['join-every'])
   const problems = []
   if (!Number.isInteger(people) || people < 2) problems.push('--people must be a whole number, 2 or more.')
   if (!Number.isInteger(typing) || typing < 1 || typing > people) problems.push('--typing must be a whole number from 1 to --people.')
   if (!(seconds > 0)) problems.push('--seconds must be more than 0.')
+  if (!Number.isInteger(joinEvery) || joinEvery < 0) problems.push('--join-every must be a whole number of milliseconds.')
   if (!['desktop', 'phone'].includes(values.editor)) problems.push('--editor must be desktop or phone.')
   if (problems.length > 0) {
     console.error(`${problems.join('\n')}\n\n${USAGE}`)
     process.exit(2)
   }
-  return { people, typing, seconds, editor: values.editor, out: values.out ? path.resolve(values.out) : null }
+  return { people, typing, seconds, editor: values.editor, lan: values.lan, joinEvery, out: values.out ? path.resolve(values.out) : null }
 }
 
 function dist (values) {

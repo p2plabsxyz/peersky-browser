@@ -6,6 +6,8 @@
 //
 // desktop: the editor in the p2pmd repo (p2p.js), which PeerSky Desktop uses.
 // phone: the editor page in peersky-mobile's backend/p2pmd/server.mjs.
+// With --lan each editor is a device of its own on the local network and
+// reaches the note through a tunnel of its own (lan.mjs, the checkout's own).
 import { createHash, randomUUID } from 'node:crypto'
 import http from 'node:http'
 import { monitorEventLoopDelay, performance } from 'node:perf_hooks'
@@ -30,6 +32,10 @@ const REQUEST_TIMEOUT_MS = 15000
 // How long stopping waits for the typists' requests still out. A host that
 // fell behind may never answer them all.
 const STOP_WAIT_MS = 30000
+// Someone whose join fails presses Join again, a second later. The report
+// says how many had to.
+const JOIN_TRIES = 3
+const JOIN_AGAIN_MS = 1000
 // Bytes in, by SSE event and for the replies to the editor's own requests.
 const KINDS = ['yjsupdate', 'update', 'peerlist', 'peers', 'activity', 'keepalive', 'other', 'replies']
 
@@ -49,13 +55,27 @@ const stats = {
 let measuring = false
 
 const handlers = {
-  async join ({ url, mode, gapMs, editors: list }) {
-    const results = await Promise.allSettled(list.map(async (spec) => {
+  async join ({ url, lan, mode, gapMs, editors: list }) {
+    // Everyone is on the Wi-Fi before the first of them joins.
+    const devices = lan ? await startDevices(list.length) : []
+    const results = await Promise.allSettled(list.map(async (spec, n) => {
       // Spread over time by each person's place in the whole room.
       await sleep(spec.index * gapMs)
-      const editor = createEditor({ ...spec, url, mode })
+      const tunnel = lan ? await devices[n].open(lan) : null
+      const editor = createEditor({ ...spec, url: tunnel?.url || url, mode })
+      editor.device = devices[n] || null
       editors.push(editor)
-      await joinNote(editor)
+      for (editor.joinTries = 1; ; editor.joinTries++) {
+        try {
+          await joinNote(editor)
+          break
+        } catch (error) {
+          if (editor.joinTries === JOIN_TRIES) throw error
+          editor.stream?.destroy()
+          editor.stream = null
+          await sleep(JOIN_AGAIN_MS)
+        }
+      }
     }))
     const failed = []
     results.forEach((result, n) => {
@@ -103,6 +123,7 @@ const handlers = {
       editors: editors.map((editor) => ({
         index: editor.index,
         typist: editor.typist,
+        joinTries: editor.joinTries,
         joining: editor.atStart,
         window: Object.fromEntries(KINDS.map((kind) => [kind, editor.atStop[kind] - editor.atStart[kind]])),
         dropped: editor.dropped
@@ -118,15 +139,27 @@ const handlers = {
     }
   },
 
-  close () {
+  async close () {
     for (const editor of editors) {
       editor.closing = true
       clearTimeout(editor.waitTimer)
       editor.stream?.destroy()
       editor.agent.destroy()
     }
+    await Promise.all(editors.map((editor) => editor.device?.close()))
     return {}
   }
+}
+
+async function startDevices (count) {
+  const { startDevice } = await import('./lan.mjs')
+  const started = await Promise.allSettled(Array.from({ length: count }, () => startDevice()))
+  const failed = started.find((result) => result.status === 'rejected')
+  if (failed) {
+    await Promise.all(started.map((result) => result.value?.close()))
+    throw failed.reason
+  }
+  return started.map((result) => result.value)
 }
 
 process.on('message', async (message) => {
