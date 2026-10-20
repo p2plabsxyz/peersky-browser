@@ -30,6 +30,36 @@ export function noteTopic (publicKey) {
 // How long a join waits for the host to say which port it keeps the note on.
 export const LAN_PORT_MS = 1500
 
+// A tunnel on the local network says it is alive this often, and is dropped
+// after this long with nothing from the other end. A network change or a
+// backup destroys a local network instance outright, and the other end of each
+// of its tunnels was never told: they stayed open with nothing behind them,
+// and the browser, which keeps at most six connections to one address, was
+// left waiting on dead ones once six had piled up, so the note stopped
+// syncing for good. Over the internet Holesail's own DHT never goes like that.
+export const LAN_KEEP_ALIVE_MS = 5000
+export const LAN_STREAM_TIMEOUT_MS = 15000
+// A tunnel to a host that is not there, as while it closes and opens the note
+// again, could wait for its handshake forever, and the timeout above only
+// starts once it opens. The page's event stream was one of those, so it never
+// failed and never reconnected: the note stopped syncing when its host came
+// back. One that has not opened by then is dropped.
+export const LAN_OPEN_MS = 8000
+
+function keepTunnelAlive (socket) {
+  socket.setKeepAlive?.(LAN_KEEP_ALIVE_MS)
+  socket.setTimeout?.(LAN_STREAM_TIMEOUT_MS)
+  return socket
+}
+
+function openWithin (socket, ms) {
+  const timer = setTimeout(() => socket.destroy(new Error('The note did not answer on the local network')), ms)
+  timer.unref?.()
+  socket.once('open', () => clearTimeout(timer))
+  socket.once('close', () => clearTimeout(timer))
+  return socket
+}
+
 /**
  * The key pair a host answers "which port?" under on the LAN DHT. Over the
  * internet a joiner reads the port from the host's record and listens on the
@@ -63,7 +93,7 @@ export async function hostNoteOnLan (lan, holesailServer, { host = '127.0.0.1', 
   const keyPair = server.keyPair
   const firewall = server.secure ? (remotePublicKey) => !b4a.equals(remotePublicKey, keyPair.publicKey) : false
   const lanServer = lan.dht.createServer({ firewall, reusableSocket: true }, (connection) => {
-    libNet.pipeTcpServer(connection, { port, host }, { isServer: true, compress: false }, {})
+    libNet.pipeTcpServer(keepTunnelAlive(connection), { port, host }, { isServer: true, compress: false }, {})
   })
   await lanServer.listen(keyPair)
   // Lets in the same keys as the note: a private note's port goes only to
@@ -80,6 +110,9 @@ export async function hostNoteOnLan (lan, holesailServer, { host = '127.0.0.1', 
   lan.join(topic, { server: true, client: false })
   let closed = false
   return {
+    // Which local network instance the note is on: a new one starts after a
+    // network change or a backup, and the note has to be hosted there again.
+    lan,
     async close () {
       if (closed) return
       closed = true
@@ -201,23 +234,61 @@ export function reachNoteOnLan (lan, { publicKey, keyPair = null, address, timeo
  * client where the note's session uses one: info.port, close().
  */
 export function openNoteOnLan (lan, { publicKey, keyPair = null, address, host = '127.0.0.1', port = 0 }) {
+  // Where each connection goes: a local network instance and the host's
+  // address on it. Both change while a note is open: a network change or a
+  // backup starts a new instance here, and the host can come back at another
+  // address. moveTo() points the next connections there (hs-handler keeps it
+  // current). failedAt says a connection failed since the route last worked.
+  const route = { lan, address, failedAt: 0 }
   return new Promise((resolve, reject) => {
-    const connect = () => lan.dht.connect(publicKey, {
-      ...(keyPair ? { keyPair } : {}),
-      relayAddresses: [address],
-      reusableSocket: true
-    })
+    // Null drops the connection; a throw here would be the main process's.
+    const connect = () => {
+      if (!route.lan?.dht || route.lan.destroyed) {
+        route.failedAt = Date.now()
+        return null
+      }
+      try {
+        const socket = openWithin(keepTunnelAlive(route.lan.dht.connect(publicKey, {
+          ...(keyPair ? { keyPair } : {}),
+          relayAddresses: [route.address],
+          reusableSocket: true
+        })), LAN_OPEN_MS)
+        socket.once('open', () => { route.failedAt = 0 })
+        socket.once('error', () => { route.failedAt = Date.now() })
+        return socket
+      } catch {
+        route.failedAt = Date.now()
+        return null
+      }
+    }
     let proxy = null
+    // The browser keeps idle connections open, and closing waited on every one
+    // of them: leaving a note took ten seconds, and joining it again before
+    // then found its port still taken.
+    const sockets = new Set()
     const onError = (error) => reject(error)
     proxy = libNet.createTcpProxy({ port, host }, connect, { compress: false }, {}, () => {
       proxy.off('error', onError)
       proxy.on('error', () => {})
+      proxy.on('connection', (socket) => {
+        sockets.add(socket)
+        socket.once('close', () => sockets.delete(socket))
+      })
       const bound = proxy.address()
       resolve({
         lan: true,
+        publicKey,
+        route,
         info: { type: 'client', port: bound?.port || port, host, lan: true },
+        moveTo (nextLan, nextAddress) {
+          route.lan = nextLan
+          route.address = nextAddress
+          route.failedAt = 0
+        },
         async close () {
-          await new Promise((resolve) => proxy.close(() => resolve()))
+          const closed = new Promise((resolve) => proxy.close(() => resolve()))
+          for (const socket of sockets) socket.destroy()
+          await closed
         }
       })
     })

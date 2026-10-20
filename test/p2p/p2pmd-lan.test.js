@@ -3,7 +3,7 @@ import crypto from 'crypto'
 import http from 'http'
 import { createRequire } from 'module'
 import HyperDHTmDNS from '@p2plabs/hyperdht-mdns'
-import { askNotePortOnLan, findNoteOnLan, hostNoteOnLan, noteKeys, notePortKeyPair, noteTopic, openNoteOnLan, reachNoteOnLan, startNoteHost } from '../../src/protocols/p2pmd-lan.js'
+import { LAN_STREAM_TIMEOUT_MS, askNotePortOnLan, findNoteOnLan, hostNoteOnLan, noteKeys, notePortKeyPair, noteTopic, openNoteOnLan, reachNoteOnLan, startNoteHost } from '../../src/protocols/p2pmd-lan.js'
 
 const require = createRequire(import.meta.url)
 
@@ -208,6 +208,97 @@ describe('P2PMD notes over the local network, with no internet', function () {
       const started = Date.now()
       expect(await askNotePortOnLan(joiner, { publicKey: keys.publicKey, address })).to.equal(null)
       expect(Date.now() - started).to.be.below(2000)
+    })
+  })
+
+  // A network change or a backup starts the local network again as a new
+  // instance. Offline a note stopped syncing once its host dropped off and came
+  // back, while online it carried on.
+  describe('when the local network starts again', function () {
+    it('a guest finds its host again where the host came back, and the note opens', async function () {
+      const base = 51000 + (process.pid % 1000)
+      const first = await device(base)
+      const guestLan = await device(base + 1)
+      const notePort = await noteServer('# Still here')
+      const server = holesailServer(true)
+      const hosted = await hostNoteOnLan(first, server, { port: notePort })
+      expect(hosted.lan).to.equal(first)
+
+      const keys = noteKeys(server.link)
+      const address = await findNoteOnLan(guestLan, keys.publicKey, { timeoutMs: 10000 })
+      const guest = await openNoteOnLan(guestLan, { publicKey: keys.publicKey, keyPair: keys.keyPair, address })
+      closers.push(() => guest.close())
+      expect(await get(guest.info.port)).to.equal('# Still here')
+
+      // The host's local network goes and comes back on another port.
+      await hosted.close()
+      await first.destroy()
+      const again = await device(base + 2)
+      const rehosted = await hostNoteOnLan(again, server, { port: notePort })
+      closers.push(() => rehosted.close())
+      expect(await get(guest.info.port).catch(() => null)).to.not.equal('# Still here')
+      expect(guest.route.failedAt).to.be.above(0)
+
+      const moved = await findNoteOnLan(guestLan, keys.publicKey, { timeoutMs: 10000 })
+      expect(moved.port).to.equal(base + 2)
+      guest.moveTo(guestLan, moved)
+      expect(guest.route.failedAt).to.equal(0)
+      expect(await get(guest.info.port)).to.equal('# Still here')
+    })
+
+    // An event stream stayed open with nothing behind it, and six of them left
+    // the browser no connection to the note at all.
+    it('drops a long request whose host\'s instance was destroyed outright, instead of keeping it open forever', async function () {
+      this.timeout(40000)
+      const base = 53000 + (process.pid % 1000)
+      const hostLan = await device(base)
+      const guestLan = await device(base + 1)
+      // Like the note's event stream: headers, then nothing for a long while.
+      const stream = http.createServer((req, res) => { res.writeHead(200, { 'Content-Type': 'text/event-stream' }); res.write(': open\n\n') }).listen(0, '127.0.0.1')
+      await new Promise((resolve) => stream.on('listening', resolve))
+      closers.push(() => new Promise((resolve) => { stream.closeAllConnections?.(); stream.close(resolve) }))
+      const server = holesailServer(true)
+      await hostNoteOnLan(hostLan, server, { port: stream.address().port })
+
+      const keys = noteKeys(server.link)
+      const address = await findNoteOnLan(guestLan, keys.publicKey, { timeoutMs: 10000 })
+      const guest = await openNoteOnLan(guestLan, { publicKey: keys.publicKey, keyPair: keys.keyPair, address })
+      closers.push(() => guest.close())
+      const ended = new Promise((resolve) => {
+        http.get({ host: '127.0.0.1', port: guest.info.port, path: '/events' }, (res) => {
+          res.once('data', () => {
+            const started = Date.now()
+            // The host's local network goes with no word to anyone.
+            hostLan.destroy()
+            res.on('error', () => {})
+            res.once('close', () => resolve(Date.now() - started))
+          })
+        }).on('error', () => {})
+      })
+      expect(await ended).to.be.below(LAN_STREAM_TIMEOUT_MS + 5000)
+    })
+
+    it('a guest whose own instance went drops each connection instead of throwing, and carries on on the new one', async function () {
+      const base = 52000 + (process.pid % 1000)
+      const hostLan = await device(base)
+      let guestLan = await device(base + 1)
+      const notePort = await noteServer('# On the new one')
+      const server = holesailServer(true)
+      const hosted = await hostNoteOnLan(hostLan, server, { port: notePort })
+      closers.push(() => hosted.close())
+
+      const keys = noteKeys(server.link)
+      const address = await findNoteOnLan(guestLan, keys.publicKey, { timeoutMs: 10000 })
+      const guest = await openNoteOnLan(guestLan, { publicKey: keys.publicKey, keyPair: keys.keyPair, address })
+      closers.push(() => guest.close())
+
+      await guestLan.destroy()
+      expect(await get(guest.info.port).catch(() => null)).to.equal(null)
+      expect(guest.route.failedAt).to.be.above(0)
+
+      guestLan = await device(base + 2)
+      guest.moveTo(guestLan, address)
+      expect(await get(guest.info.port)).to.equal('# On the new one')
     })
   })
 

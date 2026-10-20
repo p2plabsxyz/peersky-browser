@@ -1756,6 +1756,12 @@ async function ensureDocServer (session, host, port, secure) {
     }
   }
   session.server = null
+  // A note keeps its port, so the note open in another PeerSky on this
+  // computer holds it already. "listen EADDRINUSE" with an address said none
+  // of that.
+  if (lastError?.code === 'EADDRINUSE' && requestedPort) {
+    throw new Error(`Port ${requestedPort}, this note's port, is in use on this computer, most likely by another PeerSky that has the note open. Open it there, or close it there first.`)
+  }
   throw lastError || new Error('Failed to bind server after retries')
 }
 
@@ -1780,34 +1786,28 @@ async function getNotesLAN () {
 async function startHolesailHost (sessionState, holesailServer, { port, udp, secure }) {
   const started = await startNoteHost(holesailServer, { lan: await getNotesLAN(), port, udp })
   sessionState.lanHost = started.lanHost
+  sessionState.udp = Boolean(udp)
   if (!started.internet) {
     log.info(started.lanHost
       ? '[p2pmd] hosting on the local network until the internet answers'
       : '[p2pmd] no network answers: the note is kept on this computer until one does')
   }
-  // Whatever did not answer now is tried again: the internet, and a local
-  // network that shows up later, as when the Wi-Fi comes back.
-  const lanMissing = () => !sessionState.lanHost && !udp
-  if (started.internet) {
-    if (lanMissing()) keepTryingToHost(sessionState, { port, udp, secure, internet: true })
-    return
-  }
-  started.ready.then(
-    () => { if (lanMissing()) keepTryingToHost(sessionState, { port, udp, secure, internet: true }) },
-    () => keepTryingToHost(sessionState, { port, udp, secure, internet: false })
-  )
+  // A local network that shows up later, or starts again, is the keeper's;
+  // the internet is tried again here until it answers.
+  keepNotesOnLan()
+  if (started.internet) return
+  started.ready.catch(() => keepTryingToHost(sessionState, { port, udp, secure }))
 }
 
-const LAN_RETRY_MS = 10 * 1000
+const RETRY_CHECK_MS = 10 * 1000
 
-function keepTryingToHost (sessionState, { port, udp, secure, internet = false }) {
+function keepTryingToHost (sessionState, { port, udp, secure }) {
   if (sessionState.internetRetry) return
   const stop = () => {
     clearInterval(sessionState.internetRetry)
     sessionState.internetRetry = null
   }
   let trying = false
-  let internetUp = internet
   let lastInternetTry = Date.now()
   sessionState.internetRetry = setInterval(async () => {
     if (trying) return
@@ -1815,17 +1815,7 @@ function keepTryingToHost (sessionState, { port, udp, secure, internet = false }
     const current = sessionState.holesailServer
     try {
       if (!current || !sessionState.key) return stop()
-      if (!sessionState.lanHost && !udp) {
-        const lan = await getNotesLAN()
-        const lanHost = lan ? await hostNoteOnLan(lan, current, { port, udp }).catch(() => null) : null
-        if (lanHost && sessionState.holesailServer === current && !sessionState.lanHost) {
-          sessionState.lanHost = lanHost
-          log.info('[p2pmd] a local network answered: the note is hosted there too')
-        } else if (lanHost) {
-          await lanHost.close().catch(() => {})
-        }
-      }
-      if (!internetUp && Date.now() - lastInternetTry >= INTERNET_RETRY_MS) {
+      if (Date.now() - lastInternetTry >= INTERNET_RETRY_MS) {
         lastInternetTry = Date.now()
         const plan = rehostPlan(sessionState.key, { secure, savedSeed: current.dht?.seed || null })
         const fresh = new Holesail({
@@ -1852,16 +1842,133 @@ function keepTryingToHost (sessionState, { port, udp, secure, internet = false }
           }
           sessionState.holesailServer = fresh
           await current.close().catch(() => {})
-          internetUp = true
           log.info('[p2pmd] the internet answered: the note is hosted there too')
+          stop()
         }
       }
-      if (internetUp && (sessionState.lanHost || udp)) stop()
     } finally {
       trying = false
     }
-  }, LAN_RETRY_MS)
+  }, RETRY_CHECK_MS)
   sessionState.internetRetry.unref?.()
+}
+
+// Every open note kept on the local network instance in use. A network change
+// or a backup starts Hyper's local network again as a new instance: a note
+// hosted on the old one could no longer be reached over the Wi-Fi, and one
+// joined over it no longer reached its host, while the same note carried on
+// over the internet, which Holesail runs on a DHT of its own. So offline a
+// note stopped syncing once its host dropped off and came back.
+const LAN_KEEP_MS = 5000
+let lanKeeper = null
+let keepingLan = false
+
+function keepNotesOnLan () {
+  if (lanKeeper) return
+  lanKeeper = setInterval(() => { keepNotesOnLanNow().catch(() => {}) }, LAN_KEEP_MS)
+  lanKeeper.unref?.()
+}
+
+export async function keepNotesOnLanNow () {
+  if (keepingLan) return
+  keepingLan = true
+  try {
+    if (roomSessions.size === 0) {
+      clearInterval(lanKeeper)
+      lanKeeper = null
+      return
+    }
+    const lan = await getNotesLAN()
+    if (!lan || lan.destroyed) return
+    for (const session of new Set(roomSessions.values())) {
+      const server = session.holesailServer
+      if (server) {
+        // A note hosted here, on an instance that is not the one in use.
+        if (session.udp || !session.port || session.lanHost?.lan === lan) continue
+        const previous = session.lanHost
+        const next = await hostNoteOnLan(lan, server, { port: session.port }).catch(() => null)
+        if (!next) continue
+        if (session.holesailServer !== server) {
+          await next.close().catch(() => {})
+          continue
+        }
+        session.lanHost = next
+        await previous?.close().catch(() => {})
+        log.info('[p2pmd] the local network started again: the note is hosted on it again')
+        continue
+      }
+      // A note joined over the local network whose instance went, or whose
+      // host stopped answering at the address it had: looked for again.
+      const client = session.holesailClient
+      if (!client?.route || (client.route.lan === lan && !client.route.failedAt)) continue
+      const address = await findNoteOnLan(lan, client.publicKey).catch(() => null)
+      if (session.holesailClient !== client) continue
+      if (address) {
+        client.moveTo(lan, address)
+        log.info('[p2pmd] found the note\'s host on the local network again')
+      } else if (client.route.lan !== lan) {
+        client.moveTo(lan, client.route.address)
+      }
+    }
+  } finally {
+    keepingLan = false
+  }
+}
+
+// How long a join looks for a note this device could host on the person's
+// other devices before hosting it here: the page's look for a shared note
+// (SHARED_NOTE_LOOK_MS in p2pmd's p2p.js).
+const OPEN_NOTE_LOOK_MS = 8000
+
+// The note joined where somebody has it open, on the Wi-Fi or over the
+// internet, or null when nobody answers in time.
+async function joinOpenNote (key, { secure, udp, host }) {
+  const deadline = Date.now() + OPEN_NOTE_LOOK_MS
+  let client = udp ? null : await joinNoteOnLan(key, secure, { host, port: null })
+  if (!client) {
+    const holesailClient = new Holesail({
+      client: true,
+      key,
+      host,
+      log: 1,
+      ...(secure !== null ? { secure } : {}),
+      ...(udp !== null ? { udp } : {})
+    })
+    let timer = null
+    try {
+      await Promise.race([
+        holesailClient.ready(),
+        new Promise((resolve, reject) => { timer = setTimeout(() => reject(new Error('Nobody answered')), Math.max(0, deadline - Date.now())) })
+      ])
+      const bound = await waitForClientProxy(holesailClient)
+      if (!bound.ok) throw bound.error || new Error('The local port is in use')
+      client = holesailClient
+    } catch {
+      await holesailClient.close().catch(() => {})
+      return null
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+  const port = client.info?.port
+  if (port && await noteAnswers(host, port, deadline)) return { client, port }
+  await client.close().catch(() => {})
+  return null
+}
+
+// Whether the note behind a joined local port answers before deadline. A join
+// is listening locally whether or not anyone hosts the note.
+async function noteAnswers (host, port, deadline) {
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(`http://${host}:${port}/status`, {
+        signal: AbortSignal.timeout(Math.min(3000, Math.max(500, deadline - Date.now())))
+      })
+      if (response.ok) return true
+    } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 300))
+  }
+  return false
 }
 
 // A note whose host is on this Wi-Fi opens over it, internet or not. Null when
@@ -1881,12 +1988,15 @@ async function joinNoteOnLan (key, secure, { host, port }) {
       port ? null : askNotePortOnLan(lan, route)
     ])
     if (!reached) return null
-    if (hostPort) {
-      // Taken here, as on the host's own computer: any free port, as before.
-      const client = await openNoteOnLan(lan, { ...route, host, port: hostPort }).catch(() => null)
+    // The port asked for, or the host's, and when it is taken here, as on
+    // the host's own computer or by a note just left, any free one: going to
+    // the internet instead failed outright with no internet.
+    for (const wanted of [port || hostPort]) {
+      if (!wanted) continue
+      const client = await openNoteOnLan(lan, { ...route, host, port: wanted }).catch(() => null)
       if (client) return client
     }
-    return await openNoteOnLan(lan, { ...route, host, port: port || 0 })
+    return await openNoteOnLan(lan, { ...route, host, port: 0 })
   } catch (error) {
     log.warn('[p2pmd] local network join failed, trying the internet:', error?.message || error)
     return null
@@ -2216,6 +2326,30 @@ export async function createHandler () {
       const resolvedUdp = udp === null ? parseBoolean(parsedKey.udp, false) : udp
       const savedSeedBuffer = savedEntry?.seed ? Buffer.from(savedEntry.seed, 'hex') : null
       if (!joinOnly && savedSeedBuffer && !sessionState?.holesailServer && !sessionState?.holesailClient) {
+        // A seed here means this device could host the note: it made it, or
+        // Link Device brought the seed from the device that did. That device
+        // may have the note open, and hosting it here as well split it into two
+        // copies that never met; on one computer it failed with the note's port
+        // in use. So it is joined there when it answers, as the page does for a
+        // note it knows is shared, and hosted here only when nobody does.
+        const open = await joinOpenNote(key, { secure: resolvedSecure, udp: resolvedUdp, host: host || '127.0.0.1' })
+        if (open) {
+          if (!sessionState) {
+            sessionState = createSession(key)
+            roomSessions.set(key, sessionState)
+          }
+          sessionState.holesailClient = open.client
+          sessionState.port = open.port
+          if (open.client.route) keepNotesOnLan()
+          log.info('[p2pmd] join: open on another device, joined there', { key: redactKey(key), port: open.port })
+          const responseHost = getResponseHost(sessionState)
+          return buildJsonResponse(200, {
+            key,
+            localHost: responseHost,
+            localPort: open.port,
+            localUrl: `http://${responseHost}:${open.port}`
+          })
+        }
         if (!sessionState) {
           sessionState = createSession(key)
           roomSessions.set(key, sessionState)
@@ -2292,6 +2426,7 @@ export async function createHandler () {
         sessionState.holesailClient = lanClient
         boundPort = lanClient.info.port
         sessionState.port = boundPort
+        keepNotesOnLan()
         log.info('[p2pmd] join over the local network', { port: boundPort })
       } else {
         if (DEBUG) {
@@ -2339,6 +2474,7 @@ export async function createHandler () {
       const key = body.key || ''
       if (key) {
         const sessionState = getExistingSession(key)
+        log.info('[p2pmd] close request', { key: redactKey(key), found: Boolean(sessionState) })
         if (!sessionState) {
           return buildJsonResponse(404, { error: 'Room not found' })
         }
