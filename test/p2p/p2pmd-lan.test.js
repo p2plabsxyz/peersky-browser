@@ -281,6 +281,48 @@ describe('P2PMD notes over the local network, with no internet', function () {
       expect(await ended).to.be.below(LAN_STREAM_TIMEOUT_MS + 5000)
     })
 
+    // A connection to a host that had answered before, failing before it
+    // opened, left HyperDHT with a promise nobody caught, about 4 s on
+    // (patches/hyperdht+6.34.0.patch). The main process logs those; on the
+    // phone they abort the app.
+    it('a host whose computer left leaves no rejection unhandled', async function () {
+      this.timeout(30000)
+      const base = 24000 + (process.pid % 1000)
+      const hostLan = await device(base)
+      const guestLan = await device(base + 1)
+      const notePort = await noteServer('# Left')
+      const server = holesailServer(true)
+      const hosted = await hostNoteOnLan(hostLan, server, { port: notePort })
+      const keys = noteKeys(server.link)
+      const address = await findNoteOnLan(guestLan, keys.publicKey, { timeoutMs: 10000 })
+      const guest = await openNoteOnLan(guestLan, { publicKey: keys.publicKey, keyPair: keys.keyPair, address })
+      closers.push(() => guest.close())
+      // Each request on a connection of its own, closed once answered.
+      const ask = () => new Promise((resolve, reject) => {
+        http.get({ host: '127.0.0.1', port: guest.info.port, path: '/', agent: false }, (res) => {
+          let text = ''
+          res.on('data', (chunk) => { text += chunk })
+          res.on('end', () => resolve(text))
+        }).on('error', reject)
+      })
+      expect(await ask()).to.equal('# Left')
+      // Once that connection has closed: one still closing when the host goes
+      // fails, and HyperDHT forgets the way to the host instead of trying it.
+      await new Promise((resolve) => setTimeout(resolve, 500))
+
+      const unhandled = []
+      const onUnhandled = (reason) => unhandled.push(reason?.code || reason?.message || String(reason))
+      process.on('unhandledRejection', onUnhandled)
+      try {
+        await hosted.close()
+        await hostLan.destroy()
+        expect(await ask().catch(() => null)).to.equal(null)
+      } finally {
+        process.off('unhandledRejection', onUnhandled)
+      }
+      expect(unhandled).to.deep.equal([])
+    })
+
     it('a guest whose own instance went drops each connection instead of throwing, and carries on on the new one', async function () {
       const base = 22000 + (process.pid % 1000)
       const hostLan = await device(base)
