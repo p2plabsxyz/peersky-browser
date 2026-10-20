@@ -43,7 +43,7 @@ const WORKER_PATH = fileURLToPath(new URL('./backup-worker.js', import.meta.url)
 // to secret keys; anything left behind by a crash is cleared at the next start.
 const INCOMING_DIR_PREFIX = '.peersky-incoming-'
 const STAGED_TTL_MS = 30 * 60 * 1000
-const PHONE_SYNC_ELSEWHERE = 'This is tabs and bookmarks from a phone, not a backup. Add it from Settings > Backup & Restore, under Restore from the network.'
+const PHONE_SYNC_ELSEWHERE = 'This is tabs and bookmarks from a phone, not a backup. Add it in Settings > Link Device, under Sync with another device.'
 
 function userDataDir () {
   return app.getPath('userData')
@@ -351,7 +351,7 @@ class BackupManager {
       // for any other code is refused before it is decrypted.
       const nonce = manifest.identityTransfer?.nonce
       if (!isLivePairingNonce(nonce)) {
-        throw new Error('This transfer was made for a code this desktop is no longer showing. Open Backup & Restore again and send it to the code shown there.')
+        throw new Error('This transfer was made for a code this desktop is no longer showing. Open Sync with another device here again and send it to the code shown there.')
       }
 
       dir = await fs.mkdtemp(path.join(userDataDir(), INCOMING_DIR_PREFIX))

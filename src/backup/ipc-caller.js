@@ -1,4 +1,4 @@
-// Backup & Restore and onboarding are the only callers of their channels. The
+// Link Device and onboarding are the only callers of their channels. The
 // preload hands those channels to no other page; this check holds even if a
 // page ever got hold of one, as the bt-api-token handler does.
 export function isPeerskyPage (rawUrl, ...pages) {

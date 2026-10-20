@@ -9,7 +9,7 @@
 - [P2P Apps](P2P.md)
 - [BitTorrent Protocol](BitTorrent.md)
 - [Web3 Protocol](Web3.md)
-- [Backup & Restore](Backup.md)
+- [Link Device and backups](Backup.md)
 - [Logging](Logging.md)
 - [Testing](Testing.md)
 
@@ -206,7 +206,7 @@
   - [x] Provide metadata (e.g., creation date, content type) to improve navigation and usability.
   - [x] Ability to download all the hashes of published data in a .json file.
 
-- [x] Backup & Restore (peersky://backup):
+- [x] Link Device and backups (peersky://backup):
 
   - [x] Create offline `.zip` backups containing tabs, window layout, ENS cache, and full IPFS/Hypercore data.
   - [x] Upload backups to IPFS or Hypercore to share and restore via a P2P CID.

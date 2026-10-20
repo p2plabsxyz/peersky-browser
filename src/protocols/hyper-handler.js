@@ -621,7 +621,7 @@ export async function hyperPublishFile (filePath, fileName = 'backup.zip', optio
         await fs.rm(storage, { recursive: true, force: true }).catch(() => {})
       }
       const ttlMs = Math.max(1000, Number(options.ttlMs) || 10 * 60 * 1000)
-      publisher = { sdk: publisherSdk, storage, cleanup, timer: setTimeout(cleanup, ttlMs) }
+      publisher = { sdk: publisherSdk, storage, cleanup, key: String(result.key || '').toLowerCase(), timer: setTimeout(cleanup, ttlMs) }
       publisher.timer.unref()
       ephemeralPublishers.add(publisher)
       return result
@@ -633,6 +633,20 @@ export async function hyperPublishFile (filePath, fileName = 'backup.zip', optio
   }
   const f = await initializeHyperSDK()
   return _hyperPublishFile(f, sdk, filePath, fileName)
+}
+
+// Stop Sending on Link Device: the transfer stops being served now rather
+// than when its time runs out. False when nothing was serving it.
+export async function stopHyperPublish (address) {
+  let key = ''
+  try { key = new URL(String(address || '').trim()).hostname.toLowerCase() } catch {}
+  if (!key) return false
+  for (const publisher of ephemeralPublishers) {
+    if (publisher.key !== key) continue
+    await publisher.cleanup()
+    return true
+  }
+  return false
 }
 
 // A drive nobody is seeding must not hold a tab open forever, so the wait is

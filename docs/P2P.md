@@ -79,7 +79,7 @@ flowchart TD
     H --> I[Decrypts where the key is available]
 ```
 
-Private uploads are excluded from normal backups by default. Identity transfers include them by default because they move data to another user-owned device. Both controls are explicit: if private uploads are excluded, the Backup page shows how many will be left behind. The same page lists the private uploads currently stored on the device. The transfer ships the drive's encryption key file (`private-drive-key.json`) beside the synced store; on arrival the receiving device adopts the drive into that keyed, synced corestore, so the same encrypted drive can be opened and written on both sides. The key file is what binds a received drive to a device — without it the drive's blocks remain encrypted no matter how far they replicate.
+Private uploads are excluded from normal backups by default. Identity transfers include them by default because they move data to another user-owned device. Both controls are explicit: if private uploads are excluded, Link Device shows how many will be left behind. The same page lists the private uploads currently stored on the device. The transfer ships the drive's encryption key file (`private-drive-key.json`) beside the synced store; on arrival the receiving device adopts the drive into that keyed, synced corestore, so the same encrypted drive can be opened and written on both sides. The key file is what binds a received drive to a device — without it the drive's blocks remain encrypted no matter how far they replicate.
 
 #### Folders open in Files, Photos or Videos
 

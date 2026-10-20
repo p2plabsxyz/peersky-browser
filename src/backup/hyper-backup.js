@@ -73,9 +73,9 @@ export const STALL_GIVE_UP_MS = 2 * 60 * 1000
 // A few bytes now and then is not a transfer, and kept one open for good.
 export const PROGRESS_BYTES = 64 * 1024
 
-export const NOBODY_SHARING = 'Nobody is sharing this right now. Open PeerSky on the device that sent it, keep it open with its screen on, and press Download again. A link from Link Device works for 15 minutes.'
-export const STOPPED_SENDING = 'The other device stopped sending. Open PeerSky on it, keep it open with its screen on, and press Download again.'
-export const NOT_ANSWERING = 'The other device is not answering. Open PeerSky on it, keep it open with its screen on, and press Download again.'
+export const NOBODY_SHARING = 'Nobody is sharing this right now. Open PeerSky on the device that sent it, keep it open with its screen on, then paste the link again. A link from Link Device works for 15 minutes.'
+export const STOPPED_SENDING = 'The other device stopped sending. Open PeerSky on it, keep it open with its screen on, then paste the link again.'
+export const NOT_ANSWERING = 'The other device is not answering. Open PeerSky on it, keep it open with its screen on, then paste the link again.'
 const WAITING = 'Waiting for the other device. Keep PeerSky open on it, with its screen on.'
 
 /**

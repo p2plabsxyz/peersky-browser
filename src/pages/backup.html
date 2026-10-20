@@ -11,67 +11,298 @@
     @import url("browser://theme/vars.css");
     @import url("browser://theme/settings.css");
 
-    .setting-description {
-      margin: 6px 0 0;
-      font-size: 0.85em;
-      opacity: 0.7;
-      max-width: 48ch;
+    /* Laid out as Link Device on the phone: my devices, sync with another
+       device, then backups. */
+    :root {
+      --ld-accent: var(--browser-theme-primary-highlight, #3b82f6);
+      --ld-accent-soft: color-mix(in srgb, var(--ld-accent) 14%, var(--settings-card-bg));
+      --ld-hover: color-mix(in srgb, var(--settings-text-primary) 5%, transparent);
+      --ld-online: #22a55b;
     }
-    .backup-status {
-      margin-top: 16px;
-      padding: 10px 14px;
-      border-radius: 6px;
-      font-size: 0.9em;
-      overflow-wrap: anywhere;
-      white-space: pre-line;
+    .settings-content { max-width: 720px; }
+    .ld-hero { text-align: center; padding: 8px 0 6px; }
+    .ld-hero-icons { display: flex; align-items: center; justify-content: center; gap: 12px; color: var(--settings-text-secondary); }
+    .ld-hero-icons > * { flex: none; }
+    /* The page theme gives every svg auto margins and every h2 a "## ". */
+    .settings-page svg, .ld-dialog svg { margin: 0; flex: none; }
+    .ld-dialog h2::before, .ld-dialog h2::after { content: none; }
+    .ld-hero-icons > svg { width: 22px; height: 22px; }
+    .ld-btn svg { width: 16px; height: 16px; }
+    .ld-hero-icon {
+      width: 52px;
+      height: 52px;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      background: var(--ld-accent-soft);
+      color: var(--ld-accent);
     }
-    .backup-status.success { background: rgba(40, 167, 69, 0.15); }
-    .backup-status.error { background: rgba(220, 53, 69, 0.15); }
-    .backup-status.info { background: rgba(120, 120, 120, 0.15); }
-    #identity-transfer-status { margin-bottom: 12px; }
-    .backup-passphrase-dialog {
-      color: var(--settings-text-primary);
+    .ld-hero h1 { font-size: 1.35rem; font-weight: 650; margin: 14px 0 6px; color: var(--settings-text-primary); }
+    .ld-hero p { margin: 0 auto; max-width: 52ch; font-size: 0.9rem; line-height: 1.45; color: var(--settings-text-secondary); }
+    .ld-label {
+      margin: 26px 0 8px 4px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--settings-text-secondary);
+    }
+    .ld-card {
       background: var(--settings-card-bg);
       border: 1px solid var(--settings-border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .ld-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      box-sizing: border-box;
+      padding: 12px 14px;
+      border: 0;
+      border-top: 1px solid var(--settings-border);
+      background: none;
+      color: var(--settings-text-primary);
+      font: inherit;
+      text-align: left;
+    }
+    /* Rows in My devices sit in a list of their own, so only the card's
+       first row goes without a line above it. */
+    .ld-card > .ld-row:first-child { border-top: 0; }
+    button.ld-row { cursor: pointer; }
+    button.ld-row:hover, button.ld-row:focus-visible { background: var(--ld-hover); outline: none; }
+    button.ld-row:disabled { cursor: default; opacity: 0.6; }
+    .ld-row-icon { flex-shrink: 0; width: 20px; height: 20px; color: var(--settings-text-secondary); }
+    .ld-row-text { flex: 1; min-width: 0; }
+    .ld-row-title { font-size: 0.92rem; }
+    .ld-row-desc { margin-top: 2px; font-size: 0.8rem; line-height: 1.35; color: var(--settings-text-secondary); }
+    .ld-row-trailing { flex-shrink: 0; font-size: 0.82rem; color: var(--settings-text-secondary); }
+    .ld-row-chevron { flex-shrink: 0; width: 14px; height: 14px; color: var(--settings-text-secondary); }
+    .ld-row.accent .ld-row-title, .ld-row.accent .ld-row-icon { color: var(--ld-accent); font-weight: 550; }
+    .ld-dot { display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: var(--ld-online); vertical-align: 1px; }
+    .ld-footer { margin: 22px 4px 8px; font-size: 0.8rem; line-height: 1.45; color: var(--settings-text-secondary); text-align: center; }
+
+    .ld-status {
+      margin: 18px 0 0;
+      padding: 10px 14px;
       border-radius: 8px;
-      width: min(420px, calc(100vw - 32px));
+      font-size: 0.88rem;
+      line-height: 1.4;
+      overflow-wrap: anywhere;
+      white-space: pre-line;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
     }
-    .backup-passphrase-dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
-    .backup-passphrase-dialog input { width: 100%; box-sizing: border-box; margin: 8px 0; }
-    .backup-passphrase-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
-    .private-backup-option { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
-    .private-uploads { margin-top: 8px; font-size: 0.85em; }
-    /* Keep the marker inside the content box: outside puts it in the card's
-       padding, hard against the border. Inside lines it up with the label above. */
-    .private-uploads > summary {
+    .ld-status[hidden] { display: none; }
+    .ld-status-text { flex: 1; }
+    .ld-status-close { border: 0; background: none; color: inherit; cursor: pointer; font-size: 1.1rem; line-height: 1; padding: 0 2px; opacity: 0.7; }
+    .ld-status.success { background: rgba(40, 167, 69, 0.15); }
+    .ld-status.error { background: rgba(220, 53, 69, 0.15); }
+    .ld-status.info { background: rgba(120, 120, 120, 0.15); }
+    .ld-progress { margin-top: 18px; }
+    .ld-progress[hidden] { display: none; }
+    .ld-progress-label { font-size: 0.88rem; margin-bottom: 6px; }
+    .ld-progress progress { width: 100%; }
+
+    /* Dialogs, in place of the phone's sheets. */
+    .ld-dialog {
+      width: min(520px, calc(100vw - 32px));
+      /* The theme makes every dialog 80% of the window tall. fit-content, as
+         Chromium's own: a modal dialog with auto stretches top to bottom. */
+      height: fit-content;
+      max-height: calc(100vh - 48px);
+      padding: 0;
+      color: var(--settings-text-primary);
+      background: var(--settings-bg-primary);
+      border: 1px solid var(--settings-border);
+      border-radius: 12px;
+      box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+    }
+    .ld-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
+    .ld-dialog-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px 6px; }
+    .ld-dialog-head h2 { margin: 0; font-size: 1.05rem; font-weight: 650; }
+    .ld-dialog-body { padding: 10px 20px 20px; }
+    .ld-link-btn {
+      border: 0;
+      background: none;
+      padding: 4px 2px;
+      color: var(--ld-accent);
+      font: inherit;
+      font-size: 0.88rem;
+      font-weight: 550;
       cursor: pointer;
-      opacity: 0.7;
-      width: fit-content;
-      list-style-position: inside;
     }
-    .private-uploads > summary::marker { font-size: 0.8em; }
-    .private-uploads[data-excluded="true"] > summary { color: #dc3545; font-weight: 600; opacity: 1; }
-    .private-hyperdrive-list { margin: 8px 0 0; padding-left: 20px; opacity: 0.7; }
-    .private-hyperdrive-list li { margin: 6px 0; overflow-wrap: anywhere; }
-    .private-hyperdrive-list a { color: var(--settings-link-color, #4da3ff); }
-    .incoming-code {
-      margin: 8px 0 4px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      font-size: 1.8em;
+    .ld-link-btn:hover { text-decoration: underline; }
+    .ld-link-btn:disabled { opacity: 0.5; cursor: default; text-decoration: none; }
+    .ld-segmented {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      padding: 4px;
+      margin-bottom: 16px;
+      border-radius: 10px;
+      background: color-mix(in srgb, var(--settings-text-primary) 8%, var(--settings-bg-primary));
+    }
+    .ld-segmented button {
+      height: 32px;
+      border: 0;
+      border-radius: 7px;
+      background: none;
+      color: var(--settings-text-secondary);
+      font: inherit;
+      font-size: 0.88rem;
+      cursor: pointer;
+    }
+    .ld-segmented button[aria-selected="true"] {
+      background: var(--settings-card-bg);
+      color: var(--settings-text-primary);
+      font-weight: 600;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+    }
+    .ld-step { display: flex; gap: 10px; margin: 0 0 12px; font-size: 0.9rem; line-height: 1.4; }
+    .ld-step-number {
+      flex-shrink: 0;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: var(--ld-accent);
+      color: #fff;
+      font-size: 0.75rem;
       font-weight: 700;
-      letter-spacing: 0.12em;
+    }
+    .ld-qr { display: flex; flex-direction: column; align-items: center; gap: 4px; margin: 4px 0 12px; }
+    .ld-qr qr-code {
+      display: block;
+      width: 200px;
+      height: 200px;
+      padding: 10px;
+      box-sizing: border-box;
+      background: #fff;
+      border-radius: 8px;
+      pointer-events: none;
+    }
+    .ld-qr-loading { width: 200px; height: 200px; display: grid; place-items: center; font-size: 0.85rem; color: var(--settings-text-secondary); }
+    .ld-note { margin: 0 0 12px; font-size: 0.8rem; line-height: 1.4; color: var(--settings-text-secondary); }
+    .ld-note.center { text-align: center; }
+    .ld-buttons { display: flex; gap: 10px; margin-top: 16px; }
+    .ld-buttons.end { justify-content: flex-end; }
+    .ld-btn {
+      height: 36px;
+      padding: 0 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border-radius: 8px;
+      border: 1px solid var(--settings-border);
+      background: var(--settings-card-bg);
+      color: var(--settings-text-primary);
+      font: inherit;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .ld-btn:hover { background: var(--settings-border); }
+    .ld-btn:disabled { opacity: 0.55; cursor: default; }
+    .ld-buttons:not(.end) .ld-btn { flex: 1; }
+    /* Tinted as the other Settings pages' main buttons are: white text on the
+       lighter theme highlights is hard to read. */
+    .ld-btn.primary {
+      border-color: var(--ld-accent);
+      background: color-mix(in srgb, var(--ld-accent) 22%, var(--settings-card-bg));
+    }
+    .ld-btn.primary:hover { background: color-mix(in srgb, var(--ld-accent) 36%, var(--settings-card-bg)); }
+    .ld-btn.danger { border-color: var(--settings-danger-color); color: var(--settings-danger-color); }
+    .ld-input {
+      width: 100%;
+      height: 36px;
+      box-sizing: border-box;
+      padding: 0 12px;
+      border-radius: 8px;
+      border: 1px solid var(--settings-border);
+      background: var(--settings-card-bg);
+      color: var(--settings-text-primary);
+      font: inherit;
+      font-size: 0.88rem;
+    }
+    .ld-input:focus { outline: none; border-color: var(--ld-accent); }
+    .ld-field { margin: 0 0 12px; }
+    .ld-check + .ld-field, .ld-private + .ld-field { margin-top: 12px; }
+    .ld-field label { display: block; margin: 0 0 6px; font-size: 0.85rem; font-weight: 550; }
+    .ld-error { margin: 10px 0 0; font-size: 0.84rem; color: var(--settings-danger-color); }
+    .ld-error:empty { display: none; }
+    .ld-check { display: flex; align-items: center; gap: 8px; margin: 4px 0 4px; font-size: 0.88rem; }
+    .ld-private { margin: 2px 0 10px 26px; font-size: 0.8rem; }
+    .ld-private > summary { cursor: pointer; width: fit-content; color: var(--settings-text-secondary); }
+    .ld-private[data-excluded="true"] > summary { color: var(--settings-danger-color); font-weight: 600; }
+    .ld-private ul { margin: 6px 0 0; padding-left: 18px; color: var(--settings-text-secondary); }
+    .ld-private li { margin: 4px 0; overflow-wrap: anywhere; }
+    .ld-private a { color: var(--ld-accent); }
+    .ld-code-box {
+      margin: 6px 0 12px;
+      padding: 12px;
+      border-radius: 10px;
+      text-align: center;
+      background: var(--ld-accent-soft);
+    }
+    .ld-code-label { font-size: 0.8rem; color: var(--settings-text-secondary); }
+    .ld-code-value {
+      margin-top: 2px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 1.8rem;
+      font-weight: 700;
+      letter-spacing: 0.14em;
       user-select: text;
     }
+    .ld-target {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 0 0 12px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--settings-border);
+      background: var(--settings-card-bg);
+      font-size: 0.88rem;
+    }
+    .ld-target .ld-row-icon { color: var(--ld-accent); }
+    .ld-target span { flex: 1; }
+    .ld-heading { margin: 0 0 6px; font-size: 1rem; font-weight: 650; text-align: center; }
+    .ld-text { margin: 0 0 12px; font-size: 0.88rem; line-height: 1.45; color: var(--settings-text-secondary); text-align: center; }
+    .ld-scanner { position: relative; margin: 0 0 12px; border-radius: 10px; overflow: hidden; background: #000; }
+    .ld-scanner[hidden] { display: none; }
+    .ld-scanner video { display: block; width: 100%; max-height: 300px; }
+    .ld-scanner .ld-btn { position: absolute; right: 12px; bottom: 12px; }
+    .ld-working { padding: 24px 0 12px; text-align: center; }
+    .ld-working-title { font-size: 0.95rem; font-weight: 600; margin-bottom: 10px; }
+    .ld-working progress { width: 80%; }
+    .ld-working-detail { margin-top: 8px; font-size: 0.8rem; color: var(--settings-text-secondary); }
+    [hidden] { display: none !important; }
   </style>
-  <title>Backup & Restore</title>
+  <title>Link Device</title>
 </head>
 <body>
+
+<svg width="0" height="0" style="position: absolute" aria-hidden="true">
+  <symbol id="i-phone" viewBox="0 0 16 16" fill="currentColor"><path d="M11 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1zM5 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2z"/><path d="M8 14a1 1 0 1 0 0-2 1 1 0 0 0 0 2"/></symbol>
+  <symbol id="i-display" viewBox="0 0 16 16" fill="currentColor"><path d="M0 4s0-2 2-2h12s2 0 2 2v6s0 2-2 2h-4q0 1 .25 1.5H11a.5.5 0 0 1 0 1H5a.5.5 0 0 1 0-1h.75Q6 13 6 12H2s-2 0-2-2zm1.398-.855a.76.76 0 0 0-.254.302A1.5 1.5 0 0 0 1 4.01V10c0 .325.078.502.145.602q.105.156.302.254a1.5 1.5 0 0 0 .538.143L2.01 11H14c.325 0 .502-.078.602-.145a.76.76 0 0 0 .254-.302 1.5 1.5 0 0 0 .143-.538L15 9.99V4c0-.325-.078-.502-.145-.602a.76.76 0 0 0-.302-.254A1.5 1.5 0 0 0 13.99 3H2c-.325 0-.502.078-.602.145"/></symbol>
+  <symbol id="i-link" viewBox="0 0 16 16" fill="currentColor"><path d="M4.715 6.542 3.343 7.914a3 3 0 1 0 4.243 4.243l1.828-1.829A3 3 0 0 0 8.586 5.5L8 6.086a1 1 0 0 0-.154.199 2 2 0 0 1 .861 3.337L6.88 11.45a2 2 0 1 1-2.83-2.83l.793-.792a4 4 0 0 1-.128-1.287z"/><path d="M6.586 4.672A3 3 0 0 0 7.414 9.5l.775-.776a2 2 0 0 1-.896-3.346L9.12 3.55a2 2 0 1 1 2.83 2.83l-.793.792c.112.42.155.855.128 1.287l1.372-1.372a3 3 0 1 0-4.243-4.243z"/></symbol>
+  <symbol id="i-scan" viewBox="0 0 16 16" fill="currentColor"><path d="M0 .5A.5.5 0 0 1 .5 0h3a.5.5 0 0 1 0 1H1v2.5a.5.5 0 0 1-1 0zm12 0a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 .5.5v3a.5.5 0 0 1-1 0V1h-2.5a.5.5 0 0 1-.5-.5M.5 12a.5.5 0 0 1 .5.5V15h2.5a.5.5 0 0 1 0 1h-3a.5.5 0 0 1-.5-.5v-3a.5.5 0 0 1 .5-.5m15 0a.5.5 0 0 1 .5.5v3a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1 0-1H15v-2.5a.5.5 0 0 1 .5-.5M4 4h1v1H4z"/><path d="M7 2H2v5h5zM3 3h3v3H3zm2 8H4v1h1z"/><path d="M7 9H2v5h5zm-4 1h3v3H3zm8-6h1v1h-1z"/><path d="M9 2h5v5H9zm1 1v3h3V3zM8 8v2h1v1H8v1h2v-2h1v2h1v-1h2v-1h-3V8zm2 2H9V9h1zm4 2h-1v1h-2v1h3zm-4 2v-1H8v1z"/><path d="M12 9h2V8h-2z"/></symbol>
+  <symbol id="i-download" viewBox="0 0 16 16" fill="currentColor"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708z"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 16 16" fill="currentColor"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5"/><path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708z"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708"/></symbol>
+</svg>
 
 <div class="settings-wrapper">
   <div class="settings-layout">
     <nav class="settings-sidebar">
       <div class="sidebar-header">
-        <h1 class="sidebar-title">Backup</h1>
+        <h1 class="sidebar-title">Link Device</h1>
       </div>
       <div class="sidebar-nav">
         <a href="peersky://settings" class="nav-item">
@@ -83,187 +314,277 @@
 
     <main class="settings-content">
       <div class="settings-page active">
-        <h1 class="section-title">Backup &amp; Restore</h1>
-
-        <!-- Progress and status lead the page so a long operation is visible
-             from where the user already is, instead of below the fold. -->
-        <div id="backup-progress" class="settings-section" style="display: none;">
-          <div class="setting-row">
-            <div class="setting-label">
-              <span id="backup-progress-label">Working...</span>
-              <progress id="backup-progress-bar" max="100" value="0" style="width: 100%;"></progress>
-            </div>
+        <header class="ld-hero">
+          <div class="ld-hero-icons" aria-hidden="true">
+            <span class="ld-hero-icon"><svg width="26" height="26"><use href="#i-display"/></svg></span>
+            <svg width="22" height="22"><use href="#i-link"/></svg>
+            <span class="ld-hero-icon"><svg width="26" height="26"><use href="#i-phone"/></svg></span>
           </div>
+          <h1>Your data, on your devices</h1>
+          <p>Move your tabs, bookmarks, chats and files to another device, or keep a backup. It goes straight across, end-to-end encrypted, with no server in between.</p>
+        </header>
+
+        <!-- Progress and messages lead the page, where the person already is. -->
+        <div id="ld-progress" class="ld-progress" hidden>
+          <div id="ld-progress-label" class="ld-progress-label">Working...</div>
+          <progress id="ld-progress-bar" max="100"></progress>
+        </div>
+        <div id="ld-status" class="ld-status" role="status" hidden>
+          <span id="ld-status-text" class="ld-status-text"></span>
+          <button type="button" id="ld-status-close" class="ld-status-close" aria-label="Dismiss">&times;</button>
         </div>
 
-        <div id="backup-status" class="backup-status" style="display: none;"></div>
-
-        <section class="settings-section">
-          <div class="setting-row tall-row">
-            <div class="setting-label">
-              Create backup
-              <p class="setting-description">A passphrase-encrypted zip of your tabs,
-                window layout, P2P identity, PeerChat rooms and Hyper repository.</p>
-              <label class="private-backup-option" for="backup-include-private">
-                <input type="checkbox" id="backup-include-private">
-                Include private Hyperdrive uploads
-              </label>
-              <details class="private-uploads" id="backup-private-uploads" hidden>
-                <summary></summary>
-                <ul class="private-hyperdrive-list" data-private-list></ul>
-              </details>
-            </div>
-            <div class="setting-control">
-              <button type="button" id="backup-create" class="btn btn-primary">Create Backup</button>
-            </div>
+        <div class="ld-label">My devices</div>
+        <div class="ld-card" id="ld-devices">
+          <div class="ld-row">
+            <svg class="ld-row-icon"><use href="#i-display"/></svg>
+            <div class="ld-row-text"><div class="ld-row-title" id="ld-this-device">This computer</div></div>
+            <span class="ld-row-trailing">This device</span>
           </div>
-        </section>
+          <div id="ld-device-list"></div>
+          <button type="button" class="ld-row accent" id="ld-sync-open">
+            <svg class="ld-row-icon"><use href="#i-scan"/></svg>
+            <div class="ld-row-text"><div class="ld-row-title">Sync with another device</div></div>
+          </button>
+        </div>
 
-        <section class="settings-section">
-          <div class="setting-row tall-row">
-            <div class="setting-label">
-              Restore from a file
-              <p class="setting-description">Replace current data with a backup .zip.
-                Encrypted backups need their passphrase. Your existing data is swapped
-                only after a complete staged copy.</p>
+        <div class="ld-label">Backup</div>
+        <div class="ld-card">
+          <button type="button" class="ld-row" id="ld-backup-open">
+            <svg class="ld-row-icon"><use href="#i-download"/></svg>
+            <div class="ld-row-text">
+              <div class="ld-row-title">Save a backup file</div>
+              <div class="ld-row-desc">For when this computer is lost or broken. Keep it somewhere that is not this computer.</div>
             </div>
-            <div class="setting-control">
-              <button type="button" id="backup-choose" class="btn btn-secondary">Choose File</button>
+            <svg class="ld-row-chevron"><use href="#i-chevron"/></svg>
+          </button>
+          <button type="button" class="ld-row" id="ld-restore-open">
+            <svg class="ld-row-icon"><use href="#i-upload"/></svg>
+            <div class="ld-row-text">
+              <div class="ld-row-title">Restore from a backup file</div>
+              <div class="ld-row-desc">Bring a backup back, here or on a new computer.</div>
             </div>
-          </div>
+            <svg class="ld-row-chevron"><use href="#i-chevron"/></svg>
+          </button>
+        </div>
 
-          <div class="setting-row tall-row">
-            <div class="setting-label">
-              Restore from the network
-              <p class="setting-description">Paste a hyper:// link another device
-                sent you: a backup or identity transfer from a desktop, or the open
-                pages, bookmarks, chats and notes a phone sends with Link Device.
-                Nothing changes until you confirm.</p>
+        <div class="ld-label">Download</div>
+        <div class="ld-card">
+          <a class="ld-row" href="https://peersky.p2plabs.xyz/" target="_blank" rel="noopener noreferrer" style="text-decoration: none;">
+            <svg class="ld-row-icon"><use href="#i-phone"/></svg>
+            <div class="ld-row-text">
+              <div class="ld-row-title">Get PeerSky on your phone</div>
+              <div class="ld-row-desc">PeerSky for iPhone and Android.</div>
             </div>
-            <div class="setting-control" style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; align-items: center;">
-              <button type="button" id="backup-cid-scan" class="btn btn-secondary" style="height: 34px; box-sizing: border-box; margin: 0;">Scan QR</button>
-              <input type="text" id="backup-cid-input" class="cid-input" aria-label="hyper:// link" placeholder="hyper://..." style="width: 220px; margin-bottom: 0; height: 34px; box-sizing: border-box;">
-              <input type="password" id="backup-cid-passphrase" class="cid-input" aria-label="Backup passphrase" placeholder="passphrase, if encrypted" style="width: 180px; margin-bottom: 0; height: 34px; box-sizing: border-box;">
-              <button type="button" id="backup-cid-download" class="btn btn-secondary" style="height: 34px; box-sizing: border-box; margin: 0;">Download</button>
-            </div>
-          </div>
-        </section>
+            <svg class="ld-row-chevron"><use href="#i-chevron"/></svg>
+          </a>
+        </div>
 
-        <!-- What came from the network, checked but not applied. A transfer
-             shows its code here, to compare with the other screen first. -->
-        <section id="backup-incoming-section" class="settings-section" style="display: none;">
-          <div class="setting-row tall-row">
-            <div class="setting-label">
-              <span id="backup-incoming-title">Ready to restore</span>
-              <p id="backup-incoming-code" class="incoming-code" hidden></p>
-              <p id="backup-incoming-details" class="setting-description"></p>
-            </div>
-            <div class="setting-control" style="display: flex; gap: 8px; align-items: center;">
-              <button type="button" id="backup-incoming-cancel" class="btn btn-secondary">Cancel</button>
-              <button type="button" id="backup-incoming-apply" class="btn btn-primary">Restore</button>
-            </div>
-          </div>
-        </section>
-
-        <section id="backup-manifest-section" class="settings-section" style="display: none;">
-          <div id="backup-manifest" class="setting-row">
-            <div class="setting-label">
-              Selected backup
-              <p id="backup-manifest-details" class="setting-description"></p>
-            </div>
-            <div class="setting-control">
-              <button type="button" id="backup-restore" class="btn btn-warning">Restore</button>
-            </div>
-          </div>
-        </section>
-
-        <section class="settings-section">
-          <div class="setting-row tall-row">
-            <div class="setting-label">
-              Identity transfer
-              <p class="setting-description">Move this device's identity to another
-                device. Scan or paste the pairing code the receiving device shows,
-                then upload a sealed, short-lived transfer for it.</p>
-              <label class="private-backup-option" for="identity-include-private">
-                <input type="checkbox" id="identity-include-private" checked>
-                Include private Hyperdrive uploads
-              </label>
-              <details class="private-uploads" id="identity-private-uploads" hidden>
-                <summary></summary>
-                <ul class="private-hyperdrive-list" data-private-list></ul>
-              </details>
-            </div>
-            <div class="setting-control" style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; align-items: center;">
-              <button type="button" id="identity-scan-qr" class="btn btn-secondary" style="height: 34px; box-sizing: border-box; margin: 0;">Scan QR</button>
-              <input type="text" id="identity-target-key" class="cid-input" aria-label="Receiving device pairing code" placeholder="Receiving device pairing code" style="width: 300px; margin-bottom: 0; height: 34px; box-sizing: border-box;">
-              <button type="button" id="identity-create" class="btn btn-secondary" style="height: 34px; box-sizing: border-box; margin: 0;">Save Zip</button>
-              <button type="button" id="identity-upload-hyper" class="btn btn-secondary" style="height: 34px; box-sizing: border-box; margin: 0;">Upload Hyper</button>
-            </div>
-
-            <div id="qr-scanner-container" style="display: none; width: 100%; margin-top: 16px; text-align: center; background: #000; border-radius: 8px; overflow: hidden; position: relative;">
-              <video id="qr-scanner-video" style="width: 100%; max-width: 400px; max-height: 300px; display: block; margin: 0 auto;"></video>
-              <button type="button" id="qr-scanner-cancel" class="btn btn-secondary" style="position: absolute; bottom: 16px; right: 16px;">Cancel</button>
-            </div>
-          </div>
-
-          <div class="setting-row tall-row">
-            <div class="setting-label">
-              This device pairing code
-              <p id="identity-device-key" class="setting-description" style="user-select: text; word-break: break-all;">Loading...</p>
-            </div>
-            <div class="setting-control" style="display: flex; gap: 8px; align-items: center;">
-              <button type="button" id="identity-key-copy" class="btn btn-secondary">Copy</button>
-            </div>
-          </div>
-          <div class="setting-row tall-row" id="paired-mobile-row" style="display: none;">
-            <div class="setting-label">
-              Phone using this identity
-              <p id="paired-mobile-detail" class="setting-description" style="user-select: text; word-break: break-all;"></p>
-            </div>
-            <div class="setting-control" style="display: flex; gap: 8px; align-items: center;">
-              <button type="button" id="paired-mobile-forget" class="btn btn-secondary">Move to a new phone</button>
-            </div>
-          </div>
-          <div id="device-key-qr-container" style="display: none; padding: 12px; text-align: center;">
-            <p class="setting-description" style="margin: 0 auto 8px; text-align: center; width: 100%; max-width: none;">Scan this with your other device to send its data here:</p>
-            <qr-code id="device-key-qr-code" style="pointer-events: none; width: 180px; height: 180px; background: white; padding: 8px; box-sizing: border-box; margin: 0 auto;" data-bg="white" data-fg="black"></qr-code>
-          </div>
-        </section>
-
-        <div id="identity-transfer-status" class="backup-status success" style="display: none;"></div>
-
-        <section id="backup-cid-section" class="settings-section" style="display: none;">
-          <div id="backup-cid-row" class="setting-row" style="border-bottom: none;">
-            <div class="setting-label">
-              Identity transfer address
-              <p id="backup-cid-value" class="setting-description" style="user-select: text; word-break: break-all;"></p>
-            </div>
-            <div class="setting-control">
-              <button type="button" id="backup-cid-copy" class="btn btn-secondary">Copy</button>
-            </div>
-          </div>
-          <qr-code id="backup-qr-code" style="display: none; pointer-events: none; margin: 0 auto 24px auto; width: 220px; height: 220px; background: white; padding: 12px; box-sizing: border-box;" data-bg="white" data-fg="black"></qr-code>
-        </section>
+        <p class="ld-footer">Nothing goes through a server. Your devices talk to each other directly, and only they can open what they send.</p>
       </div>
     </main>
   </div>
 </div>
 
-<dialog id="backup-passphrase-dialog" class="backup-passphrase-dialog">
-  <form id="backup-passphrase-form">
-    <h2 id="backup-passphrase-title">Backup passphrase</h2>
-    <p id="backup-passphrase-description" class="setting-description"></p>
-    <input id="backup-passphrase-input" class="cid-input" type="password" autocomplete="new-password" required>
-    <div id="backup-passphrase-confirm-row">
-      <label for="backup-passphrase-confirm">Confirm passphrase</label>
-      <input id="backup-passphrase-confirm" class="cid-input" type="password" autocomplete="new-password">
+<!-- Sync with another device: the phone's sheet, as a dialog. -->
+<dialog id="ld-sync" class="ld-dialog" aria-labelledby="ld-sync-title">
+  <div class="ld-dialog-head">
+    <h2 id="ld-sync-title">Sync with another device</h2>
+    <button type="button" class="ld-link-btn" id="ld-sync-close">Close</button>
+  </div>
+  <!-- Focus starts here rather than on Close, which showed a ring. -->
+  <div class="ld-dialog-body" tabindex="-1" autofocus style="outline: none;">
+    <div id="ld-sync-working" class="ld-working" hidden>
+      <div id="ld-sync-working-title" class="ld-working-title">Getting your data</div>
+      <progress id="ld-sync-working-bar" max="100"></progress>
+      <div id="ld-sync-working-detail" class="ld-working-detail"></div>
     </div>
-    <p id="backup-passphrase-error" class="setting-description" style="color: #dc3545;"></p>
-    <div class="backup-passphrase-actions">
-      <button id="backup-passphrase-cancel" type="button" class="btn btn-secondary">Cancel</button>
-      <button type="submit" class="btn btn-primary">Continue</button>
+
+    <!-- What came from the other device, checked, not yet applied. -->
+    <div id="ld-sync-confirm" hidden>
+      <p class="ld-heading" id="ld-confirm-title">Does the other device show this code?</p>
+      <div class="ld-code-box" id="ld-confirm-code-box"><div class="ld-code-value" id="ld-confirm-code"></div></div>
+      <p class="ld-text" id="ld-confirm-details"></p>
+      <div class="ld-field" id="ld-confirm-passphrase-field" hidden>
+        <label for="ld-confirm-passphrase">Passphrase</label>
+        <input type="password" class="ld-input" id="ld-confirm-passphrase" autocomplete="off" placeholder="The passphrase this backup was made with">
+      </div>
+      <div class="ld-buttons">
+        <button type="button" class="ld-btn" id="ld-confirm-cancel">Cancel</button>
+        <button type="button" class="ld-btn primary" id="ld-confirm-apply">It matches</button>
+      </div>
+    </div>
+
+    <!-- Sending: the link for the other device and the code both show. -->
+    <div id="ld-sync-sending" hidden>
+      <p class="ld-heading" id="ld-sending-title">Open this on the other device</p>
+      <p class="ld-text" id="ld-sending-text">On the other device, under Receive here, paste this link or scan it.</p>
+      <div class="ld-qr">
+        <qr-code id="ld-sending-qr" data-bg="white" data-fg="black"></qr-code>
+        <button type="button" class="ld-link-btn" id="ld-sending-copy">Copy link</button>
+      </div>
+      <div class="ld-code-box">
+        <div class="ld-code-label">Both screens show</div>
+        <div class="ld-code-value" id="ld-sending-code"></div>
+      </div>
+      <p class="ld-note center">Keep PeerSky open on this computer until the other device has it. You can close this; the link keeps working until it runs out or you stop it.</p>
+      <p class="ld-note center" id="ld-sending-life"></p>
+      <div class="ld-buttons">
+        <button type="button" class="ld-btn" id="ld-sending-stop">Stop sending</button>
+      </div>
+    </div>
+
+    <div id="ld-sync-choose">
+      <div class="ld-segmented" role="tablist">
+        <button type="button" role="tab" id="ld-tab-receive" aria-selected="true">Receive here</button>
+        <button type="button" role="tab" id="ld-tab-send" aria-selected="false">Send from here</button>
+      </div>
+
+      <div id="ld-receive">
+        <p class="ld-note" id="ld-receive-ended" hidden>The last link ran out, so it no longer works. Send from the other device again.</p>
+        <div class="ld-step"><span class="ld-step-number">1</span><span>On the device that has your data, open Link Device and choose Sync with another device, then Send from here.</span></div>
+        <div class="ld-step"><span class="ld-step-number">2</span><span>Scan this code with it, or paste it there.</span></div>
+        <div class="ld-qr">
+          <div class="ld-qr-loading" id="ld-pairing-loading">Loading...</div>
+          <qr-code id="ld-pairing-qr" data-bg="white" data-fg="black" hidden></qr-code>
+          <button type="button" class="ld-link-btn" id="ld-pairing-copy" disabled>Copy code instead</button>
+        </div>
+        <p class="ld-note center" id="ld-pairing-life"></p>
+        <p class="ld-note center" id="ld-pairing-renewed" hidden>The last code ran out, so this is a new one. If the other device has the old code, scan this one there instead.</p>
+        <div class="ld-step"><span class="ld-step-number">3</span><span>It then shows a link of its own. Paste it here, or scan it.</span></div>
+        <input type="text" class="ld-input" id="ld-receive-input" placeholder="hyper://..." aria-label="Link from the other device" autocomplete="off" spellcheck="false">
+      </div>
+
+      <div id="ld-send" hidden>
+        <p class="ld-note" id="ld-send-ended" hidden>The last link ran out, so it no longer works. Get the other device's code again to send a new one.</p>
+        <div class="ld-step"><span class="ld-step-number">1</span><span>On the other device, open Link Device and choose Sync with another device. It shows a code under Receive here.</span></div>
+        <div class="ld-step"><span class="ld-step-number">2</span><span>Scan that code, or paste it here. A phone gets your open pages, bookmarks, PeerChat rooms and recent notes. Another computer gets everything on this one.</span></div>
+        <div class="ld-target" id="ld-send-target" hidden>
+          <svg class="ld-row-icon" id="ld-send-target-icon"><use href="#i-phone"/></svg>
+          <span id="ld-send-target-text">A phone's code</span>
+          <button type="button" class="ld-link-btn" id="ld-send-target-clear">Change</button>
+        </div>
+        <input type="text" class="ld-input" id="ld-send-input" placeholder="peersky-identity:..." aria-label="Code from the other device" autocomplete="off" spellcheck="false">
+        <label class="ld-check" for="ld-send-private">
+          <input type="checkbox" id="ld-send-private" checked>
+          Include private files
+        </label>
+        <details class="ld-private" id="ld-send-private-list" hidden>
+          <summary></summary>
+          <ul data-private-list></ul>
+        </details>
+      </div>
+
+      <div class="ld-scanner" id="ld-scanner" hidden>
+        <video id="ld-scanner-video" playsinline></video>
+        <button type="button" class="ld-btn" id="ld-scanner-cancel">Cancel</button>
+      </div>
+
+      <p class="ld-error" id="ld-sync-error" role="alert"></p>
+
+      <div class="ld-buttons" id="ld-code-buttons">
+        <button type="button" class="ld-btn primary" id="ld-scan">
+          <svg width="16" height="16"><use href="#i-scan"/></svg>
+          <span>Scan code</span>
+        </button>
+        <button type="button" class="ld-btn" id="ld-paste">Paste code</button>
+      </div>
+      <div class="ld-buttons" id="ld-send-buttons" hidden>
+        <button type="button" class="ld-btn primary" id="ld-send-go">Send</button>
+      </div>
+      <p class="ld-note center" id="ld-send-file-note" hidden>
+        <button type="button" class="ld-link-btn" id="ld-send-file">Save it as a file instead</button>
+      </p>
+    </div>
+  </div>
+</dialog>
+
+<!-- Save a backup file -->
+<dialog id="ld-backup" class="ld-dialog" aria-labelledby="ld-backup-title">
+  <form id="ld-backup-form" method="dialog">
+    <div class="ld-dialog-head">
+      <h2 id="ld-backup-title">Save a backup file</h2>
+      <button type="button" class="ld-link-btn" id="ld-backup-close">Close</button>
+    </div>
+    <div class="ld-dialog-body">
+      <p class="ld-note">One file with your tabs, bookmarks, identity, PeerChat rooms and P2P data. It is locked with a passphrase you choose, and you will need it to restore.</p>
+      <label class="ld-check" for="ld-backup-private">
+        <input type="checkbox" id="ld-backup-private">
+        Include private files
+      </label>
+      <details class="ld-private" id="ld-backup-private-list" hidden>
+        <summary></summary>
+        <ul data-private-list></ul>
+      </details>
+      <div class="ld-field">
+        <label for="ld-backup-passphrase">Passphrase</label>
+        <input type="password" class="ld-input" id="ld-backup-passphrase" autocomplete="new-password" placeholder="At least 12 characters">
+      </div>
+      <div class="ld-field">
+        <label for="ld-backup-confirm">Confirm passphrase</label>
+        <input type="password" class="ld-input" id="ld-backup-confirm" autocomplete="new-password" placeholder="Type it again">
+      </div>
+      <label class="ld-check" for="ld-backup-show">
+        <input type="checkbox" id="ld-backup-show">
+        Show passphrase
+      </label>
+      <p class="ld-note">PeerSky cannot recover a forgotten passphrase. Write it down.</p>
+      <p class="ld-error" id="ld-backup-error" role="alert"></p>
+      <div class="ld-buttons end">
+        <button type="submit" class="ld-btn primary" id="ld-backup-create">Create backup</button>
+      </div>
     </div>
   </form>
+</dialog>
+
+<!-- Restore from a backup file, once the file is chosen and checked. -->
+<dialog id="ld-restore" class="ld-dialog" aria-labelledby="ld-restore-title">
+  <form id="ld-restore-form" method="dialog">
+    <div class="ld-dialog-head">
+      <h2 id="ld-restore-title">Replace what is on this computer?</h2>
+    </div>
+    <div class="ld-dialog-body">
+      <p class="ld-note" id="ld-restore-details"></p>
+      <div class="ld-field" id="ld-restore-passphrase-field" hidden>
+        <label for="ld-restore-passphrase">Passphrase</label>
+        <input type="password" class="ld-input" id="ld-restore-passphrase" autocomplete="off" placeholder="The passphrase this backup was made with">
+      </div>
+      <p class="ld-error" id="ld-restore-error" role="alert"></p>
+      <div class="ld-buttons end">
+        <button type="button" class="ld-btn" id="ld-restore-cancel">Cancel</button>
+        <button type="submit" class="ld-btn primary" id="ld-restore-go">Restore</button>
+      </div>
+    </div>
+  </form>
+</dialog>
+
+<!-- A device in My devices. -->
+<dialog id="ld-device" class="ld-dialog" aria-labelledby="ld-device-title">
+  <div class="ld-dialog-head">
+    <h2 id="ld-device-title">Device</h2>
+  </div>
+  <div class="ld-dialog-body">
+    <p class="ld-note" id="ld-device-details"></p>
+    <p class="ld-note" id="ld-device-phone-note" hidden>Moving to a new phone? Remove your data from the old one first, or remove the app, then let this computer send to the new one. Two phones on one identity split your messages.</p>
+    <div class="ld-buttons end">
+      <button type="button" class="ld-btn" id="ld-device-move" hidden>Move to a new phone</button>
+      <button type="button" class="ld-btn danger" id="ld-device-forget">Remove from list</button>
+      <button type="button" class="ld-btn primary" id="ld-device-ok">OK</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- After a restore: PeerSky must start again before it reads the new data. -->
+<dialog id="ld-restart" class="ld-dialog" aria-labelledby="ld-restart-title">
+  <div class="ld-dialog-head">
+    <h2 id="ld-restart-title">Restored</h2>
+  </div>
+  <div class="ld-dialog-body">
+    <p class="ld-note">PeerSky restarts to finish. Until then it still shows what was here before.</p>
+    <div class="ld-buttons end">
+      <button type="button" class="ld-btn primary" id="ld-restart-go">Restart now</button>
+    </div>
+  </div>
 </dialog>
 
 <script src="peersky://static/js/vendor/jsqr/jsQR.js" defer></script>

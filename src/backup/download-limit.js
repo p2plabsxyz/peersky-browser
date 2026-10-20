@@ -7,7 +7,7 @@ import { promises as fs } from 'fs'
 export const KEEP_FREE_BYTES = 512 * 1024 * 1024
 
 export const SENT_TOO_MUCH = 'The other device sent more than it said it would, so the download was stopped.'
-export const DISK_FULL = "The download was stopped before it filled this computer's disk. Free up some space and press Download again."
+export const DISK_FULL = "The download was stopped before it filled this computer's disk. Free up some space and paste the link again."
 
 function mb (bytes) {
   const value = bytes / (1024 * 1024)
@@ -15,7 +15,7 @@ function mb (bytes) {
 }
 
 export function tooBigFor (bytes) {
-  return `This download is ${mb(bytes)} MB, which would leave this computer with less than ${mb(KEEP_FREE_BYTES)} MB free. Free up some space and press Download again.`
+  return `This download is ${mb(bytes)} MB, which would leave this computer with less than ${mb(KEEP_FREE_BYTES)} MB free. Free up some space and paste the link again.`
 }
 
 async function freeBytes (folder) {

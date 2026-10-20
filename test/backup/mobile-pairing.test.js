@@ -96,19 +96,22 @@ describe('mobile pairing cap', () => {
     expect(await assertMobilePairingAllowed(dir, pairing(PHONE_A, 'mobile'))).to.equal(PHONE_A)
   })
 
-  it('shows the release control as soon as a phone is paired', async () => {
-    // The row starts hidden and only appeared on page load, so after pairing
-    // the user had no visible way to release the slot and the desktop looked
-    // stuck saying a phone was already paired.
+  it('shows the phone in My devices as soon as one is paired', async () => {
+    // The phone only appeared on page load, so after pairing the person had
+    // no visible way to release the slot, and the desktop looked stuck saying
+    // a phone was already paired.
     const page = await fs.readFile(new URL('../../src/pages/static/js/backup.js', import.meta.url), 'utf8')
-    const refreshes = page.match(/refreshPairedMobile\(\)/g) || []
-    expect(refreshes.length, 'refreshed in fewer places than there are ways to pair').to.be.at.least(4)
+    const load = page.slice(page.indexOf('async function loadDevices'), page.indexOf('function showDevice'))
+    expect(load).to.contain('api.getPairedMobile()')
 
-    // Both ways of handing an identity to a phone have to update it.
-    const zip = page.slice(page.indexOf('api.createIdentityTransfer('), page.indexOf('Identity transfer failed'))
-    expect(zip).to.contain('refreshPairedMobile()')
-    const hyper = page.slice(page.indexOf("cidRow.style.display = ''"), page.indexOf('VERIFICATION CODE'))
-    expect(hyper).to.contain('refreshPairedMobile()')
+    // Both ways of handing an identity to a phone list it again, and so does
+    // releasing it.
+    const file = page.slice(page.indexOf('api.createIdentityTransfer('), page.indexOf('Could not save it'))
+    expect(file).to.contain('loadDevices()')
+    const hyper = page.slice(page.indexOf('api.uploadIdentityTransferHyper('), page.indexOf('Could not send:'))
+    expect(hyper).to.contain('loadDevices()')
+    const release = page.slice(page.indexOf('api.forgetPairedMobile()'), page.indexOf('// Private files'))
+    expect(release).to.contain('loadDevices()')
   })
 
   it('calls the bridge the page actually has', async () => {
@@ -117,7 +120,7 @@ describe('mobile pairing cap', () => {
     // was unreachable with no error shown anywhere.
     const page = await fs.readFile(new URL('../../src/pages/static/js/backup.js', import.meta.url), 'utf8')
     expect(page).to.contain('const api = window.electronAPI && window.electronAPI.backup')
-    expect(page).to.contain('await api.getPairedMobile()')
+    expect(page).to.contain('api.getPairedMobile()')
     expect(page).to.contain('await api.forgetPairedMobile()')
     expect(page, 'a namespace this page does not define').to.not.contain('window.peersky.backup')
 

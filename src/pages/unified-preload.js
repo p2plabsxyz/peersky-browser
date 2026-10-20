@@ -532,6 +532,10 @@ const backupAPI = {
   getPairedMobile: () => ipcRenderer.invoke('backup-paired-mobile'),
   forgetPairedMobile: () => ipcRenderer.invoke('backup-forget-mobile'),
   uploadIdentityTransferHyper: (targetPairingPayload, includePrivate = true) => ipcRenderer.invoke('backup-identity-upload-hyper', { targetPairingPayload, includePrivate }),
+  stopSending: (address) => ipcRenderer.invoke('backup-identity-stop', { address }),
+  listDevices: () => ipcRenderer.invoke('backup-linked-devices'),
+  forgetDevice: (id) => ipcRenderer.invoke('backup-forget-device', { id }),
+  readCode: () => ipcRenderer.invoke('backup-read-code'),
   relaunch: () => ipcRenderer.invoke('backup-relaunch'),
   onProgress: (callback) => createEventListener('backup-progress', callback)
 }
@@ -625,6 +629,7 @@ try {
       getPathForFile: (file) => webUtils.getPathForFile(file),
       openExternalLink: (url) => ipcRenderer.invoke('open-external-link', url),
       getDeviceInfo: () => ipcRenderer.invoke('backup-device-info'),
+      readCode: () => ipcRenderer.invoke('backup-read-code'),
       onProgress: (callback) => createEventListener('backup-progress', callback)
     })
     console.log('Unified-preload: Onboarding electronAPI exposed')

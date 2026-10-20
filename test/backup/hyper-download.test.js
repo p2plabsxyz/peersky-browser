@@ -110,7 +110,7 @@ describe('downloading from another device', function () {
     expect(messages[0]).to.equal('Looking for the device that sent it (try 2 of 5)...')
   })
 
-  // A link pasted into Restore from the network can lead anywhere.
+  // A link pasted into Link Device can lead anywhere.
   describe('from a device that will not stop', function () {
     const fails = (promise) => promise.then(() => null, (error) => error)
 

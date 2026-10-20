@@ -1,7 +1,36 @@
 # Backup and Restore
 
 Peersky creates passphrase-encrypted local backups and device-sealed identity
-transfers. Both flows are available from `peersky://backup`.
+transfers. Both flows are on Link Device (`peersky://backup`, Settings > Link
+Device).
+
+## The Link Device page
+
+It is laid out as Link Device on the phone, so the two read the same:
+
+- **My devices**: this computer, then the person's other devices it has met
+  (`backup-linked-devices`, the same list the Hyperdrive app uses), each with
+  Online now or when it was last seen. A device opens to Remove from list, and
+  the phone this computer sent its identity to also offers Move to a new
+  phone. A phone that has the identity but has not connected yet shows too.
+- **Sync with another device** opens a dialog with two tabs. *Receive here*
+  shows this computer's pairing code as a QR code, with Copy code instead and
+  how long it works, then takes the link the other device shows: pasted into
+  the field, with Paste link, or scanned with the camera. *Send from here*
+  takes the other device's code the same ways, says whether it is a phone or
+  a computer, and sends, or saves the transfer as a file. Sending shows the
+  link as a QR code, Copy link, the six characters both screens show, how long
+  the link works, and Stop sending, which stops serving it at once
+  (`backup-identity-stop`). A code or link given in the wrong tab goes to the
+  right one.
+- **Backup**: Save a backup file (passphrase twice, private files in or out)
+  and Restore from a backup file (the passphrase is asked only when the file
+  has one).
+
+Pages may not read the clipboard, so Paste asks the main process
+(`backup-read-code`), which hands over a `peersky-identity:` code or a
+`hyper://` link and nothing else. Onboarding's restore screen is *Receive here*
+with a backup file below it.
 
 ## Local backups
 
@@ -68,7 +97,7 @@ a clean process.
 
 ## Restoring from the network
 
-Restore from the network takes a `hyper://` link and works in two steps.
+*Receive here* takes a `hyper://` link and works in two steps.
 The download is read first: a backup waits for the person to say restore, and
 an identity transfer is checked, decrypted and verified into
 `.peersky-incoming-*` inside the profile folder, then its six character code
@@ -87,7 +116,7 @@ a byte the page says it is waiting for the other device and looks for it again
 (the drive's peer lookup runs again), so the download carries on within
 seconds of the phone coming back, instead of after hyperswarm's next refresh
 about ten minutes later. After two minutes it stops with a message saying to
-open PeerSky on the other device and press Download again. A device that was
+open PeerSky on the other device and paste the link again. A device that was
 found but never answers is watched the same way, and a link nobody shares any
 more says so in plain words (`src/backup/hyper-backup.js`). A few bytes now and
 then do not count as sending: less than 64 KB in two minutes stops it too.
@@ -141,7 +170,7 @@ whose code says `notes=1` gets `p2pmd-incoming.json` (see
 ## Receiving from a phone
 
 PeerSky Mobile can send to this desktop. The phone scans the pairing code on
-the Backup & Restore page and puts a transfer up for it, in the same format
+Link Device and puts a transfer up for it, in the same format
 as an identity transfer: sealed to this desktop, signed by the phone, and
 encrypted with AES-256-GCM. The decrypted payload says `"source": "mobile"`
 and holds only:
@@ -154,7 +183,7 @@ phone-peerchat.json
 phone-p2pmd.json
 ```
 
-Paste or scan the phone's link under Restore from the network. After the code
+Paste or scan the phone's link under *Receive here*. After the code
 is confirmed (`src/backup/phone-sync.js`):
 
 - the phone's bookmarks and favourites are added after this desktop's own,
@@ -202,7 +231,7 @@ Identity transfer creates an independent copy of the identity, and there is no
 cryptographic revocation: removing a phone could not take back keys already
 copied to it. What this desktop does keep is a guard against the accidental
 second phone (`src/backup/mobile-pairing.js`): an identity goes to one phone
-at a time, and "Move to a new phone" releases it.
+at a time, and Move to a new phone, on the phone in My devices, releases it.
 
 ## PeerChat on several devices
 
@@ -211,7 +240,8 @@ of a room, and everyone sees which device a message came from by a label after
 the name: the device the name was made on shows the name alone, the phone
 shows `ada@mobile`, and desktops `ada@desktop1`, `ada@desktop2`. When the name
 was made on the phone, the first desktop is `ada@desktop`. There is one phone,
-and moving to a new phone is "Move to a new phone" on the old one. The label is
+and moving to a new phone is Move to a new phone on the desktop the old one
+was linked to. The label is
 fixed: it cannot be edited and does not change with the name.
 
 A device takes PeerChat only when its pairing code says `chat=1`. An older app
@@ -313,4 +343,4 @@ device-sealed identity transfer described above.
 - `src/backup/p2p-backup.js`: encrypted-wrapper upload gate and P2P download.
 - `src/backup/ipc.js`: backup page IPC handlers.
 - `src/backup/ipc-caller.js`: refuses a backup or onboarding channel called
-  from any page but Backup & Restore or onboarding, as `bt-api-token` does.
+  from any page but Link Device or onboarding, as `bt-api-token` does.
