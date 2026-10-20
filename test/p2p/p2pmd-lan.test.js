@@ -187,10 +187,24 @@ describe('P2PMD notes over the local network, with no internet', function () {
     expect(await get(client.info.port)).to.equal('# Offline')
   })
 
-  it('with no local network either, fails as it did before', async function () {
+  it('with no network at all, as with Wi-Fi off, the note is still made here and waits for one', async function () {
+    // It failed with "Too few nodes responded", so a note could not even be
+    // started offline. Holesail made the key first, so the note keeps it and
+    // goes up once a network answers.
+    const server = offlineHolesail()
+    const started = await startNoteHost(server, { lan: null, port: 1 })
+    expect(started).to.include({ lanHost: null, internet: false })
+    expect(server.dht.keyPair).to.not.equal(undefined)
+    let failed = false
+    await started.ready.catch(() => { failed = true })
+    expect(failed).to.equal(true)
+  })
+
+  it('fails only when Holesail never made the note\'s key', async function () {
+    const broken = { dht: null, ready: () => Promise.reject(new Error('Too few nodes responded')) }
     let error = null
     try {
-      await startNoteHost(offlineHolesail(), { lan: null, port: 1 })
+      await startNoteHost(broken, { lan: null, port: 1 })
     } catch (caught) {
       error = caught
     }

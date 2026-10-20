@@ -123,17 +123,29 @@ async function attachLANDiscovery (activeSdk, lanOptions = {}) {
 
 // Local discovery for one store's swarm, started again on the new address
 // when this computer moves to another network, until that store is closed.
+// One that could not start is tried again on the same check: a PeerSky
+// started with Wi-Fi off, or while another PeerSky on this computer held the
+// port, had no local network at all until it was restarted, so a note made
+// once the Wi-Fi was back still waited on the internet.
 async function keepLANDiscovery (activeSdk, { label = 'LAN', lanOptions = {} } = {}) {
   let lan = null
-  try {
-    lan = await attachLANDiscovery(activeSdk, lanOptions)
-    log.info(`[${label}] Listening on ${lan.host || '0.0.0.0'}:${lan.port}`)
-  } catch (err) {
-    log.warn(`[${label}] Local discovery unavailable, continuing without it: ${err.message}`)
-    return null
+  let lastKnownIP = null
+  let lastError = null
+  const start = async () => {
+    try {
+      lan = await attachLANDiscovery(activeSdk, lanOptions)
+      lastKnownIP = lan.host
+      lastError = null
+      log.info(`[${label}] Listening on ${lan.host || '0.0.0.0'}:${lan.port}`)
+    } catch (err) {
+      lan = null
+      // Said once for each reason, not every ten seconds.
+      if (err.message !== lastError) log.warn(`[${label}] Local discovery unavailable, trying again: ${err.message}`)
+      lastError = err.message
+    }
   }
+  await start()
 
-  let lastKnownIP = lan.host
   let cycling = false
   const NETWORK_CHECK_MS = 10_000
   const timer = setInterval(async () => {
@@ -144,21 +156,17 @@ async function keepLANDiscovery (activeSdk, { label = 'LAN', lanOptions = {} } =
     if (cycling) return
     try {
       const currentIP = HyperDHTmDNS.selectLocalIPv4()
-      if (currentIP === lastKnownIP) return
-      log.info(`[${label}] Network change detected: ${lastKnownIP} -> ${currentIP}`)
+      if (!currentIP) return
+      if (lan && currentIP === lastKnownIP) return
       cycling = true
-
       try {
-        const previous = lan
-        lan = null
-        if (previous && !previous.destroyed) await previous.destroy()
-        const next = await attachLANDiscovery(activeSdk, lanOptions)
-        lan = next
-        lastKnownIP = next.host
-        log.info(`[${label}] Restarted discovery on ${next.host}:${next.port}`)
-      } catch (err) {
-        lan = null
-        log.warn(`[${label}] Network change recovery failed: ${err.message}`)
+        if (lan) {
+          log.info(`[${label}] Network change detected: ${lastKnownIP} -> ${currentIP}`)
+          const previous = lan
+          lan = null
+          if (!previous.destroyed) await previous.destroy()
+        }
+        await start()
       } finally {
         cycling = false
       }

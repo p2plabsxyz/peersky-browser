@@ -1,6 +1,6 @@
 import Holesail from 'holesail'
 import { createLogger } from '../logger.js'
-import { findNoteOnLan, noteKeys, openNoteOnLan, reachNoteOnLan, startNoteHost } from './p2pmd-lan.js'
+import { findNoteOnLan, hostNoteOnLan, noteKeys, openNoteOnLan, reachNoteOnLan, startNoteHost } from './p2pmd-lan.js'
 import http from 'http'
 import fs from 'fs'
 import path from 'path'
@@ -1781,53 +1781,86 @@ async function startHolesailHost (sessionState, holesailServer, { port, udp, sec
   const started = await startNoteHost(holesailServer, { lan: await getNotesLAN(), port, udp })
   sessionState.lanHost = started.lanHost
   if (!started.internet) {
-    log.info('[p2pmd] hosting on the local network until the internet answers')
-    started.ready.catch(() => keepTryingInternetHost(sessionState, { port, udp, secure }))
+    log.info(started.lanHost
+      ? '[p2pmd] hosting on the local network until the internet answers'
+      : '[p2pmd] no network answers: the note is kept on this computer until one does')
   }
+  // Whatever did not answer now is tried again: the internet, and a local
+  // network that shows up later, as when the Wi-Fi comes back.
+  const lanMissing = () => !sessionState.lanHost && !udp
+  if (started.internet) {
+    if (lanMissing()) keepTryingToHost(sessionState, { port, udp, secure, internet: true })
+    return
+  }
+  started.ready.then(
+    () => { if (lanMissing()) keepTryingToHost(sessionState, { port, udp, secure, internet: true }) },
+    () => keepTryingToHost(sessionState, { port, udp, secure, internet: false })
+  )
 }
 
-function keepTryingInternetHost (sessionState, { port, udp, secure }) {
+const LAN_RETRY_MS = 10 * 1000
+
+function keepTryingToHost (sessionState, { port, udp, secure, internet = false }) {
   if (sessionState.internetRetry) return
   const stop = () => {
     clearInterval(sessionState.internetRetry)
     sessionState.internetRetry = null
   }
   let trying = false
+  let internetUp = internet
+  let lastInternetTry = Date.now()
   sessionState.internetRetry = setInterval(async () => {
     if (trying) return
     trying = true
     const current = sessionState.holesailServer
     try {
       if (!current || !sessionState.key) return stop()
-      const plan = rehostPlan(sessionState.key, { secure, savedSeed: current.dht?.seed || null })
-      const fresh = new Holesail({
-        server: true,
-        secure: plan.secure,
-        udp,
-        host: '127.0.0.1',
-        port,
-        ...(plan.key ? { key: plan.key } : {}),
-        log: 1
-      })
-      if (plan.seed) fresh.seed = plan.seed
-      try {
-        await fresh.ready()
-      } catch {
-        await fresh.close().catch(() => {})
-        return
+      if (!sessionState.lanHost && !udp) {
+        const lan = await getNotesLAN()
+        const lanHost = lan ? await hostNoteOnLan(lan, current, { port, udp }).catch(() => null) : null
+        if (lanHost && sessionState.holesailServer === current && !sessionState.lanHost) {
+          sessionState.lanHost = lanHost
+          log.info('[p2pmd] a local network answered: the note is hosted there too')
+        } else if (lanHost) {
+          await lanHost.close().catch(() => {})
+        }
       }
-      if (sessionState.holesailServer !== current) {
-        await fresh.close().catch(() => {})
-        return stop()
+      if (!internetUp && Date.now() - lastInternetTry >= INTERNET_RETRY_MS) {
+        lastInternetTry = Date.now()
+        const plan = rehostPlan(sessionState.key, { secure, savedSeed: current.dht?.seed || null })
+        const fresh = new Holesail({
+          server: true,
+          secure: plan.secure,
+          udp,
+          host: '127.0.0.1',
+          port,
+          ...(plan.key ? { key: plan.key } : {}),
+          log: 1
+        })
+        if (plan.seed) fresh.seed = plan.seed
+        let ready = true
+        try {
+          await fresh.ready()
+        } catch {
+          ready = false
+          await fresh.close().catch(() => {})
+        }
+        if (ready) {
+          if (sessionState.holesailServer !== current) {
+            await fresh.close().catch(() => {})
+            return stop()
+          }
+          sessionState.holesailServer = fresh
+          await current.close().catch(() => {})
+          internetUp = true
+          log.info('[p2pmd] the internet answered: the note is hosted there too')
+        }
       }
-      sessionState.holesailServer = fresh
-      await current.close().catch(() => {})
-      log.info('[p2pmd] the internet answered: the note is hosted there too')
-      stop()
+      if (internetUp && (sessionState.lanHost || udp)) stop()
     } finally {
       trying = false
     }
-  }, INTERNET_RETRY_MS)
+  }, LAN_RETRY_MS)
   sessionState.internetRetry.unref?.()
 }
 

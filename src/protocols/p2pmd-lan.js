@@ -165,33 +165,33 @@ export const INTERNET_SETTLE_MS = 3000
  * the same note on the local network. Holesail's start waits for a record on
  * the internet DHT and, with no internet, fails after about 12 seconds: a note
  * could not be hosted at all. Now one hosted on the local network is up at
- * once. Returns { lanHost, internet }: internet false means Holesail's start
- * failed or is still going (`ready` says which), and the note is on the local
- * network alone for now. With no local network either, it waits for Holesail
- * and fails as it always did.
+ * once. Returns { lanHost, internet } once the internet answers or settleMs
+ * passes: internet false means Holesail's start failed or is still going
+ * (`ready` says which), and the note is on the local network alone for now, or
+ * on this computer alone when there is no local network either, as with Wi-Fi
+ * off. A note is made with no network at all, as any document is: Holesail
+ * made its key before it tried the internet, so the note keeps that key and
+ * goes up once a network answers. Only a Holesail that never made a key fails.
  */
 export async function startNoteHost (holesailServer, { lan = null, port, udp = false, host = '127.0.0.1', settleMs = INTERNET_SETTLE_MS } = {}) {
   const ready = holesailServer.ready()
   ready.catch(() => {})
-  if (!lan) {
-    await ready
-    return { lanHost: null, internet: true, ready }
-  }
-  const until = Date.now() + 2000
-  while (!holesailServer.dht?.keyPair && Date.now() < until) await new Promise((resolve) => setTimeout(resolve, 10))
-
   let lanHost = null
-  if (holesailServer.dht?.keyPair) {
-    lanHost = await hostNoteOnLan(lan, holesailServer, { host, port, udp }).catch(() => null)
+  if (lan) {
+    const until = Date.now() + 2000
+    while (!holesailServer.dht?.keyPair && Date.now() < until) await new Promise((resolve) => setTimeout(resolve, 10))
+    if (holesailServer.dht?.keyPair) {
+      lanHost = await hostNoteOnLan(lan, holesailServer, { host, port, udp }).catch(() => null)
+    }
   }
-  if (!lanHost) {
-    await ready
-    return { lanHost: null, internet: true, ready }
-  }
-
   const outcome = await Promise.race([
     ready.then(() => 'ready', () => 'failed'),
     new Promise((resolve) => setTimeout(() => resolve('slow'), settleMs))
   ])
-  return { lanHost, internet: outcome === 'ready', ready }
+  if (outcome === 'ready') return { lanHost, internet: true, ready }
+  if (!lanHost && !holesailServer.dht?.keyPair) {
+    await ready
+    return { lanHost, internet: true, ready }
+  }
+  return { lanHost, internet: false, ready }
 }

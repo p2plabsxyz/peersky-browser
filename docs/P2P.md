@@ -191,6 +191,7 @@ Holesail finds a host on the public HyperDHT, which is on the internet, so with 
 - The host listens there under the note's own key pair and says over mDNS that it has a topic made from the note's key. Only someone who has the link can work out the topic, and a private note still lets in only the key its link carries.
 - A device joining looks on the local network first (2.5 seconds, under a second when no other PeerSky is around) and uses it if the host answers there within 3 seconds. Otherwise it goes to the internet as before, as on a Wi-Fi that keeps devices apart.
 - With no internet, hosting goes on after 3 seconds with the note on the local network alone, and keeps trying the internet every minute.
+- With no local network either, as with Wi-Fi off or the local port taken by another app, the note is still made on this computer, the same as any document. The local network is tried every 10 seconds and the internet every minute, and the note goes up on each as it answers.
 
 The tunnel is the same Noise-encrypted one Holesail opens, so nothing in between can read the note. Notes hosted over UDP stay internet-only. Tests: `test/p2p/p2pmd-lan.test.js`.
 
