@@ -502,6 +502,16 @@ export async function startPrivateSync () {
 }
 
 /**
+ * The sync again, under the key this profile has now: a phone's send just gave
+ * this desktop the key the person's other devices share.
+ */
+export async function restartPrivateSync () {
+  if (privateDeviceSyncStarting) await privateDeviceSyncStarting.catch(() => null)
+  await stopPrivateDeviceSync()
+  return startPrivateSync()
+}
+
+/**
  * The devices this desktop has met under its private drive key and the files
  * at the top of their private drives, for the Hyperdrive app.
  */

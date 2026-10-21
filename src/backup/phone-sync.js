@@ -4,7 +4,9 @@ import crypto from 'crypto'
 import z32 from 'z32'
 import { listPrivateHyperdrives, rememberPrivateHyperdrive } from '../protocols/private-hyperdrive-registry.js'
 import { isOwnedPrivateDrive, setPrivateDriveOwnership } from '../protocols/private-drive-ownership.js'
-import { rememberPrivateDriveKeyFor } from './private-drive-key.js'
+import { readDeviceSyncState } from '../protocols/device-sync-state.js'
+import { decodeDriveId } from './private-drive-export.js'
+import { adoptPrivateDriveKey, getPrivateDriveKeyFor, rememberPrivateDriveKeyFor } from './private-drive-key.js'
 
 // What PeerSky Mobile sends to a desktop: its open tabs, its bookmarks and
 // favourites, and the address of its private drive. It arrives as an ordinary
@@ -116,11 +118,16 @@ export function parsePhoneSync (files) {
     privateDrives.push(HEX_DRIVE_KEY.test(key) ? { driveId, key } : { driveId })
     if (privateDrives.length === MAX_PRIVATE_DRIVES) break
   }
+  // The private drive key the person's devices share, which they meet under.
+  // A phone that has one sends it apart from its own drive's, which can be
+  // a key the phone made before it was linked.
+  const sharedKey = String(fieldFrom(files[PHONE_PRIVATE_DRIVES_FILE], 'sharedKey') || '').toLowerCase()
 
   return {
     tabs,
     bookmarks,
     privateDrives,
+    sharedKey: HEX_DRIVE_KEY.test(sharedKey) ? sharedKey : null,
     chat: readChat(files[PHONE_PEERCHAT_FILE]),
     notes: readNotes(files[PHONE_P2PMD_FILE])
   }
@@ -207,6 +214,16 @@ export async function applyPhoneSync (userDataDir, sync, { now = Date.now() } = 
     bookmarksAdded = merged.added
   }
 
+  // This desktop joins the person's other devices: it takes the key they
+  // share, the one the phone sends or, from a phone that sends none, its
+  // drive's. Never over a key something here uses. Before 1.0 a desktop made a
+  // key of its own the first time a phone's drive was added, met nobody under
+  // it, and opened none of the person's other private drives.
+  const sharedKey = sync.sharedKey || sync.privateDrives.find((drive) => drive.key)?.key || null
+  const keyAdopted = sharedKey
+    ? await adoptPrivateDriveKey(userDataDir, sharedKey, { mayReplace: () => privateKeyUnused(userDataDir) })
+    : false
+
   // The phone's private drive opens here with the key it sends. It stays the
   // phone's: read-only on this desktop, the way a drive adopted from another
   // device always is. Every one is trusted again (privateHostnames); only one
@@ -233,7 +250,27 @@ export async function applyPhoneSync (userDataDir, sync, { now = Date.now() } = 
     privateHostnames.push(hostname)
   }
 
-  return { bookmarksAdded, privateHostnames, privateDrivesAdded }
+  return { bookmarksAdded, privateHostnames, privateDrivesAdded, keyAdopted }
+}
+
+// Whether nothing here needs this desktop's private drive key yet: no device
+// met under it, and no private drive that opens only with it. A drive that
+// has a key of its own, as a phone's does, does not count.
+async function privateKeyUnused (userDataDir) {
+  if (readDeviceSyncState(userDataDir).devices.length > 0) return false
+  let entries
+  try {
+    entries = await listPrivateHyperdrives(userDataDir)
+  } catch {
+    return false
+  }
+  for (const entry of entries) {
+    if (!entry.encrypted) continue
+    const driveId = decodeDriveId(entry.url)
+    if (driveId && await getPrivateDriveKeyFor(userDataDir, driveId)) continue
+    return false
+  }
+  return true
 }
 
 async function readBookmarks (userDataDir) {
@@ -266,12 +303,16 @@ async function writeJsonAtomic (destination, value) {
 }
 
 function listFrom (bytes, field) {
-  if (!bytes) return []
+  const value = fieldFrom(bytes, field)
+  return Array.isArray(value) ? value : []
+}
+
+function fieldFrom (bytes, field) {
+  if (!bytes) return null
   try {
-    const parsed = JSON.parse(bytes.toString('utf8'))
-    return Array.isArray(parsed?.[field]) ? parsed[field] : []
+    return JSON.parse(bytes.toString('utf8'))?.[field] ?? null
   } catch {
-    return []
+    return null
   }
 }
 

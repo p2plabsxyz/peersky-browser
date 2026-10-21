@@ -18,7 +18,8 @@ import {
 } from '../../src/backup/phone-sync.js'
 import { listPrivateHyperdrives, rememberPrivateHyperdrive } from '../../src/protocols/private-hyperdrive-registry.js'
 import { PRIVATE_DRIVE_OWNERSHIP_FILE, isOwnedPrivateDrive } from '../../src/protocols/private-drive-ownership.js'
-import { getOrCreatePrivateDriveKey, getPrivateDriveKeyFor } from '../../src/backup/private-drive-key.js'
+import { getOrCreatePrivateDriveKey, getPrivateDriveKey, getPrivateDriveKeyFor, rememberPrivateDriveKeyFor } from '../../src/backup/private-drive-key.js'
+import { recordDeviceHello } from '../../src/protocols/device-sync-state.js'
 import { buildPrivateDriveKeyExport } from '../../src/backup/private-drive-export.js'
 
 async function makeTempDir (prefix) {
@@ -188,6 +189,8 @@ describe('phone-sync', function () {
 
     const userData = await makeTempDir('peersky-phone-sync-key-')
     const own = await getOrCreatePrivateDriveKey(userData)
+    // A private drive made here, so the key here is in use.
+    await rememberPrivateHyperdrive(userData, { name: 'mine', url: `hyper://${z32.encode(Buffer.from('9'.repeat(64), 'hex'))}/`, timestamp: 1, encrypted: true })
     await applyPhoneSync(userData, { tabs: [], bookmarks: [], privateDrives: sync.privateDrives })
 
     expect((await getPrivateDriveKeyFor(userData, 'a'.repeat(64))).toString('hex')).to.equal('b'.repeat(64))
@@ -204,6 +207,66 @@ describe('phone-sync', function () {
     // A key kept for a drive is never swapped for another.
     await applyPhoneSync(userData, { tabs: [], bookmarks: [], privateDrives: [{ driveId: 'a'.repeat(64), key: 'c'.repeat(64) }] })
     expect((await getPrivateDriveKeyFor(userData, 'a'.repeat(64))).toString('hex')).to.equal('b'.repeat(64))
+  })
+
+  it('reads the key the phone\'s devices share, apart from its drive\'s', function () {
+    const sync = parsePhoneSync({
+      'phone-private-drives.json': Buffer.from(JSON.stringify({ sharedKey: 'A'.repeat(64), drives: [{ driveId: 'b'.repeat(64), key: 'c'.repeat(64) }] }))
+    })
+    expect(sync.sharedKey).to.equal('a'.repeat(64))
+    expect(parsePhoneSync({ 'phone-private-drives.json': Buffer.from(JSON.stringify({ sharedKey: 'not a key', drives: [] })) }).sharedKey).to.equal(null)
+    expect(parsePhoneSync({}).sharedKey).to.equal(null)
+  })
+
+  it('takes the key the person\'s devices share in place of one nothing here uses', async function () {
+    const phoneDrive = { driveId: 'a'.repeat(64), key: 'b'.repeat(64) }
+    const shared = 'c'.repeat(64)
+
+    // A new desktop: no key at all.
+    const fresh = await makeTempDir('peersky-phone-sync-adopt-')
+    const first = await applyPhoneSync(fresh, { tabs: [], bookmarks: [], privateDrives: [phoneDrive], sharedKey: shared })
+    expect(first.keyAdopted).to.equal(true)
+    expect((await getPrivateDriveKey(fresh)).toString('hex')).to.equal(shared)
+    expect((await getPrivateDriveKeyFor(fresh, phoneDrive.driveId)).toString('hex')).to.equal(phoneDrive.key)
+    // The same send again changes nothing.
+    expect((await applyPhoneSync(fresh, { tabs: [], bookmarks: [], privateDrives: [phoneDrive], sharedKey: shared })).keyAdopted).to.equal(false)
+
+    // From a phone that sends no shared key, as before 1.0: its drive's key.
+    const older = await makeTempDir('peersky-phone-sync-adopt-older-')
+    expect((await applyPhoneSync(older, { tabs: [], bookmarks: [], privateDrives: [phoneDrive] })).keyAdopted).to.equal(true)
+    expect((await getPrivateDriveKey(older)).toString('hex')).to.equal(phoneDrive.key)
+
+    // A desktop that took a phone's send before this: adding the phone's drive
+    // made a key here, which met nobody and opens nothing of its own.
+    const earlier = await makeTempDir('peersky-phone-sync-adopt-earlier-')
+    const made = await getOrCreatePrivateDriveKey(earlier)
+    await rememberPrivateDriveKeyFor(earlier, phoneDrive.driveId, phoneDrive.key)
+    await rememberPrivateHyperdrive(earlier, { name: 'Private files from your phone', url: `hyper://${z32.encode(Buffer.from(phoneDrive.driveId, 'hex'))}/`, timestamp: 1, encrypted: true })
+    const swapped = await applyPhoneSync(earlier, { tabs: [], bookmarks: [], privateDrives: [phoneDrive], sharedKey: shared })
+    expect(swapped.keyAdopted).to.equal(true)
+    expect((await getPrivateDriveKey(earlier)).equals(made)).to.equal(false)
+    expect((await getPrivateDriveKey(earlier)).toString('hex')).to.equal(shared)
+    // The phone's drive still opens with its own key.
+    expect((await getPrivateDriveKeyFor(earlier, phoneDrive.driveId)).toString('hex')).to.equal(phoneDrive.key)
+  })
+
+  it('keeps its own key while something here uses it', async function () {
+    const phoneDrive = { driveId: 'a'.repeat(64), key: 'b'.repeat(64) }
+
+    // A private drive made here with it.
+    const made = await makeTempDir('peersky-phone-sync-keep-drive-')
+    const own = await getOrCreatePrivateDriveKey(made)
+    await rememberPrivateHyperdrive(made, { name: 'mine', url: `hyper://${z32.encode(Buffer.from('f'.repeat(64), 'hex'))}/`, timestamp: 1, encrypted: true })
+    const kept = await applyPhoneSync(made, { tabs: [], bookmarks: [], privateDrives: [phoneDrive], sharedKey: 'c'.repeat(64) })
+    expect(kept.keyAdopted).to.equal(false)
+    expect((await getPrivateDriveKey(made)).equals(own)).to.equal(true)
+
+    // A device met under it.
+    const met = await makeTempDir('peersky-phone-sync-keep-met-')
+    const metKey = await getOrCreatePrivateDriveKey(met)
+    recordDeviceHello(met, { id: '1'.repeat(64), type: 'phone' })
+    expect((await applyPhoneSync(met, { tabs: [], bookmarks: [], privateDrives: [phoneDrive], sharedKey: 'c'.repeat(64) })).keyAdopted).to.equal(false)
+    expect((await getPrivateDriveKey(met)).equals(metKey)).to.equal(true)
   })
 
   it('never touches a private drive this desktop made, whatever a phone lists', async function () {
@@ -263,7 +326,7 @@ describe('phone-sync', function () {
 
     const first = await applyPhoneSync(userData, sync, { now: 1750000000000 })
     const hostname = z32.encode(Buffer.from(driveId, 'hex'))
-    expect(first).to.deep.equal({ bookmarksAdded: 1, privateHostnames: [hostname], privateDrivesAdded: 1 })
+    expect(first).to.deep.equal({ bookmarksAdded: 1, privateHostnames: [hostname], privateDrivesAdded: 1, keyAdopted: false })
 
     const bookmarks = JSON.parse(await readFile(path.join(userData, 'bookmarks.json'), 'utf8'))
     expect(bookmarks.map((bookmark) => bookmark.url)).to.deep.equal(['https://a.example/', 'https://b.example/'])

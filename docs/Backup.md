@@ -193,6 +193,13 @@ is confirmed (`src/backup/phone-sync.js`):
   often one this desktop sent to the phone, coming back,
 - the phone's private drive is added to the private drives as
   `Private files from your phone`, read-only here,
+- a desktop whose private key nothing uses yet (no private drive of its own,
+  no device met under it) takes the key the phone's devices share
+  (`sharedKey`, or from a phone before 1.0 its drive's key) and the phone's
+  profile id, and starts the private sync again under it, so it meets the
+  person's other devices, lists them under My devices and opens their private
+  drives. Before 1.0 it made a key of its own here and stayed alone; sending
+  from the phone again puts that right,
 - PeerChat takes the phone's name, bio and picture, with this desktop's
   label after the name, and joins the phone's rooms,
 - P2PMD adds the phone's recent notes to its own, and takes the phone's name
