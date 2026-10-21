@@ -1,0 +1,3 @@
+# Text files keep LF line endings on every OS, Windows CI included, so
+# tests that read source files see the same text everywhere.
+* text=auto eol=lf

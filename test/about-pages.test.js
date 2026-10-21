@@ -117,3 +117,26 @@ describe('Settings, About links the privacy policy and terms', function () {
     }
   })
 })
+
+// peersky://version's System Information was a list of empty fields: the page
+// had no script and nothing to ask.
+describe('peersky://version', function () {
+  const version = readFileSync(path.join(PAGES, 'version.html'), 'utf8')
+  const script = readFileSync(path.join(PAGES, 'static', 'js', 'version.js'), 'utf8')
+  const preload = readFileSync(path.join(PAGES, 'unified-preload.js'), 'utf8')
+  const main = readFileSync(path.resolve('src/main.js'), 'utf8')
+
+  it('fills in every field from its script', function () {
+    expect(version).to.contain('<script src="peersky://static/js/version.js" defer></script>')
+    for (const [, id] of version.matchAll(/<span id="([^"]+)"><\/span>/g)) {
+      expect(script, id).to.contain(`show('${id}', `)
+    }
+    expect(version).to.not.contain('TODO')
+  })
+
+  it('gets the paths on this computer, and no other page does', function () {
+    expect(preload).to.contain("const isVersionPage = isPeerskyPage('version')")
+    expect(preload).to.match(/if \(isVersionPage\) \{\s*contextBridge\.exposeInMainWorld\('peerskyVersion', \{\s*systemInfo: \(\) => ipcRenderer\.invoke\('version-system-info'\)/)
+    expect(main).to.match(/ipcMain\.handle\('version-system-info', \(event\) => \{\s*assertCaller\(event, 'version'\)/)
+  })
+})

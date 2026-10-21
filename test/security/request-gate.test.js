@@ -73,6 +73,12 @@ describe('request gate: p2p writes', () => {
   it('blocks writes whose caller cannot be named', () => {
     expect(fetchFrom('hyper://abc/x', undefined, 'PUT').action).to.equal('block')
   })
+
+  it('asks an app added under peersky://myapps, like any other site', () => {
+    expect(fetchFrom('hyper://localhost/?key=blog', 'peersky://myapps/notes/', 'POST')).to.deep.equal({ action: 'ask', caller: 'peersky://myapps/notes/' })
+    const fromOrigin = gateRequest({ url: 'hyper://abc/x', method: 'PUT', resourceType: 'xhr', initiatorOrigin: 'peersky://myapps' })
+    expect(fromOrigin).to.deep.equal({ action: 'ask', caller: 'peersky://myapps' })
+  })
 })
 
 describe('request gate: vetted stamp', () => {
@@ -156,6 +162,13 @@ describe('request gate: who may use a private drive', () => {
     expect(may('chrome-extension://abcdefghijklmnop')).to.equal(false)
     expect(may('null'), 'an opaque origin').to.equal(false)
     expect(may('')).to.equal(false)
+  })
+
+  it('keeps out an app added under peersky://myapps, which came from somewhere else', () => {
+    expect(may('peersky://myapps')).to.equal(false)
+    expect(may('peersky://MyApps'), 'in any case').to.equal(false)
+    expect(mayUsePrivateDrive({ url: 'hyper://localhost/?key=p2pmd&visibility=private', initiatorOrigin: 'peersky://myapps' }), 'making one by name').to.equal(false)
+    expect(mayUsePrivateDrive({ url: 'hyper://localhost/?key=p2pmd&visibility=private', initiatorOrigin: 'peersky://p2p' }), 'P2PMD making its own').to.equal(true)
   })
 })
 

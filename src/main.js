@@ -1,4 +1,4 @@
-import { app, session, protocol as globalProtocol, ipcMain, BrowserWindow, Menu, webContents, shell } from 'electron' // eslint-disable-line no-unused-vars
+import { app, session, protocol as globalProtocol, ipcMain, BrowserWindow, Menu, webContents, shell, safeStorage } from 'electron' // eslint-disable-line no-unused-vars
 import { createLogger } from './logger.js'
 import fs from 'fs/promises'
 import path from 'path'
@@ -10,6 +10,12 @@ import { createHandler as createHyperHandler, warmupHyper, suspendHyper } from '
 import { createHandler as createHSHandler } from './protocols/hs-handler.js'
 import { createHandler as createWeb3Handler } from './protocols/web3-handler.js'
 import { createHandler as createFileHandler } from './protocols/file-handler.js'
+import { attachTrackpadZoom, handlePinchZoom } from './trackpad-zoom.js'
+import { applyPasswordStore, choosePasswordStore } from './linux-keyring.js'
+import { sealFilesAtRest } from './backup/sealed-file.js'
+import { PRIVATE_DRIVE_KEY_FILE } from './backup/private-drive-key.js'
+import { PRIVATE_HYPERDRIVE_REGISTRY_FILE } from './protocols/private-hyperdrive-registry.js'
+import { DEVICE_SYNC_FILE } from './protocols/device-sync-state.js'
 import { createHandler as createBittorrentHandler, setupBittorrentIpc, shutdownBittorrent, warmupBittorrent } from './protocols/bittorrent-handler.js'
 import { ipfsOptions, hyperOptions } from './protocols/config.js'
 import { gateRequest, stampVetted, requireVetted, frameUrlOf } from './protocols/request-gate.js'
@@ -37,6 +43,7 @@ import { setupDevToolsDock } from './devtools-dock.js'
 import { setupP2pmdPdfExportIpc } from './pages/p2p/p2pmd/pdf-export-ipc.js'
 import { setupBackupIpc } from './backup/ipc.js'
 import { setupDeviceSyncIpc } from './protocols/device-sync-ipc.js'
+import { setupHyperdriveViewsIpc } from './protocols/hyperdrive-views-ipc.js'
 import { assertCaller } from './backup/ipc-caller.js'
 import backupManager from './backup/backup-manager.js'
 import { downloadBackupFromAddress } from './backup/p2p-backup.js'
@@ -49,6 +56,11 @@ const log = createLogger('main')
 // around a busy site with the preinstalled MV3 extensions is enough. Electron
 // 44 fixes it (electron/electron#53144); until then, prefetch gets no spare.
 app.commandLine.appendSwitch('enable-features', 'PrefetchUseContentRefactor:start_spare_renderer/false')
+
+// On a Linux desktop Electron does not know, the system keyring chosen at an
+// earlier start (linux-keyring.js). Set before the app is ready, or it is not
+// used.
+applyPasswordStore(app.commandLine, { userDataDir: app.getPath('userData') })
 
 const P2P_PROTOCOL = {
   standard: true,
@@ -109,8 +121,11 @@ app.on('browser-window-created', (event, win) => {
   win.webContents.once('destroyed', () => trustedUIWebContents.delete(wcId))
 })
 
+handlePinchZoom(ipcMain)
+
 app.on('web-contents-created', (event, wc) => {
   const wcId = wc.id
+  attachTrackpadZoom(wc)
   wc.on('did-navigate', (e, url) => {
     if (url.startsWith('peersky://downloads')) {
       trustedUIWebContents.add(wcId)
@@ -174,6 +189,7 @@ globalProtocol.registerSchemesAsPrivileged([
   { scheme: 'bittorrent', privileges: P2P_PROTOCOL },
   { scheme: 'bt', privileges: P2P_PROTOCOL },
   { scheme: 'magnet', privileges: MAGNET_PROTOCOL },
+  { scheme: 'webtorrent', privileges: MAGNET_PROTOCOL },
   { scheme: BLOCKED_SCHEME, privileges: BLOCKED_SCHEME_PRIVILEGES }
 ])
 
@@ -286,6 +302,25 @@ app.whenReady().then(async () => {
   // onboarding vs. restore, and the permission handler.
   // Settled, not all: a browser whose protocols failed to register is still a
   // browser that must be able to update itself to a build where they work.
+  // The private drive key and the names of private files, locked with the
+  // system's safe storage before anything reads them (sealed-file.js).
+  await sealFilesAtRest(app.getPath('userData'), [PRIVATE_DRIVE_KEY_FILE, PRIVATE_HYPERDRIVE_REGISTRY_FILE, DEVICE_SYNC_FILE])
+    .then((sealed) => { if (sealed.length) log.info('[startup] locked with safe storage:', sealed.join(', ')) })
+    .catch((error) => log.warn('[startup] could not lock private files:', error?.message || error))
+
+  // Electron fell back to its built-in password on this Linux desktop: if the
+  // keyring is open, it is used from the next start (linux-keyring.js). Asked
+  // once the window is up, so the question never holds up the first paint.
+  if (process.platform === 'linux') {
+    setTimeout(() => {
+      let backend = null
+      try { backend = safeStorage.getSelectedStorageBackend() } catch {}
+      if (choosePasswordStore({ userDataDir: app.getPath('userData'), backend })) {
+        log.info('[startup] the system keyring is open: private keys are locked with it from the next start')
+      }
+    }, 10000).unref?.()
+  }
+
   const startupTasks = [
     ['protocols', setupProtocols(userSession)],
     ['p2p app registry', p2pAppRegistry.init()],
@@ -315,6 +350,7 @@ app.whenReady().then(async () => {
   setupBittorrentIpc()
   setupBackupIpc({ getTabs: () => windowManager.getTabs() })
   setupDeviceSyncIpc()
+  setupHyperdriveViewsIpc()
   setupSiteInfoIpc(userSession)
   setupDevToolsDock()
   // People in a PeerChat room see a yellow dot while you are away.
@@ -698,7 +734,7 @@ async function createProtocolHandlers (session) {
   // Electron binary, which opens Electron's welcome window instead of Peersky
   // and steals the schemes from the installed copy.
   if (app.isPackaged) {
-    for (const scheme of ['peersky', 'browser', 'ipfs', 'ipns', 'hyper', 'hs', 'web3', 'bittorrent', 'bt', 'magnet']) {
+    for (const scheme of ['peersky', 'browser', 'ipfs', 'ipns', 'hyper', 'hs', 'web3', 'bittorrent', 'bt', 'magnet', 'webtorrent']) {
       app.setAsDefaultProtocolClient(scheme)
     }
   } else {
@@ -759,6 +795,7 @@ function registerProtocolHandlers (sessionProtocol, handlers) {
   sessionProtocol.handle('bittorrent', requireVetted(bittorrentProtocolHandler))
   sessionProtocol.handle('bt', requireVetted(bittorrentProtocolHandler))
   sessionProtocol.handle('magnet', requireVetted(bittorrentProtocolHandler))
+  sessionProtocol.handle('webtorrent', requireVetted(bittorrentProtocolHandler))
 }
 
 /**
@@ -1309,6 +1346,24 @@ ipcMain.handle('check-built-in-engine', (event, template) => {
 })
 
 setupP2pmdPdfExportIpc()
+
+// peersky://version's System Information, which showed nothing: the page has
+// no access to Node, and it asked for none. Paths on this computer go only to
+// that page.
+const OS_NAMES = { darwin: 'macOS', win32: 'Windows', linux: 'Linux' }
+ipcMain.handle('version-system-info', (event) => {
+  assertCaller(event, 'version')
+  return {
+    version: app.getVersion(),
+    os: `${OS_NAMES[process.platform] || process.platform} ${process.getSystemVersion()} (${process.arch})`,
+    electron: process.versions.electron,
+    chromium: process.versions.chrome,
+    node: process.versions.node,
+    v8: process.versions.v8,
+    execPath: process.execPath,
+    profilePath: app.getPath('userData')
+  }
+})
 
 // Onboarding IPC handlers
 ipcMain.handle('onboarding-import-data', async (event, dataStr) => {

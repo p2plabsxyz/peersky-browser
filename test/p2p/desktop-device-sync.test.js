@@ -1,7 +1,7 @@
 import { expect } from 'chai'
 import os from 'os'
 import path from 'path'
-import { mkdtemp, readFile, rm, writeFile } from 'fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'fs/promises'
 import z32 from 'z32'
 import {
   deviceSyncSnapshot,
@@ -12,7 +12,7 @@ import {
 import { isPeerskyAppPage } from '../../src/backup/ipc-caller.js'
 import { recordDeviceHello, recordDriveListing, resetDeviceSyncStateCache } from '../../src/protocols/device-sync-state.js'
 import { listPrivateHyperdrives, rememberPrivateHyperdrive } from '../../src/protocols/private-hyperdrive-registry.js'
-import { isOwnedPrivateDrive, setPrivateDriveOwnership } from '../../src/protocols/private-drive-ownership.js'
+import { PRIVATE_DRIVE_OWNERSHIP_FILE, isOwnedPrivateDrive, setPrivateDriveOwnership } from '../../src/protocols/private-drive-ownership.js'
 import { getPrivateDriveKeyFor } from '../../src/backup/private-drive-key.js'
 import { PHONE_PRIVATE_DRIVE_NAME } from '../../src/backup/phone-sync.js'
 
@@ -59,6 +59,17 @@ describe('desktop device sync', function () {
     expect(await isOwnedPrivateDrive(userDataDir, PHONE_DRIVE)).to.equal(false)
     // Under the profile's own key, no key of its own is kept for it.
     expect(await getPrivateDriveKeyFor(userDataDir, PHONE_DRIVE)).to.equal(null)
+  })
+
+  it('never lists a phone\'s drive it could not mark read-only', async function () {
+    userDataDir = await profile()
+    // A folder where the marks are kept makes writing one fail.
+    await mkdir(path.join(userDataDir, PRIVATE_DRIVE_OWNERSHIP_FILE))
+    const identityKey = Buffer.from(PROFILE_KEY, 'hex')
+    let failed = false
+    await takeLinkedDrive(userDataDir, { id: PHONE_DRIVE, key: identityKey, identityKey, device: 'phone' }).catch(() => { failed = true })
+    expect(failed).to.equal(true)
+    expect(await listPrivateHyperdrives(userDataDir)).to.deep.equal([])
   })
 
   it('keeps the key of a drive made under another one, and names a desktop\'s drive as a linked device\'s', async function () {

@@ -35,6 +35,8 @@ Out of scope: third-party websites, extensions you install yourself, and upstrea
 - Electron applies no CORS to custom schemes, so Peersky checks the calling page before a request reaches a protocol handler:
   - The browser's control APIs (the BitTorrent API, p2pmd rooms and the peerchat API) answer only their own pages.
   - A site that writes to `hyper://`, `ipfs://` or `ipns://` needs the **P2P publishing** permission. It is asked once per site and kept in site settings. Built-in `peersky://` pages do not ask.
+  - Only Peersky's own pages, a private drive's own pages and a tab you open it in can make, read or write a private drive.
+  - An app you add under `peersky://myapps` came from somewhere else, so it is treated like a website: it asks before it publishes or uses AI, and it cannot use private drives or read the AI memory.
   - Extensions need the `p2pWrite` manifest permission to write.
   - Service workers cannot call the control APIs or write, because the browser cannot see which page sent their requests.
 - Camera, microphone, location, notifications, MIDI, pointer lock and full screen prompt per site. USB, serial, HID and clipboard reads are denied.
@@ -62,6 +64,13 @@ Fixed as a result:
 - In packaged builds DevTools opened on the Node-enabled shell, tab group names reached `innerHTML` unescaped, and the shell had no content security policy.
 - The p2pmd PDF export rendered the calling page's HTML with scripts on and the sandbox off.
 - Shipped dependencies included vulnerable versions of `adm-zip` and `ws`. `npm audit` still reports `ip` through `bittorrent-tracker`, but only in its tracker server code, which Peersky never runs.
+- An app added under `peersky://myapps` was trusted like Peersky's own pages. It could open a private drive by its name and read it, P2PMD's private notes included, write to drives without the P2P publishing prompt, and read or clear the AI memory.
+- A link pasted into Restore from the network could write to disk until the disk was full, and a sender giving a few bytes now and then kept the download going for good.
+- Reset P2P data did not check which page asked for it. Only Settings could reach it, through the preload.
+- In PeerChat, a member of a room could get a computer that had just joined it from a bare room key to take them for its maker, then rename the room, change its settings, remove people and move the computer into a room of their own.
+- In PeerChat, a member about to be removed could have a spare key noted by everyone in the room, and be handed the room's new key under it.
+- In PeerChat, following a long line of moves made a computer join a room for each one, and one connection could fill the list of messages it asks its neighbours for with made-up ids.
+- In PeerChat, anyone connected, a stranger in P2P Republic included, could crash Peersky by sending a line that never ended, and nothing limited how many room updates one connection sent.
 
 Not covered in depth: native modules and upstream libraries beyond advisory triage.
 

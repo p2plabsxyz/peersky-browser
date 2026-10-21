@@ -10,6 +10,9 @@ import { ensCache, ipfsCache, hyperCache, saveEnsCache, saveIpfsCache, saveHyper
 import { normalizeEnsHash } from './ens-utils.js'
 import { clearPersistedPermissions } from './permissions.js'
 import p2pAppRegistry from './p2p-app-registry.js'
+import { measureP2PStorage, oneAtATime } from './p2p-storage.js'
+import { isPeerskyPage } from './backup/ipc-caller.js'
+import { bumpCacheEpoch } from './protocols/hyperdrive-views.js'
 
 const SETTINGS_FILE = path.join(app.getPath('userData'), 'settings.json')
 const DEBUG_LOG = path.join(os.homedir(), '.peersky', 'debug.log')
@@ -29,22 +32,22 @@ function normalizeArchiveJsonContent (jsonContent) {
     try {
       JSON.parse(content)
     } catch {
-      throw new Error('Invalid archive export payload: string is not valid JSON')
+      throw new Error('Invalid P2P data export: string is not valid JSON')
     }
   } else if (jsonContent && typeof jsonContent === 'object') {
     try {
       content = JSON.stringify(jsonContent, null, 2)
     } catch {
-      throw new Error('Invalid archive export payload: object could not be serialized')
+      throw new Error('Invalid P2P data export: object could not be serialized')
     }
   } else {
-    throw new Error('Invalid archive export payload: expected a JSON string or object')
+    throw new Error('Invalid P2P data export: expected a JSON string or object')
   }
 
   const sizeInBytes = Buffer.byteLength(content, 'utf8')
   if (sizeInBytes > MAX_ARCHIVE_EXPORT_BYTES) {
     throw new Error(
-      `Archive export payload too large: ${sizeInBytes} bytes (max ${MAX_ARCHIVE_EXPORT_BYTES} bytes)`
+      `P2P data export too large: ${sizeInBytes} bytes (max ${MAX_ARCHIVE_EXPORT_BYTES} bytes)`
     )
   }
 
@@ -58,8 +61,11 @@ const DEFAULT_SETTINGS = {
   theme: 'dark',
   showClock: true,
   clockFormat: '24h',
-  verticalTabs: false,
-  keepTabsExpanded: false,
+  // Tabs down the side, kept open, since v1.
+  verticalTabs: true,
+  keepTabsExpanded: true,
+  // Set once a profile has been moved to the v1 tab layout (loadSettings).
+  tabLayoutV1: true,
   wallpaper: 'ten_lakes',
   wallpaperCustomPath: null,
   pinnedP2PApps: null,
@@ -148,6 +154,10 @@ async function removeChildrenExcept (dir, keepNames = []) {
   }))
 }
 
+// The space P2P data takes, for Settings, P2P data. Measured again each time
+// the section opens, in the same folder Reset P2P data clears.
+const measureStorage = oneAtATime(() => measureP2PStorage(app.getPath('userData')))
+
 async function resetP2PData ({ resetIdentities = false } = {}) {
   const USER_DATA = app.getPath('userData')
   const ipfsDir = path.join(USER_DATA, 'ipfs')
@@ -162,6 +172,10 @@ async function resetP2PData ({ resetIdentities = false } = {}) {
   await fs.rm(btState, { recursive: true, force: true }).catch(() => {})
   await fs.rm(portsFile, { recursive: true, force: true }).catch(() => {})
   await fs.rm(chatRooms, { recursive: true, force: true }).catch(() => {})
+
+  // The Hyperdrive app's views keep pictures and details of public drives in
+  // their page's storage. A new number tells them to drop all of it.
+  await bumpCacheEpoch(USER_DATA).catch((e) => logDebug(`Failed to clear the Hyperdrive views: ${e.message}`))
 
   // Wipe internal P2P User App Registry data and cleanly re-sync it
   await p2pAppRegistry.reset()
@@ -180,8 +194,11 @@ async function resetP2PData ({ resetIdentities = false } = {}) {
     logDebug('P2P reset: full wipe including identities')
   } else {
     await removeChildrenExcept(ipfsDir, ['libp2p-key'])
+    // Only an old profile still has swarm-keypair.json. The network key in
+    // use now is derived from the store in hyper/db, so it goes, and the
+    // dialog says other people see a new device.
     await removeChildrenExcept(hyperDir, ['swarm-keypair.json'])
-    logDebug('P2P reset: data cleared, identities preserved')
+    logDebug('P2P reset: data cleared, IPFS identity kept')
   }
 }
 
@@ -394,19 +411,35 @@ class SettingsManager {
       }
     })
 
-    ipcMain.handle('settings-reset-p2p', async (_event, opts = {}) => {
+    // Settings alone asks, as for the space below: this deletes P2P data.
+    ipcMain.handle('settings-reset-p2p', async (event, opts = {}) => {
+      if (!isPeerskyPage(event?.senderFrame?.url, 'settings')) throw new Error('Forbidden')
       try {
         await resetP2PData({ resetIdentities: !!opts.resetIdentities })
         return {
           success: true,
           message: opts.resetIdentities
-            ? 'P2P data cleared (identities removed)'
-            : 'P2P data cleared (identities preserved)'
+            ? 'P2P data cleared, with the IPFS identity'
+            : 'P2P data cleared. The IPFS identity was kept'
         }
       } catch (error) {
         const errorMsg = `Failed to reset P2P data: ${error.message}`
         logDebug(errorMsg)
         throw new Error(errorMsg)
+      } finally {
+        // The numbers asked for next are read from what is left.
+        measureStorage.forget()
+      }
+    })
+
+    // Settings alone asks. The preload hands the channel to no other page.
+    ipcMain.handle('settings-get-p2p-storage', async (event) => {
+      if (!isPeerskyPage(event?.senderFrame?.url, 'settings')) throw new Error('Forbidden')
+      try {
+        return await measureStorage()
+      } catch (error) {
+        logDebug(`Failed to measure P2P data: ${error.message}`)
+        throw error
       }
     })
 
@@ -462,7 +495,8 @@ class SettingsManager {
       }
     })
 
-    // IPC handlers for archive functionality
+    // The lists of what was published, in Settings, P2P data. The channels
+    // keep the section's old name, Archive.
     ipcMain.handle('settings-get-archive-data', async () => {
       return {
         ipfs: ipfsCache || [],
@@ -479,8 +513,8 @@ class SettingsManager {
       const normalizedJsonContent = normalizeArchiveJsonContent(jsonContent)
       const mainWindow = BrowserWindow.fromWebContents(event.sender)
       const saveDialogOptions = {
-        title: 'Export Archive Data',
-        defaultPath: path.join(app.getPath('downloads'), `peersky-archive-${new Date().toISOString().split('T')[0]}-${Math.floor(Math.random() * 1000000)}.json`),
+        title: 'Export P2P Data',
+        defaultPath: path.join(app.getPath('downloads'), `peersky-p2p-data-${new Date().toISOString().split('T')[0]}-${Math.floor(Math.random() * 1000000)}.json`),
         filters: [{ name: 'JSON', extensions: ['json'] }]
       }
       const { canceled, filePath } = mainWindow
@@ -535,7 +569,7 @@ class SettingsManager {
 
         return { success: true }
       } catch (error) {
-        logDebug(`Failed to clear archive: ${error.message}`)
+        logDebug(`Failed to clear the P2P data lists: ${error.message}`)
         return { success: false, error: error.message }
       }
     })
@@ -582,6 +616,16 @@ class SettingsManager {
         } else {
           this.settings[key] = loaded[key]
         }
+      }
+
+      // Every profile from before v1 has horizontal tabs written down, chosen or
+      // not, because the whole settings object is saved. Each moves to the v1
+      // layout once; whatever it picks after that is kept.
+      if (loaded && loaded.tabLayoutV1 !== true) {
+        this.settings.verticalTabs = true
+        this.settings.keepTabsExpanded = true
+        this.settings.tabLayoutV1 = true
+        await this.saveSettings()
       }
 
       logDebug(`Settings loaded successfully: ${Object.keys(loaded).length} keys`)

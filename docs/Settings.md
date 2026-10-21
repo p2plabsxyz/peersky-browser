@@ -53,6 +53,7 @@ All settings-related functionality in Peersky flows through a unified preload an
 | `settings.reset()`                  | `settings-reset`                  | Reset all settings to defaults           |
 | `settings.clearBrowserCache()`      | `settings-clear-cache`            | Clears browser cache                     |
 | `settings.resetP2PData()`           | `settings-reset-p2p`              | Clears P2P caches                        |
+| `settings.getP2PStorage()`          | `settings-get-p2p-storage`        | Space P2P data takes, by part            |
 | `settings.uploadWallpaper(data)`    | `settings-upload-wallpaper`       | Save + set custom wallpaper              |
 | `getWallpaperUrl()`                 | `settings-get-wallpaper-url`      | Get wallpaper path (async)               |
 | `getWallpaperUrlSync()`             | `settings-get-wallpaper-url-sync` | Preload sync load for zero-flicker       |
@@ -116,15 +117,25 @@ Each section is built using simple HTML blocks styled with internal and theme-pr
   - HTTP cache (`session.clearCache()`)
 - **Does NOT touch:** `ipfs/`, `hyper/`, `ensCache.json`, identity files
 
+#### Storage used
+- **Where:** Settings → P2P data (`peersky://settings/p2p-data`). The section was called Archive, and links to `peersky://settings/archive` or `#archive` still open it.
+- **API/IPC:** `settings.getP2PStorage()` → `ipcMain.handle('settings-get-p2p-storage')`, answered for `peersky://settings` alone
+- Shows the total and one line per part (`src/p2p-storage.js`): `hyper/` (public drives, Hyper sites opened here, PeerChat rooms and their files), `hyper-private/` (private drives), `ipfs/`, and the P2P apps in `myapps/` with PeerChat's room list and the lists in this section. The main process adds them up each time the section opens, and again after a reset. Each file counts the blocks it takes, as `du` does.
+- Torrent downloads are saved in `Downloads/PeerskyTorrents`, outside the profile, so they are not counted and Reset P2P Data does not delete them.
+
 #### Reset P2P Data
+- **Where:** Settings → P2P data, under Storage used
 - **API/IPC:** `settings.resetP2P({ resetIdentities?: boolean })` → `ipcMain.handle('settings-reset-p2p')`
 - **Default behavior (`resetIdentities: false`):**
-  - Clears P2P caches: `ipfs/` (except `libp2p-key`), `hyper/` (except `swarm-keypair.json`)
-  - Removes `ensCache.json`
-  - ✅ **Preserves identities:** `ipfs/libp2p-key`, `hyper/swarm-keypair.json`
+  - Clears P2P caches: `ipfs/` (except `libp2p-key`) and everything in `hyper/`
+  - Removes `ensCache.json`, `bt-state.json`, `peersky-ports.json`, `peersky-chat-rooms.json`, `llm.json` and the P2P apps in `myapps/`
+  - Keeps the IPFS peer identity, `ipfs/libp2p-key`
+  - The Hyper network key goes with `hyper/`: hyper-sdk derives it from the store in `hyper/db` (there has been no `hyper/swarm-keypair.json` for a while), so PeerChat and Hyper start fresh and other people see a new device. A desktop restored from another keeps the key in `peersky-network-keys.json`, which the reset leaves alone. The dialog says so.
 - **Full wipe (`resetIdentities: true`):**
-  - Deletes **all** P2P data including identity files
-  - New identities will be generated on next launch
+  - Deletes `ipfs/` and `hyper/` whole, the IPFS peer identity included
+  - A new IPFS identity is made on next launch
+- **Either way, keeps:** `hyper-private/` with the private drive records and key, so private drives stay, and torrent downloads
+- **Either way, also:** raises the number in `hyperdrive-views.json`, so the Hyperdrive app's Files, Photos and Videos views drop the pictures and details of drives they keep in their page's storage
 
 
 ### Extensions Management

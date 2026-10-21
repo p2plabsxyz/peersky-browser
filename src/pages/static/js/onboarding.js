@@ -21,7 +21,7 @@ setTimeout(() => {
 }, 10000)
 
 const api = window.electronAPI || {}
-const { importOnboardingData, skipOnboarding, openExternalLink, restoreZip, restoreCid, applyRestore, discardRestore, getDeviceInfo } = api
+const { importOnboardingData, skipOnboarding, openExternalLink, restoreZip, restoreCid, applyRestore, discardRestore, getDeviceInfo, readCode } = api
 const restoreScreen = document.getElementById('restore-screen')
 
 const CHROME_STORE_URL = 'https://chromewebstore.google.com/detail/peersky-onboarding-extens/knegonpkagnjmkndlfhppgnpdmecklji'
@@ -91,7 +91,7 @@ function showScreen (from, to) {
 
 const restoreStatus = document.getElementById('restore-status')
 const cidInput = document.getElementById('cid-input')
-const cidRestoreBtn = document.getElementById('cid-restore-btn')
+const cidPasteBtn = document.getElementById('cid-paste-btn')
 const zipDropZone = document.getElementById('zip-drop-zone')
 const zipInput = document.getElementById('zip-input')
 const backupPassphrase = document.getElementById('backup-passphrase')
@@ -114,7 +114,8 @@ if (api && typeof api.onProgress === 'function') {
 }
 
 function setRestoreBusy (busy) {
-  cidRestoreBtn.disabled = busy
+  cidPasteBtn.disabled = busy
+  cidInput.disabled = busy
   zipDropZone.style.pointerEvents = busy ? 'none' : 'auto'
 }
 
@@ -145,13 +146,13 @@ function showRestoreConfirm (res) {
     const list = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0]
     restoreConfirmTitle.textContent = 'Does your phone show this code?'
     restoreConfirmDetails.textContent = parts.length
-      ? `Adds ${list} from your phone.` + (res.chatName ? ` PeerChat takes your phone's name, ${res.chatName}.` : '')
+      ? `${list.charAt(0).toUpperCase()}${list.slice(1)} from your phone will be added here.` + (res.chatName ? ` PeerChat takes your phone's name, ${res.chatName}.` : '')
       : 'The phone sent no tabs or bookmarks.'
-    restoreConfirmApply.textContent = 'It matches, add them'
+    restoreConfirmApply.textContent = 'It matches'
   } else {
     restoreConfirmTitle.textContent = 'Does the other device show this code?'
-    restoreConfirmDetails.textContent = 'Its tabs, identity and P2P data come to this desktop, and PeerSky restarts.'
-    restoreConfirmApply.textContent = 'It matches, restore'
+    restoreConfirmDetails.textContent = 'Everything from the other computer comes here: tabs, identity, PeerChat and P2P data. PeerSky restarts to finish.'
+    restoreConfirmApply.textContent = 'It matches'
   }
   restoreConfirm.hidden = false
   restoreStatus.style.display = 'none'
@@ -163,12 +164,17 @@ function hideRestoreConfirm () {
   restoreConfirmCode.textContent = ''
 }
 
-cidRestoreBtn.addEventListener('click', async () => {
-  const address = cidInput.value.trim()
-  if (!address) {
-    setRestoreStatus('Enter a hyper:// backup link.', 'error')
+// The link from the other device, pasted into the field or with Paste link.
+async function fetchLink (text) {
+  const address = String(text || '').trim()
+  if (!address) return
+  if (!/^hyper:\/\//i.test(address)) {
+    setRestoreStatus(address.toLowerCase().startsWith('peersky-identity:')
+      ? 'That is a code for sending to. Scan this computer\'s code with the other device instead, then paste the link it shows.'
+      : 'That is not a PeerSky link.', 'error')
     return
   }
+  cidInput.value = address
   if (!restoreCid) return
   if (waitingRestore && discardRestore) discardRestore(waitingRestore.stageId).catch(() => {})
   hideRestoreConfirm()
@@ -184,6 +190,22 @@ cidRestoreBtn.addEventListener('click', async () => {
   } finally {
     setRestoreBusy(false)
   }
+}
+
+cidInput.addEventListener('paste', () => setTimeout(() => fetchLink(cidInput.value), 0))
+cidInput.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') fetchLink(cidInput.value)
+})
+
+// Pages may not read the clipboard. The main process hands over a PeerSky
+// link or code only.
+cidPasteBtn.addEventListener('click', async () => {
+  const res = readCode ? await readCode().catch(() => null) : null
+  if (!res?.text) {
+    setRestoreStatus('There is no PeerSky link on the clipboard. Copy the link the other device shows, then try again.', 'error')
+    return
+  }
+  fetchLink(res.text)
 })
 
 restoreConfirmApply.addEventListener('click', async () => {
@@ -191,6 +213,7 @@ restoreConfirmApply.addEventListener('click', async () => {
   const current = waitingRestore
   restoreConfirmApply.disabled = true
   setRestoreBusy(true)
+  setRestoreStatus(current.kind === 'phone' ? 'Adding to this computer...' : 'Restoring...', 'success')
   try {
     const res = await applyRestore(current.stageId)
     if (!res.success) {
@@ -247,7 +270,7 @@ async function handleZipFile (file) {
     try { zipPath = api.getPathForFile(file) } catch (_) {}
   }
   if (!zipPath) {
-    setRestoreStatus('Could not read the file path. Try the Backup page instead.', 'error')
+    setRestoreStatus('Could not read where the file is. Skip for now, then use Restore from a backup file in Settings > Link Device.', 'error')
     return
   }
   if (!restoreZip) return
@@ -333,37 +356,51 @@ function showSuccess (msg) {
   statusText.style.display = 'block'
 }
 
-// Load and display device key for Identity Transfer
-const identityDeviceKey = document.getElementById('identity-device-key')
+// This computer's code, for the other device to send to. It works for an
+// hour, and a new one is shown a little before.
+const PAIRING_LIFE_MS = 55 * 60 * 1000
 const identityKeyCopyBtn = document.getElementById('identity-key-copy')
+const identityDeviceLife = document.getElementById('identity-device-life')
+let pairingCode = ''
+let pairingExpiresAt = 0
+
+function showPairingLife () {
+  if (!pairingCode) return
+  const minutes = Math.max(1, Math.ceil((pairingExpiresAt - Date.now()) / 60000))
+  identityDeviceLife.textContent = `This code works for ${minutes} more minute${minutes === 1 ? '' : 's'}.`
+}
 
 async function loadDeviceInfo () {
-  if (!getDeviceInfo || !identityDeviceKey) return
+  if (!getDeviceInfo) return
+  const loading = document.getElementById('identity-device-loading')
   try {
     const res = await getDeviceInfo()
-    if (res.success) {
-      identityDeviceKey.textContent = res.pairingPayload
-      const qr = document.getElementById('identity-device-qr')
-      if (qr && res.pairingPayload) {
-        qr.setAttribute('src', res.pairingPayload)
-        qr.hidden = false
-      }
-    } else {
-      identityDeviceKey.textContent = `Could not load device pairing code: ${res.error}`
-    }
+    if (!res.success) throw new Error(res.error)
+    pairingCode = res.pairingPayload
+    pairingExpiresAt = Date.now() + PAIRING_LIFE_MS
+    const qr = document.getElementById('identity-device-qr')
+    qr.setAttribute('src', pairingCode)
+    qr.hidden = false
+    loading.hidden = true
+    identityKeyCopyBtn.disabled = false
+    showPairingLife()
   } catch (err) {
-    identityDeviceKey.textContent = `Could not load device pairing code: ${err.message}`
+    loading.textContent = `Could not make a code: ${err.message}`
   }
 }
 
 identityKeyCopyBtn?.addEventListener('click', async () => {
+  if (!pairingCode) return
   try {
-    await navigator.clipboard.writeText(identityDeviceKey.textContent || '')
-    const oldText = identityKeyCopyBtn.textContent
-    identityKeyCopyBtn.textContent = 'Copied'
-    setTimeout(() => { identityKeyCopyBtn.textContent = oldText }, 1500)
+    await navigator.clipboard.writeText(pairingCode)
+    identityKeyCopyBtn.textContent = 'Code copied'
+    setTimeout(() => { identityKeyCopyBtn.textContent = 'Copy code instead' }, 1500)
   } catch (_) {}
 })
 
-// Initialize device info on load
+setInterval(() => {
+  if (pairingCode && Date.now() > pairingExpiresAt) loadDeviceInfo()
+  else showPairingLife()
+}, 15 * 1000)
+
 loadDeviceInfo()

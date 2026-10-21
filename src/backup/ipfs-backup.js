@@ -1,5 +1,7 @@
+import path from 'path'
 import { CID } from 'multiformats/cid'
 import { createLogger } from '../logger.js'
+import { downloadLimit } from './download-limit.js'
 
 const log = createLogger('backup:ipfs')
 
@@ -70,12 +72,15 @@ export async function _ipfsPublishFile (node, unixFs, filePath) {
   return cid.toString()
 }
 
-export async function _ipfsFetchToFile (unixFs, cidStr, destPath, onStatus) {
+export async function _ipfsFetchToFile (unixFs, cidStr, destPath, onStatus, { freeBytes } = {}) {
   if (!unixFs) throw new Error('IPFS node is not ready yet')
   const { createWriteStream } = await import('fs')
+  const { rm } = await import('fs/promises')
   const { pipeline } = await import('stream/promises')
   const { Readable } = await import('stream')
   const cid = CID.parse(cidStr)
+  // Anyone can name a CID of any size, so it gets no more than the free space.
+  const { limit, overLimit } = await downloadLimit(path.dirname(destPath), 0, freeBytes)
 
   let totalBytes = 0
   const notify = (msg) => {
@@ -85,14 +90,20 @@ export async function _ipfsFetchToFile (unixFs, cidStr, destPath, onStatus) {
   async function * trackProgress (iterable) {
     for await (const chunk of iterable) {
       totalBytes += chunk.length
+      if (totalBytes > limit) throw new Error(overLimit)
       notify(`Downloading from IPFS... ${totalBytes} bytes received`)
       yield chunk
     }
   }
 
-  await pipeline(
-    Readable.from(trackProgress(unixFs.cat(cid))),
-    createWriteStream(destPath)
-  )
+  try {
+    await pipeline(
+      Readable.from(trackProgress(unixFs.cat(cid))),
+      createWriteStream(destPath)
+    )
+  } catch (error) {
+    await rm(destPath, { force: true }).catch(() => {})
+    throw error
+  }
   return destPath
 }

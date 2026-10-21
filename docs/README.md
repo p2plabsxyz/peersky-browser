@@ -9,7 +9,7 @@
 - [P2P Apps](P2P.md)
 - [BitTorrent Protocol](BitTorrent.md)
 - [Web3 Protocol](Web3.md)
-- [Backup & Restore](Backup.md)
+- [Link Device and backups](Backup.md)
 - [Logging](Logging.md)
 - [Testing](Testing.md)
 
@@ -30,6 +30,7 @@
     - Kagi
     - Startpage
   - [x] Page zoom, per tab, with a percentage readout
+  - [x] Trackpad zoom: a two finger pinch zooms the tab under the fingers, and Ctrl with the scroll wheel zooms the page (Windows and Linux)
   - [x] Address bar suggestions drawn from browsing history
   - [x] Downloads, with progress in the toolbar (peersky://downloads)
     - Pause, resume or cancel a download in progress
@@ -54,11 +55,12 @@
 
   - [x] Run a local [hyper](https://holepunch.to/) node
   - [x] `hyper://` native URLs support
+  - [x] Folders open in Files, Photos or Videos views, with a readme under the list (`?raw` skips them)
 
 - [x] BitTorrent protocol handler:
 
   - [x] [WebTorrent](https://webtorrent.io/) in isolated child process
-  - [x] `bittorrent://` / `bt://` / `magnet:` native URLs support
+  - [x] `bittorrent://` / `bt://` / `magnet:` / `webtorrent:` native URLs support
   - [x] Real-time download progress UI with pause/resume
   - [x] Auto-destroy torrent on completion (no seeding)
   - [x] Optional `bt://` seeding
@@ -112,6 +114,7 @@
   - [x] `peersky://p2p/hyperdrive/`
     - Decentralized file storage, published as a public or private drive
     - Private files from your phone show up on their own, with a copy kept on this computer, and yours show up on the phone
+    - Your own private uploads stay listed after a restart, newest first
   - [x] And several others, including a website builder, a Wikipedia reader over
     IPFS, and the [Social Reader](https://reader.distributed.press/) ActivityPub
     client for the fediverse.
@@ -196,13 +199,14 @@
 
   - [x] Option to generate a QR code for any page, from the address bar.
 
-- [x] Archive (peersky://archive):
+- [x] P2P data (peersky://settings/p2p-data), called Archive before:
 
+  - [x] How much space P2P data takes on this computer in total, with public and private Hyper drives, PeerChat, IPFS and P2P apps each on a line, and Reset P2P Data beside it.
   - [x] List and showcase published content from `peersky://p2p/` apps for enhanced discoverability.
   - [x] Provide metadata (e.g., creation date, content type) to improve navigation and usability.
   - [x] Ability to download all the hashes of published data in a .json file.
 
-- [x] Backup & Restore (peersky://backup):
+- [x] Link Device and backups (peersky://backup):
 
   - [x] Create offline `.zip` backups containing tabs, window layout, ENS cache, and full IPFS/Hypercore data.
   - [x] Upload backups to IPFS or Hypercore to share and restore via a P2P CID.

@@ -86,7 +86,7 @@ export async function assertMobilePairingAllowed (userDataDir, targetPairingPayl
   // Re-pairing the same phone is a retry, not a second device.
   if (paired && paired.encryptionPublicKey !== key) {
     const error = new Error(
-      'This identity is already on a phone. Use "Move to a new phone" first, then pair again.'
+      'This identity is already on a phone. In Link Device, open that phone under My devices and choose Move to a new phone, then send again.'
     )
     error.code = 'MOBILE_ALREADY_PAIRED'
     error.pairedAt = paired.pairedAt

@@ -1,0 +1,26 @@
+diff --git a/node_modules/hyperdht/lib/connect.js b/node_modules/hyperdht/lib/connect.js
+index 8a3f0db..9723d4d 100644
+--- a/node_modules/hyperdht/lib/connect.js
++++ b/node_modules/hyperdht/lib/connect.js
+@@ -124,7 +124,7 @@ module.exports = function connect(dht, publicKey, opts = {}) {
+ 
+   // Safe to run in the background - never throws
+   if (dht.suspended) encryptedSocket.destroy(SUSPENDED())
+-  else connectAndHolepunch(c, opts)
++  else connectAndHolepunch(c, opts).catch((err) => maybeDestroyEncryptedSocket(c, err))
+ 
+   return encryptedSocket
+ 
+@@ -173,7 +173,11 @@ async function retryRoute(c, route) {
+ 
+   if (!ref) {
+     if (route.socket === c.dht.socket) {
+-      await connectThroughNode(c, route.address, c.dht.socket)
++      try {
++        await connectThroughNode(c, route.address, c.dht.socket)
++      } catch {
++        // if error, just ignore, and continue through the existing strat
++      }
+     }
+     return
+   }

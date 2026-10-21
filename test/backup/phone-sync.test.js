@@ -5,7 +5,7 @@ import crypto from 'crypto'
 import z32 from 'z32'
 import archiver from 'archiver'
 import { createWriteStream } from 'fs'
-import { mkdtemp, readFile, writeFile } from 'fs/promises'
+import { mkdir, mkdtemp, readFile, writeFile } from 'fs/promises'
 
 import {
   applyPhoneSync,
@@ -17,7 +17,7 @@ import {
   tabsNotOpen
 } from '../../src/backup/phone-sync.js'
 import { listPrivateHyperdrives, rememberPrivateHyperdrive } from '../../src/protocols/private-hyperdrive-registry.js'
-import { isOwnedPrivateDrive } from '../../src/protocols/private-drive-ownership.js'
+import { PRIVATE_DRIVE_OWNERSHIP_FILE, isOwnedPrivateDrive } from '../../src/protocols/private-drive-ownership.js'
 import { getOrCreatePrivateDriveKey, getPrivateDriveKeyFor } from '../../src/backup/private-drive-key.js'
 import { buildPrivateDriveKeyExport } from '../../src/backup/private-drive-export.js'
 
@@ -217,6 +217,16 @@ describe('phone-sync', function () {
     expect(await listPrivateHyperdrives(userData)).to.deep.equal([{ name: 'mine', url, timestamp: 1, encrypted: true }])
     expect(await isOwnedPrivateDrive(userData, driveId)).to.equal(true)
     expect(await getPrivateDriveKeyFor(userData, driveId)).to.equal(null)
+  })
+
+  it('never lists a phone\'s drive it could not mark read-only', async function () {
+    const userData = await makeTempDir('peersky-phone-sync-mark-')
+    // A folder where the marks are kept makes writing one fail.
+    await mkdir(path.join(userData, PRIVATE_DRIVE_OWNERSHIP_FILE))
+    let failed = false
+    await applyPhoneSync(userData, { tabs: [], bookmarks: [], privateDrives: [{ driveId: 'f'.repeat(64) }] }).catch(() => { failed = true })
+    expect(failed).to.equal(true)
+    expect(await listPrivateHyperdrives(userData)).to.deep.equal([])
   })
 
   it('leaves out a phone tab already open here, in any window', function () {

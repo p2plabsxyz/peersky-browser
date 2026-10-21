@@ -32,6 +32,6 @@ describe('hyper:// addresses given to hypercore-fetch', function () {
   it('is used for page reads, uploads and saving a file to disk', async function () {
     const handler = await readFile(new URL('../../src/protocols/hyper-handler.js', import.meta.url), 'utf8')
     expect(handler).to.match(/const resp = await fetchFn\(toHyperFetchUrl\(url\), \{/)
-    expect(handler).to.match(/_hyperFetchToFile\(context\.fetch, prepare, toHyperFetchUrl\(address\), destPath, onStatus\)/)
+    expect(handler).to.match(/_hyperFetchToFile\(context\.fetch, prepare, toHyperFetchUrl\(address\), destPath, onStatus, \{/)
   })
 })

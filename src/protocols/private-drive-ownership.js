@@ -42,22 +42,35 @@ export async function isOwnedPrivateDrive (userDataDir, driveId) {
   return record ? record.owned === true : true
 }
 
+// One write at a time. Two drives taken together would otherwise each read the
+// file before the other wrote it, and the one lost would look like a drive
+// this device made.
+let ownershipWrite = Promise.resolve()
+
 export async function setPrivateDriveOwnership (userDataDir, driveId, owned) {
   const normalized = String(driveId || '').toLowerCase()
   if (!HEX_DRIVE_ID.test(normalized)) return false
-  const ownership = await readPrivateDriveOwnership(userDataDir)
-  ownership[normalized] = { owned: owned === true }
-  await fs.mkdir(userDataDir, { recursive: true })
 
-  const destination = ownershipPath(userDataDir)
-  const temporary = `${destination}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`
-  try {
-    await fs.writeFile(temporary, JSON.stringify(ownership, null, 2), { mode: 0o600 })
-    await fs.rename(temporary, destination)
-  } finally {
-    await fs.rm(temporary, { force: true }).catch(() => {})
-  }
-  return true
+  const update = ownershipWrite
+    .catch(() => {})
+    .then(async () => {
+      const ownership = await readPrivateDriveOwnership(userDataDir)
+      ownership[normalized] = { owned: owned === true }
+      await fs.mkdir(userDataDir, { recursive: true })
+
+      const destination = ownershipPath(userDataDir)
+      const temporary = `${destination}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`
+      try {
+        await fs.writeFile(temporary, JSON.stringify(ownership, null, 2), { mode: 0o600 })
+        await fs.rename(temporary, destination)
+      } finally {
+        await fs.rm(temporary, { force: true }).catch(() => {})
+      }
+      return true
+    })
+
+  ownershipWrite = update
+  return update
 }
 
 export async function currentPrivateDriveIds (userDataDir) {

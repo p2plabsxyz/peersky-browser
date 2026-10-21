@@ -14,10 +14,12 @@ Tabs can be displayed in two modes, configurable from **Settings → Tabs**:
 
 | Mode | Description |
 |------|-------------|
-| **Horizontal** (default) | Tab strip runs along the top of the browser |
-| **Vertical** | Tab strip runs along the left side (enable via "Enable vertical tabs" toggle) |
+| **Vertical** (default) | Tab strip runs along the left side ("Enable vertical tabs" toggle) |
+| **Horizontal** | Tab strip runs along the top of the browser (turn "Enable vertical tabs" off) |
 
-The **"Keep tabs expanded"** toggle keeps each tab full-width in vertical mode, rather than collapsing to just a favicon.
+The **"Keep tabs expanded"** toggle keeps each tab full-width in vertical mode, rather than collapsing to just a favicon. It is on by default.
+
+Vertical tabs, kept expanded, are the default since v1. A profile from an earlier version is moved to that layout once, on its first start after the update, because its settings file has the old default written down whether or not anyone chose it. Whatever is picked after that is kept.
 
 <img src="./images/peersky-verticle-tabs.png" width="800" alt="Vertical Tabs" />
 
@@ -29,6 +31,7 @@ The **"Keep tabs expanded"** toggle keeps each tab full-width in vertical mode, 
 
 - **New tab button** (`+`): opens `peersky://home`
 - **Keyboard shortcut** (`CommandOrControl+T`) / context menus: open a URL directly in a new tab
+- **Links**: a link opened in a new tab (Open Link in New Tab, a middle or Cmd/Ctrl click, a page opening one) goes right after the tab it came from, and the next one from that tab after it, as in other browsers. It joins that tab's group; from a pinned tab it goes after the pinned tabs. The `+` button and `CommandOrControl+T` still add the tab at the end.
 
 ### Switching Tabs
 

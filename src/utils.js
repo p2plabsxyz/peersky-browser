@@ -13,7 +13,7 @@ const MAGNET_PREFIX = 'magnet:'
 const NAVIGABLE_SCHEMES = new Set([
   'http:', 'https:', 'about:', 'file:', 'blob:', 'data:',
   'peersky:', 'browser:', 'ipfs:', 'ipns:', 'pubsub:',
-  'hyper:', 'hs:', 'web3:', 'bittorrent:', 'bt:', 'magnet:'
+  'hyper:', 'hs:', 'web3:', 'bittorrent:', 'bt:', 'magnet:', 'webtorrent:'
 ])
 
 // Connection labels for the site-info shield. Keep in sync with NAVIGABLE_SCHEMES.
@@ -31,6 +31,7 @@ const CONNECTION_BY_PROTOCOL = {
   'bt:': { secure: true, label: 'BitTorrent' },
   'bittorrent:': { secure: true, label: 'BitTorrent' },
   'magnet:': { secure: true, label: 'BitTorrent' },
+  'webtorrent:': { secure: true, label: 'BitTorrent' },
   'web3:': { secure: true, label: 'Web3' },
   'file:': { secure: true, label: 'Local file' },
   'blob:': { secure: true, label: 'Blob' },

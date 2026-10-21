@@ -184,7 +184,7 @@ describe('the floating tab preview', function () {
   })
 
   it('shows favicons from the browser schemes and nothing else', function () {
-    expect(preview.previewPage({ favicon: 'peersky://static/assets/icon16.png', width: 100, height: 30 })).to.contain('url("peersky://static/assets/icon16.png")')
+    expect(preview.previewPage({ favicon: 'peersky://static/assets/favicon.ico', width: 100, height: 30 })).to.contain('url("peersky://static/assets/favicon.ico")')
     expect(preview.previewPage({ favicon: 'javascript:alert(1)', width: 100, height: 30 })).to.contain('background: none')
     expect(preview.previewPage({ favicon: 'https://x.test/a".png', width: 100, height: 30 })).to.contain('url("https://x.test/a%22.png")')
   })
@@ -470,6 +470,98 @@ describe('a page with no icon of its own', function () {
   })
 
   it('shows the default icon when the page gave none by the time it loaded', function () {
-    expect(stopped).to.match(/if \(!faviconElement\.style\.backgroundImage \|\| [^)]*\) \{\s*faviconElement\.style\.backgroundImage = 'url\(peersky:\/\/static\/assets\/icon16\.png\)'/)
+    expect(stopped).to.match(/if \(!faviconElement\.style\.backgroundImage \|\| [^)]*\) \{\s*faviconElement\.style\.backgroundImage = this\.iconBeforeNavigation\.get\(webview\) \|\| DEFAULT_TAB_ICON/)
+  })
+
+  // The default named icon16.png, which is not in static/assets, so a tab with
+  // no icon of its own showed an empty slot.
+  it('names only icons that are there', async function () {
+    const { existsSync } = await import('fs')
+    const named = [...`${tabBar}\n${await source('../src/pages/vertical-tabs.js')}`.matchAll(/peersky:\/\/static\/assets\/([\w.-]+)/g)].map((m) => m[1])
+    expect(named).to.include('favicon.ico')
+    for (const file of new Set(named)) {
+      expect(existsSync(new URL(`../src/pages/static/assets/${file}`, import.meta.url)), file).to.equal(true)
+    }
+  })
+
+  // Chromium sends no page-favicon-updated when a page's icons are the same as
+  // the last page's: every link on Wikipedia, or Home to peersky://version,
+  // left the tab with no icon.
+  it('keeps the last page\'s icon for a page of the same site that sent none', function () {
+    expect(navigated).to.contain("if (before && before !== 'none' && sameSite(this.lastPageUrl.get(webview), newUrl)) this.iconBeforeNavigation.set(webview, before)")
+    expect(navigated.indexOf('this.lastPageUrl.set(webview, newUrl)')).to.be.greaterThan(navigated.indexOf('sameSite(this.lastPageUrl.get(webview), newUrl)'))
+    expect(tabBar).to.contain("webview.addEventListener('page-favicon-updated', (e) => {\n      this.iconBeforeNavigation.delete(webview)")
+    const start = tabBar.indexOf('function sameSite (a, b) {')
+    const body = tabBar.slice(tabBar.indexOf('{', start) + 1, tabBar.indexOf('\n}\n', start))
+    // eslint-disable-next-line no-new-func
+    const sameSite = new Function('a', 'b', body)
+    expect(sameSite('https://en.wikipedia.org/wiki/Lake', 'https://en.wikipedia.org/wiki/River')).to.equal(true)
+    expect(sameSite('peersky://home/', 'peersky://home/?x=1')).to.equal(true)
+    expect(sameSite('peersky://home/', 'peersky://version/')).to.equal(false)
+    expect(sameSite('https://example.com/', 'file:///tmp/a.pdf')).to.equal(false)
+    expect(sameSite(undefined, 'https://example.com/')).to.equal(false)
+  })
+})
+
+// A link opened in a new tab went to the end of the strip, far from the page
+// it came from. Other browsers put it right after that tab.
+describe('a link opened in a new tab', function () {
+  const start = tabBar.indexOf('  addTabFromLink (url, openerWebContentsId = null) {')
+  const end = tabBar.indexOf('\n  findTabByWebContentsId (')
+  const body = tabBar.slice(tabBar.indexOf('{', start) + 1, tabBar.lastIndexOf('}', end))
+  // eslint-disable-next-line no-new-func
+  const addTabFromLink = new Function('url', 'openerWebContentsId', body)
+
+  function strip (ids, { active = ids[0], pinned = [], groups = {} } = {}) {
+    let counter = 0
+    const bar = {
+      tabs: ids.map((id) => ({ id })),
+      activeTabId: active,
+      pinnedTabs: new Set(pinned),
+      tabGroups: new Map(Object.values(groups).map((g) => [g, { id: g }])),
+      tabGroupAssignments: new Map(Object.entries(groups)),
+      webviews: new Map(),
+      addTab () {
+        const id = `new-${++counter}`
+        this.tabs.push({ id })
+        return id
+      },
+      moveTabToPosition (id, position) {
+        const [tab] = this.tabs.splice(this.tabs.findIndex((t) => t.id === id), 1)
+        this.tabs.splice(position, 0, tab)
+      },
+      findTabByWebContentsId: () => null,
+      addTabToGroup (id, group) { this.tabGroupAssignments.set(id, group) },
+      normalizeGroupLayout () {},
+      updateGroupedTabsUI () {},
+      saveTabsState () {}
+    }
+    const open = (url = 'https://example.com/') => addTabFromLink.call(bar, url, null)
+    const order = () => bar.tabs.map((t) => t.id)
+    return { bar, open, order }
+  }
+
+  it('goes right after the tab it came from, and the next one after it', function () {
+    const { open, order } = strip(['a', 'b', 'c'], { active: 'a' })
+    open()
+    expect(order()).to.deep.equal(['a', 'new-1', 'b', 'c'])
+    open()
+    expect(order()).to.deep.equal(['a', 'new-1', 'new-2', 'b', 'c'])
+  })
+
+  it('from a pinned tab, goes after the pinned ones', function () {
+    const { open, order } = strip(['p1', 'p2', 'a'], { active: 'p1', pinned: ['p1', 'p2'] })
+    open()
+    expect(order()).to.deep.equal(['p1', 'p2', 'new-1', 'a'])
+  })
+
+  it('joins the group of the tab it came from', function () {
+    const { bar, open } = strip(['a', 'b'], { active: 'a', groups: { a: 'trip' } })
+    const id = open()
+    expect(bar.tabGroupAssignments.get(id)).to.equal('trip')
+  })
+
+  it('is what the link menu and a page opening a tab use', function () {
+    expect(tabBar).to.contain('this.addTabFromLink(e.url,')
   })
 })

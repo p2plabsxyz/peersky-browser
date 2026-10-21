@@ -10,7 +10,7 @@
  * Security Model: Principle of least privilege with granular access control.
  */
 
-const { contextBridge, ipcRenderer, webUtils } = require('electron')
+const { contextBridge, ipcRenderer, webFrame, webUtils } = require('electron')
 
 // Context detection using window.location for immediate synchronous access
 const url = window.location.href
@@ -41,15 +41,47 @@ const isBackup = isPeerskyPage('backup')
 const isTabsPage = isPeerskyPage('tabs')
 const isP2PPage = isPeerskyPage('p2p')
 const isUserP2PApp = isPeerskyPage('myapps')
+const isVersionPage = isPeerskyPage('version')
 const isTrustedExternalHost = pageProtocol === 'https:' && pageHost === 'agregore.mauve.moe'
 const isInternal = (pageProtocol === 'peersky:' && !isUserP2PApp) || pageProtocol === 'file:' || isTrustedExternalHost
 const isExternal = !isInternal
 
 const isP2P = ['hyper:', 'ipfs:', 'ipns:', 'hs:'].includes(pageProtocol)
 
-const isBitTorrent = ['bt:', 'bittorrent:', 'magnet:'].includes(pageProtocol)
+const isBitTorrent = ['bt:', 'bittorrent:', 'magnet:', 'webtorrent:'].includes(pageProtocol)
+
+// The Hyperdrive app's Files, Photos and Videos views, which allow no inline
+// scripts: the window.llm script below would only be refused there.
+function pathOf (href) {
+  try {
+    return new URL(href).pathname
+  } catch (_) {
+    return ''
+  }
+}
+const isHyperdriveViews = pageProtocol === 'peersky:' && pageHost === 'p2p' &&
+  /^\/hyperdrive\/(files|photos|videos|viewer)(\/|$)/.test(pathOf(url))
 
 console.log('Unified-preload: URL detection', { url, isInternal, isExternal })
+
+// A trackpad pinch on a Mac comes to the page as Ctrl with the wheel, and
+// Electron's own pinch zoom does nothing for a page in a tab, so it is handed
+// to PeerSky, which zooms the tab (trackpad-zoom.js). A page that uses the
+// pinch itself, as a map does, cancels the event and keeps it. Elsewhere
+// Chromium turns Ctrl with the wheel into zoom itself.
+if (process.platform === 'darwin') {
+  window.addEventListener('wheel', (event) => {
+    if (!event.isTrusted || !event.ctrlKey || !event.deltaY) return
+    // Looked at once every listener has had it, so the page's own can still
+    // cancel it wherever it listens.
+    setTimeout(() => {
+      if (event.defaultPrevented) return
+      // In CSS pixels, which grow as the page is zoomed: back to the
+      // fingers' own movement, so a pinch zooms as much at any size.
+      ipcRenderer.send('peersky-pinch-zoom', event.deltaY * webFrame.getZoomFactor())
+    }, 0)
+  }, { passive: true })
+}
 
 // Expose minimal API for BitTorrent pages to open files in new tabs
 // Note: window.open() doesn't work for file:// URLs from custom protocols due to Electron security
@@ -115,9 +147,10 @@ if (isInternal || isP2P || isUserP2PApp) {
     iteratorReturn
   })
 
-  // LLM Memory: peersky: pages only. isInternal also covers file: pages and a
-  // trusted external host, neither of which should read the whole history.
-  if (pageProtocol === 'peersky:') {
+  // LLM Memory: PeerSky's own pages only. isInternal also covers file: pages
+  // and a trusted external host, and an app added under peersky://myapps came
+  // from somewhere else: none of them should read the whole history.
+  if (pageProtocol === 'peersky:' && !isUserP2PApp) {
     contextBridge.exposeInMainWorld('llmMemory', {
       add: (entry) => ipcRenderer.invoke('llm-memory-add', entry),
       list: (opts) => ipcRenderer.invoke('llm-memory-list', opts || {}),
@@ -182,6 +215,7 @@ if (isInternal || isP2P || isUserP2PApp) {
 
   // Wait for DOM to be ready before injecting script
   const attachScript = () => {
+    if (isHyperdriveViews) return
     if (document.head) {
       document.head.appendChild(script)
     } else {
@@ -360,8 +394,10 @@ function createSettingsAPI (pageContext) {
       reset: () => ipcRenderer.invoke('settings-reset'),
       // NEW: browser-only cache
       clearBrowserCache: () => ipcRenderer.invoke('settings-clear-cache'),
-      // NEW: P2P reset (identities preserved by default)
+      // P2P reset. The IPFS identity is kept unless asked.
       resetP2P: (opts = {}) => ipcRenderer.invoke('settings-reset-p2p', opts),
+      // How much space P2P data takes, for the P2P data section
+      getP2PStorage: () => ipcRenderer.invoke('settings-get-p2p-storage'),
       uploadWallpaper: (fileData) => {
         if (!fileData || !fileData.name || !fileData.content) {
           throw new Error('File data must include name and content')
@@ -452,6 +488,13 @@ function createEventListener (eventName, callback) {
   return () => ipcRenderer.removeListener(eventName, wrappedCallback)
 }
 
+// peersky://version reads its System Information from here, and no other page.
+if (isVersionPage) {
+  contextBridge.exposeInMainWorld('peerskyVersion', {
+    systemInfo: () => ipcRenderer.invoke('version-system-info')
+  })
+}
+
 // Static APIs for different contexts
 const cssAPI = {
   readCSS: (type) => ipcRenderer.invoke('peersky-read-css', type)
@@ -497,6 +540,10 @@ const backupAPI = {
   getPairedMobile: () => ipcRenderer.invoke('backup-paired-mobile'),
   forgetPairedMobile: () => ipcRenderer.invoke('backup-forget-mobile'),
   uploadIdentityTransferHyper: (targetPairingPayload, includePrivate = true) => ipcRenderer.invoke('backup-identity-upload-hyper', { targetPairingPayload, includePrivate }),
+  stopSending: (address) => ipcRenderer.invoke('backup-identity-stop', { address }),
+  listDevices: () => ipcRenderer.invoke('backup-linked-devices'),
+  forgetDevice: (id) => ipcRenderer.invoke('backup-forget-device', { id }),
+  readCode: () => ipcRenderer.invoke('backup-read-code'),
   relaunch: () => ipcRenderer.invoke('backup-relaunch'),
   onProgress: (callback) => createEventListener('backup-progress', callback)
 }
@@ -590,6 +637,7 @@ try {
       getPathForFile: (file) => webUtils.getPathForFile(file),
       openExternalLink: (url) => ipcRenderer.invoke('open-external-link', url),
       getDeviceInfo: () => ipcRenderer.invoke('backup-device-info'),
+      readCode: () => ipcRenderer.invoke('backup-read-code'),
       onProgress: (callback) => createEventListener('backup-progress', callback)
     })
     console.log('Unified-preload: Onboarding electronAPI exposed')
@@ -823,6 +871,17 @@ try {
       // app. The main process answers that page alone.
       devices: {
         list: () => ipcRenderer.invoke('device-sync-list')
+      },
+      // The private files this computer shared, for the same page alone.
+      privateFiles: {
+        list: () => ipcRenderer.invoke('private-files-list')
+      },
+      // A drive's files for its Files, Photos and Videos views, the number
+      // their stored pictures go with, and a download. Those pages alone.
+      hyperdrive: {
+        list: (url, options) => ipcRenderer.invoke('hyperdrive-list', url, options),
+        cacheEpoch: () => ipcRenderer.invoke('hyperdrive-cache-epoch'),
+        download: (url) => ipcRenderer.invoke('hyperdrive-download', url)
       }
     })
 

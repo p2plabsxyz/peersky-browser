@@ -3,7 +3,8 @@ import Hyperdrive from 'hyperdrive'
 import z32 from 'z32'
 import { getOrCreatePrivateDriveKey, getPrivateDriveKeyFor } from '../backup/private-drive-key.js'
 import { decodeDriveId } from '../backup/private-drive-export.js'
-import { listPrivateHyperdrives } from './private-hyperdrive-registry.js'
+import { pipeline } from 'stream/promises'
+import { listPrivateHyperdrives, replacePrivateHyperdrive } from './private-hyperdrive-registry.js'
 import { isOwnedPrivateDrive } from './private-drive-ownership.js'
 
 const MIME_TYPES = {
@@ -43,12 +44,26 @@ function escapeHtml (value) {
   })[character])
 }
 
-function renderPrivateListing (hostname, children, { readOnly = false } = {}) {
+/**
+ * The address of a file or folder in a private drive, from the drive's address
+ * and the item's path. Encoded the way this store decodes it, with decodeURI,
+ * which leaves an escaped comma escaped: the phone builds its links the same.
+ */
+export function privateFileUrl (driveUrl, itemPath) {
+  const base = driveUrl.replace(/\/+$/, '')
+  return base + itemPath.split('/').map((part) => encodeURI(part).replace(/[?#]/g, encodeURIComponent)).join('/')
+}
+
+// Each link goes under the folder listed. Only the top of a drive used to
+// open as a list, so every link went to the top.
+function renderPrivateListing (hostname, folder, children, { readOnly = false } = {}) {
+  const parent = folder.endsWith('/') ? folder : `${folder}/`
   const rows = children.map((entry) => {
     const name = typeof entry === 'string' ? entry : entry.name
     const kind = typeof entry === 'string' ? 'file' : entry.type
     const suffix = kind === 'directory' ? '/' : ''
-    return `<li><a href="hyper://${hostname}/${encodeURIComponent(name)}${suffix}">${escapeHtml(name)}</a></li>`
+    const href = privateFileUrl(`hyper://${hostname}/`, `${parent}${name}${suffix}`)
+    return `<li><a href="${escapeHtml(href)}">${escapeHtml(name)}</a></li>`
   }).join('\n')
   const banner = readOnly
     ? '<p class="private-drive-readonly">Read-only: the original drive stays writable only on the device that created it.</p>'
@@ -124,9 +139,25 @@ const CATCH_UP_EVERY_MS = 30000
 
 async function statDrive (drive, pathname, { wait = false } = {}) {
   if (pathname === '/') return { isDirectory: () => true }
-  const node = await drive.entry(pathname, wait ? { wait: true, timeout: PEER_WAIT_MS } : { wait: false }).catch(() => null)
-  if (!node) return null
-  return { isDirectory: () => node.value.blob === null }
+  const options = wait ? { wait: true, timeout: PEER_WAIT_MS } : { wait: false }
+  const node = await drive.entry(pathname, options).catch(() => null)
+  if (node) return { isDirectory: () => node.value.blob === null, node }
+  // A folder is no entry of its own, only the start of its files' paths, so a
+  // shared folder's link said "File not found".
+  return await holdsFiles(drive, pathname, options) ? { isDirectory: () => true } : null
+}
+
+async function holdsFiles (drive, pathname, options) {
+  const iterator = drive.readdir(pathname, options)[Symbol.asyncIterator]()
+  try {
+    return !(await iterator.next()).done
+  } catch {
+    return false
+  } finally {
+    try {
+      await iterator.return?.()
+    } catch {}
+  }
 }
 
 // A drive another device writes, such as a phone's, is known here only by its
@@ -134,7 +165,7 @@ async function statDrive (drive, pathname, { wait = false } = {}) {
 // either. Its peers are asked for the latest before the file is looked for
 // again. findingPeers holds update() until the swarm has looked, as in
 // waitForDriveReady for public drives.
-async function catchUpWithPeers (sdk, drive) {
+export async function catchUpWithPeers (sdk, drive) {
   if (typeof drive.core?.update !== 'function') return
   const done = typeof drive.core.findingPeers === 'function' ? drive.core.findingPeers() : null
   let timer = null
@@ -153,6 +184,30 @@ async function catchUpWithPeers (sdk, drive) {
     if (timer) clearTimeout(timer)
     if (done) done()
   }
+}
+
+// The one byte range of a file of `size` bytes a Range header asks for:
+// bytes=start-end, bytes=start- or bytes=-length. Null when there is none to
+// honour, several ranges or one that makes no sense, so the whole file goes.
+// False when the file cannot meet it.
+function byteRange (header, size) {
+  const match = /^\s*bytes\s*=\s*(\d*)\s*-\s*(\d*)\s*$/i.exec(String(header || ''))
+  if (!match || (!match[1] && !match[2])) return null
+  if (!match[1]) {
+    const length = Number(match[2])
+    return length > 0 && size > 0 ? { start: Math.max(0, size - length), end: size - 1 } : false
+  }
+  const start = Number(match[1])
+  if (match[2] && Number(match[2]) < start) return null
+  if (start >= size) return false
+  return { start, end: match[2] ? Math.min(Number(match[2]), size - 1) : size - 1 }
+}
+
+// When a file was written, kept as hypercore-fetch keeps it for public
+// drives: the Last-Modified a page sends with it, or the time of the write.
+function writtenAt (headers) {
+  const sent = Date.parse(headers.get('Last-Modified') || '')
+  return Number.isFinite(sent) ? sent : Date.now()
 }
 
 export function makePrivateDriveFetcher (sdk, userDataDir) {
@@ -241,6 +296,7 @@ export function makePrivateDriveFetcher (sdk, userDataDir) {
     // was fixed has.
     const places = pathname === rawPath ? [pathname] : [pathname, rawPath]
     const method = (options.method || 'GET').toUpperCase()
+    const requestHeaders = new Headers(options.headers || undefined)
 
     if (method === 'PUT' || method === 'POST') {
       if (!owned) {
@@ -251,7 +307,7 @@ export function makePrivateDriveFetcher (sdk, userDataDir) {
         await drive.putEntry(pathname, {})
       } else {
         const buffer = typeof body === 'string' ? Buffer.from(body) : Buffer.from(await new Response(body).arrayBuffer())
-        await drive.put(pathname, buffer)
+        await drive.put(pathname, buffer, { metadata: { mtime: writtenAt(requestHeaders) } })
       }
       return new Response('', { status: 200 })
     }
@@ -293,18 +349,38 @@ export function makePrivateDriveFetcher (sdk, userDataDir) {
       for await (const child of await drive.readdir(place)) {
         children.push(typeof child === 'string' ? child : child.name)
       }
-      const listing = renderPrivateListing(parsed.hostname, children, { readOnly: !owned })
-      return new Response(listing, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } })
+      const listing = renderPrivateListing(parsed.hostname, place, children, { readOnly: !owned })
+      // Named as hypercore-fetch names a folder it lists, so a tab opening
+      // one gets the Hyperdrive app's views, as for a public folder.
+      const folder = privateFileUrl(`hyper://${parsed.hostname}/`, place.endsWith('/') ? place : `${place}/`)
+      const headers = { 'Content-Type': 'text/html; charset=utf-8', Link: `<${folder}>; rel="canonical"` }
+      return new Response(method === 'HEAD' ? null : listing, { status: 200, headers })
     }
 
-    const buffer = await drive.get(place, remote ? { timeout: PEER_WAIT_MS } : undefined)
-    return new Response(buffer, {
-      status: 200,
-      headers: {
-        'Content-Type': contentTypeFor(name),
-        'Accept-Ranges': 'none'
-      }
-    })
+    // A range is answered with just those bytes, as for a public file, so a
+    // private video seeks and the views read only the start of a photo.
+    const { node } = stat
+    const size = node.value.blob.byteLength
+    const range = byteRange(requestHeaders.get('Range'), size)
+    if (range === false) {
+      return new Response(null, { status: 416, headers: { 'Accept-Ranges': 'bytes', 'Content-Range': `bytes */${size}` } })
+    }
+    const start = range ? range.start : 0
+    const end = range ? range.end : size - 1
+    const length = size === 0 ? 0 : end - start + 1
+    const headers = {
+      'Content-Type': contentTypeFor(name),
+      'Accept-Ranges': 'bytes',
+      'Content-Length': String(length)
+    }
+    if (range) headers['Content-Range'] = `bytes ${start}-${end}/${size}`
+    const mtime = node.value.metadata?.mtime
+    const written = Number.isFinite(mtime) ? new Date(mtime) : null
+    if (written && !Number.isNaN(written.getTime())) headers['Last-Modified'] = written.toUTCString()
+    const status = range ? 206 : 200
+    if (method === 'HEAD' || length === 0) return new Response(null, { status, headers })
+    const body = drive.createReadStream(place, { start, end, ...(remote ? { timeout: PEER_WAIT_MS } : {}) })
+    return new Response(body, { status, headers })
   }
 
   handle.openByName = openByName
@@ -312,4 +388,79 @@ export function makePrivateDriveFetcher (sdk, userDataDir) {
   // sync opens a linked device's drive this way to list and copy it.
   handle.openDrive = async (url) => (await open(url)).drive
   return handle
+}
+
+// Private drives made before private uploads were encrypted (a list entry with
+// no `encrypted`) sat on this computer as plain blocks. They never went on a
+// network, but anyone who could read the disk could read them. Each is copied
+// once into a new encrypted drive, the old one's blocks are cleared, and the
+// list points at the new one. Done in that order so that stopping part way
+// loses nothing: a copy left half done is made again from the old drive, and
+// one whose old drive is already cleared is put on the list on the next start.
+export const LEGACY_COPY_SUFFIX = ':encrypted'
+
+export async function encryptLegacyPrivateDrives (sdk, { userDataDir, onError = () => {} } = {}) {
+  const entries = await listPrivateHyperdrives(userDataDir).catch(() => [])
+  const moved = []
+  for (const entry of entries.filter((item) => !item.encrypted)) {
+    try {
+      const result = await encryptLegacyPrivateDrive(sdk, entry, userDataDir)
+      if (result) moved.push(result)
+    } catch (error) {
+      onError(entry, error)
+    }
+  }
+  return moved
+}
+
+async function encryptLegacyPrivateDrive (sdk, entry, userDataDir) {
+  const legacyKey = decodeHostname(new URL(entry.url).hostname)
+  if (!legacyKey) return null
+  const encryptionKey = await getOrCreatePrivateDriveKey(userDataDir)
+
+  const copy = new Hyperdrive(sdk.corestore.namespace(`${entry.name}${LEGACY_COPY_SUFFIX}`), null, { encryptionKey })
+  await copy.ready()
+  try {
+    // Hypercore here cannot delete a core, so the old drive's blocks are
+    // cleared: the files' bytes first, then their names, leaving only hashes.
+    // A drive a run before this already cleared has nothing left to copy, and
+    // is not copied over the copy.
+    const legacy = new Hyperdrive(sdk.corestore.namespace(entry.name), legacyKey, { encryptionKey: null })
+    await legacy.ready()
+    try {
+      const db = legacy.core
+      const dbThere = db.length > 0 && await db.has(0)
+      const blobs = dbThere && legacy.blobs ? legacy.blobs.core : null
+      const blobsThere = !blobs || blobs.length === 0 || await blobs.has(0)
+      if (dbThere && blobsThere) await copyDriveFiles(legacy, copy)
+      if (blobs && blobs.length > 0) await blobs.clear(0, blobs.length)
+      if (db.length > 0) await db.clear(0, db.length)
+    } finally {
+      await legacy.close().catch(() => {})
+    }
+
+    const kept = copy.core.length > 0
+    await replacePrivateHyperdrive(userDataDir, entry.url, kept
+      ? { name: entry.name, url: copy.url.endsWith('/') ? copy.url : `${copy.url}/`, timestamp: entry.timestamp, encrypted: true }
+      : null)
+    return { from: entry.url, to: kept ? copy.url : null }
+  } finally {
+    await copy.close().catch(() => {})
+  }
+}
+
+async function copyDriveFiles (from, to) {
+  for await (const file of from.list('/', { recursive: true })) {
+    const value = file.value || {}
+    if (value.linkname) {
+      await to.symlink(file.key, value.linkname)
+    } else if (value.blob) {
+      await pipeline(
+        from.createReadStream(file.key),
+        to.createWriteStream(file.key, { executable: value.executable, metadata: value.metadata })
+      )
+    } else {
+      await to.put(file.key, Buffer.alloc(0), { executable: value.executable, metadata: value.metadata })
+    }
+  }
 }

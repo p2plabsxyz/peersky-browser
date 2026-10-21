@@ -7,7 +7,7 @@ import { Worker } from 'worker_threads'
 import { app } from 'electron'
 import fsExtra from 'fs-extra'
 import { createLogger } from '../logger.js'
-import { readManifest, verifyManifest } from './backup-core.js'
+import { openSealedBackupFiles, readManifest, verifyManifest } from './backup-core.js'
 import { createIdentityTransferZip, decodePairingString, decryptIdentityTransferZip, extractAndVerifyIdentityPayload, isIdentityTransferManifest } from './identity-transfer.js'
 import { assertMobilePairingAllowed, setPairedMobile } from './mobile-pairing.js'
 import { decryptEncryptedBackupZip, isEncryptedBackupManifest } from './encrypted-backup.js'
@@ -15,7 +15,7 @@ import { suspendHyper, resumeHyper, trustPrivateDriveHostname, exportChatForTran
 import { suspendIPFS, resumeIPFS } from '../protocols/ipfs-handler.js'
 import { setPrivateDriveOwnership, currentPrivateDriveIds } from '../protocols/private-drive-ownership.js'
 import { listPrivateHyperdrives } from '../protocols/private-hyperdrive-registry.js'
-import { decodeDriveId } from './private-drive-export.js'
+import { buildPrivateDriveKeyExport, decodeDriveId } from './private-drive-export.js'
 import { applyPhoneSync, isPhoneSyncManifest, readPhoneSyncZip } from './phone-sync.js'
 import { exportP2pmdNotes, importP2pmdNotes } from './p2pmd-notes.js'
 import { forgetPairingNonce, isLivePairingNonce } from './pairing-sessions.js'
@@ -43,7 +43,7 @@ const WORKER_PATH = fileURLToPath(new URL('./backup-worker.js', import.meta.url)
 // to secret keys; anything left behind by a crash is cleared at the next start.
 const INCOMING_DIR_PREFIX = '.peersky-incoming-'
 const STAGED_TTL_MS = 30 * 60 * 1000
-const PHONE_SYNC_ELSEWHERE = 'This is tabs and bookmarks from a phone, not a backup. Add it from Settings > Backup & Restore, under Restore from the network.'
+const PHONE_SYNC_ELSEWHERE = 'This is tabs and bookmarks from a phone, not a backup. Add it in Settings > Link Device, under Sync with another device.'
 
 function userDataDir () {
   return app.getPath('userData')
@@ -189,13 +189,20 @@ class BackupManager {
     await suspendHyper()
     await suspendIPFS()
     try {
+      // The worker has no safe storage: files locked with it, and the private
+      // drive key, are opened here and handed over (backup-core.js).
+      const includePrivate = options.includePrivate === true
+      const openedFiles = await openSealedBackupFiles(userDataDir(), { includePrivate })
+      const privateKeyExport = includePrivate ? await buildPrivateDriveKeyExport(userDataDir(), Date.now()) : undefined
       const result = await runWorker({
         op: 'create',
         userDataDir: userDataDir(),
         outPath,
         peerskyVersion: app.getVersion(),
         passphrase,
-        includePrivate: options.includePrivate === true
+        includePrivate,
+        openedFiles,
+        privateKeyExport
       }, onProgress)
       log.info(`Backup created: ${result.bytes} bytes`)
       return result
@@ -344,7 +351,7 @@ class BackupManager {
       // for any other code is refused before it is decrypted.
       const nonce = manifest.identityTransfer?.nonce
       if (!isLivePairingNonce(nonce)) {
-        throw new Error('This transfer was made for a code this desktop is no longer showing. Open Backup & Restore again and send it to the code shown there.')
+        throw new Error('This transfer was made for a code this desktop is no longer showing. Open Sync with another device here again and send it to the code shown there.')
       }
 
       dir = await fs.mkdtemp(path.join(userDataDir(), INCOMING_DIR_PREFIX))

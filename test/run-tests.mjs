@@ -65,6 +65,8 @@ async function discoverSuites (scripts) {
     if (!name.startsWith('test:')) continue
     // Skip aggregates, including this runner, so it cannot invoke itself.
     if (script.includes('run-tests.mjs')) continue
+    // Load tests measure rather than pass or fail, and take minutes: run by hand.
+    if (name.startsWith('test:load:')) continue
     candidates.push({ suite: name.slice('test:'.length), specs: await expandSpecs(script) })
   }
 

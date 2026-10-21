@@ -76,6 +76,8 @@ async function loadBackupManager (options = {}) {
     worker_threads: { Worker: FakeWorker },
     'fs-extra': { default: { copy } },
     [backupCorePath]: {
+      // Locked files are opened on the main thread for the worker.
+      openSealedBackupFiles: sinon.stub().resolves({ 'privateHyperdrives.json': Buffer.from('[]') }),
       readManifest,
       verifyManifest
     },
@@ -237,6 +239,8 @@ describe('backup-manager', function () {
 
     expect(workerCalls).to.have.length(1)
     expect(workerCalls[0]).to.include({ op: 'create', includePrivate: true })
+    // The worker has no safe storage, so it is handed the locked files opened.
+    expect(workerCalls[0].openedFiles).to.have.property('privateHyperdrives.json')
   })
 
   it('preserves live data when staging the restore fails', async function () {

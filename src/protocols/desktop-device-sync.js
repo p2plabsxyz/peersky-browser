@@ -7,6 +7,7 @@ import { PHONE_PRIVATE_DRIVE_NAME } from '../backup/phone-sync.js'
 import { listPrivateHyperdrives, rememberPrivateHyperdrive } from './private-hyperdrive-registry.js'
 import { isOwnedPrivateDrive, setPrivateDriveOwnership } from './private-drive-ownership.js'
 import { LINKED_PRIVATE_DRIVE_NAME } from './private-drive-errors.js'
+import { privateFileUrl } from './private-hyperdrive.js'
 
 // This desktop's side of the private sync with the person's other devices: it
 // meets them under a topic made from this profile's private drive key, tells
@@ -45,6 +46,10 @@ export async function takeLinkedDrive (userDataDir, { id, key = null, identityKe
   if (key && (!identityKey || !Buffer.from(key).equals(Buffer.from(identityKey)))) {
     await rememberPrivateDriveKeyFor(userDataDir, id, Buffer.from(key).toString('hex'))
   }
+  // Marked read-only before it is listed. Listed first, it would read as one
+  // this desktop made until the mark was written, and for good if that write
+  // failed or PeerSky stopped in between.
+  await setPrivateDriveOwnership(userDataDir, id, false)
   if (!known) {
     await rememberPrivateHyperdrive(userDataDir, {
       name: device === 'phone' ? PHONE_PRIVATE_DRIVE_NAME : LINKED_PRIVATE_DRIVE_NAME,
@@ -53,7 +58,6 @@ export async function takeLinkedDrive (userDataDir, { id, key = null, identityKe
       encrypted: true
     })
   }
-  await setPrivateDriveOwnership(userDataDir, id, false)
   return true
 }
 
@@ -114,16 +118,13 @@ export function deviceSyncSnapshot (userDataDir, online = new Set()) {
     files: state.devices.flatMap((device) => device.drives.flatMap((driveId) => {
       const listing = state.listings[driveId]
       if (!listing) return []
-      const base = urlOf(driveId).slice(0, -1)
       return listing.items.map((item) => ({
         type: item.type,
         name: item.name,
         byteLength: item.byteLength,
         deviceId: device.id,
         deviceType: device.type,
-        // Encoded the way the private store decodes it, with decodeURI, which
-        // leaves an escaped comma escaped: the phone builds its links the same.
-        url: base + item.path.split('/').map((part) => encodeURI(part).replace(/[?#]/g, encodeURIComponent)).join('/')
+        url: privateFileUrl(urlOf(driveId), item.path)
       }))
     }))
   }

@@ -26,7 +26,7 @@ function titleFromAddress (url) {
 // URL a page can craft.
 const RELOADABLE_SCHEMES = new Set([
   'http:', 'https:', 'peersky:', 'browser:', 'ipfs:', 'ipns:', 'pubsub:',
-  'hyper:', 'hs:', 'web3:', 'bittorrent:', 'bt:', 'magnet:', 'file:'
+  'hyper:', 'hs:', 'web3:', 'bittorrent:', 'bt:', 'magnet:', 'webtorrent:', 'file:'
 ])
 
 function failedUrlBehindErrorPage (webview) {
@@ -46,6 +46,22 @@ function failedUrlBehindErrorPage (webview) {
   }
 }
 
+// A tab whose page gave no icon. icon16.png, the one named here before, is not
+// in static/assets, so those tabs showed an empty slot.
+const DEFAULT_TAB_ICON = 'url(peersky://static/assets/favicon.ico)'
+
+// Two addresses on one site: scheme and host. URL.origin gives "null" for
+// peersky: and the P2P schemes, so it cannot be used.
+function sameSite (a, b) {
+  try {
+    const left = new URL(a)
+    const right = new URL(b)
+    return left.protocol === right.protocol && left.host === right.host
+  } catch {
+    return false
+  }
+}
+
 // This page runs with node integration, so markup built from any stored or
 // page-supplied string must go through here.
 function escapeHtml (value) {
@@ -62,7 +78,13 @@ class TabBar extends HTMLElement {
     this.tabCounter = 0
     this.webviews = new Map() // Store webviews by tab ID
     this.zoomLevels = new Map() // Zoom level by tab ID
+    this.listenForPinchZoom()
     this.faviconsByTab = new Map() // By tab ID, the icons of pages it showed, by address
+    // By webview, the page it last showed, and that page's icon while the new
+    // page has sent none. The tab's url is no use for the first: typing an
+    // address sets it before the page loads.
+    this.lastPageUrl = new WeakMap()
+    this.iconBeforeNavigation = new WeakMap()
     this._tabsStateTimer = null // Pending coalesced saveTabsState write
     this.webviewContainer = null // Will be set by connectWebviewContainer
     this.pinnedTabs = new Set() // Track pinned tabs
@@ -805,7 +827,7 @@ class TabBar extends HTMLElement {
     // favicon element
     const faviconElement = document.createElement('div')
     faviconElement.className = 'tab-favicon'
-    faviconElement.style.backgroundImage = 'url(peersky://static/assets/icon16.png)'
+    faviconElement.style.backgroundImage = DEFAULT_TAB_ICON
     faviconElement.style.display = 'block'
 
     const closeButton = document.createElement('span')
@@ -1180,8 +1202,9 @@ class TabBar extends HTMLElement {
           }
           // Only set default icon if no background image is set
           if (!faviconElement.style.backgroundImage || faviconElement.style.backgroundImage === 'none') {
-            faviconElement.style.backgroundImage = 'url(peersky://static/assets/icon16.png)'
+            faviconElement.style.backgroundImage = this.iconBeforeNavigation.get(webview) || DEFAULT_TAB_ICON
           }
+          this.iconBeforeNavigation.delete(webview)
         }
       }
 
@@ -1217,8 +1240,17 @@ class TabBar extends HTMLElement {
       const faviconElement = document.getElementById(tabId)?.querySelector('.tab-favicon')
       if (faviconElement) {
         const known = this.faviconsByTab.get(tabId)?.get(newUrl)
+        // Chromium sends no page-favicon-updated when a page's icons are the
+        // same as the last page's, as between two pages of one site, so every
+        // link on Wikipedia left the tab with no icon, as did Home to
+        // peersky://version. Kept here, did-stop-loading puts it back for a
+        // page of the same site that sent none.
+        const before = faviconElement.style.backgroundImage
+        if (before && before !== 'none' && sameSite(this.lastPageUrl.get(webview), newUrl)) this.iconBeforeNavigation.set(webview, before)
+        else this.iconBeforeNavigation.delete(webview)
         faviconElement.style.backgroundImage = known ? `url(${known})` : ''
       }
+      this.lastPageUrl.set(webview, newUrl)
       if (tab && tab.savedNavigation && tab.savedNavigation.entries) {
         if (tab.isFallbackNavigating) {
           tab.isFallbackNavigating = false
@@ -1291,10 +1323,11 @@ class TabBar extends HTMLElement {
 
     webview.addEventListener('new-window', (e) => {
       e.preventDefault()
-      this.addTab(e.url, 'New Tab')
+      this.addTabFromLink(e.url, typeof webview.getWebContentsId === 'function' ? webview.getWebContentsId() : null)
     })
 
     webview.addEventListener('page-favicon-updated', (e) => {
+      this.iconBeforeNavigation.delete(webview)
       const tabElement = document.getElementById(tabId)
       if (!tabElement) return
 
@@ -1323,7 +1356,7 @@ class TabBar extends HTMLElement {
         faviconElement.style.display = 'block'
       } else {
         // Use default icon if no favicon is available
-        faviconElement.style.backgroundImage = 'url(peersky://static/assets/icon16.png)'
+        faviconElement.style.backgroundImage = DEFAULT_TAB_ICON
         faviconElement.style.display = 'block'
       }
     })
@@ -1867,16 +1900,47 @@ class TabBar extends HTMLElement {
   // The zoom calls throw until the webview is dom-ready, and dom-ready reapplies
   // the tab's level, so it is safe to give up here.
   zoomActiveTab (step) {
-    const webview = this.getActiveWebview()
-    if (!webview) return
+    this.zoomTab(this.activeTabId, step)
+  }
+
+  zoomTab (tabId, step) {
+    const webview = this.webviews.get(tabId)
+    if (!webview || !Number.isFinite(step)) return
     try {
       const level = Math.max(-7, Math.min(9, webview.getZoomLevel() + step))
-      this.zoomLevels.set(this.activeTabId, level)
+      this.zoomLevels.set(tabId, level)
       webview.setZoomLevel(level)
     } catch (_) {
       return
     }
-    this.emitZoomChanged()
+    if (tabId === this.activeTabId) this.emitZoomChanged()
+  }
+
+  // A pinch over a page, which main hands on from the page's own preload
+  // (trackpad-zoom.js). In split view it may be the tab that is not active.
+  zoomTabForWebContents (webContentsId, step) {
+    const tab = this.findTabByWebContentsId(webContentsId)
+    if (tab) this.zoomTab(tab.id, step)
+  }
+
+  // A trackpad pinch on a Mac comes to a page as Ctrl with the wheel, and
+  // Electron's own pinch zoom does nothing for a page in a tab. One that
+  // reaches this window over a tab zooms that tab, as much as the fingers
+  // moved (pinchZoomStep in trackpad-zoom.js). Elsewhere Chromium turns Ctrl
+  // with the wheel into zoom itself.
+  listenForPinchZoom () {
+    if (typeof process === 'undefined' || process.platform !== 'darwin') return
+    window.addEventListener('wheel', (event) => {
+      if (!event.isTrusted || !event.ctrlKey || event.defaultPrevented || !event.deltaY) return
+      const target = event.target
+      if (!target || target.tagName !== 'WEBVIEW') return
+      for (const [tabId, webview] of this.webviews) {
+        if (webview === target) {
+          this.zoomTab(tabId, -event.deltaY / (100 * Math.log(1.2)))
+          return
+        }
+      }
+    }, { passive: true, capture: true })
   }
 
   resetActiveTabZoom () {
@@ -2205,6 +2269,50 @@ class TabBar extends HTMLElement {
   }
 
   // Add new tab to the right of specified tab
+  // A link opened in a new tab goes right after the tab it came from, and the
+  // next link from that tab after the one before, as in other browsers. It
+  // joins the group its tab is in. A tab of its own (the + button, Ctrl+T)
+  // still goes at the end.
+  addTabFromLink (url, openerWebContentsId = null) {
+    const opener = this.findTabByWebContentsId(openerWebContentsId) ||
+      this.tabs.find(t => t.id === this.activeTabId)
+    const tabId = this.addTab(url, 'New Tab')
+    if (!opener || opener.id === tabId) return tabId
+
+    const newTab = this.tabs.find(t => t.id === tabId)
+    if (newTab) newTab.openerTabId = opener.id
+    let index = this.tabs.findIndex(t => t.id === opener.id)
+    if (index === -1) return tabId
+    const pinned = this.pinnedTabs.has(opener.id)
+    // From a pinned tab, after the pinned ones, where the other tabs start.
+    if (pinned) {
+      while (index + 1 < this.tabs.length && this.pinnedTabs.has(this.tabs[index + 1].id)) index++
+    }
+    while (index + 1 < this.tabs.length && this.tabs[index + 1].id !== tabId &&
+      this.tabs[index + 1].openerTabId === opener.id) index++
+    this.moveTabToPosition(tabId, index + 1)
+
+    const groupId = pinned ? null : this.tabGroupAssignments.get(opener.id)
+    if (groupId && this.tabGroups.has(groupId)) {
+      this.addTabToGroup(tabId, groupId)
+      this.normalizeGroupLayout()
+      this.updateGroupedTabsUI()
+    }
+    this.saveTabsState()
+    return tabId
+  }
+
+  findTabByWebContentsId (webContentsId) {
+    if (webContentsId == null) return null
+    for (const tab of this.tabs) {
+      const webview = this.webviews.get(tab.id)
+      try {
+        if (webview && typeof webview.getWebContentsId === 'function' && webview.getWebContentsId() === webContentsId) return tab
+      } catch {}
+    }
+    return null
+  }
+
   addTabToTheRight (tabId) {
     const newTabId = this.addTab('peersky://home', 'Home')
 
@@ -4102,7 +4210,7 @@ class TabBar extends HTMLElement {
     if (url.startsWith('web3://')) {
       return 'web3'
     }
-    if (url.startsWith('bt://') || url.startsWith('bittorrent://') || url.startsWith('magnet:')) {
+    if (url.startsWith('bt://') || url.startsWith('bittorrent://') || url.startsWith('magnet:') || url.startsWith('webtorrent:')) {
       return 'bt'
     }
     if (url.startsWith('peersky://') || url.startsWith('browser://')) {

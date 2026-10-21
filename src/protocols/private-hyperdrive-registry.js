@@ -1,6 +1,6 @@
 import path from 'path'
-import crypto from 'crypto'
 import { promises as fs } from 'fs'
+import { readSealedJson, writeSealedJson } from '../backup/sealed-file.js'
 
 export const PRIVATE_HYPERDRIVE_REGISTRY_FILE = 'privateHyperdrives.json'
 
@@ -52,11 +52,13 @@ export async function listPrivateHyperdrives (userDataDir) {
     const filePath = registryPath(userDataDir)
     const info = await fs.stat(filePath)
     if (info.size > MAX_REGISTRY_BYTES) throw new Error('Private Hyperdrive registry is too large')
-    parsed = JSON.parse(await fs.readFile(filePath, 'utf8'))
+    // The names of private drives, so locked like the key (sealed-file.js).
+    parsed = (await readSealedJson(filePath))?.value
   } catch (error) {
     if (error.code === 'ENOENT') return []
     throw error
   }
+  if (parsed === undefined) return []
 
   if (!Array.isArray(parsed)) throw new Error('Private Hyperdrive registry is invalid')
 
@@ -71,15 +73,7 @@ export async function listPrivateHyperdrives (userDataDir) {
 }
 
 async function writePrivateHyperdrives (userDataDir, entries) {
-  const destination = registryPath(userDataDir)
-  const temporary = `${destination}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`
-  await fs.mkdir(userDataDir, { recursive: true })
-  try {
-    await fs.writeFile(temporary, JSON.stringify(entries, null, 2), { mode: 0o600 })
-    await fs.rename(temporary, destination)
-  } finally {
-    await fs.rm(temporary, { force: true }).catch(() => {})
-  }
+  await writeSealedJson(registryPath(userDataDir), entries)
 }
 
 export function rememberPrivateHyperdrive (userDataDir, entry) {
@@ -94,6 +88,34 @@ export function rememberPrivateHyperdrive (userDataDir, entry) {
         normalized,
         ...existing.filter((item) => item.url !== normalized.url)
       ].slice(0, MAX_PRIVATE_HYPERDRIVES)
+      await writePrivateHyperdrives(userDataDir, entries)
+      return normalized
+    })
+
+  registryWrite = update
+  return update
+}
+
+/**
+ * Puts entry in place of the drive at oldUrl, where it was in the list, or
+ * takes that drive off the list when entry is null.
+ */
+export function replacePrivateHyperdrive (userDataDir, oldUrl, entry) {
+  const normalized = entry === null ? null : normalizePrivateHyperdrive(entry)
+  if (entry !== null && !normalized) return Promise.reject(new Error('Private Hyperdrive metadata is invalid'))
+
+  const update = registryWrite
+    .catch(() => {})
+    .then(async () => {
+      const existing = await listPrivateHyperdrives(userDataDir)
+      const entries = []
+      for (const item of existing) {
+        if (item.url === oldUrl) {
+          if (normalized) entries.push(normalized)
+        } else if (!normalized || item.url !== normalized.url) {
+          entries.push(item)
+        }
+      }
       await writePrivateHyperdrives(userDataDir, entries)
       return normalized
     })

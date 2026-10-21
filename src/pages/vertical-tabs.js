@@ -136,7 +136,7 @@ export default class VerticalTabs extends BaseTabBar {
     if (tabElement) {
       const favicon = tabElement.querySelector('.tab-favicon')
       if ((favicon && !favicon.style.backgroundImage) || favicon.style.backgroundImage === 'none') {
-        favicon.style.backgroundImage = 'url(peersky://static/assets/icon16.png)'
+        favicon.style.backgroundImage = 'url(peersky://static/assets/favicon.ico)'
       }
     }
 

@@ -24,14 +24,17 @@ import { hyperCache, saveHyperCache } from './config.js'
 import { enforceExtensionWritePolicy } from '../extensions/request-policy.js'
 import { resolveHyperdriveUploadTarget } from './hyper-drive-visibility.js'
 import { listPrivateHyperdrives, rememberPrivateHyperdrive } from './private-hyperdrive-registry.js'
-import { makePrivateDriveFetcher, decodesWithKey } from './private-hyperdrive.js'
-import { setPrivateDriveOwnership } from './private-drive-ownership.js'
+import { makePrivateDriveFetcher, decodesWithKey, catchUpWithPeers, encryptLegacyPrivateDrives } from './private-hyperdrive.js'
+import { isOwnedPrivateDrive, setPrivateDriveOwnership } from './private-drive-ownership.js'
 import { getPrivateDriveKey } from '../backup/private-drive-key.js'
+import { decodeDriveId } from '../backup/private-drive-export.js'
 import { shareDriveOpens } from './shared-drive-opens.js'
 import { isUnreadableDriveError, LINKED_PRIVATE_DRIVE_NAME, PRIVATE_DRIVE_ERROR } from './private-drive-errors.js'
 import { mayUsePrivateDrive, takeNavigationStamp } from './request-gate.js'
 import { toHyperFetchUrl } from './hyper-fetch-url.js'
 import { deviceSyncSnapshot, startDesktopDeviceSync } from './desktop-device-sync.js'
+import { listOwnPrivateDrives, listOwnPrivateFiles } from './own-private-files.js'
+import { driveFolderOf, hasViewer, knownDriveName, listDriveFiles, listError, listFailure, viewerRedirect } from './hyperdrive-views.js'
 
 import { _suspendHyper, _hyperPublishFile, _hyperFetchToFile } from '../backup/hyper-backup.js'
 
@@ -120,17 +123,29 @@ async function attachLANDiscovery (activeSdk, lanOptions = {}) {
 
 // Local discovery for one store's swarm, started again on the new address
 // when this computer moves to another network, until that store is closed.
+// One that could not start is tried again on the same check: a PeerSky
+// started with Wi-Fi off, or while another PeerSky on this computer held the
+// port, had no local network at all until it was restarted, so a note made
+// once the Wi-Fi was back still waited on the internet.
 async function keepLANDiscovery (activeSdk, { label = 'LAN', lanOptions = {} } = {}) {
   let lan = null
-  try {
-    lan = await attachLANDiscovery(activeSdk, lanOptions)
-    log.info(`[${label}] Listening on ${lan.host || '0.0.0.0'}:${lan.port}`)
-  } catch (err) {
-    log.warn(`[${label}] Local discovery unavailable, continuing without it: ${err.message}`)
-    return null
+  let lastKnownIP = null
+  let lastError = null
+  const start = async () => {
+    try {
+      lan = await attachLANDiscovery(activeSdk, lanOptions)
+      lastKnownIP = lan.host
+      lastError = null
+      log.info(`[${label}] Listening on ${lan.host || '0.0.0.0'}:${lan.port}`)
+    } catch (err) {
+      lan = null
+      // Said once for each reason, not every ten seconds.
+      if (err.message !== lastError) log.warn(`[${label}] Local discovery unavailable, trying again: ${err.message}`)
+      lastError = err.message
+    }
   }
+  await start()
 
-  let lastKnownIP = lan.host
   let cycling = false
   const NETWORK_CHECK_MS = 10_000
   const timer = setInterval(async () => {
@@ -141,21 +156,17 @@ async function keepLANDiscovery (activeSdk, { label = 'LAN', lanOptions = {} } =
     if (cycling) return
     try {
       const currentIP = HyperDHTmDNS.selectLocalIPv4()
-      if (currentIP === lastKnownIP) return
-      log.info(`[${label}] Network change detected: ${lastKnownIP} -> ${currentIP}`)
+      if (!currentIP) return
+      if (lan && currentIP === lastKnownIP) return
       cycling = true
-
       try {
-        const previous = lan
-        lan = null
-        if (previous && !previous.destroyed) await previous.destroy()
-        const next = await attachLANDiscovery(activeSdk, lanOptions)
-        lan = next
-        lastKnownIP = next.host
-        log.info(`[${label}] Restarted discovery on ${next.host}:${next.port}`)
-      } catch (err) {
-        lan = null
-        log.warn(`[${label}] Network change recovery failed: ${err.message}`)
+        if (lan) {
+          log.info(`[${label}] Network change detected: ${lastKnownIP} -> ${currentIP}`)
+          const previous = lan
+          lan = null
+          if (!previous.destroyed) await previous.destroy()
+        }
+        await start()
       } finally {
         cycling = false
       }
@@ -268,13 +279,26 @@ function initializeHyperSDK (options) {
  *
  * @returns {Promise<void>}
  */
+// The local network discovery Hyperdrive and PeerChat find each other on over
+// Wi-Fi, so P2PMD notes are found there too, with no internet (p2pmd-lan.js).
+// Null when Hyper is not running or has no local network.
+export async function getHyperLAN () {
+  try {
+    if (!isSuspended && (sdk || savedSdkOptions)) await initializeHyperSDK()
+  } catch {}
+  const lan = sdk?.localSwarm
+  return lan && !lan.destroyed ? lan : null
+}
+
 export async function warmupHyper () {
   if (isSuspended) return
   if (!savedSdkOptions && sdk == null) return
   await initializeHyperSDK()
   // A profile with private files meets its other devices as soon as it is up,
   // so a phone's new private files arrive without anything being opened here.
-  if (!privateDeviceOnly && await getPrivateDriveKey(app.getPath('userData'))) {
+  // A key locked with safe storage that will not open (sealed-file.js) is
+  // no key here: the private store waits rather than failing the start.
+  if (!privateDeviceOnly && await getPrivateDriveKey(app.getPath('userData')).catch(() => null)) {
     await initializePrivateHyperSDK()
   }
 }
@@ -472,7 +496,7 @@ async function stopPrivateDeviceSync () {
  */
 export async function startPrivateSync () {
   if (isSuspended || privateDeviceOnly) return null
-  if (!await getPrivateDriveKey(app.getPath('userData'))) return null
+  if (!await getPrivateDriveKey(app.getPath('userData')).catch(() => null)) return null
   await initializePrivateHyperSDK()
   return ensurePrivateDeviceSync()
 }
@@ -485,6 +509,23 @@ export function getDeviceSyncSnapshot () {
   return deviceSyncSnapshot(app.getPath('userData'), privateDeviceSync ? privateDeviceSync.online : new Set())
 }
 
+/**
+ * The private files this desktop shared, newest first, for the Hyperdrive app.
+ * Listed from the drives themselves, so they are there after a restart.
+ */
+export async function getOwnPrivateFiles () {
+  if (isSuspended) throw new Error('Hyper is unavailable while a backup is in progress')
+  const userDataDir = app.getPath('userData')
+  if ((await listOwnPrivateDrives(userDataDir)).length === 0) return []
+  await initializePrivateHyperSDK()
+  const openedSdk = privateSdk
+  const openedFetch = privateKeyedFetch
+  // Opened the way a read of the same drive opens it, so the two share one
+  // open: a store kept on this device alone reads through the SDK's drives.
+  const openDrive = (url) => privateDeviceOnly ? openedSdk.getDrive(url) : openedFetch.openDrive(url)
+  return listOwnPrivateFiles(userDataDir, { openDrive, logger: log })
+}
+
 async function startPrivateHyperSDK (options) {
   const privateOptions = getPrivateSDKOptions(options || savedSdkOptions, privateDeviceOnly)
   const networkKeys = await readNetworkKeys(app.getPath('userData'))
@@ -494,6 +535,15 @@ async function startPrivateHyperSDK (options) {
   // messages went through, and opening a private drive waited on the public
   // DHT. A store kept on this device alone goes on no network at all.
   if (!privateDeviceOnly) await keepLANDiscovery(openedSdk, { label: 'LAN private', lanOptions: { privateStore: true } })
+  // Drives from before private uploads were encrypted are copied into
+  // encrypted ones before anything opens them (private-hyperdrive.js).
+  if (!privateDeviceOnly) {
+    const moved = await encryptLegacyPrivateDrives(openedSdk, {
+      userDataDir: app.getPath('userData'),
+      onError: (entry, error) => log.warn('[hyper] could not encrypt an old private drive:', error?.message || error)
+    }).catch(() => [])
+    if (moved.length) log.info(`[hyper] encrypted ${moved.length} private drive(s) from before encryption`)
+  }
   try {
     const openedFetch = await makeHyperFetch({ sdk: openedSdk, writable: true })
     privateSdk = openedSdk
@@ -579,7 +629,7 @@ export async function hyperPublishFile (filePath, fileName = 'backup.zip', optio
         await fs.rm(storage, { recursive: true, force: true }).catch(() => {})
       }
       const ttlMs = Math.max(1000, Number(options.ttlMs) || 10 * 60 * 1000)
-      publisher = { sdk: publisherSdk, storage, cleanup, timer: setTimeout(cleanup, ttlMs) }
+      publisher = { sdk: publisherSdk, storage, cleanup, key: String(result.key || '').toLowerCase(), timer: setTimeout(cleanup, ttlMs) }
       publisher.timer.unref()
       ephemeralPublishers.add(publisher)
       return result
@@ -593,9 +643,29 @@ export async function hyperPublishFile (filePath, fileName = 'backup.zip', optio
   return _hyperPublishFile(f, sdk, filePath, fileName)
 }
 
+// Stop Sending on Link Device: the transfer stops being served now rather
+// than when its time runs out. False when nothing was serving it.
+export async function stopHyperPublish (address) {
+  let key = ''
+  try { key = new URL(String(address || '').trim()).hostname.toLowerCase() } catch {}
+  if (!key) return false
+  for (const publisher of ephemeralPublishers) {
+    if (publisher.key !== key) continue
+    await publisher.cleanup()
+    return true
+  }
+  return false
+}
+
 // A drive nobody is seeding must not hold a tab open forever, so the wait is
 // bounded and the caller serves whatever the drive has once it expires.
 const PEER_WAIT_MS = 15000
+// A drive published a moment ago is often not announced yet when the first
+// lookup runs, and the swarm looks again only every ten minutes: a link opened
+// on another device right after it was published said "Peers Not Found", and
+// said it at once on every reload for minutes. The lookup runs again this
+// often until a peer answers or the wait runs out.
+const LOOK_AGAIN_MS = 2000
 
 export async function waitForDriveReady (url, timeoutMs = PEER_WAIT_MS) {
   if (!sdk) return
@@ -606,28 +676,41 @@ export async function waitForDriveReady (url, timeoutMs = PEER_WAIT_MS) {
     if (drive.writable || drive.core.length > 0) return
 
     log.info(`Waiting for peers for ${hostname}...`)
-    // findingPeers() hands back the release callback, and holding it open is
-    // the only thing that makes update() wait for a peer rather than return
-    // straight away against a core that has replicated nothing yet. Awaiting
-    // the callback instead of calling it, as this did before, both skipped the
-    // wait and leaked the counter. Releasing twice is safe: it is once-guarded.
-    const done = typeof drive.core.findingPeers === 'function'
-      ? drive.core.findingPeers()
-      : null
+    const deadline = Date.now() + timeoutMs
+    for (let attempt = 0; Date.now() < deadline; attempt++) {
+      if (attempt > 0) {
+        await new Promise((resolve) => setTimeout(resolve, Math.min(LOOK_AGAIN_MS, Math.max(0, deadline - Date.now()))))
+        if (Date.now() >= deadline) break
+      }
+      // findingPeers() hands back the release callback, and holding it open is
+      // the only thing that makes update() wait for a peer rather than return
+      // straight away against a core that has replicated nothing yet. Awaiting
+      // the callback instead of calling it, as this did before, both skipped the
+      // wait and leaked the counter. Releasing twice is safe: it is once-guarded.
+      const done = typeof drive.core.findingPeers === 'function'
+        ? drive.core.findingPeers()
+        : null
 
-    let timer = null
-    try {
-      // Inside the try: if the SDK is torn down by a backup between here and
-      // the race, the throw must still reach the finally that releases the
-      // counter, or this drive waits the full timeout on every later request.
-      if (done) sdk.swarm.flush().then(done, done)
-      await Promise.race([
-        drive.core.update({ wait: true }),
-        new Promise((resolve) => { timer = setTimeout(resolve, timeoutMs) })
-      ])
-    } finally {
-      if (timer) clearTimeout(timer)
-      if (done) done()
+      let timer = null
+      let updated = false
+      try {
+        // Inside the try: if the SDK is torn down by a backup between here and
+        // the race, the throw must still reach the finally that releases the
+        // counter, or this drive waits the full timeout on every later request.
+        const lookup = attempt > 0 && typeof drive.core.discovery?.refresh === 'function'
+          ? drive.core.discovery.refresh()
+          : sdk.swarm.flush()
+        if (done) Promise.resolve(lookup).then(done, done)
+        updated = await Promise.race([
+          drive.core.update({ wait: true }),
+          new Promise((resolve) => { timer = setTimeout(() => resolve(false), Math.max(0, deadline - Date.now())) })
+        ])
+      } finally {
+        if (timer) clearTimeout(timer)
+        if (done) done()
+      }
+      // Answered: by a peer with the drive, even an empty one.
+      if (updated || drive.core.length > 0 || drive.core.peers?.length > 0) break
     }
     log.info(`Finished waiting for peers for ${hostname}, core length is now ${drive.core.length}`)
   } catch (err) {
@@ -639,7 +722,19 @@ export async function waitForDriveReady (url, timeoutMs = PEER_WAIT_MS) {
 export async function hyperFetchToFile (address, destPath, onStatus) {
   const context = await getHyperRequestContext(address)
   const prepare = context.private ? async () => {} : waitForDriveReady
-  return _hyperFetchToFile(context.fetch, prepare, toHyperFetchUrl(address), destPath, onStatus)
+  return _hyperFetchToFile(context.fetch, prepare, toHyperFetchUrl(address), destPath, onStatus, {
+    lookAgain: context.private ? undefined : () => lookForDrivePeers(address)
+  })
+}
+
+// Runs a drive's peer lookup again, for a download that went quiet because
+// the device sending it dropped off for a while and came back.
+async function lookForDrivePeers (address) {
+  if (!sdk) return
+  const { hostname } = new URL(address)
+  const drive = await sdk.getDrive(`hyper://${hostname}/`)
+  if (typeof drive.core.discovery?.refresh === 'function') await drive.core.discovery.refresh()
+  else if (typeof sdk.swarm?.flush === 'function') await sdk.swarm.flush()
 }
 
 /**
@@ -702,6 +797,15 @@ export async function createHandler (options, securityOptions = {}) {
           }
           let drive
           if (visibility === 'private') {
+            // A private drive is opened by its name, so a page that may not
+            // use private drives must not open one by the name P2PMD or the
+            // Hyperdrive app gave it.
+            if (!mayUsePrivateDrive({ url, initiatorOrigin: req.initiatorOrigin, navigation })) {
+              return new Response(PRIVATE_DRIVE_ERROR, {
+                status: 403,
+                headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+              })
+            }
             await initializePrivateHyperSDK()
             drive = privateDeviceOnly
               ? await privateSdk.getDrive(target.driveName, { autoJoin: target.autoJoin })
@@ -836,13 +940,14 @@ async function tryLinkedPrivateDrive (hostname) {
   // every later read of it would go to the private store.
   if (!await decodesWithKey(sdk.corestore, key, profileKey, LINKED_DRIVE_PROBE_MS)) return false
   await initializePrivateHyperSDK()
+  // Read-only before it is listed, so it never reads as this desktop's own.
+  await setPrivateDriveOwnership(userDataDir, key.toString('hex'), false)
   await rememberPrivateHyperdrive(userDataDir, {
     name: LINKED_PRIVATE_DRIVE_NAME,
     url: `hyper://${hostname}/`,
     timestamp: Date.now(),
     encrypted: true
   })
-  await setPrivateDriveOwnership(userDataDir, key.toString('hex'), false)
   privateDriveHostnames.add(hostname)
   return true
 }
@@ -902,6 +1007,13 @@ async function handleHyperRequest (req, { navigation = false } = {}) {
         })
       }
     }
+    // A tab opening a folder that holds no website gets the Hyperdrive app's
+    // views of it instead of the plain list. A page's own fetch never does.
+    const toViews = viewerRedirect({ url, method: upperMethod, navigation, response: resp })
+    if (toViews && await hasViewer()) {
+      resp.body?.cancel().catch(() => {})
+      return toViews
+    }
     return asPartialContent(resp)
   } catch (err) {
     log.error('Failed to fetch from Hyper SDK:', err)
@@ -909,5 +1021,89 @@ async function handleHyperRequest (req, { navigation = false } = {}) {
       status: 500,
       headers: { 'Content-Type': 'text/plain' }
     })
+  }
+}
+
+// How long the Hyperdrive app's views wait for someone who has a drive, and
+// for each next file while listing one, before saying so.
+const LIST_WAIT_MS = 30000
+
+// The drives this computer made, by the names it made them under: uploads
+// and backups in the Hyper cache, private drives in their registry.
+async function driveRecords (isPrivate) {
+  if (isPrivate) {
+    const entries = await listPrivateHyperdrives(app.getPath('userData')).catch(() => [])
+    return entries.map((entry) => ({ name: entry.name, id: decodeDriveId(entry.url) }))
+  }
+  return hyperCache.map((entry) => ({ name: entry?.name, id: decodeDriveId(`hyper://${entry?.key}/`) }))
+}
+
+/**
+ * Every file under a folder of a drive, for the Hyperdrive app's views. The
+ * drive opens as a tab's read of it does: from the public store once peers
+ * were looked for, or from the private store, a linked device's private
+ * drive included. The views are PeerSky's own pages, so private drives open.
+ * At the top of a drive this computer made, `name` is what it was made as.
+ *
+ * @param {string} url - hyper://<host>/<folder>/, each name encoded
+ * @param {{ recursive?: boolean }} [options]
+ * @returns {Promise<{ entries: { path: string, size: number, mtime: number | null }[],
+ *   truncated: boolean, private: boolean, writable: boolean, name?: string } | { code: string, message: string }>}
+ */
+export async function listHyperdrive (url, { recursive = true } = {}) {
+  try {
+    return await listDriveFolder(url, recursive, false)
+  } catch (error) {
+    const failure = listFailure(error)
+    log.warn(`[hyperdrive-list] ${formatHyperUrlForLog(String(url))}: ${failure.code}: ${failure.message}`)
+    return failure
+  }
+}
+
+async function listDriveFolder (url, recursive, retried) {
+  if (isSuspended) throw listError('unknown', 'Hyper is unavailable while a backup is in progress')
+  const target = driveFolderOf(url)
+  if (!target) throw listError('not-found', 'This is not a folder in a hyper:// drive')
+  await initializeHyperSDK()
+  const driveUrl = `hyper://${target.host}/`
+  const context = await getHyperRequestContext(driveUrl)
+  try {
+    let drive
+    let writable
+    if (context.private) {
+      await initializePrivateHyperSDK()
+      drive = privateDeviceOnly ? await privateSdk.getDrive(driveUrl) : await privateKeyedFetch.openDrive(driveUrl)
+      // A linked device's drive with nothing here yet is asked for, as a read
+      // of it is.
+      if (!privateDeviceOnly && !drive.writable && drive.core.length === 0) await catchUpWithPeers(privateSdk, drive)
+      writable = drive.writable && await isOwnedPrivateDrive(app.getPath('userData'), decodeDriveId(driveUrl))
+    } else {
+      await waitForDriveReady(driveUrl, LIST_WAIT_MS)
+      drive = await sdk.getDrive(driveUrl)
+      writable = drive.writable
+    }
+    if (!drive.writable && drive.core.length === 0) {
+      throw listError('no-peers', 'Nobody who has this drive could be found')
+    }
+    const listed = await listDriveFiles(drive, target.folder, { recursive, idleMs: LIST_WAIT_MS })
+    if (listed.empty && target.folder !== '/') throw listError('not-found', 'This folder is not in the drive')
+    const result = { entries: listed.entries, truncated: listed.truncated, private: context.private, writable }
+    // At the top of a drive this computer made, the name it made it under,
+    // which the views show in place of the key.
+    if (target.folder === '/') {
+      const id = decodeDriveId(driveUrl) || (Buffer.isBuffer(drive.key) ? drive.key.toString('hex') : null)
+      const name = knownDriveName(await driveRecords(context.private), id)
+      if (name) result.name = name
+    }
+    return result
+  } catch (error) {
+    // Ciphertext on the public store: a linked device's private drive is
+    // tried with the profile key and listed from the private store, as a
+    // read of it is. Anyone else's stays private.
+    if (!context.private && isUnreadableDriveError(error)) {
+      if (!retried && await adoptLinkedPrivateDrive(target.host)) return listDriveFolder(url, recursive, true)
+      throw listError('private', PRIVATE_DRIVE_ERROR)
+    }
+    throw error
   }
 }

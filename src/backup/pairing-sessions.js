@@ -2,7 +2,7 @@
 // checked against one of them. A transfer made for some other code, or for
 // one shown long ago, is refused before anything in it is used.
 //
-// Kept in memory. Every visit to Backup & Restore shows a fresh code, and a
+// Kept in memory. Every visit to Link Device shows a fresh code, and a
 // restart shows another, so there is nothing worth keeping on disk.
 const PAIRING_NONCE_TTL_MS = 60 * 60 * 1000
 const MAX_LIVE_NONCES = 16

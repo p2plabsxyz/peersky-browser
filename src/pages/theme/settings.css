@@ -891,7 +891,54 @@ body {
   margin-top: 4px;
 }
 
-/* Archive Section */
+/* P2P data section, called Archive before: the space P2P data takes, in
+   total and by part */
+.p2p-storage-total {
+  color: var(--settings-text-primary);
+  font-size: 1.25rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.p2p-storage-about {
+  margin-top: 4px;
+  color: var(--settings-text-secondary);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+.p2p-storage-parts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.p2p-storage-part {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.p2p-storage-name {
+  color: var(--settings-text-primary);
+  font-size: 0.9rem;
+}
+.p2p-storage-size {
+  flex-shrink: 0;
+  color: var(--settings-text-primary);
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.p2p-storage-note {
+  flex: 1;
+  margin: 0;
+}
+
+/* The lists of what was published, in the same section */
 .archive-filter-bar {
   display: flex;
   align-items: center;

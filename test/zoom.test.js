@@ -3,6 +3,8 @@
 
 import { expect } from 'chai'
 import esmock from 'esmock'
+import { EventEmitter } from 'events'
+import { attachTrackpadZoom, handlePinchZoom, pinchZoomStep, PINCH_ZOOM_LIMITS, WHEEL_ZOOM_INTERVAL_MS } from '../src/trackpad-zoom.js'
 
 async function loadActions () {
   const executed = []
@@ -147,6 +149,140 @@ describe('page zoom', function () {
       expect(labels).to.include('Zoom In')
       expect(labels).to.include('Zoom Out')
       expect(labels).to.include('Actual Size')
+    })
+  })
+})
+
+// A trackpad did nothing: Electron turns pinching and Ctrl with the wheel off
+// in a page.
+describe('trackpad and wheel zoom', function () {
+  function page (type = 'webview') {
+    const wc = new EventEmitter()
+    wc.limits = []
+    wc.scripts = []
+    wc.getType = () => type
+    wc.isDestroyed = () => false
+    wc.setVisualZoomLevelLimits = (...limits) => wc.limits.push(limits)
+    wc.hostWebContents = {
+      isDestroyed: () => false,
+      executeJavaScript: (script) => { wc.scripts.push(script); return Promise.resolve() }
+    }
+    return wc
+  }
+
+  it('lets a pinch magnify every page a tab loads', function () {
+    const wc = page()
+    attachTrackpadZoom(wc)
+    wc.emit('dom-ready')
+    wc.emit('did-navigate')
+    expect(wc.limits).to.deep.equal([PINCH_ZOOM_LIMITS, PINCH_ZOOM_LIMITS])
+  })
+
+  it('zooms the tab with Ctrl and the wheel, one step per gesture burst', function () {
+    let clock = 1000
+    const wc = page()
+    attachTrackpadZoom(wc, { now: () => clock })
+    wc.emit('zoom-changed', {}, 'in')
+    wc.emit('zoom-changed', {}, 'in')
+    clock += WHEEL_ZOOM_INTERVAL_MS
+    wc.emit('zoom-changed', {}, 'out')
+    expect(wc.scripts).to.have.lengthOf(2)
+    expect(wc.scripts[0]).to.contain('tabBar.zoomActiveTab(0.5)')
+    expect(wc.scripts[1]).to.contain('tabBar.zoomActiveTab(-0.5)')
+  })
+
+  it('leaves the browser window itself alone', function () {
+    const wc = page('window')
+    attachTrackpadZoom(wc)
+    wc.emit('dom-ready')
+    wc.emit('zoom-changed', {}, 'in')
+    expect(wc.limits).to.deep.equal([])
+    expect(wc.scripts).to.deep.equal([])
+  })
+})
+
+// On a Mac, Chromium leaves Ctrl with the wheel to the page and Electron keeps
+// the pinch off for a page in a tab, so a two finger pinch did nothing. The
+// pinch comes to the page as Ctrl with the wheel: the page's preload hands it
+// on, or the window picks it up when it lands there.
+describe('a trackpad pinch on a Mac', function () {
+  function fakeIpcMain () {
+    const handlers = {}
+    return { on: (channel, handler) => { handlers[channel] = handler }, handlers }
+  }
+
+  function sender (type = 'webview', id = 7) {
+    const scripts = []
+    return {
+      id,
+      scripts,
+      isDestroyed: () => false,
+      getType: () => type,
+      hostWebContents: { isDestroyed: () => false, executeJavaScript: (script) => { scripts.push(script); return Promise.resolve() } }
+    }
+  }
+
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+  it('zooms as much as the fingers spread: 1.6 times is 1.6 times', function () {
+    // Chromium sends -100 ln(scale) in all, and a zoom level is a power of 1.2.
+    const level = pinchZoomStep(-100 * Math.log(1.6))
+    expect(Math.pow(1.2, level)).to.be.closeTo(1.6, 1e-9)
+    expect(pinchZoomStep(0)).to.equal(-0)
+    expect(pinchZoomStep(10)).to.be.below(0)
+  })
+
+  it('adds up a burst of events and zooms the tab the page is in, not the active one', async function () {
+    const ipc = fakeIpcMain()
+    handlePinchZoom(ipc, { delay: 5 })
+    const page = sender('webview', 42)
+    for (let i = 0; i < 10; i++) ipc.handlers['peersky-pinch-zoom']({ sender: page }, -4.7)
+    await wait(20)
+    expect(page.scripts).to.have.length(1)
+    expect(page.scripts[0]).to.contain('zoomTabForWebContents(42, ')
+    const step = Number(page.scripts[0].match(/zoomTabForWebContents\(42, ([-\d.e]+)\)/)[1])
+    expect(step).to.be.closeTo(pinchZoomStep(-47), 1e-9)
+  })
+
+  it('takes it only from a page in a tab, and only a sane number', async function () {
+    const ipc = fakeIpcMain()
+    handlePinchZoom(ipc, { delay: 5 })
+    const shell = sender('window')
+    const page = sender('webview')
+    ipc.handlers['peersky-pinch-zoom']({ sender: shell }, -10)
+    for (const value of ['-10', NaN, Infinity, 5000, null]) ipc.handlers['peersky-pinch-zoom']({ sender: page }, value)
+    await wait(20)
+    expect(shell.scripts).to.deep.equal([])
+    expect(page.scripts).to.deep.equal([])
+  })
+
+  describe('where it is picked up', function () {
+    let preload
+    let tabBar
+    before(async function () {
+      const { readFile } = await import('fs/promises')
+      preload = await readFile(new URL('../src/pages/unified-preload.js', import.meta.url), 'utf8')
+      tabBar = await readFile(new URL('../src/pages/tab-bar.js', import.meta.url), 'utf8')
+    })
+
+    it('the page hands on a real Ctrl wheel it did not use, on a Mac only', function () {
+      const start = preload.indexOf('// A trackpad pinch on a Mac comes to the page')
+      const part = preload.slice(start, preload.indexOf("ipcRenderer.send('peersky-pinch-zoom'", start) + 200)
+      expect(part).to.contain("process.platform === 'darwin'")
+      expect(part).to.contain('event.isTrusted')
+      expect(part).to.contain('event.ctrlKey')
+      expect(part, 'a map that uses the pinch keeps it').to.contain('event.defaultPrevented')
+      expect(part, 'looked at after every listener').to.contain('setTimeout(')
+      expect(part, 'scrolling must not wait on it').to.contain('passive: true')
+      expect(part, 'CSS pixels back to the fingers').to.contain('webFrame.getZoomFactor()')
+    })
+
+    it('the window zooms the tab under the fingers when the pinch lands there', function () {
+      const part = tabBar.slice(tabBar.indexOf('listenForPinchZoom () {'), tabBar.indexOf('listenForPinchZoom () {') + 900)
+      expect(part).to.contain("process.platform !== 'darwin'")
+      expect(part).to.contain("target.tagName !== 'WEBVIEW'")
+      expect(part).to.contain('this.zoomTab(tabId,')
+      expect(tabBar).to.contain('this.listenForPinchZoom()')
     })
   })
 })

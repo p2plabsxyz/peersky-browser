@@ -15,7 +15,7 @@ export function setWindowManager (instance) {
 
 const NAVIGABLE_SCHEMES = new Set([
   'http:', 'https:', 'peersky:', 'ipfs:', 'ipns:', 'pubsub:',
-  'hyper:', 'hs:', 'web3:', 'bittorrent:', 'bt:', 'magnet:'
+  'hyper:', 'hs:', 'web3:', 'bittorrent:', 'bt:', 'magnet:', 'webtorrent:'
 ])
 
 // Text is navigable if it parses as a supported URL, or reads as a bare
@@ -375,11 +375,19 @@ export function attachContextMenus (browserWindow, windowManager) {
                   (function() {
                     const tabBar = document.querySelector('tab-bar');
                     const url = ${JSON.stringify(params.linkURL)};
+                    if (tabBar && typeof tabBar.addTabFromLink === 'function') {
+                      tabBar.addTabFromLink(url, ${JSON.stringify(webContents.id)});
+                      return true;
+                    }
                     if (tabBar && typeof tabBar.addTab === 'function') {
                       tabBar.addTab(url);
                       return true;
                     }
                     const oldTabBar = document.querySelector('#tabbar');
+                    if (oldTabBar && typeof oldTabBar.addTabFromLink === 'function') {
+                      oldTabBar.addTabFromLink(url, ${JSON.stringify(webContents.id)});
+                      return true;
+                    }
                     if (oldTabBar && typeof oldTabBar.addTab === 'function') {
                       oldTabBar.addTab(url);
                       return true;
@@ -533,11 +541,19 @@ export function attachContextMenus (browserWindow, windowManager) {
               .executeJavaScript(`
                 (function() {
                   const tabBar = document.querySelector('tab-bar');
+                  if (tabBar && typeof tabBar.addTabFromLink === 'function') {
+                    tabBar.addTabFromLink(${urlLiteralNo}, ${JSON.stringify(webviewWebContents.id)});
+                    return true;
+                  }
                   if (tabBar && typeof tabBar.addTab === 'function') {
                     tabBar.addTab(${urlLiteralNo});
                     return true;
                   }
                   const oldTabBar = document.querySelector('#tabbar');
+                  if (oldTabBar && typeof oldTabBar.addTabFromLink === 'function') {
+                    oldTabBar.addTabFromLink(${urlLiteralNo}, ${JSON.stringify(webviewWebContents.id)});
+                    return true;
+                  }
                   if (oldTabBar && typeof oldTabBar.addTab === 'function') {
                     oldTabBar.addTab(${urlLiteralNo});
                     return true;
@@ -570,11 +586,19 @@ export function attachContextMenus (browserWindow, windowManager) {
               .executeJavaScript(`
                 (function() {
                   const tabBar = document.querySelector('tab-bar');
+                  if (tabBar && typeof tabBar.addTabFromLink === 'function') {
+                    tabBar.addTabFromLink(${urlLiteral}, ${JSON.stringify(webviewWebContents.id)});
+                    return true;
+                  }
                   if (tabBar && typeof tabBar.addTab === 'function') {
                     tabBar.addTab(${urlLiteral});
                     return true;
                   }
                   const oldTabBar = document.querySelector('#tabbar');
+                  if (oldTabBar && typeof oldTabBar.addTabFromLink === 'function') {
+                    oldTabBar.addTabFromLink(${urlLiteral}, ${JSON.stringify(webviewWebContents.id)});
+                    return true;
+                  }
                   if (oldTabBar && typeof oldTabBar.addTab === 'function') {
                     oldTabBar.addTab(${urlLiteral});
                     return true;
@@ -610,11 +634,19 @@ export function attachContextMenus (browserWindow, windowManager) {
               .executeJavaScript(`
                 (function() {
                   const tabBar = document.querySelector('tab-bar');
+                  if (tabBar && typeof tabBar.addTabFromLink === 'function') {
+                    tabBar.addTabFromLink(${urlLiteral}, ${JSON.stringify(webviewWebContents.id)});
+                    return true;
+                  }
                   if (tabBar && typeof tabBar.addTab === 'function') {
                     tabBar.addTab(${urlLiteral});
                     return true;
                   }
                   const oldTabBar = document.querySelector('#tabbar');
+                  if (oldTabBar && typeof oldTabBar.addTabFromLink === 'function') {
+                    oldTabBar.addTabFromLink(${urlLiteral}, ${JSON.stringify(webviewWebContents.id)});
+                    return true;
+                  }
                   if (oldTabBar && typeof oldTabBar.addTab === 'function') {
                     oldTabBar.addTab(${urlLiteral});
                     return true;

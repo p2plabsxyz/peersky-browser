@@ -1,6 +1,6 @@
 import path from 'path'
 import { promises as fs } from 'fs'
-import { ipcMain, dialog, app, BrowserWindow } from 'electron'
+import { ipcMain, dialog, app, BrowserWindow, clipboard } from 'electron'
 import { createLogger } from '../logger.js'
 import backupManager, { defaultBackupName } from './backup-manager.js'
 import { uploadBackup, downloadBackupFromAddress } from './p2p-backup.js'
@@ -10,8 +10,10 @@ import { clearPairedMobile, readPairedMobile } from './mobile-pairing.js'
 import { rememberPairingNonce } from './pairing-sessions.js'
 import { tabsNotOpen } from './phone-sync.js'
 import { assertCaller } from './ipc-caller.js'
+import { linkDeviceCodeFrom } from './link-device-code.js'
 import { listPrivateHyperdrives } from '../protocols/private-hyperdrive-registry.js'
-import { chatTakesTransfers } from '../protocols/hyper-handler.js'
+import { chatTakesTransfers, getDeviceSyncSnapshot, stopHyperPublish } from '../protocols/hyper-handler.js'
+import { forgetSyncedDevice } from '../protocols/device-sync-state.js'
 import { p2pmdTakesTransfers } from './p2pmd-notes.js'
 
 const log = createLogger('backup')
@@ -20,7 +22,7 @@ function ownerWindow (event) {
   return BrowserWindow.fromWebContents(event.sender) || null
 }
 
-// Tabs from a phone open in the window the Backup & Restore page is in. The
+// Tabs from a phone open in the window the Link Device page is in. The
 // page is a tab itself, so the window is the one hosting it. A page already
 // open in any window is left out. Returns how many tabs were opened.
 async function openTabsBeside (event, tabs, getTabs) {
@@ -37,16 +39,19 @@ async function openTabsBeside (event, tabs, getTabs) {
 
 // Register IPC handlers for the backup & restore UI. getTabs reads every
 // window's tabs, so a phone's tab already open here is not opened again.
+// Onboarding shows this computer's code and has Paste link too.
+const ONBOARDING_CHANNELS = new Set(['backup-device-info', 'backup-read-code'])
+
 export function setupBackupIpc ({ getTabs } = {}) {
   backupManager.clearLeftoverStaging().catch((error) => {
     log.error(`Could not clear leftover restore staging: ${error.message}`)
   })
 
-  // Every channel here is for the Backup & Restore page; onboarding also asks
+  // Every channel here is for the Link Device page; onboarding also asks
   // for this desktop's pairing code. These export and replace the identity,
   // so a caller from any other page is refused before anything runs.
   const handle = (channel, handler) => ipcMain.handle(channel, (event, ...args) => {
-    assertCaller(event, 'backup', ...(channel === 'backup-device-info' ? ['onboarding'] : []))
+    assertCaller(event, 'backup', ...(ONBOARDING_CHANNELS.has(channel) ? ['onboarding'] : []))
     return handler(event, ...args)
   })
 
@@ -209,6 +214,40 @@ export function setupBackupIpc ({ getTabs } = {}) {
       return { success: false, error: error.message }
     } finally {
       await fs.rm(outPath, { force: true }).catch(() => {})
+    }
+  })
+
+  // Paste on Link Device and onboarding (link-device-code.js).
+  handle('backup-read-code', async () => {
+    return { success: true, text: linkDeviceCodeFrom(clipboard.readText()) }
+  })
+
+  // Stop sending: the link stops working now, not when its time runs out.
+  handle('backup-identity-stop', async (_event, payload = {}) => {
+    try {
+      return { success: true, stopped: await stopHyperPublish(payload?.address) }
+    } catch (error) {
+      log.error(`Stopping a transfer failed: ${error.message}`)
+      return { success: false, error: error.message }
+    }
+  })
+
+  // My devices on Link Device: the person's other devices this one has met,
+  // as the phone lists them. What each one keeps is not sent here.
+  handle('backup-linked-devices', async () => {
+    try {
+      const { devices } = getDeviceSyncSnapshot()
+      return { success: true, devices }
+    } catch (error) {
+      return { success: false, error: error.message }
+    }
+  })
+
+  handle('backup-forget-device', async (_event, payload = {}) => {
+    try {
+      return { success: true, removed: forgetSyncedDevice(app.getPath('userData'), payload?.id) }
+    } catch (error) {
+      return { success: false, error: error.message }
     }
   })
 

@@ -9,6 +9,7 @@ import {
   hashPrivateDriveKeyExport,
   PRIVATE_DRIVE_KEY_FILE
 } from './private-drive-export.js'
+import { isSealedText, openJson } from './sealed-file.js'
 
 // Backup bundle format version. Bumped only on incompatible layout changes.
 export const BACKUP_VERSION = '1.0.0'
@@ -184,6 +185,33 @@ export async function buildManifest (userDataDir, peerskyVersion = '', isIdentit
   }
 }
 
+// Files locked with this computer's safe storage (sealed-file.js) go into a
+// backup opened, as the phone packs its own: the device a backup or a
+// transfer is opened on could not open them, and locks them with its own at
+// its next start. A file that will not open stops the backup rather than
+// going in useless. Safe storage only works on the main thread, so a backup
+// made in a worker is handed these opened beforehand.
+const MAX_SEALED_FILE_BYTES = 4 * 1024 * 1024
+
+export async function openSealedBackupFiles (userDataDir, { isIdentityTransfer = false, targetDeviceType = 'desktop', includePrivate = false } = {}) {
+  const opened = {}
+  for (const target of selectTargets(isIdentityTransfer, targetDeviceType, includePrivate)) {
+    if (target.type !== 'file') continue
+    const filePath = path.join(userDataDir, target.name)
+    let text
+    try {
+      const stat = await fs.stat(filePath)
+      if (!stat.isFile() || stat.size > MAX_SEALED_FILE_BYTES) continue
+      text = await fs.readFile(filePath, 'utf8')
+    } catch {
+      continue
+    }
+    if (!isSealedText(text)) continue
+    opened[target.name] = Buffer.from(JSON.stringify(openJson(text, filePath).value, null, 2))
+  }
+  return opened
+}
+
 async function appendHashedFile (archive, sourcePath, archivePath) {
   const hash = crypto.createHash('sha256')
   let bytes = 0
@@ -213,6 +241,7 @@ export async function createBackupZip (userDataDir, outPath, options = {}) {
     createdAt: new Date().toISOString(),
     files: {}
   }
+  const opened = options.openedFiles || await openSealedBackupFiles(userDataDir, { isIdentityTransfer, targetDeviceType, includePrivate })
   await fs.mkdir(path.dirname(outPath), { recursive: true })
   const tempPath = outPath + '.tmp'
   const output = createWriteStream(tempPath)
@@ -244,6 +273,14 @@ export async function createBackupZip (userDataDir, outPath, options = {}) {
       const abs = path.join(userDataDir, target.name)
       if (!(await pathExists(abs))) continue
 
+      if (target.type === 'file' && opened[target.name]) {
+        const bytes = Buffer.from(opened[target.name])
+        archive.append(bytes, { name: target.name })
+        uncompressedBytes += bytes.length
+        manifest.files[target.name] = `sha256:${crypto.createHash('sha256').update(bytes).digest('hex')}`
+        continue
+      }
+
       if (target.type === 'file') {
         const { bytes, digest } = await appendHashedFile(archive, abs, target.name)
         uncompressedBytes += bytes
@@ -268,9 +305,12 @@ export async function createBackupZip (userDataDir, outPath, options = {}) {
     }
 
     if (includePrivate) {
-      const keyBytes = await buildPrivateDriveKeyExport(userDataDir, Date.now(), {
-        forPhone: isIdentityTransfer && targetDeviceType === 'mobile'
-      })
+      // Built beforehand for a backup made in a worker (see above).
+      const keyBytes = options.privateKeyExport !== undefined
+        ? (options.privateKeyExport ? Buffer.from(options.privateKeyExport) : null)
+        : await buildPrivateDriveKeyExport(userDataDir, Date.now(), {
+          forPhone: isIdentityTransfer && targetDeviceType === 'mobile'
+        })
       if (keyBytes) {
         manifest.files[PRIVATE_DRIVE_KEY_FILE] = `sha256:${hashPrivateDriveKeyExport(keyBytes)}`
         archive.append(keyBytes, { name: PRIVATE_DRIVE_KEY_FILE })

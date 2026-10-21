@@ -4,7 +4,10 @@ import esmock from 'esmock'
 import crypto from 'crypto'
 import os from 'os'
 import path from 'path'
-import { mkdtempSync } from 'fs'
+import { mkdtempSync, rmSync } from 'fs'
+import { Readable } from 'stream'
+import Corestore from 'corestore'
+import Hyperdrive from 'hyperdrive'
 import z32 from 'z32'
 import { mkdtemp, readFile, rm, writeFile } from 'fs/promises'
 import { EventEmitter } from 'events'
@@ -16,7 +19,6 @@ const driveStores = new Map()
 
 class FakeHyperdrive {
   constructor (nameOrKey, key, opts = {}) {
-    this.core = { key: key || Buffer.alloc(32), discoveryKey: Buffer.alloc(32), length: 0 }
     this.encryptionKey = opts.encryptionKey || null
     if (key) {
       this.url = `hyper://${z32.encode(key)}/`
@@ -25,7 +27,20 @@ class FakeHyperdrive {
       this.url = `hyper://${z32.encode(derived)}/`
     }
     if (!driveStores.has(this.url)) driveStores.set(this.url, new Map())
-    this.files = driveStores.get(this.url)
+    const files = this.files = driveStores.get(this.url)
+    // Made here by name, a drive is this device's own; opened by its key,
+    // another device's. It holds as many blocks as files.
+    this.writable = !key
+    this.core = { key: key || Buffer.alloc(32), discoveryKey: Buffer.alloc(32), get length () { return files.size } }
+  }
+
+  list (folder = '/', { recursive = true } = {}) {
+    const prefix = folder.endsWith('/') ? folder : `${folder}/`
+    const nodes = [...this.files.entries()]
+      .filter(([name]) => name.startsWith(prefix) && (recursive || !name.slice(prefix.length).includes('/')))
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([name, buffer], seq) => ({ seq, key: name, value: { blob: { byteLength: buffer.length }, metadata: null } }))
+    return (async function * () { yield * nodes })()
   }
 
   async ready () {}
@@ -54,6 +69,11 @@ class FakeHyperdrive {
     return this.files.get(drivePath)
   }
 
+  createReadStream (drivePath, { start = 0, end } = {}) {
+    const buffer = this.files.get(drivePath) || Buffer.alloc(0)
+    return Readable.from([buffer.subarray(start, end === undefined ? buffer.length : end + 1)])
+  }
+
   async put (drivePath, buffer) {
     this.files.set(drivePath, buffer)
   }
@@ -70,7 +90,7 @@ describe('Hyper protocol handler', function () {
     sinon.restore()
   })
 
-  async function loadHyperModule ({ fetchImpl, chatResponse, chatReject, throwOnFetch, lanReject, lanReadyReject, lanAttachResults, currentIP = '127.0.0.1', driveLength = 0, peerchat = {} } = {}) {
+  async function loadHyperModule ({ fetchImpl, chatResponse, chatReject, throwOnFetch, lanReject, lanReadyReject, lanAttachResults, currentIP = '127.0.0.1', driveLength = 0, peerchat = {}, viewer = true } = {}) {
     // Order matters for the peer-discovery regression: the drive must be given
     // a chance to replicate before the fetch that would 404 with no peers.
     const callOrder = []
@@ -221,6 +241,10 @@ describe('Hyper protocol handler', function () {
       '../../src/protocols/shared-drive-opens.js': {
         shareDriveOpens: (sdk) => sdk
       },
+      // Whether the Hyperdrive app has its views, which the submodule decides.
+      '../../src/protocols/hyperdrive-views.js': {
+        hasViewer: async () => viewer
+      },
       '../../src/pages/p2p/peerchat/p2p.js': {
         initChat,
         handleChatRequest,
@@ -331,6 +355,37 @@ describe('Hyper protocol handler', function () {
       // rather than the release callback being awaited and never invoked.
       expect(callOrder.indexOf('findingPeers')).to.be.lessThan(callOrder.indexOf('update'))
       expect(releasePeers.called).to.equal(true)
+    })
+
+    it('looks again for a drive published a moment ago, instead of answering at once from an empty core', async function () {
+      // The publisher's announcement lands after the first lookup, and the
+      // swarm would not look again for ten minutes: only a second look finds it.
+      const { module, sdk, fetchStub } = await loadHyperModule()
+      let announced = false
+      const drive = {
+        writable: false,
+        core: {
+          length: 0,
+          peers: [],
+          findingPeers: () => () => {},
+          update: async () => {
+            if (!announced) return false
+            drive.core.length = 2
+            drive.core.peers = [{}]
+            return true
+          },
+          discovery: { refresh: sinon.stub().callsFake(async () => { announced = true }) }
+        }
+      }
+      const handler = await module.createHandler({ storage: 'test-look-again' })
+      sdk.getDrive.callsFake(async () => drive)
+
+      const response = await handler(new Request(`hyper://${'c'.repeat(52)}/index.html`, { method: 'GET' }))
+
+      expect(drive.core.discovery.refresh.calledOnce).to.equal(true)
+      expect(drive.core.length).to.equal(2)
+      expect(response.status).to.equal(200)
+      expect(fetchStub.calledOnce).to.equal(true)
     })
 
     it('asks the core to wait rather than answering from an empty core', async function () {
@@ -625,6 +680,12 @@ describe('Hyper protocol handler', function () {
     expect((await handler(from(`hyper://${'a'.repeat(52)}`))).status, 'another hyper site').to.equal(403)
     expect((await handler(from('null'))).status, 'an opaque origin').to.equal(403)
     expect((await handler(from('https://site.example', { method: 'PUT', body: 'x' }))).status, 'a website writing').to.equal(403)
+    expect((await handler(from('peersky://myapps'))).status, 'an app someone added').to.equal(403)
+    expect((await handler(from('peersky://myapps', { method: 'PUT', body: 'x' }))).status, 'an app someone added, writing').to.equal(403)
+    const byName = (initiatorOrigin) => Object.assign(new Request('hyper://localhost/?key=private-callers&visibility=private', { method: 'POST' }), { initiatorOrigin })
+    expect((await handler(byName('peersky://myapps'))).status, 'an app someone added, opening it by name').to.equal(403)
+    expect((await handler(byName('https://site.example'))).status, 'a website opening it by name').to.equal(403)
+    expect(await (await handler(byName('peersky://p2p'))).text(), 'the browser\'s own page opening it by name').to.equal(driveUrl)
     const forged = from('https://site.example', { headers: { 'x-peersky-navigation': 'guess' } })
     expect((await handler(forged)).status, 'a forged stamp').to.equal(403)
 
@@ -904,6 +965,248 @@ describe('Hyper protocol handler', function () {
       const source = await readFile(new URL('../../src/protocols/hyper-handler.js', import.meta.url), 'utf8')
       const named = [...source.matchAll(/import\s*\{([^}]*)\}\s*from\s*'\.\.\/pages\/p2p\/peerchat\/p2p\.js'/g)].map((match) => match[1]).join(',')
       expect(named).not.to.match(/exportChatTransfer|importChatTransfer/)
+    })
+  })
+
+  // A hyper:// folder that holds no website opens in the Hyperdrive app's
+  // Files, Photos or Videos view instead of the plain list of its files.
+  describe('the Hyperdrive app\'s views', function () {
+    const key = z32.encode(Buffer.alloc(32, 9))
+
+    // hypercore-fetch's answers: a folder's list names the folder, an index
+    // file served in its place names the file.
+    async function driveAnswers (url) {
+      const { pathname } = new URL(url)
+      if (pathname === '/site/') {
+        return new Response('<h1>site</h1>', { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', Link: `<hyper://${key}/site/index.html>; rel="canonical"` } })
+      }
+      // A folder with a readme, which hypercore-fetch serves in place of
+      // its list, and the readme by its own address.
+      if (pathname === '/notes/' || pathname === '/notes/README.md') {
+        return new Response('# notes', { status: 200, headers: { 'Content-Type': 'text/markdown; charset=utf-8', Link: `<hyper://${key}/notes/README.md>; rel="canonical"` } })
+      }
+      if (pathname.endsWith('/')) {
+        return new Response('<h1>Index</h1>', { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', Link: `<hyper://${key}${pathname}>; rel="canonical"` } })
+      }
+      return new Response('a file', { status: 200, headers: { 'Content-Type': 'text/plain' } })
+    }
+
+    // A tab loading the address, stamped as the request gate stamps it.
+    function tab (url, method = 'GET') {
+      return new Request(url, { method, headers: requestGate.stampVetted({ url, method, resourceType: 'mainFrame', requestHeaders: {} }) })
+    }
+
+    it('sends a tab opening a folder to the Files view, each name encoded on its own', async function () {
+      const { module } = await loadHyperModule({ driveLength: 5, fetchImpl: driveAnswers })
+      const handler = await module.createHandler({ storage: 'test-views-redirect' })
+
+      const response = await handler(tab(`hyper://${key}/Trip%202024/Goa,%20India/`))
+      expect(response.status).to.equal(302)
+      expect(response.headers.get('Location')).to.equal(`peersky://p2p/hyperdrive/files/${key}/Trip%202024/Goa%2C%20India/?auto`)
+      expect((await handler(tab(`hyper://${key}/`))).headers.get('Location')).to.equal(`peersky://p2p/hyperdrive/files/${key}/?auto`)
+
+      // A folder served as its readme opens in the views, which show it.
+      const notes = await handler(tab(`hyper://${key}/notes/`))
+      expect(notes.status).to.equal(302)
+      expect(notes.headers.get('Location')).to.equal(`peersky://p2p/hyperdrive/files/${key}/notes/?auto`)
+      // The readme's own address opens the file.
+      const readme = await handler(tab(`hyper://${key}/notes/README.md`))
+      expect(readme.status).to.equal(200)
+      expect(await readme.text()).to.equal('# notes')
+      expect((await handler(tab(`hyper://${key}/notes/?raw`))).status).to.equal(200)
+    })
+
+    it('keeps the plain list for a page\'s fetch, ?raw, a HEAD, and a served index file', async function () {
+      const { module } = await loadHyperModule({ driveLength: 5, fetchImpl: driveAnswers })
+      const handler = await module.createHandler({ storage: 'test-views-kept' })
+      const folder = `hyper://${key}/Trip/`
+
+      expect((await handler(new Request(folder))).status, 'a page\'s fetch').to.equal(200)
+      const pageFetch = Object.assign(new Request(folder), { initiatorOrigin: `hyper://${key}` })
+      expect((await handler(pageFetch)).status, 'a page\'s fetch with its origin').to.equal(200)
+      const raw = await handler(tab(`${folder}?raw`))
+      expect(raw.status, '?raw').to.equal(200)
+      expect(await raw.text()).to.equal('<h1>Index</h1>')
+      expect((await handler(tab(folder, 'HEAD'))).status, 'a HEAD').to.equal(200)
+      const site = await handler(tab(`hyper://${key}/site/`))
+      expect(site.status, 'a website').to.equal(200)
+      expect(await site.text()).to.equal('<h1>site</h1>')
+      expect((await handler(tab(`hyper://${key}/Trip/a.jpg`))).status, 'a file').to.equal(200)
+    })
+
+    it('keeps the plain list while the Hyperdrive app has no views', async function () {
+      const { module } = await loadHyperModule({ driveLength: 5, fetchImpl: driveAnswers, viewer: false })
+      const handler = await module.createHandler({ storage: 'test-views-missing' })
+      expect((await handler(tab(`hyper://${key}/Trip/`))).status).to.equal(200)
+    })
+
+    it('sends a tab opening a private folder to the views, and keeps it from other pages as before', async function () {
+      const { module } = await loadHyperModule()
+      const handler = await module.createHandler({ storage: 'test-views-private' })
+      const driveUrl = await (await handler(new Request('hyper://localhost/?key=views-private&visibility=private', { method: 'POST' }))).text()
+      expect((await handler(new Request(new URL('/Trip/a.jpg', driveUrl).href, { method: 'PUT', body: 'aaa' }))).status).to.equal(200)
+      const host = new URL(driveUrl).hostname
+
+      const opened = await handler(tab(driveUrl))
+      expect(opened.status).to.equal(302)
+      expect(opened.headers.get('Location')).to.equal(`peersky://p2p/hyperdrive/files/${host}/?auto`)
+
+      expect((await handler(Object.assign(new Request(driveUrl), { initiatorOrigin: 'https://site.example' }))).status, 'a website').to.equal(403)
+      const own = await handler(Object.assign(new Request(driveUrl), { initiatorOrigin: 'peersky://p2p' }))
+      expect(own.status, 'the browser\'s own page').to.equal(200)
+      expect(own.headers.get('Link')).to.equal(`<${driveUrl}>; rel="canonical"`)
+    })
+
+    it('reads a private file in parts for them, as a video seeking does', async function () {
+      const { module } = await loadHyperModule()
+      const handler = await module.createHandler({ storage: 'test-views-private-range' })
+      const driveUrl = await (await handler(new Request('hyper://localhost/?key=views-private-range&visibility=private', { method: 'POST' }))).text()
+      const fileUrl = new URL('/clip.mp4', driveUrl).href
+      expect((await handler(new Request(fileUrl, { method: 'PUT', body: 'abcdefghij' }))).status).to.equal(200)
+
+      const fromViews = (headers) => Object.assign(new Request(fileUrl, { headers }), { initiatorOrigin: 'peersky://p2p' })
+      const part = await handler(fromViews({ Range: 'bytes=2-5' }))
+      expect(part.status).to.equal(206)
+      expect(part.headers.get('Content-Range')).to.equal('bytes 2-5/10')
+      expect(part.headers.get('Accept-Ranges')).to.equal('bytes')
+      expect(await part.text()).to.equal('cdef')
+      expect((await handler(fromViews({ Range: 'bytes=10-' }))).status).to.equal(416)
+      const whole = await handler(fromViews({}))
+      expect(whole.status).to.equal(200)
+      expect(await whole.text()).to.equal('abcdefghij')
+      // A site that knows the address still reads nothing of it.
+      expect((await handler(Object.assign(new Request(fileUrl, { headers: { Range: 'bytes=0-1' } }), { initiatorOrigin: 'https://site.example' }))).status).to.equal(403)
+    })
+
+    describe('listing a folder for them', function () {
+      let root, store, drive
+
+      beforeEach(async function () {
+        root = mkdtempSync(path.join(os.tmpdir(), 'peersky-views-list-'))
+        store = new Corestore(root)
+        drive = new Hyperdrive(store)
+        await drive.ready()
+        await drive.put('/Trip/a.jpg', Buffer.from('aaa'), { metadata: { mtime: 1700000000000 } })
+        await drive.put('/Trip/2024/b.mp4', Buffer.from('bbbbb'))
+        await drive.put('/top.txt', Buffer.from('t'))
+      })
+
+      afterEach(async function () {
+        await drive.close().catch(() => {})
+        await store.close().catch(() => {})
+        rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+      })
+
+      it('lists every file under a public folder once peers were looked for', async function () {
+        const { module, sdk, callOrder } = await loadHyperModule()
+        await module.createHandler({ storage: 'test-views-list' })
+        sdk.getDrive.callsFake(async () => drive)
+        const url = `hyper://${z32.encode(drive.key)}/Trip/`
+
+        expect(await module.listHyperdrive(url)).to.deep.equal({
+          entries: [
+            { path: '/Trip/2024/b.mp4', size: 5, mtime: null },
+            { path: '/Trip/a.jpg', size: 3, mtime: 1700000000000 }
+          ],
+          truncated: false,
+          private: false,
+          writable: true
+        })
+        expect((await module.listHyperdrive(url, { recursive: false })).entries.map((entry) => entry.path)).to.deep.equal(['/Trip/a.jpg'])
+        expect(sdk.getDrive.calledWith(`hyper://${z32.encode(drive.key)}/`)).to.equal(true)
+        expect(callOrder).to.not.include('fetch')
+      })
+
+      it('answers with a code when it cannot list', async function () {
+        const { module, sdk } = await loadHyperModule()
+        await module.createHandler({ storage: 'test-views-list-errors' })
+        sinon.stub(console, 'error')
+
+        // Nobody has it: the mock drive stays empty after the wait.
+        expect(await module.listHyperdrive(`hyper://${'b'.repeat(52)}/`)).to.deep.include({ code: 'no-peers' })
+        for (const url of ['hyper://localhost/', 'https://example.com/', `hyper://${key}/a%2Fb/`, undefined]) {
+          expect(await module.listHyperdrive(url), String(url)).to.deep.include({ code: 'not-found' })
+        }
+
+        sdk.getDrive.callsFake(async () => drive)
+        expect(await module.listHyperdrive(`hyper://${z32.encode(drive.key)}/Nothing/`)).to.deep.include({ code: 'not-found' })
+        // The top of a drive with no files is empty rather than missing.
+        expect((await module.listHyperdrive(`hyper://${z32.encode(drive.key)}/`)).entries).to.have.length(3)
+
+        // Ciphertext: someone else's private drive, which no key here opens.
+        sdk.getDrive.callsFake(async () => { throw Object.assign(new Error('Decoded message is not valid'), { code: 'DECODING_ERROR' }) })
+        expect(await module.listHyperdrive(`hyper://${'c'.repeat(52)}/`)).to.deep.include({ code: 'private' })
+      })
+
+      it('lists a private drive from the private store, and a linked device\'s as read-only', async function () {
+        const phoneHost = z32.encode(Buffer.alloc(32, 3))
+        await writeFile(
+          path.join(TEST_USER_DATA, 'privateHyperdrives.json'),
+          JSON.stringify([{ name: 'Private files from your phone', url: `hyper://${phoneHost}/`, timestamp: 1, encrypted: true }])
+        )
+        driveStores.set(`hyper://${phoneHost}/`, new Map([['/DCIM/a.jpg', Buffer.from('aa')]]))
+        const { module, fetchStub } = await loadHyperModule()
+        const handler = await module.createHandler({ storage: 'test-views-list-private' })
+        const driveUrl = await (await handler(new Request('hyper://localhost/?key=views-list-private&visibility=private', { method: 'POST' }))).text()
+        await handler(new Request(new URL('/Trip/a.jpg', driveUrl).href, { method: 'PUT', body: 'aaa' }))
+        await handler(new Request(new URL('/b.txt', driveUrl).href, { method: 'PUT', body: 'b' }))
+
+        expect(await module.listHyperdrive(new URL('/Trip/', driveUrl).href)).to.deep.equal({
+          entries: [{ path: '/Trip/a.jpg', size: 3, mtime: null }],
+          truncated: false,
+          private: true,
+          writable: true
+        })
+        expect(await module.listHyperdrive(`hyper://${phoneHost}/DCIM/`)).to.deep.equal({
+          entries: [{ path: '/DCIM/a.jpg', size: 2, mtime: null }],
+          truncated: false,
+          private: true,
+          writable: false
+        })
+        // Nothing of either went near the public store.
+        expect(fetchStub.called).to.equal(false)
+      })
+
+      // The views show a drive's name in place of its key, so it must be the
+      // one it was made under, and none at all when this computer has none.
+      it('names the top of a public drive as this computer made it, and nothing else', async function () {
+        const { module, sdk, hyperCache } = await loadHyperModule()
+        await module.createHandler({ storage: 'test-views-list-names' })
+        sdk.getDrive.callsFake(async () => drive)
+        const host = z32.encode(drive.key)
+        const top = `hyper://${host}/`
+
+        expect(await module.listHyperdrive(top), 'not one this computer made').to.not.have.property('name')
+        hyperCache.push({ name: 'Drive', key: host, timestamp: 1, type: 'drive' })
+        expect(await module.listHyperdrive(top), 'an upload given no name').to.not.have.property('name')
+        hyperCache.length = 0
+        hyperCache.push({ name: 'Backup 14/10/2026', key: 'b'.repeat(52), timestamp: 1, type: 'drive' })
+        hyperCache.push({ name: 'Goa trip', key: host, timestamp: 2, type: 'drive' })
+        expect((await module.listHyperdrive(top)).name).to.equal('Goa trip')
+        // By its hex key as well, and at its top alone.
+        expect((await module.listHyperdrive(`hyper://${drive.key.toString('hex')}/`)).name).to.equal('Goa trip')
+        expect(await module.listHyperdrive(`${top}Trip/`)).to.not.have.property('name')
+      })
+
+      it('names the top of a private drive as its registry does', async function () {
+        const phoneHost = z32.encode(Buffer.alloc(32, 4))
+        driveStores.set(`hyper://${phoneHost}/`, new Map([['/DCIM/a.jpg', Buffer.from('aa')]]))
+        const phone = { name: 'Private files from your phone', url: `hyper://${phoneHost}/`, timestamp: 1, encrypted: true }
+        await writeFile(path.join(TEST_USER_DATA, 'privateHyperdrives.json'), JSON.stringify([phone]))
+        const { module } = await loadHyperModule()
+        const handler = await module.createHandler({ storage: 'test-views-list-private-names' })
+        const driveUrl = await (await handler(new Request('hyper://localhost/?key=Family%20photos&visibility=private', { method: 'POST' }))).text()
+        await handler(new Request(new URL('/a.jpg', driveUrl).href, { method: 'PUT', body: 'a' }))
+        // As the upload records it; the record is stubbed in these tests.
+        await writeFile(path.join(TEST_USER_DATA, 'privateHyperdrives.json'), JSON.stringify([
+          { name: 'Family photos', url: driveUrl, timestamp: 2, encrypted: true },
+          phone
+        ]))
+
+        expect((await module.listHyperdrive(driveUrl)).name).to.equal('Family photos')
+        expect((await module.listHyperdrive(`hyper://${phoneHost}/`)).name).to.equal('Private files from your phone')
+        expect(await module.listHyperdrive(`hyper://${phoneHost}/DCIM/`)).to.not.have.property('name')
+      })
     })
   })
 
