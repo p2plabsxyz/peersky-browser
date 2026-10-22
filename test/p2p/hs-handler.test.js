@@ -464,6 +464,46 @@ describe('HS protocol handler', function () {
       await protocolPost(reopened, 'close', {})
     })
 
+    // The start page offers the last note's port for the next note, so two
+    // notes made one after the other were both on 51525, and then neither
+    // opened while the other was open.
+    it('is not another note\'s for a new note', async function () {
+      const port = await getAvailablePort()
+      const { data: first } = await protocolPost(handler, 'create', { secure: true, udp: false, port })
+      expect(first.localPort).to.equal(port)
+      await protocolPost(handler, 'close', {})
+
+      const { data: second } = await protocolPost(handler, 'create', { secure: true, udp: false, port })
+      expect(second.key).to.be.a('string')
+      expect(second.localPort).to.be.a('number')
+      expect(second.localPort).to.not.equal(port)
+    })
+
+    it('moves off a port another open note is on, and keeps the new one', async function () {
+      const { data: first } = await protocolPost(handler, 'create', { secure: true, udp: false })
+      const { data: second } = await protocolPost(handler, 'create', { secure: true, udp: false })
+      await protocolPost(handler, 'close', {})
+
+      // Two notes saved on one port, as notes made before this were.
+      const portsFile = path.join(userDataDir, 'peersky-ports.json')
+      const ports = JSON.parse(fs.readFileSync(portsFile, 'utf8'))
+      ports[second.key].port = ports[first.key].port
+      fs.writeFileSync(portsFile, JSON.stringify(ports))
+
+      const { handler: restarted } = await loadHsHandler(userDataDir)
+      const { data: one } = await protocolPost(restarted, 'rehost', { key: first.key })
+      expect(one.localPort).to.equal(first.localPort)
+      const { response, data: two } = await protocolPost(restarted, 'rehost', { key: second.key })
+      expect(response.status, two.error).to.equal(200)
+      expect(two.localPort).to.not.equal(first.localPort)
+      await getDoc(two.localUrl)
+      await protocolPost(restarted, 'close', {})
+
+      const saved = JSON.parse(fs.readFileSync(portsFile, 'utf8'))
+      expect(saved[second.key].port).to.equal(two.localPort)
+      expect(saved[first.key].port).to.equal(first.localPort)
+    })
+
     it('is the host\'s on a device that joins, again after that device restarts', async function () {
       const { data: room } = await protocolPost(handler, 'create', { secure: true, udp: false })
       const otherDir = fs.mkdtempSync(path.join(os.tmpdir(), 'peersky-hs-joiner-'))
@@ -663,6 +703,47 @@ describe('HS protocol handler', function () {
       const status = await getStatus(room.localUrl)
       expect(Object.keys(findPeer(status, 'phone').lineAttributions)).to.deep.equal(['3'])
       expect(Object.keys(findPeer(status, 'device-a').lineAttributions)).to.deep.equal(['1', '2'])
+    })
+
+    // A laptop replaced a long note with one line and went on owning lines 2
+    // to 39: the host kept every line an editor had ever sent.
+    it('drops a line an editor no longer sends', async function () {
+      const { data: room } = await protocolPost(handler, 'create', { secure: false, udp: false })
+      await setDoc(room.localUrl, { content: 'One\nTwo\nThree', clientId: 'device-a', name: 'Alice' })
+      await listen(room.localUrl, 'device-a', 'host')
+      const alice = { name: 'Alice', color: '#1FC1A8', updatedAt: 100 }
+      await postPresence(room.localUrl, { clientId: 'device-a', role: 'host', name: 'Alice', lineAttributions: { 1: alice, 2: alice, 3: alice } })
+      await postPresence(room.localUrl, { clientId: 'device-a', role: 'host', name: 'Alice', lineAttributions: { 1: alice } })
+      expect(Object.keys(findPeer(await getStatus(room.localUrl), 'device-a').lineAttributions)).to.deep.equal(['1'])
+
+      // None at all is sent as an empty list.
+      await postPresence(room.localUrl, { clientId: 'device-a', role: 'host', name: 'Alice', lineAttributions: {} })
+      expect(findPeer(await getStatus(room.localUrl), 'device-a').lineAttributions).to.deep.equal({})
+    })
+
+    // A phone kept sending lines it had lost, and the laptop showed them as
+    // the phone's while the phone showed the laptop's as its own.
+    it('gives a line two people sent to the newer edit, whichever came last', async function () {
+      const { data: room } = await protocolPost(handler, 'create', { secure: false, udp: false })
+      await setDoc(room.localUrl, { content: 'One\nTwo\nThree', clientId: 'device-a', name: 'Alice' })
+      await listen(room.localUrl, 'device-a', 'host')
+      await listen(room.localUrl, 'phone')
+      const alice = (updatedAt) => ({ name: 'Alice', color: '#1FC1A8', updatedAt })
+      const sam = (updatedAt) => ({ name: 'Sam', color: 'hsl(305 74% 58%)', updatedAt })
+      await postPresence(room.localUrl, { clientId: 'device-a', role: 'host', name: 'Alice', lineAttributions: { 1: alice(200), 2: alice(200) } })
+      await postPresence(room.localUrl, { clientId: 'phone', name: 'Sam', color: 'hsl(305 74% 58%)', peerLineAttributions: { 1: sam(100), 3: sam(150) } })
+
+      let status = await getStatus(room.localUrl)
+      expect(Object.keys(findPeer(status, 'device-a').lineAttributions)).to.deep.equal(['1', '2'])
+      expect(Object.keys(findPeer(status, 'phone').lineAttributions)).to.deep.equal(['3'])
+      // The phone's own color, not one the host made up for it.
+      expect(findPeer(status, 'phone').color).to.equal('hsl(305 74% 58%)')
+      expect(findPeer(status, 'phone').lineAttributions['3'].color).to.equal('hsl(305 74% 58%)')
+
+      await postPresence(room.localUrl, { clientId: 'phone', name: 'Sam', color: 'hsl(305 74% 58%)', peerLineAttributions: { 2: sam(300), 3: sam(150) } })
+      status = await getStatus(room.localUrl)
+      expect(Object.keys(findPeer(status, 'device-a').lineAttributions)).to.deep.equal(['1'])
+      expect(Object.keys(findPeer(status, 'phone').lineAttributions)).to.deep.equal(['2', '3'])
     })
 
     // A line is someone's once they change it. The phone's editor sends an

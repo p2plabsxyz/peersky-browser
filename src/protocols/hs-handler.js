@@ -310,6 +310,38 @@ function getExistingSession (key) {
   return roomSessions.get(key) || null
 }
 
+// Every note keeps its port, and the start page offers the last one for the
+// next note, so two notes made one after the other were both on 51525. Then
+// neither opened while the other was open, and the error blamed "another
+// PeerSky". A note now moves off a port another note open here is on, and a
+// new note takes none that another note has.
+function portOfAnotherOpenNote (session, port) {
+  if (!port) return false
+  for (const other of roomSessions.values()) {
+    if (other !== session && other.port === port && (other.server || other.holesailClient)) return true
+  }
+  return false
+}
+
+function portOfAnotherNote (session, port) {
+  if (!port) return false
+  for (const [key, entry] of roomPorts) {
+    if (key !== session?.key && entry?.port === port) return true
+  }
+  return portOfAnotherOpenNote(session, port)
+}
+
+function findFreePort () {
+  return new Promise((resolve, reject) => {
+    const probe = http.createServer()
+    probe.once('error', reject)
+    probe.listen(0, '127.0.0.1', () => {
+      const { port } = probe.address()
+      probe.close(() => resolve(port))
+    })
+  })
+}
+
 function normalizePeerRole (role) {
   if (role === 'host') return 'host'
   if (role === 'client') return 'client'
@@ -321,10 +353,16 @@ function sanitizePeerName (value) {
   return value.trim().replace(/\s+/g, ' ').slice(0, 32)
 }
 
+// A color as editors draw it in a style attribute: #RRGGBB, or hsl(H S% L%)
+// as the phone and getPeerColor write it. The phone's was refused, so the host
+// gave the phone a color of its own: one person in two colors, the phone's on
+// the lines it filed itself and the host's on the lines the host gave it.
 function sanitizePeerColor (value) {
   if (typeof value !== 'string') return ''
   const trimmed = value.trim()
-  return /^#[0-9a-fA-F]{6}$/.test(trimmed) ? trimmed.toUpperCase() : ''
+  if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) return trimmed.toUpperCase()
+  if (/^hsl\(\d{1,3}(\.\d+)? \d{1,3}(\.\d+)?% \d{1,3}(\.\d+)?%\)$/.test(trimmed)) return trimmed
+  return ''
 }
 
 function getPeerColor (seed) {
@@ -491,25 +529,88 @@ function syncPeerMetaFromActor (session, actor) {
   })
 }
 
-function mergeLineAttributions (target, lineAttributions, fallbackName = '') {
+// An editor sends all of its own lines every time, so what it sends replaces
+// what it had: a line it no longer sends is no longer its. Kept as a union, a
+// laptop that replaced a long note with one line went on owning lines 2 to 39
+// for whoever typed there next. Each line keeps the time of its edit, so a
+// line two people sent goes to the newer edit on every device.
+function mergeLineAttributions (target, lineAttributions, fallbackName = '', session = null) {
   if (!target || !lineAttributions || typeof lineAttributions !== 'object') return
-  if (!target.lineAttributions) target.lineAttributions = {}
   const fallback = sanitizePeerName(fallbackName || '')
-  let changed = false
+  const now = Date.now()
+  const next = {}
   for (const [line, info] of Object.entries(lineAttributions)) {
     const lineNum = Number(line)
     if (!Number.isFinite(lineNum) || lineNum < 1) continue
-    if (!info || typeof info !== 'object' || typeof info.color !== 'string') continue
-    const incomingName = sanitizePeerName(typeof info.name === 'string' ? info.name : '')
+    if (!info || typeof info !== 'object') continue
+    const color = sanitizePeerColor(info.color)
+    if (!color) continue
     const key = String(Math.floor(lineNum))
-    const next = { name: incomingName || fallback, color: info.color }
-    const current = target.lineAttributions[key]
-    // An editor sends all its lines every time, so only a real change counts.
-    if (current && current.name === next.name && current.color === next.color) continue
-    target.lineAttributions[key] = next
-    changed = true
+    const name = sanitizePeerName(typeof info.name === 'string' ? info.name : '') || fallback
+    // A line that stays with the same person keeps the time it became theirs,
+    // which is all a rival claim is weighed against, so typing in it does not
+    // send everyone's lines out again on every key.
+    const current = target.lineAttributions?.[key]
+    if (current && current.name === name && current.color === color && Number(current.updatedAt) > 0) {
+      next[key] = current
+      continue
+    }
+    const editedAt = Number(info.updatedAt)
+    next[key] = {
+      name,
+      color,
+      // A clock ahead of this one does not win every line from now on.
+      updatedAt: Number.isFinite(editedAt) && editedAt > 0 ? Math.min(editedAt, now) : now
+    }
   }
-  if (changed) markLineAttributionsChanged(target)
+  if (sameLineAttributions(target.lineAttributions, next)) return
+  target.lineAttributions = next
+  markLineAttributionsChanged(target)
+  if (session) settleLineOwners(session, target)
+}
+
+function sameLineAttributions (a, b) {
+  const aKeys = Object.keys(a || {})
+  if (aKeys.length !== Object.keys(b || {}).length) return false
+  for (const key of aKeys) {
+    const x = a[key]
+    const y = b[key]
+    if (!x || !y || x.name !== y.name || x.color !== y.color || x.updatedAt !== y.updatedAt) return false
+  }
+  return true
+}
+
+// Whether one claim to a line stands over another: the newer edit, and of two
+// at the same moment, the same one the editors pick (p2pmd's line-authors.js).
+function isNewerLineClaim (claim, claimClientId, other, otherClientId) {
+  const at = Number(claim?.updatedAt) || 0
+  const otherAt = Number(other?.updatedAt) || 0
+  if (at !== otherAt) return at > otherAt
+  return String(claimClientId || '') >= String(otherClientId || '')
+}
+
+// One person to a line among the people here: the one whose edit of it is
+// newest.
+function settleLineOwners (session, owner) {
+  if (!session || !owner?.lineAttributions) return
+  let ownerChanged = false
+  for (const client of session.sseClients.values()) {
+    if (!client || client === owner || !client.lineAttributions) continue
+    let changed = false
+    for (const line of Object.keys(owner.lineAttributions)) {
+      const theirs = client.lineAttributions[line]
+      if (!theirs) continue
+      if (isNewerLineClaim(owner.lineAttributions[line], owner.clientId, theirs, client.clientId)) {
+        delete client.lineAttributions[line]
+        changed = true
+      } else {
+        delete owner.lineAttributions[line]
+        ownerChanged = true
+      }
+    }
+    if (changed) markLineAttributionsChanged(client)
+  }
+  if (ownerChanged) markLineAttributionsChanged(owner)
 }
 
 function renameLineAttributionOwner (target, nextName) {
@@ -520,10 +621,7 @@ function renameLineAttributionOwner (target, nextName) {
   for (const [line, info] of Object.entries(target.lineAttributions)) {
     if (!info || typeof info !== 'object' || typeof info.color !== 'string') continue
     if (info.name === sanitized) continue
-    target.lineAttributions[line] = {
-      name: sanitized,
-      color: info.color
-    }
+    target.lineAttributions[line] = { ...info, name: sanitized }
     changed = true
   }
   if (changed) markLineAttributionsChanged(target)
@@ -545,10 +643,11 @@ function markEditedLineAttribution (session, actor, cursorLine) {
   if (!actor.lineAttributions) actor.lineAttributions = {}
   const next = {
     name: getPeerDisplayName(actor),
-    color: actor.color || getPeerColor(actor.clientId || actor.id)
+    color: actor.color || getPeerColor(actor.clientId || actor.id),
+    updatedAt: Date.now()
   }
   const current = actor.lineAttributions[lineKey]
-  if (current && current.name === next.name && current.color === next.color) return
+  if (current && current.name === next.name && current.color === next.color && Number(current.updatedAt) > 0) return
   actor.lineAttributions[lineKey] = next
   markLineAttributionsChanged(actor)
 }
@@ -1246,7 +1345,7 @@ function handleDocRequest (req, res, session) {
           if (cursorColumn !== null) actor.cursorColumn = cursorColumn
           if (selectionStart !== null) actor.selectionStart = selectionStart
           if (selectionEnd !== null) actor.selectionEnd = selectionEnd
-          mergeLineAttributions(actor, senderLineAttributions(parsed), getPeerDisplayName(actor))
+          mergeLineAttributions(actor, senderLineAttributions(parsed), getPeerDisplayName(actor), session)
           actor.isTyping = true
           actor.lastTypingAt = Date.now()
           actor.updatedAt = actor.lastTypingAt
@@ -1384,7 +1483,7 @@ function handleDocRequest (req, res, session) {
           if (cursorColumn !== null) actor.cursorColumn = cursorColumn
           if (selectionStart !== null) actor.selectionStart = selectionStart
           if (selectionEnd !== null) actor.selectionEnd = selectionEnd
-          mergeLineAttributions(actor, senderLineAttributions(parsed), getPeerDisplayName(actor))
+          mergeLineAttributions(actor, senderLineAttributions(parsed), getPeerDisplayName(actor), session)
           actor.isTyping = true
           actor.lastTypingAt = Date.now()
           actor.updatedAt = actor.lastTypingAt
@@ -1503,6 +1602,7 @@ function handleDocRequest (req, res, session) {
       lineAttributionsVersion: 1
     }
     session.sseClients.set(res, peerState)
+    settleLineOwners(session, peerState)
     syncPeerMetaFromActor(session, peerState)
     const currentPeerCount = getPeerCount(session)
     log.info(`[p2pmd] SSE connected: peerId=${peerId}, role=${role}, totalClients=${session.sseClients.size}, peerCount=${currentPeerCount}`)
@@ -1629,7 +1729,7 @@ function handleDocRequest (req, res, session) {
         if (actor) actor.role = normalizePeerRole(parsed.role || actor.role || 'client')
         const nextTyping = parsed.isTyping === true
         if (actor) {
-          mergeLineAttributions(actor, senderLineAttributions(parsed), getPeerDisplayName(actor))
+          mergeLineAttributions(actor, senderLineAttributions(parsed), getPeerDisplayName(actor), session)
           actor.isTyping = nextTyping
           if (nextTyping) {
             actor.lastTypingAt = Date.now()
@@ -1712,7 +1812,11 @@ async function ensureDocServer (session, host, port, secure) {
   session.host = nextHost
   const savedEntry = session.key ? roomPorts.get(session.key) : null
   const savedPort = savedEntry?.port || null
-  const requestedPort = port || session.originalPort || savedPort || 0
+  let requestedPort = port || session.originalPort || savedPort || 0
+  if (portOfAnotherOpenNote(session, requestedPort) || (!session.key && portOfAnotherNote(session, requestedPort))) {
+    log.info('[p2pmd] the port is another note\'s, taking a free one', { key: redactKey(session.key), port: requestedPort })
+    requestedPort = 0
+  }
   log.info('[p2pmd] ensureDocServer', { key: session.key, port, originalPort: session.originalPort, savedPort, requestedPort })
   session.server = http.createServer((req, res) => handleDocRequest(req, res, session))
   session.server.on('connection', (socket) => {
@@ -1745,6 +1849,10 @@ async function ensureDocServer (session, host, port, secure) {
         roomPorts.set(session.key, { port: session.port, seed: null })
         savePortsToFile()
         log.info('[p2pmd] saved port for room', { key: session.key, port: session.port })
+      } else if (session.key && savedEntry && savedEntry.port !== session.port) {
+        // It moved off another note's port, and stays on the new one.
+        roomPorts.set(session.key, { ...savedEntry, port: session.port })
+        savePortsToFile()
       }
       return { host: session.host, port: session.port }
     } catch (err) {
@@ -1926,21 +2034,34 @@ async function joinOpenNote (key, { secure, udp, host }) {
   const deadline = Date.now() + OPEN_NOTE_LOOK_MS
   let client = udp ? null : await joinNoteOnLan(key, secure, { host, port: null })
   if (!client) {
-    const holesailClient = new Holesail({
+    const options = {
       client: true,
       key,
       host,
       log: 1,
       ...(secure !== null ? { secure } : {}),
       ...(udp !== null ? { udp } : {})
-    })
+    }
+    let holesailClient = new Holesail(options)
     let timer = null
+    const readyInTime = (instance) => Promise.race([
+      instance.ready(),
+      new Promise((resolve, reject) => {
+        clearTimeout(timer)
+        timer = setTimeout(() => reject(new Error('Nobody answered')), Math.max(0, deadline - Date.now()))
+      })
+    ])
     try {
-      await Promise.race([
-        holesailClient.ready(),
-        new Promise((resolve, reject) => { timer = setTimeout(() => reject(new Error('Nobody answered')), Math.max(0, deadline - Date.now())) })
-      ])
-      const bound = await waitForClientProxy(holesailClient)
+      await readyInTime(holesailClient)
+      let bound = await waitForClientProxy(holesailClient)
+      if (!bound.ok && portOfAnotherOpenNote(null, bound.port)) {
+        // The note's port is another note's here; any free one does for a
+        // note joined from here.
+        await holesailClient.close().catch(() => {})
+        holesailClient = new Holesail({ ...options, port: await findFreePort() })
+        await readyInTime(holesailClient)
+        bound = await waitForClientProxy(holesailClient)
+      }
       if (!bound.ok) throw bound.error || new Error('The local port is in use')
       client = holesailClient
     } catch {
@@ -2432,14 +2553,23 @@ export async function createHandler () {
         if (DEBUG) {
           log.info('[p2pmd] join creating client', { port: requestedPort })
         }
-        const holesailClient = new Holesail(clientOptions)
+        let holesailClient = new Holesail(clientOptions)
         sessionState.holesailClient = holesailClient
         await holesailClient.ready()
         // The local end binds the port the host advertised only once ready()
         // is done, and a port already in use here failed as an error event
         // nobody listened for: an uncaught exception in the main process. Wait
         // for the bind, and answer with what went wrong.
-        const bound = await waitForClientProxy(holesailClient)
+        let bound = await waitForClientProxy(holesailClient)
+        if (!bound.ok && portOfAnotherOpenNote(sessionState, bound.port)) {
+          // The host's port is another note's here, so this one listens on a
+          // free port instead.
+          await stopHolesailClient(sessionState)
+          holesailClient = new Holesail({ ...clientOptions, port: await findFreePort() })
+          sessionState.holesailClient = holesailClient
+          await holesailClient.ready()
+          bound = await waitForClientProxy(holesailClient)
+        }
         if (!bound.ok) {
           await stopHolesailClient(sessionState)
           roomSessions.delete(key)
