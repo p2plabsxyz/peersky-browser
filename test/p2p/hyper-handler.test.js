@@ -90,7 +90,7 @@ describe('Hyper protocol handler', function () {
     sinon.restore()
   })
 
-  async function loadHyperModule ({ fetchImpl, chatResponse, chatReject, throwOnFetch, lanReject, lanReadyReject, lanAttachResults, currentIP = '127.0.0.1', driveLength = 0, peerchat = {}, viewer = true } = {}) {
+  async function loadHyperModule ({ fetchImpl, chatResponse, chatReject, throwOnFetch, lanReject, lanReadyReject, lanAttachResults, currentIP = '127.0.0.1', driveLength = 0, peerchat = {}, viewer = true, lanVersion = 1 } = {}) {
     // Order matters for the peer-discovery regression: the drive must be given
     // a chance to replicate before the fetch that would 404 with no peers.
     const callOrder = []
@@ -182,6 +182,12 @@ describe('Hyper protocol handler', function () {
     })
     LANSwarm.attachHyperSDK = attachHyperSDK
     LANSwarm.selectLocalIPv4 = sinon.stub().returns(currentIP)
+    // hyperdht-mdns 2: its own mDNS adapter, and the gate devices prove who
+    // they are through.
+    if (lanVersion >= 2) {
+      LANSwarm.MDNSAdapter = sinon.spy(function () {})
+      LANSwarm.identityGate = sinon.stub().resolves(null)
+    }
 
     const createFetchStub = () => sinon.stub().callsFake(async (url, options) => {
       callOrder.push('fetch')
@@ -627,6 +633,21 @@ describe('Hyper protocol handler', function () {
     expect(attachHyperSDK.calledWithExactly(sdk, { lan: publicLan })).to.equal(true)
     expect(attachHyperSDK.calledWithExactly(privateSdk, { lan: privateLan })).to.equal(true)
     expect(privateLan.opts.port).to.equal(49800)
+  })
+
+  it('with hyperdht-mdns 2, keeps the network key off the LAN and gives PeerChat the gate', async function () {
+    const { module, attachHyperSDK, lanInstances, initChat, LANSwarm, sdk, privateSdk } = await loadHyperModule({ lanVersion: 2 })
+
+    await module.createHandler({ storage: path.join('profiles', 'hyper-lan-2') })
+
+    expect(lanInstances).to.have.length(2)
+    for (const instance of lanInstances) {
+      expect(instance.opts).to.not.have.property('keyPair')
+      expect(instance.opts.adapter).to.be.instanceOf(LANSwarm.MDNSAdapter)
+    }
+    expect(attachHyperSDK.calledWith(sdk)).to.equal(true)
+    expect(attachHyperSDK.calledWith(privateSdk)).to.equal(true)
+    expect(initChat.firstCall.args[1].identityGate).to.equal(LANSwarm.identityGate)
   })
 
   it('keeps a device-only private store off every network, the LAN included', async function () {

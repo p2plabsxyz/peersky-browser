@@ -1,11 +1,15 @@
 import { expect } from 'chai'
 import { randomBytes } from 'crypto'
+import { EventEmitter } from 'events'
 import { mkdirSync } from 'fs'
 import { mkdtemp, rm, writeFile } from 'fs/promises'
 import os from 'os'
 import path from 'path'
 import { create as createSDK } from 'hyper-sdk'
+import HyperDHT from 'hyperdht'
 import createTestnet from 'hyperdht/testnet.js'
+import HyperDHTmDNS from '@p2plabs/hyperdht-mdns'
+import NoiseSecretStream from '@hyperswarm/secret-stream'
 import Hyperdrive from 'hyperdrive'
 import z32 from 'z32'
 import { attachDeviceSync } from '../../src/protocols/device-sync.js'
@@ -144,5 +148,123 @@ describe('private sync with a linked phone', function () {
     const response = await fetcher(`hyper://${phoneHost}/photo.jpg`)
     expect(response.status).to.equal(200)
     expect((await response.arrayBuffer()).byteLength).to.equal(64 * 1024)
+  })
+})
+
+// On the local network, hyperdht-mdns 2 connects with a key made up for that
+// network. A device's own key, which the list of devices goes by, is proven
+// inside the channel, and only to another of the person's devices.
+describe('private sync on the local network', function () {
+  this.timeout(30000)
+
+  let root
+  const syncs = []
+
+  beforeEach(async function () {
+    root = await mkdtemp(path.join(os.tmpdir(), 'peersky-lan-sync-'))
+  })
+
+  afterEach(async function () {
+    for (const sync of syncs.splice(0)) await sync.close().catch(() => {})
+    await rm(root, { recursive: true, force: true })
+  })
+
+  function lanDevice (name, identityKey, identityGate) {
+    const swarm = new EventEmitter()
+    // The store's network key: who this device is.
+    swarm.keyPair = HyperDHT.keyPair()
+    swarm.connections = new Set()
+    const runtime = { swarm, join: () => ({ refresh: async () => {}, flushed: async () => true, destroy: async () => {} }) }
+    const stateDirectory = path.join(root, name)
+    mkdirSync(stateDirectory, { recursive: true })
+    const sync = attachDeviceSync(runtime, {
+      identityKey,
+      stateDirectory,
+      device: name === 'phone' ? 'phone' : 'desktop',
+      openDrive: async () => null,
+      ...(identityGate ? { identityGate } : {}),
+      logger: { warn () {} }
+    })
+    syncs.push(sync)
+    return { swarm, sync, id: swarm.keyPair.publicKey.toString('hex') }
+  }
+
+  // Two ends of a local network connection, each with a key of its own.
+  async function connect (a, b) {
+    const left = new NoiseSecretStream(true, null, { keyPair: HyperDHT.keyPair() })
+    const right = new NoiseSecretStream(false, null, { keyPair: HyperDHT.keyPair() })
+    left.rawStream.pipe(right.rawStream).pipe(left.rawStream)
+    left.on('error', () => {})
+    right.on('error', () => {})
+    await Promise.all([left.opened, right.opened])
+    a.swarm.emit('connection', left, { lan: true, ephemeral: true })
+    b.swarm.emit('connection', right, { lan: true, ephemeral: true })
+    return [left, right]
+  }
+
+  it('knows a device by the key it proved, not the connection key', async function () {
+    const key = randomBytes(32)
+    const proven = new Map()
+    const gate = async (connection) => proven.get(connection) || null
+    const desktop = lanDevice('desktop', key, gate)
+    const phone = lanDevice('phone', key, gate)
+
+    const left = new NoiseSecretStream(true, null, { keyPair: HyperDHT.keyPair() })
+    const right = new NoiseSecretStream(false, null, { keyPair: HyperDHT.keyPair() })
+    proven.set(left, { publicKey: phone.swarm.keyPair.publicKey, matches: [0] })
+    proven.set(right, { publicKey: desktop.swarm.keyPair.publicKey, matches: [0] })
+    left.rawStream.pipe(right.rawStream).pipe(left.rawStream)
+    await Promise.all([left.opened, right.opened])
+    desktop.swarm.emit('connection', left, { lan: true, ephemeral: true })
+    phone.swarm.emit('connection', right, { lan: true, ephemeral: true })
+
+    await until(() => desktop.sync.online.has(phone.id), 'the desktop to know the phone')
+    await until(() => phone.sync.online.has(desktop.id), 'the phone to know the desktop')
+    expect([...desktop.sync.online]).to.deep.equal([phone.id])
+    expect(desktop.sync.online.has(left.remotePublicKey.toString('hex'))).to.equal(false)
+  })
+
+  it('does not talk on a local network connection nobody proved', async function () {
+    const key = randomBytes(32)
+    const gate = async () => null
+    const desktop = lanDevice('desktop', key, gate)
+    const phone = lanDevice('phone', key, gate)
+    await connect(desktop, phone)
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    expect(desktop.sync.online.size).to.equal(0)
+    expect(phone.sync.online.size).to.equal(0)
+  })
+
+  it('meets a device that finished proving first and opened sync before this side', async function () {
+    if (typeof HyperDHTmDNS.identityGate !== 'function') this.skip()
+    const key = randomBytes(32)
+    const slow = (...args) => HyperDHTmDNS.identityGate(...args).then((result) => new Promise((resolve) => setTimeout(() => resolve(result), 300)))
+    const desktop = lanDevice('desktop', key, HyperDHTmDNS.identityGate)
+    const phone = lanDevice('phone', key, slow)
+    await connect(desktop, phone)
+    await until(() => desktop.sync.online.has(phone.id) && phone.sync.online.has(desktop.id), 'the two devices to know each other')
+  })
+
+  it('proves who it is only to the person\'s own devices', async function () {
+    if (typeof HyperDHTmDNS.identityGate !== 'function') this.skip()
+    const key = randomBytes(32)
+    const results = []
+    const gate = (...args) => HyperDHTmDNS.identityGate(...args).then((result) => {
+      results.push(result)
+      return result
+    })
+    const desktop = lanDevice('desktop', key, gate)
+    const phone = lanDevice('phone', key, gate)
+    const stranger = lanDevice('stranger', randomBytes(32), gate)
+
+    await connect(desktop, phone)
+    await until(() => desktop.sync.online.has(phone.id) && phone.sync.online.has(desktop.id), 'the two devices to know each other')
+
+    const before = results.length
+    await connect(stranger, desktop)
+    await until(() => results.length === before + 2, 'both gates to finish')
+    expect(results.slice(before)).to.deep.equal([null, null])
+    expect(stranger.sync.online.size).to.equal(0)
+    expect([...desktop.sync.online]).to.deep.equal([phone.id])
   })
 })

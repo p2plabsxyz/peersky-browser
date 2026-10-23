@@ -74,10 +74,22 @@ export function withPeerLocalHost (adapter) {
   return adapter
 }
 
+// hyperdht-mdns 2 has an adapter of its own that publishes only a made-up
+// name, the port and the LAN address. The older Bonjour one needs the host
+// fixed as above.
 function createLANAdapter () {
+  if (typeof HyperDHTmDNS.MDNSAdapter === 'function') return new HyperDHTmDNS.MDNSAdapter()
   const Adapter = HyperDHTmDNS.BonjourAdapter
   if (typeof Adapter !== 'function') return null
   return withPeerLocalHost(new Adapter())
+}
+
+// With hyperdht-mdns 2, the LAN instance makes up a key of its own for each
+// network, and devices prove who they are inside the channel (identityGate):
+// the store's network key, which is also PeerChat's id, never goes on the
+// local network. An older version is given that key, as before.
+export function lanKeyOptions (activeSdk) {
+  return typeof HyperDHTmDNS.identityGate === 'function' ? {} : { keyPair: activeSdk.swarm.keyPair }
 }
 
 const DEFAULT_LAN_PORT = HyperDHTmDNS.DEFAULT_PORT || 49799
@@ -110,7 +122,7 @@ function wireLANEvents (instance) {
 // second PeerSky on this computer) every later join went to a LAN swarm that
 // never started, and creating a drive failed with "address already in use".
 async function attachLANDiscovery (activeSdk, lanOptions = {}) {
-  const lan = new HyperDHTmDNS({ ...getLANOptions(lanOptions), keyPair: activeSdk.swarm.keyPair })
+  const lan = new HyperDHTmDNS({ ...getLANOptions(lanOptions), ...lanKeyOptions(activeSdk) })
   try {
     await lan.ready()
   } catch (err) {
@@ -315,6 +327,9 @@ async function startHyperSDK (options) {
 
   initChat(sdk, {
     safeStorage,
+    // How a device on the local network proves who it is. Missing from older
+    // hyperdht-mdns, whose LAN connections carry the network key itself.
+    identityGate: HyperDHTmDNS.identityGate,
     storagePath: path.join(app.getPath('userData'), CHAT_STORAGE),
     // The pair it connects with, which signs what this desktop writes in
     // PeerChat. A restored desktop's is its own and not in its stores, so
