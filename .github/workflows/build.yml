@@ -45,7 +45,8 @@ jobs:
       - name: Install Node.js, NPM and Yarn
         uses: actions/setup-node@v3
         with:
-          node-version: 'lts/jod'
+          # npm 11, as on the machines that write package-lock.json (see ci.yml).
+          node-version: '24'
 
       - name: Non-tag specific build step
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
@@ -130,7 +131,8 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: 'lts/jod'
+          # npm 11, as on the machines that write package-lock.json (see ci.yml).
+          node-version: '24'
 
       - name: Write the release notes
         env:
