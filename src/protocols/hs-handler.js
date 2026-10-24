@@ -832,7 +832,26 @@ function applyTextDiffToYText (ytextRef, oldText, newText) {
   })
 }
 
+// A note's server sits on 127.0.0.1 and answers with CORS *, so any web page
+// on this machine could read a note and push edits that reach every peer. It
+// answers only requests for this machine by name, which a page that rebound
+// its own name to 127.0.0.1 cannot send, and only from PeerSky's pages, a
+// note's own page on 127.0.0.1 (a joined device's port may differ from the
+// host's), or a client that is not a web page at all.
+const DOC_REQUEST_HOST = /^(?:127\.0\.0\.1|localhost|\[::1\])(?::\d{1,5})?$/i
+const DOC_REQUEST_ORIGIN = /^(?:peersky:\/\/p2p|http:\/\/(?:127\.0\.0\.1|localhost|\[::1\])(?::\d{1,5})?)$/i
+
+export function docRequestAllowed (headers = {}) {
+  if (!DOC_REQUEST_HOST.test(String(headers.host || ''))) return false
+  return headers.origin === undefined || DOC_REQUEST_ORIGIN.test(String(headers.origin))
+}
+
 function handleDocRequest (req, res, session) {
+  if (!docRequestAllowed(req.headers)) {
+    res.writeHead(403, { 'Content-Type': 'text/plain' })
+    res.end('Forbidden')
+    return
+  }
   const url = new URL(req.url, `http://${session.host}:${session.port}`)
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {

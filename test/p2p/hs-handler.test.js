@@ -2,6 +2,7 @@ import { expect } from 'chai'
 import { EventEmitter } from 'events'
 import esmock from 'esmock'
 import fs from 'fs'
+import http from 'http'
 import net from 'net'
 import os from 'os'
 import path from 'path'
@@ -268,6 +269,21 @@ async function setDoc (localUrl, payload) {
   expect(body.ok).to.equal(true)
 }
 
+// A request with headers fetch would not let a test set, such as Host.
+function rawRequest (localUrl, pathname, { method = 'GET', headers = {}, body = '' } = {}) {
+  const target = new URL(pathname, localUrl)
+  return new Promise((resolve, reject) => {
+    const req = http.request({ host: target.hostname, port: target.port, path: target.pathname, method, headers }, (res) => {
+      let text = ''
+      res.setEncoding('utf8')
+      res.on('data', (chunk) => { text += chunk })
+      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, text }))
+    })
+    req.on('error', reject)
+    req.end(body)
+  })
+}
+
 async function setDocUpdate (localUrl, payload) {
   const res = await fetch(`${localUrl}/doc/update`, {
     method: 'POST',
@@ -379,6 +395,38 @@ describe('HS protocol handler', function () {
       await protocolPost(handler, 'close', {})
     } catch {}
     fs.rmSync(userDataDir, { recursive: true, force: true })
+  })
+
+  describe('the note\'s local server', function () {
+    it('answers PeerSky\'s pages and a note\'s own page, never a website or a page on another name', async function () {
+      const { data: room } = await protocolPost(handler, 'create', { secure: false, udp: false })
+      await setDoc(room.localUrl, { content: 'Secret line', clientId: 'device-a', name: 'Mac' })
+      const read = (headers) => rawRequest(room.localUrl, '/doc', { headers })
+      const host = new URL(room.localUrl).host
+
+      expect((await read({ Host: host })).status).to.equal(200)
+      expect((await read({ Host: host, Origin: 'peersky://p2p' })).status).to.equal(200)
+      expect((await read({ Host: host, Origin: room.localUrl })).status).to.equal(200)
+      // A joined device's page may sit on another port than the host's.
+      expect((await read({ Host: 'localhost:9123', Origin: 'http://127.0.0.1:9123' })).status).to.equal(200)
+
+      const website = await read({ Host: host, Origin: 'https://evil.example' })
+      expect(website.status).to.equal(403)
+      expect(website.headers['access-control-allow-origin']).to.equal(undefined)
+      expect((await read({ Host: host, Origin: 'null' })).status).to.equal(403)
+      // A page that rebound its own name to 127.0.0.1 sends that name, and no Origin.
+      expect((await read({ Host: `evil.example:${new URL(room.localUrl).port}` })).status).to.equal(403)
+
+      const preflight = await rawRequest(room.localUrl, '/doc/update', { method: 'OPTIONS', headers: { Host: host, Origin: 'https://evil.example' } })
+      expect(preflight.status).to.equal(403)
+      const tamper = await rawRequest(room.localUrl, '/doc/update', {
+        method: 'POST',
+        headers: { Host: host, Origin: 'https://evil.example', 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ fullText: 'Tampered', clientId: 'evil', name: 'Evil' })
+      })
+      expect(tamper.status).to.equal(403)
+      expect((await getDoc(room.localUrl)).content).to.equal('Secret line')
+    })
   })
 
   describe('rehosting a room after a restart', function () {
