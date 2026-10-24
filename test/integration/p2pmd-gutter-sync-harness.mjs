@@ -82,7 +82,8 @@ async function waitForEditorReady (win) {
   while (Date.now() - started < EDITOR_READY_TIMEOUT_MS) {
     const ready = await safeExec(
       win,
-      'Boolean(document.getElementById("markdownInput")) && !document.getElementById("editor-page")?.classList.contains("hidden")',
+      // A guest can type once the host's copy is in and the room is live.
+      'Boolean(document.getElementById("markdownInput")) && !document.getElementById("editor-page")?.classList.contains("hidden") && !document.getElementById("markdownInput").readOnly',
       'waitForEditorReady'
     )
     if (ready === true) return true

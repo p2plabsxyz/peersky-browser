@@ -6,6 +6,7 @@ import net from 'net'
 import os from 'os'
 import path from 'path'
 import * as Y from 'yjs'
+import { keepOpenedFile } from '../../src/open-in-p2pmd.js'
 
 let activeConnections = null
 
@@ -846,6 +847,27 @@ describe('HS protocol handler', function () {
       expect(await listening).to.deep.equal({ ok: true })
     })
 
+    // Holesail listens on 8989 when the host's record gives it no port, and a
+    // note joined that way showed 8989 from then on. A join that lands there
+    // without asking moves to a free port; one kept on 8989 is joined without
+    // asking for it, so it takes its host's port when the host has one.
+    it('never keeps Holesail\'s default port unless the note was already on it', async function () {
+      const { landedOnDefaultPort, HOLESAIL_DEFAULT_PORT } = await importHsHandler(userDataDir)
+      expect(HOLESAIL_DEFAULT_PORT).to.equal(8989)
+      const on = (port) => ({ info: { port } })
+      expect(landedOnDefaultPort(on(8989), null)).to.equal(true)
+      expect(landedOnDefaultPort(on(8989), 51234)).to.equal(true)
+      expect(landedOnDefaultPort(on(51234), null)).to.equal(false)
+      expect(landedOnDefaultPort(on(8989), 8989)).to.equal(false)
+      expect(landedOnDefaultPort(null, null)).to.equal(false)
+
+      const source = await fs.promises.readFile(new URL('../../src/protocols/hs-handler.js', import.meta.url), 'utf8')
+      const join = source.slice(source.indexOf("if (method === 'POST' && action === 'join')"), source.indexOf("if (method === 'POST' && action === 'close')"))
+      expect(join).to.include('if (requestedPort && requestedPort !== HOLESAIL_DEFAULT_PORT) clientOptions.port = requestedPort')
+      expect(join).to.include('port: requestedPort === HOLESAIL_DEFAULT_PORT ? null : requestedPort')
+      expect(join).to.match(/if \(!bound\.ok \|\| landedOnDefaultPort\(holesailClient, requestedPort\)\) \{[\s\S]{0,400}port: await findFreePort\(\)/)
+    })
+
     it('says so when the room it joins is one this device is hosting', async function () {
       const { data: room } = await protocolPost(handler, 'create', { secure: false, udp: false })
       const { data } = await protocolPost(handler, 'join', { key: room.key, joinOnly: true })
@@ -879,6 +901,23 @@ describe('HS protocol handler', function () {
     const other = await handler(new Request('hs://not-a-key/'))
     expect(other.status).to.equal(404)
     expect(await other.text()).to.equal('Unknown hs target')
+  })
+
+  // Main keeps the text of a file opened with P2PMD (open-in-p2pmd.js), and
+  // the note P2PMD makes for it starts with that text.
+  it('starts a note with the text of a file opened with P2PMD, once', async function () {
+    const id = keepOpenedFile({ name: 'Test notes.md', content: '# Test\n\nHello\n' })
+    const { response, data: room } = await protocolPost(handler, 'create', { secure: true, udp: false, openedFile: id })
+    expect(response.status, `create failed: ${room.error}`).to.equal(200)
+    const doc = await (await fetch(`${room.localUrl}/doc`)).json()
+    expect(doc.content).to.equal('# Test\n\nHello\n')
+
+    // A reload or a restored tab gets nothing, and makes no empty note.
+    const again = await protocolPost(handler, 'create', { secure: true, udp: false, openedFile: id })
+    expect(again.response.status).to.equal(404)
+    expect(again.data.error).to.be.a('string')
+    const unknown = await protocolPost(handler, 'create', { secure: true, udp: false, openedFile: '0'.repeat(32) })
+    expect(unknown.response.status).to.equal(404)
   })
 
   it('keeps peer edits when host disconnects and reconnects', async function () {
