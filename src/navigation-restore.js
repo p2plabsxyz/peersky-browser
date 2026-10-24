@@ -50,8 +50,38 @@ export function watchHost (host) {
     results.set(guest.id, restore(guest, job))
     guest.once('destroyed', () => results.delete(guest.id))
     const ok = await results.get(guest.id)
-    if (!ok && !guest.isDestroyed()) guest.loadURL(job.url).catch(() => {})
+    if (!ok && !guest.isDestroyed()) loadInstead(guest, job.url)
   })
+}
+
+// Tabs come back before extensions have loaded, so a tab on an extension's
+// page fails to restore, and loading that page straight away brought the whole
+// app down, on every start for as long as the tab stayed open. It waits for its
+// extension instead, and opens Home when the extension never comes.
+const EXTENSION_WAIT_MS = 20000
+const EXTENSION_POLL_MS = 250
+
+async function loadInstead (guest, url) {
+  let target = url
+  const extensionId = /^chrome-extension:\/\/([a-p]{32})\//i.exec(String(url || ''))?.[1]
+  if (extensionId) {
+    const until = Date.now() + EXTENSION_WAIT_MS
+    while (!guest.isDestroyed() && !hasExtension(guest, extensionId) && Date.now() < until) {
+      await new Promise((resolve) => setTimeout(resolve, EXTENSION_POLL_MS))
+    }
+    if (guest.isDestroyed()) return
+    if (!hasExtension(guest, extensionId)) target = 'peersky://home'
+  }
+  guest.loadURL(target).catch(() => {})
+}
+
+function hasExtension (guest, extensionId) {
+  try {
+    const extensions = guest.session.extensions || guest.session
+    return Boolean(extensions.getExtension(extensionId))
+  } catch {
+    return false
+  }
 }
 
 async function restore (wc, { entries, index }) {

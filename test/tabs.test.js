@@ -340,6 +340,35 @@ describe('navigation history', function () {
     expect(plain.src).to.equal('https://example.test')
   })
 
+  it('waits for an extension to load before opening its page, instead of crashing the start', async function () {
+    const { mod, handlers } = await loadModule()
+    const host = fakeHost()
+    mod.watchHost(host)
+    const url = 'chrome-extension://njgdkbplnabflgninlgehplmlcfabmdp/view.html'
+    handlers['queue-navigation-restore']({}, { token: 't3', entries: [{ url }], index: 0, url })
+    host.emit('will-attach-webview', {}, {}, { src: mod.PLACEHOLDER + 't3' })
+    let loaded = false
+    const loads = []
+    const guest = {
+      id: 9,
+      isDestroyed: () => false,
+      once () {},
+      loadURL: async (u) => { loads.push(u) },
+      session: { extensions: { getExtension: (id) => loaded && id === 'njgdkbplnabflgninlgehplmlcfabmdp' ? { id } : null } },
+      navigationHistory: { restore: async () => { throw new Error("ERR_FAILED (-2) loading '" + url + "'") } }
+    }
+    await host.emit('did-attach-webview', {}, guest)
+    expect(loads).to.deep.equal([])
+    loaded = true
+    await new Promise((resolve) => setTimeout(resolve, 600))
+    expect(loads).to.deep.equal([url])
+  })
+
+  it('opens Home in place of an extension page whose extension never loads', async function () {
+    const restore = await source('../src/navigation-restore.js')
+    expect(restore).to.match(/if \(!hasExtension\(guest, extensionId\)\) target = 'peersky:\/\/home'/)
+  })
+
   it('is queued by the tab bar before the placeholder src is set, and travels with a torn-off tab', function () {
     const factory = tabBar.slice(tabBar.indexOf('createWebviewForTab (tabId, url, navigation'), tabBar.indexOf("webview.setAttribute('allowpopups'"))
     expect(factory.indexOf("sendSync('queue-navigation-restore'")).to.be.below(factory.indexOf("webview.setAttribute('src', src)"))
