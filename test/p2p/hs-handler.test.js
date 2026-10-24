@@ -6,6 +6,7 @@ import net from 'net'
 import os from 'os'
 import path from 'path'
 import * as Y from 'yjs'
+import { keepOpenedFile } from '../../src/open-in-p2pmd.js'
 
 let activeConnections = null
 
@@ -900,6 +901,23 @@ describe('HS protocol handler', function () {
     const other = await handler(new Request('hs://not-a-key/'))
     expect(other.status).to.equal(404)
     expect(await other.text()).to.equal('Unknown hs target')
+  })
+
+  // Main keeps the text of a file opened with P2PMD (open-in-p2pmd.js), and
+  // the note P2PMD makes for it starts with that text.
+  it('starts a note with the text of a file opened with P2PMD, once', async function () {
+    const id = keepOpenedFile({ name: 'Test notes.md', content: '# Test\n\nHello\n' })
+    const { response, data: room } = await protocolPost(handler, 'create', { secure: true, udp: false, openedFile: id })
+    expect(response.status, `create failed: ${room.error}`).to.equal(200)
+    const doc = await (await fetch(`${room.localUrl}/doc`)).json()
+    expect(doc.content).to.equal('# Test\n\nHello\n')
+
+    // A reload or a restored tab gets nothing, and makes no empty note.
+    const again = await protocolPost(handler, 'create', { secure: true, udp: false, openedFile: id })
+    expect(again.response.status).to.equal(404)
+    expect(again.data.error).to.be.a('string')
+    const unknown = await protocolPost(handler, 'create', { secure: true, udp: false, openedFile: '0'.repeat(32) })
+    expect(unknown.response.status).to.equal(404)
   })
 
   it('keeps peer edits when host disconnects and reconnects', async function () {

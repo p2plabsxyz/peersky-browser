@@ -6,8 +6,13 @@ import fs from 'fs'
 import path from 'path'
 import { app, safeStorage } from 'electron'
 import * as Y from 'yjs'
+import { takeOpenedFile } from '../open-in-p2pmd.js'
 
 const log = createLogger('protocols:hs')
+
+// The largest note a page can save. A file opened with P2PMD is held to the
+// same size before it becomes a note (main.js).
+export const MAX_DOCUMENT_SIZE = 10 * 1024 * 1024
 
 const roomSessions = new Map()
 const roomPorts = new Map()
@@ -1459,7 +1464,7 @@ function handleDocRequest (req, res, session) {
 
   if (url.pathname === '/doc' && req.method === 'POST') {
     let body = ''
-    const MAX_BODY_SIZE = 10 * 1024 * 1024 // 10MB
+    const MAX_BODY_SIZE = MAX_DOCUMENT_SIZE
     let overflow = false
     req.on('data', (chunk) => {
       body += chunk.toString()
@@ -2267,6 +2272,16 @@ export async function createHandler () {
       if (DEBUG) {
         log.info('[p2pmd] create request', { secure, udp, host, port })
       }
+      // A file the OS asked Peersky to open (open-in-p2pmd.js): the note starts
+      // with its text, up to the size of a note, which never passes through
+      // the page. Handed over once, so a reload or a restored tab gets nothing.
+      let openedFile = null
+      if (body.openedFile !== undefined) {
+        openedFile = takeOpenedFile(String(body.openedFile))
+        if (!openedFile) {
+          return buildJsonResponse(404, { error: 'That file is no longer waiting to be opened. Open it with P2PMD again.' })
+        }
+      }
 
       const sessionState = createSession()
       const { port: boundPort } = await ensureDocServer(sessionState, host, port, secure)
@@ -2291,7 +2306,7 @@ export async function createHandler () {
       }
       sessionState.key = roomKey
       sessionState.holesailServer = holesailServer
-      initSessionCrdt(sessionState)
+      initSessionCrdt(sessionState, openedFile?.content || '')
       // Extract seed from holesail-server so we can recreate with the same key later
       const serverSeed = holesailServer.dht?.seed ? holesailServer.dht.seed.toString('hex') : null
       if (roomKey) {

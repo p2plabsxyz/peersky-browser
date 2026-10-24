@@ -1,13 +1,14 @@
-import { app, session, protocol as globalProtocol, ipcMain, BrowserWindow, Menu, webContents, shell, safeStorage } from 'electron' // eslint-disable-line no-unused-vars
+import { app, session, protocol as globalProtocol, ipcMain, BrowserWindow, Menu, webContents, shell, safeStorage, dialog } from 'electron' // eslint-disable-line no-unused-vars
 import { createLogger } from './logger.js'
 import fs from 'fs/promises'
 import path from 'path'
+import { pathToFileURL } from 'url'
 import crypto from 'crypto'
 import { createHandler as createBrowserHandler } from './protocols/peersky-protocol.js'
 import { createHandler as createBrowserThemeHandler } from './protocols/theme-handler.js'
 import { createHandler as createIPFSHandler, warmupIPFS, suspendIPFS } from './protocols/ipfs-handler.js'
 import { createHandler as createHyperHandler, warmupHyper, suspendHyper } from './protocols/hyper-handler.js'
-import { createHandler as createHSHandler } from './protocols/hs-handler.js'
+import { createHandler as createHSHandler, MAX_DOCUMENT_SIZE } from './protocols/hs-handler.js'
 import { createHandler as createWeb3Handler } from './protocols/web3-handler.js'
 import { createHandler as createFileHandler } from './protocols/file-handler.js'
 import { attachTrackpadZoom, handlePinchZoom } from './trackpad-zoom.js'
@@ -30,6 +31,7 @@ import './llm.js'
 import './llm-memory.js'
 import { setupAutoUpdater, checkForUpdatesNow } from './auto-updater.js'
 import { urlFromArgv, queueLaunchUrl, startDeliveringLaunchUrls } from './launch-url.js'
+import { OPEN_IN_P2PMD_FLAG, filesFromArgv, readFileForNote, keepOpenedFile, p2pmdPageForOpenedFile } from './open-in-p2pmd.js'
 
 // Import and initialize extension system
 import extensionManager from './extensions/index.js'
@@ -226,10 +228,74 @@ if (!isPrimaryInstance) {
   app.exit(0)
 }
 
-app.on('second-instance', (_event, argv) => {
+// One message at a time, however many files were picked.
+let fileNotice = Promise.resolve()
+
+const FILE_NOT_OPENED = {
+  'not-text': 'It is not a text file. P2PMD opens text files, such as .md and .txt.',
+  'too-big': `It is larger than ${MAX_DOCUMENT_SIZE / (1024 * 1024)} MB, the most a note can hold.`
+}
+
+function tellFileNotOpened ({ name, error }) {
+  fileNotice = fileNotice.then(async () => {
+    await app.whenReady()
+    focusAnyWindow()
+    const win = BrowserWindow.getFocusedWindow() || windowManager?.all[0]?.window
+    const options = {
+      type: 'warning',
+      buttons: ['OK'],
+      message: `Can't open ${name} in P2PMD`,
+      detail: FILE_NOT_OPENED[error] || 'The file could not be read.'
+    }
+    await (win && !win.isDestroyed() ? dialog.showMessageBox(win, options) : dialog.showMessageBox(options))
+  }).catch((err) => log.warn('[open-file] could not show the message:', err?.message || err))
+}
+
+// A file the OS asks Peersky to open becomes a new P2PMD note with its text
+// (open-in-p2pmd.js). It is read now and its tab opens once a window can take
+// one, like a launch link. Without the flag, a path in argv may be no file at
+// all, so a path that is not a file is passed over without a message.
+//
+// A web page opens as one, as in any browser: Open With in Finder offers
+// Peersky for every text file, pages included. Only "Open with P2PMD" itself
+// makes a note of a page's source.
+const WEB_PAGE_FILE = /\.(html?|xhtml|shtml|svg)$/i
+
+async function openFileInP2pmd (filePath, { explicit = true, asNote = false } = {}) {
+  if (!asNote && WEB_PAGE_FILE.test(filePath)) {
+    queueLaunchUrl(pathToFileURL(filePath).href)
+    return
+  }
+  try {
+    const file = await readFileForNote(filePath, { maxBytes: MAX_DOCUMENT_SIZE })
+    if (!file.error) {
+      queueLaunchUrl(p2pmdPageForOpenedFile(keepOpenedFile(file)))
+      return
+    }
+    if (!explicit && (file.error === 'missing' || file.error === 'not-a-file')) return
+    log.warn('[open-file] not opened in P2PMD:', file.error)
+    tellFileNotOpened(file)
+  } catch (error) {
+    log.error('[open-file] failed:', error?.message || error)
+  }
+}
+
+// Whether argv named any files to open.
+function openFilesFromArgv (argv, cwd) {
+  const files = filesFromArgv(argv, { cwd, devRun: process.defaultApp === true })
+  const explicit = argv.includes(OPEN_IN_P2PMD_FLAG)
+  for (const file of files) openFileInP2pmd(file, { explicit, asNote: explicit })
+  return files.length > 0
+}
+
+app.on('second-instance', (_event, argv, workingDirectory) => {
   const url = urlFromArgv(argv)
+  const openingFiles = openFilesFromArgv(argv, workingDirectory)
   if (url) {
     queueLaunchUrl(url)
+  } else if (openingFiles) {
+    // Each note's tab focuses its window too, once the file is read.
+    focusAnyWindow()
   } else if (argv.includes('--incognito') && windowManager) {
     openIncognitoWindow()
   } else if (argv.includes('--new-window') && windowManager) {
@@ -246,7 +312,15 @@ app.on('open-url', (event, url) => {
   queueLaunchUrl(url)
 })
 
+// macOS hands files over here instead of in argv: Open With in Finder, a file
+// dropped on the Dock icon. Like open-url, this can come before ready.
+app.on('open-file', (event, filePath) => {
+  event.preventDefault()
+  openFileInP2pmd(filePath)
+})
+
 queueLaunchUrl(urlFromArgv(process.argv))
+if (isPrimaryInstance) openFilesFromArgv(process.argv, process.cwd())
 
 // Settles once the incognito session has its protocol handlers.
 let incognitoReady = null
