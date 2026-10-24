@@ -25,6 +25,7 @@ async function loadBackupManager (options = {}) {
   const exportChatForTransfer = sinon.stub().returns(null)
   const importChatFromPhone = options.importChatFromPhone || sinon.stub().resolves({ ok: true, added: 0 })
   const startPrivateSync = sinon.stub().resolves(null)
+  const restartPrivateSync = sinon.stub().resolves(null)
   const exportP2pmdNotes = options.exportP2pmdNotes || sinon.stub().resolves(null)
   const importP2pmdNotes = options.importP2pmdNotes || sinon.stub().resolves({ ok: true, added: 0 })
   const assertMobilePairingAllowed = sinon.stub().resolves(null)
@@ -87,7 +88,7 @@ async function loadBackupManager (options = {}) {
       decryptEncryptedBackupZip: sinon.stub(),
       isEncryptedBackupManifest: sinon.stub().returns(false)
     },
-    [hyperHandlerPath]: { suspendHyper, resumeHyper, trustPrivateDriveHostname, exportChatForTransfer, importChatFromPhone, startPrivateSync },
+    [hyperHandlerPath]: { suspendHyper, resumeHyper, trustPrivateDriveHostname, exportChatForTransfer, importChatFromPhone, startPrivateSync, restartPrivateSync },
     '../../src/backup/p2pmd-notes.js': { exportP2pmdNotes, importP2pmdNotes },
     '../../src/backup/mobile-pairing.js': { assertMobilePairingAllowed, setPairedMobile },
     [ipfsHandlerPath]: { suspendIPFS, resumeIPFS }
@@ -108,6 +109,8 @@ async function loadBackupManager (options = {}) {
       suspendHyper,
       suspendIPFS,
       trustPrivateDriveHostname,
+      startPrivateSync,
+      restartPrivateSync,
       importChatFromPhone,
       exportP2pmdNotes,
       importP2pmdNotes,
@@ -152,9 +155,9 @@ const TRANSFER_MANIFEST = { kind: 'peersky-identity-transfer', identityTransfer:
 
 // A phone transfer as the manager sees it once the outer layer is checked:
 // readManifest answers for the wrapper, then for the decrypted inner zip.
-function phoneTransferOptions (extraFiles = {}) {
+function phoneTransferOptions (extraFiles = {}, manifest = TRANSFER_MANIFEST) {
   const readManifest = sinon.stub()
-  readManifest.onFirstCall().resolves(TRANSFER_MANIFEST)
+  readManifest.onFirstCall().resolves(manifest)
   readManifest.resolves({ version: '1.0.0', source: 'mobile', files: {} })
   return {
     readManifest,
@@ -318,12 +321,30 @@ describe('backup-manager', function () {
     expect(JSON.parse(await readFile(path.join(userData, 'bookmarks.json'), 'utf8')).map((b) => b.url))
       .to.deep.equal(['https://mine.example/', 'https://b.example/'])
     expect(stubs.trustPrivateDriveHostname.calledOnce).to.equal(true)
+    // The phone sent no key: the sync starts under the one here, if any.
+    expect(stubs.startPrivateSync.calledOnce).to.equal(true)
+    expect(stubs.restartPrivateSync.called).to.equal(false)
     expect(stubs.forgetPairingNonce.calledWith('ab'.repeat(16))).to.equal(true)
     expect(stubs.suspendHyper.called).to.equal(false)
 
     // Used once: the same stage cannot be applied again.
     const again = await backupManager.applyStaged(staged.stageId).catch((error) => error)
     expect(again.message).to.match(/no longer waiting/)
+  })
+
+  it('takes the key and profile of the phone\'s devices on a desktop that has none, and meets them under it', async function () {
+    const identityId = 'cd'.repeat(32)
+    const manifest = { ...TRANSFER_MANIFEST, identityTransfer: { ...TRANSFER_MANIFEST.identityTransfer, identityId } }
+    const drives = { version: 1, sharedKey: 'c'.repeat(64), drives: [{ driveId: 'e'.repeat(64), key: 'b'.repeat(64) }] }
+    const { backupManager, userData, stubs } = await loadBackupManager(phoneTransferOptions({ 'phone-private-drives.json': drives }, manifest))
+
+    const staged = await backupManager.stageRestore(await downloadedZip())
+    await backupManager.applyStaged(staged.stageId, { openTabs: async () => 1 })
+    const key = JSON.parse(await readFile(path.join(userData, 'private-drive-key.json'), 'utf8'))
+    expect(key.key).to.equal('c'.repeat(64))
+    expect(JSON.parse(await readFile(path.join(userData, 'peersky-identity.json'), 'utf8')).identityId).to.equal(identityId)
+    expect(stubs.restartPrivateSync.calledOnce).to.equal(true)
+    expect(stubs.startPrivateSync.called).to.equal(false)
   })
 
   it('shows the PeerChat name and rooms a phone sends, and hands them to PeerChat once confirmed', async function () {

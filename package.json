@@ -19,7 +19,7 @@
     "test": "npm run test:all",
     "test:all": "node test/run-tests.mjs",
     "test:updater": "mocha \"test/updater/**/*.test.js\" --timeout 20000 --exit",
-    "test:launch-url": "mocha \"test/launch-url.test.js\" --timeout 10000",
+    "test:launch-url": "mocha \"test/launch-url.test.js\" \"test/open-in-p2pmd.test.js\" --timeout 10000",
     "test:url-input": "mocha \"test/url-input.test.js\" --timeout 10000",
     "test:zoom": "mocha \"test/zoom.test.js\" --timeout 10000",
     "test:tabs": "mocha \"test/tabs.test.js\" \"test/tab-groups.test.js\" \"test/tab-selection.test.js\" --timeout 10000",
@@ -91,6 +91,36 @@
         "NSLocalNetworkUsageDescription": "Peersky finds peers on your local network so pages and messages keep working without internet access.",
         "NSBonjourServices": [
           "_hyperdht-mdns._udp"
+        ],
+        "CFBundleDocumentTypes": [
+          {
+            "CFBundleTypeName": "Text",
+            "CFBundleTypeRole": "Viewer",
+            "LSHandlerRank": "Alternate",
+            "LSItemContentTypes": [
+              "public.plain-text",
+              "net.daringfireball.markdown",
+              "public.text"
+            ]
+          }
+        ],
+        "UTImportedTypeDeclarations": [
+          {
+            "UTTypeIdentifier": "net.daringfireball.markdown",
+            "UTTypeDescription": "Markdown document",
+            "UTTypeConformsTo": [
+              "public.plain-text"
+            ],
+            "UTTypeTagSpecification": {
+              "public.filename-extension": [
+                "md",
+                "markdown"
+              ],
+              "public.mime-type": [
+                "text/markdown"
+              ]
+            }
+          }
         ]
       },
       "target": [
@@ -130,7 +160,16 @@
         "nsis",
         "portable"
       ],
-      "icon": "./public/icon.png"
+      "icon": "./public/icon.png",
+      "extraResources": [
+        {
+          "from": "buildResources/p2pmd.ico",
+          "to": "p2pmd.ico"
+        }
+      ]
+    },
+    "nsis": {
+      "include": "buildResources/installer.nsh"
     },
     "linux": {
       "artifactName": "${name}-${version}-${os}-${arch}.${ext}",
@@ -143,7 +182,17 @@
         "apk",
         "pacman"
       ],
-      "category": "Network;WebBrowser"
+      "category": "Network;WebBrowser",
+      "mimeTypes": [
+        "text/plain",
+        "text/markdown"
+      ]
+    },
+    "deb": {
+      "fpm": [
+        "buildResources/linux/peersky-browser-p2pmd.desktop=/usr/share/applications/peersky-browser-p2pmd.desktop",
+        "buildResources/linux/peersky-browser-p2pmd.png=/usr/share/icons/hicolor/128x128/apps/peersky-browser-p2pmd.png"
+      ]
     },
     "protocols": [
       {
@@ -218,7 +267,7 @@
     "@libp2p/keychain": "^6.1.7",
     "@libp2p/mplex": "^12.0.30",
     "@libp2p/tls": "^3.1.9",
-    "@p2plabs/hyperdht-mdns": "^1.3.0",
+    "@p2plabs/hyperdht-mdns": "^2.0.0",
     "@p2plabs/peersky-chrome-extensions": "^1.3.2",
     "archiver": "^7.0.1",
     "b4a": "^1.6.7",

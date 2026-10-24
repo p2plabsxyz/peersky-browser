@@ -55,6 +55,30 @@ export async function getOrCreatePrivateDriveKey (userDataDir) {
   return creating.get(userDataDir)
 }
 
+/**
+ * Takes the key the person's other devices share in place of this desktop's,
+ * so it meets them and opens their private drives. Only when this desktop has
+ * no key yet, or `mayReplace` says nothing here needs the one it has: a drive
+ * made with it would not open under another. A key file that cannot be read
+ * is never written over. Returns true when the key changed.
+ */
+export async function adoptPrivateDriveKey (userDataDir, key, { mayReplace = async () => false } = {}) {
+  const hex = String(key || '').toLowerCase()
+  if (!KEY_PATTERN.test(hex)) return false
+  let parsed
+  try {
+    parsed = await readKeyFile(userDataDir)
+  } catch {
+    return false
+  }
+  const current = typeof parsed?.key === 'string' && KEY_PATTERN.test(parsed.key) ? parsed.key.toLowerCase() : null
+  if (current === hex) return false
+  if (current && !await mayReplace()) return false
+  const kept = parsed && typeof parsed === 'object' ? parsed : {}
+  await writeSealedJson(keyPath(userDataDir), { ...kept, version: 1, key: hex })
+  return true
+}
+
 const DRIVE_ID_PATTERN = /^[0-9a-f]{64}$/
 
 // A private drive another device made can have a key of its own, such as a

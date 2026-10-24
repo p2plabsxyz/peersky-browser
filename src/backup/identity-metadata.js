@@ -41,3 +41,24 @@ export async function computeIdentityId (userDataDir) {
   await fs.writeFile(filePath, JSON.stringify(metadata, null, 2), { mode: 0o600 })
   return metadata.identityId
 }
+
+/**
+ * Takes the profile id of the person's other devices, when this desktop has
+ * just joined them by a phone's send. A phone then takes this desktop's
+ * transfers as its own profile's.
+ */
+export async function adoptIdentityId (userDataDir, identityId) {
+  const id = String(identityId || '').toLowerCase()
+  if (!/^[0-9a-f]{64}$/.test(id)) return false
+  const filePath = path.join(userDataDir, IDENTITY_METADATA_FILE)
+  const metadata = { version: 1, identityId: id, createdAt: new Date().toISOString() }
+  const temporary = `${filePath}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`
+  await fs.mkdir(userDataDir, { recursive: true })
+  try {
+    await fs.writeFile(temporary, JSON.stringify(metadata, null, 2), { mode: 0o600 })
+    await fs.rename(temporary, filePath)
+  } finally {
+    await fs.rm(temporary, { force: true }).catch(() => {})
+  }
+  return true
+}
