@@ -331,6 +331,17 @@ function portOfAnotherNote (session, port) {
   return portOfAnotherOpenNote(session, port)
 }
 
+// Holesail listens on 8989 when the host's record on the DHT gives it no port,
+// as when a phone host's record lapsed while the phone slept, and a note
+// joined that way showed 8989 here from then on, whatever its host's port was.
+// A join now takes a free port instead. A note kept here on 8989 is joined
+// without asking for it, so it takes its host's port when the host has one.
+export const HOLESAIL_DEFAULT_PORT = 8989
+
+export function landedOnDefaultPort (client, requestedPort) {
+  return requestedPort !== HOLESAIL_DEFAULT_PORT && client?.info?.port === HOLESAIL_DEFAULT_PORT
+}
+
 function findFreePort () {
   return new Promise((resolve, reject) => {
     const probe = http.createServer()
@@ -2054,9 +2065,9 @@ async function joinOpenNote (key, { secure, udp, host }) {
     try {
       await readyInTime(holesailClient)
       let bound = await waitForClientProxy(holesailClient)
-      if (!bound.ok && portOfAnotherOpenNote(null, bound.port)) {
-        // The note's port is another note's here; any free one does for a
-        // note joined from here.
+      if (!bound.ok || landedOnDefaultPort(holesailClient, null)) {
+        // The note's port is taken here, or it is Holesail's default; any
+        // free one does for a note joined from here.
         await holesailClient.close().catch(() => {})
         holesailClient = new Holesail({ ...options, port: await findFreePort() })
         await readyInTime(holesailClient)
@@ -2540,9 +2551,9 @@ export async function createHandler () {
       }
       if (secure !== null) clientOptions.secure = secure
       if (udp !== null) clientOptions.udp = udp
-      if (requestedPort) clientOptions.port = requestedPort
+      if (requestedPort && requestedPort !== HOLESAIL_DEFAULT_PORT) clientOptions.port = requestedPort
       let boundPort
-      const lanClient = udp ? null : await joinNoteOnLan(key, secure, { host: finalHost, port: requestedPort })
+      const lanClient = udp ? null : await joinNoteOnLan(key, secure, { host: finalHost, port: requestedPort === HOLESAIL_DEFAULT_PORT ? null : requestedPort })
       if (lanClient) {
         sessionState.holesailClient = lanClient
         boundPort = lanClient.info.port
@@ -2561,9 +2572,9 @@ export async function createHandler () {
         // nobody listened for: an uncaught exception in the main process. Wait
         // for the bind, and answer with what went wrong.
         let bound = await waitForClientProxy(holesailClient)
-        if (!bound.ok && portOfAnotherOpenNote(sessionState, bound.port)) {
-          // The host's port is another note's here, so this one listens on a
-          // free port instead.
+        if (!bound.ok || landedOnDefaultPort(holesailClient, requestedPort)) {
+          // The port is taken here, by another note or by something else, or
+          // it is Holesail's default: a free port instead, as the phone does.
           await stopHolesailClient(sessionState)
           holesailClient = new Holesail({ ...clientOptions, port: await findFreePort() })
           sessionState.holesailClient = holesailClient
