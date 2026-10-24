@@ -172,7 +172,10 @@ yourself work under their own privacy policies.
 Reporting someone in PeerChat opens an email to us, which you can read before
 you send it. It holds their name and peer ID, the room's name and a hash of its
 key (never the key itself), and the time. We use it only to act on the report,
-and we read every one. Nothing is sent unless you send that email.
+and we read every one. Nothing is sent unless you send that email. The email
+does not let us into your chats, and we cannot delete anything. We can remove
+someone only from P2P Republic, the public room we run. In any other group, only
+whoever made it can.
 
 If you sent us a report, ask at contact@p2plabs.xyz and we delete it, unless
 the law requires us to keep it.
@@ -192,8 +195,9 @@ and we collect nothing from anyone.
 
 The peer-to-peer web has no moderator. In PeerChat groups, pictures are screened
 on the computer before they are sent, text is filtered for abuse and slurs, and
-adult domains are blocked in links. None of that replaces judgement about who you
-share a room key with.
+adult domains are blocked in links. These checks run on the computer, and nothing
+about them is sent to us. None of that replaces judgement about who you share a
+room key with.
 
 We do not tolerate child sexual abuse or exploitation in any form. Report it
 from inside PeerChat or to contact@p2plabs.xyz, and we report what we learn to
