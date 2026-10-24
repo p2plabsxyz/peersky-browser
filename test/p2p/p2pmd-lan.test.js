@@ -288,7 +288,7 @@ describe('P2PMD notes over the local network, with no internet', function () {
 
     // A connection to a host that had answered before, failing before it
     // opened, left HyperDHT with a promise nobody caught, about 4 s on
-    // (patches/hyperdht+6.34.0.patch). The main process logs those; on the
+    // (patches/hyperdht+6.34.1.patch). The main process logs those; on the
     // phone they abort the app.
     it('a host whose computer left leaves no rejection unhandled', async function () {
       this.timeout(30000)
