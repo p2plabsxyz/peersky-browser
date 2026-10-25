@@ -594,3 +594,19 @@ describe('a link opened in a new tab', function () {
     expect(tabBar).to.contain('this.addTabFromLink(e.url,')
   })
 })
+
+describe('the tab and group menus', function () {
+  it('says Close other tabs for closing every tab but this one', function () {
+    expect(tabBar).to.match(/data-action="close-others">\s*<img[^>]*>\s*Close other tabs\s*</)
+    expect(tabBar).to.not.contain('Close all tabs\n')
+  })
+
+  it('stay inside the window when opened low or far right in it', function () {
+    for (const name of ['showTabContextMenu (event, tabId) {', 'showGroupContextMenu (event, groupId) {']) {
+      const start = tabBar.indexOf(name)
+      const body = tabBar.slice(start, tabBar.indexOf('\n  }\n', start))
+      expect(body, name).to.contain('document.body.appendChild(menu)\n    this.keepInWindow(menu)')
+    }
+    expect(tabBar).to.contain('menu.style.top = `$' + '{Math.max(0, window.innerHeight - rect.height - 10)}px`')
+  })
+})

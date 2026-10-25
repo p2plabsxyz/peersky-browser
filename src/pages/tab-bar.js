@@ -2075,7 +2075,7 @@ class TabBar extends HTMLElement {
       <div class="context-menu-separator"></div>
       <div class="context-menu-item" data-action="close-others">
         <img class="menu-icon" src="${iconPath}/close.svg" />
-        Close all tabs
+        Close other tabs
       </div>
       <div class="context-menu-item" data-action="close">
         <img class="menu-icon" src="${iconPath}/close.svg" />
@@ -2155,6 +2155,19 @@ class TabBar extends HTMLElement {
     }, 0)
 
     document.body.appendChild(menu)
+    this.keepInWindow(menu)
+  }
+
+  // A menu opened low or far right in the window ran past its edge, where
+  // most of it could not be reached.
+  keepInWindow (menu) {
+    const rect = menu.getBoundingClientRect()
+    if (rect.right > window.innerWidth) {
+      menu.style.left = `${Math.max(0, window.innerWidth - rect.width - 10)}px`
+    }
+    if (rect.bottom > window.innerHeight) {
+      menu.style.top = `${Math.max(0, window.innerHeight - rect.height - 10)}px`
+    }
   }
 
   // Handle context menu actions
@@ -3439,6 +3452,7 @@ class TabBar extends HTMLElement {
     }, 0)
 
     document.body.appendChild(menu)
+    this.keepInWindow(menu)
   }
 
   // TODO: This overrides the earlier enhanced version — remove or merge the logic.
