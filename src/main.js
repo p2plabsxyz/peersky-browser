@@ -23,7 +23,7 @@ import { ipfsOptions, hyperOptions } from './protocols/config.js'
 import { gateRequest, stampVetted, requireVetted, frameUrlOf } from './protocols/request-gate.js'
 import { createMenuTemplate } from './actions.js'
 import WindowManager from './window-manager.js'
-import settingsManager from './settings-manager.js'
+import settingsManager, { runPendingP2PReset } from './settings-manager.js'
 import p2pAppRegistry from './p2p-app-registry.js'
 import { setWindowManager } from './context-menu.js'
 import { registerNavigationRestore } from './navigation-restore.js'
@@ -368,6 +368,10 @@ app.whenReady().then(async () => {
   ipcMain.handle('check-for-updates', () => {
     return checkForUpdatesNow()
   })
+
+  // A Reset P2P Data asked for before the restart, while nothing holds the
+  // stores open yet.
+  await runPendingP2PReset().catch((error) => log.error('[startup] P2P reset failed:', error?.message || error))
 
   // Get consistent session for protocols and extensions
   const userSession = getBrowserSession()

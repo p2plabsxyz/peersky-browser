@@ -223,6 +223,40 @@ async function resetP2PData ({ resetIdentities = false } = {}) {
   }
 }
 
+// Reset P2P Data finishes at the next start, before anything opens the
+// stores. Run while PeerSky was up, it deleted files that PeerChat and the open
+// Hyper store still held: PeerChat wrote its profile and rooms back with the
+// next message, so they were all there again after a restart.
+const P2P_RESET_PENDING = 'p2p-reset-pending.json'
+const RESET_RELAUNCH_DELAY_MS = 500
+
+async function scheduleP2PReset ({ resetIdentities = false } = {}) {
+  const marker = path.join(app.getPath('userData'), P2P_RESET_PENDING)
+  await fs.writeFile(marker, JSON.stringify({ resetIdentities: !!resetIdentities, at: Date.now() }))
+  // After the answer reaches Settings. A normal quit keeps the open tabs.
+  setTimeout(() => {
+    app.relaunch()
+    app.quit()
+  }, RESET_RELAUNCH_DELAY_MS)
+}
+
+export async function runPendingP2PReset () {
+  const marker = path.join(app.getPath('userData'), P2P_RESET_PENDING)
+  let pending
+  try {
+    pending = JSON.parse(await fs.readFile(marker, 'utf8'))
+  } catch {
+    return false
+  }
+  try {
+    await resetP2PData({ resetIdentities: pending?.resetIdentities === true })
+    logDebug('P2P reset finished at start')
+  } finally {
+    await fs.rm(marker, { force: true }).catch(() => {})
+  }
+  return true
+}
+
 // The home page's clock, wallpaper and pinned apps live in a tab, which is a
 // page of its own, not the window. Sent only to windows, a change made in
 // Settings or on the P2P apps page reached an open home tab only after it
@@ -436,13 +470,8 @@ class SettingsManager {
     ipcMain.handle('settings-reset-p2p', async (event, opts = {}) => {
       if (!isPeerskyPage(event?.senderFrame?.url, 'settings')) throw new Error('Forbidden')
       try {
-        await resetP2PData({ resetIdentities: !!opts.resetIdentities })
-        return {
-          success: true,
-          message: opts.resetIdentities
-            ? 'P2P data cleared, with the IPFS identity'
-            : 'P2P data cleared. The IPFS identity was kept'
-        }
+        await scheduleP2PReset({ resetIdentities: !!opts.resetIdentities })
+        return { success: true, restarting: true, message: 'PeerSky restarts to finish the reset' }
       } catch (error) {
         const errorMsg = `Failed to reset P2P data: ${error.message}`
         logDebug(errorMsg)

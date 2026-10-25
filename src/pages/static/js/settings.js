@@ -180,7 +180,7 @@ function openResetP2PModal () {
 
         <div class="modal-body">
           <div class="copy">
-            This clears the IPFS and public Hyper data on this computer, with PeerChat's rooms, profile and messages here. PeerChat and Hyper start fresh, so other people see this computer as a <span class="emphasis">new device</span>. Your private drives and torrent downloads are kept.
+            This clears the IPFS and public Hyper data on this computer, with PeerChat's rooms, profile and messages here. PeerChat and Hyper start fresh, so other people see this computer as a <span class="emphasis">new device</span>. Your private drives and torrent downloads are kept. PeerSky restarts to finish.
           </div>
 
           <label class="checkbox-row">

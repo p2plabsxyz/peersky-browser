@@ -127,6 +127,7 @@ Each section is built using simple HTML blocks styled with internal and theme-pr
 #### Reset P2P Data
 - **Where:** Settings → P2P data, under Storage used
 - **API/IPC:** `settings.resetP2P({ resetIdentities?: boolean })` → `ipcMain.handle('settings-reset-p2p')`
+- **When:** at the next start. The handler writes `p2p-reset-pending.json` and restarts PeerSky, and `runPendingP2PReset` deletes the files below before anything opens the stores. Deleted while PeerSky ran, PeerChat wrote its profile and rooms back with the next message.
 - **Default behavior (`resetIdentities: false`):**
   - Clears P2P caches: `ipfs/` (except `libp2p-key`) and everything in `hyper/`
   - Removes `ensCache.json`, `bt-state.json`, `peersky-ports.json`, `peersky-chat-rooms.json`, `llm.json` and the P2P apps in `myapps/`
