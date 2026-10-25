@@ -223,6 +223,13 @@ async function resetP2PData ({ resetIdentities = false } = {}) {
   }
 }
 
+// Today as the person's own calendar has it. toISOString gives the date in
+// UTC, which is already tomorrow in the evening west of Greenwich.
+export function localDate (date = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
 // Reset P2P Data finishes at the next start, before anything opens the
 // stores. Run while PeerSky was up, it deleted files that PeerChat and the open
 // Hyper store still held: PeerChat wrote its profile and rooms back with the
@@ -564,7 +571,7 @@ class SettingsManager {
       const mainWindow = BrowserWindow.fromWebContents(event.sender)
       const saveDialogOptions = {
         title: 'Export P2P Data',
-        defaultPath: path.join(app.getPath('downloads'), `peersky-p2p-data-${new Date().toISOString().split('T')[0]}-${Math.floor(Math.random() * 1000000)}.json`),
+        defaultPath: path.join(app.getPath('downloads'), `peersky-p2p-data-${localDate()}-${Math.floor(Math.random() * 1000000)}.json`),
         filters: [{ name: 'JSON', extensions: ['json'] }]
       }
       const { canceled, filePath } = mainWindow

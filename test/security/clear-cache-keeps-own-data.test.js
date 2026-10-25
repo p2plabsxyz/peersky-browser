@@ -49,3 +49,28 @@ describe('Clear Cache', function () {
     }
   })
 })
+
+// The P2P data export was named with the UTC date, already tomorrow's in the
+// evening in America.
+describe('the P2P data export', function () {
+  it("is named with the person's own date", async function () {
+    const electron = {
+      app: { getPath: () => '/tmp/peersky-clear-cache-test', on () {}, whenReady: () => new Promise(() => {}) },
+      ipcMain: { handle () {}, on () {}, removeHandler () {} },
+      BrowserWindow: { getAllWindows: () => [] },
+      session: { defaultSession: {} },
+      safeStorage: { isEncryptionAvailable: () => false },
+      dialog: {},
+      webContents: { getAllWebContents: () => [] }
+    }
+    const { localDate } = await esmock.strict('../../src/settings-manager.js', {
+      '../../src/protocols/config.js': { ensCache: new Map(), ipfsCache: new Map(), hyperCache: new Map(), saveEnsCache () {}, saveIpfsCache () {}, saveHyperCache () {} },
+      '../../src/ens-utils.js': { normalizeEnsHash: (v) => v },
+      '../../src/permissions.js': { clearPersistedPermissions () {} },
+      '../../src/p2p-app-registry.js': { default: {} }
+    }, { electron })
+    // 20:48 on 24 October where the person is.
+    expect(localDate(new Date(2026, 9, 24, 20, 48))).to.equal('2026-10-24')
+    expect(localDate(new Date(2026, 0, 5, 0, 1))).to.equal('2026-01-05')
+  })
+})
