@@ -1285,14 +1285,9 @@ ipcMain.handle('remove-download', async (event, id) => {
       throw new Error('Download record not found in history.')
     }
 
-    try {
-      await fs.unlink(targetDownload.savePath)
-    } catch (err) {
-      if (err.code !== 'ENOENT') {
-        log.warn('Could not delete file from disk:', err)
-      }
-    }
-
+    // The button says Remove from history, so the file stays where it was
+    // saved. It used to be deleted from disk, with no question asked and
+    // nothing in the Trash.
     downloads = downloads.filter((d) => d.id !== id)
     await fs.writeFile(DOWNLOADS_FILE, JSON.stringify(downloads, null, 2))
 
