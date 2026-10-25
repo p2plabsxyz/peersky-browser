@@ -33,10 +33,13 @@ async function safeShutdownAndExit (code) {
     await withTimeout(extensionManager.shutdown(), 5000, 'shutdown')
   } catch {
   }
-  app.exit(code)
+  // A run that passed quits the way the app does, so the extension's storage
+  // is closed before the next run opens it. app.exit() stops it wherever it is.
+  if (code === 0) app.quit()
+  else app.exit(code)
   // Electron's app.exit() sometimes fails to forcefully kill the process in headless CI environments.
   // This process.exit fallback ensures the test runner doesn't hang indefinitely.
-  setTimeout(() => process.exit(code), 3000)
+  setTimeout(() => process.exit(code), 5000)
 }
 
 async function withTimeout (taskPromise, timeoutMs, label) {
@@ -157,6 +160,12 @@ try {
 }
 
 app.commandLine.appendSwitch('disable-gpu')
+
+// Closing the probe window must not quit the app: Electron's own quit then ran
+// alongside this harness's shutdown and its app.exit(), which on a slow runner
+// could stop it while it was still closing the extension's storage. That is
+// the likely reason a CI run found no stored count after the restart.
+app.on('window-all-closed', () => {})
 
 const args = parseArgs(process.argv.slice(2))
 
