@@ -85,6 +85,20 @@ function makeSearch (query, engine = 'duckduckgo_noai') {
 }
 
 const PLACEHOLDER_RE = /%s|\{searchTerms\}|\$1/
+
+// A search goes wherever its template points, in the open tab, so a template
+// must be an address pages are fetched from: a javascript: one ran its code in
+// whatever page was open.
+const SEARCH_TEMPLATE_PROTOCOLS = ['https:', 'http:', 'hyper:', 'ipfs:', 'ipns:', 'hs:']
+
+function isSearchTemplate (template) {
+  if (typeof template !== 'string' || !template.trim() || template.length >= 2048) return false
+  try {
+    return SEARCH_TEMPLATE_PROTOCOLS.includes(new URL(template.trim()).protocol)
+  } catch {
+    return false
+  }
+}
 const KNOWN_QUERY_KEYS = ['q', 'query', 'p', 'search', 's', 'term', 'keywords', 'k', 'wd', 'text']
 
 function buildSearchUrl (template, term) {
@@ -157,7 +171,7 @@ async function handleURL (rawURL) {
 
       if (searchEngine === 'custom') {
         const customTemplate = await ipcRenderer.invoke('settings-get', 'customSearchTemplate')
-        if (typeof customTemplate === 'string' && customTemplate.length) {
+        if (isSearchTemplate(customTemplate)) {
           return buildSearchUrl(customTemplate, rawURL)
         }
         console.warn('Custom search template missing or invalid, falling back to DuckDuckGo')
@@ -263,6 +277,7 @@ export {
   makeHttps,
   makeSearch,
   buildSearchUrl,
+  isSearchTemplate,
   handleURL,
   escapeHtml,
   escapeHtmlAttribute,

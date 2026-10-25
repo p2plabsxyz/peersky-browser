@@ -15,6 +15,7 @@ import { isPeerskyPage } from './backup/ipc-caller.js'
 import { bumpCacheEpoch } from './protocols/hyperdrive-views.js'
 import { getPagesPath } from './protocols/pages-path.js'
 import { getBrowserSession } from './session.js'
+import { isSearchTemplate } from './utils.js'
 
 const SETTINGS_FILE = path.join(app.getPath('userData'), 'settings.json')
 const DEBUG_LOG = path.join(os.homedir(), '.peersky', 'debug.log')
@@ -701,16 +702,7 @@ class SettingsManager {
   validateSetting (key, value) {
     const validators = {
       searchEngine: (v) => ['duckduckgo_noai', 'duckduckgo', 'brave', 'ecosia', 'kagi', 'startpage', 'custom'].includes(v),
-      customSearchTemplate: (v) => {
-        if (typeof v !== 'string' || v.length >= 2048) return false
-        try {
-          // Just check if it’s parseable as a URL with any protocol
-          const u = new URL(v) // eslint-disable-line no-unused-vars
-          return true
-        } catch {
-          return false
-        }
-      },
+      customSearchTemplate: (v) => isSearchTemplate(v),
       theme: (v) =>
         [
           'transparent',

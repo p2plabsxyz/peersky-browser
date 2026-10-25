@@ -2,7 +2,7 @@
 // searching.
 
 import { expect } from 'chai'
-import { isURL, looksLikeDomain, isLoopbackAddress, NAVIGABLE_SCHEMES } from '../src/utils.js'
+import { isURL, looksLikeDomain, isLoopbackAddress, NAVIGABLE_SCHEMES, isSearchTemplate } from '../src/utils.js'
 import { readFile } from 'fs/promises'
 
 const navBox = await readFile(new URL('../src/pages/nav-box.js', import.meta.url), 'utf8')
@@ -123,3 +123,36 @@ describe('the address bar suggestions', function () {
     expect(keys).to.contain("if (selected && this.querySelector('#url')?.value === selected.url) {")
   })
 })
+
+// A custom search goes wherever its template points, in the open tab: a
+// javascript: template ran its code in whatever page was open.
+describe('a custom search template', function () {
+  it('may be a web or P2P address', function () {
+    for (const template of [
+      'https://example.com/search?q=%s',
+      'http://127.0.0.1:8888/search?q=%s',
+      'hyper://search.example/?q=%s',
+      'ipfs://bafy/search?q=%s',
+      'hs://abc/?q=%s'
+    ]) expect(isSearchTemplate(template), template).to.equal(true)
+  })
+
+  it('may not run code or read files', function () {
+    for (const template of [
+      'javascript:alert(document.cookie)//%s',
+      ' JavaScript:alert(1)//%s',
+      'data:text/html,<script>alert(1)</script>%s',
+      'file:///etc/passwd?%s',
+      'blob:https://example.com/x?%s',
+      'peersky://settings?%s',
+      '',
+      'not a url %s'
+    ]) expect(isSearchTemplate(template), template).to.equal(false)
+  })
+
+  it('the Settings page refuses the same templates', async function () {
+    const page = await readFile(new URL('../src/pages/static/js/settings.js', import.meta.url), 'utf8')
+    expect(page).to.include("['https:', 'http:', 'hyper:', 'ipfs:', 'ipns:', 'hs:'].includes(protocol)")
+  })
+})
+

@@ -61,12 +61,18 @@ function validateSearchTemplate (tpl) {
   const s = tpl.trim()
   if (!s) return { valid: false, reason: 'Template cannot be empty.' }
 
+  let protocol
   try {
-    const u = new URL(s) // eslint-disable-line no-unused-vars, no-new
-    return { valid: true }
+    protocol = new URL(s).protocol
   } catch {
     return { valid: false, reason: 'Template must be a valid URL.' }
   }
+  // As isSearchTemplate in src/utils.js: a javascript: template ran its code
+  // in whatever page was open.
+  if (!['https:', 'http:', 'hyper:', 'ipfs:', 'ipns:', 'hs:'].includes(protocol)) {
+    return { valid: false, reason: 'Use a web or P2P address, such as https://example.com/search?q=%s' }
+  }
+  return { valid: true }
 }
 
 function setTemplateFieldState (inputEl, messageEl, state) {
