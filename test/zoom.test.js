@@ -286,3 +286,34 @@ describe('a trackpad pinch on a Mac', function () {
     })
   })
 })
+
+// Close Window was role: 'close', whose built-in Cmd+W was also Close's, so
+// two menu items shared the key and which one ran was up to the menu.
+describe('the File menu on a Mac', function () {
+  it('gives every shortcut to one item only', async function () {
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform')
+    Object.defineProperty(process, 'platform', { value: 'darwin' })
+    try {
+      const module = await esmock.strict('../src/actions.js', {
+        electron: {
+          app: { name: 'Peersky', getVersion: () => '0.0.0' },
+          BrowserWindow: { getFocusedWindow: () => null },
+          webContents: { fromId: () => null }
+        },
+        '../src/history-nav.js': { goBackActiveTab () {}, goForwardActiveTab () {} },
+        '../src/devtools-dock.js': { toggleDockedDevTools () {} }
+      })
+      const template = module.createMenuTemplate({ all: [] })
+      const file = template.find((menu) => menu.label === 'File').submenu
+      const closeWindow = file.find((item) => item.label === 'Close Window')
+      expect(closeWindow).to.not.equal(undefined)
+      expect(closeWindow.role).to.equal(undefined)
+      expect(closeWindow.accelerator).to.equal(undefined)
+      const keys = file.map((item) => item.accelerator).filter(Boolean)
+      expect(new Set(keys).size).to.equal(keys.length)
+      expect(file.find((item) => item.accelerator === 'CommandOrControl+W').label).to.equal('Close')
+    } finally {
+      Object.defineProperty(process, 'platform', platform)
+    }
+  })
+})

@@ -293,6 +293,15 @@ export function createActions (windowManager) {
         }
       }
     },
+    // Not role: 'close', whose built-in Cmd+W was the same shortcut as Close:
+    // two menu items on one key, and this one takes every tab in the window.
+    CloseWindow: {
+      label: 'Close Window',
+      click: () => {
+        const focusedWindow = BrowserWindow.getFocusedWindow()
+        if (focusedWindow) focusedWindow.close()
+      }
+    },
     CloseTab: {
       label: 'Close Tab',
       accelerator: 'CommandOrControl+Shift+W',
@@ -412,7 +421,7 @@ export function createMenuTemplate (windowManager) {
         { ...actions.CloseTab },
         { ...actions.Close },
         { type: 'separator' },
-        isMac ? { role: 'close' } : { role: 'quit' }
+        isMac ? { ...actions.CloseWindow } : { role: 'quit' }
       ]
     },
     // { role: 'editMenu' }
