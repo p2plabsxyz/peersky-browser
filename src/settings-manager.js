@@ -2,7 +2,7 @@
 // Handles settings storage, defaults, validation, and IPC communication
 // Pattern: Similar to window-manager.js
 
-import { app, ipcMain, BrowserWindow, session, safeStorage, dialog, webContents } from 'electron'
+import { app, ipcMain, BrowserWindow, safeStorage, dialog, webContents } from 'electron'
 import { promises as fs } from 'fs'
 import path from 'path'
 import os from 'os'
@@ -13,6 +13,8 @@ import p2pAppRegistry from './p2p-app-registry.js'
 import { measureP2PStorage, oneAtATime } from './p2p-storage.js'
 import { isPeerskyPage } from './backup/ipc-caller.js'
 import { bumpCacheEpoch } from './protocols/hyperdrive-views.js'
+import { getPagesPath } from './protocols/pages-path.js'
+import { getBrowserSession } from './session.js'
 
 const SETTINGS_FILE = path.join(app.getPath('userData'), 'settings.json')
 const DEBUG_LOG = path.join(os.homedir(), '.peersky', 'debug.log')
@@ -86,6 +88,23 @@ const DEFAULT_SETTINGS = {
 
 let isClearingBrowserCache = false
 
+// Clear Cache is for websites, but PeerSky's own pages keep their storage in
+// the same session: the window its tabs under file://, the P2P apps theirs
+// under peersky://p2p (P2PMD's notes with their keys among it), and extensions
+// such as History their records. Clearing every origin took all of that.
+export async function ownStorageOrigins (ses) {
+  const origins = new Set(['file://'])
+  const entries = await fs.readdir(getPagesPath(), { withFileTypes: true }).catch(() => [])
+  for (const entry of entries) {
+    const host = entry.name.replace(/\.html$/i, '').toLowerCase()
+    if (/^[a-z0-9][a-z0-9-]*$/.test(host)) origins.add(`peersky://${host}`)
+  }
+  for (const extension of (ses.extensions || ses).getAllExtensions()) {
+    origins.add(`chrome-extension://${extension.id}`)
+  }
+  return [...origins]
+}
+
 async function clearBrowserCache () {
   if (isClearingBrowserCache) { throw new Error('Cache clearing already in progress') }
 
@@ -105,14 +124,15 @@ async function clearBrowserCache () {
 
     await new Promise(resolve => setTimeout(resolve, 100)) // small delay
 
-    // Step 2 → Clear cache and storage (in smaller groups)
-    const clear = storages =>
-      session.defaultSession.clearStorageData({ storages })
+    // Step 2 → Clear cache and storage (in smaller groups), websites only
+    const ses = getBrowserSession()
+    const excludeOrigins = await ownStorageOrigins(ses)
+    const clear = dataTypes => ses.clearData({ dataTypes, excludeOrigins })
 
-    await session.defaultSession.clearCache()
-    await clear(['cookies', 'localstorage', 'sessionstorage'])
-    await clear(['indexdb']) // (Electron's internal key for IndexedDB)
-    await clear(['cachestorage', 'serviceworkers'])
+    await ses.clearCache()
+    await clear(['cookies', 'localStorage'])
+    await clear(['indexedDB'])
+    await clear(['cache', 'serviceWorkers']) // cache takes Cache Storage too
 
     const downloadsFile = path.join(app.getPath('userData'), 'downloads.json')
     await fs.rm(downloadsFile, { force: true }).catch(() => {})

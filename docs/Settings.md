@@ -108,13 +108,14 @@ Each section is built using simple HTML blocks styled with internal and theme-pr
 
 #### Clear Browser Cache
 - **API/IPC:** `settings.clearBrowserCache()` → invokes `ipcMain.handle('settings-clear-cache')`
-- **Wipes (Chromium session only):**
+- **Wipes, for websites only (Chromium session only):**
   - Cookies
-  - LocalStorage / SessionStorage
+  - LocalStorage
   - IndexedDB
   - Service Workers
   - Cache Storage
   - HTTP cache (`session.clearCache()`)
+- **Keeps PeerSky's own storage** (`ownStorageOrigins` in `src/settings-manager.js`): the window (`file://`, its open tabs), every `peersky://` page (the P2P apps share `peersky://p2p`, where P2PMD keeps its notes and their keys), and every extension (`chrome-extension://`, History's records among them).
 - **Does NOT touch:** `ipfs/`, `hyper/`, `ensCache.json`, identity files
 
 #### Storage used
