@@ -602,10 +602,18 @@ class ExtensionManager {
           const preinstallVersionMatch = !entry.version ||
             String(existing.preinstallVersion || '') === String(entry.version)
           if (preinstallVersionMatch) {
+            let changed = false
             if (existing.preinstalledEntry !== preinstalledEntryKey(entry)) {
               existing.preinstalledEntry = preinstalledEntryKey(entry)
-              await this._writeRegistry()
+              changed = true
             }
+            // Shown by the name the list gives it ("PeerSky History"), not its
+            // build's ("peersky-history").
+            if (entry.name && existing.displayName !== entry.name) {
+              existing.displayName = entry.name
+              changed = true
+            }
+            if (changed) await this._writeRegistry()
             continue
           }
           await removePreinstalledRecord(existing)
@@ -627,6 +635,7 @@ class ExtensionManager {
           extData.preinstallVersion = entry.version
         }
         extData.preinstalledEntry = preinstalledEntryKey(entry)
+        if (entry.name) extData.displayName = entry.name
         extData.isSystem = true
         extData.removable = false
         extData.source = 'preinstalled'

@@ -36,6 +36,14 @@ describe('preinstalled extensions', function () {
 
   it('records the entry on every import, and on a record from before when it matches', function () {
     expect(manager).to.contain('extData.preinstalledEntry = preinstalledEntryKey(entry)')
-    expect(manager).to.match(/if \(existing\.preinstalledEntry !== preinstalledEntryKey\(entry\)\) \{\s+existing\.preinstalledEntry = preinstalledEntryKey\(entry\)\s+await this\._writeRegistry\(\)/)
+    expect(manager).to.match(/if \(existing\.preinstalledEntry !== preinstalledEntryKey\(entry\)\) \{\s+existing\.preinstalledEntry = preinstalledEntryKey\(entry\)\s+changed = true/)
+    expect(manager).to.contain('if (changed) await this._writeRegistry()')
+  })
+
+  // The Extensions page showed "peersky-history" and "uBlock Origin development
+  // build", the names in the builds' manifests.
+  it('shows each one by the name the list gives it', function () {
+    expect(manager).to.contain('if (entry.name) extData.displayName = entry.name')
+    expect(manager).to.match(/if \(entry\.name && existing\.displayName !== entry\.name\) \{\s+existing\.displayName = entry\.name\s+changed = true/)
   })
 })
