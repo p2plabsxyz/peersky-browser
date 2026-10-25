@@ -156,3 +156,44 @@ describe('a custom search template', function () {
   })
 })
 
+// peersky://history redirects to the History extension's page, which Chromium
+// does not follow from a page, so the tab stayed where it was.
+describe('typing peersky://history', function () {
+  it('opens the History page in the tab', async function () {
+    const { EventEmitter } = await import('events')
+    const { followHistoryRedirect, isHistoryRedirect } = await import('../src/history-address.js')
+    const view = 'chrome-extension://njgdkbplnabflgninlgehplmlcfabmdp/view.html'
+    const wc = new EventEmitter()
+    const loaded = []
+    wc.loadURL = async (url) => { loaded.push(url) }
+    followHistoryRedirect(wc)
+    wc.emit('did-start-navigation', { url: 'peersky://history/', isMainFrame: true, isSameDocument: false })
+    let prevented = false
+    wc.emit('will-redirect', { url: view, isMainFrame: true, preventDefault: () => { prevented = true } })
+    expect(prevented).to.equal(true)
+    expect(loaded).to.deep.equal([view])
+    expect(isHistoryRedirect('peersky://history', view)).to.equal(true)
+  })
+
+  it('leaves every other redirect alone, a site sending a tab to an extension too', async function () {
+    const { EventEmitter } = await import('events')
+    const { followHistoryRedirect, isHistoryRedirect } = await import('../src/history-address.js')
+    const view = 'chrome-extension://njgdkbplnabflgninlgehplmlcfabmdp/view.html'
+    const wc = new EventEmitter()
+    const loaded = []
+    wc.loadURL = async (url) => { loaded.push(url) }
+    followHistoryRedirect(wc)
+    wc.emit('did-start-navigation', { url: 'https://example.com/', isMainFrame: true, isSameDocument: false })
+    let prevented = false
+    wc.emit('will-redirect', { url: view, isMainFrame: true, preventDefault: () => { prevented = true } })
+    expect(prevented).to.equal(false)
+    expect(loaded).to.deep.equal([])
+    expect(isHistoryRedirect('peersky://history', 'https://example.com/')).to.equal(false)
+    expect(isHistoryRedirect('peersky://history/x', view)).to.equal(false)
+  })
+
+  it('is followed for every tab', async function () {
+    const main = (await readFile(new URL('../src/main.js', import.meta.url), 'utf8'))
+    expect(main).to.contain("if (wc.getType() === 'webview') followHistoryRedirect(wc)")
+  })
+})

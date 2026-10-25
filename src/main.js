@@ -12,6 +12,7 @@ import { createHandler as createHSHandler, MAX_DOCUMENT_SIZE } from './protocols
 import { createHandler as createWeb3Handler } from './protocols/web3-handler.js'
 import { createHandler as createFileHandler } from './protocols/file-handler.js'
 import { attachTrackpadZoom, handlePinchZoom } from './trackpad-zoom.js'
+import { followHistoryRedirect } from './history-address.js'
 import { applyPasswordStore, choosePasswordStore } from './linux-keyring.js'
 import { sealFilesAtRest } from './backup/sealed-file.js'
 import { PRIVATE_DRIVE_KEY_FILE } from './backup/private-drive-key.js'
@@ -128,6 +129,7 @@ handlePinchZoom(ipcMain)
 app.on('web-contents-created', (event, wc) => {
   const wcId = wc.id
   attachTrackpadZoom(wc)
+  if (wc.getType() === 'webview') followHistoryRedirect(wc)
   wc.on('did-navigate', (e, url) => {
     if (url.startsWith('peersky://downloads')) {
       trustedUIWebContents.add(wcId)
