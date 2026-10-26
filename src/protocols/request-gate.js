@@ -1,4 +1,5 @@
-import { randomBytes } from 'crypto'
+import { createHmac, randomBytes, timingSafeEqual } from 'crypto'
+import path from 'path'
 
 // Electron applies no CORS to custom-scheme responses and sends no Origin, so
 // any page can call the p2p backends and read the reply. Requests are judged in
@@ -55,6 +56,62 @@ function parseUrl (raw) {
   }
 }
 
+// A folder listing (file-handler.js) reads the files under its folder to
+// publish them, with a token for that folder in each URL. Only the listing
+// PeerSky made has it: a page can set its own URL to a folder's with
+// history.pushState, so the address of the caller proves nothing.
+export const LISTING_PARAM = '__peerskyListing'
+const listingSecret = randomBytes(32)
+
+// A file:// URL's path, decoded, or null when it has . or .. segments, a
+// backslash or a NUL, which no token covers.
+function localPathOf (url) {
+  let decoded
+  try {
+    decoded = decodeURIComponent(url.pathname)
+  } catch {
+    return null
+  }
+  if (/[\\\0]/.test(decoded) || path.posix.normalize(decoded) !== decoded) return null
+  return decoded
+}
+
+function folderToken (host, folder) {
+  return createHmac('sha256', listingSecret).update(host + folder).digest('hex')
+}
+
+/** The token a listing of this file:// folder puts in its reads, or null. */
+export function listingToken (folderUrl) {
+  const url = parseUrl(folderUrl)
+  const folder = url?.protocol === 'file:' ? localPathOf(url) : null
+  if (folder === null) return null
+  return folderToken(url.host, folder.endsWith('/') ? folder : `${folder}/`)
+}
+
+/** Whether a file:// URL carries the token of a listing of its folder or one above it. */
+export function isListingRead (target) {
+  const token = target.searchParams.get(LISTING_PARAM)
+  const file = target.protocol === 'file:' && token ? localPathOf(target) : null
+  if (file === null) return false
+  const given = Buffer.from(token)
+  const names = file.split('/').filter(Boolean)
+  for (let i = names.length; i >= 0; i--) {
+    const expected = Buffer.from(folderToken(target.host, `/${names.slice(0, i).map((name) => `${name}/`).join('')}`))
+    if (given.length === expected.length && timingSafeEqual(given, expected)) return true
+  }
+  return false
+}
+
+// What a page may load from a local file: what it shows or runs, not what it
+// reads. A JSON module import reads any file it loads as a script, so a script
+// must be a .js file, and a stylesheet a .css file.
+function isShownFromFile (resourceType, target) {
+  if (resourceType === 'image' || resourceType === 'media' || resourceType === 'font') return true
+  if (resourceType === 'script') return /\.[cm]?js$/i.test(target.pathname)
+  if (resourceType === 'stylesheet') return /\.css$/i.test(target.pathname)
+  return false
+}
+
 // The pages allowed to call a control API, or null when target is not one.
 function controlApiCallers (target) {
   if (TORRENT_SCHEMES.has(target.protocol) && target.searchParams.get('action') === 'api') return isTorrentUi
@@ -87,16 +144,30 @@ function callerOf (initiatorOrigin, frameUrl) {
 }
 
 /**
- * Decide a request seen by webRequest.onBeforeRequest.
+ * Decide a request seen by webRequest.onBeforeRequest. source is 'shell' for a
+ * browser window's own page, 'tab' for a page in a tab, and anything else for
+ * the rest, such as a popup a page opened.
  * @returns {{ action: 'allow' | 'block' } |
  *   { action: 'extension', extensionId: string, scheme: string } |
  *   { action: 'ask', caller: string }}
  */
-export function gateRequest ({ url, method, resourceType, initiatorOrigin, frameUrl }) {
+export function gateRequest ({ url, method, resourceType, initiatorOrigin, frameUrl, source }) {
   const target = parseUrl(url)
   if (!target) return ALLOW
   const verb = String(method || 'GET').toUpperCase()
   const caller = callerOf(initiatorOrigin, frameUrl)
+
+  // Local files. Electron gives every file:// page the same origin, and the
+  // file handler answers any request, so a page could read whatever file it
+  // fetches, frames, embeds or opens in a popup, ~/.ssh included. Tabs open
+  // files, and a page shows images, media, fonts, scripts and styles from
+  // them, as in Chrome. The browser window loads its own files.
+  if (target.protocol === 'file:') {
+    if (source === 'shell') return ALLOW
+    if (!SAFE_METHODS.has(verb)) return BLOCK
+    if (resourceType === 'mainFrame') return source === 'tab' ? ALLOW : BLOCK
+    return isListingRead(target) || isShownFromFile(resourceType, target) ? ALLOW : BLOCK
+  }
 
   const allowedCaller = controlApiCallers(target)
   if (allowedCaller) {

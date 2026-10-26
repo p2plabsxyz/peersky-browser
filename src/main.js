@@ -904,6 +904,17 @@ function warmP2PBackends () {
   }
 }
 
+// Where a request comes from, for the request gate: a browser window's own
+// page, a page in a tab, or anything else, such as a popup a page opened.
+function requestSourceOf (details) {
+  try {
+    if (windowManager?.findWindowByWebContentsId(details.webContentsId)) return 'shell'
+    return details.webContents?.getType() === 'webview' ? 'tab' : 'other'
+  } catch {
+    return 'other'
+  }
+}
+
 async function isGatedRequestAllowed (details, { incognito = false } = {}) {
   try {
     const verdict = gateRequest({
@@ -911,7 +922,8 @@ async function isGatedRequestAllowed (details, { incognito = false } = {}) {
       method: details.method,
       resourceType: details.resourceType,
       initiatorOrigin: details.initiatorOrigin,
-      frameUrl: frameUrlOf(details)
+      frameUrl: frameUrlOf(details),
+      source: requestSourceOf(details)
     })
     if (verdict.action === 'allow') return true
     // Incognito has no extensions, and an answer there would be remembered.
@@ -1191,7 +1203,7 @@ ipcMain.on('window-control', (_event, command) => {
 
 // IPC handler for opening a download in a new tab, from the downloads page
 ipcMain.on('open-url-in-tab', (event, fileUrl) => {
-  // A file:// page can read other local files, so no other page opens one.
+  // The downloads page alone opens a local file in a tab this way.
   let sender = null
   try { sender = new URL(event.senderFrame?.url || '') } catch {}
   if (sender?.protocol !== 'peersky:' || sender.hostname !== 'downloads') {

@@ -1,6 +1,6 @@
 import { expect } from 'chai'
 import { readFile } from 'fs/promises'
-import { gateRequest, stampVetted, requireVetted, takeNavigationStamp, mayUsePrivateDrive, frameUrlOf } from '../../src/protocols/request-gate.js'
+import { gateRequest, stampVetted, requireVetted, takeNavigationStamp, mayUsePrivateDrive, frameUrlOf, listingToken, LISTING_PARAM } from '../../src/protocols/request-gate.js'
 
 const main = await readFile(new URL('../../src/main.js', import.meta.url), 'utf8')
 
@@ -97,6 +97,87 @@ describe('request gate: torrent pages and files', () => {
     expect(main).to.match(/const BT_PROTOCOL = \{\s*\.\.\.P2P_PROTOCOL,\s*allowServiceWorkers: false\s*\}/)
     expect(main).to.include("{ scheme: 'bt', privileges: BT_PROTOCOL }")
     expect(main).to.include("{ scheme: 'bittorrent', privileges: BT_PROTOCOL }")
+  })
+})
+
+// Electron gives every file:// page the same origin, so a downloaded page
+// could read ~/.ssh with a fetch, a frame or a popup.
+describe('request gate: local files', () => {
+  const key = 'file:///Users/me/.ssh/id_rsa'
+  const load = (url, resourceType, extra = {}) => gateRequest({
+    url,
+    method: 'GET',
+    resourceType,
+    initiatorOrigin: 'file://',
+    frameUrl: 'file:///Users/me/Downloads/page.html',
+    source: 'tab',
+    ...extra
+  }).action
+
+  it('opens a file in a tab, and not in a popup a page opened', () => {
+    expect(load(key, 'mainFrame')).to.equal('allow')
+    expect(load(key, 'mainFrame', { source: 'other' })).to.equal('block')
+    expect(load(key, 'mainFrame', { source: undefined })).to.equal('block')
+    expect(load(key, 'mainFrame', { method: 'POST' })).to.equal('block')
+  })
+
+  it('lets no page fetch, frame or embed a local file, beside it or not', () => {
+    for (const resourceType of ['xhr', 'subFrame', 'object', 'other', 'ping']) {
+      expect(load(key, resourceType), resourceType).to.equal('block')
+      expect(load('file:///Users/me/Downloads/data.json', resourceType), `${resourceType} beside the page`).to.equal('block')
+      expect(load('file:///Users/me/.ssh/', resourceType), `${resourceType} of a folder`).to.equal('block')
+    }
+  })
+
+  it('lets a page show images, media and fonts, run .js files and use .css files', () => {
+    for (const [url, resourceType] of [
+      ['file:///Users/me/site/logo.png', 'image'],
+      ['file:///Users/me/site/clip.mp4', 'media'],
+      ['file:///Users/me/site/font.woff2', 'font'],
+      ['file:///Users/me/site/app.js', 'script'],
+      ['file:///Users/me/site/lib/mod.mjs?v=2', 'script'],
+      ['file:///Users/me/site/style.css', 'stylesheet']
+    ]) {
+      expect(load(url, resourceType), url).to.equal('allow')
+    }
+  })
+
+  it('loads no other file as a script or a stylesheet, which a JSON module import or a stray global would read', () => {
+    for (const url of ['file:///Users/me/.docker/config.json', 'file:///Users/me/project/.env', key, 'file:///Users/me/notes.txt', 'file:///Users/me/app.js/']) {
+      expect(load(url, 'script'), url).to.equal('block')
+      expect(load(url, 'stylesheet'), url).to.equal('block')
+    }
+  })
+
+  it("trusts no page for its address, which history.pushState can set to a folder's", () => {
+    const folderAddress = { frameUrl: 'file:///Users/me/.ssh/' }
+    expect(load(key, 'xhr', folderAddress)).to.equal('block')
+    expect(load('file:///Users/me/.ssh/?__publishManifest=1', 'xhr', folderAddress)).to.equal('block')
+  })
+
+  it('lets a folder listing read the files under its folder with its token, and nothing else', () => {
+    const token = listingToken('file:///Users/me/site/')
+    const withToken = (url, value = token) => `${url}${url.includes('?') ? '&' : '?'}${LISTING_PARAM}=${value}`
+    const listing = { frameUrl: 'file:///Users/me/site/' }
+    expect(load(withToken('file:///Users/me/site/?__publishManifest=1'), 'xhr', listing)).to.equal('allow')
+    expect(load(withToken('file:///Users/me/site/a/b%20c.png'), 'xhr', listing)).to.equal('allow')
+    expect(load(withToken(key), 'xhr', listing), 'another folder').to.equal('block')
+    expect(load(withToken('file:///Users/me/site2/x.txt'), 'xhr', listing), 'a folder starting the same').to.equal('block')
+    expect(load(withToken('file:///Users/me/site/..%2F.ssh%2Fid_rsa'), 'xhr', listing), 'an encoded ..').to.equal('block')
+    expect(load(withToken('file:///Users/me/site/a%5C..%5C..%5C.ssh%5Cid_rsa'), 'xhr', listing), 'backslashes').to.equal('block')
+    expect(load(withToken('file:///Users/me/site/x.txt', 'f'.repeat(64)), 'xhr', listing), 'a made-up token').to.equal('block')
+    expect(load(withToken('file:///Users/me/site/x.txt'), 'xhr', { ...listing, method: 'PUT' }), 'a write').to.equal('block')
+    expect(listingToken('file:///Users/me/site'), 'with or without the slash').to.equal(token)
+  })
+
+  it('lets the browser window load its own files', () => {
+    for (const resourceType of ['mainFrame', 'script', 'xhr', 'image']) {
+      expect(load('file:///Applications/PeerSky.app/Contents/Resources/app/src/pages/index.html', resourceType, { source: 'shell' }), resourceType).to.equal('allow')
+    }
+  })
+
+  it('is told by main.js where each request comes from', () => {
+    expect(main).to.include('source: requestSourceOf(details)')
   })
 })
 

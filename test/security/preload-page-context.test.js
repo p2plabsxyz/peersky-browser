@@ -15,7 +15,7 @@ const RULES_END = 'const isTorrentUi'
 
 const FLAGS = [
   'isSettings', 'isExtensions', 'isSiteSettings', 'isHome', 'isOnboarding', 'isBookmarks',
-  'isDownloads', 'isBackup', 'isTabsPage', 'isP2PPage', 'isUserP2PApp',
+  'isDownloads', 'isBackup', 'isTabsPage', 'isP2PPage', 'isUserP2PApp', 'isLocalFile',
   'isInternal', 'isExternal', 'isP2P', 'isBitTorrent', 'isTorrentUi'
 ]
 
@@ -92,6 +92,15 @@ describe('preload page context', function () {
 
     it('trusts the agregore host itself', function () {
       expect(classify('https://agregore.mauve.moe/some/page').isInternal).to.equal(true)
+    })
+
+    it('treats a local file as an outside page, whatever folder it is in', function () {
+      for (const href of ['file:///Users/me/Downloads/page.html', 'file:///Users/me/', 'file:///C:/Users/me/page.html']) {
+        const context = classify(href)
+        expect(context.isLocalFile, href).to.equal(true)
+        expect(context.isInternal, `${href} was given internal privileges`).to.equal(false)
+        expect(context.isExternal).to.equal(true)
+      }
     })
 
     it('keeps a user p2p app out of internal treatment', function () {

@@ -43,7 +43,10 @@ const isP2PPage = isPeerskyPage('p2p')
 const isUserP2PApp = isPeerskyPage('myapps')
 const isVersionPage = isPeerskyPage('version')
 const isTrustedExternalHost = pageProtocol === 'https:' && pageHost === 'agregore.mauve.moe'
-const isInternal = (pageProtocol === 'peersky:' && !isUserP2PApp) || pageProtocol === 'file:' || isTrustedExternalHost
+// A local file is whatever someone downloaded or saved, so it is an outside
+// page: it gets the AI after asking, like a P2P page, and nothing else.
+const isLocalFile = pageProtocol === 'file:'
+const isInternal = (pageProtocol === 'peersky:' && !isUserP2PApp) || isTrustedExternalHost
 const isExternal = !isInternal
 
 const isP2P = ['hyper:', 'ipfs:', 'ipns:', 'hs:'].includes(pageProtocol)
@@ -93,11 +96,11 @@ if (isTorrentUi) {
   })
 }
 
-// Expose LLM API for internal pages, P2P apps, and trusted domains. Whether a
-// call goes through is decided in the main process (src/llm-access.js):
-// PeerSky's own pages freely, every other page after asking. Keep these lists
-// in step with llmAccessFor in src/permissions.js.
-if (isInternal || isP2P || isUserP2PApp) {
+// Expose LLM API for internal pages, P2P apps, local files and trusted
+// domains. Whether a call goes through is decided in the main process
+// (src/llm-access.js): PeerSky's own pages freely, every other page after
+// asking. Keep these lists in step with llmAccessFor in src/permissions.js.
+if (isInternal || isP2P || isUserP2PApp || isLocalFile) {
   console.log('Unified-preload: Exposing LLM API for page:', url)
   // Iterator management for streaming
   const iteratorMaps = new Map()
@@ -143,9 +146,10 @@ if (isInternal || isP2P || isUserP2PApp) {
     iteratorReturn
   })
 
-  // LLM Memory: PeerSky's own pages only. isInternal also covers file: pages
-  // and a trusted external host, and an app added under peersky://myapps came
-  // from somewhere else: none of them should read the whole history.
+  // LLM Memory: PeerSky's own pages only. isInternal also covers a trusted
+  // external host, local files and P2P pages get here too, and an app added
+  // under peersky://myapps came from somewhere else: none of them should read
+  // the whole history.
   if (pageProtocol === 'peersky:' && !isUserP2PApp) {
     contextBridge.exposeInMainWorld('llmMemory', {
       add: (entry) => ipcRenderer.invoke('llm-memory-add', entry),

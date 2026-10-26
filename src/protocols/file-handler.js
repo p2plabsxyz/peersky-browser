@@ -2,8 +2,9 @@ import fs from 'fs-extra'
 import path from 'path'
 import mime from 'mime-types'
 import { pathToFileURL } from 'url'
+import { LISTING_PARAM, isListingRead, listingToken } from './request-gate.js'
 
-function generateDirectoryListing (dirPath, entries) {
+function generateDirectoryListing (dirPath, entries, token) {
   const parentPath = path.dirname(dirPath)
   const parentDirName = path.basename(parentPath) || 'Parent Directory'
 
@@ -108,6 +109,7 @@ function generateDirectoryListing (dirPath, entries) {
 
       const manifestUrl = new URL(window.location.href);
       manifestUrl.searchParams.set('__publishManifest', '1');
+      manifestUrl.searchParams.set('${LISTING_PARAM}', '${token || ''}');
 
       const response = await fetch(manifestUrl.toString(), {
         headers: { 'Accept': 'application/json' }
@@ -320,9 +322,17 @@ export async function createHandler () {
       //   log.info('Path stats:', filePath, 'isDirectory:', stats.isDirectory(), 'isFile:', stats.isFile());
 
       if (stats.isDirectory()) {
-        // Handle manifest requests first (used for publishing)
+        // Every file under the folder, for its listing's Publish button, with
+        // the listing's token on each file's URL so it may read them.
         if (url.searchParams.get('__publishManifest') === '1') {
-          const manifest = await getFilesRecursive(filePath, '')
+          if (!isListingRead(url)) {
+            return new Response('Forbidden', { status: 403, headers: { 'Content-Type': 'text/plain' } })
+          }
+          const manifest = (await getFilesRecursive(filePath, '')).map((file) => {
+            const fileUrl = new URL(file.fileUrl)
+            fileUrl.searchParams.set(LISTING_PARAM, url.searchParams.get(LISTING_PARAM))
+            return { ...file, fileUrl: fileUrl.href }
+          })
           return new Response(JSON.stringify({ files: manifest }), {
             status: 200,
             headers: {
@@ -361,13 +371,16 @@ export async function createHandler () {
 
         const validEntries = entryStats.filter(e => e !== null)
 
-        const html = generateDirectoryListing(filePath, validEntries)
+        const html = generateDirectoryListing(filePath, validEntries, listingToken(url))
 
+        // nosniff: the listing holds its token, so it never loads as a script
+        // or a stylesheet.
         return new Response(html, {
           status: 200,
           headers: {
             'Content-Type': 'text/html; charset=utf-8',
-            'Cache-Control': 'no-cache'
+            'Cache-Control': 'no-cache',
+            'X-Content-Type-Options': 'nosniff'
           }
         })
       } else {
