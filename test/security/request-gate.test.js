@@ -1,6 +1,6 @@
 import { expect } from 'chai'
 import { readFile } from 'fs/promises'
-import { gateRequest, stampVetted, requireVetted, takeNavigationStamp, mayUsePrivateDrive, frameUrlOf, listingToken, LISTING_PARAM } from '../../src/protocols/request-gate.js'
+import { gateRequest, stampVetted, requireVetted, takeNavigationStamp, takeListingProof, mayUsePrivateDrive, frameUrlOf, listingToken, LISTING_HEADER, LISTING_PARAM } from '../../src/protocols/request-gate.js'
 
 const main = await readFile(new URL('../../src/main.js', import.meta.url), 'utf8')
 
@@ -300,6 +300,22 @@ describe('request gate: who may use a private drive', () => {
     expect(may('peersky://MyApps'), 'in any case').to.equal(false)
     expect(mayUsePrivateDrive({ url: 'hyper://localhost/?key=p2pmd&visibility=private', initiatorOrigin: 'peersky://myapps' }), 'making one by name').to.equal(false)
     expect(mayUsePrivateDrive({ url: 'hyper://localhost/?key=p2pmd&visibility=private', initiatorOrigin: 'peersky://p2p' }), 'P2PMD making its own').to.equal(true)
+  })
+
+  it('lets in a folder listing PeerSky made, which proves itself with its token, and no page that only claims to be one', () => {
+    const folder = 'file:///Users/me/site/'
+    const proof = (value) => new Request(drive, { headers: value === undefined ? {} : { [LISTING_HEADER]: value } })
+    const request = proof(`${folder}?${LISTING_PARAM}=${listingToken(folder)}`)
+    expect(takeListingProof(request), 'the listing').to.equal(true)
+    expect(request.headers.has(LISTING_HEADER), 'the header is taken off').to.equal(false)
+    expect(takeListingProof(proof(`${folder}?${LISTING_PARAM}=${'f'.repeat(64)}`)), 'a made-up token').to.equal(false)
+    expect(takeListingProof(proof(folder)), 'no token').to.equal(false)
+    expect(takeListingProof(proof(`https://evil.example/?${LISTING_PARAM}=${listingToken(folder)}`)), 'not a file URL').to.equal(false)
+    expect(takeListingProof(proof('not a url')), 'not a URL').to.equal(false)
+    expect(takeListingProof(proof()), 'no header').to.equal(false)
+
+    expect(mayUsePrivateDrive({ url: drive, initiatorOrigin: 'file://', listing: true })).to.equal(true)
+    expect(mayUsePrivateDrive({ url: drive, initiatorOrigin: 'file://' }), 'any other local page').to.equal(false)
   })
 })
 

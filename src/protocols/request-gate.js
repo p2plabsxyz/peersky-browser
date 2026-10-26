@@ -88,6 +88,17 @@ export function listingToken (folderUrl) {
   return folderToken(url.host, folder.endsWith('/') ? folder : `${folder}/`)
 }
 
+// The header a folder listing sends with its hyper:// requests: its own address
+// with its token, which lets it make and fill a private drive to publish to.
+export const LISTING_HEADER = 'x-peersky-listing'
+
+/** Whether a request comes from a folder listing PeerSky made. Takes the header off. */
+export function takeListingProof (request) {
+  const proof = parseUrl(request.headers.get(LISTING_HEADER) || '')
+  request.headers.delete(LISTING_HEADER)
+  return !!proof && isListingRead(proof)
+}
+
 /** Whether a file:// URL carries the token of a listing of its folder or one above it. */
 export function isListingRead (target) {
   const token = target.searchParams.get(LISTING_PARAM)
@@ -231,11 +242,12 @@ export function takeNavigationStamp (request) {
  * opening it, where the page that linked to it cannot read it. Any other page,
  * an app added under peersky://myapps included, could only know the address or
  * the name, and as Electron applies no CORS to hyper://, it would otherwise
- * read the drive with this device's keys.
- * @param {{ url: string, initiatorOrigin?: string, navigation?: boolean }} request
+ * read the drive with this device's keys. A folder listing PeerSky made may
+ * too, to publish a folder privately; it proves itself with its token.
+ * @param {{ url: string, initiatorOrigin?: string, navigation?: boolean, listing?: boolean }} request
  */
-export function mayUsePrivateDrive ({ url, initiatorOrigin, navigation = false }) {
-  if (navigation) return true
+export function mayUsePrivateDrive ({ url, initiatorOrigin, navigation = false, listing = false }) {
+  if (navigation || listing) return true
   // Absent when the browser made the request itself: a typed address, a
   // bookmark, a restored tab.
   if (initiatorOrigin === undefined) return true

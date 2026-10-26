@@ -716,6 +716,32 @@ describe('Hyper protocol handler', function () {
     expect(await (await handler(new Request(fileUrl))).text(), 'a typed address').to.equal('private')
   })
 
+  // A folder listing publishes its folder privately. It proves itself with the
+  // token PeerSky put in it, which no other local page can read.
+  it('lets a folder listing PeerSky made fill a private drive, and no other local page', async function () {
+    const { module } = await loadHyperModule()
+    const handler = await module.createHandler({ storage: 'test-private-listing' })
+    const folder = 'file:///Users/me/site/'
+    const proof = `${folder}?${requestGate.LISTING_PARAM}=${requestGate.listingToken(folder)}`
+    const madeUp = `${folder}?${requestGate.LISTING_PARAM}=${'f'.repeat(64)}`
+    const fromFile = (url, init = {}, listing) => Object.assign(
+      new Request(url, { ...init, headers: listing ? { [requestGate.LISTING_HEADER]: listing } : {} }),
+      { initiatorOrigin: 'file://' }
+    )
+    const make = (listing) => handler(fromFile('hyper://localhost/?key=directory-1&visibility=private', { method: 'POST' }, listing))
+
+    expect((await make()).status, 'a local page').to.equal(403)
+    expect((await make(madeUp)).status, 'a made-up token').to.equal(403)
+    const made = await make(proof)
+    expect(made.status, 'the listing').to.equal(200)
+
+    const fileUrl = new URL('/site/a.txt', await made.text()).href
+    expect((await handler(fromFile(fileUrl, { method: 'PUT', body: 'a' }, proof))).status, 'the listing writing').to.equal(200)
+    expect((await handler(fromFile(fileUrl, { method: 'PUT', body: 'x' }, madeUp))).status, 'a local page writing').to.equal(403)
+    expect((await handler(fromFile(fileUrl))).status, 'a local page reading').to.equal(403)
+    expect(await (await handler(Object.assign(new Request(fileUrl), { initiatorOrigin: 'peersky://p2p' }))).text(), 'the Hyperdrive app').to.equal('a')
+  })
+
   it('serves private drives from the encrypted runtime after restart', async function () {
     const { module, fetchStub, privateFetchStub, privateSdk } = await loadHyperModule()
     privateSdk.corestore.storage.hasCore.resolves(true)

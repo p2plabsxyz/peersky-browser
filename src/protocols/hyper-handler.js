@@ -30,7 +30,7 @@ import { getPrivateDriveKey } from '../backup/private-drive-key.js'
 import { decodeDriveId } from '../backup/private-drive-export.js'
 import { shareDriveOpens } from './shared-drive-opens.js'
 import { isUnreadableDriveError, LINKED_PRIVATE_DRIVE_NAME, PRIVATE_DRIVE_ERROR } from './private-drive-errors.js'
-import { mayUsePrivateDrive, takeNavigationStamp } from './request-gate.js'
+import { mayUsePrivateDrive, takeListingProof, takeNavigationStamp } from './request-gate.js'
 import { toHyperFetchUrl } from './hyper-fetch-url.js'
 import { deviceSyncSnapshot, startDesktopDeviceSync } from './desktop-device-sync.js'
 import { listOwnPrivateDrives, listOwnPrivateFiles } from './own-private-files.js'
@@ -784,6 +784,8 @@ export async function createHandler (options, securityOptions = {}) {
 
   return async function protocolHandler (req) {
     const navigation = takeNavigationStamp(req)
+    // A folder listing publishing its folder, which may make a private drive.
+    const listing = takeListingProof(req)
     if (isSuspended) {
       return new Response('Hyper is unavailable while a backup is in progress', {
         status: 503,
@@ -825,7 +827,7 @@ export async function createHandler (options, securityOptions = {}) {
             // A private drive is opened by its name, so a page that may not
             // use private drives must not open one by the name P2PMD or the
             // Hyperdrive app gave it.
-            if (!mayUsePrivateDrive({ url, initiatorOrigin: req.initiatorOrigin, navigation })) {
+            if (!mayUsePrivateDrive({ url, initiatorOrigin: req.initiatorOrigin, navigation, listing })) {
               return new Response(PRIVATE_DRIVE_ERROR, {
                 status: 403,
                 headers: { 'Content-Type': 'text/plain; charset=utf-8' }
@@ -918,7 +920,7 @@ export async function createHandler (options, securityOptions = {}) {
       if (protocol === 'hyper' && urlObj.hostname === 'chat') {
         return await handleChatRequestP2P(req, sdk)
       } else {
-        return await handleHyperRequest(req, { navigation })
+        return await handleHyperRequest(req, { navigation, listing })
       }
     } catch (err) {
       log.error('Failed to handle Hyper request:', err)
@@ -987,14 +989,14 @@ function asPartialContent (resp) {
 }
 
 // Handle general hyper:// requests (not chat API).
-async function handleHyperRequest (req, { navigation = false } = {}) {
+async function handleHyperRequest (req, { navigation = false, listing = false } = {}) {
   const { url, method = 'GET', headers } = req
   const context = await getHyperRequestContext(url)
   const fetchFn = context.fetch
   const upperMethod = method.toUpperCase()
   const hasBody = upperMethod !== 'GET' && upperMethod !== 'HEAD'
 
-  if (context.private && !mayUsePrivateDrive({ url, initiatorOrigin: req.initiatorOrigin, navigation })) {
+  if (context.private && !mayUsePrivateDrive({ url, initiatorOrigin: req.initiatorOrigin, navigation, listing })) {
     return new Response(PRIVATE_DRIVE_ERROR, {
       status: 403,
       headers: { 'Content-Type': 'text/plain; charset=utf-8' }
