@@ -19,14 +19,14 @@ const url = window.location.href
 // substring of the href proves nothing about which page it is.
 function parseLocation (href) {
   try {
-    const { protocol, hostname } = new URL(href)
-    return { protocol, hostname }
+    const { protocol, hostname, pathname } = new URL(href)
+    return { protocol, hostname, pathname }
   } catch (_) {
-    return { protocol: '', hostname: '' }
+    return { protocol: '', hostname: '', pathname: '' }
   }
 }
 
-const { protocol: pageProtocol, hostname: pageHost } = parseLocation(url)
+const { protocol: pageProtocol, hostname: pageHost, pathname: pagePath } = parseLocation(url)
 
 const isPeerskyPage = (name) => pageProtocol === 'peersky:' && pageHost === name
 
@@ -49,6 +49,10 @@ const isExternal = !isInternal
 const isP2P = ['hyper:', 'ipfs:', 'ipns:', 'hs:'].includes(pageProtocol)
 
 const isBitTorrent = ['bt:', 'bittorrent:', 'magnet:', 'webtorrent:'].includes(pageProtocol)
+// The torrent pages and the manager get the torrent controls. A file a torrent
+// holds, served at bt://<infohash>/<path>, runs sandboxed without them.
+const isTorrentFile = ['bt:', 'bittorrent:'].includes(pageProtocol) && pagePath !== '' && pagePath !== '/'
+const isTorrentUi = (isBitTorrent && !isTorrentFile) || isPeerskyPage('bt-manager')
 
 // The Hyperdrive app's Files, Photos and Videos views, which allow no inline
 // scripts: the window.llm script below would only be refused there.
@@ -83,15 +87,7 @@ if (process.platform === 'darwin') {
   }, { passive: true })
 }
 
-// Expose minimal API for BitTorrent pages to open files in new tabs
-// Note: window.open() doesn't work for file:// URLs from custom protocols due to Electron security
-if (isBitTorrent) {
-  contextBridge.exposeInMainWorld('peersky', {
-    openInTab: (fileUrl) => ipcRenderer.send('open-url-in-tab', fileUrl)
-  })
-}
-
-if (isBitTorrent || isPeerskyPage('bt-manager')) {
+if (isTorrentUi) {
   contextBridge.exposeInMainWorld('peerskyBT', {
     apiToken: () => ipcRenderer.invoke('bt-api-token')
   })

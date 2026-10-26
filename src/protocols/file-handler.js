@@ -256,6 +256,18 @@ function escapeHtml (text) {
   return text.replace(/[&<>"']/g, m => map[m])
 }
 
+// Containers Chromium won't play inline, named as their playable equivalents.
+const PLAYABLE_REMAPS = {
+  'video/x-matroska': 'video/webm', // MKV → WebM (same Matroska container)
+  'video/quicktime': 'video/mp4', // MOV → MP4 (same H.264/AAC codecs)
+  'audio/x-flac': 'audio/flac' // normalize x-flac to standard flac
+}
+
+export function playableContentType (filePath) {
+  const contentType = mime.lookup(filePath) || 'application/octet-stream'
+  return PLAYABLE_REMAPS[contentType] || contentType
+}
+
 export async function createHandler () {
   async function getFilesRecursive (dirPath, basePath = '') {
     const allFiles = []
@@ -360,15 +372,7 @@ export async function createHandler () {
         })
       } else {
         // For files, serve them directly with Range request support for streaming
-        let contentType = mime.lookup(filePath) || 'application/octet-stream'
-
-        // Remap container types that Chromium won't play inline to compatible equivalents
-        const mimeRemaps = {
-          'video/x-matroska': 'video/webm', // MKV → WebM (same Matroska container)
-          'video/quicktime': 'video/mp4', // MOV → MP4 (same H.264/AAC codecs)
-          'audio/x-flac': 'audio/flac' // normalize x-flac to standard flac
-        }
-        if (mimeRemaps[contentType]) contentType = mimeRemaps[contentType]
+        const contentType = playableContentType(filePath)
 
         const fileSize = stats.size
         const rangeHeader = request.headers.get('Range')

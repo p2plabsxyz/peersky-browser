@@ -11,12 +11,12 @@ const ROOT = path.resolve(fileURLToPath(new URL('.', import.meta.url)), '..', '.
 const PRELOAD = path.join(ROOT, 'src', 'pages', 'unified-preload.js')
 
 const RULES_START = 'function parseLocation'
-const RULES_END = 'const isBitTorrent'
+const RULES_END = 'const isTorrentUi'
 
 const FLAGS = [
   'isSettings', 'isExtensions', 'isSiteSettings', 'isHome', 'isOnboarding', 'isBookmarks',
   'isDownloads', 'isBackup', 'isTabsPage', 'isP2PPage', 'isUserP2PApp',
-  'isInternal', 'isExternal', 'isP2P', 'isBitTorrent'
+  'isInternal', 'isExternal', 'isP2P', 'isBitTorrent', 'isTorrentUi'
 ]
 
 function classify (href) {
@@ -105,6 +105,18 @@ describe('preload page context', function () {
       expect(classify('ipns://abc/').isP2P).to.equal(true)
       expect(classify('magnet:?xt=urn:btih:abc').isBitTorrent).to.equal(true)
       expect(classify('https://evil.example/?x=hyper://abc').isP2P).to.equal(false)
+    })
+
+    it('gives the torrent controls to torrent pages, not to the files a torrent holds', function () {
+      const hash = 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
+      for (const href of [`bt://${hash}`, `bt://${hash}/`, `bittorrent://${hash}/?dn=Name`, `magnet:?xt=urn:btih:${hash}`,
+        'webtorrent:https://archive.org/download/x/x_archive.torrent', 'peersky://bt-manager']) {
+        expect(classify(href).isTorrentUi, href).to.equal(true)
+      }
+      for (const href of [`bt://${hash}/Name/index.html`, `bittorrent://${hash}/page.html?x=1`, `bt://${hash}/a/`,
+        'https://evil.example/?x=peersky://bt-manager', `https://evil.example/#bt://${hash}`]) {
+        expect(classify(href).isTorrentUi, href).to.equal(false)
+      }
     })
   })
 

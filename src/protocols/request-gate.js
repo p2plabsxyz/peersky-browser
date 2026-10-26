@@ -32,9 +32,20 @@ const isP2PApp = (caller) => caller.protocol === 'peersky:' && caller.hostname =
 const isOwnPage = (caller) =>
   caller.protocol === 'peersky:' && caller.hostname !== '' && caller.hostname.toLowerCase() !== 'myapps'
 
+const TORRENT_FILE_SCHEMES = new Set(['bt:', 'bittorrent:'])
+
+// A file a torrent holds, served at bt://<infohash>/<path>: its torrent's
+// hash, or null for anything else.
+function torrentFileHash (target) {
+  if (!TORRENT_FILE_SCHEMES.has(target.protocol) || target.pathname === '/' || target.pathname === '') return null
+  return target.hostname.toLowerCase()
+}
+
+// The torrent pages and the manager, not a file a torrent holds: that is a page
+// from anyone, sandboxed, so it calls with no origin and is judged by its URL.
 const isTorrentUi = (caller) =>
   (caller.protocol === 'peersky:' && caller.hostname === 'bt-manager') ||
-  TORRENT_UI_SCHEMES.has(caller.protocol)
+  (TORRENT_UI_SCHEMES.has(caller.protocol) && !torrentFileHash(caller))
 
 function parseUrl (raw) {
   try {
@@ -94,6 +105,17 @@ export function gateRequest ({ url, method, resourceType, initiatorOrigin, frame
     return caller && allowedCaller(caller) ? ALLOW : BLOCK
   }
 
+  // Torrent pages and files open in tabs. Read from another page, a downloaded
+  // file would be the caller's to read, or tell it what was downloaded, and a
+  // webtorrent: link would have the browser fetch any address. A torrent's own
+  // files may load one another.
+  if (TORRENT_UI_SCHEMES.has(target.protocol)) {
+    if (resourceType === 'mainFrame' && SAFE_METHODS.has(verb)) return ALLOW
+    const hash = torrentFileHash(target)
+    const sameTorrent = !!hash && !!caller && TORRENT_FILE_SCHEMES.has(caller.protocol) && caller.hostname.toLowerCase() === hash
+    return sameTorrent && SAFE_METHODS.has(verb) ? ALLOW : BLOCK
+  }
+
   if (!isP2PWrite(target, verb)) return ALLOW
   if (!caller) return BLOCK
   if (isOwnPage(caller)) return ALLOW
@@ -103,10 +125,11 @@ export function gateRequest ({ url, method, resourceType, initiatorOrigin, frame
   return { action: 'ask', caller: caller.href }
 }
 
+// A torrent's files too: a service worker's fetch skips webRequest.
 function isSensitive (url, method) {
   const target = parseUrl(url)
   if (!target) return false
-  return !!controlApiCallers(target) || isP2PWrite(target, String(method || 'GET').toUpperCase())
+  return !!controlApiCallers(target) || !!torrentFileHash(target) || isP2PWrite(target, String(method || 'GET').toUpperCase())
 }
 
 /** Request headers with the stamps added, or null when the request needs none. */

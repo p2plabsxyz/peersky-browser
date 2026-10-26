@@ -3,6 +3,11 @@ function escapeForHtml (str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
+// JSON for a <script> block, where a "</script>" in a string would end it.
+function scriptJson (value) {
+  return JSON.stringify(value).replace(/</g, '\\u003c')
+}
+
 function extractDisplayName (magnetUrl) {
   const match = magnetUrl.match(/[?&]dn=([^&]+)/)
   return match ? decodeURIComponent(match[1].replace(/\+/g, ' ')) : null
@@ -215,14 +220,13 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
   </div>
 
   <script>
-    var magnetUrl = ${JSON.stringify(magnetUrl)};
-    var torrentId = ${JSON.stringify(torrentId)};
-    var apiBase = ${JSON.stringify(apiBase)};
+    var magnetUrl = ${scriptJson(magnetUrl)};
+    var torrentId = ${scriptJson(torrentId)};
+    var apiBase = ${scriptJson(apiBase)};
     var apiToken = '';
     var currentInfoHash = torrentId;
     var statusInterval = null;
     var filesRendered = false;
-    var torrentDownloadPath = '';
     var startedAtMs = 0;
     var networkHintShown = false;
 
@@ -380,7 +384,6 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
     function updateUIFromStatus(s) {
       if (!s || s.error) return;
       if (s.infoHash) currentInfoHash = s.infoHash;
-      if (s.downloadPath) torrentDownloadPath = s.downloadPath;
 
       var pct = Math.round((s.progress || 0) * 100);
       var fill = document.getElementById('progressFill');
@@ -458,35 +461,35 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
       }
     }
 
+    // File names come from whoever made the torrent, so they go in as text.
     function renderFiles(files) {
       var tbody = document.getElementById('filesList');
       document.getElementById('filesSection').style.display = 'block';
 
-      tbody.innerHTML = '';
+      tbody.textContent = '';
       files.forEach(function(file) {
         var isMedia = /\\.(mp4|mkv|avi|mov|webm|mp3|wav|flac|ogg|m4a)$/i.test(file.name);
-        var label = isMedia ? 'Play' : 'Open';
+        var button = document.createElement('button');
+        button.className = 'open-btn';
+        button.textContent = isMedia ? 'Play' : 'Open';
+        button.addEventListener('click', function() { openFile(file.path); });
         var row = document.createElement('tr');
-        row.innerHTML =
-          '<td>' + file.index + '</td>' +
-          '<td>' + escapeHtml(file.name) + '</td>' +
-          '<td><button class="open-btn" onclick="openFile(\\'' + escapeAttr(file.path) + '\\')">' + label + '</button></td>' +
-          '<td>' + formatBytes(file.length) + '</td>';
+        [String(file.index), file.name, button, formatBytes(file.length)].forEach(function(value) {
+          var cell = document.createElement('td');
+          if (typeof value === 'string') cell.textContent = value;
+          else cell.appendChild(value);
+          row.appendChild(cell);
+        });
         tbody.appendChild(row);
       });
     }
 
+    // From the torrent itself, at bt://<infohash>/<path>, where PeerSky serves
+    // the file sandboxed. As a file:// page, an HTML file in a torrent could
+    // read any other file on this computer.
     function openFile(filePath) {
-      var fullPath = torrentDownloadPath + '/' + filePath;
-      // Encode path segments to handle spaces, brackets, parentheses in torrent names
-      var encoded = fullPath.split('/').map(function(seg) { return encodeURIComponent(seg); }).join('/');
-      var fileUrl = 'file://' + encoded;
-      // Use IPC bridge - window.open() doesn't work for file:// URLs from custom protocols
-      if (window.peersky && window.peersky.openInTab) {
-        window.peersky.openInTab(fileUrl);
-      } else {
-        showStatus('Cannot open file: IPC not available', 'error');
-      }
+      var encoded = String(filePath).split(/[\\\\/]/).map(encodeURIComponent).join('/');
+      window.open('bt://' + currentInfoHash + '/' + encoded, '_blank', 'noopener');
     }
 
     async function pauseTorrent() {
@@ -664,15 +667,6 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
       return seconds + 's';
     }
 
-    function escapeHtml(s) {
-      var d = document.createElement('div');
-      d.textContent = s;
-      return d.innerHTML;
-    }
-
-    function escapeAttr(s) {
-      return s.replace(/'/g, "\\\\'").replace(/"/g, '&quot;');
-    }
   </script>
 </body>
 </html>`

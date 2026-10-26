@@ -44,9 +44,59 @@ describe('request gate: control APIs', () => {
   })
 
   it('leaves ordinary p2p content alone', () => {
-    for (const url of ['bt://deadbeef/', 'hs://somekey/', 'hyper://abc/chat.html', 'ipfs://bafy/', 'https://example.com/']) {
+    for (const url of ['hs://somekey/', 'hyper://abc/chat.html', 'ipfs://bafy/', 'https://example.com/']) {
       expect(fetchFrom(url, 'https://example.com/').action, url).to.equal('allow')
     }
+  })
+})
+
+describe('request gate: torrent pages and files', () => {
+  const hash = 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
+  const file = `bt://${hash}/Folder/notes.txt`
+  const inTorrent = `bt://${hash}/Folder/index.html`
+  const pages = [`bt://${hash}/`, `magnet:?xt=urn:btih:${hash}`, 'webtorrent:http://192.168.1.1/admin']
+
+  it('opens any of them in a tab, from anywhere', () => {
+    for (const url of [file, ...pages]) {
+      expect(fetchFrom(url, 'https://example.com/', 'GET', { resourceType: 'mainFrame' }).action, url).to.equal('allow')
+    }
+  })
+
+  it('lets no other page read a downloaded file, or fetch anything through a torrent link', () => {
+    for (const url of [file, `bittorrent://${hash}/a.mp4`, ...pages]) {
+      for (const resourceType of ['xhr', 'image', 'media', 'subFrame']) {
+        expect(fetchFrom(url, 'https://evil.example/', 'GET', { resourceType }).action, `${url} as ${resourceType}`).to.equal('block')
+      }
+      expect(fetchFrom(url, 'file:///tmp/evil.html').action, url).to.equal('block')
+      expect(fetchFrom(url, 'hyper://abc/').action, url).to.equal('block')
+    }
+    expect(fetchFrom(file, `bt://${'a'.repeat(40)}/x.html`, 'GET', { initiatorOrigin: 'null' }).action, 'another torrent').to.equal('block')
+  })
+
+  it("lets a torrent's own files load one another", () => {
+    expect(fetchFrom(file, inTorrent, 'GET', { resourceType: 'media', initiatorOrigin: 'null' }).action).to.equal('allow')
+    expect(fetchFrom(file, `bt://${hash}/`, 'GET', { initiatorOrigin: `bt://${hash}` }).action).to.equal('allow')
+    expect(fetchFrom(file, inTorrent, 'POST', { initiatorOrigin: 'null' }).action).to.equal('block')
+  })
+
+  it('keeps a page inside a torrent away from the torrent API', () => {
+    const list = 'bt://api?action=api&api=list'
+    expect(fetchFrom(list, inTorrent, 'GET', { initiatorOrigin: 'null' }).action).to.equal('block')
+    expect(fetchFrom(list, `bt://${hash}/`, 'GET', { initiatorOrigin: `bt://${hash}` }).action).to.equal('allow')
+  })
+
+  it('stamps a file request, so a service worker cannot fetch one past the gate', async () => {
+    expect(stampVetted({ url: file, method: 'GET', resourceType: 'mainFrame', requestHeaders: {} })).to.have.property('x-peersky-vetted')
+    expect(stampVetted({ url: pages[0], method: 'GET', resourceType: 'mainFrame', requestHeaders: {} })).to.equal(null)
+    const serve = requireVetted(async () => new Response('the file'))
+    expect((await serve(new Request(file))).status).to.equal(403)
+    expect((await serve(new Request(file, { headers: stampVetted({ url: file, method: 'GET', requestHeaders: {} }) }))).status).to.equal(200)
+  })
+
+  it('gives bt:// no service workers, which could answer for a torrent page', () => {
+    expect(main).to.match(/const BT_PROTOCOL = \{\s*\.\.\.P2P_PROTOCOL,\s*allowServiceWorkers: false\s*\}/)
+    expect(main).to.include("{ scheme: 'bt', privileges: BT_PROTOCOL }")
+    expect(main).to.include("{ scheme: 'bittorrent', privileges: BT_PROTOCOL }")
   })
 })
 

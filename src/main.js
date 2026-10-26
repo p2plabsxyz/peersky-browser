@@ -104,6 +104,13 @@ const FILE_PROTOCOL = {
   stream: true
 }
 
+// No service worker: one registered by a page in a torrent could answer for the
+// torrent's own page, which gets the torrent controls.
+const BT_PROTOCOL = {
+  ...P2P_PROTOCOL,
+  allowServiceWorkers: false
+}
+
 // Magnet URIs are just identifiers that redirect to bt:// — minimal privileges
 const MAGNET_PROTOCOL = {
   standard: false,
@@ -190,8 +197,8 @@ globalProtocol.registerSchemesAsPrivileged([
   { scheme: 'hs', privileges: P2P_PROTOCOL },
   { scheme: 'web3', privileges: WEB3_PROTOCOL },
   { scheme: 'file', privileges: FILE_PROTOCOL },
-  { scheme: 'bittorrent', privileges: P2P_PROTOCOL },
-  { scheme: 'bt', privileges: P2P_PROTOCOL },
+  { scheme: 'bittorrent', privileges: BT_PROTOCOL },
+  { scheme: 'bt', privileges: BT_PROTOCOL },
   { scheme: 'magnet', privileges: MAGNET_PROTOCOL },
   { scheme: 'webtorrent', privileges: MAGNET_PROTOCOL },
   { scheme: BLOCKED_SCHEME, privileges: BLOCKED_SCHEME_PRIVILEGES }
@@ -1182,8 +1189,16 @@ ipcMain.on('window-control', (_event, command) => {
   }
 })
 
-// IPC handler for opening files in new tabs (used by BitTorrent pages)
+// IPC handler for opening a download in a new tab, from the downloads page
 ipcMain.on('open-url-in-tab', (event, fileUrl) => {
+  // A file:// page can read other local files, so no other page opens one.
+  let sender = null
+  try { sender = new URL(event.senderFrame?.url || '') } catch {}
+  if (sender?.protocol !== 'peersky:' || sender.hostname !== 'downloads') {
+    log.warn('[IPC] open-url-in-tab blocked a page other than the downloads page')
+    return
+  }
+
   // Security: only allow file:// URLs
   if (typeof fileUrl !== 'string' || !fileUrl.startsWith('file://')) {
     log.warn('[IPC] open-url-in-tab blocked non-file URL:', fileUrl)
