@@ -122,8 +122,12 @@ describe('page zoom', function () {
       expect(nav).to.contain('urlBarWrapper.appendChild(zoomIndicator)')
     })
 
-    it('hides itself at 100%', function () {
-      expect(nav).to.contain('indicator.hidden = percent === 100')
+    // It hid itself at 100%, so a pinch back to the page's own size left it
+    // blank.
+    it('shows 100% too', function () {
+      expect(nav).to.contain("zoomIndicator.textContent = '100%'")
+      expect(nav).to.not.contain('zoomIndicator.hidden')
+      expect(nav).to.not.contain('indicator.hidden')
     })
 
     it('is updated from the tab bar and follows the active tab', function () {
