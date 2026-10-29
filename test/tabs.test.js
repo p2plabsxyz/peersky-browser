@@ -530,6 +530,32 @@ describe('a page with no icon of its own', function () {
     expect(sameSite('https://example.com/', 'file:///tmp/a.pdf')).to.equal(false)
     expect(sameSite(undefined, 'https://example.com/')).to.equal(false)
   })
+
+  // Chromium compares a page's icons with the last ones it sent, from any
+  // site, and a web page always has one to send, its site's /favicon.ico at
+  // least. A page on another host sharing the last page's icon showed the
+  // default.
+  it('gives a web page that sent no icon the one Chromium sent last, from any site', function () {
+    const updated = tabBar.slice(
+      tabBar.indexOf("webview.addEventListener('page-favicon-updated', (e) => {"),
+      tabBar.indexOf("webview.addEventListener('focus'")
+    )
+    expect(updated.indexOf('this.reportedIcon.set(webview, faviconUrl)'), 'kept even without a tab element').to.be.within(0, updated.indexOf('if (!tabElement) return'))
+    // eslint-disable-next-line no-template-curly-in-string
+    const carried = 'if (reported && isWebAddress(newUrl)) this.iconBeforeNavigation.set(webview, `url(${reported})`)'
+    expect(navigated).to.contain(carried)
+    expect(navigated.indexOf(carried), 'ahead of the same-site rule').to.be.below(navigated.indexOf('sameSite(this.lastPageUrl.get(webview), newUrl)'))
+    const start = tabBar.indexOf('function isWebAddress (url) {')
+    const body = tabBar.slice(tabBar.indexOf('{', start) + 1, tabBar.indexOf('\n}\n', start))
+    // eslint-disable-next-line no-new-func
+    const isWebAddress = new Function('url', body)
+    expect(isWebAddress('https://accounts.example.com/domains/list')).to.equal(true)
+    expect(isWebAddress('http://localhost:8080/')).to.equal(true)
+    expect(isWebAddress('peersky://version/')).to.equal(false)
+    expect(isWebAddress('hyper://abc/')).to.equal(false)
+    expect(isWebAddress('about:blank')).to.equal(false)
+    expect(isWebAddress(undefined)).to.equal(false)
+  })
 })
 
 // A link opened in a new tab went to the end of the strip, far from the page

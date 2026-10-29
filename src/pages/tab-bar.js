@@ -62,6 +62,15 @@ function sameSite (a, b) {
   }
 }
 
+function isWebAddress (url) {
+  try {
+    const { protocol } = new URL(url)
+    return protocol === 'http:' || protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 // This page runs with node integration, so markup built from any stored or
 // page-supplied string must go through here.
 function escapeHtml (value) {
@@ -85,6 +94,8 @@ class TabBar extends HTMLElement {
     // address sets it before the page loads.
     this.lastPageUrl = new WeakMap()
     this.iconBeforeNavigation = new WeakMap()
+    // By webview, the icon Chromium last sent for it, whichever page sent it.
+    this.reportedIcon = new WeakMap()
     this._tabsStateTimer = null // Pending coalesced saveTabsState write
     this.webviewContainer = null // Will be set by connectWebviewContainer
     this.pinnedTabs = new Set() // Track pinned tabs
@@ -1241,12 +1252,19 @@ class TabBar extends HTMLElement {
       if (faviconElement) {
         const known = this.faviconsByTab.get(tabId)?.get(newUrl)
         // Chromium sends no page-favicon-updated when a page's icons are the
-        // same as the last page's, as between two pages of one site, so every
-        // link on Wikipedia left the tab with no icon, as did Home to
+        // same as the last ones it sent, as between two pages of one site, so
+        // every link on Wikipedia left the tab with no icon, as did Home to
         // peersky://version. Kept here, did-stop-loading puts it back for a
-        // page of the same site that sent none.
+        // page that sent none. A web page always has an icon to send, its
+        // site's /favicon.ico at least, so one that sent none has the icon
+        // Chromium sent last, whichever site that came from; a page on
+        // another host sharing the last page's icon showed the default. Any
+        // other page may have no icon at all, so it keeps the last page's
+        // only on the same site.
         const before = faviconElement.style.backgroundImage
-        if (before && before !== 'none' && sameSite(this.lastPageUrl.get(webview), newUrl)) this.iconBeforeNavigation.set(webview, before)
+        const reported = this.reportedIcon.get(webview)
+        if (reported && isWebAddress(newUrl)) this.iconBeforeNavigation.set(webview, `url(${reported})`)
+        else if (before && before !== 'none' && sameSite(this.lastPageUrl.get(webview), newUrl)) this.iconBeforeNavigation.set(webview, before)
         else this.iconBeforeNavigation.delete(webview)
         faviconElement.style.backgroundImage = known ? `url(${known})` : ''
       }
@@ -1328,11 +1346,12 @@ class TabBar extends HTMLElement {
 
     webview.addEventListener('page-favicon-updated', (e) => {
       this.iconBeforeNavigation.delete(webview)
+      // Get the first favicon URL from the event
+      const faviconUrl = e.favicons && e.favicons.length > 0 ? e.favicons[0] : null
+      this.reportedIcon.set(webview, faviconUrl)
       const tabElement = document.getElementById(tabId)
       if (!tabElement) return
 
-      // Get the first favicon URL from the event
-      const faviconUrl = e.favicons && e.favicons.length > 0 ? e.favicons[0] : null
       if (faviconUrl) this.rememberFavicon(tabId, webview.getURL(), faviconUrl)
 
       // Find or create favicon element
