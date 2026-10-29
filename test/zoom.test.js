@@ -4,7 +4,7 @@
 import { expect } from 'chai'
 import esmock from 'esmock'
 import { EventEmitter } from 'events'
-import { attachTrackpadZoom, handlePinchZoom, pinchZoomStep, PINCH_ZOOM_LIMITS, WHEEL_ZOOM_INTERVAL_MS } from '../src/trackpad-zoom.js'
+import { attachTrackpadZoom, handlePinchZoom, pinchZoomStep, WHEEL_ZOOM_INTERVAL_MS } from '../src/trackpad-zoom.js'
 
 async function loadActions () {
   const executed = []
@@ -170,12 +170,20 @@ describe('trackpad and wheel zoom', function () {
     return wc
   }
 
-  it('lets a pinch magnify every page a tab loads', function () {
+  // A page in a tab has no magnification of its own. Turned on for one, a
+  // pinch magnified the whole window, and two fingers then moved the address
+  // bar and tabs about.
+  it('never lets a pinch magnify a page in a tab', async function () {
     const wc = page()
     attachTrackpadZoom(wc)
     wc.emit('dom-ready')
     wc.emit('did-navigate')
-    expect(wc.limits).to.deep.equal([PINCH_ZOOM_LIMITS, PINCH_ZOOM_LIMITS])
+    expect(wc.limits).to.deep.equal([])
+    const { readFile } = await import('fs/promises')
+    for (const file of ['../src/trackpad-zoom.js', '../src/main.js', '../src/window-manager.js', '../src/pages/tab-bar.js']) {
+      const src = await readFile(new URL(file, import.meta.url), 'utf8')
+      expect(src, file).to.not.contain('setVisualZoomLevelLimits(')
+    }
   })
 
   it('zooms the tab with Ctrl and the wheel, one step per gesture burst', function () {

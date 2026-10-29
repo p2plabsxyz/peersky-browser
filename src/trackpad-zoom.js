@@ -6,9 +6,12 @@
 // it off for a page in a tab: there the pinch, which comes to the page as
 // Ctrl with the wheel, is picked up by the page's preload and handed on here
 // (handlePinchZoom), or by the window when it reaches the window instead.
+//
+// A pinch never magnifies the page, as Chrome's does: a page in a tab has no
+// magnification of its own, so turning it on for one let a pinch magnify the
+// whole window, address bar and tabs too, and two fingers then moved them
+// about.
 
-// From the page's own size up to three times it, like Chrome's pinch.
-export const PINCH_ZOOM_LIMITS = [1, 3]
 // The step the menu uses. A trackpad sends dozens of wheel events for one
 // gesture, so at most one step goes through in this long.
 export const WHEEL_ZOOM_STEP = 0.5
@@ -54,16 +57,6 @@ export function handlePinchZoom (ipcMain, { delay = 16 } = {}) {
 
 export function attachTrackpadZoom (wc, { now = Date.now } = {}) {
   if (!wc || typeof wc.getType !== 'function' || wc.getType() !== 'webview') return
-
-  // Set again for every page, since a navigation can swap in a new renderer
-  // that starts with pinching off.
-  const allowPinch = () => {
-    try {
-      if (!wc.isDestroyed()) wc.setVisualZoomLevelLimits(...PINCH_ZOOM_LIMITS)
-    } catch {}
-  }
-  wc.on('dom-ready', allowPinch)
-  wc.on('did-navigate', allowPinch)
 
   let lastStepAt = 0
   wc.on('zoom-changed', (_event, direction) => {
