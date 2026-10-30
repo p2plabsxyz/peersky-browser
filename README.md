@@ -7,7 +7,7 @@
 <div align="center">
     <img src="https://img.shields.io/github/actions/workflow/status/p2plabsxyz/peersky-browser/build.yml" alt="GitHub Actions Workflow Status">
     <img src="https://img.shields.io/badge/Platform-electron.js-black.svg" alt="platform">
-    <img src="https://img.shields.io/github/release-date-pre/p2plabsxyz/peersky-browser?color=green" alt="GitHub Pre-release" />
+    <img src="https://img.shields.io/github/release-date/p2plabsxyz/peersky-browser?color=green" alt="GitHub Release Date" />
     <!-- <img src="https://img.shields.io/github/v/release/p2plabsxyz/peersky-browser?color=green" alt="GitHub Release"> -->
     <a href="https://mastodon.social/@peersky"><img src="https://img.shields.io/mastodon/follow/113323887574214930" alt="Mastodon Follow"></a>
     <a href="https://deepwiki.com/p2plabsxyz/peersky-browser"><img src="https://img.shields.io/badge/Ask-DeepWiki-blue.svg" alt="Ask DeepWiki"></a>
