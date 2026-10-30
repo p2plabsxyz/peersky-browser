@@ -2,8 +2,9 @@ import fs from 'fs-extra'
 import path from 'path'
 import mime from 'mime-types'
 import { pathToFileURL } from 'url'
+import { LISTING_HEADER, LISTING_PARAM, isListingRead, listingToken } from './request-gate.js'
 
-function generateDirectoryListing (dirPath, entries) {
+function generateDirectoryListing (dirPath, entries, token) {
   const parentPath = path.dirname(dirPath)
   const parentDirName = path.basename(parentPath) || 'Parent Directory'
 
@@ -62,6 +63,9 @@ function generateDirectoryListing (dirPath, entries) {
       margin: 0;
       padding: 0;
     }
+    #visibilityHelp {
+      color: #9ca3af;
+    }
   </style>
 </head>
 <body>
@@ -94,19 +98,58 @@ function generateDirectoryListing (dirPath, entries) {
       <option value="hyper">Hypercore</option>
       <option value="ipfs">IPFS</option>
     </select>
+    <select id="visibilitySelect" aria-label="Who can open it">
+      <option value="public">Public</option>
+      <option value="private">Private</option>
+    </select>
     <button id="publishBtn" onclick="publishDirectory()">📤 Publish</button>
     <span id="status"></span>
   </p>
-  
+  <p id="visibilityHelp"></p>
+
   <div id="result"></div>
-  
+
   <script>
     let manifestCache = null;
+    // The token PeerSky put in this listing (request-gate.js). It reads this
+    // folder's files, and lets the listing make a private drive.
+    const listingToken = '${token || ''}';
+    const protocolSelect = document.getElementById('protocolSelect');
+    const visibilitySelect = document.getElementById('visibilitySelect');
+    const visibilityHelp = document.getElementById('visibilityHelp');
+
+    // Who can open a hyper:// upload, as in the Hyperdrive app. IPFS has no
+    // private uploads.
+    function updateVisibility() {
+      const usesHyper = protocolSelect.value === 'hyper';
+      visibilitySelect.hidden = !usesHyper;
+      visibilityHelp.hidden = !usesHyper;
+      visibilityHelp.textContent = visibilitySelect.value === 'private'
+        ? "Encrypted with this profile's key, so only your own linked devices can open it."
+        : 'Anyone you send the link to can open it, straight from this computer.';
+    }
+    protocolSelect.onchange = updateVisibility;
+    visibilitySelect.onchange = updateVisibility;
+    updateVisibility();
+
+    function withListingToken(href) {
+      const url = new URL(href);
+      url.hash = '';
+      url.searchParams.set('${LISTING_PARAM}', listingToken);
+      return url.toString();
+    }
+
+    // The folder's own name: a private upload goes in under it, and an IPFS
+    // upload names its files with it.
+    function folderName() {
+      const names = window.location.pathname.split('/').filter(Boolean);
+      return decodeURIComponent(names[names.length - 1] || '') || 'folder';
+    }
 
     async function loadManifest() {
       if (manifestCache) return manifestCache;
 
-      const manifestUrl = new URL(window.location.href);
+      const manifestUrl = new URL(withListingToken(window.location.href));
       manifestUrl.searchParams.set('__publishManifest', '1');
 
       const response = await fetch(manifestUrl.toString(), {
@@ -140,34 +183,50 @@ function generateDirectoryListing (dirPath, entries) {
         }
 
         if (protocol === 'hyper') {
-          const hyperdriveUrl = await generateHyperdriveKey('directory-' + Date.now());
-          console.log('Hyper base URL:', hyperdriveUrl);
+          const visibility = visibilitySelect.value;
+          const hyperdriveUrl = await generateHyperdriveKey('directory-' + Date.now(), visibility);
+          // A private upload goes in under the folder's name, so it is one
+          // folder among your private uploads, as from the Hyperdrive app.
+          const baseUrl = visibility === 'private'
+            ? hyperdriveUrl + encodeURIComponent(folderName()) + '/'
+            : hyperdriveUrl;
 
           for (const fileEntry of files) {
-            const url = hyperdriveUrl + encodeURIComponent(fileEntry.relativePath);
-            console.log('Uploading', fileEntry.relativePath, 'to', url);
+            const url = baseUrl + fileEntry.relativePath.split('/').map(encodeURIComponent).join('/');
+            console.log('Uploading', fileEntry.relativePath);
 
             const fileResponse = await fetch(fileEntry.fileUrl);
+            if (!fileResponse.ok) {
+              throw new Error('Failed to read ' + fileEntry.relativePath);
+            }
             const blob = await fileResponse.blob();
-            
+
+            const headers = {
+              'Content-Type': 'application/octet-stream',
+              '${LISTING_HEADER}': withListingToken(window.location.href)
+            };
+            // The file keeps its own date in the drive, as from the Hyperdrive app.
+            if (fileEntry.lastModified > 0) {
+              headers['Last-Modified'] = new Date(fileEntry.lastModified).toUTCString();
+            }
             const uploadResponse = await fetch(url, {
               method: 'PUT',
               body: blob,
-              headers: { 'Content-Type': 'application/octet-stream' }
+              headers
             });
-            
+
             if (!uploadResponse.ok) {
               throw new Error('Failed to upload ' + fileEntry.relativePath);
             }
           }
-          
+
           status.textContent = '✅ Published!';
           result.textContent = '';
           const hyperAnchor = document.createElement('a');
-          hyperAnchor.href = hyperdriveUrl;
+          hyperAnchor.href = baseUrl;
           hyperAnchor.target = '_blank';
           hyperAnchor.rel = 'noopener noreferrer';
-          hyperAnchor.textContent = hyperdriveUrl;
+          hyperAnchor.textContent = baseUrl;
           result.appendChild(hyperAnchor);
           
         } else {
@@ -182,7 +241,9 @@ function generateDirectoryListing (dirPath, entries) {
             }
             const blob = await response.blob();
 
-            const fileName = fileEntry.relativePath || fileEntry.name;
+            // Under the folder's name, as the Hyperdrive app sends a folder:
+            // the IPFS handler drops that first part and keeps the rest.
+            const fileName = folderName() + '/' + fileEntry.relativePath;
             const file = new File([blob], fileName, { type: blob.type || 'application/octet-stream' });
 
             formData.append('file', file, fileName);
@@ -223,10 +284,14 @@ function generateDirectoryListing (dirPath, entries) {
       }
     }
     
-    async function generateHyperdriveKey(name) {
-      const response = await fetch('hyper://localhost/?key=' + name, { method: 'POST' });
+    async function generateHyperdriveKey(name, visibility) {
+      const params = new URLSearchParams({ key: name, visibility });
+      const response = await fetch('hyper://localhost/?' + params, {
+        method: 'POST',
+        headers: { '${LISTING_HEADER}': withListingToken(window.location.href) }
+      });
       if (!response.ok) {
-        throw new Error('Failed to generate Hyperdrive key: ' + response.statusText);
+        throw new Error('Failed to generate Hyperdrive key: ' + ((await response.text()) || response.status));
       }
       return await response.text();
     }
@@ -256,6 +321,18 @@ function escapeHtml (text) {
   return text.replace(/[&<>"']/g, m => map[m])
 }
 
+// Containers Chromium won't play inline, named as their playable equivalents.
+const PLAYABLE_REMAPS = {
+  'video/x-matroska': 'video/webm', // MKV → WebM (same Matroska container)
+  'video/quicktime': 'video/mp4', // MOV → MP4 (same H.264/AAC codecs)
+  'audio/x-flac': 'audio/flac' // normalize x-flac to standard flac
+}
+
+export function playableContentType (filePath) {
+  const contentType = mime.lookup(filePath) || 'application/octet-stream'
+  return PLAYABLE_REMAPS[contentType] || contentType
+}
+
 export async function createHandler () {
   async function getFilesRecursive (dirPath, basePath = '') {
     const allFiles = []
@@ -269,7 +346,8 @@ export async function createHandler () {
 
     for (const entry of entries) {
       const fullPath = path.join(dirPath, entry.name)
-      const relativePath = basePath ? path.join(basePath, entry.name) : entry.name
+      // With / on every system: the listing puts it in a hyper:// or ipfs:// path.
+      const relativePath = basePath ? `${basePath}/${entry.name}` : entry.name
 
       if (entry.isDirectory()) {
         const subFiles = await getFilesRecursive(fullPath, relativePath)
@@ -282,6 +360,7 @@ export async function createHandler () {
             path: fullPath,
             relativePath,
             size: stat.size,
+            lastModified: stat.mtimeMs,
             fileUrl: pathToFileURL(fullPath).href
           })
         } catch (err) {
@@ -308,9 +387,17 @@ export async function createHandler () {
       //   log.info('Path stats:', filePath, 'isDirectory:', stats.isDirectory(), 'isFile:', stats.isFile());
 
       if (stats.isDirectory()) {
-        // Handle manifest requests first (used for publishing)
+        // Every file under the folder, for its listing's Publish button, with
+        // the listing's token on each file's URL so it may read them.
         if (url.searchParams.get('__publishManifest') === '1') {
-          const manifest = await getFilesRecursive(filePath, '')
+          if (!isListingRead(url)) {
+            return new Response('Forbidden', { status: 403, headers: { 'Content-Type': 'text/plain' } })
+          }
+          const manifest = (await getFilesRecursive(filePath, '')).map((file) => {
+            const fileUrl = new URL(file.fileUrl)
+            fileUrl.searchParams.set(LISTING_PARAM, url.searchParams.get(LISTING_PARAM))
+            return { ...file, fileUrl: fileUrl.href }
+          })
           return new Response(JSON.stringify({ files: manifest }), {
             status: 200,
             headers: {
@@ -349,26 +436,21 @@ export async function createHandler () {
 
         const validEntries = entryStats.filter(e => e !== null)
 
-        const html = generateDirectoryListing(filePath, validEntries)
+        const html = generateDirectoryListing(filePath, validEntries, listingToken(url))
 
+        // nosniff: the listing holds its token, so it never loads as a script
+        // or a stylesheet.
         return new Response(html, {
           status: 200,
           headers: {
             'Content-Type': 'text/html; charset=utf-8',
-            'Cache-Control': 'no-cache'
+            'Cache-Control': 'no-cache',
+            'X-Content-Type-Options': 'nosniff'
           }
         })
       } else {
         // For files, serve them directly with Range request support for streaming
-        let contentType = mime.lookup(filePath) || 'application/octet-stream'
-
-        // Remap container types that Chromium won't play inline to compatible equivalents
-        const mimeRemaps = {
-          'video/x-matroska': 'video/webm', // MKV → WebM (same Matroska container)
-          'video/quicktime': 'video/mp4', // MOV → MP4 (same H.264/AAC codecs)
-          'audio/x-flac': 'audio/flac' // normalize x-flac to standard flac
-        }
-        if (mimeRemaps[contentType]) contentType = mimeRemaps[contentType]
+        const contentType = playableContentType(filePath)
 
         const fileSize = stats.size
         const rangeHeader = request.headers.get('Range')

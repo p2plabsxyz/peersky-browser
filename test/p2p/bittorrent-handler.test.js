@@ -185,7 +185,7 @@ describe('BitTorrent protocol handler', function () {
         net: { fetch: fetch || (async () => { throw new Error('No network in this test') }) }
       },
       '../../src/logger.js': {
-        createLogger: () => ({ info () {}, warn () {}, error () {} })
+        createLogger: () => ({ debug () {}, info () {}, warn () {}, error () {} })
       },
       '../../src/settings-manager.js': {
         default: { settings: { theme: 'dark' } }
@@ -196,7 +196,7 @@ describe('BitTorrent protocol handler', function () {
     fork.returns(child)
 
     const handler = await mod.createHandler()
-    const loaded = { handler, child, ud, dd, mod, ipcMain }
+    const loaded = { handler, child, ud, dd, mod, ipcMain, fork }
     mintLatest = tokenIpc(loaded)
     return loaded
   }
@@ -347,6 +347,15 @@ describe('BitTorrent protocol handler', function () {
     expect(startRes.status).to.equal(200)
   })
 
+  it('a file inside a torrent gets no token, though it shares the torrent page\'s origin', async () => {
+    const mint = tokenIpc(await loadHandler())
+    for (const url of [`bt://${HASH_HEX}/Name/index.html`, `bittorrent://${HASH_HEX}/page.html`, `bt://${HASH_HEX}/Name/`]) {
+      expect(() => mint(url), url).to.throw('Forbidden')
+    }
+    expect(mint(`bt://${HASH_HEX}/?dn=Name`)).to.be.a('string')
+    expect(mint(`bittorrent://${HASH_HEX}`)).to.be.a('string')
+  })
+
   it('start merges custom tr= with defaults and returns success', async () => {
     const { handler, child } = await loadHandler()
     const token = mintToken()
@@ -425,6 +434,80 @@ describe('BitTorrent protocol handler', function () {
     } finally {
       fs.rmSync(dir, { recursive: true, force: true })
     }
+  })
+
+  describe('files a torrent holds', function () {
+    async function serving (files) {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'peersky-bt-files-'))
+      tmpDirs.push(dir)
+      for (const [rel, body] of Object.entries(files)) {
+        fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true })
+        fs.writeFileSync(path.join(dir, rel), body)
+      }
+      const { handler, child } = await loadHandler({ downloadsDir: dir })
+      child.emit('message', {
+        type: 'status-update',
+        infoHash: HASH_HEX,
+        name: 'T',
+        downloadPath: dir,
+        done: true,
+        magnetURI: MAGNET,
+        files: Object.entries(files).map(([rel, body], index) => ({ index, name: path.basename(rel), path: rel, length: body.length }))
+      })
+      return (rel, headers) => handler(new Request(`bt://${HASH_HEX}/${rel}`, { headers }))
+    }
+
+    it('runs a page from a torrent sandboxed in an origin of its own, never sniffed', async () => {
+      const get = await serving({ 'T/index.html': '<script>top.peerskyBT</script>', 'T/notes.txt': 'hi' })
+      const page = await get('T/index.html')
+      expect(page.status).to.equal(200)
+      expect(page.headers.get('Content-Type')).to.equal('text/html; charset=utf-8')
+      expect(page.headers.get('Content-Security-Policy')).to.match(/^sandbox allow-scripts/)
+      expect(page.headers.get('Content-Security-Policy')).to.not.include('allow-same-origin')
+      expect(page.headers.get('X-Content-Type-Options')).to.equal('nosniff')
+      const text = await get('T/notes.txt')
+      expect(text.headers.get('Content-Type')).to.equal('text/plain; charset=utf-8')
+      expect(text.headers.get('Content-Security-Policy')).to.match(/^sandbox /)
+    })
+
+    it('leaves a PDF unsandboxed, where the PDF viewer would not run', async () => {
+      const get = await serving({ 'T/book.pdf': '%PDF-1.4' })
+      const res = await get('T/book.pdf')
+      expect(res.headers.get('Content-Type')).to.equal('application/pdf')
+      expect(res.headers.get('Content-Security-Policy')).to.equal(null)
+    })
+
+    it('answers byte ranges, so a video can seek, and plays an MKV as WebM', async () => {
+      const get = await serving({ 'T/clip.mkv': '0123456789' })
+      const part = await get('T/clip.mkv', { Range: 'bytes=2-5' })
+      expect(part.status).to.equal(206)
+      expect(part.headers.get('Content-Range')).to.equal('bytes 2-5/10')
+      expect(part.headers.get('Content-Length')).to.equal('4')
+      expect(part.headers.get('Content-Type')).to.equal('video/webm')
+      expect(await part.text()).to.equal('2345')
+      expect(await (await get('T/clip.mkv', { Range: 'bytes=-3' })).text()).to.equal('789')
+      expect(await (await get('T/clip.mkv', { Range: 'bytes=7-' })).text()).to.equal('789')
+      const whole = await get('T/clip.mkv')
+      expect(whole.status).to.equal(200)
+      expect(whole.headers.get('Accept-Ranges')).to.equal('bytes')
+      expect(whole.headers.get('Content-Length')).to.equal('10')
+      const past = await get('T/clip.mkv', { Range: 'bytes=10-' })
+      expect(past.status).to.equal(416)
+      expect(past.headers.get('Content-Range')).to.equal('bytes */10')
+    })
+
+    it('reads only the ranges it can serve', async () => {
+      const { mod } = await loadHandler()
+      expect(mod.parseByteRange('bytes=0-0', 10)).to.deep.equal({ start: 0, end: 0 })
+      expect(mod.parseByteRange('bytes=4-99', 10)).to.deep.equal({ start: 4, end: 9 })
+      expect(mod.parseByteRange('bytes=-20', 10)).to.deep.equal({ start: 0, end: 9 })
+      for (const header of [undefined, '', 'items=1-2', 'bytes=0-1,4-5', 'bytes=-']) {
+        expect(mod.parseByteRange(header, 10), String(header)).to.equal(null)
+      }
+      for (const [header, size] of [['bytes=5-2', 10], ['bytes=-0', 10], ['bytes=0-', 0]]) {
+        expect(mod.parseByteRange(header, size), header).to.equal(false)
+      }
+    })
   })
 
   it('rejects path segments that escape the torrent root (../ after normalize)', async () => {
@@ -762,6 +845,40 @@ describe('BitTorrent protocol handler', function () {
     }
   })
 
+  it('saves an unfinished torrent for the next start paused, with no peers or speeds', async () => {
+    const { child, ud, mod } = await loadHandler()
+    child.emit('message', {
+      type: 'status-update',
+      infoHash: HASH_HEX,
+      name: 'T',
+      progress: 0.4,
+      numPeers: 6,
+      downloadSpeed: 5000,
+      uploadSpeed: 20,
+      timeRemaining: 9000,
+      done: false,
+      paused: false,
+      files: [],
+      magnetURI: MAGNET
+    })
+    mod.shutdownBittorrent()
+    const saved = JSON.parse(fs.readFileSync(path.join(ud, 'bt-state.json'), 'utf8'))[HASH_HEX]
+    expect(saved).to.include({ paused: true, numPeers: 0, downloadSpeed: 0, uploadSpeed: 0, timeRemaining: null, progress: 0.4 })
+  })
+
+  it('keeps .torrent files in the profile, and remove forgets one with its torrent', async () => {
+    const { handler, ud, fork } = await loadHandler()
+    const kept = path.join(ud, 'bt-torrents', `${HASH_HEX}.torrent`)
+    expect(fork.firstCall.args[1][1]).to.equal(path.dirname(kept))
+    fs.mkdirSync(path.dirname(kept), { recursive: true })
+    fs.writeFileSync(kept, 'd4:infod4:name1:xee')
+    const res = await handler(
+      new Request(apiQuery({ api: 'remove', hash: HASH_HEX }), { method: 'POST', headers: { 'X-BT-Token': mintToken() } })
+    )
+    expect(res.status).to.equal(200)
+    expect(fs.existsSync(kept)).to.equal(false)
+  })
+
   it('resume from cache returns 409 when another torrent is actively seeding', async () => {
     const { handler, child } = await loadHandler({
       replyAs (proc) {
@@ -894,8 +1011,9 @@ function btihFromMagnet(uri) {
 }
 
 class FakeTorrent extends EventEmitter {
-  constructor(magnetURI) {
+  constructor(magnetURI, client) {
     super();
+    this.client = client;
     this.magnetURI = magnetURI;
     this.infoHash = btihFromMagnet(magnetURI);
     this.name = "FakeTorrent";
@@ -920,6 +1038,7 @@ class FakeTorrent extends EventEmitter {
   deselect() {}
 
   destroy(_opts, cb) {
+    if (this.client) this.client.torrents = this.client.torrents.filter((t) => t !== this);
     if (process.send) process.send({ type: "fake-destroy", infoHash: this.infoHash });
     if (typeof cb === "function") cb();
   }
@@ -935,12 +1054,22 @@ export default class FakeWebTorrent extends EventEmitter {
     return this.torrents.find((t) => t.infoHash === hash) || null;
   }
 
-  add(magnetURI) {
-    const t = new FakeTorrent(magnetURI);
+  add(source) {
+    // A kept .torrent file reads "fake torrent file <hash>" here.
+    const fromFile = typeof source !== "string";
+    const magnetURI = fromFile ? "magnet:?xt=urn:btih:" + Buffer.from(source).toString().split(" ").pop() : source;
+    if (process.send) process.send({ type: "fake-add", from: fromFile ? "file" : "magnet", infoHash: btihFromMagnet(magnetURI) });
+    if (magnetURI.includes("dn=Boom")) {
+      setTimeout(() => { throw new Error("boom"); });
+      Promise.reject(new Error("boom, rejected"));
+    }
+    const t = new FakeTorrent(magnetURI, this);
+    t.torrentFile = Buffer.from("fake torrent file " + t.infoHash);
     this.torrents.push(t);
 
     queueMicrotask(() => {
       // Complete after worker attaches listeners.
+      t.emit("metadata");
       t.done = true;
       t.progress = 1;
       t.downloadSpeed = 0;
@@ -961,6 +1090,7 @@ export default class FakeWebTorrent extends EventEmitter {
   async function withTempWorker (run) {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'peersky-bt-worker-test-'))
     const dl = fs.mkdtempSync(path.join(os.tmpdir(), 'peersky-bt-worker-dl-'))
+    const torrentFiles = path.join(tmp, 'bt-torrents')
 
     const workerSrcPath = path.join(_testDir, '../../src/protocols/bt/worker.js')
     const workerOutPath = path.join(tmp, 'worker.js')
@@ -975,16 +1105,21 @@ export default class FakeWebTorrent extends EventEmitter {
     )
     fs.writeFileSync(path.join(nm, 'index.js'), fakeWebTorrentModuleSource(), 'utf8')
 
-    const child = forkProcess(workerOutPath, [dl], {
+    const child = forkProcess(workerOutPath, [dl, torrentFiles], {
       stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
       silent: true
     })
+    let stderr = ''
+    child.stderr.on('data', (data) => { stderr += data })
 
     try {
-      await run(child)
+      await run(child, { torrentFiles, stderr: () => stderr })
     } finally {
+      // Gone before its folders are, as it may still be writing a .torrent file.
+      const exited = child.exitCode === null ? new Promise((resolve) => child.once('exit', resolve)) : null
       try { child.disconnect() } catch {}
       try { child.kill('SIGTERM') } catch {}
+      await exited
       fs.rmSync(tmp, { recursive: true, force: true })
       fs.rmSync(dl, { recursive: true, force: true })
     }
@@ -1021,6 +1156,55 @@ export default class FakeWebTorrent extends EventEmitter {
 
       const destroyed = await waitForMessage(child, (m) => m && m.type === 'fake-destroy' && m.infoHash === HASH_HEX)
       expect(destroyed.infoHash).to.equal(HASH_HEX)
+    })
+  })
+
+  it('keeps a torrent\'s .torrent file, and seeds from it later with no peer to ask', async () => {
+    await withTempWorker(async (child, { torrentFiles }) => {
+      await waitForMessage(child, (m) => m && m.type === 'ready')
+      const added = waitForMessage(child, (m) => m && m.type === 'fake-add')
+      const destroyed = waitForMessage(child, (m) => m && m.type === 'fake-destroy')
+      child.send({ id: 1, action: 'start', magnetUri: MAGNET, announce: [] })
+      expect((await added).from).to.equal('magnet')
+      await destroyed
+
+      const kept = path.join(torrentFiles, `${HASH_HEX}.torrent`)
+      for (let i = 0; i < 50 && !fs.existsSync(kept); i++) await new Promise((resolve) => setTimeout(resolve, 20))
+      expect(fs.readFileSync(kept, 'utf8')).to.equal(`fake torrent file ${HASH_HEX}`)
+      expect(fs.readdirSync(torrentFiles)).to.deep.equal([`${HASH_HEX}.torrent`])
+
+      const seeded = waitForMessage(child, (m) => m && m.type === 'fake-add')
+      child.send({ id: 2, action: 'seed', magnetUri: MAGNET, announce: [] })
+      expect(await seeded).to.include({ from: 'file', infoHash: HASH_HEX })
+    })
+  })
+
+  it('finds the kept file from an old base32 magnet link too', async () => {
+    await withTempWorker(async (child, { torrentFiles }) => {
+      await waitForMessage(child, (m) => m && m.type === 'ready')
+      fs.mkdirSync(torrentFiles, { recursive: true })
+      fs.writeFileSync(path.join(torrentFiles, `${HASH_HEX}.torrent`), `fake torrent file ${HASH_HEX}`)
+      const added = waitForMessage(child, (m) => m && m.type === 'fake-add')
+      // deadbeef… in base32
+      child.send({ id: 1, action: 'seed', magnetUri: 'magnet:?xt=urn:btih:32w35366vw7o7xvnx3x55ln657pk3pxp', announce: [] })
+      expect((await added).from).to.equal('file')
+    })
+  })
+
+  it('one torrent\'s error does not stop the worker and every other torrent with it', async () => {
+    await withTempWorker(async (child, { stderr }) => {
+      await waitForMessage(child, (m) => m && m.type === 'ready')
+      const boom = waitForMessage(child, (m) => m && m.type === 'fake-add')
+      child.send({ id: 1, action: 'start', magnetUri: `magnet:?xt=urn:btih:${'b'.repeat(40)}&dn=Boom`, announce: [] })
+      await boom
+      await new Promise((resolve) => setTimeout(resolve, 100))
+
+      const done = waitForMessage(child, (m) => m && m.type === 'done' && m.infoHash === HASH_HEX)
+      child.send({ id: 2, action: 'start', magnetUri: MAGNET, announce: [] })
+      expect((await done).infoHash).to.equal(HASH_HEX)
+      expect(child.exitCode).to.equal(null)
+      expect(stderr()).to.include('[BT-Worker] Uncaught error: Error: boom')
+      expect(stderr()).to.include('[BT-Worker] Unhandled rejection: Error: boom, rejected')
     })
   })
 
@@ -1076,5 +1260,103 @@ describe('BitTorrent pages', function () {
     const notice = torrentPage.match(/<div class="privacy-warning">\s*([\s\S]*?)\s*<\/div>/)[1]
     expect(notice).to.include('Your IP address is visible to peers')
     expect(manager).to.include(notice)
+  })
+
+  // A function of a page's inline script, by its name.
+  function pageFunction (script, name) {
+    const start = script.indexOf(`function ${name}(`)
+    return script.slice(start, script.indexOf('\n    }\n', start) + 6)
+  }
+
+  it('the torrent page puts file names in as text, and opens a file from the torrent, not as a file:// page', async () => {
+    const { generateTorrentUI } = await import('../../src/protocols/bt/torrentPage.js')
+    const html = generateTorrentUI(`magnet:?xt=urn:btih:${HASH_HEX}&dn=</script><b>x</b>`, HASH_HEX, 'magnet', null, 'dark')
+    expect(html.match(/<\/script>/g), 'a link ended the script block').to.have.lengthOf(1)
+    const script = html.match(/<script>([\s\S]*?)<\/script>/)[1]
+    expect(script).to.not.include("'file://'")
+
+    const element = () => ({ children: [], style: {}, listeners: {}, appendChild (child) { this.children.push(child) }, addEventListener (type, fn) { this.listeners[type] = fn } })
+    const tbody = element()
+    const document = { getElementById: (id) => (id === 'filesList' ? tbody : element()), createElement: element }
+    const opened = []
+    const renderFiles = new Function('document', 'window', 'currentInfoHash', 'formatBytes', // eslint-disable-line no-new-func
+      `${pageFunction(script, 'renderFiles')}\n${pageFunction(script, 'openFile')}\nreturn renderFiles`
+    )(document, { open: (...args) => opened.push(args) }, HASH_HEX, (n) => `${n} B`)
+
+    const name = '&#39;);alert(1);<img src=x onerror=alert(2)>.html'
+    renderFiles([{ index: 0, name, path: `Folder\\Sub/${name}`, length: 3 }])
+    const cells = tbody.children[0].children
+    expect(cells[1].textContent).to.equal(name)
+    cells[2].children[0].listeners.click()
+    expect(opened).to.deep.equal([[`bt://${HASH_HEX}/Folder/Sub/${encodeURIComponent(name)}`, '_blank', 'noopener']])
+  })
+
+  it('the manager shows a downloaded torrent as done, with nothing to resume or stop', () => {
+    const script = read('bt-manager.html').match(/<script>([\s\S]*?)<\/script>/)[1]
+    const formatState = new Function( // eslint-disable-line no-new-func
+      `${['isActivelySeeding', 'isFinished', 'formatState'].map((name) => pageFunction(script, name)).join('\n')}\nreturn formatState`
+    )()
+    const states = {
+      downloading: {},
+      paused: { paused: true },
+      stopped: { paused: true, stopped: true },
+      seeding: { done: true, mode: 'seed', isSeeding: true },
+      'paused seeding': { done: true, mode: 'seed', paused: true },
+      'seeding stopped': { done: true, mode: 'download', paused: true },
+      'seeding stopped with Stop': { done: true, mode: 'download', paused: true, stopped: true }
+    }
+    expect(Object.fromEntries(Object.entries(states).map(([key, t]) => [key, formatState(t)]))).to.deep.equal({
+      downloading: 'downloading',
+      paused: 'paused',
+      stopped: 'stopped',
+      seeding: 'seeding',
+      'paused seeding': 'paused',
+      'seeding stopped': 'done',
+      'seeding stopped with Stop': 'done'
+    })
+  })
+})
+
+// A peer connecting to a paused torrent made WebTorrent throw, which ended the
+// worker and every torrent in it (patches/webtorrent+3.0.21.patch).
+describe('WebTorrent with a paused torrent', function () {
+  this.timeout(30000)
+
+  it('turns an encrypted peer away and keeps going, then serves it once resumed', async () => {
+    const { default: WebTorrent } = await import('webtorrent')
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'peersky-bt-paused-'))
+    const file = path.join(dir, 'hello.txt')
+    fs.writeFileSync(file, 'hello from a paused seeder\n'.repeat(1000))
+    const opts = { dht: false, tracker: false, lsd: false, utp: false, natUpnp: false, natPmp: false }
+    const seeder = new WebTorrent(opts)
+    const peer = new WebTorrent(opts)
+    // Mocha swallows a rejection no test awaits, which is how this one ends.
+    const thrown = []
+    const record = (err) => thrown.push(err)
+    process.on('unhandledRejection', record)
+    try {
+      await new Promise((resolve) => seeder.once('listening', resolve))
+      const address = `127.0.0.1:${seeder.address().port}`
+      const seeded = await new Promise((resolve) => seeder.seed(file, { path: dir }, resolve))
+      seeded.pause()
+
+      const leech = peer.add(seeded.magnetURI, { path: fs.mkdtempSync(path.join(dir, 'leech-')) })
+      await new Promise((resolve) => leech.once('infoHash', resolve))
+      for (let i = 0; i < 3; i++) {
+        leech.addPeer(address)
+        await new Promise((resolve) => setTimeout(resolve, 300))
+      }
+      expect(seeded.destroyed).to.equal(false)
+      expect(thrown.map((err) => err?.stack || String(err))).to.deep.equal([])
+
+      seeded.resume()
+      leech.addPeer(address)
+      if (!leech.done) await new Promise((resolve) => leech.once('done', resolve))
+      expect(leech.progress).to.equal(1)
+    } finally {
+      process.off('unhandledRejection', record)
+      await Promise.all([seeder, peer].map((client) => new Promise((resolve) => client.destroy(resolve))))
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

@@ -4,6 +4,20 @@ import fs from 'fs'
 
 const downloadPath = process.argv[2] || path.join(process.env.HOME || '/tmp', 'Downloads', 'PeerskyTorrents')
 if (!fs.existsSync(downloadPath)) fs.mkdirSync(downloadPath, { recursive: true })
+// Each torrent's .torrent file, kept once its file list arrives. Seeding or
+// resuming it later starts from that, so it needs no peer to hand the list over
+// again: the Internet Archive's torrents mostly have web seeds and no peers.
+const torrentFilesPath = process.argv[3] || null
+if (torrentFilesPath && !fs.existsSync(torrentFilesPath)) fs.mkdirSync(torrentFilesPath, { recursive: true })
+
+// One torrent's error must not stop every other one. Like WebTorrent's own
+// desktop app, which runs it in a page, log it and keep going.
+process.on('uncaughtException', (err) => {
+  console.error('[BT-Worker] Uncaught error:', err?.stack || err)
+})
+process.on('unhandledRejection', (err) => {
+  console.error('[BT-Worker] Unhandled rejection:', err?.stack || err)
+})
 
 let client = null
 const torrentModes = new Map()
@@ -124,6 +138,39 @@ function extractHash (uri) {
   return match ? match[1].toLowerCase() : null
 }
 
+// An info hash is 40 hex digits, or 32 base32 letters in older magnet links.
+function hexHash (hash) {
+  if (/^[a-f0-9]{40}$/i.test(hash || '')) return hash.toLowerCase()
+  if (!/^[a-z2-7]{32}$/i.test(hash || '')) return null
+  let bits = ''
+  for (const c of hash.toUpperCase()) bits += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'.indexOf(c).toString(2).padStart(5, '0')
+  return bits.match(/.{4}/g).map((b) => parseInt(b, 2).toString(16)).join('')
+}
+
+function torrentFileOf (infoHash) {
+  const hex = hexHash(infoHash)
+  return torrentFilesPath && hex ? path.join(torrentFilesPath, `${hex}.torrent`) : null
+}
+
+// Written beside and renamed, so a crash mid-write leaves no half file.
+function keepTorrentFile (torrent) {
+  const file = torrentFileOf(torrent.infoHash)
+  if (!file || !torrent.torrentFile || fs.existsSync(file)) return
+  fs.writeFile(`${file}.part`, torrent.torrentFile, (err) => {
+    if (!err) return fs.rename(`${file}.part`, file, () => {})
+    console.warn('[BT-Worker] Could not keep the torrent file:', err.message)
+  })
+}
+
+function keptTorrentFile (infoHash) {
+  const file = torrentFileOf(infoHash)
+  try {
+    return file && fs.existsSync(file) ? fs.readFileSync(file) : null
+  } catch {
+    return null
+  }
+}
+
 function attachTorrentEvents (torrent, mode) {
   torrent.on('infoHash', () => {
     torrentModes.set(torrent.infoHash, mode)
@@ -132,6 +179,7 @@ function attachTorrentEvents (torrent, mode) {
 
   torrent.on('metadata', () => {
     console.log(`[BT-Worker] Metadata: ${torrent.name}, ${torrent.files.length} files, ${(torrent.length / (1024 * 1024)).toFixed(1)} MB`)
+    keepTorrentFile(torrent)
   })
 
   torrent.on('ready', () => {
@@ -207,7 +255,7 @@ async function addTorrent (id, { magnetUri, announce, mode }) {
     }
   }
 
-  const torrent = client.add(magnetUri, { path: downloadPath, announce: announce || [] })
+  const torrent = client.add(keptTorrentFile(hash) || magnetUri, { path: downloadPath, announce: announce || [] })
   if (hash) torrentModes.set(hash, mode)
   attachTorrentEvents(torrent, mode)
 

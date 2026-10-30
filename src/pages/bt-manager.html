@@ -186,16 +186,23 @@
     var allTorrents = [];
     var lastActionMessage = "";
 
-    function formatState(t) {
-      if (t.stopped) return "stopped";
-      if (t.paused) return "paused";
-      if (t.done && t.isSeeding && !t.paused && !t.stopped) return "seeding";
-      if (t.done) return "done";
-      return "downloading";
-    }
-
     function isActivelySeeding(t) {
       return !!(t && t.done && t.isSeeding && !t.paused && !t.stopped);
+    }
+
+    // Downloaded and not seeding. Stopping a seeding session marks it paused,
+    // which is still done, with nothing to resume.
+    function isFinished(t) {
+      return !!(t && t.done && t.mode !== "seed");
+    }
+
+    function formatState(t) {
+      if (isActivelySeeding(t)) return "seeding";
+      if (isFinished(t)) return "done";
+      if (t.stopped) return "stopped";
+      if (t.paused) return "paused";
+      if (t.done) return "done";
+      return "downloading";
     }
 
     function formatProgress(value) {
@@ -220,7 +227,7 @@
         parts.push('<a href="bt://' + encodeURIComponent(hash) + '" class="archive-action-btn action-link">Open</a>');
       }
       if (hash) {
-        if (t.paused) {
+        if (t.paused && !isFinished(t)) {
           parts.push('<button class="archive-action-btn bt-action-btn" data-action="resume" data-hash="' + escapeHtml(hash) + '"' + disabled + '>Resume</button>');
         } else if (!t.done || t.isSeeding || t.mode === "seed") {
           parts.push('<button class="archive-action-btn bt-action-btn" data-action="pause" data-hash="' + escapeHtml(hash) + '"' + disabled + '>Pause</button>');
@@ -231,7 +238,7 @@
         if (isActivelySeeding(t)) {
           parts.push('<button class="archive-action-btn bt-action-btn" data-action="unseed" data-hash="' + escapeHtml(hash) + '"' + disabled + '>Stop Seeding</button>');
         }
-        if (!t.done || t.paused || t.isSeeding || t.mode === "seed") {
+        if (!t.stopped && !isFinished(t)) {
           parts.push('<button class="archive-action-btn bt-action-btn" data-action="stop" data-hash="' + escapeHtml(hash) + '"' + disabled + '>Stop</button>');
         }
         parts.push('<button class="archive-action-btn bt-action-btn" data-action="remove" data-hash="' + escapeHtml(hash) + '"' + disabled + '>Remove</button>');

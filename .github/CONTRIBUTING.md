@@ -51,6 +51,6 @@ Peersky collaborates with skilled professionals. We are not outsourcing judgment
 Use AI thoughtfully. Maintain high standards. Take full ownership of your work.
 
 ## Questions
-* Please reach out to us on [Matrix](https://matrix.to/#/#peersky:matrix.org) or contact@p2plabs.xyz.
+* Please reach out to us in [P2P Republic](https://peersky.p2plabs.xyz/peerchat/), our public room in PeerChat, or at contact@p2plabs.xyz.
 
 *Hope to see your username on our list of [contributors](https://github.com/p2plabsxyz/peersky-browser/graphs/contributors) 🎉*

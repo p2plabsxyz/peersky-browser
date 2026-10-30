@@ -227,8 +227,13 @@ describe('Settings, P2P data', function () {
 describe('Reset P2P data, and the space read after it', function () {
   this.timeout(20000)
   let root, profile, downloads, handlers, manager
+  let restarts
 
   beforeEach(async function () {
+    // Each test its own count: a restart asked for in an earlier test comes
+    // half a second later, during the next one.
+    const mine = { count: 0 }
+    restarts = mine
     root = mkdtempSync(path.join(os.tmpdir(), 'peersky-p2p-reset-'))
     profile = path.join(root, 'profile')
     downloads = path.join(root, 'Downloads')
@@ -236,7 +241,13 @@ describe('Reset P2P data, and the space read after it', function () {
     write(path.join(downloads, 'PeerskyTorrents', 'Big Buck Bunny', 'movie.mp4'), 128 * 1024)
     handlers = new Map()
     const electron = {
-      app: { getPath: (name) => name === 'downloads' ? downloads : profile, on () {}, whenReady: () => new Promise(() => {}) },
+      app: {
+        getPath: (name) => name === 'downloads' ? downloads : profile,
+        on () {},
+        whenReady: () => new Promise(() => {}),
+        relaunch () { mine.count += 1 },
+        quit () {}
+      },
       ipcMain: {
         handle (channel, handler) {
           // A second settings manager would answer in place of this one.
@@ -276,6 +287,7 @@ describe('Reset P2P data, and the space read after it', function () {
     expect(before.parts.hyper).to.be.at.least(64 * 1024)
 
     await handlers.get('settings-reset-p2p')(fromSettings, {})
+    await manager.runPendingP2PReset()
 
     expect(existsSync(path.join(downloads, 'PeerskyTorrents', 'Big Buck Bunny', 'movie.mp4'))).to.equal(true)
     expect(existsSync(path.join(profile, 'hyper-private', 'db', '000002.sst'))).to.equal(true)
@@ -300,14 +312,17 @@ describe('Reset P2P data, and the space read after it', function () {
   it('tells the Hyperdrive app\'s views to drop what they kept, each time', async function () {
     const epoch = () => JSON.parse(readFileSync(path.join(profile, 'hyperdrive-views.json'), 'utf8')).epoch
     await handlers.get('settings-reset-p2p')(fromSettings, {})
+    await manager.runPendingP2PReset()
     const first = epoch()
     expect(first).to.be.above(0)
     await handlers.get('settings-reset-p2p')(fromSettings, { resetIdentities: true })
+    await manager.runPendingP2PReset()
     expect(epoch()).to.be.above(first)
   })
 
   it('keeps them as well when the identities go too', async function () {
     await handlers.get('settings-reset-p2p')(fromSettings, { resetIdentities: true })
+    await manager.runPendingP2PReset()
     expect(existsSync(path.join(profile, 'hyper'))).to.equal(false)
     expect(existsSync(path.join(profile, 'ipfs'))).to.equal(false)
     expect(existsSync(path.join(downloads, 'PeerskyTorrents', 'Big Buck Bunny', 'movie.mp4'))).to.equal(true)
@@ -324,6 +339,31 @@ describe('Reset P2P data, and the space read after it', function () {
     }
     expect(existsSync(path.join(profile, 'ipfs')), 'nothing was deleted').to.equal(true)
     expect(existsSync(path.join(profile, 'hyperdrive-views.json')), 'the views kept what they had').to.equal(false)
+    expect(existsSync(path.join(profile, 'p2p-reset-pending.json')), 'nothing was left for the next start').to.equal(false)
+  })
+
+  // Deleted while PeerSky ran, PeerChat wrote its profile and rooms back with
+  // the next message, so they were all there again after a restart.
+  it('restarts PeerSky and deletes at the next start, before the stores open', async function () {
+    const answer = await handlers.get('settings-reset-p2p')(fromSettings, {})
+    expect(answer.restarting).to.equal(true)
+    expect(existsSync(path.join(profile, 'peersky-chat-rooms.json')), 'nothing deleted while running').to.equal(true)
+    await new Promise((resolve) => setTimeout(resolve, 600))
+    expect(restarts.count).to.equal(1)
+    expect(await manager.runPendingP2PReset()).to.equal(true)
+    expect(existsSync(path.join(profile, 'peersky-chat-rooms.json'))).to.equal(false)
+    expect(existsSync(path.join(profile, 'p2p-reset-pending.json'))).to.equal(false)
+    // A start with nothing asked for deletes nothing.
+    expect(await manager.runPendingP2PReset()).to.equal(false)
+  })
+
+  it('is run at start before anything opens the stores', async function () {
+    const main = readFileSync(new URL('../../src/main.js', import.meta.url), 'utf8')
+    const reset = main.indexOf('await runPendingP2PReset()')
+    expect(reset).to.be.greaterThan(-1)
+    expect(main.indexOf('const userSession = getBrowserSession()')).to.be.greaterThan(reset)
+    expect(main.indexOf("['protocols', setupProtocols(userSession)]")).to.be.greaterThan(reset)
+    expect(main.indexOf("['p2p app registry', p2pAppRegistry.init()]")).to.be.greaterThan(reset)
   })
 
   it('tells only Settings how much space P2P data takes', async function () {

@@ -1,16 +1,18 @@
-import { app, session, protocol as globalProtocol, ipcMain, BrowserWindow, Menu, webContents, shell, safeStorage } from 'electron' // eslint-disable-line no-unused-vars
+import { app, session, protocol as globalProtocol, ipcMain, BrowserWindow, Menu, webContents, shell, safeStorage, dialog } from 'electron' // eslint-disable-line no-unused-vars
 import { createLogger } from './logger.js'
 import fs from 'fs/promises'
 import path from 'path'
+import { pathToFileURL } from 'url'
 import crypto from 'crypto'
 import { createHandler as createBrowserHandler } from './protocols/peersky-protocol.js'
 import { createHandler as createBrowserThemeHandler } from './protocols/theme-handler.js'
 import { createHandler as createIPFSHandler, warmupIPFS, suspendIPFS } from './protocols/ipfs-handler.js'
 import { createHandler as createHyperHandler, warmupHyper, suspendHyper } from './protocols/hyper-handler.js'
-import { createHandler as createHSHandler } from './protocols/hs-handler.js'
+import { createHandler as createHSHandler, MAX_DOCUMENT_SIZE } from './protocols/hs-handler.js'
 import { createHandler as createWeb3Handler } from './protocols/web3-handler.js'
 import { createHandler as createFileHandler } from './protocols/file-handler.js'
 import { attachTrackpadZoom, handlePinchZoom } from './trackpad-zoom.js'
+import { followHistoryRedirect } from './history-address.js'
 import { applyPasswordStore, choosePasswordStore } from './linux-keyring.js'
 import { sealFilesAtRest } from './backup/sealed-file.js'
 import { PRIVATE_DRIVE_KEY_FILE } from './backup/private-drive-key.js'
@@ -21,7 +23,7 @@ import { ipfsOptions, hyperOptions } from './protocols/config.js'
 import { gateRequest, stampVetted, requireVetted, frameUrlOf } from './protocols/request-gate.js'
 import { createMenuTemplate } from './actions.js'
 import WindowManager from './window-manager.js'
-import settingsManager from './settings-manager.js'
+import settingsManager, { runPendingP2PReset } from './settings-manager.js'
 import p2pAppRegistry from './p2p-app-registry.js'
 import { setWindowManager } from './context-menu.js'
 import { registerNavigationRestore } from './navigation-restore.js'
@@ -30,6 +32,7 @@ import './llm.js'
 import './llm-memory.js'
 import { setupAutoUpdater, checkForUpdatesNow } from './auto-updater.js'
 import { urlFromArgv, queueLaunchUrl, startDeliveringLaunchUrls } from './launch-url.js'
+import { OPEN_IN_P2PMD_FLAG, filesFromArgv, readFileForNote, keepOpenedFile, p2pmdPageForOpenedFile } from './open-in-p2pmd.js'
 
 // Import and initialize extension system
 import extensionManager from './extensions/index.js'
@@ -101,6 +104,13 @@ const FILE_PROTOCOL = {
   stream: true
 }
 
+// No service worker: one registered by a page in a torrent could answer for the
+// torrent's own page, which gets the torrent controls.
+const BT_PROTOCOL = {
+  ...P2P_PROTOCOL,
+  allowServiceWorkers: false
+}
+
 // Magnet URIs are just identifiers that redirect to bt:// — minimal privileges
 const MAGNET_PROTOCOL = {
   standard: false,
@@ -126,6 +136,7 @@ handlePinchZoom(ipcMain)
 app.on('web-contents-created', (event, wc) => {
   const wcId = wc.id
   attachTrackpadZoom(wc)
+  if (wc.getType() === 'webview') followHistoryRedirect(wc)
   wc.on('did-navigate', (e, url) => {
     if (url.startsWith('peersky://downloads')) {
       trustedUIWebContents.add(wcId)
@@ -186,8 +197,8 @@ globalProtocol.registerSchemesAsPrivileged([
   { scheme: 'hs', privileges: P2P_PROTOCOL },
   { scheme: 'web3', privileges: WEB3_PROTOCOL },
   { scheme: 'file', privileges: FILE_PROTOCOL },
-  { scheme: 'bittorrent', privileges: P2P_PROTOCOL },
-  { scheme: 'bt', privileges: P2P_PROTOCOL },
+  { scheme: 'bittorrent', privileges: BT_PROTOCOL },
+  { scheme: 'bt', privileges: BT_PROTOCOL },
   { scheme: 'magnet', privileges: MAGNET_PROTOCOL },
   { scheme: 'webtorrent', privileges: MAGNET_PROTOCOL },
   { scheme: BLOCKED_SCHEME, privileges: BLOCKED_SCHEME_PRIVILEGES }
@@ -226,10 +237,74 @@ if (!isPrimaryInstance) {
   app.exit(0)
 }
 
-app.on('second-instance', (_event, argv) => {
+// One message at a time, however many files were picked.
+let fileNotice = Promise.resolve()
+
+const FILE_NOT_OPENED = {
+  'not-text': 'It is not a text file. P2PMD opens text files, such as .md and .txt.',
+  'too-big': `It is larger than ${MAX_DOCUMENT_SIZE / (1024 * 1024)} MB, the most a note can hold.`
+}
+
+function tellFileNotOpened ({ name, error }) {
+  fileNotice = fileNotice.then(async () => {
+    await app.whenReady()
+    focusAnyWindow()
+    const win = BrowserWindow.getFocusedWindow() || windowManager?.all[0]?.window
+    const options = {
+      type: 'warning',
+      buttons: ['OK'],
+      message: `Can't open ${name} in P2PMD`,
+      detail: FILE_NOT_OPENED[error] || 'The file could not be read.'
+    }
+    await (win && !win.isDestroyed() ? dialog.showMessageBox(win, options) : dialog.showMessageBox(options))
+  }).catch((err) => log.warn('[open-file] could not show the message:', err?.message || err))
+}
+
+// A file the OS asks Peersky to open becomes a new P2PMD note with its text
+// (open-in-p2pmd.js). It is read now and its tab opens once a window can take
+// one, like a launch link. Without the flag, a path in argv may be no file at
+// all, so a path that is not a file is passed over without a message.
+//
+// A web page opens as one, as in any browser: Open With in Finder offers
+// Peersky for every text file, pages included. Only "Open with P2PMD" itself
+// makes a note of a page's source.
+const WEB_PAGE_FILE = /\.(html?|xhtml|shtml|svg)$/i
+
+async function openFileInP2pmd (filePath, { explicit = true, asNote = false } = {}) {
+  if (!asNote && WEB_PAGE_FILE.test(filePath)) {
+    queueLaunchUrl(pathToFileURL(filePath).href)
+    return
+  }
+  try {
+    const file = await readFileForNote(filePath, { maxBytes: MAX_DOCUMENT_SIZE })
+    if (!file.error) {
+      queueLaunchUrl(p2pmdPageForOpenedFile(keepOpenedFile(file)))
+      return
+    }
+    if (!explicit && (file.error === 'missing' || file.error === 'not-a-file')) return
+    log.warn('[open-file] not opened in P2PMD:', file.error)
+    tellFileNotOpened(file)
+  } catch (error) {
+    log.error('[open-file] failed:', error?.message || error)
+  }
+}
+
+// Whether argv named any files to open.
+function openFilesFromArgv (argv, cwd) {
+  const files = filesFromArgv(argv, { cwd, devRun: process.defaultApp === true })
+  const explicit = argv.includes(OPEN_IN_P2PMD_FLAG)
+  for (const file of files) openFileInP2pmd(file, { explicit, asNote: explicit })
+  return files.length > 0
+}
+
+app.on('second-instance', (_event, argv, workingDirectory) => {
   const url = urlFromArgv(argv)
+  const openingFiles = openFilesFromArgv(argv, workingDirectory)
   if (url) {
     queueLaunchUrl(url)
+  } else if (openingFiles) {
+    // Each note's tab focuses its window too, once the file is read.
+    focusAnyWindow()
   } else if (argv.includes('--incognito') && windowManager) {
     openIncognitoWindow()
   } else if (argv.includes('--new-window') && windowManager) {
@@ -246,7 +321,15 @@ app.on('open-url', (event, url) => {
   queueLaunchUrl(url)
 })
 
+// macOS hands files over here instead of in argv: Open With in Finder, a file
+// dropped on the Dock icon. Like open-url, this can come before ready.
+app.on('open-file', (event, filePath) => {
+  event.preventDefault()
+  openFileInP2pmd(filePath)
+})
+
 queueLaunchUrl(urlFromArgv(process.argv))
+if (isPrimaryInstance) openFilesFromArgv(process.argv, process.cwd())
 
 // Settles once the incognito session has its protocol handlers.
 let incognitoReady = null
@@ -292,6 +375,10 @@ app.whenReady().then(async () => {
   ipcMain.handle('check-for-updates', () => {
     return checkForUpdatesNow()
   })
+
+  // A Reset P2P Data asked for before the restart, while nothing holds the
+  // stores open yet.
+  await runPendingP2PReset().catch((error) => log.error('[startup] P2P reset failed:', error?.message || error))
 
   // Get consistent session for protocols and extensions
   const userSession = getBrowserSession()
@@ -817,6 +904,17 @@ function warmP2PBackends () {
   }
 }
 
+// Where a request comes from, for the request gate: a browser window's own
+// page, a page in a tab, or anything else, such as a popup a page opened.
+function requestSourceOf (details) {
+  try {
+    if (windowManager?.findWindowByWebContentsId(details.webContentsId)) return 'shell'
+    return details.webContents?.getType() === 'webview' ? 'tab' : 'other'
+  } catch {
+    return 'other'
+  }
+}
+
 async function isGatedRequestAllowed (details, { incognito = false } = {}) {
   try {
     const verdict = gateRequest({
@@ -824,7 +922,8 @@ async function isGatedRequestAllowed (details, { incognito = false } = {}) {
       method: details.method,
       resourceType: details.resourceType,
       initiatorOrigin: details.initiatorOrigin,
-      frameUrl: frameUrlOf(details)
+      frameUrl: frameUrlOf(details),
+      source: requestSourceOf(details)
     })
     if (verdict.action === 'allow') return true
     // Incognito has no extensions, and an answer there would be remembered.
@@ -1102,8 +1201,16 @@ ipcMain.on('window-control', (_event, command) => {
   }
 })
 
-// IPC handler for opening files in new tabs (used by BitTorrent pages)
+// IPC handler for opening a download in a new tab, from the downloads page
 ipcMain.on('open-url-in-tab', (event, fileUrl) => {
+  // The downloads page alone opens a local file in a tab this way.
+  let sender = null
+  try { sender = new URL(event.senderFrame?.url || '') } catch {}
+  if (sender?.protocol !== 'peersky:' || sender.hostname !== 'downloads') {
+    log.warn('[IPC] open-url-in-tab blocked a page other than the downloads page')
+    return
+  }
+
   // Security: only allow file:// URLs
   if (typeof fileUrl !== 'string' || !fileUrl.startsWith('file://')) {
     log.warn('[IPC] open-url-in-tab blocked non-file URL:', fileUrl)
@@ -1209,14 +1316,9 @@ ipcMain.handle('remove-download', async (event, id) => {
       throw new Error('Download record not found in history.')
     }
 
-    try {
-      await fs.unlink(targetDownload.savePath)
-    } catch (err) {
-      if (err.code !== 'ENOENT') {
-        log.warn('Could not delete file from disk:', err)
-      }
-    }
-
+    // The button says Remove from history, so the file stays where it was
+    // saved. It used to be deleted from disk, with no question asked and
+    // nothing in the Trash.
     downloads = downloads.filter((d) => d.id !== id)
     await fs.writeFile(DOWNLOADS_FILE, JSON.stringify(downloads, null, 2))
 

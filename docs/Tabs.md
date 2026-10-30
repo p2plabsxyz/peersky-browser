@@ -42,8 +42,8 @@ Vertical tabs, kept expanded, are the default since v1. A profile from an earlie
 
 - Close button (`×`) on the tab
 - Context menu → **Close tab**
-- **Keyboard shortcut**: `CommandOrControl+Shift+W`
-- Closing the last tab creates a fresh home tab
+- **Keyboard shortcuts**: `CommandOrControl+W` (on the last tab it closes the window) and `CommandOrControl+Shift+W`
+- Closing the last tab closes the window, as in other browsers
 
 ### Restoring Tabs on Restart
 

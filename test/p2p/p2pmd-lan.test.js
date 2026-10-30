@@ -239,8 +239,13 @@ describe('P2PMD notes over the local network, with no internet', function () {
       const again = await device(base + 2)
       const rehosted = await hostNoteOnLan(again, server, { port: notePort })
       closers.push(() => rehosted.close())
-      expect(await get(guest.info.port).catch(() => null)).to.not.equal('# Still here')
-      expect(guest.route.failedAt).to.be.above(0)
+      // Either the old address fails and the route says so, so the browser
+      // looks for the host again, or HyperDHT already found the host by the
+      // note's key on the LAN DHT, as it looks there while it tries the old
+      // address. Which one comes first is down to timing: on Windows it was
+      // the second.
+      const meanwhile = await get(guest.info.port).catch(() => null)
+      expect(meanwhile === '# Still here' || guest.route.failedAt > 0).to.equal(true)
 
       const moved = await findNoteOnLan(guestLan, keys.publicKey, { timeoutMs: 10000 })
       expect(moved.port).to.equal(base + 2)
@@ -283,7 +288,7 @@ describe('P2PMD notes over the local network, with no internet', function () {
 
     // A connection to a host that had answered before, failing before it
     // opened, left HyperDHT with a promise nobody caught, about 4 s on
-    // (patches/hyperdht+6.34.0.patch). The main process logs those; on the
+    // (patches/hyperdht+6.34.1.patch). The main process logs those; on the
     // phone they abort the app.
     it('a host whose computer left leaves no rejection unhandled', async function () {
       this.timeout(30000)

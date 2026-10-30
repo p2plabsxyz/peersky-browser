@@ -149,7 +149,7 @@ class NavBox extends HTMLElement {
     const zoomIndicator = document.createElement('span')
     zoomIndicator.id = 'zoom-indicator'
     zoomIndicator.className = 'zoom-indicator'
-    zoomIndicator.hidden = true
+    zoomIndicator.textContent = '100%'
 
     urlBarWrapper.appendChild(siteInfoButton)
     urlBarWrapper.appendChild(urlInput)
@@ -807,12 +807,12 @@ class NavBox extends HTMLElement {
     return null
   }
 
-  // Hidden at 100%, like other browsers.
+  // Shown at 100% too: hidden there, it went blank as a pinch passed through
+  // the page's own size.
   setZoomIndicator (percent) {
     const indicator = this.querySelector('#zoom-indicator')
     if (!indicator) return
     indicator.textContent = `${percent}%`
-    indicator.hidden = percent === 100
   }
 
   async updateSearchPlaceholder () {

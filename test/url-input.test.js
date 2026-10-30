@@ -2,7 +2,7 @@
 // searching.
 
 import { expect } from 'chai'
-import { isURL, looksLikeDomain, isLoopbackAddress, NAVIGABLE_SCHEMES } from '../src/utils.js'
+import { isURL, looksLikeDomain, isLoopbackAddress, NAVIGABLE_SCHEMES, isSearchTemplate } from '../src/utils.js'
 import { readFile } from 'fs/promises'
 
 const navBox = await readFile(new URL('../src/pages/nav-box.js', import.meta.url), 'utf8')
@@ -121,5 +121,79 @@ describe('the address bar suggestions', function () {
   it('opens a suggestion on Enter only while the address bar still shows it', function () {
     const keys = navBox.slice(navBox.indexOf('_handleAutocompleteKeydown (e)'), navBox.indexOf('_renderAutocompleteResults ()'))
     expect(keys).to.contain("if (selected && this.querySelector('#url')?.value === selected.url) {")
+  })
+})
+
+// A custom search goes wherever its template points, in the open tab: a
+// javascript: template ran its code in whatever page was open.
+describe('a custom search template', function () {
+  it('may be a web or P2P address', function () {
+    for (const template of [
+      'https://example.com/search?q=%s',
+      'http://127.0.0.1:8888/search?q=%s',
+      'hyper://search.example/?q=%s',
+      'ipfs://bafy/search?q=%s',
+      'hs://abc/?q=%s'
+    ]) expect(isSearchTemplate(template), template).to.equal(true)
+  })
+
+  it('may not run code or read files', function () {
+    for (const template of [
+      'javascript:alert(document.cookie)//%s',
+      ' JavaScript:alert(1)//%s',
+      'data:text/html,<script>alert(1)</script>%s',
+      'file:///etc/passwd?%s',
+      'blob:https://example.com/x?%s',
+      'peersky://settings?%s',
+      '',
+      'not a url %s'
+    ]) expect(isSearchTemplate(template), template).to.equal(false)
+  })
+
+  it('the Settings page refuses the same templates', async function () {
+    const page = await readFile(new URL('../src/pages/static/js/settings.js', import.meta.url), 'utf8')
+    expect(page).to.include("['https:', 'http:', 'hyper:', 'ipfs:', 'ipns:', 'hs:'].includes(protocol)")
+  })
+})
+
+// peersky://history redirects to the History extension's page, which Chromium
+// does not follow from a page, so the tab stayed where it was.
+describe('typing peersky://history', function () {
+  it('opens the History page in the tab', async function () {
+    const { EventEmitter } = await import('events')
+    const { followHistoryRedirect, isHistoryRedirect } = await import('../src/history-address.js')
+    const view = 'chrome-extension://njgdkbplnabflgninlgehplmlcfabmdp/view.html'
+    const wc = new EventEmitter()
+    const loaded = []
+    wc.loadURL = async (url) => { loaded.push(url) }
+    followHistoryRedirect(wc)
+    wc.emit('did-start-navigation', { url: 'peersky://history/', isMainFrame: true, isSameDocument: false })
+    let prevented = false
+    wc.emit('will-redirect', { url: view, isMainFrame: true, preventDefault: () => { prevented = true } })
+    expect(prevented).to.equal(true)
+    expect(loaded).to.deep.equal([view])
+    expect(isHistoryRedirect('peersky://history', view)).to.equal(true)
+  })
+
+  it('leaves every other redirect alone, a site sending a tab to an extension too', async function () {
+    const { EventEmitter } = await import('events')
+    const { followHistoryRedirect, isHistoryRedirect } = await import('../src/history-address.js')
+    const view = 'chrome-extension://njgdkbplnabflgninlgehplmlcfabmdp/view.html'
+    const wc = new EventEmitter()
+    const loaded = []
+    wc.loadURL = async (url) => { loaded.push(url) }
+    followHistoryRedirect(wc)
+    wc.emit('did-start-navigation', { url: 'https://example.com/', isMainFrame: true, isSameDocument: false })
+    let prevented = false
+    wc.emit('will-redirect', { url: view, isMainFrame: true, preventDefault: () => { prevented = true } })
+    expect(prevented).to.equal(false)
+    expect(loaded).to.deep.equal([])
+    expect(isHistoryRedirect('peersky://history', 'https://example.com/')).to.equal(false)
+    expect(isHistoryRedirect('peersky://history/x', view)).to.equal(false)
+  })
+
+  it('is followed for every tab', async function () {
+    const main = (await readFile(new URL('../src/main.js', import.meta.url), 'utf8'))
+    expect(main).to.contain("if (wc.getType() === 'webview') followHistoryRedirect(wc)")
   })
 })

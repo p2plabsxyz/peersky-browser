@@ -1,0 +1,33 @@
+diff --git a/node_modules/webtorrent/lib/conn-pool.js b/node_modules/webtorrent/lib/conn-pool.js
+index 5f04bca..195b793 100644
+--- a/node_modules/webtorrent/lib/conn-pool.js
++++ b/node_modules/webtorrent/lib/conn-pool.js
+@@ -150,6 +150,8 @@ export default class ConnPool {
+       if (torrent) {
+         peer.swarm = torrent
+         torrent._addIncomingPeer(peer)
++        // a paused or destroyed torrent turns the peer away, taking its swarm
++        if (peer.destroyed) return
+         await wire.setInfoHash(torrent.infoHash)
+       } else {
+         peer.destroy(new Error(`Unexpected info hash hash ${infoHashHash} from incoming peer ${peer.id}`))
+diff --git a/node_modules/webtorrent/lib/peer.js b/node_modules/webtorrent/lib/peer.js
+index 212f038..5be28f5 100644
+--- a/node_modules/webtorrent/lib/peer.js
++++ b/node_modules/webtorrent/lib/peer.js
+@@ -105,6 +105,7 @@ export default class Peer extends EventEmitter {
+       }
+     })
+     wire.once('crypto-handshake', () => {
++      if (this.destroyed) return
+       if (!this.sentHandshake) this.handshake()
+     })
+     wire.once('handshake', (infoHash, peerId) => {
+@@ -197,6 +198,7 @@ export default class Peer extends EventEmitter {
+   }
+ 
+   handshake () {
++    if (!this.swarm) return
+     const opts = {
+       dht: this.swarm.private ? false : !!this.swarm.client.dht,
+       fast: true

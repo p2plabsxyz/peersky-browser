@@ -2,7 +2,7 @@
 // Handles settings storage, defaults, validation, and IPC communication
 // Pattern: Similar to window-manager.js
 
-import { app, ipcMain, BrowserWindow, session, safeStorage, dialog, webContents } from 'electron'
+import { app, ipcMain, BrowserWindow, safeStorage, dialog, webContents } from 'electron'
 import { promises as fs } from 'fs'
 import path from 'path'
 import os from 'os'
@@ -13,6 +13,9 @@ import p2pAppRegistry from './p2p-app-registry.js'
 import { measureP2PStorage, oneAtATime } from './p2p-storage.js'
 import { isPeerskyPage } from './backup/ipc-caller.js'
 import { bumpCacheEpoch } from './protocols/hyperdrive-views.js'
+import { getPagesPath } from './protocols/pages-path.js'
+import { getBrowserSession } from './session.js'
+import { isSearchTemplate } from './utils.js'
 
 const SETTINGS_FILE = path.join(app.getPath('userData'), 'settings.json')
 const DEBUG_LOG = path.join(os.homedir(), '.peersky', 'debug.log')
@@ -86,6 +89,23 @@ const DEFAULT_SETTINGS = {
 
 let isClearingBrowserCache = false
 
+// Clear Cache is for websites, but PeerSky's own pages keep their storage in
+// the same session: the window its tabs under file://, the P2P apps theirs
+// under peersky://p2p (P2PMD's notes with their keys among it), and extensions
+// such as History their records. Clearing every origin took all of that.
+export async function ownStorageOrigins (ses) {
+  const origins = new Set(['file://'])
+  const entries = await fs.readdir(getPagesPath(), { withFileTypes: true }).catch(() => [])
+  for (const entry of entries) {
+    const host = entry.name.replace(/\.html$/i, '').toLowerCase()
+    if (/^[a-z0-9][a-z0-9-]*$/.test(host)) origins.add(`peersky://${host}`)
+  }
+  for (const extension of (ses.extensions || ses).getAllExtensions()) {
+    origins.add(`chrome-extension://${extension.id}`)
+  }
+  return [...origins]
+}
+
 async function clearBrowserCache () {
   if (isClearingBrowserCache) { throw new Error('Cache clearing already in progress') }
 
@@ -105,14 +125,15 @@ async function clearBrowserCache () {
 
     await new Promise(resolve => setTimeout(resolve, 100)) // small delay
 
-    // Step 2 → Clear cache and storage (in smaller groups)
-    const clear = storages =>
-      session.defaultSession.clearStorageData({ storages })
+    // Step 2 → Clear cache and storage (in smaller groups), websites only
+    const ses = getBrowserSession()
+    const excludeOrigins = await ownStorageOrigins(ses)
+    const clear = dataTypes => ses.clearData({ dataTypes, excludeOrigins })
 
-    await session.defaultSession.clearCache()
-    await clear(['cookies', 'localstorage', 'sessionstorage'])
-    await clear(['indexdb']) // (Electron's internal key for IndexedDB)
-    await clear(['cachestorage', 'serviceworkers'])
+    await ses.clearCache()
+    await clear(['cookies', 'localStorage'])
+    await clear(['indexedDB'])
+    await clear(['cache', 'serviceWorkers']) // cache takes Cache Storage too
 
     const downloadsFile = path.join(app.getPath('userData'), 'downloads.json')
     await fs.rm(downloadsFile, { force: true }).catch(() => {})
@@ -200,6 +221,47 @@ async function resetP2PData ({ resetIdentities = false } = {}) {
     await removeChildrenExcept(hyperDir, ['swarm-keypair.json'])
     logDebug('P2P reset: data cleared, IPFS identity kept')
   }
+}
+
+// Today as the person's own calendar has it. toISOString gives the date in
+// UTC, which is already tomorrow in the evening west of Greenwich.
+export function localDate (date = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
+// Reset P2P Data finishes at the next start, before anything opens the
+// stores. Run while PeerSky was up, it deleted files that PeerChat and the open
+// Hyper store still held: PeerChat wrote its profile and rooms back with the
+// next message, so they were all there again after a restart.
+const P2P_RESET_PENDING = 'p2p-reset-pending.json'
+const RESET_RELAUNCH_DELAY_MS = 500
+
+async function scheduleP2PReset ({ resetIdentities = false } = {}) {
+  const marker = path.join(app.getPath('userData'), P2P_RESET_PENDING)
+  await fs.writeFile(marker, JSON.stringify({ resetIdentities: !!resetIdentities, at: Date.now() }))
+  // After the answer reaches Settings. A normal quit keeps the open tabs.
+  setTimeout(() => {
+    app.relaunch()
+    app.quit()
+  }, RESET_RELAUNCH_DELAY_MS)
+}
+
+export async function runPendingP2PReset () {
+  const marker = path.join(app.getPath('userData'), P2P_RESET_PENDING)
+  let pending
+  try {
+    pending = JSON.parse(await fs.readFile(marker, 'utf8'))
+  } catch {
+    return false
+  }
+  try {
+    await resetP2PData({ resetIdentities: pending?.resetIdentities === true })
+    logDebug('P2P reset finished at start')
+  } finally {
+    await fs.rm(marker, { force: true }).catch(() => {})
+  }
+  return true
 }
 
 // The home page's clock, wallpaper and pinned apps live in a tab, which is a
@@ -415,13 +477,8 @@ class SettingsManager {
     ipcMain.handle('settings-reset-p2p', async (event, opts = {}) => {
       if (!isPeerskyPage(event?.senderFrame?.url, 'settings')) throw new Error('Forbidden')
       try {
-        await resetP2PData({ resetIdentities: !!opts.resetIdentities })
-        return {
-          success: true,
-          message: opts.resetIdentities
-            ? 'P2P data cleared, with the IPFS identity'
-            : 'P2P data cleared. The IPFS identity was kept'
-        }
+        await scheduleP2PReset({ resetIdentities: !!opts.resetIdentities })
+        return { success: true, restarting: true, message: 'PeerSky restarts to finish the reset' }
       } catch (error) {
         const errorMsg = `Failed to reset P2P data: ${error.message}`
         logDebug(errorMsg)
@@ -514,7 +571,7 @@ class SettingsManager {
       const mainWindow = BrowserWindow.fromWebContents(event.sender)
       const saveDialogOptions = {
         title: 'Export P2P Data',
-        defaultPath: path.join(app.getPath('downloads'), `peersky-p2p-data-${new Date().toISOString().split('T')[0]}-${Math.floor(Math.random() * 1000000)}.json`),
+        defaultPath: path.join(app.getPath('downloads'), `peersky-p2p-data-${localDate()}-${Math.floor(Math.random() * 1000000)}.json`),
         filters: [{ name: 'JSON', extensions: ['json'] }]
       }
       const { canceled, filePath } = mainWindow
@@ -681,16 +738,7 @@ class SettingsManager {
   validateSetting (key, value) {
     const validators = {
       searchEngine: (v) => ['duckduckgo_noai', 'duckduckgo', 'brave', 'ecosia', 'kagi', 'startpage', 'custom'].includes(v),
-      customSearchTemplate: (v) => {
-        if (typeof v !== 'string' || v.length >= 2048) return false
-        try {
-          // Just check if it’s parseable as a URL with any protocol
-          const u = new URL(v) // eslint-disable-line no-unused-vars
-          return true
-        } catch {
-          return false
-        }
-      },
+      customSearchTemplate: (v) => isSearchTemplate(v),
       theme: (v) =>
         [
           'transparent',

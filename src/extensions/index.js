@@ -40,6 +40,7 @@ import ChromeWebStoreManager from './chrome-web-store.js'
 // URL parsing now handled by ManifestValidator
 import { withInstallLock, withUpdateLock } from './mutex.js'
 import { generateSecureExtensionId } from './utils/ids.js'
+import { matchesPreinstalledEntry, preinstalledEntryKey } from './utils/preinstalled.js'
 import { resolveManifestStrings } from './utils/strings.js'
 import * as RegistryService from './services/registry.js'
 import * as LoaderService from './services/loader.js'
@@ -544,12 +545,6 @@ class ExtensionManager {
     const entries = Array.isArray(manifest.extensions) ? manifest.extensions : []
     const desiredIds = new Set(entries.map(e => e.id).filter(Boolean))
 
-    const matchesPreinstalledEntry = (ext, entry) => {
-      if (entry.id && ext.id === entry.id) return true
-      if (entry.name && (ext.displayName === entry.name || ext.name === entry.name)) return true
-      return false
-    }
-
     const removePreinstalledRecord = async (ext) => {
       if (!ext?.id) return
       if (this.session && ext.electronId) {
@@ -606,7 +601,21 @@ class ExtensionManager {
         if (existing) {
           const preinstallVersionMatch = !entry.version ||
             String(existing.preinstallVersion || '') === String(entry.version)
-          if (preinstallVersionMatch) continue
+          if (preinstallVersionMatch) {
+            let changed = false
+            if (existing.preinstalledEntry !== preinstalledEntryKey(entry)) {
+              existing.preinstalledEntry = preinstalledEntryKey(entry)
+              changed = true
+            }
+            // Shown by the name the list gives it ("PeerSky History"), not its
+            // build's ("peersky-history").
+            if (entry.name && existing.displayName !== entry.name) {
+              existing.displayName = entry.name
+              changed = true
+            }
+            if (changed) await this._writeRegistry()
+            continue
+          }
           await removePreinstalledRecord(existing)
         } else if (entry.id && this.loadedExtensions.has(entry.id)) {
           continue
@@ -625,6 +634,8 @@ class ExtensionManager {
         if (entry.version) {
           extData.preinstallVersion = entry.version
         }
+        extData.preinstalledEntry = preinstalledEntryKey(entry)
+        if (entry.name) extData.displayName = entry.name
         extData.isSystem = true
         extData.removable = false
         extData.source = 'preinstalled'

@@ -24,7 +24,10 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "lts/jod"
+          # npm 11, as on the machines that write package-lock.json. npm 10's
+          # npm ci refused the lockfile npm 11 writes (it leaves out optional
+          # utf-8-validate entries), so every npm i here broke CI.
+          node-version: "24"
           cache: "npm"
 
       - name: Cache Electron download

@@ -30,7 +30,7 @@ import { getPrivateDriveKey } from '../backup/private-drive-key.js'
 import { decodeDriveId } from '../backup/private-drive-export.js'
 import { shareDriveOpens } from './shared-drive-opens.js'
 import { isUnreadableDriveError, LINKED_PRIVATE_DRIVE_NAME, PRIVATE_DRIVE_ERROR } from './private-drive-errors.js'
-import { mayUsePrivateDrive, takeNavigationStamp } from './request-gate.js'
+import { mayUsePrivateDrive, takeListingProof, takeNavigationStamp } from './request-gate.js'
 import { toHyperFetchUrl } from './hyper-fetch-url.js'
 import { deviceSyncSnapshot, startDesktopDeviceSync } from './desktop-device-sync.js'
 import { listOwnPrivateDrives, listOwnPrivateFiles } from './own-private-files.js'
@@ -74,10 +74,22 @@ export function withPeerLocalHost (adapter) {
   return adapter
 }
 
+// hyperdht-mdns 2 has an adapter of its own that publishes only a made-up
+// name, the port and the LAN address. The older Bonjour one needs the host
+// fixed as above.
 function createLANAdapter () {
+  if (typeof HyperDHTmDNS.MDNSAdapter === 'function') return new HyperDHTmDNS.MDNSAdapter()
   const Adapter = HyperDHTmDNS.BonjourAdapter
   if (typeof Adapter !== 'function') return null
   return withPeerLocalHost(new Adapter())
+}
+
+// With hyperdht-mdns 2, the LAN instance makes up a key of its own for each
+// network, and devices prove who they are inside the channel (identityGate):
+// the store's network key, which is also PeerChat's id, never goes on the
+// local network. An older version is given that key, as before.
+export function lanKeyOptions (activeSdk) {
+  return typeof HyperDHTmDNS.identityGate === 'function' ? {} : { keyPair: activeSdk.swarm.keyPair }
 }
 
 const DEFAULT_LAN_PORT = HyperDHTmDNS.DEFAULT_PORT || 49799
@@ -110,7 +122,7 @@ function wireLANEvents (instance) {
 // second PeerSky on this computer) every later join went to a LAN swarm that
 // never started, and creating a drive failed with "address already in use".
 async function attachLANDiscovery (activeSdk, lanOptions = {}) {
-  const lan = new HyperDHTmDNS({ ...getLANOptions(lanOptions), keyPair: activeSdk.swarm.keyPair })
+  const lan = new HyperDHTmDNS({ ...getLANOptions(lanOptions), ...lanKeyOptions(activeSdk) })
   try {
     await lan.ready()
   } catch (err) {
@@ -315,6 +327,9 @@ async function startHyperSDK (options) {
 
   initChat(sdk, {
     safeStorage,
+    // How a device on the local network proves who it is. Missing from older
+    // hyperdht-mdns, whose LAN connections carry the network key itself.
+    identityGate: HyperDHTmDNS.identityGate,
     storagePath: path.join(app.getPath('userData'), CHAT_STORAGE),
     // The pair it connects with, which signs what this desktop writes in
     // PeerChat. A restored desktop's is its own and not in its stores, so
@@ -499,6 +514,16 @@ export async function startPrivateSync () {
   if (!await getPrivateDriveKey(app.getPath('userData')).catch(() => null)) return null
   await initializePrivateHyperSDK()
   return ensurePrivateDeviceSync()
+}
+
+/**
+ * The sync again, under the key this profile has now: a phone's send just gave
+ * this desktop the key the person's other devices share.
+ */
+export async function restartPrivateSync () {
+  if (privateDeviceSyncStarting) await privateDeviceSyncStarting.catch(() => null)
+  await stopPrivateDeviceSync()
+  return startPrivateSync()
 }
 
 /**
@@ -759,6 +784,8 @@ export async function createHandler (options, securityOptions = {}) {
 
   return async function protocolHandler (req) {
     const navigation = takeNavigationStamp(req)
+    // A folder listing publishing its folder, which may make a private drive.
+    const listing = takeListingProof(req)
     if (isSuspended) {
       return new Response('Hyper is unavailable while a backup is in progress', {
         status: 503,
@@ -800,7 +827,7 @@ export async function createHandler (options, securityOptions = {}) {
             // A private drive is opened by its name, so a page that may not
             // use private drives must not open one by the name P2PMD or the
             // Hyperdrive app gave it.
-            if (!mayUsePrivateDrive({ url, initiatorOrigin: req.initiatorOrigin, navigation })) {
+            if (!mayUsePrivateDrive({ url, initiatorOrigin: req.initiatorOrigin, navigation, listing })) {
               return new Response(PRIVATE_DRIVE_ERROR, {
                 status: 403,
                 headers: { 'Content-Type': 'text/plain; charset=utf-8' }
@@ -893,7 +920,7 @@ export async function createHandler (options, securityOptions = {}) {
       if (protocol === 'hyper' && urlObj.hostname === 'chat') {
         return await handleChatRequestP2P(req, sdk)
       } else {
-        return await handleHyperRequest(req, { navigation })
+        return await handleHyperRequest(req, { navigation, listing })
       }
     } catch (err) {
       log.error('Failed to handle Hyper request:', err)
@@ -962,14 +989,14 @@ function asPartialContent (resp) {
 }
 
 // Handle general hyper:// requests (not chat API).
-async function handleHyperRequest (req, { navigation = false } = {}) {
+async function handleHyperRequest (req, { navigation = false, listing = false } = {}) {
   const { url, method = 'GET', headers } = req
   const context = await getHyperRequestContext(url)
   const fetchFn = context.fetch
   const upperMethod = method.toUpperCase()
   const hasBody = upperMethod !== 'GET' && upperMethod !== 'HEAD'
 
-  if (context.private && !mayUsePrivateDrive({ url, initiatorOrigin: req.initiatorOrigin, navigation })) {
+  if (context.private && !mayUsePrivateDrive({ url, initiatorOrigin: req.initiatorOrigin, navigation, listing })) {
     return new Response(PRIVATE_DRIVE_ERROR, {
       status: 403,
       headers: { 'Content-Type': 'text/plain; charset=utf-8' }

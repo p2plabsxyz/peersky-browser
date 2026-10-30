@@ -340,6 +340,35 @@ describe('navigation history', function () {
     expect(plain.src).to.equal('https://example.test')
   })
 
+  it('waits for an extension to load before opening its page, instead of crashing the start', async function () {
+    const { mod, handlers } = await loadModule()
+    const host = fakeHost()
+    mod.watchHost(host)
+    const url = 'chrome-extension://njgdkbplnabflgninlgehplmlcfabmdp/view.html'
+    handlers['queue-navigation-restore']({}, { token: 't3', entries: [{ url }], index: 0, url })
+    host.emit('will-attach-webview', {}, {}, { src: mod.PLACEHOLDER + 't3' })
+    let loaded = false
+    const loads = []
+    const guest = {
+      id: 9,
+      isDestroyed: () => false,
+      once () {},
+      loadURL: async (u) => { loads.push(u) },
+      session: { extensions: { getExtension: (id) => loaded && id === 'njgdkbplnabflgninlgehplmlcfabmdp' ? { id } : null } },
+      navigationHistory: { restore: async () => { throw new Error("ERR_FAILED (-2) loading '" + url + "'") } }
+    }
+    await host.emit('did-attach-webview', {}, guest)
+    expect(loads).to.deep.equal([])
+    loaded = true
+    await new Promise((resolve) => setTimeout(resolve, 600))
+    expect(loads).to.deep.equal([url])
+  })
+
+  it('opens Home in place of an extension page whose extension never loads', async function () {
+    const restore = await source('../src/navigation-restore.js')
+    expect(restore).to.match(/if \(!hasExtension\(guest, extensionId\)\) target = 'peersky:\/\/home'/)
+  })
+
   it('is queued by the tab bar before the placeholder src is set, and travels with a torn-off tab', function () {
     const factory = tabBar.slice(tabBar.indexOf('createWebviewForTab (tabId, url, navigation'), tabBar.indexOf("webview.setAttribute('allowpopups'"))
     expect(factory.indexOf("sendSync('queue-navigation-restore'")).to.be.below(factory.indexOf("webview.setAttribute('src', src)"))
@@ -501,6 +530,32 @@ describe('a page with no icon of its own', function () {
     expect(sameSite('https://example.com/', 'file:///tmp/a.pdf')).to.equal(false)
     expect(sameSite(undefined, 'https://example.com/')).to.equal(false)
   })
+
+  // Chromium compares a page's icons with the last ones it sent, from any
+  // site, and a web page always has one to send, its site's /favicon.ico at
+  // least. A page on another host sharing the last page's icon showed the
+  // default.
+  it('gives a web page that sent no icon the one Chromium sent last, from any site', function () {
+    const updated = tabBar.slice(
+      tabBar.indexOf("webview.addEventListener('page-favicon-updated', (e) => {"),
+      tabBar.indexOf("webview.addEventListener('focus'")
+    )
+    expect(updated.indexOf('this.reportedIcon.set(webview, faviconUrl)'), 'kept even without a tab element').to.be.within(0, updated.indexOf('if (!tabElement) return'))
+    // eslint-disable-next-line no-template-curly-in-string
+    const carried = 'if (reported && isWebAddress(newUrl)) this.iconBeforeNavigation.set(webview, `url(${reported})`)'
+    expect(navigated).to.contain(carried)
+    expect(navigated.indexOf(carried), 'ahead of the same-site rule').to.be.below(navigated.indexOf('sameSite(this.lastPageUrl.get(webview), newUrl)'))
+    const start = tabBar.indexOf('function isWebAddress (url) {')
+    const body = tabBar.slice(tabBar.indexOf('{', start) + 1, tabBar.indexOf('\n}\n', start))
+    // eslint-disable-next-line no-new-func
+    const isWebAddress = new Function('url', body)
+    expect(isWebAddress('https://accounts.example.com/domains/list')).to.equal(true)
+    expect(isWebAddress('http://localhost:8080/')).to.equal(true)
+    expect(isWebAddress('peersky://version/')).to.equal(false)
+    expect(isWebAddress('hyper://abc/')).to.equal(false)
+    expect(isWebAddress('about:blank')).to.equal(false)
+    expect(isWebAddress(undefined)).to.equal(false)
+  })
 })
 
 // A link opened in a new tab went to the end of the strip, far from the page
@@ -563,5 +618,21 @@ describe('a link opened in a new tab', function () {
 
   it('is what the link menu and a page opening a tab use', function () {
     expect(tabBar).to.contain('this.addTabFromLink(e.url,')
+  })
+})
+
+describe('the tab and group menus', function () {
+  it('says Close other tabs for closing every tab but this one', function () {
+    expect(tabBar).to.match(/data-action="close-others">\s*<img[^>]*>\s*Close other tabs\s*</)
+    expect(tabBar).to.not.contain('Close all tabs\n')
+  })
+
+  it('stay inside the window when opened low or far right in it', function () {
+    for (const name of ['showTabContextMenu (event, tabId) {', 'showGroupContextMenu (event, groupId) {']) {
+      const start = tabBar.indexOf(name)
+      const body = tabBar.slice(start, tabBar.indexOf('\n  }\n', start))
+      expect(body, name).to.contain('document.body.appendChild(menu)\n    this.keepInWindow(menu)')
+    }
+    expect(tabBar).to.contain('menu.style.top = `$' + '{Math.max(0, window.innerHeight - rect.height - 10)}px`')
   })
 })

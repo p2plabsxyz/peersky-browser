@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=P2PMD
+Comment=Make a new private P2PMD note from the file
+Exec="/opt/Peersky Browser/peersky-browser" --enable-accelerated-video --open-in-p2pmd %F
+Terminal=false
+Type=Application
+Icon=peersky-browser-p2pmd
+MimeType=text/plain;text/markdown;
+NoDisplay=true

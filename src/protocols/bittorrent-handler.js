@@ -5,9 +5,9 @@ import { fileURLToPath } from 'url'
 import fs from 'fs-extra'
 import { app, ipcMain, net } from 'electron'
 import { generateTorrentUI } from './bt/torrentPage.js'
+import { playableContentType } from './file-handler.js'
 import settingsManager from '../settings-manager.js'
 import parseTorrent from 'parse-torrent'
-import mime from 'mime-types'
 import { randomBytes } from 'crypto'
 const DEFAULT_TRACKERS = fs.readJsonSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'bt', 'trackers.json'))
 
@@ -53,6 +53,12 @@ function loadTorrentStateCache () {
   }
 }
 
+// How a torrent is saved for the next start: paused, with no peers or speeds,
+// as nothing is connected by then.
+function pausedForRestart (status) {
+  return { ...status, paused: true, numPeers: 0, downloadSpeed: 0, uploadSpeed: 0, timeRemaining: null }
+}
+
 let _savePending = null
 const _saveQueue = new Map()
 function saveTorrentState (infoHash, status) {
@@ -70,6 +76,12 @@ function saveTorrentState (infoHash, status) {
       log.error('[BT] Failed to save torrent state:', err.message)
     }
   }, 500)
+}
+
+// Each torrent's .torrent file, which the worker keeps once its file list
+// arrives and starts from when the torrent is seeded or resumed.
+function getTorrentFilesPath () {
+  return path.join(app.getPath('userData'), 'bt-torrents')
 }
 
 function removeTorrentState (infoHash) {
@@ -205,7 +217,7 @@ async function initializeWorker () {
   await fs.ensureDir(downloadPath)
 
   log.info('[BT] Forking WebTorrent worker process...')
-  worker = fork(path.join(__dirname, 'bt', 'worker.js'), [downloadPath], {
+  worker = fork(path.join(__dirname, 'bt', 'worker.js'), [downloadPath, getTorrentFilesPath()], {
     stdio: ['pipe', 'pipe', 'pipe', 'ipc']
   })
 
@@ -301,7 +313,7 @@ async function initializeWorker () {
       const data = fs.existsSync(cachePath) ? fs.readJsonSync(cachePath) : {}
       for (const [hash, status] of statusCache.entries()) {
         if (!status.done) {
-          data[hash] = { ...status, paused: true }
+          data[hash] = pausedForRestart(status)
         }
       }
       fs.writeJsonSync(cachePath, data, { spaces: 2 })
@@ -340,7 +352,7 @@ async function initializeWorker () {
     try {
       const cachePath = getTorrentStateCachePath()
       const data = fs.existsSync(cachePath) ? fs.readJsonSync(cachePath) : {}
-      for (const [hash, status] of active) data[hash] = { ...status, paused: true }
+      for (const [hash, status] of active) data[hash] = pausedForRestart(status)
       fs.writeJsonSync(cachePath, data, { spaces: 2 })
     } catch {}
   }, 30000)
@@ -447,7 +459,7 @@ export async function createHandler ({ lazy = false } = {}) {
   return async function protocolHandler (request) {
     await warmupBittorrent()
     const rawUrl = request.url
-    log.info(`[BT] Handling request: ${request.method} ${rawUrl}`)
+    log.debug(`[BT] Handling request: ${request.method} ${rawUrl}`)
 
     try {
       if (rawUrl.startsWith(WEBTORRENT_PREFIX)) {
@@ -501,7 +513,7 @@ export async function createHandler ({ lazy = false } = {}) {
 
       // Serve bt://<infohash>/<path> directly from downloaded torrent files when available.
       if (protocol !== 'magnet' && requestedTorrentPath) {
-        return await serveTorrentFile(infoHash, requestedTorrentPath)
+        return await serveTorrentFile(infoHash, requestedTorrentPath, request)
       }
 
       // Serve UI page (imported from bt/torrentPage.js)
@@ -535,7 +547,7 @@ export function shutdownBittorrent () {
     const data = fs.existsSync(cachePath) ? fs.readJsonSync(cachePath) : {}
     for (const [hash, status] of statusCache.entries()) {
       if (!status.done) {
-        data[hash] = { ...status, paused: true }
+        data[hash] = pausedForRestart(status)
       }
     }
     fs.writeJsonSync(cachePath, data, { spaces: 2 })
@@ -582,11 +594,14 @@ export function setupBittorrentIpc () {
   })
 }
 
+// The torrent pages and the manager. bt://<infohash>/<path> is a file the
+// torrent holds, which gets no token: it may be a page from anyone.
 function isTorrentUiUrl (rawUrl) {
   try {
-    const { protocol, hostname } = new URL(rawUrl)
+    const { protocol, hostname, pathname } = new URL(rawUrl)
     if (protocol === 'peersky:') return hostname === 'bt-manager'
-    return protocol === 'bt:' || protocol === 'bittorrent:' || protocol === 'magnet:' || protocol === 'webtorrent:'
+    if (protocol === 'bt:' || protocol === 'bittorrent:') return pathname === '' || pathname === '/'
+    return protocol === 'magnet:' || protocol === 'webtorrent:'
   } catch {
     return false
   }
@@ -596,7 +611,6 @@ async function handleAPI (api, queryParams, infoHash, request) {
   const rawHash = queryParams.get('hash') || infoHash
   const hash = await normalizeInfoHash(rawHash)
   const token = request.headers?.get('x-bt-token')
-  log.info(`[BT] API call: ${api}, hash: ${hash}`)
 
   // This only rejects non-bt URLs; it cannot tell which page made the request.
   // Any origin can reach this API, so the token is what gates access.
@@ -616,6 +630,9 @@ async function handleAPI (api, queryParams, infoHash, request) {
   // Security: mutations require POST method
   const mutationActions = ['start', 'seed', 'unseed', 'pause', 'resume', 'stop', 'remove']
   const isMutation = mutationActions.includes(api)
+  // A torrent page asks for its status every two seconds.
+  if (isMutation) log.info(`[BT] API call: ${api}${hash && hash !== 'api' ? `, hash: ${hash}` : ''}`)
+  else log.debug(`[BT] API call: ${api}, hash: ${hash}`)
   if (isMutation && request.method !== 'POST') {
     return jsonResponse({ error: `${api} requires POST method` }, 405, { allowCors: false })
   }
@@ -843,6 +860,7 @@ async function removeTorrent (hash, responseOptions = {}) {
       statusCache.delete(hash)
       removeTorrentState(hash)
     }
+    await fs.remove(path.join(getTorrentFilesPath(), `${hash}.torrent`)).catch(() => {})
     return jsonResponse({ success: true, removed: true, filesDeleted: !!cached }, 200, responseOptions)
   } catch (err) {
     return jsonResponse({ error: err.message }, 500, responseOptions)
@@ -931,7 +949,33 @@ async function normalizeInfoHash (rawHash) {
   return trimmed
 }
 
-async function serveTorrentFile (infoHash, requestedPath) {
+// A file a torrent holds opens in a tab at bt://<infohash>/<path>, the torrent
+// page's own origin. It runs sandboxed, in an origin of its own, so a page in a
+// torrent cannot reach the torrent controls, and it gets no access to local
+// files the way a file:// page does. The PDF viewer cannot run sandboxed, and
+// a PDF runs no page script.
+const TORRENT_FILE_CSP = 'sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads'
+
+/**
+ * The byte range a video or audio player asks for: start-end, start- or
+ * -suffix. null serves the whole file; false is a range past its end.
+ */
+export function parseByteRange (header, size) {
+  const match = /^bytes=(\d*)-(\d*)$/.exec(String(header || '').trim())
+  if (!match || (match[1] === '' && match[2] === '')) return null
+  let start
+  let end = size - 1
+  if (match[1] === '') {
+    start = Math.max(0, size - Number(match[2]))
+  } else {
+    start = Number(match[1])
+    if (match[2] !== '') end = Math.min(Number(match[2]), size - 1)
+  }
+  if (start >= size || start > end) return false
+  return { start, end }
+}
+
+async function serveTorrentFile (infoHash, requestedPath, request) {
   const cached = statusCache.get(infoHash)
   if (!cached) {
     return new Response('Torrent not found. Start or resume it first.', {
@@ -966,19 +1010,38 @@ async function serveTorrentFile (infoHash, requestedPath) {
     })
   }
 
-  if (!(await fs.pathExists(filePath))) {
+  const stat = await fs.stat(filePath).catch(() => null)
+  if (!stat?.isFile()) {
     return new Response(`File not available on disk yet: ${relativePath}`, {
       status: 404,
       headers: { 'Content-Type': 'text/plain; charset=utf-8' }
     })
   }
 
-  const stream = fs.createReadStream(filePath)
-  const contentType = mime.lookup(filePath) || 'application/octet-stream'
-  const withCharset = String(contentType).startsWith('text/') ? `${contentType}; charset=utf-8` : contentType
+  const contentType = playableContentType(filePath)
+  const headers = {
+    'Content-Type': contentType.startsWith('text/') ? `${contentType}; charset=utf-8` : contentType,
+    'Accept-Ranges': 'bytes',
+    'X-Content-Type-Options': 'nosniff'
+  }
+  if (contentType !== 'application/pdf') headers['Content-Security-Policy'] = TORRENT_FILE_CSP
 
-  return new Response(stream, {
+  const range = parseByteRange(request?.headers?.get('range'), stat.size)
+  if (range === false) {
+    return new Response(null, { status: 416, headers: { ...headers, 'Content-Range': `bytes */${stat.size}` } })
+  }
+  if (range) {
+    return new Response(fs.createReadStream(filePath, range), {
+      status: 206,
+      headers: {
+        ...headers,
+        'Content-Range': `bytes ${range.start}-${range.end}/${stat.size}`,
+        'Content-Length': String(range.end - range.start + 1)
+      }
+    })
+  }
+  return new Response(fs.createReadStream(filePath), {
     status: 200,
-    headers: { 'Content-Type': withCharset }
+    headers: { ...headers, 'Content-Length': String(stat.size) }
   })
 }

@@ -4,7 +4,7 @@
 import { expect } from 'chai'
 import esmock from 'esmock'
 import { EventEmitter } from 'events'
-import { attachTrackpadZoom, handlePinchZoom, pinchZoomStep, PINCH_ZOOM_LIMITS, WHEEL_ZOOM_INTERVAL_MS } from '../src/trackpad-zoom.js'
+import { attachTrackpadZoom, handlePinchZoom, pinchZoomStep, WHEEL_ZOOM_INTERVAL_MS } from '../src/trackpad-zoom.js'
 
 async function loadActions () {
   const executed = []
@@ -122,8 +122,12 @@ describe('page zoom', function () {
       expect(nav).to.contain('urlBarWrapper.appendChild(zoomIndicator)')
     })
 
-    it('hides itself at 100%', function () {
-      expect(nav).to.contain('indicator.hidden = percent === 100')
+    // It hid itself at 100%, so a pinch back to the page's own size left it
+    // blank.
+    it('shows 100% too', function () {
+      expect(nav).to.contain("zoomIndicator.textContent = '100%'")
+      expect(nav).to.not.contain('zoomIndicator.hidden')
+      expect(nav).to.not.contain('indicator.hidden')
     })
 
     it('is updated from the tab bar and follows the active tab', function () {
@@ -170,12 +174,20 @@ describe('trackpad and wheel zoom', function () {
     return wc
   }
 
-  it('lets a pinch magnify every page a tab loads', function () {
+  // A page in a tab has no magnification of its own. Turned on for one, a
+  // pinch magnified the whole window, and two fingers then moved the address
+  // bar and tabs about.
+  it('never lets a pinch magnify a page in a tab', async function () {
     const wc = page()
     attachTrackpadZoom(wc)
     wc.emit('dom-ready')
     wc.emit('did-navigate')
-    expect(wc.limits).to.deep.equal([PINCH_ZOOM_LIMITS, PINCH_ZOOM_LIMITS])
+    expect(wc.limits).to.deep.equal([])
+    const { readFile } = await import('fs/promises')
+    for (const file of ['../src/trackpad-zoom.js', '../src/main.js', '../src/window-manager.js', '../src/pages/tab-bar.js']) {
+      const src = await readFile(new URL(file, import.meta.url), 'utf8')
+      expect(src, file).to.not.contain('setVisualZoomLevelLimits(')
+    }
   })
 
   it('zooms the tab with Ctrl and the wheel, one step per gesture burst', function () {
@@ -284,5 +296,36 @@ describe('a trackpad pinch on a Mac', function () {
       expect(part).to.contain('this.zoomTab(tabId,')
       expect(tabBar).to.contain('this.listenForPinchZoom()')
     })
+  })
+})
+
+// Close Window was role: 'close', whose built-in Cmd+W was also Close's, so
+// two menu items shared the key and which one ran was up to the menu.
+describe('the File menu on a Mac', function () {
+  it('gives every shortcut to one item only', async function () {
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform')
+    Object.defineProperty(process, 'platform', { value: 'darwin' })
+    try {
+      const module = await esmock.strict('../src/actions.js', {
+        electron: {
+          app: { name: 'Peersky', getVersion: () => '0.0.0' },
+          BrowserWindow: { getFocusedWindow: () => null },
+          webContents: { fromId: () => null }
+        },
+        '../src/history-nav.js': { goBackActiveTab () {}, goForwardActiveTab () {} },
+        '../src/devtools-dock.js': { toggleDockedDevTools () {} }
+      })
+      const template = module.createMenuTemplate({ all: [] })
+      const file = template.find((menu) => menu.label === 'File').submenu
+      const closeWindow = file.find((item) => item.label === 'Close Window')
+      expect(closeWindow).to.not.equal(undefined)
+      expect(closeWindow.role).to.equal(undefined)
+      expect(closeWindow.accelerator).to.equal(undefined)
+      const keys = file.map((item) => item.accelerator).filter(Boolean)
+      expect(new Set(keys).size).to.equal(keys.length)
+      expect(file.find((item) => item.accelerator === 'CommandOrControl+W').label).to.equal('Close')
+    } finally {
+      Object.defineProperty(process, 'platform', platform)
+    }
   })
 })

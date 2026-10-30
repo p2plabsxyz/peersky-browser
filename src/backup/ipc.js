@@ -275,8 +275,18 @@ export function setupBackupIpc ({ getTabs } = {}) {
   })
 
   handle('backup-apply-restore', async (event, payload = {}) => {
+    // A transfer or a backup writes tabs.json and lastOpened.json, then waits
+    // for Restart now. The 30 s saver would put this window's tabs back over
+    // them in the meantime, so it stops first. A phone's send adds tabs in
+    // place and restarts nothing, so it keeps saving.
+    const replaces = backupManager.staged?.id === payload?.stageId && backupManager.staged?.kind !== 'phone'
+    const { windowManager } = replaces ? await import('../main.js') : {}
+    if (windowManager) {
+      windowManager.stopSaver()
+      windowManager.setSkipSaveOnQuit(true)
+    }
     try {
-      return await backupManager.applyStaged(payload?.stageId, {
+      const result = await backupManager.applyStaged(payload?.stageId, {
         passphrase: payload?.passphrase,
         onProgress: (data) => {
           if (!event.sender.isDestroyed()) {
@@ -285,7 +295,16 @@ export function setupBackupIpc ({ getTabs } = {}) {
         },
         openTabs: (tabs) => openTabsBeside(event, tabs, getTabs)
       })
+      if (windowManager && !result?.success) {
+        windowManager.setSkipSaveOnQuit(false)
+        windowManager.startSaver()
+      }
+      return result
     } catch (error) {
+      if (windowManager) {
+        windowManager.setSkipSaveOnQuit(false)
+        windowManager.startSaver()
+      }
       log.error(`Applying a restore failed: ${error.message}`)
       return { success: false, error: error.message }
     }

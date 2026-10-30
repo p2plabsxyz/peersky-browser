@@ -108,13 +108,14 @@ Each section is built using simple HTML blocks styled with internal and theme-pr
 
 #### Clear Browser Cache
 - **API/IPC:** `settings.clearBrowserCache()` → invokes `ipcMain.handle('settings-clear-cache')`
-- **Wipes (Chromium session only):**
+- **Wipes, for websites only (Chromium session only):**
   - Cookies
-  - LocalStorage / SessionStorage
+  - LocalStorage
   - IndexedDB
   - Service Workers
   - Cache Storage
   - HTTP cache (`session.clearCache()`)
+- **Keeps PeerSky's own storage** (`ownStorageOrigins` in `src/settings-manager.js`): the window (`file://`, its open tabs), every `peersky://` page (the P2P apps share `peersky://p2p`, where P2PMD keeps its notes and their keys), and every extension (`chrome-extension://`, History's records among them).
 - **Does NOT touch:** `ipfs/`, `hyper/`, `ensCache.json`, identity files
 
 #### Storage used
@@ -126,6 +127,7 @@ Each section is built using simple HTML blocks styled with internal and theme-pr
 #### Reset P2P Data
 - **Where:** Settings → P2P data, under Storage used
 - **API/IPC:** `settings.resetP2P({ resetIdentities?: boolean })` → `ipcMain.handle('settings-reset-p2p')`
+- **When:** at the next start. The handler writes `p2p-reset-pending.json` and restarts PeerSky, and `runPendingP2PReset` deletes the files below before anything opens the stores. Deleted while PeerSky ran, PeerChat wrote its profile and rooms back with the next message.
 - **Default behavior (`resetIdentities: false`):**
   - Clears P2P caches: `ipfs/` (except `libp2p-key`) and everything in `hyper/`
   - Removes `ensCache.json`, `bt-state.json`, `peersky-ports.json`, `peersky-chat-rooms.json`, `llm.json` and the P2P apps in `myapps/`

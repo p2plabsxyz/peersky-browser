@@ -1,5 +1,6 @@
 import compactEncoding from 'compact-encoding'
 import Protomux from 'protomux'
+import HyperDHTmDNS from '@p2plabs/hyperdht-mdns'
 import {
   checkDeviceSyncProof,
   DEVICE_SYNC_PROTOCOL,
@@ -76,6 +77,7 @@ export function attachDeviceSync (runtime, {
   now = () => Date.now(),
   lookAgainMs = LOOK_AGAIN_MS,
   seenEveryMs = SEEN_EVERY_MS,
+  identityGate = HyperDHTmDNS.identityGate,
   logger = console
 } = {}) {
   const topic = deviceSyncTopic(identityKey)
@@ -137,9 +139,12 @@ export function attachDeviceSync (runtime, {
     return session.frames.length <= MAX_FRAMES_PER_MINUTE
   }
 
-  function attach (connection) {
+  // provenKey: the key a device on the local network proved inside the
+  // channel, which stands for it there as the connection key does on the
+  // internet.
+  function attach (connection, provenKey = null) {
     if (closed || sessions.has(connection) || connection.destroyed) return
-    const session = { connection, verified: false, deviceId: null, type: null, metered: false, frames: [], drives: [] }
+    const session = { connection, provenKey, verified: false, deviceId: null, type: null, metered: false, frames: [], drives: [] }
     const channel = Protomux.from(connection).createChannel({
       protocol: DEVICE_SYNC_PROTOCOL,
       onopen: () => {
@@ -178,7 +183,7 @@ export function attachDeviceSync (runtime, {
         return
       }
       session.verified = true
-      session.deviceId = Buffer.from(connection.remotePublicKey).toString('hex')
+      session.deviceId = Buffer.from(session.provenKey || connection.remotePublicKey).toString('hex')
       online.set(session.deviceId, (online.get(session.deviceId) || 0) + 1)
       sendHello(session)
       changed()
@@ -350,7 +355,34 @@ export function attachDeviceSync (runtime, {
     if (!closed) changed()
   }
 
-  const onConnection = (connection) => attach(connection)
+  // On the local network a connection's key is made up for that network and
+  // says nothing about which device is on the other end. A device proves its
+  // own key inside the channel first, and only to another of this person's
+  // devices (identityGate from @p2plabs/hyperdht-mdns).
+  const gateSecret = typeof identityKey === 'string' ? Buffer.from(identityKey, 'hex') : Buffer.from(identityKey)
+  const onConnection = (connection, info = {}) => {
+    if (info?.lan && info.ephemeral && typeof identityGate === 'function' && swarm.keyPair?.secretKey) {
+      connection.on('error', () => {})
+      // The other device may finish proving first and open sync before this
+      // side has: held until this side's gate is done, as protomux would
+      // refuse it.
+      const mux = Protomux.from(connection)
+      let release = null
+      const released = new Promise((resolve) => { release = resolve })
+      mux.pair({ protocol: DEVICE_SYNC_PROTOCOL }, () => released)
+      identityGate(connection, { keyPair: swarm.keyPair, secrets: [gateSecret], context: 'peersky-device-sync' })
+        .then((proven) => {
+          if (proven && !closed && !connection.destroyed) attach(connection, proven.publicKey)
+        })
+        .catch(() => {})
+        .finally(() => {
+          mux.unpair({ protocol: DEVICE_SYNC_PROTOCOL })
+          release()
+        })
+      return
+    }
+    attach(connection)
+  }
   swarm.on('connection', onConnection)
   for (const connection of swarm.connections || []) attach(connection)
 

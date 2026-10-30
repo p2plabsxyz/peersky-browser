@@ -11,7 +11,7 @@ import { openSealedBackupFiles, readManifest, verifyManifest } from './backup-co
 import { createIdentityTransferZip, decodePairingString, decryptIdentityTransferZip, extractAndVerifyIdentityPayload, isIdentityTransferManifest } from './identity-transfer.js'
 import { assertMobilePairingAllowed, setPairedMobile } from './mobile-pairing.js'
 import { decryptEncryptedBackupZip, isEncryptedBackupManifest } from './encrypted-backup.js'
-import { suspendHyper, resumeHyper, trustPrivateDriveHostname, exportChatForTransfer, importChatFromPhone, startPrivateSync } from '../protocols/hyper-handler.js'
+import { suspendHyper, resumeHyper, trustPrivateDriveHostname, exportChatForTransfer, importChatFromPhone, startPrivateSync, restartPrivateSync } from '../protocols/hyper-handler.js'
 import { suspendIPFS, resumeIPFS } from '../protocols/ipfs-handler.js'
 import { setPrivateDriveOwnership, currentPrivateDriveIds } from '../protocols/private-drive-ownership.js'
 import { listPrivateHyperdrives } from '../protocols/private-hyperdrive-registry.js'
@@ -20,6 +20,7 @@ import { applyPhoneSync, isPhoneSyncManifest, readPhoneSyncZip } from './phone-s
 import { exportP2pmdNotes, importP2pmdNotes } from './p2pmd-notes.js'
 import { forgetPairingNonce, isLivePairingNonce } from './pairing-sessions.js'
 import { ensureOwnNetworkKeys } from './network-keys.js'
+import { adoptIdentityId } from './identity-metadata.js'
 
 const log = createLogger('backup')
 
@@ -363,7 +364,10 @@ class BackupManager {
         const sync = await readPhoneSyncZip(innerZipPath)
         await fs.rm(dir, { recursive: true, force: true })
         dir = null
-        this.staged = { id, kind: 'phone', sync, nonce, stagedAt: Date.now() }
+        // The profile the phone belongs to, taken with the key its devices
+        // share (applyPhoneSync).
+        const identityId = String(manifest.identityTransfer?.identityId || '').toLowerCase()
+        this.staged = { id, kind: 'phone', sync, nonce, identityId, stagedAt: Date.now() }
         return {
           stageId: id,
           kind: 'phone',
@@ -422,8 +426,15 @@ class BackupManager {
     if (staged.kind === 'phone') {
       const applied = await applyPhoneSync(userDataDir(), staged.sync)
       for (const hostname of applied.privateHostnames) trustPrivateDriveHostname(hostname)
-      // From now on the phone's private files come here on their own.
-      startPrivateSync().catch((err) => log.warn(`Private sync did not start after a phone's send: ${err.message}`))
+      // With the key this desktop took, it is one of the person's devices: it
+      // takes their profile id too, so a phone takes its transfers as theirs.
+      if (applied.keyAdopted) {
+        await adoptIdentityId(userDataDir(), staged.identityId).catch((err) => log.warn(`Could not take the phone's profile id: ${err.message}`))
+      }
+      // From now on the phone's private files come here on their own, and
+      // under the key just taken this desktop meets the person's other devices.
+      const syncing = applied.keyAdopted ? restartPrivateSync() : startPrivateSync()
+      syncing.catch((err) => log.warn(`Private sync did not start after a phone's send: ${err.message}`))
       // openTabs says how many it opened: a tab already open here is left out.
       let tabsAdded = 0
       if (typeof openTabs === 'function' && staged.sync.tabs.length > 0) {

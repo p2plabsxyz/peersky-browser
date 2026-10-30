@@ -19,14 +19,14 @@ const url = window.location.href
 // substring of the href proves nothing about which page it is.
 function parseLocation (href) {
   try {
-    const { protocol, hostname } = new URL(href)
-    return { protocol, hostname }
+    const { protocol, hostname, pathname } = new URL(href)
+    return { protocol, hostname, pathname }
   } catch (_) {
-    return { protocol: '', hostname: '' }
+    return { protocol: '', hostname: '', pathname: '' }
   }
 }
 
-const { protocol: pageProtocol, hostname: pageHost } = parseLocation(url)
+const { protocol: pageProtocol, hostname: pageHost, pathname: pagePath } = parseLocation(url)
 
 const isPeerskyPage = (name) => pageProtocol === 'peersky:' && pageHost === name
 
@@ -43,12 +43,19 @@ const isP2PPage = isPeerskyPage('p2p')
 const isUserP2PApp = isPeerskyPage('myapps')
 const isVersionPage = isPeerskyPage('version')
 const isTrustedExternalHost = pageProtocol === 'https:' && pageHost === 'agregore.mauve.moe'
-const isInternal = (pageProtocol === 'peersky:' && !isUserP2PApp) || pageProtocol === 'file:' || isTrustedExternalHost
+// A local file is whatever someone downloaded or saved, so it is an outside
+// page: it gets the AI after asking, like a P2P page, and nothing else.
+const isLocalFile = pageProtocol === 'file:'
+const isInternal = (pageProtocol === 'peersky:' && !isUserP2PApp) || isTrustedExternalHost
 const isExternal = !isInternal
 
 const isP2P = ['hyper:', 'ipfs:', 'ipns:', 'hs:'].includes(pageProtocol)
 
 const isBitTorrent = ['bt:', 'bittorrent:', 'magnet:', 'webtorrent:'].includes(pageProtocol)
+// The torrent pages and the manager get the torrent controls. A file a torrent
+// holds, served at bt://<infohash>/<path>, runs sandboxed without them.
+const isTorrentFile = ['bt:', 'bittorrent:'].includes(pageProtocol) && pagePath !== '' && pagePath !== '/'
+const isTorrentUi = (isBitTorrent && !isTorrentFile) || isPeerskyPage('bt-manager')
 
 // The Hyperdrive app's Files, Photos and Videos views, which allow no inline
 // scripts: the window.llm script below would only be refused there.
@@ -83,25 +90,17 @@ if (process.platform === 'darwin') {
   }, { passive: true })
 }
 
-// Expose minimal API for BitTorrent pages to open files in new tabs
-// Note: window.open() doesn't work for file:// URLs from custom protocols due to Electron security
-if (isBitTorrent) {
-  contextBridge.exposeInMainWorld('peersky', {
-    openInTab: (fileUrl) => ipcRenderer.send('open-url-in-tab', fileUrl)
-  })
-}
-
-if (isBitTorrent || isPeerskyPage('bt-manager')) {
+if (isTorrentUi) {
   contextBridge.exposeInMainWorld('peerskyBT', {
     apiToken: () => ipcRenderer.invoke('bt-api-token')
   })
 }
 
-// Expose LLM API for internal pages, P2P apps, and trusted domains. Whether a
-// call goes through is decided in the main process (src/llm-access.js):
-// PeerSky's own pages freely, every other page after asking. Keep these lists
-// in step with llmAccessFor in src/permissions.js.
-if (isInternal || isP2P || isUserP2PApp) {
+// Expose LLM API for internal pages, P2P apps, local files and trusted
+// domains. Whether a call goes through is decided in the main process
+// (src/llm-access.js): PeerSky's own pages freely, every other page after
+// asking. Keep these lists in step with llmAccessFor in src/permissions.js.
+if (isInternal || isP2P || isUserP2PApp || isLocalFile) {
   console.log('Unified-preload: Exposing LLM API for page:', url)
   // Iterator management for streaming
   const iteratorMaps = new Map()
@@ -147,9 +146,10 @@ if (isInternal || isP2P || isUserP2PApp) {
     iteratorReturn
   })
 
-  // LLM Memory: PeerSky's own pages only. isInternal also covers file: pages
-  // and a trusted external host, and an app added under peersky://myapps came
-  // from somewhere else: none of them should read the whole history.
+  // LLM Memory: PeerSky's own pages only. isInternal also covers a trusted
+  // external host, local files and P2P pages get here too, and an app added
+  // under peersky://myapps came from somewhere else: none of them should read
+  // the whole history.
   if (pageProtocol === 'peersky:' && !isUserP2PApp) {
     contextBridge.exposeInMainWorld('llmMemory', {
       add: (entry) => ipcRenderer.invoke('llm-memory-add', entry),
