@@ -1932,7 +1932,7 @@ class TabBar extends HTMLElement {
     } catch (_) {
       return
     }
-    if (tabId === this.activeTabId) this.emitZoomChanged()
+    if (tabId === this.activeTabId) this.emitZoomChanged({ zooming: true })
   }
 
   // A pinch over a page, which main hands on from the page's own preload
@@ -1971,7 +1971,7 @@ class TabBar extends HTMLElement {
     } catch (_) {
       return
     }
-    this.emitZoomChanged()
+    this.emitZoomChanged({ zooming: true })
   }
 
   // Chromium scopes zoom to the origin, so every peersky://p2p app shared one
@@ -1987,13 +1987,14 @@ class TabBar extends HTMLElement {
   }
 
   // Zoom is per tab, so the indicator follows whichever tab is showing.
-  emitZoomChanged () {
+  // zooming: the level just changed, rather than another tab coming up.
+  emitZoomChanged ({ zooming = false } = {}) {
     const webview = this.getActiveWebview()
     let percent = 100
     try {
       if (webview) percent = Math.round(webview.getZoomFactor() * 100)
     } catch (_) {}
-    this.dispatchEvent(new CustomEvent('zoom-changed', { detail: { percent } }))
+    this.dispatchEvent(new CustomEvent('zoom-changed', { detail: { percent, zooming } }))
   }
 
   stopActiveTab () {
