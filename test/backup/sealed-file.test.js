@@ -197,13 +197,19 @@ describe('backups and transfers with locked files', function () {
     expect(JSON.parse(fs.readFileSync(path.join(dest, PRIVATE_DRIVE_KEY_FILE), 'utf8')).key).to.equal(key.toString('hex'))
   })
 
-  it('a transfer to another desktop or a phone carries them opened too', async function () {
-    for (const targetDeviceType of ['desktop', 'mobile']) {
-      const zip = path.join(out, `${targetDeviceType}.zip`)
-      await createBackupZip(userData, zip, { isIdentityTransfer: true, targetDeviceType, includePrivate: true })
-      const dest = await unpack(zip)
-      expect(fs.readFileSync(path.join(dest, PRIVATE_HYPERDRIVE_REGISTRY_FILE), 'utf8')).to.include('passport-scan.jpg')
-    }
+  it('a transfer to another desktop carries them opened too, and a phone gets the key alone, opened', async function () {
+    const key = await getPrivateDriveKey(userData)
+    const desktopZip = path.join(out, 'desktop.zip')
+    await createBackupZip(userData, desktopZip, { isIdentityTransfer: true, targetDeviceType: 'desktop', includePrivate: true })
+    const desktop = await unpack(desktopZip)
+    expect(fs.readFileSync(path.join(desktop, PRIVATE_HYPERDRIVE_REGISTRY_FILE), 'utf8')).to.include('passport-scan.jpg')
+
+    // A phone opens the drives through private sync, so not even their names go.
+    const phoneZip = path.join(out, 'mobile.zip')
+    await createBackupZip(userData, phoneZip, { isIdentityTransfer: true, targetDeviceType: 'mobile', includePrivate: true })
+    const phone = await unpack(phoneZip)
+    expect(fs.existsSync(path.join(phone, PRIVATE_HYPERDRIVE_REGISTRY_FILE))).to.equal(false)
+    expect(JSON.parse(fs.readFileSync(path.join(phone, PRIVATE_DRIVE_KEY_FILE), 'utf8')).key).to.equal(key.toString('hex'))
   })
 
   it('a backup carries the PeerChat file opened, which PeerChat locks whole as these files are', async function () {

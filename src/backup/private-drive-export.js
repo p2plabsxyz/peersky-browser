@@ -7,11 +7,14 @@ export const PRIVATE_DRIVE_KEY_FILE = 'private-drive-key.json'
 
 // forPhone: a phone is receiving this, so the key goes even when there are no
 // private drives yet. The phone encrypts its own private uploads with it, and
-// that is what lets this desktop open them too.
+// that is what lets this desktop open them too. It also opens this desktop's
+// drives with it, through private sync. None are listed for a phone: their
+// cores never go to one (selectTargets in backup-core.js), and a listed drive
+// is one it would open from a copy it never got.
 export async function buildPrivateDriveKeyExport (userDataDir, now = Date.now(), options = {}) {
   let entries
   try {
-    entries = await listPrivateHyperdrives(userDataDir)
+    entries = options.forPhone ? [] : await listPrivateHyperdrives(userDataDir)
   } catch {
     return null
   }

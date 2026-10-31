@@ -280,10 +280,13 @@ describe('private-drive-export', function () {
     expect(record.entries[0].driveId).to.equal(driveId.toLowerCase())
     expect(record.entries[1].driveId).to.equal(Buffer.from(z32.decode('a'.repeat(52))).toString('hex'))
 
+    // A phone gets the key alone: it opens these drives through private sync,
+    // and their cores never go to it.
     const mobileBytes = await buildPrivateDriveKeyExport(userData, 1700000000000, { forPhone: true })
     const mobileRecord = JSON.parse(mobileBytes.toString('utf-8'))
-    expect(mobileRecord.entries).to.have.length(2)
-    expect(mobileRecord.driveId).to.equal(driveId.toLowerCase())
+    expect(mobileRecord.key).to.equal(record.key)
+    expect(mobileRecord.entries).to.deep.equal([])
+    expect(mobileRecord).not.to.have.property('driveId')
   })
 
   it('gives a phone the key even before there are private drives', async function () {
@@ -318,12 +321,12 @@ describe('private-drive-export', function () {
       includePrivate: true
     })
 
+    // Private files included, and still only the key goes for them. A
+    // profile's private drives ran to gigabytes, past what a phone takes.
     expect(Object.keys(result.manifest.files).sort()).to.deep.equal([
       'bookmarks.json',
-      'hyper-private',
       'peersky-identity.json',
       'private-drive-key.json',
-      'privateHyperdrives.json',
       'tabs.json'
     ])
 
