@@ -194,6 +194,6 @@ describe('typing peersky://history', function () {
 
   it('is followed for every tab', async function () {
     const main = (await readFile(new URL('../src/main.js', import.meta.url), 'utf8'))
-    expect(main).to.contain("if (wc.getType() === 'webview') followHistoryRedirect(wc)")
+    expect(main).to.match(/if \(wc\.getType\(\) === 'webview'\) \{\s+followHistoryRedirect\(wc\)/)
   })
 })
