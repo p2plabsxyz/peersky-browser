@@ -1,5 +1,5 @@
 diff --git a/node_modules/@p2plabs/peersky-chrome-extensions/dist/cjs/index.js b/node_modules/@p2plabs/peersky-chrome-extensions/dist/cjs/index.js
-index f6be9f3..25220a5 100644
+index f6be9f3..323e69d 100644
 --- a/node_modules/@p2plabs/peersky-chrome-extensions/dist/cjs/index.js
 +++ b/node_modules/@p2plabs/peersky-chrome-extensions/dist/cjs/index.js
 @@ -4409,8 +4409,8 @@ var WebRequestAPI = class {
@@ -91,7 +91,7 @@ index f6be9f3..25220a5 100644
        ip: details.ip,
        fromCache: details.fromCache
      };
-@@ -6603,6 +6609,27 @@ var PermissionsAPI = class {
+@@ -6603,8 +6609,30 @@ var PermissionsAPI = class {
    }
  };
  
@@ -118,9 +118,99 @@ index f6be9f3..25220a5 100644
 +
  // src/browser/api/proxy.ts
  var PAC_DATA_MIME_TYPE = "application/x-ns-proxy-autoconfig";
++var PROXY_SCHEMES = ["http", "https", "socks4", "socks5"];
  var ProxyAPI = class {
+   constructor(ctx) {
+     this.ctx = ctx;
+@@ -6679,6 +6707,9 @@ var ProxyAPI = class {
+     }
+     if (mode === "fixed_servers") {
+       const proxyRules = this.resolveProxyRules(config.rules);
++      // Chrome refuses rules it can't read. Setting none sent everything out
++      // directly while the extension went on thinking its proxy was on.
++      if (!proxyRules) throw new Error("Invalid 'rules' specified.");
+       const proxyBypassRules = this.resolveBypassRules(config.rules);
+       console.log("[ProxyAPI] session.setProxy fixed_servers", {
+         proxyRules,
+@@ -6701,35 +6732,22 @@ var ProxyAPI = class {
+     const base64Data = Buffer.from(pacScript.data, "utf8").toString("base64");
+     return `data:${PAC_DATA_MIME_TYPE};base64,${base64Data}`;
+   }
++  // Each server with its own scheme, the way Chrome writes them: without one,
++  // Chromium took an HTTPS proxy for a plain HTTP one and SOCKS5 for SOCKS4.
++  // fallbackProxy goes in the "socks=" slot, which Chromium reads as "for
++  // everything else", whatever the server's scheme.
+   resolveProxyRules(rules) {
+     if (!rules) return void 0;
++    if (rules.singleProxy) return this.formatProxyUri(rules.singleProxy);
+     const segments = [];
+-    if (rules.singleProxy) {
+-      const singleProxy = rules.singleProxy;
+-      const hostPort = this.formatHostPort(singleProxy);
+-      if (!hostPort) return void 0;
+-      if (singleProxy.scheme === "socks4" || singleProxy.scheme === "socks5") {
+-        return `socks=${hostPort}`;
+-      }
+-      return ["http", "https", "ftp"].map((s) => `${s}=${hostPort}`).join(";");
+-    }
+-    const httpRule = this.formatSchemeProxy(rules.proxyForHttp);
+-    if (httpRule) segments.push(`http=${httpRule}`);
+-    const httpsRule = this.formatSchemeProxy(rules.proxyForHttps);
+-    if (httpsRule) segments.push(`https=${httpsRule}`);
+-    const ftpRule = this.formatSchemeProxy(rules.proxyForFtp);
+-    if (ftpRule) segments.push(`ftp=${ftpRule}`);
+-    const fallbackServer = rules.fallbackProxy;
+-    const fallbackRule = this.formatSchemeProxy(fallbackServer);
+-    if (fallbackRule) {
+-      if (fallbackServer?.scheme === "socks4" || fallbackServer?.scheme === "socks5") {
+-        segments.push(`socks=${fallbackRule}`);
+-      } else {
+-        const scheme = fallbackServer?.scheme;
+-        if (scheme === "http" || scheme === "https" || scheme === "ftp") {
+-          segments.push(`${scheme}=${fallbackRule}`);
+-        }
+-      }
++    for (const [key, server] of [
++      ["http", rules.proxyForHttp],
++      ["https", rules.proxyForHttps],
++      ["ftp", rules.proxyForFtp],
++      ["socks", rules.fallbackProxy]
++    ]) {
++      const uri = this.formatProxyUri(server);
++      if (uri) segments.push(`${key}=${uri}`);
+     }
+     if (segments.length === 0) return void 0;
+     return segments.join(";");
+@@ -6740,19 +6758,20 @@ var ProxyAPI = class {
+     return bypassList.join(",");
+   }
+   formatHostPort(server) {
+-    if (!server?.host) return void 0;
++    if (typeof server?.host !== "string" || !server.host) return void 0;
++    // A host that could end one rule and start another is not a host.
++    if (/[\s;=,/@?#]/.test(server.host)) return void 0;
+     const isIpv6 = server.host.includes(":") && !server.host.startsWith("[");
+     const host = isIpv6 ? `[${server.host}]` : server.host;
+-    const port = typeof server.port === "number" ? `:${server.port}` : "";
++    const port = Number.isInteger(server.port) && server.port > 0 && server.port < 65536 ? `:${server.port}` : "";
+     return `${host}${port}`;
+   }
+-  formatSchemeProxy(server) {
++  formatProxyUri(server) {
+     const hostPort = this.formatHostPort(server);
+     if (!hostPort) return void 0;
+-    if (server?.scheme === "socks4" || server?.scheme === "socks5") {
+-      return hostPort;
+-    }
+-    return hostPort;
++    const scheme = server.scheme || "http";
++    if (!PROXY_SCHEMES.includes(scheme)) return void 0;
++    return `${scheme}://${hostPort}`;
+   }
+   emitSettingsChange() {
+     this.ctx.router.sendEventForEachListener("proxy.settings.onChange", (extensionId) => {
 diff --git a/node_modules/@p2plabs/peersky-chrome-extensions/dist/esm/index.mjs b/node_modules/@p2plabs/peersky-chrome-extensions/dist/esm/index.mjs
-index 6bbe384..848851c 100644
+index 6bbe384..576ab78 100644
 --- a/node_modules/@p2plabs/peersky-chrome-extensions/dist/esm/index.mjs
 +++ b/node_modules/@p2plabs/peersky-chrome-extensions/dist/esm/index.mjs
 @@ -4380,8 +4380,8 @@ var WebRequestAPI = class {
@@ -212,7 +302,7 @@ index 6bbe384..848851c 100644
        ip: details.ip,
        fromCache: details.fromCache
      };
-@@ -6574,6 +6580,27 @@ var PermissionsAPI = class {
+@@ -6574,8 +6580,30 @@ var PermissionsAPI = class {
    }
  };
  
@@ -239,4 +329,94 @@ index 6bbe384..848851c 100644
 +
  // src/browser/api/proxy.ts
  var PAC_DATA_MIME_TYPE = "application/x-ns-proxy-autoconfig";
++var PROXY_SCHEMES = ["http", "https", "socks4", "socks5"];
  var ProxyAPI = class {
+   constructor(ctx) {
+     this.ctx = ctx;
+@@ -6650,6 +6678,9 @@ var ProxyAPI = class {
+     }
+     if (mode === "fixed_servers") {
+       const proxyRules = this.resolveProxyRules(config.rules);
++      // Chrome refuses rules it can't read. Setting none sent everything out
++      // directly while the extension went on thinking its proxy was on.
++      if (!proxyRules) throw new Error("Invalid 'rules' specified.");
+       const proxyBypassRules = this.resolveBypassRules(config.rules);
+       console.log("[ProxyAPI] session.setProxy fixed_servers", {
+         proxyRules,
+@@ -6672,35 +6703,22 @@ var ProxyAPI = class {
+     const base64Data = Buffer.from(pacScript.data, "utf8").toString("base64");
+     return `data:${PAC_DATA_MIME_TYPE};base64,${base64Data}`;
+   }
++  // Each server with its own scheme, the way Chrome writes them: without one,
++  // Chromium took an HTTPS proxy for a plain HTTP one and SOCKS5 for SOCKS4.
++  // fallbackProxy goes in the "socks=" slot, which Chromium reads as "for
++  // everything else", whatever the server's scheme.
+   resolveProxyRules(rules) {
+     if (!rules) return void 0;
++    if (rules.singleProxy) return this.formatProxyUri(rules.singleProxy);
+     const segments = [];
+-    if (rules.singleProxy) {
+-      const singleProxy = rules.singleProxy;
+-      const hostPort = this.formatHostPort(singleProxy);
+-      if (!hostPort) return void 0;
+-      if (singleProxy.scheme === "socks4" || singleProxy.scheme === "socks5") {
+-        return `socks=${hostPort}`;
+-      }
+-      return ["http", "https", "ftp"].map((s) => `${s}=${hostPort}`).join(";");
+-    }
+-    const httpRule = this.formatSchemeProxy(rules.proxyForHttp);
+-    if (httpRule) segments.push(`http=${httpRule}`);
+-    const httpsRule = this.formatSchemeProxy(rules.proxyForHttps);
+-    if (httpsRule) segments.push(`https=${httpsRule}`);
+-    const ftpRule = this.formatSchemeProxy(rules.proxyForFtp);
+-    if (ftpRule) segments.push(`ftp=${ftpRule}`);
+-    const fallbackServer = rules.fallbackProxy;
+-    const fallbackRule = this.formatSchemeProxy(fallbackServer);
+-    if (fallbackRule) {
+-      if (fallbackServer?.scheme === "socks4" || fallbackServer?.scheme === "socks5") {
+-        segments.push(`socks=${fallbackRule}`);
+-      } else {
+-        const scheme = fallbackServer?.scheme;
+-        if (scheme === "http" || scheme === "https" || scheme === "ftp") {
+-          segments.push(`${scheme}=${fallbackRule}`);
+-        }
+-      }
++    for (const [key, server] of [
++      ["http", rules.proxyForHttp],
++      ["https", rules.proxyForHttps],
++      ["ftp", rules.proxyForFtp],
++      ["socks", rules.fallbackProxy]
++    ]) {
++      const uri = this.formatProxyUri(server);
++      if (uri) segments.push(`${key}=${uri}`);
+     }
+     if (segments.length === 0) return void 0;
+     return segments.join(";");
+@@ -6711,19 +6729,20 @@ var ProxyAPI = class {
+     return bypassList.join(",");
+   }
+   formatHostPort(server) {
+-    if (!server?.host) return void 0;
++    if (typeof server?.host !== "string" || !server.host) return void 0;
++    // A host that could end one rule and start another is not a host.
++    if (/[\s;=,/@?#]/.test(server.host)) return void 0;
+     const isIpv6 = server.host.includes(":") && !server.host.startsWith("[");
+     const host = isIpv6 ? `[${server.host}]` : server.host;
+-    const port = typeof server.port === "number" ? `:${server.port}` : "";
++    const port = Number.isInteger(server.port) && server.port > 0 && server.port < 65536 ? `:${server.port}` : "";
+     return `${host}${port}`;
+   }
+-  formatSchemeProxy(server) {
++  formatProxyUri(server) {
+     const hostPort = this.formatHostPort(server);
+     if (!hostPort) return void 0;
+-    if (server?.scheme === "socks4" || server?.scheme === "socks5") {
+-      return hostPort;
+-    }
+-    return hostPort;
++    const scheme = server.scheme || "http";
++    if (!PROXY_SCHEMES.includes(scheme)) return void 0;
++    return `${scheme}://${hostPort}`;
+   }
+   emitSettingsChange() {
+     this.ctx.router.sendEventForEachListener("proxy.settings.onChange", (extensionId) => {

@@ -36,6 +36,8 @@ function settingsFile (userDataDir) {
 
 function proxyUri (server) {
   if (!server || typeof server.host !== 'string' || !server.host) return null
+  // A host that could end one rule and start another is not a host.
+  if (/[\s;=,/@?#]/.test(server.host)) return null
   const scheme = server.scheme || 'http'
   if (!PROXY_SCHEMES.has(scheme)) return null
   const host = server.host.includes(':') && !server.host.startsWith('[') ? `[${server.host}]` : server.host
@@ -63,14 +65,13 @@ export function toSessionProxy (value) {
     if (rules.singleProxy) {
       proxyRules = proxyUri(rules.singleProxy) || ''
     } else {
-      const parts = [['http', rules.proxyForHttp], ['https', rules.proxyForHttps], ['ftp', rules.proxyForFtp]]
-        .map(([scheme, server]) => [scheme, proxyUri(server)])
+      // As Chrome writes them: fallbackProxy goes in the "socks=" slot, which
+      // Chromium reads as "for everything else", whatever its scheme.
+      proxyRules = [['http', rules.proxyForHttp], ['https', rules.proxyForHttps], ['ftp', rules.proxyForFtp], ['socks', rules.fallbackProxy]]
+        .map(([key, server]) => [key, proxyUri(server)])
         .filter(([, uri]) => uri)
-        .map(([scheme, uri]) => `${scheme}=${uri}`)
-      // Chromium's rules can only name a fallback for other schemes if it is SOCKS.
-      const fallback = rules.fallbackProxy
-      if (fallback && /^socks[45]$/.test(fallback.scheme || '') && proxyUri(fallback)) parts.push(`socks=${proxyUri(fallback)}`)
-      proxyRules = parts.join(';')
+        .map(([key, uri]) => `${key}=${uri}`)
+        .join(';')
     }
     if (!proxyRules) return null
     const config = { mode: 'fixed_servers', proxyRules }

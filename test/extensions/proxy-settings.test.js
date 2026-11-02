@@ -266,6 +266,56 @@ describe('a VPN extension\'s proxy across restarts', () => {
     }
   })
 
+  // A VPN extension that names its servers itself, and what Chrome hands the
+  // network for each. Without the scheme an HTTPS proxy was taken for a plain
+  // HTTP one, and SOCKS5 for SOCKS4, so none of them connected.
+  const FIXED_SERVERS = [
+    [{ singleProxy: { scheme: 'https', host: 'nl.vpn.example', port: 443 } }, 'https://nl.vpn.example:443'],
+    [{ singleProxy: { scheme: 'socks5', host: '10.8.0.1', port: 1080 } }, 'socks5://10.8.0.1:1080'],
+    [{ singleProxy: { scheme: 'socks4', host: '10.8.0.1', port: 1080 } }, 'socks4://10.8.0.1:1080'],
+    [{ singleProxy: { host: 'proxy.example', port: 8080 } }, 'http://proxy.example:8080'],
+    [{ singleProxy: { scheme: 'https', host: '2001:db8::1', port: 443 } }, 'https://[2001:db8::1]:443'],
+    [{ proxyForHttp: { host: 'a.example', port: 80 }, proxyForHttps: { scheme: 'https', host: 'b.example', port: 443 }, fallbackProxy: { scheme: 'socks5', host: 'c.example', port: 1080 } },
+      'http=http://a.example:80;https=https://b.example:443;socks=socks5://c.example:1080'],
+    [{ proxyForHttps: { scheme: 'socks5', host: 'b.example', port: 1080 } }, 'https=socks5://b.example:1080'],
+    // "socks=" is Chromium's "for everything else", whatever the scheme.
+    [{ fallbackProxy: { scheme: 'https', host: 'c.example', port: 443 } }, 'socks=https://c.example:443']
+  ]
+  // Rules a host could add to, and a scheme Chromium has no proxy for here.
+  const BAD_SERVERS = [
+    { singleProxy: { scheme: 'https', host: 'vpn.example;socks=other.example', port: 443 } },
+    { singleProxy: { host: 'vpn.example,other.example' } },
+    { proxyForHttp: { host: 'a b.example', port: 80 } },
+    { singleProxy: { scheme: 'quic', host: 'q.example', port: 443 } },
+    {}
+  ]
+
+  it('gives fixed proxy servers to the session with their own scheme, as Chrome does', async () => {
+    for (const [rules, expected] of FIXED_SERVERS) {
+      const host = makeHost()
+      await host.handlers.get('proxy.settings.set')({ extension: { id: VEEPN } }, { value: { mode: 'fixed_servers', rules } })
+      expect(host.setProxy.at(-1).mode).to.equal('fixed_servers')
+      expect(host.setProxy.at(-1).proxyRules, JSON.stringify(rules)).to.equal(expected)
+      // And the same again after a restart.
+      expect(toSessionProxy({ mode: 'fixed_servers', rules }).proxyRules, JSON.stringify(rules)).to.equal(expected)
+    }
+  })
+
+  it('refuses fixed servers it cannot hand on, and keeps the proxy it had, where it went out directly', async () => {
+    const host = await hostWithVpnOn()
+    const before = host.setProxy.length
+    for (const rules of BAD_SERVERS) {
+      let refused = null
+      await host.handlers.get('proxy.settings.set')({ extension: { id: VEEPN } }, { value: { mode: 'fixed_servers', rules } })
+        .catch((error) => { refused = error })
+      expect(refused, JSON.stringify(rules)).to.be.an('error')
+      expect(toSessionProxy({ mode: 'fixed_servers', rules }), JSON.stringify(rules)).to.equal(null)
+    }
+    expect(host.setProxy.length).to.equal(before)
+    const got = await host.handlers.get('proxy.settings.get')({ extension: { id: VEEPN } })
+    expect(got.value).to.deep.equal(VPN_ON)
+  })
+
   it('is wired in: kept before extensions load, settled after, and following the extension', () => {
     const keep = managerSource.indexOf('await keepExtensionProxy(')
     const load = managerSource.indexOf('await this._loadExtensionsIntoElectron()')
