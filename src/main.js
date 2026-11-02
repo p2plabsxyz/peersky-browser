@@ -14,6 +14,7 @@ import { createHandler as createFileHandler } from './protocols/file-handler.js'
 import { attachTrackpadZoom, handlePinchZoom } from './trackpad-zoom.js'
 import { followHistoryRedirect } from './history-address.js'
 import { darkenRawTextPages } from './raw-text-pages.js'
+import { noteUnplayableSound } from './media-sound-notes.js'
 import { applyPasswordStore, choosePasswordStore } from './linux-keyring.js'
 import { sealFilesAtRest } from './backup/sealed-file.js'
 import { PRIVATE_DRIVE_KEY_FILE } from './backup/private-drive-key.js'
@@ -140,6 +141,7 @@ app.on('web-contents-created', (event, wc) => {
   if (wc.getType() === 'webview') {
     followHistoryRedirect(wc)
     darkenRawTextPages(wc)
+    noteUnplayableSound(wc)
   }
   wc.on('did-navigate', (e, url) => {
     if (url.startsWith('peersky://downloads')) {
