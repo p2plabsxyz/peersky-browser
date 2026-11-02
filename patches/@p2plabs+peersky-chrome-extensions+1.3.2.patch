@@ -1,0 +1,242 @@
+diff --git a/node_modules/@p2plabs/peersky-chrome-extensions/dist/cjs/index.js b/node_modules/@p2plabs/peersky-chrome-extensions/dist/cjs/index.js
+index f6be9f3..25220a5 100644
+--- a/node_modules/@p2plabs/peersky-chrome-extensions/dist/cjs/index.js
++++ b/node_modules/@p2plabs/peersky-chrome-extensions/dist/cjs/index.js
+@@ -4409,8 +4409,8 @@ var WebRequestAPI = class {
+       timeStamp: details.timestamp != null ? details.timestamp : Date.now(),
+       initiator: this.resolveInitiator(details),
+       requestBody: opts?.includeRequestBody ? this.normalizeRequestBody(details) : void 0,
+-      requestHeaders: details.requestHeaders,
+-      responseHeaders: details.responseHeaders,
++      requestHeaders: toChromeHeaders(details.requestHeaders),
++      responseHeaders: toChromeHeaders(details.responseHeaders),
+       statusCode: details.statusCode,
+       ip: details.ip,
+       fromCache: details.fromCache,
+@@ -4515,7 +4515,10 @@ var WebRequestAPI = class {
+   mergeRequestHeaders(original, results) {
+     const base = { ...original || {} };
+     for (const r of results.values()) {
+-      if (r && r.requestHeaders) {
++      if (r && Array.isArray(r.requestHeaders)) {
++        for (const key of Object.keys(base)) delete base[key];
++        for (const [key, values] of Object.entries(fromChromeHeaders(r.requestHeaders))) base[key] = values.join(", ");
++      } else if (r && r.requestHeaders) {
+         Object.assign(base, r.requestHeaders);
+       }
+     }
+@@ -4524,7 +4527,10 @@ var WebRequestAPI = class {
+   mergeResponseHeaders(original, results) {
+     const base = { ...original || {} };
+     for (const r of results.values()) {
+-      if (r && r.responseHeaders) {
++      if (r && Array.isArray(r.responseHeaders)) {
++        for (const key of Object.keys(base)) delete base[key];
++        Object.assign(base, fromChromeHeaders(r.responseHeaders));
++      } else if (r && r.responseHeaders) {
+         Object.assign(base, r.responseHeaders);
+       }
+     }
+@@ -4604,7 +4610,7 @@ var WebRequestAPI = class {
+     const baseDetails = this.buildDetails(details);
+     const payloadBase = {
+       ...baseDetails,
+-      requestHeaders: details.requestHeaders
++      requestHeaders: toChromeHeaders(details.requestHeaders)
+     };
+     const matching = this.scopeListenersToInitiatorExtension(
+       this.findMatchingListeners(this.onBeforeSendHeadersListeners, payloadBase),
+@@ -4659,7 +4665,7 @@ var WebRequestAPI = class {
+     if (!url) return;
+     const payloadBase = {
+       ...this.buildDetails(details),
+-      requestHeaders: details.requestHeaders
++      requestHeaders: toChromeHeaders(details.requestHeaders)
+     };
+     const matching = this.findMatchingListeners(this.onSendHeadersListeners, payloadBase);
+     if (matching.length === 0) return;
+@@ -4684,7 +4690,7 @@ var WebRequestAPI = class {
+     const payloadBase = {
+       ...baseDetails,
+       statusCode: details.statusCode,
+-      responseHeaders: details.responseHeaders
++      responseHeaders: toChromeHeaders(details.responseHeaders)
+     };
+     const matching = this.scopeListenersToInitiatorExtension(
+       this.findMatchingListeners(this.onHeadersReceivedListeners, payloadBase),
+@@ -4741,7 +4747,7 @@ var WebRequestAPI = class {
+       ...this.buildDetails(details),
+       redirectUrl: details.redirectURL,
+       statusCode: details.statusCode,
+-      responseHeaders: details.responseHeaders,
++      responseHeaders: toChromeHeaders(details.responseHeaders),
+       ip: details.ip,
+       fromCache: details.fromCache
+     };
+@@ -4763,7 +4769,7 @@ var WebRequestAPI = class {
+     const payloadBase = {
+       ...this.buildDetails(details),
+       statusCode: details.statusCode,
+-      responseHeaders: details.responseHeaders,
++      responseHeaders: toChromeHeaders(details.responseHeaders),
+       ip: details.ip,
+       fromCache: details.fromCache
+     };
+@@ -4789,7 +4795,7 @@ var WebRequestAPI = class {
+     const payloadBase = {
+       ...this.buildDetails(details),
+       statusCode: details.statusCode,
+-      responseHeaders: details.responseHeaders,
++      responseHeaders: toChromeHeaders(details.responseHeaders),
+       ip: details.ip,
+       fromCache: details.fromCache
+     };
+@@ -6603,6 +6609,27 @@ var PermissionsAPI = class {
+   }
+ };
+ 
++// Chrome hands extensions headers as [{ name, value }] and takes them back the
++// same way; Electron's webRequest uses { name: value | [values] }. Extensions
++// such as Browsec read details.responseHeaders as Chrome's array.
++function toChromeHeaders(headers) {
++  if (!headers || Array.isArray(headers)) return headers;
++  const list = [];
++  for (const [name, value] of Object.entries(headers)) {
++    for (const one of Array.isArray(value) ? value : [value]) list.push({ name, value: String(one) });
++  }
++  return list;
++}
++function fromChromeHeaders(list) {
++  const headers = {};
++  for (const header of list || []) {
++    if (!header || !header.name) continue;
++    const value = header.value != null ? String(header.value) : header.binaryValue ? Buffer.from(header.binaryValue).toString() : "";
++    (headers[header.name] = headers[header.name] || []).push(value);
++  }
++  return headers;
++}
++
+ // src/browser/api/proxy.ts
+ var PAC_DATA_MIME_TYPE = "application/x-ns-proxy-autoconfig";
+ var ProxyAPI = class {
+diff --git a/node_modules/@p2plabs/peersky-chrome-extensions/dist/esm/index.mjs b/node_modules/@p2plabs/peersky-chrome-extensions/dist/esm/index.mjs
+index 6bbe384..848851c 100644
+--- a/node_modules/@p2plabs/peersky-chrome-extensions/dist/esm/index.mjs
++++ b/node_modules/@p2plabs/peersky-chrome-extensions/dist/esm/index.mjs
+@@ -4380,8 +4380,8 @@ var WebRequestAPI = class {
+       timeStamp: details.timestamp != null ? details.timestamp : Date.now(),
+       initiator: this.resolveInitiator(details),
+       requestBody: opts?.includeRequestBody ? this.normalizeRequestBody(details) : void 0,
+-      requestHeaders: details.requestHeaders,
+-      responseHeaders: details.responseHeaders,
++      requestHeaders: toChromeHeaders(details.requestHeaders),
++      responseHeaders: toChromeHeaders(details.responseHeaders),
+       statusCode: details.statusCode,
+       ip: details.ip,
+       fromCache: details.fromCache,
+@@ -4486,7 +4486,10 @@ var WebRequestAPI = class {
+   mergeRequestHeaders(original, results) {
+     const base = { ...original || {} };
+     for (const r of results.values()) {
+-      if (r && r.requestHeaders) {
++      if (r && Array.isArray(r.requestHeaders)) {
++        for (const key of Object.keys(base)) delete base[key];
++        for (const [key, values] of Object.entries(fromChromeHeaders(r.requestHeaders))) base[key] = values.join(", ");
++      } else if (r && r.requestHeaders) {
+         Object.assign(base, r.requestHeaders);
+       }
+     }
+@@ -4495,7 +4498,10 @@ var WebRequestAPI = class {
+   mergeResponseHeaders(original, results) {
+     const base = { ...original || {} };
+     for (const r of results.values()) {
+-      if (r && r.responseHeaders) {
++      if (r && Array.isArray(r.responseHeaders)) {
++        for (const key of Object.keys(base)) delete base[key];
++        Object.assign(base, fromChromeHeaders(r.responseHeaders));
++      } else if (r && r.responseHeaders) {
+         Object.assign(base, r.responseHeaders);
+       }
+     }
+@@ -4575,7 +4581,7 @@ var WebRequestAPI = class {
+     const baseDetails = this.buildDetails(details);
+     const payloadBase = {
+       ...baseDetails,
+-      requestHeaders: details.requestHeaders
++      requestHeaders: toChromeHeaders(details.requestHeaders)
+     };
+     const matching = this.scopeListenersToInitiatorExtension(
+       this.findMatchingListeners(this.onBeforeSendHeadersListeners, payloadBase),
+@@ -4630,7 +4636,7 @@ var WebRequestAPI = class {
+     if (!url) return;
+     const payloadBase = {
+       ...this.buildDetails(details),
+-      requestHeaders: details.requestHeaders
++      requestHeaders: toChromeHeaders(details.requestHeaders)
+     };
+     const matching = this.findMatchingListeners(this.onSendHeadersListeners, payloadBase);
+     if (matching.length === 0) return;
+@@ -4655,7 +4661,7 @@ var WebRequestAPI = class {
+     const payloadBase = {
+       ...baseDetails,
+       statusCode: details.statusCode,
+-      responseHeaders: details.responseHeaders
++      responseHeaders: toChromeHeaders(details.responseHeaders)
+     };
+     const matching = this.scopeListenersToInitiatorExtension(
+       this.findMatchingListeners(this.onHeadersReceivedListeners, payloadBase),
+@@ -4712,7 +4718,7 @@ var WebRequestAPI = class {
+       ...this.buildDetails(details),
+       redirectUrl: details.redirectURL,
+       statusCode: details.statusCode,
+-      responseHeaders: details.responseHeaders,
++      responseHeaders: toChromeHeaders(details.responseHeaders),
+       ip: details.ip,
+       fromCache: details.fromCache
+     };
+@@ -4734,7 +4740,7 @@ var WebRequestAPI = class {
+     const payloadBase = {
+       ...this.buildDetails(details),
+       statusCode: details.statusCode,
+-      responseHeaders: details.responseHeaders,
++      responseHeaders: toChromeHeaders(details.responseHeaders),
+       ip: details.ip,
+       fromCache: details.fromCache
+     };
+@@ -4760,7 +4766,7 @@ var WebRequestAPI = class {
+     const payloadBase = {
+       ...this.buildDetails(details),
+       statusCode: details.statusCode,
+-      responseHeaders: details.responseHeaders,
++      responseHeaders: toChromeHeaders(details.responseHeaders),
+       ip: details.ip,
+       fromCache: details.fromCache
+     };
+@@ -6574,6 +6580,27 @@ var PermissionsAPI = class {
+   }
+ };
+ 
++// Chrome hands extensions headers as [{ name, value }] and takes them back the
++// same way; Electron's webRequest uses { name: value | [values] }. Extensions
++// such as Browsec read details.responseHeaders as Chrome's array.
++function toChromeHeaders(headers) {
++  if (!headers || Array.isArray(headers)) return headers;
++  const list = [];
++  for (const [name, value] of Object.entries(headers)) {
++    for (const one of Array.isArray(value) ? value : [value]) list.push({ name, value: String(one) });
++  }
++  return list;
++}
++function fromChromeHeaders(list) {
++  const headers = {};
++  for (const header of list || []) {
++    if (!header || !header.name) continue;
++    const value = header.value != null ? String(header.value) : header.binaryValue ? Buffer.from(header.binaryValue).toString() : "";
++    (headers[header.name] = headers[header.name] || []).push(value);
++  }
++  return headers;
++}
++
+ // src/browser/api/proxy.ts
+ var PAC_DATA_MIME_TYPE = "application/x-ns-proxy-autoconfig";
+ var ProxyAPI = class {
