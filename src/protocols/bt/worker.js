@@ -1,3 +1,5 @@
+// First, so the network is locked to a VPN's proxy before WebTorrent loads.
+import { networkLock, onNetworkMessage } from './worker-network.js'
 import WebTorrent from 'webtorrent'
 import path from 'path'
 import fs from 'fs'
@@ -42,7 +44,9 @@ function initClient () {
     uploadLimit: -1,
     lsd: false,
     natUpnp: false,
-    natPmp: false
+    natPmp: false,
+    // Through a VPN: no DHT or uTP, which use UDP and this computer's address.
+    ...(networkLock ? networkLock.clientOptions : {})
   })
   client.on('error', (err) => {
     console.error('[BT-Worker] Client error:', err.message)
@@ -118,6 +122,7 @@ setInterval(() => {
 }, 2000)
 
 process.on('message', (msg) => {
+  if (onNetworkMessage(msg)) return
   const { id, action, ...params } = msg
   try {
     switch (action) {
@@ -260,8 +265,12 @@ async function addTorrent (id, { magnetUri, announce, mode }) {
     }
   }
 
-  const torrent = client.add(keptTorrentFile(hash) || magnetUri, { path: downloadPath, announce: announce || [] })
+  const trackers = networkLock ? (announce || []).filter(networkLock.keepTracker) : (announce || [])
+  const torrent = client.add(keptTorrentFile(hash) || magnetUri, { path: downloadPath, announce: trackers })
   if (hash) torrentModes.set(hash, mode)
+  // Through a VPN, only trackers a proxy can carry: the torrent's own list is
+  // read by now, and discovery starts right after this event.
+  if (networkLock) torrent.once('infoHash', () => { torrent.announce = (torrent.announce || []).filter(networkLock.keepTracker) })
   attachTorrentEvents(torrent, mode)
 
   send({ id, type: 'started', infoHash: torrent.infoHash || hash || null, magnetURI: torrent.magnetURI, mode })

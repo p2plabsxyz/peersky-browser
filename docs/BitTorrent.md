@@ -42,7 +42,7 @@ You can drag and drop a local `.torrent` file directly onto the browser's addres
 
 Use `peersky://bt-manager` to manage all torrents from one page. Settings links to it as BitTorrent, right under P2P data. The page also says how to start a torrent, and carries the same privacy notice as the torrent page.
 
-- View cached torrents and status (`downloading`, `paused`, `stopped`, `seeding`, `done`)
+- View cached torrents and status (`downloading`, `paused`, `paused: VPN off`, `stopped`, `seeding`, `done`)
 - Open a torrent page (`bt://<infohash>`)
 - Run actions: `Pause`, `Resume`, `Start Seeding`, `Stop Seeding`, `Stop`, `Remove`
 - Copy `infoHash` or full magnet URI
@@ -55,6 +55,8 @@ Files are saved to `<Downloads>/PeerskyTorrents/` (your system's default Downloa
 - **`src/protocols/bittorrent-handler.js`** — protocol handler, status cache, API routing
 - **`src/protocols/bt/worker.js`** — runs WebTorrent client in a separate Node.js process
 - **`src/protocols/bt/torrentPage.js`** — generates the HTML/JS torrent page UI
+- **`src/protocols/bt/vpn-watch.js`**: watches the proxy a VPN extension sets for the browser, and asks the extension for the proxy's login
+- **`src/protocols/bt/worker-network.js`**, **`network-lock.js`**, **`proxy-tunnel.js`**: keep every connection the worker makes inside the VPN's proxy
 
 ## API Endpoints
 
@@ -76,11 +78,22 @@ The torrent page communicates with the handler via `bt://api?action=api&api=<act
 
 - **Default no-seeding** — torrents stop automatically on completion unless you explicitly choose **Start Seeding**
 - **LAN / NAT defaults** — `lsd`, `natUpnp`, and `natPmp` are kept off for all modes to maximize tracker compatibility
-- **IP visibility** — your IP is visible to peers during download, and while seeding if you enable it
+- **IP visibility** — your IP is visible to peers during download, and while seeding if you enable it, unless a VPN extension is on (see below)
 - **Upload during download** — pieces are shared with peers while downloading (BitTorrent protocol requirement)
 - **Stop control** — you can stop active seeding at any time using **Stop Seeding**
 - **Session control semantics** — `pause` keeps torrent in active worker state; `stop` ends active worker session; `remove` deletes cached entry
 - **Isolated process** — WebTorrent runs in a child process; a crash won't take down the browser
+
+## VPN extensions
+
+With a VPN extension on, for example [VeePN](https://chromewebstore.google.com/detail/free-vpn-for-chrome-vpn-p/majdfhpaihoncoakbjgbdhglocklcgno), torrents go through the same VPN as your tabs. Peers, trackers and web seeds see the VPN's address, not yours. The torrent page says **Through your VPN** while this is on, and the manager says so next to the torrent count.
+
+- PeerSky reads the proxy the extension set for the browser and starts the torrent worker with it. When the VPN turns on or switches server, running torrents move to a new worker that goes through it.
+- Every connection the worker makes goes through the proxy as a tunnel (HTTP CONNECT, or SOCKS). Name lookups go to the proxy too, not to your computer's DNS.
+- If the proxy wants a login, the worker asks the browser, and the browser asks the extension the way Chrome does (`onAuthRequired`). The login stays in memory. It is never written to disk, and the worker only gets it for the proxy the browser picked.
+- What a proxy cannot carry stays off: UDP (DHT, uTP and UDP trackers), local peer discovery, UPnP and NAT-PMP. Torrents use `http(s)` trackers, the peers they list, and web seeds, so some torrents find fewer peers through a VPN.
+- If the proxy is down or refuses the login, connections fail. Nothing falls back to your own address.
+- If the VPN turns off, running torrents pause instead of going on without it. The manager shows them as `paused: VPN off`, and they start again when the VPN comes back.
 
 ## Opening Downloaded Files
 

@@ -1112,6 +1112,30 @@ describe('BitTorrent protocol handler', function () {
       expect(await res.text()).to.include('too big')
     })
 
+    it('logs in to a VPN extension\'s proxy and fetches again when the proxy asks for a login', async () => {
+      const calls = []
+      const fetch = async (url) => {
+        calls.push(url)
+        return calls.length === 1 ? new Response('', { status: 407 }) : new Response(torrentFile)
+      }
+      const { handler, mod } = await loadHandler({ fetch })
+      let logins = 0
+      mod.setProxyLogin(async () => { logins++; return true })
+      const res = await handler(new Request(`webtorrent:${SOURCE}`))
+      expect(res.status).to.equal(200)
+      expect(await res.text()).to.include('mysterious-mose_1930')
+      expect(logins).to.equal(1)
+      expect(calls).to.deep.equal([SOURCE, SOURCE])
+
+      // No login to be had: the proxy's answer stands, fetched once.
+      calls.length = 0
+      mod.setProxyLogin(async () => false)
+      const refused = await handler(new Request(`webtorrent:${SOURCE}`))
+      expect(await refused.text()).to.include('could not be fetched (407)')
+      expect(calls).to.deep.equal([SOURCE])
+      mod.setProxyLogin(null)
+    })
+
     it('a webtorrent: page may ask for the API token', async () => {
       const loaded = await loadHandler()
       expect(tokenIpc(loaded)(`webtorrent:${SOURCE}`)).to.be.a('string').with.lengthOf(48)
@@ -1216,7 +1240,9 @@ export default class FakeWebTorrent extends EventEmitter {
     const workerSrcPath = path.join(_testDir, '../../src/protocols/bt/worker.js')
     const workerOutPath = path.join(tmp, 'worker.js')
     fs.writeFileSync(workerOutPath, fs.readFileSync(workerSrcPath, 'utf8'), 'utf8')
-    fs.copyFileSync(path.join(path.dirname(workerSrcPath), 'file-reads.js'), path.join(tmp, 'file-reads.js'))
+    for (const name of ['file-reads.js', 'worker-network.js', 'network-lock.js', 'proxy-tunnel.js']) {
+      fs.copyFileSync(path.join(path.dirname(workerSrcPath), name), path.join(tmp, name))
+    }
 
     const nm = path.join(tmp, 'node_modules', 'webtorrent')
     fs.mkdirSync(nm, { recursive: true })

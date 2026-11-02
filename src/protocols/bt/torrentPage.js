@@ -52,6 +52,11 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
       padding: 4px 12px; border-radius: 4px;
       font-size: 0.75rem; text-transform: uppercase; font-weight: 600;
     }
+    .vpn-badge {
+      background: #1e4d2b; color: #6bff8e;
+      padding: 4px 12px; border-radius: 4px;
+      font-size: 0.75rem; font-weight: 600;
+    }
     .torrent-name {
       color: var(--browser-theme-primary-highlight, #3b82f6);
       font-size: 1.6rem; margin: 15px 0;
@@ -167,6 +172,7 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
       <img src="peersky://static/assets/logo.png" class="logo" alt="Peersky" />
       <span>BitTorrent</span>
       <span class="protocol-badge">${escapeForHtml(protocol)}</span>
+      <span class="vpn-badge" id="vpnBadge" hidden title="Torrents connect through the VPN extension that is on, so peers see its address">Through your VPN</span>
     </h1>
     <div class="torrent-name" id="torrentDisplayName">${safeName}</div>
 
@@ -214,7 +220,7 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
     </div>
 
     <div class="privacy-warning">
-      <strong>Privacy Notice:</strong> BitTorrent is a peer-to-peer protocol. Your IP address is visible to peers while downloading, and while seeding if you explicitly enable it. PeerSky auto-stops completed torrents by default (no seeding), and provides explicit Start Seeding / Stop Seeding controls. This may bypass your proxy or VPN settings.
+      <strong>Privacy Notice:</strong> BitTorrent is a peer-to-peer protocol. Your IP address is visible to peers while downloading, and while seeding if you explicitly enable it. With a VPN extension on, torrents go through it, so peers see the VPN's address instead, and if the VPN turns off, running torrents pause. PeerSky auto-stops completed torrents by default (no seeding), and provides explicit Start Seeding / Stop Seeding controls.
     </div>
 
   </div>
@@ -229,6 +235,7 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
     var filesRendered = false;
     var startedAtMs = 0;
     var networkHintShown = false;
+    var VPN_OFF_MESSAGE = 'Your VPN extension turned off, so this torrent paused. It carries on when the VPN is back on, or press Resume to go on without it.';
 
     function showStatus(message, type) {
       var host = document.getElementById('statusMessage');
@@ -329,7 +336,7 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
             document.getElementById('resumeBtn').style.display = 'none';
             document.getElementById('stopBtn').style.display = 'none';
           } else if (s.paused) {
-            showStatus('Torrent paused', 'info');
+            showStatus(s.pausedForVpn ? VPN_OFF_MESSAGE : 'Torrent paused', 'info');
             document.getElementById('pauseBtn').style.display = 'none';
             document.getElementById('resumeBtn').style.display = 'inline-block';
             document.getElementById('resumeBtn').disabled = false;
@@ -384,6 +391,7 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
     function updateUIFromStatus(s) {
       if (!s || s.error) return;
       if (s.infoHash) currentInfoHash = s.infoHash;
+      document.getElementById('vpnBadge').hidden = !s.throughVpn;
 
       var pct = Math.round((s.progress || 0) * 100);
       var fill = document.getElementById('progressFill');
@@ -423,7 +431,9 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
         if (isStuckAtZeroPeers && elapsedSinceStart > 35000 && !networkHintShown) {
           networkHintShown = true;
           showStatus(
-            'Still 0 peers after ~35s. This usually means tracker traffic is blocked by your network/ISP. Try VPN or a different network.',
+            s.throughVpn
+              ? 'Still 0 peers after ~35s. Your VPN may not allow connections to torrent peers. Files with web seeds still download through it.'
+              : 'Still 0 peers after ~35s. This usually means tracker traffic is blocked by your network/ISP. Try VPN or a different network.',
             'info'
           );
         }
@@ -455,6 +465,19 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
           document.getElementById('resumeBtn').style.display = 'inline-block';
           document.getElementById('resumeBtn').disabled = false;
           document.getElementById('stopBtn').style.display = 'none';
+        } else if (s.paused && s.pausedForVpn) {
+          showStatus(VPN_OFF_MESSAGE, 'info');
+          document.getElementById('pauseBtn').style.display = 'none';
+          document.getElementById('resumeBtn').style.display = 'inline-block';
+          document.getElementById('resumeBtn').disabled = false;
+        } else if (!s.paused && document.getElementById('resumeBtn').style.display === 'inline-block') {
+          // Running again, as when the VPN came back on.
+          showStatus('Torrent is active. Downloading...', 'success');
+          document.getElementById('resumeBtn').style.display = 'none';
+          document.getElementById('pauseBtn').style.display = 'inline-block';
+          document.getElementById('pauseBtn').disabled = false;
+          document.getElementById('stopBtn').style.display = 'inline-block';
+          document.getElementById('stopBtn').disabled = false;
         }
       } catch (err) {
         console.error('[BT-UI] Poll error:', err);

@@ -1,4 +1,4 @@
-import { app, session, protocol as globalProtocol, ipcMain, BrowserWindow, Menu, webContents, shell, safeStorage, dialog } from 'electron' // eslint-disable-line no-unused-vars
+import { app, session, protocol as globalProtocol, ipcMain, BrowserWindow, Menu, webContents, shell, safeStorage, dialog, net } from 'electron' // eslint-disable-line no-unused-vars
 import { createLogger } from './logger.js'
 import fs from 'fs/promises'
 import path from 'path'
@@ -20,7 +20,9 @@ import { sealFilesAtRest } from './backup/sealed-file.js'
 import { PRIVATE_DRIVE_KEY_FILE } from './backup/private-drive-key.js'
 import { PRIVATE_HYPERDRIVE_REGISTRY_FILE } from './protocols/private-hyperdrive-registry.js'
 import { DEVICE_SYNC_FILE } from './protocols/device-sync-state.js'
-import { createHandler as createBittorrentHandler, setupBittorrentIpc, shutdownBittorrent, warmupBittorrent } from './protocols/bittorrent-handler.js'
+import { createHandler as createBittorrentHandler, setupBittorrentIpc, shutdownBittorrent, warmupBittorrent, setTorrentProxies, setTorrentProxyCredentials, setProxyLogin } from './protocols/bittorrent-handler.js'
+import { watchExtensionProxy, extensionProxyCredentials } from './protocols/bt/vpn-watch.js'
+import { restoreSavedProxy, logInToProxy } from './extensions/services/proxy-settings.js'
 import { ipfsOptions, hyperOptions } from './protocols/config.js'
 import { gateRequest, stampVetted, requireVetted, frameUrlOf } from './protocols/request-gate.js'
 import { createMenuTemplate } from './actions.js'
@@ -441,6 +443,59 @@ app.whenReady().then(async () => {
   p2pAppRegistry.setupIpc({ checkForAppUpdate: checkForUpdatesNow })
   installExtensionWebRequestBridge(userSession)
   setupBittorrentIpc()
+  // Torrents follow a VPN extension's proxy, as pages do, and get its login
+  // from the extension the way the browser does. Set up before extensions
+  // load, so the first proxy a VPN sets is seen.
+  const extensionProxy = watchExtensionProxy(userSession, (proxies) => {
+    setTorrentProxies(proxies)
+    if (proxies.length) logInToVpnProxy()
+  })
+  setTorrentProxyCredentials((proxy, info) =>
+    extensionProxyCredentials(extensionManager.electronChromeExtensions?.api?.webRequest, proxy, info))
+  setProxyLogin(logInToVpnProxy)
+
+  // Resolves once extensions have loaded, for logging in to a VPN's proxy.
+  let markExtensionsLoaded
+  const extensionsLoaded = new Promise((resolve) => { markExtensionsLoaded = resolve })
+
+  // The browser's own fetches (the updater's, a torrent file's) cannot answer
+  // a VPN proxy's login the way pages do. Once one request has, theirs go
+  // through (extensions/services/proxy-settings.js). Tried again a few times:
+  // the extension may not listen for logins the moment it loads.
+  let loggingIn = null
+  function logInToVpnProxy () {
+    loggingIn = loggingIn || (async () => {
+      await extensionsLoaded
+      for (const delay of [0, 1000, 1000, 2000, 2000, 4000, 8000, 15000]) {
+        if (delay) await new Promise((resolve) => setTimeout(resolve, delay))
+        if (!(await extensionProxy.current()).length) return false
+        const loggedIn = await logInToProxy({
+          request: (options) => net.request({ ...options, session: userSession }),
+          credentialsFor: async (authInfo) => {
+            // The extension's login goes to its own proxy only.
+            const host = String(authInfo.host || '').toLowerCase().replace(/^\[|\]$/g, '')
+            const proxies = await extensionProxy.current()
+            if (!proxies.some((p) => p.host === host && p.port === authInfo.port)) return null
+            return extensionProxyCredentials(extensionManager.electronChromeExtensions?.api?.webRequest,
+              { host, port: authInfo.port }, { realm: authInfo.realm, target: { host: 'github.com', port: 443 } })
+          }
+        })
+        if (loggedIn) {
+          log.info('[vpn] the browser\'s own requests are logged in to the VPN extension\'s proxy')
+          return true
+        }
+      }
+      log.warn('[vpn] could not log in to the VPN extension\'s proxy: the browser\'s own requests may fail until a page does')
+      return false
+    })().finally(() => { loggingIn = null })
+    return loggingIn
+  }
+  // The proxy a VPN extension had set before the restart is back before any
+  // window opens, and torrents know it, so no tab or torrent connects without
+  // it in the meantime (extensions/services/proxy-settings.js).
+  await restoreSavedProxy(userSession, app.getPath('userData'))
+    .then((saved) => saved && extensionProxy.check())
+    .catch((error) => log.warn('[startup] could not restore the VPN extension\'s proxy:', error?.message || error))
   setupBackupIpc({ getTabs: () => windowManager.getTabs() })
   setupDeviceSyncIpc()
   setupHyperdriveViewsIpc()
@@ -563,6 +618,7 @@ app.whenReady().then(async () => {
   const extensionsReady = extensionsInitializing
     .then(() => log.info(`Extension system initialized in ${Date.now() - bootStartedAt}ms`))
     .catch((error) => log.error('Failed to initialize extension system:', error))
+  extensionsReady.then(markExtensionsLoaded)
 
   // Check for --new-window argument (from Windows taskbar jump list)
   const hasNewWindowArg = process.argv.includes('--new-window')
