@@ -1439,6 +1439,96 @@ describe('BitTorrent pages', function () {
     expect(opened).to.deep.equal([[`bt://${HASH_HEX}/Folder/Sub/${encodeURIComponent(name)}`, '_blank', 'noopener']])
   })
 
+  // The torrent page's own script, run against stand-in elements, with its
+  // timers and the statuses it asks for held here.
+  async function runTorrentPage () {
+    const { generateTorrentUI } = await import('../../src/protocols/bt/torrentPage.js')
+    const html = generateTorrentUI(`magnet:?xt=urn:btih:${HASH_HEX}`, HASH_HEX, 'magnet', null, 'dark')
+    const script = html.match(/<script>([\s\S]*?)<\/script>/)[1]
+    const elements = new Map()
+    const element = () => ({ style: {}, children: [], textContent: '', disabled: false, hidden: false, appendChild (child) { this.children.push(child) }, addEventListener () {} })
+    const byId = (id) => { if (!elements.has(id)) elements.set(id, element()); return elements.get(id) }
+    const timers = new Map()
+    let nextTimer = 1
+    const asked = [] // status calls not answered yet
+    const page = {
+      byId,
+      status: () => byId('statusMessage').children.at(-1)?.textContent,
+      // The one timer running, if any, and how often it runs.
+      timer: () => [...timers.values()][0],
+      timerCount: () => timers.size,
+      answer: (status) => asked.shift()(status),
+      pending: () => asked.length
+    }
+    const fetch = (url, options = {}) => {
+      if ((options.method || 'GET') === 'POST') return Promise.resolve({ text: async () => JSON.stringify({ success: true }) })
+      return new Promise((resolve) => asked.push((status) => resolve({ text: async () => JSON.stringify(status) })))
+    }
+    const setTimer = (fn, ms) => { const id = nextTimer++; timers.set(id, { fn, ms }); return id }
+    const clearTimer = (id) => { timers.delete(id) }
+    const window = { peerskyBT: { apiToken: async () => 'token' } }
+    const document = { getElementById: byId, createElement: element, title: '' }
+    page.actions = new Function('document', 'window', 'fetch', 'setInterval', 'clearInterval', 'console', // eslint-disable-line no-new-func
+      `${script}\nreturn { pollStatus, pauseTorrent, resumeTorrent, stopTorrent }`
+    )(document, window, fetch, setTimer, clearTimer, { log () {}, error () {} })
+    return page
+  }
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
+
+  it('the torrent page catches up when a paused torrent is resumed somewhere else, without a reload', async () => {
+    const page = await runTorrentPage()
+    page.answer({ infoHash: HASH_HEX, paused: true, stopped: true, progress: 0.3 })
+    await settle()
+    expect(page.status()).to.equal('Torrent paused')
+    expect(page.byId('resumeBtn').style.display).to.equal('inline-block')
+    // It still looks, gently, where it used to stop looking.
+    expect(page.timer().ms).to.equal(5000)
+
+    // Resumed in the manager: the next look shows it running, at the full pace.
+    page.timer().fn()
+    page.answer({ infoHash: HASH_HEX, paused: false, stopped: false, progress: 0.4, numPeers: 3 })
+    await settle()
+    expect(page.status()).to.equal('Torrent is active. Downloading...')
+    expect(page.byId('resumeBtn').style.display).to.equal('none')
+    expect(page.byId('pauseBtn').style.display).to.equal('inline-block')
+    expect(page.timerCount()).to.equal(1)
+    expect(page.timer().ms).to.equal(2000)
+
+    // Stopped somewhere else: back to looking gently, then finished: it stops looking.
+    page.timer().fn()
+    page.answer({ infoHash: HASH_HEX, paused: true, stopped: true, progress: 0.4 })
+    await settle()
+    expect(page.byId('resumeBtn').style.display).to.equal('inline-block')
+    expect(page.timer().ms).to.equal(5000)
+    page.timer().fn()
+    page.answer({ infoHash: HASH_HEX, done: true, progress: 1 })
+    await settle()
+    expect(page.timerCount()).to.equal(0)
+  })
+
+  it('the torrent page keeps looking after Pause or Stop here, and a look begun before the press cannot undo it', async () => {
+    const page = await runTorrentPage()
+    page.answer({ infoHash: HASH_HEX, paused: false, stopped: false, progress: 0.2, numPeers: 2 })
+    await settle()
+    expect(page.timer().ms).to.equal(2000)
+
+    // A look goes out, then Pause is pressed before it comes back running.
+    page.timer().fn()
+    await page.actions.pauseTorrent()
+    page.answer({ infoHash: HASH_HEX, paused: false, stopped: false, progress: 0.2, numPeers: 2 })
+    await settle()
+    expect(page.status()).to.equal('Torrent paused')
+    expect(page.byId('resumeBtn').style.display).to.equal('inline-block')
+    expect(page.timer().ms).to.equal(5000)
+
+    await page.actions.resumeTorrent()
+    expect(page.timer().ms).to.equal(2000)
+    await page.actions.stopTorrent()
+    expect(page.status()).to.equal('Torrent stopped.')
+    expect(page.timerCount()).to.equal(1)
+    expect(page.timer().ms).to.equal(5000)
+  })
+
   it('the manager shows a downloaded torrent as done, with nothing to resume or stop', () => {
     const script = read('bt-manager.html').match(/<script>([\s\S]*?)<\/script>/)[1]
     const formatState = new Function( // eslint-disable-line no-new-func
