@@ -42,6 +42,8 @@ You can drag and drop a local `.torrent` file directly onto the browser's addres
 
 Use `peersky://bt-manager` to manage all torrents from one page. Settings links to it as BitTorrent, right under P2P data. The page also says how to start a torrent, and carries the same privacy notice as the torrent page.
 
+![PeerSky torrent manager listing three torrents, through a VPN extension](./images/peersky-bittorrent-manager.png)
+
 - View cached torrents and status (`downloading`, `paused`, `paused: VPN off`, `stopped`, `seeding`, `done`)
 - Open a torrent page (`bt://<infohash>`)
 - Run actions: `Pause`, `Resume`, `Start Seeding`, `Stop Seeding`, `Stop`, `Remove`
@@ -94,6 +96,7 @@ With a VPN extension on, for example [VeePN](https://chromewebstore.google.com/d
 - What a proxy cannot carry stays off: UDP (DHT, uTP and UDP trackers), local peer discovery, UPnP and NAT-PMP. Torrents use `http(s)` trackers, the peers they list, and web seeds, so some torrents find fewer peers through a VPN.
 - If the proxy is down or refuses the login, connections fail. Nothing falls back to your own address.
 - If the VPN turns off, running torrents pause instead of going on without it. The manager shows them as `paused: VPN off`, and they start again when the VPN comes back.
+- Tested with VeePN and Browsec. As in Chrome, one extension at a time controls the proxy: turn the other VPN extension off before turning one on.
 
 ## Opening Downloaded Files
 
