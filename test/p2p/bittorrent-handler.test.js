@@ -510,6 +510,127 @@ describe('BitTorrent protocol handler', function () {
     })
   })
 
+  describe('a file of a torrent still downloading', function () {
+    const BODY = 'the whole film, start to end'
+
+    // The worker reads the torrent's own bytes three at a time, the way
+    // bt/file-reads.js answers, while the file on disk is still zeros.
+    async function downloading ({ read, progress = 0.3, done = false, stopped = false } = {}) {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'peersky-bt-partial-'))
+      tmpDirs.push(dir)
+      fs.mkdirSync(path.join(dir, 'T'))
+      fs.writeFileSync(path.join(dir, 'T/film.mp4'), Buffer.alloc(BODY.length))
+      const reads = []
+      const answer = read || ((msg) => ({ data: Buffer.from(BODY.slice(msg.start, Math.min(msg.start + 3, msg.end + 1))) }))
+      const { handler, child } = await loadHandler({
+        downloadsDir: dir,
+        replyAs: (proc) => (msg) => {
+          if (msg.action === 'read') {
+            reads.push(msg)
+            const reply = answer(msg, reads.length)
+            if (reply) proc.emit('message', { id: msg.id, ...reply })
+            return
+          }
+          if (msg.action === 'read-close') return reads.push(msg)
+          defaultWorkerReplies(proc)(msg)
+        }
+      })
+      child.emit('message', {
+        type: 'status-update',
+        infoHash: HASH_HEX,
+        name: 'T',
+        downloadPath: dir,
+        done,
+        stopped,
+        magnetURI: MAGNET,
+        files: [{ index: 0, name: 'film.mp4', path: 'T/film.mp4', length: BODY.length, progress }]
+      })
+      const get = (headers) => handler(new Request(`bt://${HASH_HEX}/T/film.mp4`, { headers }))
+      return { get, reads, child, dir }
+    }
+
+    it('reads a range through the worker, so a video seeking past what has arrived waits for it', async () => {
+      const { get, reads } = await downloading()
+      const res = await get({ Range: 'bytes=4-12' })
+      expect(res.status).to.equal(206)
+      expect(res.headers.get('Content-Range')).to.equal(`bytes 4-12/${BODY.length}`)
+      expect(res.headers.get('Content-Length')).to.equal('9')
+      expect(res.headers.get('Content-Type')).to.equal('video/mp4')
+      expect(res.headers.get('Accept-Ranges')).to.equal('bytes')
+      expect(res.headers.get('X-Content-Type-Options')).to.equal('nosniff')
+      expect(res.headers.get('Content-Security-Policy')).to.match(/^sandbox /)
+      expect(await res.text()).to.equal(BODY.slice(4, 13))
+      expect(reads.map((m) => [m.start, m.end])).to.deep.equal([[4, 12], [7, 12], [10, 12]])
+      expect(reads.every((m) => m.hash === HASH_HEX && m.path === 'T/film.mp4' && m.stream === reads[0].stream)).to.equal(true)
+
+      const whole = await get()
+      expect(whole.status).to.equal(200)
+      expect(whole.headers.get('Content-Length')).to.equal(String(BODY.length))
+      expect(await whole.text()).to.equal(BODY)
+      expect(reads.at(-1).stream).to.not.equal(reads[0].stream)
+
+      const past = await get({ Range: `bytes=${BODY.length}-` })
+      expect(past.status).to.equal(416)
+      expect(past.headers.get('Content-Range')).to.equal(`bytes */${BODY.length}`)
+    })
+
+    it('reads a finished file, a finished torrent or a stopped one from disk', async () => {
+      for (const state of [{ progress: 1 }, { done: true }, { stopped: true }]) {
+        const { get, reads } = await downloading(state)
+        const res = await get({ Range: 'bytes=0-3' })
+        expect(res.status, JSON.stringify(state)).to.equal(206)
+        expect(await res.arrayBuffer()).to.deep.equal(new ArrayBuffer(4))
+        expect(reads, JSON.stringify(state)).to.deep.equal([])
+      }
+    })
+
+    it('reads disk when the worker has no such torrent', async () => {
+      const { get, reads } = await downloading({ read: () => ({ inactive: true }) })
+      const res = await get({ Range: 'bytes=0-3' })
+      expect(res.status).to.equal(206)
+      expect(Buffer.from(await res.arrayBuffer())).to.deep.equal(Buffer.alloc(4))
+      expect(reads).to.have.length(1)
+    })
+
+    it('reads the rest from disk when the torrent finishes partway', async () => {
+      const { get, dir } = await downloading({
+        read: (msg, n) => {
+          if (n > 1) return { inactive: true }
+          // It finished between the two reads: every byte is on disk now.
+          fs.writeFileSync(path.join(dir, 'T/film.mp4'), BODY)
+          return { data: Buffer.from(BODY.slice(msg.start, msg.start + 3)) }
+        }
+      })
+      const res = await get({ Range: 'bytes=2-' })
+      expect(await res.text()).to.equal(BODY.slice(2))
+    })
+
+    it('tells the worker when the page stops reading', async () => {
+      const { get, reads } = await downloading()
+      const res = await get({ Range: 'bytes=0-' })
+      const reader = res.body.getReader()
+      await reader.read()
+      await reader.cancel()
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      expect(reads.at(-1)).to.include({ action: 'read-close', stream: reads[0].stream })
+    })
+
+    it('answers from disk when the worker stops during a read', async () => {
+      const { get, child } = await downloading({ read: () => null })
+      const asked = get({ Range: 'bytes=0-3' })
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      child.emit('exit', 1)
+      const res = await asked
+      expect(res.status).to.equal(206)
+      expect(Buffer.from(await res.arrayBuffer())).to.deep.equal(Buffer.alloc(4))
+    })
+
+    it('forks the worker to carry file bytes as they are', async () => {
+      const { fork } = await loadHandler()
+      expect(fork.firstCall.args[2].serialization).to.equal('advanced')
+    })
+  })
+
   it('rejects path segments that escape the torrent root (../ after normalize)', async () => {
     const { handler, child } = await loadHandler()
     child.emit('message', {
@@ -1095,6 +1216,7 @@ export default class FakeWebTorrent extends EventEmitter {
     const workerSrcPath = path.join(_testDir, '../../src/protocols/bt/worker.js')
     const workerOutPath = path.join(tmp, 'worker.js')
     fs.writeFileSync(workerOutPath, fs.readFileSync(workerSrcPath, 'utf8'), 'utf8')
+    fs.copyFileSync(path.join(path.dirname(workerSrcPath), 'file-reads.js'), path.join(tmp, 'file-reads.js'))
 
     const nm = path.join(tmp, 'node_modules', 'webtorrent')
     fs.mkdirSync(nm, { recursive: true })
@@ -1358,5 +1480,84 @@ describe('WebTorrent with a paused torrent', function () {
       await Promise.all([seeder, peer].map((client) => new Promise((resolve) => client.destroy(resolve))))
       fs.rmSync(dir, { recursive: true, force: true })
     }
+  })
+})
+
+// What the worker answers a bt:// read of a torrent still downloading with.
+describe('Reading a torrent still downloading', function () {
+  this.timeout(30000)
+
+  const PIECE = 16 * 1024
+  let dir, seeder, peer, seeded, leech, reads, body
+
+  beforeEach(async function () {
+    const { default: WebTorrent } = await import('webtorrent')
+    const { createFileReads } = await import('../../src/protocols/bt/file-reads.js')
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'peersky-bt-reads-'))
+    body = Buffer.alloc(64 * PIECE)
+    for (let i = 0; i < body.length; i += 4) body.writeUInt32BE(i, i)
+    fs.writeFileSync(path.join(dir, 'film.mp4'), body)
+    const opts = { dht: false, tracker: false, lsd: false, utp: false, natUpnp: false, natPmp: false }
+    seeder = new WebTorrent(opts)
+    peer = new WebTorrent(opts)
+    // Slow enough that the whole file takes several seconds.
+    seeder.throttleUpload(128 * 1024)
+    await new Promise((resolve) => seeder.once('listening', resolve))
+    seeded = await new Promise((resolve) => seeder.seed(path.join(dir, 'film.mp4'), { path: dir, pieceLength: PIECE }, resolve))
+    leech = peer.add(seeded.torrentFile, { path: fs.mkdtempSync(path.join(dir, 'leech-')) })
+    await new Promise((resolve) => leech.once('ready', resolve))
+    leech.addPeer(`127.0.0.1:${seeder.address().port}`)
+    reads = createFileReads({ getTorrent: (hash) => peer.get(hash), idleMs: 200 })
+  })
+
+  afterEach(async function () {
+    reads.closeAll()
+    await Promise.all([seeder, peer].map((client) => new Promise((resolve) => client.destroy(resolve))))
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
+
+  async function readAll (stream, start, end) {
+    const chunks = []
+    for (let at = start; at <= end;) {
+      const { data, inactive } = await reads.read({ stream, hash: leech.infoHash, path: 'film.mp4', start: at, end })
+      if (inactive) throw new Error(`stopped at ${at}`)
+      chunks.push(data)
+      at += data.length
+    }
+    return Buffer.concat(chunks)
+  }
+
+  it('reads the end of the file first, long before the rest arrives', async () => {
+    const start = body.length - 3 * PIECE + 100
+    const bytes = await readAll(1, start, body.length - 1)
+    expect(bytes.equals(body.subarray(start))).to.equal(true)
+    expect(leech.progress).to.be.below(0.5)
+    expect(reads.size).to.equal(0)
+  })
+
+  it('reads a single byte, which WebTorrent reads as the whole file', async () => {
+    const { data } = await reads.read({ stream: 1, hash: leech.infoHash, path: 'film.mp4', start: 0, end: 0 })
+    expect([...data]).to.deep.equal([0])
+    expect(reads.size).to.equal(0)
+  })
+
+  it('lets go of a read nobody asks on, and opens it again where it was', async () => {
+    const end = body.length - 1
+    const first = await reads.read({ stream: 1, hash: leech.infoHash, path: 'film.mp4', start: 20 * PIECE, end })
+    expect(reads.size).to.equal(1)
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    expect(reads.size).to.equal(0)
+    const at = 20 * PIECE + first.data.length
+    const next = await reads.read({ stream: 1, hash: leech.infoHash, path: 'film.mp4', start: at, end })
+    expect(Buffer.from(next.data).equals(body.subarray(at, at + next.data.length))).to.equal(true)
+  })
+
+  it('answers a read waiting on a torrent that goes away, and one it does not have', async () => {
+    const waiting = reads.read({ stream: 1, hash: leech.infoHash, path: 'film.mp4', start: body.length - 10, end: body.length - 1 })
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    leech.destroy({ destroyStore: false })
+    expect(await waiting).to.deep.equal({ inactive: true })
+    expect(await reads.read({ stream: 2, hash: leech.infoHash, path: 'film.mp4', start: 0, end: 9 })).to.deep.equal({ inactive: true })
+    expect(await reads.read({ stream: 3, hash: seeded.infoHash, path: 'other.mp4', start: 0, end: 9 })).to.deep.equal({ inactive: true })
   })
 })

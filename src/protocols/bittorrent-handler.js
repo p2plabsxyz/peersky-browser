@@ -217,8 +217,11 @@ async function initializeWorker () {
   await fs.ensureDir(downloadPath)
 
   log.info('[BT] Forking WebTorrent worker process...')
+  // Advanced serialization carries the bytes of a file read as they are,
+  // where JSON would spell out every byte.
   worker = fork(path.join(__dirname, 'bt', 'worker.js'), [downloadPath, getTorrentFilesPath()], {
-    stdio: ['pipe', 'pipe', 'pipe', 'ipc']
+    stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
+    serialization: 'advanced'
   })
 
   // Forward worker stdout/stderr to main process console
@@ -323,6 +326,7 @@ async function initializeWorker () {
     }
 
     statusCache.clear()
+    for (const resolve of pendingRequests.values()) resolve({ error: 'The torrent worker stopped' })
     pendingRequests.clear()
     // Reload persisted torrent states so they survive worker restarts
     loadTorrentStateCache()
@@ -360,7 +364,7 @@ async function initializeWorker () {
   log.info('[BT] Worker initialized. Download path:', downloadPath)
 }
 
-async function sendCommand (action, params = {}) {
+async function sendCommand (action, params = {}, { timeout = 30000 } = {}) {
   // The worker is forked on first use, so any command may be the one that
   // starts it.
   await warmupBittorrent()
@@ -372,13 +376,14 @@ async function sendCommand (action, params = {}) {
     pendingRequests.set(id, resolve)
     worker.send({ id, action, ...params })
 
-    // Timeout after 30 seconds
+    // A file read waits for its pieces as long as they take.
+    if (!timeout) return
     setTimeout(() => {
       if (pendingRequests.has(id)) {
         pendingRequests.delete(id)
         resolve({ error: 'Request timed out' })
       }
-    }, 30000)
+    }, timeout)
   })
 }
 
@@ -1010,14 +1015,6 @@ async function serveTorrentFile (infoHash, requestedPath, request) {
     })
   }
 
-  const stat = await fs.stat(filePath).catch(() => null)
-  if (!stat?.isFile()) {
-    return new Response(`File not available on disk yet: ${relativePath}`, {
-      status: 404,
-      headers: { 'Content-Type': 'text/plain; charset=utf-8' }
-    })
-  }
-
   const contentType = playableContentType(filePath)
   const headers = {
     'Content-Type': contentType.startsWith('text/') ? `${contentType}; charset=utf-8` : contentType,
@@ -1025,6 +1022,17 @@ async function serveTorrentFile (infoHash, requestedPath, request) {
     'X-Content-Type-Options': 'nosniff'
   }
   if (contentType !== 'application/pdf') headers['Content-Security-Policy'] = TORRENT_FILE_CSP
+
+  const fromWorker = await serveThroughWorker(infoHash, cached, match, filePath, request, headers)
+  if (fromWorker) return fromWorker
+
+  const stat = await fs.stat(filePath).catch(() => null)
+  if (!stat?.isFile()) {
+    return new Response(`File not available on disk yet: ${relativePath}`, {
+      status: 404,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+    })
+  }
 
   const range = parseByteRange(request?.headers?.get('range'), stat.size)
   if (range === false) {
@@ -1043,5 +1051,70 @@ async function serveTorrentFile (infoHash, requestedPath, request) {
   return new Response(fs.createReadStream(filePath), {
     status: 200,
     headers: { ...headers, 'Content-Length': String(stat.size) }
+  })
+}
+
+let fileReadCount = 0
+
+// A file of a torrent still downloading in the worker is read through it, as
+// its bytes on disk may not have arrived yet (see bt/file-reads.js). A finished
+// file, or a torrent the worker does not have, such as a stopped one, is read
+// from disk.
+async function serveThroughWorker (infoHash, cached, file, filePath, request, headers) {
+  if (!worker || cached.done || cached.stopped || file.progress >= 1 || !(file.length > 0)) return null
+  const range = parseByteRange(request?.headers?.get('range'), file.length)
+  if (range === false) {
+    return new Response(null, { status: 416, headers: { ...headers, 'Content-Range': `bytes */${file.length}` } })
+  }
+  const { start, end } = range || { start: 0, end: file.length - 1 }
+  const stream = ++fileReadCount
+  let offset = start
+  const readNext = async () => {
+    const result = await sendCommand('read', { stream, hash: infoHash, path: file.path, start: offset, end }, { timeout: 0 })
+    return result.data?.length ? result.data : null
+  }
+
+  const first = await readNext()
+  if (!first) return null
+  let pending = first
+  let disk = null
+  const body = new ReadableStream({
+    async pull (controller) {
+      try {
+        let chunk = pending
+        pending = null
+        // The torrent finished or stopped partway, so the rest is read from disk.
+        if (!chunk && !disk) chunk = await readNext()
+        if (!chunk) {
+          disk = disk || fs.createReadStream(filePath, { start: offset, end })[Symbol.asyncIterator]()
+          const next = await disk.next()
+          if (next.done) return controller.close()
+          chunk = next.value
+        }
+        offset += chunk.length
+        controller.enqueue(chunk)
+        if (offset > end) controller.close()
+      } catch (err) {
+        controller.error(err)
+      }
+    },
+    cancel () {
+      if (disk) disk.return()
+      else {
+        try { worker?.send({ action: 'read-close', stream }) } catch {}
+      }
+    }
+  })
+
+  if (!range) {
+    return new Response(body, { status: 200, headers: { ...headers, 'Content-Length': String(file.length) } })
+  }
+  return new Response(body, {
+    status: 206,
+    headers: {
+      ...headers,
+      'Content-Range': `bytes ${start}-${end}/${file.length}`,
+      'Content-Length': String(end - start + 1)
+    }
   })
 }
