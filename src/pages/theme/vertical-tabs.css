@@ -30,12 +30,14 @@
   width: 200px; /* Expanded width on hover */
 }
 
-/* Main scrollable container for tabs */
+/* The tab list. It is as tall as its tabs until the bar runs out of room,
+   then it scrolls, so the new tab button under it follows the last tab and
+   stays in sight under a long list without covering a tab. */
 .tabbar.vertical-tabs .tab-container {
   flex-direction: column;
   overflow-y: auto;
   overflow-x: hidden;
-  flex: 1; /* Take up available space */
+  flex: 0 1 auto;
   width: 100%;
   padding: 4px;
   display: flex;
@@ -49,13 +51,14 @@
   min-height: min-content; /* Grow with content */
 }
 
-/* Add tab button styling */
+/* The new tab button, under the list: lined up with the tabs, 6px under the
+   last one like the tabs are apart, and 8px over the bottom of the bar. */
 .tabbar.vertical-tabs .add-tab-button {
   width: 40px;
   height: 32px;
   min-height: 32px;
   max-height: 32px;
-  margin: 4px 0;
+  margin: 2px 4px 8px;
   border-radius: 8px;
   font-size: 18px;
   transition: width var(--vertical-tabs-transition-duration) ease,
@@ -170,24 +173,9 @@
   padding: 4px 10px;
 }
 
-/* Sticky add button when scrolling - only when tabs overflow */
-.tabbar.vertical-tabs .add-tab-button.sticky {
-  position: sticky;
-  bottom: 0;
-  background-color: var(--peersky-nav-background);
+/* While tabs are out of sight under the button */
+.tabbar.vertical-tabs .add-tab-button.tabs-below {
   box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.1);
-  z-index: 5;
-}
-
-/* Alternative: Fixed button when content overflows */
-@media (max-height: 600px) {
-  .tabbar.vertical-tabs .add-tab-button {
-    position: sticky;
-    bottom: 4px;
-    margin-top: auto;
-    background-color: var(--peersky-nav-background);
-    box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.1);
-  }
 }
 
 /* Tab favicon styling */

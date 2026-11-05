@@ -433,6 +433,25 @@ describe('a loading tab in the vertical strip', function () {
   })
 })
 
+// The new tab button sat in the scrolling list and stuck to its bottom, so a
+// long list scrolled behind it and a tab opened at the end was out of sight.
+describe('the new tab button in the vertical strip', function () {
+  it('sits under the list, not in it', function () {
+    expect(vertical).to.contain('this.tabContainer.after(this.addButton)')
+    expect(verticalCss).to.not.match(/\.add-tab-button[^{]*\{[^}]*position:\s*sticky/)
+  })
+
+  it('follows the last tab, as the list is only as tall as its tabs', function () {
+    const list = verticalCss.slice(verticalCss.indexOf('.tabbar.vertical-tabs .tab-container {'))
+    expect(list.slice(0, list.indexOf('}'))).to.contain('flex: 0 1 auto')
+  })
+
+  it('leaves the selected tab in sight', function () {
+    const start = vertical.indexOf('  selectTab (')
+    expect(vertical.slice(start, vertical.indexOf('\n  }\n', start))).to.contain('this.revealTab(tabId)')
+  })
+})
+
 // A video or sound opened straight has no title of its own, and the tab kept the
 // last page's: a hyper:// video opened in a new tab said "Home".
 describe('a page with no title of its own', function () {
