@@ -1,12 +1,12 @@
 /**
- * Extensions get webRequest headers the way Chrome gives them (patches/
- * @p2plabs+peersky-chrome-extensions+1.3.2.patch).
+ * Extensions get webRequest headers the way Chrome gives them
+ * (@p2plabs/peersky-chrome-extensions 1.3.3).
  *
  * Chrome hands listeners requestHeaders and responseHeaders as [{ name, value }]
  * and takes changes back the same way. The extension host passed Electron's
  * { name: value | [values] } instead, so a listener that looked a header up
  * threw (Browsec's details.responseHeaders.find), and Browsec never turned its
- * VPN on. These run the host's own code, taken from its build as patched.
+ * VPN on. These run the host's own code, taken from its build.
  */
 
 import { expect } from 'chai'
@@ -27,7 +27,7 @@ function slice (source, start, end) {
 
 // The two helpers, and the host's own merge methods turned into functions.
 function load (source) {
-  const helpers = slice(source, 'function toChromeHeaders(', '// src/browser/api/proxy.ts')
+  const helpers = slice(source, 'function toChromeHeaders(', 'function originsMatch(')
   const method = (name) => 'function ' + slice(source, `  ${name}(original, results) {`, '\n  }\n').trim() + '\n}'
   // eslint-disable-next-line no-new-func
   return new Function('Buffer', `${helpers}\n${method('mergeRequestHeaders')}\n${method('mergeResponseHeaders')}\nreturn { toChromeHeaders, fromChromeHeaders, mergeRequestHeaders, mergeResponseHeaders }`)(Buffer)
