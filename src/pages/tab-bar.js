@@ -2038,6 +2038,7 @@ class TabBar extends HTMLElement {
     if (existingMenu) {
       existingMenu.remove()
     }
+    this.closeAddToGroupSubmenu()
 
     const menu = document.createElement('div')
     menu.className = 'tab-context-menu'
@@ -3416,6 +3417,7 @@ class TabBar extends HTMLElement {
     if (existingMenu) {
       existingMenu.remove()
     }
+    this.closeAddToGroupSubmenu()
 
     const menu = document.createElement('div')
     menu.className = 'tab-context-menu'
@@ -3517,10 +3519,17 @@ class TabBar extends HTMLElement {
     // The group should be automatically deleted when empty
   }
 
+  closeAddToGroupSubmenu () {
+    if (this.addToGroupSubmenuClose) this.addToGroupSubmenuClose()
+    document.querySelectorAll('.tab-context-submenu').forEach(el => el.remove())
+  }
+
   // Show submenu to select which group to add the tab to
   showAddToGroupSubmenu (tabId) {
     const tabElement = document.getElementById(tabId)
     if (!tabElement) return
+
+    this.closeAddToGroupSubmenu()
 
     const submenu = document.createElement('div')
     submenu.className = 'tab-context-submenu'
@@ -3555,13 +3564,33 @@ class TabBar extends HTMLElement {
       submenu.style.zIndex = '10001'
     }
 
-    // Add event listeners
+    // It closed only when a group was picked, so after any other click,
+    // such as Add to new group from the tab's menu, it stayed on screen.
+    const close = () => {
+      submenu.remove()
+      document.removeEventListener('pointerdown', closeOnPointerOutside, true)
+      document.removeEventListener('keydown', closeOnEscape, true)
+      window.removeEventListener('blur', close)
+      if (this.addToGroupSubmenuClose === close) this.addToGroupSubmenuClose = null
+    }
+    // The press that opened it is over, so these can listen right away.
+    const closeOnPointerOutside = (e) => {
+      if (!submenu.contains(e.target)) close()
+    }
+    const closeOnEscape = (e) => {
+      if (e.key === 'Escape') close()
+    }
+    document.addEventListener('pointerdown', closeOnPointerOutside, true)
+    document.addEventListener('keydown', closeOnEscape, true)
+    window.addEventListener('blur', close)
+    this.addToGroupSubmenuClose = close
+
     submenu.addEventListener('click', (e) => {
       const groupId = e.target.closest('.context-menu-item')?.dataset.groupId
       if (groupId && !e.target.closest('.context-menu-item').classList.contains('disabled')) {
         this.addTabToGroupAcrossWindows(tabId, groupId)
         document.querySelector('.tab-context-menu')?.remove()
-        submenu.remove()
+        close()
       }
     })
 
