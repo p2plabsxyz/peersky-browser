@@ -9,6 +9,7 @@ import { playableContentType } from './file-handler.js'
 import settingsManager from '../settings-manager.js'
 import parseTorrent from 'parse-torrent'
 import { randomBytes } from 'crypto'
+import { validProxies, proxyKey } from './bt/proxy-tunnel.js'
 const DEFAULT_TRACKERS = fs.readJsonSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'bt', 'trackers.json'))
 
 const log = createLogger('protocols:bt')
@@ -22,6 +23,20 @@ let workerReady = false
 let onWorkerReady = null
 const pendingRequests = new Map()
 let requestId = 0
+
+// The proxies of the VPN extension that is on (bt/vpn-watch.js), best first,
+// or none. The worker goes through them and nothing else; a change starts a
+// new worker (setTorrentProxies).
+let torrentProxies = []
+let proxyCredentials = null
+// Logs the browser's own fetches in to the VPN's proxy (proxy-settings.js).
+let proxyLogin = null
+let networkSwitch = null
+// Set when the VPN turns off under torrents. Until it comes back, or a torrent
+// is started or resumed on purpose, nothing starts a worker without it: not a
+// torrent page loading, nor its status checks.
+let heldForVpn = false
+let stateSaveTimer = null
 
 // Cached status from worker push updates (no IPC round-trip needed for status)
 const statusCache = new Map()
@@ -64,18 +79,23 @@ const _saveQueue = new Map()
 function saveTorrentState (infoHash, status) {
   _saveQueue.set(infoHash, status)
   if (_savePending) return
-  _savePending = setTimeout(() => {
-    _savePending = null
-    try {
-      const cachePath = getTorrentStateCachePath()
-      const data = fs.existsSync(cachePath) ? fs.readJsonSync(cachePath) : {}
-      for (const [hash, s] of _saveQueue) data[hash] = s
-      _saveQueue.clear()
-      fs.writeJsonSync(cachePath, data, { spaces: 2 })
-    } catch (err) {
-      log.error('[BT] Failed to save torrent state:', err.message)
-    }
-  }, 500)
+  _savePending = setTimeout(flushTorrentState, 500)
+}
+
+// Writes the queued states now: a worker starting reloads them from disk.
+function flushTorrentState () {
+  clearTimeout(_savePending)
+  _savePending = null
+  if (_saveQueue.size === 0) return
+  try {
+    const cachePath = getTorrentStateCachePath()
+    const data = fs.existsSync(cachePath) ? fs.readJsonSync(cachePath) : {}
+    for (const [hash, s] of _saveQueue) data[hash] = s
+    _saveQueue.clear()
+    fs.writeJsonSync(cachePath, data, { spaces: 2 })
+  } catch (err) {
+    log.error('[BT] Failed to save torrent state:', err.message)
+  }
 }
 
 // Each torrent's .torrent file, which the worker keeps once its file list
@@ -198,6 +218,16 @@ let workerStarting = null
  * @returns {Promise<void>}
  */
 export function warmupBittorrent () {
+  // While the VPN changes, the old worker is on its way out: wait for the new one.
+  if (networkSwitch) return networkSwitch.then(startUnlessHeld, startUnlessHeld)
+  return startUnlessHeld()
+}
+
+function startUnlessHeld () {
+  return heldForVpn ? Promise.resolve() : startWorker()
+}
+
+function startWorker () {
   if (worker) return Promise.resolve()
   if (!workerStarting) {
     workerStarting = initializeWorker().catch((err) => {
@@ -217,9 +247,20 @@ async function initializeWorker () {
   await fs.ensureDir(downloadPath)
 
   log.info('[BT] Forking WebTorrent worker process...')
+  // Advanced serialization carries the bytes of a file read as they are,
+  // where JSON would spell out every byte.
+  // The VPN's proxies go in the environment, not the arguments, which any
+  // process can list. They are no secret either way: the login is asked for
+  // separately and kept in memory.
+  const env = { ...process.env }
+  delete env.PEERSKY_BT_PROXIES
+  if (torrentProxies.length) env.PEERSKY_BT_PROXIES = JSON.stringify(torrentProxies)
   worker = fork(path.join(__dirname, 'bt', 'worker.js'), [downloadPath, getTorrentFilesPath()], {
-    stdio: ['pipe', 'pipe', 'pipe', 'ipc']
+    stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
+    serialization: 'advanced',
+    env
   })
+  const child = worker
 
   // Forward worker stdout/stderr to main process console
   worker.stdout.on('data', (data) => {
@@ -230,6 +271,11 @@ async function initializeWorker () {
   })
 
   worker.on('message', (msg) => {
+    if (msg.type === 'proxy-credentials-request') {
+      answerProxyCredentials(child, msg)
+      return
+    }
+
     if (msg.type === 'ready') {
       log.info('[BT] Worker process ready')
       workerReady = true
@@ -323,6 +369,7 @@ async function initializeWorker () {
     }
 
     statusCache.clear()
+    for (const resolve of pendingRequests.values()) resolve({ error: 'The torrent worker stopped' })
     pendingRequests.clear()
     // Reload persisted torrent states so they survive worker restarts
     loadTorrentStateCache()
@@ -345,25 +392,181 @@ async function initializeWorker () {
     onWorkerReady = finish
   })
 
-  // Periodically save in-progress torrent states as crash safety net
-  setInterval(() => {
-    const active = Array.from(statusCache.entries()).filter(([, s]) => !s.done && s.progress > 0)
-    if (active.length === 0) return
-    try {
-      const cachePath = getTorrentStateCachePath()
-      const data = fs.existsSync(cachePath) ? fs.readJsonSync(cachePath) : {}
-      for (const [hash, status] of active) data[hash] = pausedForRestart(status)
-      fs.writeJsonSync(cachePath, data, { spaces: 2 })
-    } catch {}
-  }, 30000)
+  // Periodically save in-progress torrent states as crash safety net. Once:
+  // a worker that starts again keeps the one timer.
+  if (!stateSaveTimer) {
+    stateSaveTimer = setInterval(() => {
+      const active = Array.from(statusCache.entries()).filter(([, s]) => !s.done && s.progress > 0)
+      if (active.length === 0) return
+      try {
+        const cachePath = getTorrentStateCachePath()
+        const data = fs.existsSync(cachePath) ? fs.readJsonSync(cachePath) : {}
+        for (const [hash, status] of active) data[hash] = pausedForRestart(status)
+        fs.writeJsonSync(cachePath, data, { spaces: 2 })
+      } catch {}
+    }, 30000)
+    stateSaveTimer.unref?.()
+  }
 
   log.info('[BT] Worker initialized. Download path:', downloadPath)
 }
 
-async function sendCommand (action, params = {}) {
+// A login for the VPN's proxy, for the worker. Only for a proxy the browser
+// picked, so the worker cannot ask the extension for any other server's.
+async function answerProxyCredentials (child, msg) {
+  let credentials = null
+  try {
+    const [proxy] = validProxies([msg.proxy])
+    const known = proxy && torrentProxies.some((p) => proxyKey(p) === proxyKey(proxy))
+    if (known && proxyCredentials) {
+      credentials = await proxyCredentials(proxy, { realm: msg.realm, target: msg.target, stale: !!msg.stale })
+    }
+  } catch (err) {
+    log.warn('[BT] Could not get the VPN proxy login:', err.message)
+  }
+  try {
+    child.send({ type: 'proxy-credentials', requestId: msg.requestId, credentials: credentials || null })
+  } catch {}
+}
+
+/**
+ * Where the VPN extension's proxy logins come from:
+ * (proxy, { realm, target, stale }) => { username, password } or null.
+ */
+export function setTorrentProxyCredentials (fn) {
+  proxyCredentials = typeof fn === 'function' ? fn : null
+}
+
+/**
+ * fn() logs the browser's own fetches in to the VPN's proxy, resolving true
+ * when it did. A torrent file fetched before that is fetched again after it.
+ */
+export function setProxyLogin (fn) {
+  proxyLogin = typeof fn === 'function' ? fn : null
+}
+
+/** The proxies torrents go through, best first; none means directly. */
+export function getTorrentProxies () {
+  return torrentProxies.map((p) => ({ ...p }))
+}
+
+/**
+ * Torrents go through these proxies, a VPN extension's, or directly with
+ * none. A change starts a new worker, so no connection made before it stays
+ * open. Torrents that were running carry on through the new VPN. When the VPN
+ * turns off they pause instead, so nothing goes on without it unnoticed, and
+ * pick up again when it comes back on.
+ */
+export function setTorrentProxies (list) {
+  const next = validProxies(list)
+  if (JSON.stringify(next) === JSON.stringify(torrentProxies)) return Promise.resolve()
+  const wasThroughVpn = torrentProxies.length > 0
+  const nowThroughVpn = next.length > 0
+  torrentProxies = next
+  log.info(nowThroughVpn
+    ? `[BT] Torrents go through the VPN extension (${next.length} proxy server${next.length === 1 ? '' : 's'})`
+    : '[BT] No VPN extension on: torrents connect directly')
+  const previous = networkSwitch || Promise.resolve()
+  const current = previous.catch(() => {}).then(() => restartWorkerForNetwork(wasThroughVpn, nowThroughVpn))
+  networkSwitch = current
+  return current
+    .catch((err) => log.error('[BT] Switching torrents to the new network failed:', err.message))
+    .finally(() => { if (networkSwitch === current) networkSwitch = null })
+}
+
+// Torrents a new worker takes back up: those running, and those the VPN
+// turning off paused.
+function torrentsToCarryOver () {
+  const list = []
+  for (const [hash, s] of statusCache) {
+    if (!s.magnetURI) continue
+    const seeding = !!(s.isSeeding || (s.mode === 'seed' && s.done))
+    const running = !s.paused && !s.stopped && (!s.done || seeding)
+    if (!running && !s.pausedForVpn) continue
+    list.push({ hash, magnetURI: s.magnetURI, mode: (seeding || s.mode === 'seed') ? 'seed' : 'download', running })
+  }
+  return list
+}
+
+// Lets the worker close its torrents and exit; forced after 5 s.
+function stopWorkerForSwitch () {
+  const child = worker
+  if (!child) return Promise.resolve()
+  return new Promise((resolve) => {
+    const force = setTimeout(() => { try { child.kill('SIGKILL') } catch {} }, 5000)
+    force.unref?.()
+    child.once('exit', () => {
+      clearTimeout(force)
+      resolve()
+    })
+    try {
+      child.disconnect()
+    } catch {
+      try { child.kill() } catch {}
+    }
+  })
+}
+
+async function restartWorkerForNetwork (wasThroughVpn, nowThroughVpn) {
+  if (workerStarting) await workerStarting.catch(() => {})
+  const torrents = torrentsToCarryOver()
+  // The exit handler saves what was running as paused and reloads the cache.
+  if (worker) await stopWorkerForSwitch()
+  heldForVpn = wasThroughVpn && !nowThroughVpn
+  if (heldForVpn) {
+    for (const t of torrents) {
+      if (!t.running) continue
+      const s = statusCache.get(t.hash)
+      if (!s) continue
+      const paused = { ...pausedForRestart(s), isSeeding: false, seedingSince: null, pausedForVpn: true }
+      statusCache.set(t.hash, paused)
+      saveTorrentState(t.hash, paused)
+    }
+    flushTorrentState()
+    return
+  }
+  // What was running carries on; what the VPN turning off paused waits for a VPN.
+  const carried = torrents.filter((t) => t.running || nowThroughVpn)
+  if (!carried.length) return
+  await startWorker()
+  for (const t of carried) {
+    const result = await sendCommand(t.mode === 'seed' ? 'seed' : 'start', {
+      magnetUri: t.magnetURI,
+      announce: buildTrackerList(t.magnetURI)
+    }, { duringSwitch: true })
+    if (result.error) {
+      log.warn(`[BT] Could not carry ${t.hash} over to the new network:`, result.error)
+      continue
+    }
+    const s = statusCache.get(t.hash)
+    if (s) {
+      delete s.pausedForVpn
+      s.paused = false
+      s.stopped = false
+      // As a resume does: a download's saved state comes back with the next
+      // save. A finished torrent's stays, or it would drop out of the list.
+      if (!s.done) removeTorrentState(t.hash)
+    }
+  }
+}
+
+// Commands that run a torrent, and so may start a worker while the VPN is held off.
+const RUNS_A_TORRENT = new Set(['start', 'seed', 'resume'])
+
+async function sendCommand (action, params = {}, { timeout = 30000, duringSwitch = false } = {}) {
   // The worker is forked on first use, so any command may be the one that
-  // starts it.
-  await warmupBittorrent()
+  // starts it. A command from the VPN switch itself must not wait for it.
+  await (duringSwitch ? startWorker() : warmupBittorrent())
+  if (!worker && heldForVpn && !duringSwitch) {
+    // Nothing runs while the VPN is held off, so there is nothing to pause,
+    // stop or remove from a worker, and a file is read from disk.
+    if (!RUNS_A_TORRENT.has(action)) {
+      return action === 'read' ? { error: 'Torrents are paused while your VPN extension is off' } : { type: 'ok', infoHash: params.hash }
+    }
+    // Started or resumed on purpose: it goes on without the VPN.
+    heldForVpn = false
+    await startWorker()
+  }
   return new Promise((resolve, reject) => {
     if (!worker) {
       return reject(new Error('Worker not initialized'))
@@ -372,13 +575,14 @@ async function sendCommand (action, params = {}) {
     pendingRequests.set(id, resolve)
     worker.send({ id, action, ...params })
 
-    // Timeout after 30 seconds
+    // A file read waits for its pieces as long as they take.
+    if (!timeout) return
     setTimeout(() => {
       if (pendingRequests.has(id)) {
         pendingRequests.delete(id)
         resolve({ error: 'Request timed out' })
       }
-    }, 30000)
+    }, timeout)
   })
 }
 
@@ -406,7 +610,7 @@ export function magnetFromTorrent (parsed, { source = null } = {}) {
  * Archive and other sites link. The file is fetched and read here, and its
  * torrent opens on the same page a magnet link does.
  */
-export async function resolveWebtorrentUrl (rawUrl, { fetch = net.fetch } = {}) {
+export async function resolveWebtorrentUrl (rawUrl, { fetch = net.fetch, logIn = proxyLogin } = {}) {
   const source = String(rawUrl || '').slice(WEBTORRENT_PREFIX.length).trim()
   let sourceUrl
   try {
@@ -418,7 +622,10 @@ export async function resolveWebtorrentUrl (rawUrl, { fetch = net.fetch } = {}) 
     throw new Error('A webtorrent: link needs the http or https address of a .torrent file after it.')
   }
 
-  const response = await fetch(sourceUrl.href, { signal: AbortSignal.timeout(TORRENT_FILE_TIMEOUT_MS) })
+  const get = () => fetch(sourceUrl.href, { signal: AbortSignal.timeout(TORRENT_FILE_TIMEOUT_MS) })
+  let response = await get()
+  // A VPN extension's proxy that the browser has not logged in to yet.
+  if (response.status === 407 && logIn && await logIn()) response = await get()
   if (!response.ok) throw new Error(`The torrent file could not be fetched (${response.status}).`)
   const declared = Number(response.headers.get('content-length'))
   if (declared > MAX_TORRENT_FILE_BYTES) throw new Error('That torrent file is too big to be one.')
@@ -775,7 +982,7 @@ function getCachedStatus (hash) {
     if (statusCache.size > 0) {
       const first = statusCache.values().next().value
       const { type: _t, ...data } = first
-      return jsonResponse(data)
+      return jsonResponse({ ...data, throughVpn: torrentProxies.length > 0 })
     }
     return jsonResponse({ error: 'No active torrents' }, 404)
   }
@@ -783,7 +990,7 @@ function getCachedStatus (hash) {
   const cached = statusCache.get(hash)
   if (cached) {
     const { type: _t, ...data } = cached
-    return jsonResponse(data)
+    return jsonResponse({ ...data, throughVpn: torrentProxies.length > 0 })
   }
 
   return jsonResponse({ error: 'Torrent not found in cache' }, 404)
@@ -802,7 +1009,7 @@ function getCachedTorrentList () {
       return (a.infoHash || '').localeCompare(b.infoHash || '')
     })
 
-  return jsonResponse({ torrents })
+  return jsonResponse({ torrents, throughVpn: torrentProxies.length > 0 })
 }
 
 async function pauseResumeTorrent (action, hash, responseOptions = {}) {
@@ -1010,14 +1217,6 @@ async function serveTorrentFile (infoHash, requestedPath, request) {
     })
   }
 
-  const stat = await fs.stat(filePath).catch(() => null)
-  if (!stat?.isFile()) {
-    return new Response(`File not available on disk yet: ${relativePath}`, {
-      status: 404,
-      headers: { 'Content-Type': 'text/plain; charset=utf-8' }
-    })
-  }
-
   const contentType = playableContentType(filePath)
   const headers = {
     'Content-Type': contentType.startsWith('text/') ? `${contentType}; charset=utf-8` : contentType,
@@ -1025,6 +1224,17 @@ async function serveTorrentFile (infoHash, requestedPath, request) {
     'X-Content-Type-Options': 'nosniff'
   }
   if (contentType !== 'application/pdf') headers['Content-Security-Policy'] = TORRENT_FILE_CSP
+
+  const fromWorker = await serveThroughWorker(infoHash, cached, match, filePath, request, headers)
+  if (fromWorker) return fromWorker
+
+  const stat = await fs.stat(filePath).catch(() => null)
+  if (!stat?.isFile()) {
+    return new Response(`File not available on disk yet: ${relativePath}`, {
+      status: 404,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+    })
+  }
 
   const range = parseByteRange(request?.headers?.get('range'), stat.size)
   if (range === false) {
@@ -1043,5 +1253,70 @@ async function serveTorrentFile (infoHash, requestedPath, request) {
   return new Response(fs.createReadStream(filePath), {
     status: 200,
     headers: { ...headers, 'Content-Length': String(stat.size) }
+  })
+}
+
+let fileReadCount = 0
+
+// A file of a torrent still downloading in the worker is read through it, as
+// its bytes on disk may not have arrived yet (see bt/file-reads.js). A finished
+// file, or a torrent the worker does not have, such as a stopped one, is read
+// from disk.
+async function serveThroughWorker (infoHash, cached, file, filePath, request, headers) {
+  if (!worker || cached.done || cached.stopped || file.progress >= 1 || !(file.length > 0)) return null
+  const range = parseByteRange(request?.headers?.get('range'), file.length)
+  if (range === false) {
+    return new Response(null, { status: 416, headers: { ...headers, 'Content-Range': `bytes */${file.length}` } })
+  }
+  const { start, end } = range || { start: 0, end: file.length - 1 }
+  const stream = ++fileReadCount
+  let offset = start
+  const readNext = async () => {
+    const result = await sendCommand('read', { stream, hash: infoHash, path: file.path, start: offset, end }, { timeout: 0 })
+    return result.data?.length ? result.data : null
+  }
+
+  const first = await readNext()
+  if (!first) return null
+  let pending = first
+  let disk = null
+  const body = new ReadableStream({
+    async pull (controller) {
+      try {
+        let chunk = pending
+        pending = null
+        // The torrent finished or stopped partway, so the rest is read from disk.
+        if (!chunk && !disk) chunk = await readNext()
+        if (!chunk) {
+          disk = disk || fs.createReadStream(filePath, { start: offset, end })[Symbol.asyncIterator]()
+          const next = await disk.next()
+          if (next.done) return controller.close()
+          chunk = next.value
+        }
+        offset += chunk.length
+        controller.enqueue(chunk)
+        if (offset > end) controller.close()
+      } catch (err) {
+        controller.error(err)
+      }
+    },
+    cancel () {
+      if (disk) disk.return()
+      else {
+        try { worker?.send({ action: 'read-close', stream }) } catch {}
+      }
+    }
+  })
+
+  if (!range) {
+    return new Response(body, { status: 200, headers: { ...headers, 'Content-Length': String(file.length) } })
+  }
+  return new Response(body, {
+    status: 206,
+    headers: {
+      ...headers,
+      'Content-Range': `bytes ${start}-${end}/${file.length}`,
+      'Content-Length': String(end - start + 1)
+    }
   })
 }

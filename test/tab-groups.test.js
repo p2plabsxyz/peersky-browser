@@ -106,3 +106,34 @@ describe('dragging in the strip', function () {
     expect(tabBar).to.contain("this.tabContainer.addEventListener('dragstart', (e) => e.preventDefault())")
   })
 })
+
+// The list of groups beside a tab's menu closed only when a group was picked,
+// so after Add to new group or a click anywhere else it stayed on screen.
+describe('the Add to group list', function () {
+  const start = tabBar.indexOf('  showAddToGroupSubmenu (tabId) {')
+  const show = tabBar.slice(start, tabBar.indexOf('\n  }\n', start))
+
+  it('closes on a press outside it, Escape, or leaving the window', function () {
+    expect(show).to.contain("document.addEventListener('pointerdown', closeOnPointerOutside, true)")
+    expect(show).to.contain('if (!submenu.contains(e.target)) close()')
+    expect(show).to.contain("if (e.key === 'Escape') close()")
+    expect(show).to.contain("window.addEventListener('blur', close)")
+  })
+
+  it('takes its listeners away when it closes, and closes after a group is picked', function () {
+    const close = show.slice(show.indexOf('const close = () => {'), show.indexOf('\n    }\n', show.indexOf('const close = () => {')))
+    expect(close).to.contain('submenu.remove()')
+    expect(close).to.contain("document.removeEventListener('pointerdown', closeOnPointerOutside, true)")
+    expect(close).to.contain("document.removeEventListener('keydown', closeOnEscape, true)")
+    expect(close).to.contain("window.removeEventListener('blur', close)")
+    expect(show).to.match(/this\.addTabToGroupAcrossWindows\(tabId, groupId\)[\s\S]*?close\(\)/)
+  })
+
+  it('goes away when it opens again or another tab or group menu opens', function () {
+    expect(show).to.contain('this.closeAddToGroupSubmenu()')
+    for (const menu of ['  showTabContextMenu (event, tabId) {', '  showGroupContextMenu (event, groupId) {']) {
+      const at = tabBar.indexOf(menu)
+      expect(tabBar.slice(at, tabBar.indexOf('\n  }\n', at))).to.contain('this.closeAddToGroupSubmenu()')
+    }
+  })
+})

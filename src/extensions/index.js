@@ -51,6 +51,7 @@ import { openUrlInPeerskyTab } from './services/open-url-in-browser-tab.js'
 import * as WebStoreService from './services/webstore.js'
 import { sendToWindows } from './services/broadcast.js'
 import { createPendingTabs } from './services/pending-tabs.js'
+import { keepExtensionProxy, pauseExtensionProxy, resumeExtensionProxy, forgetExtensionProxy, settleExtensionProxy } from './services/proxy-settings.js'
 import { createLogger } from '../logger.js'
 
 // Window for collapsing a burst of browser-action updates into one broadcast.
@@ -489,6 +490,13 @@ class ExtensionManager {
         this.electronChromeExtensions = null
       }
 
+      // A VPN extension's proxy from before the restart is its own again
+      // before it runs, and every change it makes is saved (proxy-settings.js).
+      if (this.electronChromeExtensions) {
+        await keepExtensionProxy(this.electronChromeExtensions.api?.proxy, this.app.getPath('userData'), { log })
+          .catch((error) => log.warn('ExtensionManager: Could not restore the extension proxy:', error?.message || error))
+      }
+
       // Initialize validator with policy
       try {
         this.policy = await loadPolicy(this.app)
@@ -514,6 +522,13 @@ class ExtensionManager {
 
       // Load enabled extensions
       await this._loadExtensionsIntoElectron()
+
+      // A saved proxy whose extension is gone is forgotten, and one whose
+      // extension is turned off comes off the session.
+      await settleExtensionProxy(this.electronChromeExtensions?.api?.proxy, this.app.getPath('userData'), {
+        installed: (id) => !!this._findBySessionId(id),
+        enabled: (id) => this._findBySessionId(id)?.enabled !== false
+      }).catch((error) => log.warn('ExtensionManager: Could not settle the extension proxy:', error?.message || error))
 
       // Attach navigation guards for extension popups so external URLs open in tabs
       try { installPopupGuards(this) } catch (guardErr) { log.warn('[ExtensionManager] Failed to install popup navigation guards:', guardErr) }
@@ -828,9 +843,11 @@ class ExtensionManager {
                 allowFileAccess: false // Restrict file system access for security
               })
               extension.electronId = electronExtension.id
+              await this._proxyFollows('resume', electronExtension.id)
             } else {
               if (extension.electronId) {
                 await this.session.removeExtension(extension.electronId)
+                await this._proxyFollows('pause', extension.electronId)
               }
             }
           } catch (error) {
@@ -849,6 +866,34 @@ class ExtensionManager {
         throw error
       }
     })
+  }
+
+  /**
+   * The installed extension with this id in the session, or null.
+   *
+   * @param {string} electronId - The extension's id in the session
+   */
+  _findBySessionId (electronId) {
+    for (const ext of this.loadedExtensions.values()) {
+      if (ext.electronId === electronId || ext.id === electronId) return ext
+    }
+    return null
+  }
+
+  /**
+   * The proxy an extension set follows it, as in Chrome: off while it is
+   * turned off, back when it is turned on, forgotten when it is removed.
+   *
+   * @param {'pause'|'resume'|'forget'} change
+   * @param {string} electronId - The extension's id in the session
+   */
+  async _proxyFollows (change, electronId) {
+    const follow = { pause: pauseExtensionProxy, resume: resumeExtensionProxy, forget: forgetExtensionProxy }[change]
+    try {
+      await follow(this.electronChromeExtensions?.api?.proxy, this.app.getPath('userData'), electronId)
+    } catch (error) {
+      log.warn(`ExtensionManager: Could not ${change} the extension's proxy:`, error?.message || error)
+    }
   }
 
   /**
@@ -1053,6 +1098,7 @@ class ExtensionManager {
           try {
             log.info(`ExtensionManager: Unloading extension from Electron: ${extension.displayName || extension.name}`)
             await this.session.removeExtension(extension.electronId)
+            await this._proxyFollows('forget', extension.electronId)
           } catch (error) {
             log.error('ExtensionManager: Failed to unload extension from Electron:', error)
           }

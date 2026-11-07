@@ -150,6 +150,7 @@ class NavBox extends HTMLElement {
     zoomIndicator.id = 'zoom-indicator'
     zoomIndicator.className = 'zoom-indicator'
     zoomIndicator.textContent = '100%'
+    zoomIndicator.hidden = true
 
     urlBarWrapper.appendChild(siteInfoButton)
     urlBarWrapper.appendChild(urlInput)
@@ -807,12 +808,18 @@ class NavBox extends HTMLElement {
     return null
   }
 
-  // Shown at 100% too: hidden there, it went blank as a pinch passed through
-  // the page's own size.
-  setZoomIndicator (percent) {
+  // Shown while the tab is zoomed in or out. A zoom that lands on 100% shows
+  // it a moment longer, so a pinch passing through the page's own size never
+  // leaves it blank. A tab at 100% coming up hides it.
+  setZoomIndicator (percent, { zooming = false } = {}) {
     const indicator = this.querySelector('#zoom-indicator')
     if (!indicator) return
+    clearTimeout(this.zoomIndicatorTimer)
     indicator.textContent = `${percent}%`
+    indicator.hidden = percent === 100 && !zooming
+    if (percent === 100 && zooming) {
+      this.zoomIndicatorTimer = setTimeout(() => { indicator.hidden = true }, 1500)
+    }
   }
 
   async updateSearchPlaceholder () {

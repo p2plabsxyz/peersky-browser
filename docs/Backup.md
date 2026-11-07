@@ -151,17 +151,20 @@ The transfer signature is self-signed because its public key travels in the
 same transfer. The matching verification code is the authentication step that
 binds the displayed desktop key to the receiver session.
 
-Identity transfers do not have an application-defined size limit on desktop or
-mobile. Available memory, storage, and the underlying ZIP format still determine
-the largest transfer a device can process.
+A phone takes up to 2 GB in one transfer (`MAX_BACKUP_SIZE_BYTES` in PeerSky
+Mobile). A desktop sets no limit of its own. Available memory, storage, and the
+underlying ZIP format still determine the largest transfer it can process.
 
 A phone gets only what it keeps: `tabs.json`, `bookmarks.json`,
-`peersky-identity.json`, and, with private uploads included, the private
-drives and `private-drive-key.json`. The phone merges the tabs and bookmarks
-into its own. It does not get `hyper/`, this desktop's own corestore, which
-nothing on the phone opens and which can run to gigabytes. The key goes to a
-phone even when there are no private drives yet, because the phone encrypts
-its own private uploads with it, and that is what lets this desktop open them.
+`peersky-identity.json`, and, with private uploads included,
+`private-drive-key.json`. The phone merges the tabs and bookmarks into its
+own. It does not get `hyper/`, this desktop's own corestore, which nothing on
+the phone opens and which can run to gigabytes. It does not get the private
+drives either, and the key file lists none: the phone opens them from this
+desktop through private sync, with the key. Packed, they ran past the 2 GB a
+phone takes. The key goes to a phone even when there are no private drives
+yet, because the phone encrypts its own private uploads with it, and that is
+what lets this desktop open them.
 A phone whose code says it takes PeerChat also gets `peerchat-incoming.json`
 (see [PeerChat on several devices](#peerchat-on-several-devices)), and one
 whose code says `notes=1` gets `p2pmd-incoming.json` (see

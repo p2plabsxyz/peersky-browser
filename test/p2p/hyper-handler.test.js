@@ -959,6 +959,9 @@ describe('Hyper protocol handler', function () {
     const { module, hyperFetchFactory } = await loadHyperModule({
       fetchImpl: async (url, options) => {
         if (options?.method === 'POST') return new Response(`hyper://${key}/`)
+        // Read the file sent, as hypercore-fetch does. Left unread, its stream
+        // could open after the folder below is gone and fail the next test.
+        if (options?.body) await new Response(options.body).arrayBuffer()
         return new Response('', { status: 200 })
       }
     })

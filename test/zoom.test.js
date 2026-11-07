@@ -97,15 +97,22 @@ describe('page zoom', function () {
 
     // These throw until dom-ready, and selectTab calls them.
     it('survives a webview that is not ready yet', function () {
-      const zoom = src.slice(src.indexOf('zoomActiveTab (step)'), src.indexOf('emitZoomChanged ()'))
+      const zoom = src.slice(src.indexOf('zoomActiveTab (step)'), src.indexOf('emitZoomChanged ({'))
+      expect(zoom).to.contain('resetActiveTabZoom ()')
       expect(zoom).to.contain('try {')
       expect(zoom).to.contain('catch')
     })
 
     it('reports the new percentage on every change', function () {
       expect(src).to.contain('emitZoomChanged')
-      expect(src).to.contain("new CustomEvent('zoom-changed'")
+      expect(src).to.contain("new CustomEvent('zoom-changed', { detail: { percent, zooming } })")
       expect(src, 'percent comes from the zoom factor').to.contain('getZoomFactor() * 100')
+    })
+
+    // Zooming in, out, a pinch and Actual Size, never a tab coming up.
+    it('says when the level just changed', function () {
+      expect(src.match(/this\.emitZoomChanged\(\{ zooming: true \}\)/g) || []).to.have.length(2)
+      expect(src).to.contain('if (tabId === this.activeTabId) this.emitZoomChanged({ zooming: true })')
     })
   })
 
@@ -122,17 +129,22 @@ describe('page zoom', function () {
       expect(nav).to.contain('urlBarWrapper.appendChild(zoomIndicator)')
     })
 
-    // It hid itself at 100%, so a pinch back to the page's own size left it
-    // blank.
-    it('shows 100% too', function () {
-      expect(nav).to.contain("zoomIndicator.textContent = '100%'")
-      expect(nav).to.not.contain('zoomIndicator.hidden')
-      expect(nav).to.not.contain('indicator.hidden')
+    // Shown always, 100% sat in every address bar.
+    it('shows only while the tab is zoomed in or out', function () {
+      expect(nav).to.contain('zoomIndicator.hidden = true')
+      expect(nav).to.contain('indicator.hidden = percent === 100 && !zooming')
+    })
+
+    // Hidden the moment it reached 100%, it went blank as a pinch passed
+    // through the page's own size.
+    it('shows 100% a moment longer when a zoom lands there', function () {
+      expect(nav).to.match(/if \(percent === 100 && zooming\) \{\s+this\.zoomIndicatorTimer = setTimeout\(\(\) => \{ indicator\.hidden = true \}, \d+\)/)
+      expect(nav, 'a newer zoom or tab cancels the hide').to.contain('clearTimeout(this.zoomIndicatorTimer)')
     })
 
     it('is updated from the tab bar and follows the active tab', function () {
       expect(renderer).to.contain("tabBar.addEventListener('zoom-changed'")
-      expect(renderer).to.contain('setZoomIndicator(e.detail.percent)')
+      expect(renderer).to.contain('setZoomIndicator(e.detail.percent, { zooming: e.detail.zooming })')
       expect(renderer, 'switching tabs refreshes it').to.contain("tab-selected', () => tabBar.emitZoomChanged()")
     })
   })
