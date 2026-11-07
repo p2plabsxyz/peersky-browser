@@ -436,6 +436,9 @@ describe('BitTorrent protocol handler', function () {
     }
   })
 
+  // Each test reads every file it is answered. A file is opened only after the
+  // answer is made, so one left unread could open after afterEach took its
+  // folder away, and fail the next test with ENOENT (seen on Linux CI).
   describe('files a torrent holds', function () {
     async function serving (files) {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'peersky-bt-files-'))
@@ -465,9 +468,11 @@ describe('BitTorrent protocol handler', function () {
       expect(page.headers.get('Content-Security-Policy')).to.match(/^sandbox allow-scripts/)
       expect(page.headers.get('Content-Security-Policy')).to.not.include('allow-same-origin')
       expect(page.headers.get('X-Content-Type-Options')).to.equal('nosniff')
+      expect(await page.text()).to.equal('<script>top.peerskyBT</script>')
       const text = await get('T/notes.txt')
       expect(text.headers.get('Content-Type')).to.equal('text/plain; charset=utf-8')
       expect(text.headers.get('Content-Security-Policy')).to.match(/^sandbox /)
+      expect(await text.text()).to.equal('hi')
     })
 
     it('leaves a PDF unsandboxed, where the PDF viewer would not run', async () => {
@@ -475,6 +480,7 @@ describe('BitTorrent protocol handler', function () {
       const res = await get('T/book.pdf')
       expect(res.headers.get('Content-Type')).to.equal('application/pdf')
       expect(res.headers.get('Content-Security-Policy')).to.equal(null)
+      expect(await res.text()).to.equal('%PDF-1.4')
     })
 
     it('answers byte ranges, so a video can seek, and plays an MKV as WebM', async () => {
@@ -491,6 +497,7 @@ describe('BitTorrent protocol handler', function () {
       expect(whole.status).to.equal(200)
       expect(whole.headers.get('Accept-Ranges')).to.equal('bytes')
       expect(whole.headers.get('Content-Length')).to.equal('10')
+      expect(await whole.text()).to.equal('0123456789')
       const past = await get('T/clip.mkv', { Range: 'bytes=10-' })
       expect(past.status).to.equal(416)
       expect(past.headers.get('Content-Range')).to.equal('bytes */10')
