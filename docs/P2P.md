@@ -8,9 +8,9 @@ Peersky includes a section of static apps served from the `peersky://p2p/` names
 
 Static apps work especially well with P2P protocols: they can be **served locally**, cached by peers, and stay available even when your origin server is offline. Publishing a bundle of HTML/CSS/JS to Hyper or IPFS gives you:
 
-- **Offline / flaky-network resilience** – once content is seeded, peers can load it without a central server.
-- **Versioned, content-addressed builds** – immutable URLs for each deploy, easy rollbacks and integrity checks.
-- **Low/zero infra** – no origin to maintain; distribution happens over the P2P network.
+- **Offline / flaky-network resilience**: once content is seeded, peers can load it without a central server.
+- **Versioned, content-addressed builds**: immutable URLs for each deploy, easy rollbacks and integrity checks.
+- **Low/zero infra**: no origin to maintain; distribution happens over the P2P network.
 
 ### Publish to Hyper
 
@@ -43,7 +43,7 @@ async function publishToHyper(file) {
 The Hyperdrive app asks for a visibility before creating an upload:
 
 - **Public** uploads use PeerSky's normal networked Hyper runtime. Their discovery keys are announced, their contents can replicate to peers, and their `hyper://` URLs can be shared.
-- **Private** uploads use a separate runtime over the same Hyper network, with block-level encryption applied from a per-profile 32-byte `encryptionKey`. They are announced and replicated (`autoJoin: true`, `doReplicate: true`) exactly like public drives, so their contents move between your devices. `hyper://` URLs are keyed and decrypt correctly only where that key is available — in the profile that created them and on devices that have adopted the key via an identity transfer. Setting `PEERSKY_PRIVATE_DEVICE_ONLY=1` restores the old device-only behavior (isolated runtime, no discovery or replication).
+- **Private** uploads use a separate runtime over the same Hyper network, with block-level encryption applied from a per-profile 32-byte `encryptionKey`. They are announced and replicated (`autoJoin: true`, `doReplicate: true`) exactly like public drives, so their contents move between your devices. `hyper://` URLs are keyed and decrypt correctly only where that key is available: in the profile that created them and on devices that have adopted the key via an identity transfer. Setting `PEERSKY_PRIVATE_DEVICE_ONLY=1` restores the old device-only behavior (isolated runtime, no discovery or replication).
 
 Each upload name selects its own Hyperdrive, so sharing one public upload does not expose unrelated uploads. Private upload metadata is kept in a separate local registry and is never added to the shared Hyper cache.
 
@@ -81,7 +81,7 @@ flowchart TD
     H --> I[Decrypts where the key is available]
 ```
 
-Private uploads are excluded from normal backups by default. Identity transfers include them by default because they move data to another user-owned device. Both controls are explicit: if private uploads are excluded, Link Device shows how many will be left behind. The same page lists the private uploads currently stored on the device. The transfer ships the drive's encryption key file (`private-drive-key.json`) beside the synced store; on arrival the receiving device adopts the drive into that keyed, synced corestore, so the same encrypted drive can be opened and written on both sides. The key file is what binds a received drive to a device — without it the drive's blocks remain encrypted no matter how far they replicate.
+Private uploads are excluded from normal backups by default. Identity transfers include them by default because they move data to another user-owned device. Both controls are explicit: if private uploads are excluded, Link Device shows how many will be left behind. The same page lists the private uploads currently stored on the device. The transfer carries the private store (`hyper-private/`), its list (`privateHyperdrives.json`) and the key file (`private-drive-key.json`). On arrival, each drive a receiving desktop did not have before is marked read-only there (`private-drive-owners.json`, `adoptRestoredPrivateDriveCopies` in `src/backup/backup-manager.js`): it opens with the key, and a write to it gets a 403. A phone adopts them read-only too. So only the device that made a drive writes to it. A Hyperdrive has a single writer. If two devices wrote to the same one, each would add its own blocks under the same key, their copies would split, and Hypercore closes the drive when the two meet. Letting several devices write to the same drive needs multi-writer drives built on [Autobase](https://github.com/holepunchto/autobase), which we want to add later. The key file is what binds a received drive to a device: without it the drive's blocks remain encrypted no matter how far they replicate.
 
 #### Folders open in Files, Photos or Videos
 
