@@ -1,5 +1,42 @@
 const COPY_ICON = '<img src="peersky://static/assets/svg/copy.svg" width="16" height="16" alt="Copy">'
 const OPEN_ICON = '<img src="peersky://static/assets/svg/box-arrow-up-right.svg" width="16" height="16" alt="Open">'
+const REMOVE_ICON = '<img src="peersky://static/assets/svg/close.svg" width="16" height="16" alt="Remove">'
+
+// The Hyper entries the lists were last drawn from, after the time filter. A
+// row of P2P app drives stands for all of an app's entries, found here.
+let shownHyperEntries = []
+
+// The button that takes one row off its list. The data itself stays.
+function removeButton (list, id, name) {
+  const label = `Remove ${name} from the list`
+  return `<button class="archive-action-btn remove-btn" data-remove-list="${list}" data-remove-id="${id}" title="Remove from the list" aria-label="${label}">${REMOVE_ICON}</button>`
+}
+
+function attachRemoveListeners (container) {
+  container.querySelectorAll('.remove-btn').forEach(btn => {
+    if (btn.dataset.listenerAttached) return
+    btn.dataset.listenerAttached = 'true'
+    btn.addEventListener('click', async () => {
+      if (!settingsAPI?.settings?.removeArchiveEntries) return
+      const { removeList, removeId } = btn.dataset
+      const list = removeList === 'hyper-app' ? 'hyper' : removeList
+      const ids = removeList === 'hyper-app'
+        ? [...new Set(shownHyperEntries.filter(item => item.name === removeId).map(item => item.key))]
+        : [removeId]
+      if (ids.length === 0) return
+      btn.disabled = true
+      try {
+        const result = await settingsAPI.settings.removeArchiveEntries(list, ids)
+        if (!result || result.success === false) throw new Error(result?.error || 'Unknown error')
+        await loadArchiveData({ keepPage: true })
+        showSettingsSavedMessage('Removed from the list')
+      } catch (err) {
+        btn.disabled = false
+        showSettingsSavedMessage('Could not remove it from the list: ' + (err?.message || String(err)), 'error')
+      }
+    })
+  })
+}
 
 // Known names used by built-in P2P apps for their internal draft and published storage
 const P2P_APP_DRIVE_NAMES = new Set([
@@ -13,7 +50,7 @@ const P2P_APP_DRIVE_NAMES = new Set([
 
 // The lists of what was published, in the P2P data section (called Archive
 // before, which these names come from)
-async function loadArchiveData () { // eslint-disable-line no-unused-vars
+async function loadArchiveData ({ keepPage = false } = {}) { // eslint-disable-line no-unused-vars
   if (!settingsAPI?.settings?.getArchiveData) return
   try {
     const data = await settingsAPI.settings.getArchiveData()
@@ -24,6 +61,7 @@ async function loadArchiveData () { // eslint-disable-line no-unused-vars
     const cutoff = filter === 'all' ? 0 : now - (durations[filter] || 0)
     // Filter data by time
     const filteredHyper = (data.hyper || []).filter(item => item.timestamp >= cutoff)
+    shownHyperEntries = filteredHyper
     const filteredIpfs = (data.ipfs || []).filter(item => item.timestamp >= cutoff)
     const filteredEns = normalizeEnsEntries(data.ens).filter(item => {
       if (!item.timestamp || filter === 'all') return true
@@ -63,6 +101,11 @@ async function loadArchiveData () { // eslint-disable-line no-unused-vars
       })
     }
 
+    const attachRowListeners = (container) => {
+      attachCopyListeners(container)
+      attachRemoveListeners(container)
+    }
+
     await customElements.whenDefined('pagination-control')
 
     const allHyper = [...filteredHyper].reverse()
@@ -87,11 +130,13 @@ async function loadArchiveData () { // eslint-disable-line no-unused-vars
             <td>
               <button class="archive-action-btn copy-btn" data-copy="${safeKey}" title="Copy Key">${COPY_ICON}</button>
               <a href="hyper://${safeKey}/" target="_blank" rel="noopener noreferrer" class="archive-action-btn" title="Open">${OPEN_ICON}</a>
+              ${removeButton('hyper-app', safeName, safeName)}
             </td>
           </tr>`
         },
         emptyMessage: '<p class="archive-empty">No P2P app drives found.</p>',
-        onRendered: attachCopyListeners
+        onRendered: attachRowListeners,
+        keepPage
       })
     }
 
@@ -115,11 +160,13 @@ async function loadArchiveData () { // eslint-disable-line no-unused-vars
             <td>
               <button class="archive-action-btn copy-btn" data-copy="${safeKey}" title="Copy Key">${COPY_ICON}</button>
               <a href="hyper://${safeKey}/" target="_blank" rel="noopener noreferrer" class="archive-action-btn" title="Open">${OPEN_ICON}</a>
+              ${removeButton('hyper', safeKey, safeName)}
             </td>
           </tr>`
         },
         emptyMessage: '<p class="archive-empty">No individual files found.</p>',
-        onRendered: attachCopyListeners
+        onRendered: attachRowListeners,
+        keepPage
       })
     }
 
@@ -145,11 +192,13 @@ async function loadArchiveData () { // eslint-disable-line no-unused-vars
             <td>
               <button class="archive-action-btn copy-btn" data-copy="${safeCid}" title="Copy CID">${COPY_ICON}</button>
               <a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="archive-action-btn" title="Open">${OPEN_ICON}</a>
+              ${removeButton('ipfs', safeCid, safeName)}
             </td>
           </tr>`
         },
         emptyMessage: '<p class="archive-empty">No IPFS uploads found.</p>',
-        onRendered: attachCopyListeners
+        onRendered: attachRowListeners,
+        keepPage
       })
     }
 
@@ -173,11 +222,13 @@ async function loadArchiveData () { // eslint-disable-line no-unused-vars
             <td>
               <button class="archive-action-btn copy-btn" data-copy="${safeHash}" title="Copy Hash">${COPY_ICON}</button>
               ${openLinkHtml}
+              ${removeButton('ens', safeName, safeName)}
             </td>
           </tr>`
         },
         emptyMessage: '<p class="archive-empty">No ENS records cached.</p>',
-        onRendered: attachCopyListeners
+        onRendered: attachRowListeners,
+        keepPage
       })
     }
   } catch (err) {

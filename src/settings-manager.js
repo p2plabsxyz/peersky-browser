@@ -11,6 +11,7 @@ import { normalizeEnsHash } from './ens-utils.js'
 import { clearPersistedPermissions } from './permissions.js'
 import p2pAppRegistry from './p2p-app-registry.js'
 import { measureP2PStorage, oneAtATime } from './p2p-storage.js'
+import { removeFromP2pDataList } from './p2p-data-lists.js'
 import { isPeerskyPage } from './backup/ipc-caller.js'
 import { bumpCacheEpoch } from './protocols/hyperdrive-views.js'
 import { getPagesPath } from './protocols/pages-path.js'
@@ -627,6 +628,24 @@ class SettingsManager {
         return { success: true }
       } catch (error) {
         logDebug(`Failed to clear the P2P data lists: ${error.message}`)
+        return { success: false, error: error.message }
+      }
+    })
+
+    // One row taken off a list, by its remove button. The data stays. Only
+    // Settings may ask.
+    ipcMain.handle('settings-remove-archive-entries', async (event, request) => {
+      try {
+        if (!isPeerskyPage(event?.senderFrame?.url, 'settings')) throw new Error('Forbidden')
+        const { list, removed } = removeFromP2pDataList({ hyperCache, ipfsCache, ensCache }, request)
+        if (removed > 0) {
+          if (list === 'hyper') saveHyperCache()
+          else if (list === 'ipfs') saveIpfsCache()
+          else saveEnsCache()
+        }
+        return { success: true, removed }
+      } catch (error) {
+        logDebug(`Failed to remove from the P2P data lists: ${error.message}`)
         return { success: false, error: error.message }
       }
     })

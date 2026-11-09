@@ -268,6 +268,7 @@ function createFallbackAPI (ipc) {
       getArchiveData: () => ipc.invoke('settings-get-archive-data'),
       exportArchive: (jsonContent) => ipc.invoke('settings-export-archive', jsonContent),
       clearArchive: (cutoff) => ipc.invoke('settings-clear-archive', cutoff),
+      removeArchiveEntries: (list, ids) => ipc.invoke('settings-remove-archive-entries', { list, ids }),
       clearEnsCache: () => ipc.invoke('settings-clear-ens-cache')
     },
     onThemeChanged: (callback) => wrapCallback('theme-changed', callback),
