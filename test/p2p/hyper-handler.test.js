@@ -5,7 +5,7 @@ import crypto from 'crypto'
 import os from 'os'
 import path from 'path'
 import { mkdtempSync, rmSync } from 'fs'
-import { Readable } from 'stream'
+import { Readable, Writable } from 'stream'
 import Corestore from 'corestore'
 import Hyperdrive from 'hyperdrive'
 import z32 from 'z32'
@@ -76,6 +76,16 @@ class FakeHyperdrive {
 
   async put (drivePath, buffer) {
     this.files.set(drivePath, buffer)
+  }
+
+  // An upload arrives as a stream and is written as one, the file only there
+  // once the stream ends, as a Hyperdrive does.
+  createWriteStream (drivePath) {
+    const chunks = []
+    return new Writable({
+      write: (chunk, encoding, done) => { chunks.push(chunk); done() },
+      final: (done) => { this.files.set(drivePath, Buffer.concat(chunks)); done() }
+    })
   }
 
   async del (drivePath) {

@@ -633,6 +633,59 @@ describe('a private file read in parts, and when it was written', function () {
     expect(entries.find((entry) => entry.path === '/trip.jpg').mtime).to.equal(Date.parse(sent))
     expect(entries.find((entry) => entry.path === '/old.jpg').mtime).to.equal(null)
   })
+
+  // The Hyperdrive app sends a file as a stream, and the handler hands it on
+  // as one, a Node stream or a web one. It goes into the drive as it comes,
+  // so a file of several GB is never held whole.
+  it('writes a streamed upload as it arrives, with its time', async function () {
+    const sent = 'Tue, 02 Jan 2024 10:00:00 GMT'
+    const chunks = [bytes.subarray(0, 70000), bytes.subarray(70000, 140001), bytes.subarray(140001)]
+    // The rest is held back until the drive has the first part, which a
+    // handler that reads the whole body first would never let happen. The
+    // drive appends 16 blocks at a time, so the first part is 20 of them.
+    const large = crypto.randomBytes(2 * 1024 * 1024)
+    const block = 64 * 1024
+    const blobs = await drive.getBlobs()
+    const before = blobs.core.length
+    let inDriveEarly = false
+    const node = Readable.from((async function * () {
+      for (let i = 0; i < 20; i++) yield large.subarray(i * block, (i + 1) * block)
+      for (let i = 0; i < 100 && blobs.core.length === before; i++) await new Promise((resolve) => setTimeout(resolve, 20))
+      inDriveEarly = blobs.core.length > before
+      yield large.subarray(20 * block)
+    })())
+    expect((await fetcher(`${url}node.mp4`, { method: 'PUT', body: node, headers: { 'Last-Modified': sent } })).status).to.equal(200)
+    expect(inDriveEarly).to.equal(true)
+    expect((await bodyOf(await get('node.mp4'))).equals(large)).to.equal(true)
+    expect((await drive.entry('/node.mp4')).value.metadata).to.deep.equal({ mtime: Date.parse(sent) })
+
+    // Electron hands a page's stream on as a web stream of Uint8Arrays.
+    const web = new ReadableStream({
+      start (controller) {
+        for (const chunk of chunks) controller.enqueue(new Uint8Array(chunk))
+        controller.close()
+      }
+    })
+    expect((await fetcher(`${url}web.mp4`, { method: 'PUT', body: web })).status).to.equal(200)
+    expect((await bodyOf(await get('web.mp4'))).equals(bytes)).to.equal(true)
+
+    // An empty file is still a file.
+    const none = new ReadableStream({ start (controller) { controller.close() } })
+    expect((await fetcher(`${url}none.txt`, { method: 'PUT', body: none })).status).to.equal(200)
+    const empty = await get('none.txt')
+    expect(empty.status).to.equal(200)
+    expect(empty.headers.get('Content-Length')).to.equal('0')
+  })
+
+  it('leaves no file behind when a streamed upload breaks off', async function () {
+    const broken = Readable.from((async function * () {
+      yield bytes.subarray(0, 1000)
+      throw new Error('the page went away')
+    })())
+    const response = await fetcher(`${url}broken.mp4`, { method: 'PUT', body: broken }).catch((error) => error)
+    if (response instanceof Response) expect(response.status).to.not.equal(200)
+    expect(await drive.entry('/broken.mp4')).to.equal(null)
+  })
 })
 
 // Private drives from before private uploads were encrypted sat on the disk
