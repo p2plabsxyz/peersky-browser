@@ -195,6 +195,29 @@ function attachWebviewTabShortcutNav (wc) {
   })
 }
 
+// A page is a process of its own, so the window's tabs never see a pointer
+// that goes from a tab straight into it: the tab's card came up over the page
+// a few seconds later. The window is told when the pointer is in a page, at
+// most four times a second.
+const webviewPointerNoticeAttached = new WeakSet()
+
+function attachWebviewPointerNotice (wc) {
+  if (!wc || wc.isDestroyed()) return
+  if (typeof wc.getType !== 'function' || wc.getType() !== 'webview') return
+  if (webviewPointerNoticeAttached.has(wc)) return
+  webviewPointerNoticeAttached.add(wc)
+
+  let toldAt = 0
+  wc.on('before-mouse-event', (_event, mouse) => {
+    if (mouse.type !== 'mouseMove' && mouse.type !== 'mouseEnter') return
+    const now = Date.now()
+    if (now - toldAt < 250) return
+    toldAt = now
+    const host = wc.hostWebContents
+    if (host && !host.isDestroyed()) host.send('page-pointer')
+  })
+}
+
 globalProtocol.registerSchemesAsPrivileged([
   { scheme: 'peersky', privileges: BROWSER_PROTOCOL },
   { scheme: 'browser', privileges: BROWSER_PROTOCOL },
@@ -589,6 +612,7 @@ app.whenReady().then(async () => {
   // Global webview partition alignment and security hardening
   app.on('web-contents-created', (_e, wc) => {
     attachWebviewTabShortcutNav(wc)
+    attachWebviewPointerNotice(wc)
     wc.on('will-attach-webview', (_event, webPreferences, params) => {
       // Pages in an incognito window get the in-memory session. Electron reads
       // the partition from webPreferences, which it fills in before this event.

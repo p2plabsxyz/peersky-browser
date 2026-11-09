@@ -233,6 +233,34 @@ describe('the tab hover card', function () {
     expect(card).to.contain('window.innerWidth - cardRect.width - margin')
     expect(card).to.contain('window.innerHeight - cardRect.height - margin')
   })
+
+  // A tab that slid under a pointer resting on the list, as tabs opened or
+  // closed above it, got mouseenter and brought its card up with nobody
+  // pointing at it.
+  it('comes up for a pointer moving over the tab, once per visit', function () {
+    expect(card).to.contain("tabElement.addEventListener('mousemove', showHoverCard)")
+    expect(card).to.not.contain("addEventListener('mouseenter', showHoverCard)")
+    expect(card).to.contain('if (hoverTimeout || hoverCard) return')
+    expect(card).to.contain("tabElement.addEventListener('mouseleave', hideHoverCard)")
+  })
+
+  // A pointer that went from a tab straight into the page never left the tab
+  // as far as the window could tell, so the card came up over the page while
+  // the person typed in it.
+  it('goes, or never comes, once the pointer is in a page', function () {
+    const listen = tabBar.slice(tabBar.indexOf('listenForPagePointer () {'), tabBar.indexOf('async initMemorySaver'))
+    expect(listen).to.contain("ipcRenderer.on('page-pointer', this._pagePointerListener)")
+    expect(listen).to.contain('this._hideHoverCard()')
+    expect(card).to.contain('this._hideHoverCard = hideHoverCard')
+    expect(tabBar).to.contain("ipcRenderer.removeListener('page-pointer', this._pagePointerListener)")
+
+    const notice = main.slice(main.indexOf('function attachWebviewPointerNotice'), main.indexOf('globalProtocol.registerSchemesAsPrivileged'))
+    expect(notice).to.contain("wc.getType() !== 'webview'")
+    expect(notice).to.contain("wc.on('before-mouse-event'")
+    expect(notice).to.contain("host.send('page-pointer')")
+    expect(notice).to.contain('now - toldAt < 250')
+    expect(main).to.contain('attachWebviewPointerNotice(wc)')
+  })
 })
 
 // Switching between horizontal and vertical tabs rebuilt the webviews, which
