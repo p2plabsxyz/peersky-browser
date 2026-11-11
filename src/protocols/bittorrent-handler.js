@@ -475,7 +475,7 @@ export function setTorrentProxies (list) {
 }
 
 // Torrents a new worker takes back up: those running, and those the VPN
-// turning off paused.
+// turning off paused and nobody paused or stopped since.
 function torrentsToCarryOver () {
   const list = []
   for (const [hash, s] of statusCache) {
@@ -968,6 +968,8 @@ async function unseedTorrent (hash, responseOptions = {}) {
       cached.uploadSpeed = 0
       cached.numPeers = 0
       cached.timeRemaining = null
+      // Paused by hand now, so the VPN coming back does not start it again.
+      delete cached.pausedForVpn
       saveTorrentState(hash, cached)
     }
     return jsonResponse({ success: true, infoHash: hash, mode: 'download', paused: true }, 200, responseOptions)
@@ -1043,6 +1045,8 @@ async function pauseResumeTorrent (action, hash, responseOptions = {}) {
       const cached = statusCache.get(hash)
       if (cached) {
         cached.paused = true
+        // Paused by hand now, so the VPN coming back does not start it again.
+        delete cached.pausedForVpn
         saveTorrentState(hash, cached)
       }
     } else if (action === 'resume') {
@@ -1089,6 +1093,8 @@ async function stopTorrentSession (hash, responseOptions = {}) {
       cached.downloadSpeed = 0
       cached.uploadSpeed = 0
       cached.numPeers = 0
+      // Stopped by hand now, so the VPN coming back does not start it again.
+      delete cached.pausedForVpn
       saveTorrentState(hash, cached)
     }
     return jsonResponse({ success: true, stopped: true, infoHash: hash }, 200, responseOptions)

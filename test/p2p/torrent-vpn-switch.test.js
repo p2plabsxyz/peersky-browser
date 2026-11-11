@@ -196,6 +196,24 @@ describe('torrents follow the VPN extension', function () {
     expect(status).to.not.have.property('pausedForVpn')
   })
 
+  // Stopped while the VPN was off, it started again when the VPN came back,
+  // and after a restart too, as the VPN's pause was saved with it.
+  it('leaves a torrent stopped or paused while the VPN is off as it was when the VPN comes back', async () => {
+    for (const action of ['stop', 'pause', 'unseed']) {
+      const t = await load()
+      await t.mod.setTorrentProxies(VPN)
+      await startTorrent(t)
+      await t.mod.setTorrentProxies([])
+      expect(await t.api(action, { hash: HASH }, 'POST')).to.include({ success: true })
+      const before = await t.api('status', { hash: HASH })
+      expect(before, action).to.include({ paused: true })
+      expect(before, action).to.not.have.property('pausedForVpn')
+      await t.mod.setTorrentProxies(VPN)
+      expect(t.fork.callCount, action).to.equal(1)
+      expect(await t.api('status', { hash: HASH }), action).to.include({ paused: true, numPeers: 0 })
+    }
+  })
+
   it('leaves a paused torrent paused across a VPN change', async () => {
     const t = await load()
     await startTorrent(t)
