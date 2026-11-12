@@ -1,10 +1,13 @@
 /**
  * A VPN extension's proxy outlives a restart (services/proxy-settings.js).
  *
- * The extension host kept what an extension set with chrome.proxy in memory
- * only, so after a restart a VPN extension said it was connected while tabs and
- * torrents went out directly. These run the host's own ProxyAPI, taken from its
- * build, with a stand-in session, and check the file it leaves behind.
+ * The extension host keeps what an extension sets with chrome.proxy, but puts
+ * it back only once that extension loads, after the first window opened. So
+ * the proxy that counts is saved here and put on the session before then.
+ * Its 1.x kept chrome.proxy in memory only, so a VPN extension said it was
+ * connected while tabs and torrents went out directly; what was saved then is
+ * handed back. These run against a stand-in for the host's proxy API, whose
+ * own specs check the real one, and check the file left behind.
  */
 
 import { expect } from 'chai'
@@ -19,8 +22,6 @@ import {
   saveProxySettings,
   restoreSavedProxy,
   keepExtensionProxy,
-  pauseExtensionProxy,
-  resumeExtensionProxy,
   forgetExtensionProxy,
   settleExtensionProxy,
   logInToProxy
@@ -30,6 +31,7 @@ const VEEPN = 'majdfhpaihoncoakbjgbdhglocklcgno'
 const OTHER = 'abcdefghijklmnopabcdefghijklmnop'
 const PAC = 'function FindProxyForURL(url, host) { return "HTTPS maasdam-1-nl.nexorcdn.com:16858"; }'
 const VPN_ON = { mode: 'pac_script', pacScript: { data: PAC } }
+const VPN_OTHER_SERVER = { mode: 'fixed_servers', rules: { singleProxy: { scheme: 'https', host: 'nl.vpn.example', port: 443 } } }
 
 const hostBuild = await readFile(
   new URL('../../node_modules/@p2plabs/peersky-chrome-extensions/dist/esm/index.mjs', import.meta.url),
@@ -38,67 +40,98 @@ const hostBuild = await readFile(
 const managerSource = await readFile(new URL('../../src/extensions/index.js', import.meta.url), 'utf8')
 const mainSource = await readFile(new URL('../../src/main.js', import.meta.url), 'utf8')
 
-// The extension host's ProxyAPI class, as it ships.
-function loadProxyApiClass () {
-  const start = hostBuild.indexOf('// src/browser/api/proxy.ts')
-  const end = hostBuild.indexOf('\n// src/browser/api/', start + 1)
-  expect(start, 'ProxyAPI in the extension host build').to.be.greaterThan(-1)
-  const silent = { log () {}, warn () {}, error () {} }
-  // eslint-disable-next-line no-new-func
-  return new Function('Buffer', 'console', `${hostBuild.slice(start, end)}\nreturn ProxyAPI`)(Buffer, silent)
-}
-const ProxyAPI = loadProxyApiClass()
-
+// A stand-in for the extension host's proxy API: each extension keeps its own
+// proxy, the one installed last of those loaded counts, 'proxy-changed' comes
+// once the session has it, and restoreExtensionProxy leaves an extension's own
+// proxy as it is.
 function makeHost () {
+  const host = new EventEmitter()
   const setProxy = []
-  const events = []
-  const handlers = new Map()
-  const ctx = {
-    session: { setProxy: async (config) => { setProxy.push(config) } },
-    router: {
-      apiHandler: () => (name, fn) => handlers.set(name, fn),
-      sendEventForEachListener: (name, build) => events.push({ name, args: build(VEEPN) })
+  const values = new Map()
+  const order = []
+  const loaded = new Set()
+  const effective = () => {
+    for (let i = order.length - 1; i >= 0; i--) {
+      const id = order[i]
+      if (loaded.has(id) && values.has(id)) return { value: values.get(id), extensionId: id }
     }
+    return null
   }
-  const proxy = new ProxyAPI(ctx)
-  return { proxy, setProxy, events, handlers }
+  const change = async (apply) => {
+    const before = JSON.stringify(effective())
+    apply()
+    const after = effective()
+    if (JSON.stringify(after) === before) return
+    setProxy.push(after ? toSessionProxy(after.value) : { mode: 'system' })
+    host.emit('proxy-changed', after)
+  }
+  const seen = (id) => { if (!order.includes(id)) order.push(id) }
+  host.getProxySettings = effective
+  host.restoreExtensionProxy = async (id, value) => {
+    if (values.has(id)) return false
+    seen(id)
+    await change(() => values.set(id, value))
+    return true
+  }
+  host.clearExtensionSettings = (id) => change(() => values.delete(id))
+  // What an extension and the session do.
+  host.set = (id, value) => change(() => { seen(id); loaded.add(id); values.set(id, value) })
+  host.clear = (id) => change(() => values.delete(id))
+  host.load = (id) => change(() => { seen(id); loaded.add(id) })
+  host.unload = (id) => change(() => loaded.delete(id))
+  host.setProxy = setProxy
+  return host
 }
 
 describe('a VPN extension\'s proxy across restarts', () => {
   let dir
   beforeEach(async () => { dir = await mkdtemp(path.join(os.tmpdir(), 'peersky-proxy-settings-')) })
-  afterEach(async () => { await rm(dir, { recursive: true, force: true }) })
+  // A change a test made last may still be on its way to the file.
+  afterEach(async () => {
+    await saveProxySettings(dir, null, null).catch(() => {})
+    await rm(dir, { recursive: true, force: true })
+  })
 
   const savedFile = () => path.join(dir, PROXY_SETTINGS_FILE)
   const settle = () => new Promise((resolve) => setTimeout(resolve, 30))
+  const gone = () => readFile(savedFile()).then(() => { throw new Error('file still there') }, (err) => expect(err.code).to.equal('ENOENT'))
 
-  it('saves what a VPN extension sets, and removes it when the VPN turns off', async () => {
+  it('saves the proxy that counts each time it changes, and removes it when the VPN turns off', async () => {
     const host = makeHost()
-    await keepExtensionProxy(host.proxy, dir)
-    await host.handlers.get('proxy.settings.set')({ extension: { id: VEEPN } }, { value: VPN_ON })
+    await keepExtensionProxy(host, dir)
+    await host.load(VEEPN)
+    await host.set(VEEPN, VPN_ON)
     await settle()
     expect(JSON.parse(await readFile(savedFile(), 'utf8'))).to.deep.equal({ extensionId: VEEPN, value: VPN_ON, off: false })
-    // The extension still hears about its own change.
-    expect(host.events.map((e) => e.name)).to.include('proxy.settings.onChange')
+    await host.set(VEEPN, VPN_OTHER_SERVER)
+    await settle()
+    expect(await readSavedProxy(dir)).to.deep.equal({ extensionId: VEEPN, value: VPN_OTHER_SERVER, off: false })
 
-    await host.handlers.get('proxy.settings.clear')({ extension: { id: VEEPN } })
+    await host.clear(VEEPN)
     await settle()
     expect(await readSavedProxy(dir)).to.equal(null)
-    await readFile(savedFile()).then(() => { throw new Error('file still there') }, (err) => expect(err.code).to.equal('ENOENT'))
+    await gone()
   })
 
   it('hands the saved proxy back to its extension before it runs, as Chrome does', async () => {
     await saveProxySettings(dir, VEEPN, VPN_ON)
     const host = makeHost()
-    const saved = await keepExtensionProxy(host.proxy, dir)
+    const saved = await keepExtensionProxy(host, dir)
     expect(saved).to.deep.equal({ extensionId: VEEPN, value: VPN_ON, off: false })
-    // The session goes through the VPN again, and chrome.proxy.settings.get says it is the VPN's.
+    // It counts once the extension loads, and chrome.proxy.settings.get then says it is the VPN's.
+    expect(host.getProxySettings()).to.equal(null)
+    await host.load(VEEPN)
+    expect(host.getProxySettings()).to.deep.equal({ value: VPN_ON, extensionId: VEEPN })
     expect(host.setProxy.at(-1).mode).to.equal('pac_script')
     expect(Buffer.from(host.setProxy.at(-1).pacScript.split(',')[1], 'base64').toString()).to.equal(PAC)
-    const got = await host.handlers.get('proxy.settings.get')({ extension: { id: VEEPN } })
-    expect(got).to.deep.include({ value: VPN_ON, levelOfControl: 'controlled_by_this_extension' })
-    const other = await host.handlers.get('proxy.settings.get')({ extension: { id: OTHER } })
-    expect(other.levelOfControl).to.equal('controlled_by_other_extensions')
+
+    // A proxy the extension set since stays its own.
+    const later = makeHost()
+    await later.set(VEEPN, VPN_OTHER_SERVER)
+    await later.unload(VEEPN)
+    await keepExtensionProxy(later, dir)
+    await later.load(VEEPN)
+    expect(later.getProxySettings().value).to.deep.equal(VPN_OTHER_SERVER)
   })
 
   it('puts the proxy back on the session before any window opens', async () => {
@@ -112,65 +145,69 @@ describe('a VPN extension\'s proxy across restarts', () => {
     expect(await restoreSavedProxy({ setProxy: async () => { throw new Error('nothing to restore') } }, dir)).to.equal(null)
   })
 
-  async function hostWithVpnOn () {
+  it('follows the extension turned off and on, and keeps the proxy while the browser shuts down', async () => {
+    let closing = false
     const host = makeHost()
-    await keepExtensionProxy(host.proxy, dir)
-    await host.handlers.get('proxy.settings.set')({ extension: { id: VEEPN } }, { value: VPN_ON })
+    await keepExtensionProxy(host, dir, { closing: () => closing })
+    await host.set(VEEPN, VPN_ON)
     await settle()
-    return host
-  }
 
-  it('takes the proxy off while its extension is turned off, and puts it back when it is turned on', async () => {
-    const host = await hostWithVpnOn()
-    expect(await pauseExtensionProxy(host.proxy, dir, OTHER)).to.equal(false)
-    expect(host.proxy.controllingExtensionId).to.equal(VEEPN)
-
-    expect(await pauseExtensionProxy(host.proxy, dir, VEEPN)).to.equal(true)
+    // Turned off: the host takes its proxy off, and it is not put back at the next start.
+    await host.unload(VEEPN)
+    await settle()
     expect(host.setProxy.at(-1)).to.deep.equal({ mode: 'system' })
-    expect(host.proxy.controllingExtensionId).to.equal(undefined)
-    expect(await readSavedProxy(dir)).to.deep.equal({ extensionId: VEEPN, value: VPN_ON, off: true })
-    // Turned off, it is not put back at the next start either.
     expect(await restoreSavedProxy({ setProxy: async () => { throw new Error('off') } }, dir)).to.equal(null)
-    expect(await keepExtensionProxy(makeHost().proxy, dir)).to.equal(null)
+    // Turned on: back, and saved again.
+    await host.load(VEEPN)
+    await settle()
+    expect(await readSavedProxy(dir)).to.deep.equal({ extensionId: VEEPN, value: VPN_ON, off: false })
 
-    expect(await resumeExtensionProxy(host.proxy, dir, OTHER)).to.equal(false)
-    expect(await resumeExtensionProxy(host.proxy, dir, VEEPN)).to.equal(true)
-    expect(host.setProxy.at(-1).mode).to.equal('pac_script')
-    expect(host.proxy.controllingExtensionId).to.equal(VEEPN)
+    // Shutting down unloads every extension: the proxy stays saved for the next start.
+    closing = true
+    await host.unload(VEEPN)
     await settle()
     expect(await readSavedProxy(dir)).to.deep.equal({ extensionId: VEEPN, value: VPN_ON, off: false })
   })
 
-  it('forgets the proxy when its extension is removed, whether it was on or off', async () => {
-    const host = await hostWithVpnOn()
-    expect(await forgetExtensionProxy(host.proxy, dir, OTHER)).to.equal(false)
+  it('forgets the proxy when its extension is removed', async () => {
+    const host = makeHost()
+    await keepExtensionProxy(host, dir)
+    await host.set(VEEPN, VPN_ON)
+    await settle()
+    expect(await forgetExtensionProxy(dir, OTHER)).to.equal(true)
     expect(await readSavedProxy(dir)).to.not.equal(null)
-    expect(await forgetExtensionProxy(host.proxy, dir, VEEPN)).to.equal(true)
+    // The browser removes the extension and its settings from the host.
+    await host.clearExtensionSettings(VEEPN)
+    expect(await forgetExtensionProxy(dir, VEEPN)).to.equal(true)
     expect(host.setProxy.at(-1)).to.deep.equal({ mode: 'system' })
     await settle()
     expect(await readSavedProxy(dir)).to.equal(null)
-
-    const paused = await hostWithVpnOn()
-    await pauseExtensionProxy(paused.proxy, dir, VEEPN)
-    await forgetExtensionProxy(paused.proxy, dir, VEEPN)
-    expect(await readSavedProxy(dir)).to.equal(null)
+    expect(await forgetExtensionProxy(dir, '')).to.equal(false)
   })
 
-  it('after extensions load, forgets a proxy whose extension is gone and takes off one whose extension is off', async () => {
-    const gone = await hostWithVpnOn()
-    expect(await settleExtensionProxy(gone.proxy, dir, { installed: () => false, enabled: () => false })).to.equal('forgotten')
-    expect(gone.setProxy.at(-1)).to.deep.equal({ mode: 'system' })
-    await settle()
-    expect(await readSavedProxy(dir)).to.equal(null)
+  it('after extensions load, takes off a saved proxy whose extension is gone or turned off', async () => {
+    const session = () => ({ calls: [], async setProxy (config) { this.calls.push(config) } })
 
-    const off = await hostWithVpnOn()
-    expect(await settleExtensionProxy(off.proxy, dir, { installed: () => true, enabled: () => false })).to.equal('off')
-    expect(off.setProxy.at(-1)).to.deep.equal({ mode: 'system' })
+    await saveProxySettings(dir, VEEPN, VPN_ON)
+    const kept = session()
+    expect(await settleExtensionProxy(kept, dir, { installed: () => true, enabled: () => true })).to.equal('kept')
+    expect(kept.calls).to.deep.equal([])
+
+    const off = session()
+    expect(await settleExtensionProxy(off, dir, { installed: () => true, enabled: () => false })).to.equal('off')
+    expect(off.calls).to.deep.equal([{ mode: 'system' }])
     expect((await readSavedProxy(dir)).off).to.equal(true)
+    // Already off: nothing went on the session, so nothing comes off.
+    const again = session()
+    expect(await settleExtensionProxy(again, dir, { installed: () => true, enabled: () => false })).to.equal('off')
+    expect(again.calls).to.deep.equal([])
 
-    const on = await hostWithVpnOn()
-    expect(await settleExtensionProxy(on.proxy, dir, { installed: () => true, enabled: () => true })).to.equal('kept')
-    expect(on.proxy.controllingExtensionId).to.equal(VEEPN)
+    await saveProxySettings(dir, VEEPN, VPN_ON)
+    const removed = session()
+    expect(await settleExtensionProxy(removed, dir, { installed: () => false, enabled: () => false })).to.equal('forgotten')
+    expect(removed.calls).to.deep.equal([{ mode: 'system' }])
+    expect(await readSavedProxy(dir)).to.equal(null)
+    expect(await settleExtensionProxy(session(), dir, { installed: () => true, enabled: () => true })).to.equal(null)
   })
 
   it('reads nothing from a file it did not write', async () => {
@@ -192,8 +229,19 @@ describe('a VPN extension\'s proxy across restarts', () => {
 
   it('does nothing, and says so, when the host has no proxy API', async () => {
     const warnings = []
-    expect(await keepExtensionProxy(undefined, dir, { log: { warn: (...a) => warnings.push(a.join(' ')) } })).to.equal(null)
-    expect(warnings).to.have.length(1)
+    const log = { warn: (...a) => warnings.push(a.join(' ')) }
+    expect(await keepExtensionProxy(undefined, dir, { log })).to.equal(null)
+    // The 1.x host's internals are not the API.
+    const old = { settingsSet () {}, settingsClear () {}, emitSettingsChange () {} }
+    expect(await keepExtensionProxy(old, dir, { log })).to.equal(null)
+    expect(warnings).to.have.length(2)
+  })
+
+  it('finds the API it relies on in the extension host that ships', () => {
+    for (const name of ['getProxySettings()', 'restoreExtensionProxy(extensionId, value)', 'clearExtensionSettings(extensionId)']) {
+      expect(hostBuild, name).to.include(name)
+    }
+    expect(hostBuild).to.include('"proxy-changed"')
   })
 
   // A stand-in for net.request: the proxy asks for a login, and lets the
@@ -290,43 +338,37 @@ describe('a VPN extension\'s proxy across restarts', () => {
     {}
   ]
 
-  it('gives fixed proxy servers to the session with their own scheme, as Chrome does', async () => {
+  it('gives fixed proxy servers to the session with their own scheme after a restart, as Chrome does', () => {
     for (const [rules, expected] of FIXED_SERVERS) {
-      const host = makeHost()
-      await host.handlers.get('proxy.settings.set')({ extension: { id: VEEPN } }, { value: { mode: 'fixed_servers', rules } })
-      expect(host.setProxy.at(-1).mode).to.equal('fixed_servers')
-      expect(host.setProxy.at(-1).proxyRules, JSON.stringify(rules)).to.equal(expected)
-      // And the same again after a restart.
-      expect(toSessionProxy({ mode: 'fixed_servers', rules }).proxyRules, JSON.stringify(rules)).to.equal(expected)
+      const config = toSessionProxy({ mode: 'fixed_servers', rules })
+      expect(config.mode).to.equal('fixed_servers')
+      expect(config.proxyRules, JSON.stringify(rules)).to.equal(expected)
     }
   })
 
-  it('refuses fixed servers it cannot hand on, and keeps the proxy it had, where it went out directly', async () => {
-    const host = await hostWithVpnOn()
-    const before = host.setProxy.length
+  it('puts back no fixed servers it cannot hand on', () => {
     for (const rules of BAD_SERVERS) {
-      let refused = null
-      await host.handlers.get('proxy.settings.set')({ extension: { id: VEEPN } }, { value: { mode: 'fixed_servers', rules } })
-        .catch((error) => { refused = error })
-      expect(refused, JSON.stringify(rules)).to.be.an('error')
       expect(toSessionProxy({ mode: 'fixed_servers', rules }), JSON.stringify(rules)).to.equal(null)
     }
-    expect(host.setProxy.length).to.equal(before)
-    const got = await host.handlers.get('proxy.settings.get')({ extension: { id: VEEPN } })
-    expect(got.value).to.deep.equal(VPN_ON)
   })
 
-  it('is wired in: kept before extensions load, settled after, and following the extension', () => {
-    const keep = managerSource.indexOf('await keepExtensionProxy(')
+  it('is wired in: kept before extensions load, settled after, forgotten on removal and kept at shutdown', () => {
+    const keep = managerSource.indexOf('await keepExtensionProxy(this.electronChromeExtensions,')
     const load = managerSource.indexOf('await this._loadExtensionsIntoElectron()')
-    const settle = managerSource.indexOf('await settleExtensionProxy(')
+    const settle = managerSource.indexOf('await settleExtensionProxy(this.session,')
     expect(keep).to.be.greaterThan(-1)
     expect(keep).to.be.lessThan(load)
     expect(settle).to.be.greaterThan(load)
-    const follows = (change) => (managerSource.match(new RegExp(`await this\\._proxyFollows\\('${change}', (extension\\.electronId|electronExtension\\.id)\\)`, 'g')) || []).length
-    expect(follows('pause'), 'turned off').to.equal(1)
-    expect(follows('resume'), 'turned on').to.equal(1)
-    expect(follows('forget'), 'removed').to.equal(1)
+    expect(managerSource).to.include('closing: () => this._closing === true')
+    expect(managerSource).to.not.include('_proxyFollows')
+    // Removed: the host forgets what the extension set, and so does the file.
+    expect(managerSource).to.include('await this._forgetExtensionSettings(extension.electronId)')
+    expect(managerSource).to.include('await this.electronChromeExtensions?.clearExtensionSettings?.(electronId)')
+    // Shutting down is said before extensions unload.
+    const shutdown = managerSource.indexOf('async shutdown () {')
+    const closing = managerSource.indexOf('this._closing = true', shutdown)
+    expect(closing).to.be.greaterThan(shutdown)
+    expect(closing).to.be.lessThan(managerSource.indexOf('Unloading all extensions from Electron', shutdown))
     // Before the first window opens.
     const restore = mainSource.indexOf('await restoreSavedProxy(userSession')
     expect(restore).to.be.greaterThan(-1)

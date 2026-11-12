@@ -51,7 +51,7 @@ import { openUrlInPeerskyTab } from './services/open-url-in-browser-tab.js'
 import * as WebStoreService from './services/webstore.js'
 import { sendToWindows } from './services/broadcast.js'
 import { createPendingTabs } from './services/pending-tabs.js'
-import { keepExtensionProxy, pauseExtensionProxy, resumeExtensionProxy, forgetExtensionProxy, settleExtensionProxy } from './services/proxy-settings.js'
+import { keepExtensionProxy, forgetExtensionProxy, settleExtensionProxy } from './services/proxy-settings.js'
 import { createLogger } from '../logger.js'
 
 // Window for collapsing a burst of browser-action updates into one broadcast.
@@ -448,7 +448,13 @@ class ExtensionManager {
 
           closeSidePanel: async (details) => {
             await SidePanelService.closeSidePanel(this, details)
-          }
+          },
+
+          // Chrome runs an extension's user scripts only once the person
+          // turns on its "Allow User Scripts" switch. PeerSky has no such
+          // switch, so a user script manager such as Tampermonkey keeps
+          // working as it did before the extension host's 2.0.
+          isUserScriptsAllowed: () => true
         })
         log.info('ExtensionManager: ElectronChromeExtensions initialized')
         // this is a patch fix for the tabs.query to work properly
@@ -492,8 +498,9 @@ class ExtensionManager {
 
       // A VPN extension's proxy from before the restart is its own again
       // before it runs, and every change it makes is saved (proxy-settings.js).
+      // Shutting down unloads every extension, which is no reason to forget it.
       if (this.electronChromeExtensions) {
-        await keepExtensionProxy(this.electronChromeExtensions.api?.proxy, this.app.getPath('userData'), { log })
+        await keepExtensionProxy(this.electronChromeExtensions, this.app.getPath('userData'), { log, closing: () => this._closing === true })
           .catch((error) => log.warn('ExtensionManager: Could not restore the extension proxy:', error?.message || error))
       }
 
@@ -525,7 +532,7 @@ class ExtensionManager {
 
       // A saved proxy whose extension is gone is forgotten, and one whose
       // extension is turned off comes off the session.
-      await settleExtensionProxy(this.electronChromeExtensions?.api?.proxy, this.app.getPath('userData'), {
+      await settleExtensionProxy(this.session, this.app.getPath('userData'), {
         installed: (id) => !!this._findBySessionId(id),
         enabled: (id) => this._findBySessionId(id)?.enabled !== false
       }).catch((error) => log.warn('ExtensionManager: Could not settle the extension proxy:', error?.message || error))
@@ -564,6 +571,7 @@ class ExtensionManager {
       if (!ext?.id) return
       if (this.session && ext.electronId) {
         try { await this.session.removeExtension(ext.electronId) } catch (_) { }
+        await this._forgetExtensionSettings(ext.electronId)
       }
       const extPath = path.join(this.extensionsBaseDir, ext.id)
       await fs.rm(extPath, { recursive: true, force: true })
@@ -843,11 +851,9 @@ class ExtensionManager {
                 allowFileAccess: false // Restrict file system access for security
               })
               extension.electronId = electronExtension.id
-              await this._proxyFollows('resume', electronExtension.id)
             } else {
               if (extension.electronId) {
                 await this.session.removeExtension(extension.electronId)
-                await this._proxyFollows('pause', extension.electronId)
               }
             }
           } catch (error) {
@@ -881,18 +887,24 @@ class ExtensionManager {
   }
 
   /**
-   * The proxy an extension set follows it, as in Chrome: off while it is
-   * turned off, back when it is turned on, forgotten when it is removed.
+   * What a removed extension set is forgotten, as in Chrome: its proxy,
+   * privacy and content settings in the extension host, and the proxy saved
+   * here. Turning an extension off or on needs nothing: the host takes its
+   * settings off while it is unloaded and puts them back when it loads.
    *
-   * @param {'pause'|'resume'|'forget'} change
    * @param {string} electronId - The extension's id in the session
    */
-  async _proxyFollows (change, electronId) {
-    const follow = { pause: pauseExtensionProxy, resume: resumeExtensionProxy, forget: forgetExtensionProxy }[change]
+  async _forgetExtensionSettings (electronId) {
+    if (!electronId) return
     try {
-      await follow(this.electronChromeExtensions?.api?.proxy, this.app.getPath('userData'), electronId)
+      await this.electronChromeExtensions?.clearExtensionSettings?.(electronId)
     } catch (error) {
-      log.warn(`ExtensionManager: Could not ${change} the extension's proxy:`, error?.message || error)
+      log.warn('ExtensionManager: Could not clear the extension\'s settings:', error?.message || error)
+    }
+    try {
+      await forgetExtensionProxy(this.app.getPath('userData'), electronId)
+    } catch (error) {
+      log.warn('ExtensionManager: Could not forget the extension\'s proxy:', error?.message || error)
     }
   }
 
@@ -1098,7 +1110,7 @@ class ExtensionManager {
           try {
             log.info(`ExtensionManager: Unloading extension from Electron: ${extension.displayName || extension.name}`)
             await this.session.removeExtension(extension.electronId)
-            await this._proxyFollows('forget', extension.electronId)
+            await this._forgetExtensionSettings(extension.electronId)
           } catch (error) {
             log.error('ExtensionManager: Failed to unload extension from Electron:', error)
           }
@@ -1265,6 +1277,7 @@ class ExtensionManager {
   async shutdown () {
     try {
       log.info('ExtensionManager: Shutting down extension system...')
+      this._closing = true
 
       if (this.isInitialized) {
         // Save final registry
