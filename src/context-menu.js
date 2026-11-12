@@ -4,6 +4,7 @@ import path from 'path'
 import extensionManager from './extensions/index.js'
 import { openDockedDevTools } from './devtools-dock.js'
 import { watchPageInput, takeInputGrant } from './page-input.js'
+import { queueFirstLoad } from './navigation-restore.js'
 
 const isMac = process.platform === 'darwin'
 
@@ -85,6 +86,55 @@ export function popupWindowBounds (bounds, { parentBounds, workArea } = {}) {
     y = Math.min(Math.max(y, workArea.y), workArea.y + workArea.height - height)
   }
   return { ...options, x, y }
+}
+
+// How a page asked for the page it opens: with its referrer, and a form's
+// POST body and type, as Electron's own window.open loads them. A new tab's
+// first load carries them (navigation-restore.js), so a POST form with
+// target=_blank stays a POST and a link sends its referrer.
+export function firstLoadOptions ({ referrer, postBody } = {}) {
+  const options = {}
+  if (referrer?.url) options.httpReferrer = referrer
+  if (Array.isArray(postBody?.data) && postBody.data.length) {
+    options.postData = postBody.data
+    const type = postBody.contentType || 'application/x-www-form-urlencoded'
+    options.extraHeaders = `content-type: ${type}${postBody.boundary ? `; boundary=${postBody.boundary}` : ''}`
+  }
+  return options
+}
+
+// Tabs a page opened under a name, so its next window.open or link with that
+// target loads in the same tab, as in Chrome. By the page that opened them,
+// as a name is only looked up among a page's own windows.
+const namedTabs = new Map() // `${opener id}\n${name}` -> tab webContents
+
+// _blank, _self and any other name starting with _ are not names.
+function nameKey (openerId, frameName) {
+  if (typeof frameName !== 'string' || !frameName || frameName.startsWith('_')) return null
+  return `${openerId}\n${frameName}`
+}
+
+function nameTab (key, tab) {
+  namedTabs.set(key, tab)
+  tab.once('destroyed', () => {
+    if (namedTabs.get(key) === tab) namedTabs.delete(key)
+  })
+}
+
+function namedTab (key) {
+  const tab = key ? namedTabs.get(key) : null
+  return tab && !tab.isDestroyed() ? tab : null
+}
+
+// Brings a tab to the front of its window.
+function showTab (tab) {
+  const host = tab.hostWebContents
+  if (!host || host.isDestroyed()) return
+  host.executeJavaScript(`(() => {
+    const tabBar = document.querySelector('#tabbar')
+    const found = tabBar?.findTabByWebContentsId?.(${Number(tab.id)})
+    if (found) tabBar.selectTab(found.id)
+  })()`).catch(() => {})
 }
 
 function shortenForLabel (url) {
@@ -581,10 +631,15 @@ export function attachContextMenus (browserWindow, windowManager) {
 
       // A link opened in a new tab joins the strip beside its page. With
       // background it stays behind the page, as Cmd+click and a middle click
-      // leave it in Chrome.
-      const openInTab = (url, { background = false } = {}) => {
+      // leave it in Chrome. Its first load keeps the referrer and POST body
+      // the page sent, and a tab opened under a name is kept by that name.
+      const openInTab = (url, { background = false, referrer = null, postBody = null, name = null } = {}) => {
         const urlLiteral = JSON.stringify(url || '')
-        const options = JSON.stringify({ background })
+        const load = firstLoadOptions({ referrer, postBody })
+        const loadToken = name || Object.keys(load).length
+          ? queueFirstLoad({ url, options: load, onAttach: name ? (tab) => nameTab(name, tab) : null })
+          : null
+        const options = JSON.stringify({ background, ...(loadToken && { loadToken }) })
         Promise.resolve()
           .then(() => browserWindow.webContents.executeJavaScript(`
             (function() {
@@ -613,27 +668,39 @@ export function attachContextMenus (browserWindow, windowManager) {
 
       // Webview popups: allow native popups with opener for OAuth/extension flows
       webviewWebContents.setWindowOpenHandler((details) => {
-        const { url, features = '', disposition } = details
+        const { url, features = '', disposition, frameName, referrer, postBody } = details
         const featuresLower = String(features || '').toLowerCase()
         const hasNoOpener = /(?:^|,)(noopener|noreferrer)(?:=1)?(?:,|$)/.test(featuresLower)
         const wantsBackground = disposition === 'background-tab' || /(?:^|,)background(?:=1)?(?:,|$)/.test(featuresLower)
         const hasPopupFeatures = /(?:^|,|\s)(width|height|left|top)=/i.test(featuresLower)
         const isAboutBlank = url === 'about:blank'
 
-        // If explicitly no opener requested, prefer tab UX instead of popup
+        // If explicitly no opener requested, prefer tab UX instead of popup.
+        // A name means nothing then, as in Chrome.
         if (hasNoOpener) {
-          openInTab(url, { background: wantsBackground })
+          openInTab(url, { background: wantsBackground, referrer, postBody })
+          return { action: 'deny' }
+        }
+
+        if (!isSafePopupUrl(url) && isExternalScheme(url)) {
+          openExternalScheme(browserWindow, url)
+          return { action: 'deny' }
+        }
+
+        // A name this page opened a tab under loads in that tab, which comes
+        // to the front, as an existing window does in Chrome.
+        const name = nameKey(webviewWebContents.id, frameName)
+        const named = url && !isAboutBlank ? namedTab(name) : null
+        if (named) {
+          named.loadURL(url, firstLoadOptions({ referrer, postBody })).catch(() => {})
+          if (!wantsBackground) showTab(named)
           return { action: 'deny' }
         }
 
         // Only allow http/https or about:blank; block others
         if (!isSafePopupUrl(url)) {
-          if (isExternalScheme(url)) {
-            openExternalScheme(browserWindow, url)
-            return { action: 'deny' }
-          }
           // Preserve previous behavior for unsafe schemes: re-route to tab/window
-          openInTab(url, { background: wantsBackground })
+          openInTab(url, { background: wantsBackground, referrer, postBody, name })
           return { action: 'deny' }
         }
 
@@ -645,7 +712,7 @@ export function attachContextMenus (browserWindow, windowManager) {
         }
 
         if (!hasPopupFeatures && !isAboutBlank && disposition !== 'new-window') {
-          openInTab(url, { background: wantsBackground })
+          openInTab(url, { background: wantsBackground, referrer, postBody, name })
           return { action: 'deny' }
         }
 

@@ -925,7 +925,7 @@ class TabBar extends HTMLElement {
 
     // Create webview for this tab if container exists and NOT suspended
     if (this.webviewContainer && !tabData.isSuspended) {
-      const webview = this.createWebviewForTab(tabId, url, tabData.navigation)
+      const webview = this.createWebviewForTab(tabId, url, tabData.navigation, tabData.loadToken)
       if (tabData.navigation?.entries?.length) {
         this.restoreNavigationForWebview(tabId, webview, tabData.navigation, 'new tab')
       }
@@ -1077,9 +1077,9 @@ class TabBar extends HTMLElement {
     return ids
   }
 
-  addTab (url = 'peersky://home', title = 'Home') {
+  addTab (url = 'peersky://home', title = 'Home', tabData = {}) {
     const tabId = `tab-${this.tabCounter++}`
-    this.addTabWithId(tabId, url, title)
+    this.addTabWithId(tabId, url, title, tabData)
     this.selectTab(tabId, true)
     this.saveTabsState()
 
@@ -1099,15 +1099,17 @@ class TabBar extends HTMLElement {
   }
 
   // A tab that loads behind the one on screen.
-  addBackgroundTab (url, title) {
+  addBackgroundTab (url, title, tabData = {}) {
     const tabId = `tab-${this.tabCounter++}`
-    this.addTabWithId(tabId, url, title)
+    this.addTabWithId(tabId, url, title, tabData)
     this.saveTabsState()
     return tabId
   }
 
-  // Create a new webview for a tab
-  createWebviewForTab (tabId, url, navigation = null) {
+  // Create a new webview for a tab. loadToken: main loads the tab's first
+  // page as the page that opened it asked for it, with its referrer and a
+  // form's POST body (navigation-restore.js).
+  createWebviewForTab (tabId, url, navigation = null, loadToken = null) {
     // Create webview element
     const webview = document.createElement('webview')
     webview.id = `webview-${tabId}`
@@ -1126,6 +1128,8 @@ class TabBar extends HTMLElement {
       const token = `${tabId}-${Date.now()}-${Math.random().toString(16).slice(2)}`
       require('electron').ipcRenderer.sendSync('queue-navigation-restore', { token, entries: navigation.entries, index: navigation.activeIndex, url })
       src = `about:blank#peersky-restore=${token}`
+    } else if (typeof loadToken === 'string' && /^[0-9a-f-]{36}$/i.test(loadToken)) {
+      src = `about:blank#peersky-load=${loadToken}`
     }
     webview.setAttribute('src', src)
     webview.setAttribute('allowpopups', '')
@@ -2380,11 +2384,12 @@ class TabBar extends HTMLElement {
   // still goes at the end.
   // With background, as Cmd+click and a middle click open one in Chrome, the
   // tab opens behind the page: it is not selected, and the address bar stays
-  // with the page.
-  addTabFromLink (url, openerWebContentsId = null, { background = false } = {}) {
+  // with the page. loadToken: see createWebviewForTab.
+  addTabFromLink (url, openerWebContentsId = null, { background = false, loadToken = null } = {}) {
     const opener = this.findTabByWebContentsId(openerWebContentsId) ||
       this.tabs.find(t => t.id === this.activeTabId)
-    const tabId = background ? this.addBackgroundTab(url, 'New Tab') : this.addTab(url, 'New Tab')
+    const tabData = loadToken ? { loadToken } : {}
+    const tabId = background ? this.addBackgroundTab(url, 'New Tab', tabData) : this.addTab(url, 'New Tab', tabData)
     if (!opener || opener.id === tabId) return tabId
 
     const newTab = this.tabs.find(t => t.id === tabId)

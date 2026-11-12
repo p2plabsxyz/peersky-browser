@@ -27,14 +27,24 @@ function fakeTab (id = 7) {
 // A screen with a menu bar along its top.
 const WORK_AREA = { x: 0, y: 25, width: 1440, height: 875 }
 
+// First loads queued for new tabs, as navigation-restore.js would take them.
+const queuedLoads = []
+
 const loadModule = () => esmock.strict('../src/context-menu.js', {
   electron: { Menu: class {}, MenuItem: class {}, clipboard: {}, dialog: {}, screen: { getDisplayMatching: () => ({ workArea: WORK_AREA }) } },
   '../src/external-scheme.js': { isExternalScheme: () => false, openExternalScheme () {} },
   '../src/extensions/index.js': { default: {} },
-  '../src/devtools-dock.js': { openDockedDevTools () {} }
+  '../src/devtools-dock.js': { openDockedDevTools () {} },
+  '../src/navigation-restore.js': {
+    queueFirstLoad (job) {
+      queuedLoads.push(job)
+      return `00000000-0000-4000-8000-${String(queuedLoads.length).padStart(12, '0')}`
+    }
+  }
 })
 
 async function loadMenus () {
+  queuedLoads.length = 0
   const { attachContextMenus } = await loadModule()
   const shell = new EventEmitter()
   shell.id = 1
@@ -102,9 +112,9 @@ describe('a link opened behind the page', function () {
 
   it('is not selected, and leaves the address bar to the page', function () {
     const fromLink = tabBar.slice(tabBar.indexOf('  addTabFromLink ('), tabBar.indexOf('  findTabByWebContentsId ('))
-    expect(fromLink).to.contain("const tabId = background ? this.addBackgroundTab(url, 'New Tab') : this.addTab(url, 'New Tab')")
+    expect(fromLink).to.contain("const tabId = background ? this.addBackgroundTab(url, 'New Tab', tabData) : this.addTab(url, 'New Tab', tabData)")
     const behind = tabBar.slice(tabBar.indexOf('  addBackgroundTab ('), tabBar.indexOf('  // Create a new webview for a tab'))
-    expect(behind).to.contain('this.addTabWithId(tabId, url, title)')
+    expect(behind).to.contain('this.addTabWithId(tabId, url, title, tabData)')
     expect(behind).to.not.contain('selectTab')
     expect(behind).to.not.contain("getElementById('url')")
   })
@@ -144,6 +154,114 @@ describe('a link or page opening a window', function () {
     expect(options).to.include({ width: 1440, height: 300, x: 0, y: 600 })
   })
 })
+
+// A POST form with target=_blank arrived as a GET, a target=_blank link sent
+// no referrer, and a second window.open with the same name opened another tab.
+describe('a new tab from a link or form', function () {
+  const referrer = { url: 'https://example.com/form', policy: 'strict-origin-when-cross-origin' }
+  const postBody = { data: [{ type: 'rawData', bytes: Buffer.from('b=2') }], contentType: 'application/x-www-form-urlencoded' }
+
+  it('loads with the referrer and the POST body the page sent', async function () {
+    const { tab, tabOptions } = await loadMenus()
+    tab.click()
+    tab.open({ url: 'https://example.com/echo', referrer, postBody })
+    await settle()
+    expect(queuedLoads).to.have.length(1)
+    expect(queuedLoads[0].url).to.equal('https://example.com/echo')
+    expect(queuedLoads[0].options).to.deep.equal({
+      httpReferrer: referrer,
+      postData: postBody.data,
+      extraHeaders: 'content-type: application/x-www-form-urlencoded'
+    })
+    expect(tabOptions()).to.deep.equal([{ background: false, loadToken: '00000000-0000-4000-8000-000000000001' }])
+  })
+
+  it('keeps a multipart form whole', async function () {
+    const { firstLoadOptions } = await loadModule()
+    const options = firstLoadOptions({ postBody: { data: [{ type: 'rawData', bytes: Buffer.from('--x') }], contentType: 'multipart/form-data', boundary: 'x' } })
+    expect(options.extraHeaders).to.equal('content-type: multipart/form-data; boundary=x')
+  })
+
+  it('sends no referrer the page did not, and needs no special load then', async function () {
+    const { tab, tabOptions } = await loadMenus()
+    tab.click()
+    tab.open({ url: 'https://example.com/a', referrer: { url: '', policy: 'no-referrer' } })
+    await settle()
+    expect(queuedLoads).to.deep.equal([])
+    expect(tabOptions()).to.deep.equal([{ background: false }])
+  })
+
+  it('opens a name once, and loads it again in the same tab', async function () {
+    const { tab, tabsOpened } = await loadMenus()
+    tab.click()
+    tab.open({ url: 'https://example.com/1', frameName: 'results', referrer })
+    await settle()
+    expect(tabsOpened()).to.have.length(1)
+    const named = Object.assign(new EventEmitter(), { id: 12, isDestroyed: () => false, loads: [], hostWebContents: null })
+    named.loadURL = async (url, options) => { named.loads.push([url, options]) }
+    queuedLoads[0].onAttach(named)
+
+    tab.click()
+    expect(tab.open({ url: 'https://example.com/2', frameName: 'results', referrer, postBody })).to.deep.equal({ action: 'deny' })
+    await settle()
+    expect(tabsOpened()).to.have.length(1)
+    expect(named.loads).to.deep.equal([['https://example.com/2', firstLoadOptionsFor(referrer, postBody)]])
+
+    named.emit('destroyed')
+    tab.click()
+    tab.open({ url: 'https://example.com/3', frameName: 'results' })
+    await settle()
+    expect(tabsOpened()).to.have.length(2)
+  })
+
+  it('opens _blank and a noopener open in a new tab every time', async function () {
+    const { tab, tabsOpened } = await loadMenus()
+    tab.click()
+    tab.open({ url: 'https://example.com/1', frameName: 'results', features: 'noopener' })
+    tab.click()
+    tab.open({ url: 'https://example.com/2', frameName: '_blank' })
+    await settle()
+    expect(tabsOpened()).to.have.length(2)
+    // Neither is kept by a name.
+    expect(queuedLoads).to.deep.equal([])
+  })
+
+  it('starts the tab on a placeholder its first load replaces', function () {
+    const create = tabBar.slice(tabBar.indexOf('  createWebviewForTab ('), tabBar.indexOf('    webview.setAttribute(\'allowpopups\''))
+    expect(create).to.contain("} else if (typeof loadToken === 'string' && /^[0-9a-f-]{36}$/i.test(loadToken)) {")
+    expect(create).to.contain('src = `about:blank#peersky-load=$' + '{loadToken}`')
+  })
+})
+
+describe('the first load of a tab a page opened', function () {
+  it('takes the placeholder\'s place with what the page sent, and tells which tab it is', async function () {
+    const mod = await esmock.strict('../src/navigation-restore.js', {
+      electron: { ipcMain: { on () {}, handle () {} } },
+      '../src/logger.js': { createLogger: () => ({ warn () {} }) }
+    })
+    const listeners = {}
+    mod.watchHost({ on: (event, fn) => { listeners[event] = fn } })
+    const attached = []
+    const options = { httpReferrer: { url: 'https://example.com/', policy: 'strict-origin-when-cross-origin' } }
+    const token = mod.queueFirstLoad({ url: 'https://example.com/echo', options, onAttach: (guest) => attached.push(guest.id) })
+    const params = { src: mod.LOAD_PLACEHOLDER + token }
+    listeners['will-attach-webview']({}, {}, params)
+    expect(params.src).to.equal('')
+    const loads = []
+    await listeners['did-attach-webview']({}, { id: 5, loadURL: async (...args) => { loads.push(args) } })
+    expect(loads).to.deep.equal([['https://example.com/echo', options]])
+    expect(attached).to.deep.equal([5])
+
+    // Used once.
+    const again = { src: mod.LOAD_PLACEHOLDER + token }
+    listeners['will-attach-webview']({}, {}, again)
+    expect(again.src).to.equal(mod.LOAD_PLACEHOLDER + token)
+  })
+})
+
+function firstLoadOptionsFor (referrer, postBody) {
+  return { httpReferrer: referrer, postData: postBody.data, extraHeaders: `content-type: ${postBody.contentType}` }
+}
 
 describe('window.open features', function () {
   it('are read as Chrome reads them', async function () {
