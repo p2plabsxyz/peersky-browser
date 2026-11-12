@@ -1165,6 +1165,11 @@ class TabBar extends HTMLElement {
             }
             if (wcId !== pendingWcId) return // changed again while registering, skip
             registeredWcId = wcId
+            // A new tab is selected before its page exists, so extensions
+            // hear it is the active one once it is registered.
+            if (this.activeTabId === tabId) {
+              ipcRenderer.invoke('extensions-pin-active-webview', wcId).catch(() => {})
+            }
           }).catch(error => {
             console.error('[TabBar] Error registering webview:', error)
           }).finally(() => {
