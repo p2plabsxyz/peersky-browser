@@ -72,11 +72,11 @@ describe('identity-transfer', function () {
       'tabs.json',
       'bookmarks.json',
       'peersky-identity.json',
-      'hyper-private',
-      'privateHyperdrives.json'
+      'private-drive-key.json'
     ])
-    // The phone throws these away, and hyper/ can run to gigabytes.
-    for (const name of ['hyper', 'peersky-ports.json', 'peersky-chat-rooms.json', 'lastOpened.json']) {
+    // The phone throws these away, and hyper/ can run to gigabytes. The
+    // private drives it opens through private sync, with the key.
+    for (const name of ['hyper', 'peersky-ports.json', 'peersky-chat-rooms.json', 'lastOpened.json', 'hyper-private', 'privateHyperdrives.json']) {
       expect(innerManifest.files).not.to.have.property(name)
     }
 
@@ -194,7 +194,9 @@ describe('identity-transfer', function () {
     expect(first).to.match(/^[0-9a-f]{64}$/)
   })
 
-  it('does not apply a mobile-specific transfer size limit', async function () {
+  // A profile's private drives came to 4 GB, and the phone stopped the
+  // download at its 2 GB limit.
+  it('sends big private drives to another desktop, and never to a phone', async function () {
     const source = await makeTempDir('peersky-id-size-src-')
     const target = await makeTempDir('peersky-id-size-target-')
     await seedIdentityData(source)
@@ -203,13 +205,16 @@ describe('identity-transfer', function () {
       Buffer.alloc(50 * 1024 * 1024 + 1)
     )
     const targetInfo = getPublicDeviceInfo(await getDeviceKeys(target))
-    const outPath = path.join(await makeTempDir('peersky-id-size-out-'), 'identity.zip')
+    const transferTo = async (deviceType) => {
+      const outPath = path.join(await makeTempDir('peersky-id-size-out-'), 'identity.zip')
+      const created = await createIdentityTransferZip(source, outPath, {
+        targetPairingPayload: `peersky-identity:${targetInfo.encryptionPublicKey}?nonce=${'0123456789abcdef'.repeat(2)}&deviceType=${deviceType}`
+      })
+      expect((await stat(outPath)).size).to.equal(created.bytes)
+      return created.bytes
+    }
 
-    const created = await createIdentityTransferZip(source, outPath, {
-      targetPairingPayload: mobilePairingPayload(targetInfo.encryptionPublicKey)
-    })
-
-    expect(created.bytes).to.be.greaterThan(50 * 1024)
-    expect((await stat(outPath)).size).to.equal(created.bytes)
+    expect(await transferTo('desktop')).to.be.greaterThan(50 * 1024)
+    expect(await transferTo('mobile')).to.be.lessThan(50 * 1024)
   })
 })

@@ -14,9 +14,8 @@ export default class VerticalTabs extends BaseTabBar {
     if (this.tabContainer) {
       this.tabContainer.classList.add('vertical-tabs-container')
 
-      // Move add button to end so tabs appear before it
       this.addButton = this.tabContainer.querySelector('#add-tab')
-      this.ensureAddButtonPosition()
+      this.placeAddButton()
 
       // Allow vertical scrolling with mouse wheel and stop horizontal handler
       this.tabContainer.addEventListener(
@@ -30,9 +29,8 @@ export default class VerticalTabs extends BaseTabBar {
         { capture: true }
       )
 
-      // Update sticky state on scroll
       this.tabContainer.addEventListener('scroll', () =>
-        this.updateAddButtonSticky()
+        this.updateAddButtonShadow()
       )
     }
 
@@ -67,7 +65,7 @@ export default class VerticalTabs extends BaseTabBar {
       }, 300)
     })
 
-    window.addEventListener('resize', () => this.updateAddButtonSticky())
+    window.addEventListener('resize', () => this.updateAddButtonShadow())
 
     document.body.classList.add('vertical-tabs-layout')
     this._layoutSync = new MutationObserver(() => this._syncBodyExpanded())
@@ -77,8 +75,7 @@ export default class VerticalTabs extends BaseTabBar {
     // Ensure CSS is loaded before applying styles
     this.loadVerticalTabsCSS()
 
-    // Initial sticky state
-    this.updateAddButtonSticky()
+    this.updateAddButtonShadow()
 
     // On macOS, collapse the titlebar when vertical tabs are enabled
     if (process.platform === 'darwin') {
@@ -128,8 +125,7 @@ export default class VerticalTabs extends BaseTabBar {
   addTabWithId (tabId, url = 'peersky://home', title = 'Home', tabData = {}) {
     const result = super.addTabWithId(tabId, url, title, tabData)
 
-    this.ensureAddButtonPosition()
-    this.updateAddButtonSticky()
+    this.updateAddButtonShadow()
 
     // Ensure favicon is properly sized for vertical tabs
     const tabElement = document.getElementById(tabId)
@@ -145,21 +141,53 @@ export default class VerticalTabs extends BaseTabBar {
 
   closeTab (tabId) {
     super.closeTab(tabId)
-    this.ensureAddButtonPosition()
-    this.updateAddButtonSticky()
+    this.updateAddButtonShadow()
   }
 
-  ensureAddButtonPosition () {
-    if (this.addButton && this.addButton.parentElement) {
-      this.tabContainer.appendChild(this.addButton)
+  selectTab (tabId, isNewTab = false) {
+    super.selectTab(tabId, isNewTab)
+    this.revealTab(tabId)
+  }
+
+  // The button sits under the list, not in it. Inside it, it stuck to the
+  // bottom of a long list, so tabs scrolled behind it and showed through
+  // the gap under it. New tabs still go at the end of the list.
+  placeAddButton () {
+    if (this.addButton && this.addButton.previousElementSibling !== this.tabContainer) {
+      this.tabContainer.after(this.addButton)
     }
   }
 
-  updateAddButtonSticky () {
+  // A shadow over the button while tabs are out of sight under it.
+  updateAddButtonShadow () {
     if (!this.addButton) return
-    const shouldStick =
-      this.tabContainer.scrollHeight > this.tabContainer.clientHeight
-    this.addButton.classList.toggle('sticky', shouldStick)
+    const list = this.tabContainer
+    const below = list.scrollHeight - list.scrollTop - list.clientHeight > 1
+    this.addButton.classList.toggle('tabs-below', below)
+  }
+
+  // A tab opened at the end of a long list landed out of sight, so the list
+  // scrolls to the selected tab. A new tab grows in from no height after its
+  // entrance delay, so it is shown again once it has grown (0.28s).
+  revealTab (tabId) {
+    const tab = document.getElementById(tabId)
+    const list = this.tabContainer
+    if (!tab || tab.parentElement !== list) return
+    const reveal = () => {
+      if (!tab.isConnected || !tab.getClientRects().length) return
+      const box = list.getBoundingClientRect()
+      const row = tab.getBoundingClientRect()
+      let top = null
+      if (!tab.nextElementSibling) top = list.scrollHeight
+      else if (row.bottom > box.bottom) top = list.scrollTop + row.bottom - box.bottom + 4
+      else if (row.top < box.top) top = list.scrollTop - (box.top - row.top + 4)
+      // A smooth scroll never moves while the window is hidden.
+      if (top !== null) list.scrollTo({ top, behavior: document.hidden ? 'instant' : 'smooth' })
+    }
+    reveal()
+    if (tab.classList.contains('opening')) {
+      setTimeout(reveal, (parseFloat(tab.style.transitionDelay) || 0) + 300)
+    }
   }
 
   // Override hover behavior when keep-expanded is active

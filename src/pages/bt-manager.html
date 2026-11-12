@@ -174,7 +174,7 @@
     <pagination-control id="bt-pagination" search-placeholder="Search torrents by name or hash..."></pagination-control>
 
     <div class="privacy-warning">
-      <strong>Privacy Notice:</strong> BitTorrent is a peer-to-peer protocol. Your IP address is visible to peers while downloading, and while seeding if you explicitly enable it. PeerSky auto-stops completed torrents by default (no seeding), and provides explicit Start Seeding / Stop Seeding controls. This may bypass your proxy or VPN settings.
+      <strong>Privacy Notice:</strong> BitTorrent is a peer-to-peer protocol. Your IP address is visible to peers while downloading, and while seeding if you explicitly enable it. With a VPN extension on, torrents go through it, so peers see the VPN's address instead, and if the VPN turns off, running torrents pause. PeerSky auto-stops completed torrents by default (no seeding), and provides explicit Start Seeding / Stop Seeding controls.
     </div>
   </div>
 
@@ -200,6 +200,7 @@
       if (isActivelySeeding(t)) return "seeding";
       if (isFinished(t)) return "done";
       if (t.stopped) return "stopped";
+      if (t.paused && t.pausedForVpn) return "paused: VPN off";
       if (t.paused) return "paused";
       if (t.done) return "done";
       return "downloading";
@@ -383,7 +384,8 @@
         var data = await callApi("list");
         allTorrents = (data && data.torrents) || [];
         setupPagination(allTorrents);
-        var base = allTorrents.length + " torrent" + (allTorrents.length === 1 ? "" : "s");
+        var base = allTorrents.length + " torrent" + (allTorrents.length === 1 ? "" : "s") +
+          (data && data.throughVpn ? ", through your VPN extension" : "");
         statusLine.textContent = lastActionMessage ? (base + " — " + lastActionMessage) : base;
       } catch (_err) {
         setupPagination([]);

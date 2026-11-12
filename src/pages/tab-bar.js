@@ -112,6 +112,8 @@ class TabBar extends HTMLElement {
     ]
     this.memorySaverEnabled = false
     this.memorySaverExclusions = []
+    this._hideHoverCard = null // Hides the tab card on its way or showing
+    this.listenForPagePointer()
     this.draggedTabId = null
     const params = new URLSearchParams(window.location.search)
     this.windowId = params.get('windowId') || 'main'
@@ -153,6 +155,27 @@ class TabBar extends HTMLElement {
       const { ipcRenderer } = require('electron')
       ipcRenderer.removeListener('memory-saver-changed', this._memorySaverListener)
       this._memorySaverListener = null
+    }
+    if (this._pagePointerListener) {
+      const { ipcRenderer } = require('electron')
+      ipcRenderer.removeListener('page-pointer', this._pagePointerListener)
+      this._pagePointerListener = null
+    }
+  }
+
+  // A page is a process of its own, so a pointer that goes from a tab straight
+  // into it never leaves the tab as far as this window can tell, and the tab's
+  // card came up over the page a few seconds later, while you typed in it. The
+  // main process says when the pointer is in a page.
+  listenForPagePointer () {
+    try {
+      const { ipcRenderer } = require('electron')
+      this._pagePointerListener = () => {
+        if (this._hideHoverCard) this._hideHoverCard()
+      }
+      ipcRenderer.on('page-pointer', this._pagePointerListener)
+    } catch (error) {
+      console.warn('Tab cards will not hear about the pointer in a page:', error)
     }
   }
 
@@ -914,13 +937,14 @@ class TabBar extends HTMLElement {
     let hoverTimeout = null
 
     const showHoverCard = (e) => {
-      if (hoverTimeout) {
-        clearTimeout(hoverTimeout)
-      }
+      // Once per visit: moving on over the same tab does not start it again.
+      if (hoverTimeout || hoverCard) return
+      this._hideHoverCard = hideHoverCard
 
       // A collapsed vertical strip is being scanned, not read, so wait longer.
       const collapsedVertical = this.isVertical && !this.classList.contains('expanded')
       hoverTimeout = setTimeout(async () => {
+        hoverTimeout = null
         const tab = this.tabs.find(t => t.id === tabId)
         if (!tab) return
 
@@ -1003,9 +1027,14 @@ class TabBar extends HTMLElement {
         hoverCard.remove()
         hoverCard = null
       }
+      if (this._hideHoverCard === hideHoverCard) this._hideHoverCard = null
     }
 
-    tabElement.addEventListener('mouseenter', showHoverCard)
+    // Started by the pointer moving over the tab, as it does when you go to
+    // read it. mouseenter also comes when a tab slides under a pointer resting
+    // on the list, as tabs open or close above it, and its card then came up
+    // with nobody pointing at it.
+    tabElement.addEventListener('mousemove', showHoverCard)
     tabElement.addEventListener('mouseleave', hideHoverCard)
   }
 
@@ -1932,7 +1961,7 @@ class TabBar extends HTMLElement {
     } catch (_) {
       return
     }
-    if (tabId === this.activeTabId) this.emitZoomChanged()
+    if (tabId === this.activeTabId) this.emitZoomChanged({ zooming: true })
   }
 
   // A pinch over a page, which main hands on from the page's own preload
@@ -1971,7 +2000,7 @@ class TabBar extends HTMLElement {
     } catch (_) {
       return
     }
-    this.emitZoomChanged()
+    this.emitZoomChanged({ zooming: true })
   }
 
   // Chromium scopes zoom to the origin, so every peersky://p2p app shared one
@@ -1987,13 +2016,14 @@ class TabBar extends HTMLElement {
   }
 
   // Zoom is per tab, so the indicator follows whichever tab is showing.
-  emitZoomChanged () {
+  // zooming: the level just changed, rather than another tab coming up.
+  emitZoomChanged ({ zooming = false } = {}) {
     const webview = this.getActiveWebview()
     let percent = 100
     try {
       if (webview) percent = Math.round(webview.getZoomFactor() * 100)
     } catch (_) {}
-    this.dispatchEvent(new CustomEvent('zoom-changed', { detail: { percent } }))
+    this.dispatchEvent(new CustomEvent('zoom-changed', { detail: { percent, zooming } }))
   }
 
   stopActiveTab () {
@@ -2037,6 +2067,7 @@ class TabBar extends HTMLElement {
     if (existingMenu) {
       existingMenu.remove()
     }
+    this.closeAddToGroupSubmenu()
 
     const menu = document.createElement('div')
     menu.className = 'tab-context-menu'
@@ -3415,6 +3446,7 @@ class TabBar extends HTMLElement {
     if (existingMenu) {
       existingMenu.remove()
     }
+    this.closeAddToGroupSubmenu()
 
     const menu = document.createElement('div')
     menu.className = 'tab-context-menu'
@@ -3516,10 +3548,17 @@ class TabBar extends HTMLElement {
     // The group should be automatically deleted when empty
   }
 
+  closeAddToGroupSubmenu () {
+    if (this.addToGroupSubmenuClose) this.addToGroupSubmenuClose()
+    document.querySelectorAll('.tab-context-submenu').forEach(el => el.remove())
+  }
+
   // Show submenu to select which group to add the tab to
   showAddToGroupSubmenu (tabId) {
     const tabElement = document.getElementById(tabId)
     if (!tabElement) return
+
+    this.closeAddToGroupSubmenu()
 
     const submenu = document.createElement('div')
     submenu.className = 'tab-context-submenu'
@@ -3554,13 +3593,33 @@ class TabBar extends HTMLElement {
       submenu.style.zIndex = '10001'
     }
 
-    // Add event listeners
+    // It closed only when a group was picked, so after any other click,
+    // such as Add to new group from the tab's menu, it stayed on screen.
+    const close = () => {
+      submenu.remove()
+      document.removeEventListener('pointerdown', closeOnPointerOutside, true)
+      document.removeEventListener('keydown', closeOnEscape, true)
+      window.removeEventListener('blur', close)
+      if (this.addToGroupSubmenuClose === close) this.addToGroupSubmenuClose = null
+    }
+    // The press that opened it is over, so these can listen right away.
+    const closeOnPointerOutside = (e) => {
+      if (!submenu.contains(e.target)) close()
+    }
+    const closeOnEscape = (e) => {
+      if (e.key === 'Escape') close()
+    }
+    document.addEventListener('pointerdown', closeOnPointerOutside, true)
+    document.addEventListener('keydown', closeOnEscape, true)
+    window.addEventListener('blur', close)
+    this.addToGroupSubmenuClose = close
+
     submenu.addEventListener('click', (e) => {
       const groupId = e.target.closest('.context-menu-item')?.dataset.groupId
       if (groupId && !e.target.closest('.context-menu-item').classList.contains('disabled')) {
         this.addTabToGroupAcrossWindows(tabId, groupId)
         document.querySelector('.tab-context-menu')?.remove()
-        submenu.remove()
+        close()
       }
     })
 

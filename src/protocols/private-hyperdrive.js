@@ -210,6 +210,15 @@ function writtenAt (headers) {
   return Number.isFinite(sent) ? sent : Date.now()
 }
 
+// A request body's chunks, from a Node stream or a web one, as Buffers.
+async function * asBuffers (body) {
+  for await (const chunk of body) {
+    if (Buffer.isBuffer(chunk)) yield chunk
+    else if (typeof chunk === 'string') yield Buffer.from(chunk)
+    else yield Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength)
+  }
+}
+
 export function makePrivateDriveFetcher (sdk, userDataDir) {
   const opened = new Map()
   const catchUps = new Map()
@@ -303,11 +312,17 @@ export function makePrivateDriveFetcher (sdk, userDataDir) {
         return new Response('This private drive is read-only on this device', { status: 403 })
       }
       const body = options.body
+      const metadata = { mtime: writtenAt(requestHeaders) }
       if (body == null) {
         await drive.putEntry(pathname, {})
+      } else if (typeof body[Symbol.asyncIterator] === 'function') {
+        // An upload arrives as a stream and goes into the drive as it comes.
+        // Read whole first, a file of several GB sat in memory in full, and
+        // past what one buffer holds it failed.
+        await pipeline(asBuffers(body), drive.createWriteStream(pathname, { metadata }))
       } else {
         const buffer = typeof body === 'string' ? Buffer.from(body) : Buffer.from(await new Response(body).arrayBuffer())
-        await drive.put(pathname, buffer, { metadata: { mtime: writtenAt(requestHeaders) } })
+        await drive.put(pathname, buffer, { metadata })
       }
       return new Response('', { status: 200 })
     }

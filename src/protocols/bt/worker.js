@@ -1,6 +1,9 @@
+// First, so the network is locked to a VPN's proxy before WebTorrent loads.
+import { networkLock, onNetworkMessage } from './worker-network.js'
 import WebTorrent from 'webtorrent'
 import path from 'path'
 import fs from 'fs'
+import { createFileReads } from './file-reads.js'
 
 const downloadPath = process.argv[2] || path.join(process.env.HOME || '/tmp', 'Downloads', 'PeerskyTorrents')
 if (!fs.existsSync(downloadPath)) fs.mkdirSync(downloadPath, { recursive: true })
@@ -41,7 +44,9 @@ function initClient () {
     uploadLimit: -1,
     lsd: false,
     natUpnp: false,
-    natPmp: false
+    natPmp: false,
+    // Through a VPN: no DHT or uTP, which use UDP and this computer's address.
+    ...(networkLock ? networkLock.clientOptions : {})
   })
   client.on('error', (err) => {
     console.error('[BT-Worker] Client error:', err.message)
@@ -52,6 +57,8 @@ function initClient () {
 }
 
 initClient()
+
+const fileReads = createFileReads({ getTorrent: (hash) => client.get(hash) })
 
 function hasStatusChanged (infoHash, s) {
   const prev = previousStatus.get(infoHash)
@@ -115,6 +122,7 @@ setInterval(() => {
 }, 2000)
 
 process.on('message', (msg) => {
+  if (onNetworkMessage(msg)) return
   const { id, action, ...params } = msg
   try {
     switch (action) {
@@ -125,6 +133,8 @@ process.on('message', (msg) => {
       case 'resume': return handleResume(id, params)
       case 'stop': return handleStop(id, params)
       case 'remove': return handleRemove(id, params)
+      case 'read': return handleRead(id, params)
+      case 'read-close': return fileReads.close(params.stream)
       default: send({ id, error: `Unknown action: ${action}` })
     }
   } catch (err) {
@@ -255,8 +265,12 @@ async function addTorrent (id, { magnetUri, announce, mode }) {
     }
   }
 
-  const torrent = client.add(keptTorrentFile(hash) || magnetUri, { path: downloadPath, announce: announce || [] })
+  const trackers = networkLock ? (announce || []).filter(networkLock.keepTracker) : (announce || [])
+  const torrent = client.add(keptTorrentFile(hash) || magnetUri, { path: downloadPath, announce: trackers })
   if (hash) torrentModes.set(hash, mode)
+  // Through a VPN, only trackers a proxy can carry: the torrent's own list is
+  // read by now, and discovery starts right after this event.
+  if (networkLock) torrent.once('infoHash', () => { torrent.announce = (torrent.announce || []).filter(networkLock.keepTracker) })
   attachTorrentEvents(torrent, mode)
 
   send({ id, type: 'started', infoHash: torrent.infoHash || hash || null, magnetURI: torrent.magnetURI, mode })
@@ -331,8 +345,14 @@ async function handleRemove (id, { hash }) {
   })
 }
 
+async function handleRead (id, params) {
+  const result = await fileReads.read(params).catch((err) => ({ inactive: true, error: err.message }))
+  send({ id, ...result })
+}
+
 function shutdown () {
   console.log('[BT-Worker] Shutting down...')
+  fileReads.closeAll()
   const forceExit = setTimeout(() => process.exit(0), 3000)
   forceExit.unref()
   if (client) client.destroy(() => { clearTimeout(forceExit); process.exit(0) })

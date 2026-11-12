@@ -52,6 +52,11 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
       padding: 4px 12px; border-radius: 4px;
       font-size: 0.75rem; text-transform: uppercase; font-weight: 600;
     }
+    .vpn-badge {
+      background: #1e4d2b; color: #6bff8e;
+      padding: 4px 12px; border-radius: 4px;
+      font-size: 0.75rem; font-weight: 600;
+    }
     .torrent-name {
       color: var(--browser-theme-primary-highlight, #3b82f6);
       font-size: 1.6rem; margin: 15px 0;
@@ -167,6 +172,7 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
       <img src="peersky://static/assets/logo.png" class="logo" alt="Peersky" />
       <span>BitTorrent</span>
       <span class="protocol-badge">${escapeForHtml(protocol)}</span>
+      <span class="vpn-badge" id="vpnBadge" hidden title="Torrents connect through the VPN extension that is on, so peers see its address">Through your VPN</span>
     </h1>
     <div class="torrent-name" id="torrentDisplayName">${safeName}</div>
 
@@ -214,7 +220,7 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
     </div>
 
     <div class="privacy-warning">
-      <strong>Privacy Notice:</strong> BitTorrent is a peer-to-peer protocol. Your IP address is visible to peers while downloading, and while seeding if you explicitly enable it. PeerSky auto-stops completed torrents by default (no seeding), and provides explicit Start Seeding / Stop Seeding controls. This may bypass your proxy or VPN settings.
+      <strong>Privacy Notice:</strong> BitTorrent is a peer-to-peer protocol. Your IP address is visible to peers while downloading, and while seeding if you explicitly enable it. With a VPN extension on, torrents go through it, so peers see the VPN's address instead, and if the VPN turns off, running torrents pause. PeerSky auto-stops completed torrents by default (no seeding), and provides explicit Start Seeding / Stop Seeding controls.
     </div>
 
   </div>
@@ -226,9 +232,19 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
     var apiToken = '';
     var currentInfoHash = torrentId;
     var statusInterval = null;
+    // Every 2 s while the torrent runs, and gently while it is paused or
+    // stopped, so the page catches up when it starts again from somewhere
+    // else: the manager, another tab, or the VPN coming back on.
+    var POLL_MS = 2000;
+    var IDLE_POLL_MS = 5000;
+    var pollMs = 0;
+    // Bumped by each button here, so a status asked for before the press
+    // can't undo what the press just showed.
+    var actionSeq = 0;
     var filesRendered = false;
     var startedAtMs = 0;
     var networkHintShown = false;
+    var VPN_OFF_MESSAGE = 'Your VPN extension turned off, so this torrent paused. It carries on when the VPN is back on, or press Resume to go on without it.';
 
     function showStatus(message, type) {
       var host = document.getElementById('statusMessage');
@@ -246,6 +262,19 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
       document.getElementById('pauseBtn').disabled = false;
       document.getElementById('stopBtn').style.display = 'inline-block';
       document.getElementById('stopBtn').disabled = false;
+    }
+
+    function pollEvery(ms) {
+      if (statusInterval && pollMs === ms) return;
+      if (statusInterval) clearInterval(statusInterval);
+      statusInterval = setInterval(pollStatus, ms);
+      pollMs = ms;
+    }
+
+    function stopPolling() {
+      if (statusInterval) clearInterval(statusInterval);
+      statusInterval = null;
+      pollMs = 0;
     }
 
     function isActivelySeeding(status) {
@@ -314,9 +343,7 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
               document.getElementById('stopSeedBtn').style.display = 'inline-block';
               document.getElementById('stopSeedBtn').disabled = false;
               document.getElementById('seedBtn').style.display = 'none';
-              if (!statusInterval) {
-                statusInterval = setInterval(pollStatus, 2000);
-              }
+              pollEvery(POLL_MS);
             } else {
               showStatus('Download complete! Files saved to Downloads/PeerskyTorrents. Torrent stopped automatically (no seeding).', 'success');
               document.getElementById('seedBtn').style.display = 'inline-block';
@@ -329,7 +356,7 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
             document.getElementById('resumeBtn').style.display = 'none';
             document.getElementById('stopBtn').style.display = 'none';
           } else if (s.paused) {
-            showStatus('Torrent paused', 'info');
+            showStatus(s.pausedForVpn ? VPN_OFF_MESSAGE : 'Torrent paused', 'info');
             document.getElementById('pauseBtn').style.display = 'none';
             document.getElementById('resumeBtn').style.display = 'inline-block';
             document.getElementById('resumeBtn').disabled = false;
@@ -339,12 +366,12 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
               document.getElementById('stopBtn').style.display = 'inline-block';
               document.getElementById('stopBtn').disabled = false;
             }
+            pollEvery(IDLE_POLL_MS);
           } else {
             showStatus('Torrent is active. Downloading...', 'success');
             startedAtMs = Date.now();
             networkHintShown = false;
-            if (statusInterval) clearInterval(statusInterval);
-            statusInterval = setInterval(pollStatus, 2000);
+            pollEvery(POLL_MS);
             document.getElementById('stopBtn').style.display = 'inline-block';
             document.getElementById('stopBtn').disabled = false;
           }
@@ -355,6 +382,7 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
     })();
 
     async function startTorrent() {
+      actionSeq++;
       var btn = document.getElementById('startBtn');
       btn.disabled = true;
       btn.textContent = 'Starting...';
@@ -367,8 +395,7 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
           networkHintShown = false;
           showStatus('Torrent started! Connecting to peers...', 'success');
           showProgressUI();
-          if (statusInterval) clearInterval(statusInterval);
-          statusInterval = setInterval(pollStatus, 2000);
+          pollEvery(POLL_MS);
         } else {
           showStatus('Failed: ' + (data.error || 'Unknown error'), 'error');
           btn.disabled = false;
@@ -384,6 +411,7 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
     function updateUIFromStatus(s) {
       if (!s || s.error) return;
       if (s.infoHash) currentInfoHash = s.infoHash;
+      document.getElementById('vpnBadge').hidden = !s.throughVpn;
 
       var pct = Math.round((s.progress || 0) * 100);
       var fill = document.getElementById('progressFill');
@@ -412,8 +440,9 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
 
     async function pollStatus() {
       try {
+        var seq = actionSeq;
         var s = await apiCall('status', { hash: currentInfoHash || '' });
-        if (s.error) return;
+        if (seq !== actionSeq || s.error) return;
 
         updateUIFromStatus(s);
 
@@ -423,7 +452,9 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
         if (isStuckAtZeroPeers && elapsedSinceStart > 35000 && !networkHintShown) {
           networkHintShown = true;
           showStatus(
-            'Still 0 peers after ~35s. This usually means tracker traffic is blocked by your network/ISP. Try VPN or a different network.',
+            s.throughVpn
+              ? 'Still 0 peers after ~35s. Your VPN may not allow connections to torrent peers. Files with web seeds still download through it.'
+              : 'Still 0 peers after ~35s. This usually means tracker traffic is blocked by your network/ISP. Try VPN or a different network.',
             'info'
           );
         }
@@ -441,8 +472,7 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
             document.getElementById('stopSeedBtn').style.display = 'inline-block';
             document.getElementById('stopSeedBtn').disabled = false;
           } else {
-            clearInterval(statusInterval);
-            statusInterval = null;
+            stopPolling();
             showStatus('Download complete! Files saved to Downloads/PeerskyTorrents. Torrent stopped automatically (no seeding).', 'success');
             document.getElementById('seedBtn').style.display = 'inline-block';
             document.getElementById('seedBtn').disabled = false;
@@ -455,6 +485,23 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
           document.getElementById('resumeBtn').style.display = 'inline-block';
           document.getElementById('resumeBtn').disabled = false;
           document.getElementById('stopBtn').style.display = 'none';
+          pollEvery(IDLE_POLL_MS);
+        } else if (s.paused && s.pausedForVpn) {
+          showStatus(VPN_OFF_MESSAGE, 'info');
+          document.getElementById('pauseBtn').style.display = 'none';
+          document.getElementById('resumeBtn').style.display = 'inline-block';
+          document.getElementById('resumeBtn').disabled = false;
+          pollEvery(IDLE_POLL_MS);
+        } else if (!s.paused && document.getElementById('resumeBtn').style.display === 'inline-block') {
+          // Running again: resumed in the manager or another tab, or the VPN
+          // came back on.
+          pollEvery(POLL_MS);
+          showStatus('Torrent is active. Downloading...', 'success');
+          document.getElementById('resumeBtn').style.display = 'none';
+          document.getElementById('pauseBtn').style.display = 'inline-block';
+          document.getElementById('pauseBtn').disabled = false;
+          document.getElementById('stopBtn').style.display = 'inline-block';
+          document.getElementById('stopBtn').disabled = false;
         }
       } catch (err) {
         console.error('[BT-UI] Poll error:', err);
@@ -493,18 +540,19 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
     }
 
     async function pauseTorrent() {
+      actionSeq++;
       await apiCall('pause', { hash: currentInfoHash || '' });
       document.getElementById('pauseBtn').style.display = 'none';
       document.getElementById('resumeBtn').style.display = 'inline-block';
       document.getElementById('resumeBtn').disabled = false;
       document.getElementById('stopBtn').style.display = 'inline-block';
       document.getElementById('stopBtn').disabled = false;
-      clearInterval(statusInterval);
-      statusInterval = null;
+      pollEvery(IDLE_POLL_MS);
       showStatus('Torrent paused', 'info');
     }
 
     async function resumeTorrent() {
+      actionSeq++;
       await apiCall('resume', { hash: currentInfoHash || '' });
       document.getElementById('resumeBtn').style.display = 'none';
       document.getElementById('pauseBtn').style.display = 'inline-block';
@@ -512,12 +560,12 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
       document.getElementById('stopSeedBtn').style.display = 'none';
       document.getElementById('stopBtn').style.display = 'inline-block';
       document.getElementById('stopBtn').disabled = false;
-      if (statusInterval) clearInterval(statusInterval);
-      statusInterval = setInterval(pollStatus, 2000);
+      pollEvery(POLL_MS);
       showStatus('Torrent resumed', 'success');
     }
 
     async function startSeeding() {
+      actionSeq++;
       var btn = document.getElementById('seedBtn');
       btn.disabled = true;
       btn.textContent = 'Starting...';
@@ -528,9 +576,7 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
           btn.style.display = 'none';
           document.getElementById('stopSeedBtn').style.display = 'inline-block';
           document.getElementById('stopSeedBtn').disabled = false;
-          if (!statusInterval) {
-            statusInterval = setInterval(pollStatus, 2000);
-          }
+          pollEvery(POLL_MS);
         } else {
           showStatus('Failed to start seeding: ' + ((data && data.error) || 'Unknown error'), 'error');
           btn.disabled = false;
@@ -547,8 +593,8 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
       var btn = document.getElementById('stopSeedBtn');
       btn.disabled = true;
       btn.textContent = 'Stopping...';
-      clearInterval(statusInterval);
-      statusInterval = null;
+      actionSeq++;
+      stopPolling();
       try {
         var data = await apiCall('unseed', { hash: currentInfoHash || '' });
         if (data && data.success) {
@@ -570,13 +616,13 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
           showStatus('Failed to stop seeding: ' + ((data && data.error) || 'Unknown error'), 'error');
           btn.disabled = false;
           btn.textContent = 'Stop Seeding';
-          statusInterval = setInterval(pollStatus, 2000);
+          pollEvery(POLL_MS);
         }
       } catch (err) {
         showStatus('Error stopping seeding: ' + err.message, 'error');
         btn.disabled = false;
         btn.textContent = 'Stop Seeding';
-        statusInterval = setInterval(pollStatus, 2000);
+        pollEvery(POLL_MS);
       }
     }
 
@@ -584,12 +630,12 @@ export function generateTorrentUI (magnetUrl, torrentId, protocol, displayName, 
       var btn = document.getElementById('stopBtn');
       btn.disabled = true;
       btn.textContent = 'Stopping...';
+      actionSeq++;
       try {
         var data = await apiCall('stop', { hash: currentInfoHash || '' });
         if (data && data.success) {
           showStatus('Torrent stopped.', 'info');
-          clearInterval(statusInterval);
-          statusInterval = null;
+          pollEvery(IDLE_POLL_MS);
           document.getElementById('pauseBtn').style.display = 'none';
           document.getElementById('resumeBtn').style.display = 'inline-block';
           document.getElementById('resumeBtn').disabled = false;

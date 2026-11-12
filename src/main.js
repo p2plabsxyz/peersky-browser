@@ -1,4 +1,4 @@
-import { app, session, protocol as globalProtocol, ipcMain, BrowserWindow, Menu, webContents, shell, safeStorage, dialog } from 'electron' // eslint-disable-line no-unused-vars
+import { app, session, protocol as globalProtocol, ipcMain, BrowserWindow, Menu, webContents, shell, safeStorage, dialog, net } from 'electron' // eslint-disable-line no-unused-vars
 import { createLogger } from './logger.js'
 import fs from 'fs/promises'
 import path from 'path'
@@ -13,12 +13,16 @@ import { createHandler as createWeb3Handler } from './protocols/web3-handler.js'
 import { createHandler as createFileHandler } from './protocols/file-handler.js'
 import { attachTrackpadZoom, handlePinchZoom } from './trackpad-zoom.js'
 import { followHistoryRedirect } from './history-address.js'
+import { darkenRawTextPages } from './raw-text-pages.js'
+import { noteUnplayableSound } from './media-sound-notes.js'
 import { applyPasswordStore, choosePasswordStore } from './linux-keyring.js'
 import { sealFilesAtRest } from './backup/sealed-file.js'
 import { PRIVATE_DRIVE_KEY_FILE } from './backup/private-drive-key.js'
 import { PRIVATE_HYPERDRIVE_REGISTRY_FILE } from './protocols/private-hyperdrive-registry.js'
 import { DEVICE_SYNC_FILE } from './protocols/device-sync-state.js'
-import { createHandler as createBittorrentHandler, setupBittorrentIpc, shutdownBittorrent, warmupBittorrent } from './protocols/bittorrent-handler.js'
+import { createHandler as createBittorrentHandler, setupBittorrentIpc, shutdownBittorrent, warmupBittorrent, setTorrentProxies, setTorrentProxyCredentials, setProxyLogin } from './protocols/bittorrent-handler.js'
+import { watchExtensionProxy, extensionProxyCredentials } from './protocols/bt/vpn-watch.js'
+import { restoreSavedProxy, logInToProxy } from './extensions/services/proxy-settings.js'
 import { ipfsOptions, hyperOptions } from './protocols/config.js'
 import { gateRequest, stampVetted, requireVetted, frameUrlOf } from './protocols/request-gate.js'
 import { createMenuTemplate } from './actions.js'
@@ -136,7 +140,11 @@ handlePinchZoom(ipcMain)
 app.on('web-contents-created', (event, wc) => {
   const wcId = wc.id
   attachTrackpadZoom(wc)
-  if (wc.getType() === 'webview') followHistoryRedirect(wc)
+  if (wc.getType() === 'webview') {
+    followHistoryRedirect(wc)
+    darkenRawTextPages(wc)
+    noteUnplayableSound(wc)
+  }
   wc.on('did-navigate', (e, url) => {
     if (url.startsWith('peersky://downloads')) {
       trustedUIWebContents.add(wcId)
@@ -184,6 +192,29 @@ function attachWebviewTabShortcutNav (wc) {
     if (goNext === null) return
     event.preventDefault()
     runOnShell(goNext)
+  })
+}
+
+// A page is a process of its own, so the window's tabs never see a pointer
+// that goes from a tab straight into it: the tab's card came up over the page
+// a few seconds later. The window is told when the pointer is in a page, at
+// most four times a second.
+const webviewPointerNoticeAttached = new WeakSet()
+
+function attachWebviewPointerNotice (wc) {
+  if (!wc || wc.isDestroyed()) return
+  if (typeof wc.getType !== 'function' || wc.getType() !== 'webview') return
+  if (webviewPointerNoticeAttached.has(wc)) return
+  webviewPointerNoticeAttached.add(wc)
+
+  let toldAt = 0
+  wc.on('before-mouse-event', (_event, mouse) => {
+    if (mouse.type !== 'mouseMove' && mouse.type !== 'mouseEnter') return
+    const now = Date.now()
+    if (now - toldAt < 250) return
+    toldAt = now
+    const host = wc.hostWebContents
+    if (host && !host.isDestroyed()) host.send('page-pointer')
   })
 }
 
@@ -435,6 +466,59 @@ app.whenReady().then(async () => {
   p2pAppRegistry.setupIpc({ checkForAppUpdate: checkForUpdatesNow })
   installExtensionWebRequestBridge(userSession)
   setupBittorrentIpc()
+  // Torrents follow a VPN extension's proxy, as pages do, and get its login
+  // from the extension the way the browser does. Set up before extensions
+  // load, so the first proxy a VPN sets is seen.
+  const extensionProxy = watchExtensionProxy(userSession, (proxies) => {
+    setTorrentProxies(proxies)
+    if (proxies.length) logInToVpnProxy()
+  })
+  setTorrentProxyCredentials((proxy, info) =>
+    extensionProxyCredentials(extensionManager.electronChromeExtensions?.api?.webRequest, proxy, info))
+  setProxyLogin(logInToVpnProxy)
+
+  // Resolves once extensions have loaded, for logging in to a VPN's proxy.
+  let markExtensionsLoaded
+  const extensionsLoaded = new Promise((resolve) => { markExtensionsLoaded = resolve })
+
+  // The browser's own fetches (the updater's, a torrent file's) cannot answer
+  // a VPN proxy's login the way pages do. Once one request has, theirs go
+  // through (extensions/services/proxy-settings.js). Tried again a few times:
+  // the extension may not listen for logins the moment it loads.
+  let loggingIn = null
+  function logInToVpnProxy () {
+    loggingIn = loggingIn || (async () => {
+      await extensionsLoaded
+      for (const delay of [0, 1000, 1000, 2000, 2000, 4000, 8000, 15000]) {
+        if (delay) await new Promise((resolve) => setTimeout(resolve, delay))
+        if (!(await extensionProxy.current()).length) return false
+        const loggedIn = await logInToProxy({
+          request: (options) => net.request({ ...options, session: userSession }),
+          credentialsFor: async (authInfo) => {
+            // The extension's login goes to its own proxy only.
+            const host = String(authInfo.host || '').toLowerCase().replace(/^\[|\]$/g, '')
+            const proxies = await extensionProxy.current()
+            if (!proxies.some((p) => p.host === host && p.port === authInfo.port)) return null
+            return extensionProxyCredentials(extensionManager.electronChromeExtensions?.api?.webRequest,
+              { host, port: authInfo.port }, { realm: authInfo.realm, target: { host: 'github.com', port: 443 } })
+          }
+        })
+        if (loggedIn) {
+          log.info('[vpn] the browser\'s own requests are logged in to the VPN extension\'s proxy')
+          return true
+        }
+      }
+      log.warn('[vpn] could not log in to the VPN extension\'s proxy: the browser\'s own requests may fail until a page does')
+      return false
+    })().finally(() => { loggingIn = null })
+    return loggingIn
+  }
+  // The proxy a VPN extension had set before the restart is back before any
+  // window opens, and torrents know it, so no tab or torrent connects without
+  // it in the meantime (extensions/services/proxy-settings.js).
+  await restoreSavedProxy(userSession, app.getPath('userData'))
+    .then((saved) => saved && extensionProxy.check())
+    .catch((error) => log.warn('[startup] could not restore the VPN extension\'s proxy:', error?.message || error))
   setupBackupIpc({ getTabs: () => windowManager.getTabs() })
   setupDeviceSyncIpc()
   setupHyperdriveViewsIpc()
@@ -528,6 +612,7 @@ app.whenReady().then(async () => {
   // Global webview partition alignment and security hardening
   app.on('web-contents-created', (_e, wc) => {
     attachWebviewTabShortcutNav(wc)
+    attachWebviewPointerNotice(wc)
     wc.on('will-attach-webview', (_event, webPreferences, params) => {
       // Pages in an incognito window get the in-memory session. Electron reads
       // the partition from webPreferences, which it fills in before this event.
@@ -557,6 +642,7 @@ app.whenReady().then(async () => {
   const extensionsReady = extensionsInitializing
     .then(() => log.info(`Extension system initialized in ${Date.now() - bootStartedAt}ms`))
     .catch((error) => log.error('Failed to initialize extension system:', error))
+  extensionsReady.then(markExtensionsLoaded)
 
   // Check for --new-window argument (from Windows taskbar jump list)
   const hasNewWindowArg = process.argv.includes('--new-window')

@@ -233,6 +233,34 @@ describe('the tab hover card', function () {
     expect(card).to.contain('window.innerWidth - cardRect.width - margin')
     expect(card).to.contain('window.innerHeight - cardRect.height - margin')
   })
+
+  // A tab that slid under a pointer resting on the list, as tabs opened or
+  // closed above it, got mouseenter and brought its card up with nobody
+  // pointing at it.
+  it('comes up for a pointer moving over the tab, once per visit', function () {
+    expect(card).to.contain("tabElement.addEventListener('mousemove', showHoverCard)")
+    expect(card).to.not.contain("addEventListener('mouseenter', showHoverCard)")
+    expect(card).to.contain('if (hoverTimeout || hoverCard) return')
+    expect(card).to.contain("tabElement.addEventListener('mouseleave', hideHoverCard)")
+  })
+
+  // A pointer that went from a tab straight into the page never left the tab
+  // as far as the window could tell, so the card came up over the page while
+  // the person typed in it.
+  it('goes, or never comes, once the pointer is in a page', function () {
+    const listen = tabBar.slice(tabBar.indexOf('listenForPagePointer () {'), tabBar.indexOf('async initMemorySaver'))
+    expect(listen).to.contain("ipcRenderer.on('page-pointer', this._pagePointerListener)")
+    expect(listen).to.contain('this._hideHoverCard()')
+    expect(card).to.contain('this._hideHoverCard = hideHoverCard')
+    expect(tabBar).to.contain("ipcRenderer.removeListener('page-pointer', this._pagePointerListener)")
+
+    const notice = main.slice(main.indexOf('function attachWebviewPointerNotice'), main.indexOf('globalProtocol.registerSchemesAsPrivileged'))
+    expect(notice).to.contain("wc.getType() !== 'webview'")
+    expect(notice).to.contain("wc.on('before-mouse-event'")
+    expect(notice).to.contain("host.send('page-pointer')")
+    expect(notice).to.contain('now - toldAt < 250')
+    expect(main).to.contain('attachWebviewPointerNotice(wc)')
+  })
 })
 
 // Switching between horizontal and vertical tabs rebuilt the webviews, which
@@ -430,6 +458,25 @@ describe('a loading tab in the vertical strip', function () {
     expect(verticalCss).to.not.contain('animation: spin')
     expect(verticalCss).to.not.contain('@keyframes spin')
     expect(verticalCss).to.not.match(/\.tab\.loading[^{]*::after/)
+  })
+})
+
+// The new tab button sat in the scrolling list and stuck to its bottom, so a
+// long list scrolled behind it and a tab opened at the end was out of sight.
+describe('the new tab button in the vertical strip', function () {
+  it('sits under the list, not in it', function () {
+    expect(vertical).to.contain('this.tabContainer.after(this.addButton)')
+    expect(verticalCss).to.not.match(/\.add-tab-button[^{]*\{[^}]*position:\s*sticky/)
+  })
+
+  it('follows the last tab, as the list is only as tall as its tabs', function () {
+    const list = verticalCss.slice(verticalCss.indexOf('.tabbar.vertical-tabs .tab-container {'))
+    expect(list.slice(0, list.indexOf('}'))).to.contain('flex: 0 1 auto')
+  })
+
+  it('leaves the selected tab in sight', function () {
+    const start = vertical.indexOf('  selectTab (')
+    expect(vertical.slice(start, vertical.indexOf('\n  }\n', start))).to.contain('this.revealTab(tabId)')
   })
 })
 

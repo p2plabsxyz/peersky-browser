@@ -411,7 +411,8 @@ function createSettingsAPI (pageContext) {
       setAsDefaultBrowser: () => ipcRenderer.invoke('set-as-default-browser'),
       getArchiveData: () => ipcRenderer.invoke('settings-get-archive-data'),
       exportArchive: (jsonContent) => ipcRenderer.invoke('settings-export-archive', jsonContent),
-      clearArchive: (cutoff) => ipcRenderer.invoke('settings-clear-archive', cutoff)
+      clearArchive: (cutoff) => ipcRenderer.invoke('settings-clear-archive', cutoff),
+      removeArchiveEntries: (list, ids) => ipcRenderer.invoke('settings-remove-archive-entries', { list, ids })
     }
   } else if (pageContext.isExtensions || pageContext.isSiteSettings) {
     // Extensions / site-settings pages get limited settings API - only theme access

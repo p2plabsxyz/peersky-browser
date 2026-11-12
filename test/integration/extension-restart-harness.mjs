@@ -160,6 +160,12 @@ try {
 }
 
 app.commandLine.appendSwitch('disable-gpu')
+// The extension's chrome.storage.local is encrypted with safeStorage, which on
+// macOS takes its key from the login keychain. A restart that got no key, or
+// another one, from a CI runner's keychain read the stored count as empty and
+// counted 1 again. The mock keychain gives every run the same key and never
+// touches the real one.
+app.commandLine.appendSwitch('use-mock-keychain')
 
 // Closing the probe window must not quit the app: Electron's own quit then ran
 // alongside this harness's shutdown and its app.exit(), which on a slow runner

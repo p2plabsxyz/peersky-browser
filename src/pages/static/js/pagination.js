@@ -277,14 +277,16 @@ class PaginationControl extends HTMLElement {
     this.applyFilter()
   }
 
-  setup ({ data, searchKeys, renderWrapper, renderItem, emptyMessage, onRendered }) {
+  // keepPage stays on the page shown, as after a row is removed from it. The
+  // page is cut back to the last one if there are fewer now.
+  setup ({ data, searchKeys, renderWrapper, renderItem, emptyMessage, onRendered, keepPage = false }) {
     this.data = data || []
     this.searchKeys = searchKeys || []
     this.renderWrapper = renderWrapper || ((html) => html)
     this.renderItem = renderItem || (() => '')
     this.emptyMessage = emptyMessage || '<p class="archive-empty">No items found.</p>'
     this.onRendered = onRendered || null
-    this.currentPage = 1
+    if (!keepPage) this.currentPage = 1
     this.applyFilter()
   }
 

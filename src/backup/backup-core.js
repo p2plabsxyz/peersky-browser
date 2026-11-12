@@ -123,13 +123,17 @@ async function sha256Dir (dir) {
   return hash.digest('hex')
 }
 
+// A phone is sent the private drive key alone, never the drives: it opens
+// them from this desktop through private sync. Packed, they ran to gigabytes,
+// past the 2 GB a phone takes in one send.
 function selectTargets (isIdentityTransfer, targetDeviceType, includePrivate) {
+  const toPhone = isIdentityTransfer && targetDeviceType === 'mobile'
   const targets = !isIdentityTransfer
     ? STANDARD_BACKUP_TARGETS
-    : targetDeviceType === 'mobile'
+    : toPhone
       ? MOBILE_IDENTITY_BACKUP_TARGETS
       : IDENTITY_BACKUP_TARGETS
-  return includePrivate
+  return includePrivate && !toPhone
     ? [...targets, ...PRIVATE_HYPER_BACKUP_TARGETS]
     : targets
 }
