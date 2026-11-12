@@ -24,19 +24,24 @@ function fakeTab (id = 7) {
   return tab
 }
 
+// A screen with a menu bar along its top.
+const WORK_AREA = { x: 0, y: 25, width: 1440, height: 875 }
+
+const loadModule = () => esmock.strict('../src/context-menu.js', {
+  electron: { Menu: class {}, MenuItem: class {}, clipboard: {}, dialog: {}, screen: { getDisplayMatching: () => ({ workArea: WORK_AREA }) } },
+  '../src/external-scheme.js': { isExternalScheme: () => false, openExternalScheme () {} },
+  '../src/extensions/index.js': { default: {} },
+  '../src/devtools-dock.js': { openDockedDevTools () {} }
+})
+
 async function loadMenus () {
-  const { attachContextMenus } = await esmock.strict('../src/context-menu.js', {
-    electron: { Menu: class {}, MenuItem: class {}, clipboard: {}, dialog: {} },
-    '../src/external-scheme.js': { isExternalScheme: () => false, openExternalScheme () {} },
-    '../src/extensions/index.js': { default: {} },
-    '../src/devtools-dock.js': { openDockedDevTools () {} }
-  })
+  const { attachContextMenus } = await loadModule()
   const shell = new EventEmitter()
   shell.id = 1
   shell.scripts = []
   shell.executeJavaScript = async (script) => { shell.scripts.push(script); return true }
   shell.setWindowOpenHandler = () => {}
-  const browserWindow = { webContents: shell }
+  const browserWindow = { webContents: shell, getBounds: () => ({ x: 100, y: 80, width: 1280, height: 800 }) }
   const opened = []
   attachContextMenus(browserWindow, { open: (options) => opened.push(options), findWindowByWebContentsId: () => null })
   const tab = fakeTab()
@@ -102,6 +107,52 @@ describe('a link opened behind the page', function () {
     expect(behind).to.contain('this.addTabWithId(tabId, url, title)')
     expect(behind).to.not.contain('selectTab')
     expect(behind).to.not.contain("getElementById('url')")
+  })
+})
+
+// Shift+click opened a bare 600 by 700 window, and window.open's own size and
+// place were ignored.
+describe('a link or page opening a window', function () {
+  it('gets a browser window of its own for Shift+click', async function () {
+    const { tab, opened } = await loadMenus()
+    tab.click()
+    expect(tab.open({ url: 'https://example.com/a', disposition: 'new-window' })).to.deep.equal({ action: 'deny' })
+    expect(opened).to.deep.equal([{ url: 'https://example.com/a', newWindow: true, incognito: false }])
+  })
+
+  it('is a popup of the size and place window.open asked for', async function () {
+    const { tab, opened } = await loadMenus()
+    tab.click()
+    const answer = tab.open({ url: 'https://example.com/a', disposition: 'new-window', features: 'width=500,height=400,left=40,top=60' })
+    expect(answer.action).to.equal('allow')
+    expect(answer.overrideBrowserWindowOptions).to.include({ width: 500, height: 400, useContentSize: true, x: 40, y: 60 })
+    expect(opened).to.deep.equal([])
+  })
+
+  it('stays 600 by 700 where no size was asked for, wherever the opener is', async function () {
+    const { tab } = await loadMenus()
+    tab.click()
+    const options = tab.open({ url: 'https://example.com/a', disposition: 'new-window', features: 'popup' }).overrideBrowserWindowOptions
+    expect(options).to.include({ width: 600, height: 700 })
+    expect(options).to.not.have.any.keys('x', 'y', 'useContentSize')
+  })
+
+  it('is kept on the screen', async function () {
+    const { tab } = await loadMenus()
+    tab.click()
+    const options = tab.open({ url: 'about:blank', disposition: 'new-window', features: 'width=9000,height=300,left=-5000,top=5000' }).overrideBrowserWindowOptions
+    expect(options).to.include({ width: 1440, height: 300, x: 0, y: 600 })
+  })
+})
+
+describe('window.open features', function () {
+  it('are read as Chrome reads them', async function () {
+    const { popupBoundsFromFeatures } = await loadModule()
+    expect(popupBoundsFromFeatures('width=500,height=400,left=40,top=60')).to.deep.equal({ width: 500, height: 400, x: 40, y: 60 })
+    expect(popupBoundsFromFeatures('innerWidth=300, innerHeight = 200, screenX=10, screenY=20, menubar=no')).to.deep.equal({ width: 300, height: 200, x: 10, y: 20 })
+    expect(popupBoundsFromFeatures('WIDTH=320px,height=50')).to.deep.equal({ width: 320, height: 100 })
+    expect(popupBoundsFromFeatures('popup,noopener')).to.deep.equal({})
+    expect(popupBoundsFromFeatures('')).to.deep.equal({})
   })
 })
 

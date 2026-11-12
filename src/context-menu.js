@@ -1,4 +1,4 @@
-import { Menu, MenuItem, clipboard, dialog } from 'electron'
+import { Menu, MenuItem, clipboard, dialog, screen } from 'electron'
 import { isExternalScheme, openExternalScheme } from './external-scheme.js'
 import path from 'path'
 import extensionManager from './extensions/index.js'
@@ -34,6 +34,57 @@ function toNavigableUrl (text) {
   } catch (_) {
     return null
   }
+}
+
+// The size and place a page asks for in window.open, read as Chrome reads
+// them: width and height are the page's own area, left and top where the
+// window goes on the screen, and innerWidth, innerHeight, screenX and screenY
+// mean the same. Chrome makes no popup smaller than 100 by 100.
+const POPUP_FEATURES = {
+  width: 'width',
+  innerwidth: 'width',
+  height: 'height',
+  innerheight: 'height',
+  left: 'x',
+  screenx: 'x',
+  top: 'y',
+  screeny: 'y'
+}
+const MIN_POPUP_SIZE = 100
+
+export function popupBoundsFromFeatures (features) {
+  const bounds = {}
+  for (const token of String(features || '').split(',')) {
+    const [name, ...value] = token.split('=')
+    const key = POPUP_FEATURES[name.trim().toLowerCase()]
+    const number = parseInt(value.join('=').trim(), 10)
+    if (key && Number.isFinite(number)) bounds[key] = number
+  }
+  if (bounds.width !== undefined) bounds.width = Math.max(MIN_POPUP_SIZE, bounds.width)
+  if (bounds.height !== undefined) bounds.height = Math.max(MIN_POPUP_SIZE, bounds.height)
+  return bounds
+}
+
+// A popup's window options: the size the page asked for, or 600 by 700, and
+// where it asked to be, kept on the screen as Chrome keeps a popup in sight.
+// A side it did not give comes from the window that opened it.
+export function popupWindowBounds (bounds, { parentBounds, workArea } = {}) {
+  const sized = bounds.width !== undefined || bounds.height !== undefined
+  let width = bounds.width ?? 600
+  let height = bounds.height ?? 700
+  if (workArea) {
+    width = Math.min(width, workArea.width)
+    height = Math.min(height, workArea.height)
+  }
+  const options = { width, height, ...(sized && { useContentSize: true }) }
+  if (bounds.x === undefined && bounds.y === undefined) return options
+  let x = bounds.x ?? parentBounds?.x ?? 0
+  let y = bounds.y ?? parentBounds?.y ?? 0
+  if (workArea) {
+    x = Math.min(Math.max(x, workArea.x), workArea.x + workArea.width - width)
+    y = Math.min(Math.max(y, workArea.y), workArea.y + workArea.height - height)
+  }
+  return { ...options, x, y }
 }
 
 function shortenForLabel (url) {
@@ -598,6 +649,17 @@ export function attachContextMenus (browserWindow, windowManager) {
           return { action: 'deny' }
         }
 
+        // Shift+click asks for a window, which Chrome opens as a browser
+        // window of its own, as Open Link in New Window does here. Only a
+        // page's window.open names a size or popup, for a popup.
+        if (disposition === 'new-window' && !featuresLower.trim() && !isAboutBlank) {
+          if (windowManagerInstance) {
+            const incognito = windowManagerInstance.findWindowByWebContentsId(browserWindow.webContents.id)?.incognito === true
+            windowManagerInstance.open({ url, newWindow: true, incognito })
+          }
+          return { action: 'deny' }
+        }
+
         // Build safe overrides but preserve important inherited prefs like partition
         const lastPrefs = (typeof webviewWebContents.getLastWebPreferences === 'function'
           ? webviewWebContents.getLastWebPreferences()
@@ -618,6 +680,15 @@ export function attachContextMenus (browserWindow, windowManager) {
           enableRemoteModule: false
         }
 
+        // The size and place the page asked for, where it asked for any.
+        const asked = popupBoundsFromFeatures(features)
+        let parentBounds, workArea
+        try {
+          parentBounds = browserWindow.getBounds()
+          const at = { x: asked.x ?? parentBounds.x, y: asked.y ?? parentBounds.y, width: asked.width ?? 600, height: asked.height ?? 700 }
+          workArea = screen.getDisplayMatching(at).workArea
+        } catch (_) {}
+
         return {
           action: 'allow',
           overrideBrowserWindowOptions: {
@@ -626,8 +697,7 @@ export function attachContextMenus (browserWindow, windowManager) {
             skipTaskbar: !!wantsBackground,
             parent: browserWindow,
             autoHideMenuBar: true,
-            width: 600,
-            height: 700,
+            ...popupWindowBounds(asked, { parentBounds, workArea }),
             webPreferences: {
               ...overridePrefs,
               backgroundThrottling: !wantsBackground
