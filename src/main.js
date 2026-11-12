@@ -23,6 +23,7 @@ import { DEVICE_SYNC_FILE } from './protocols/device-sync-state.js'
 import { createHandler as createBittorrentHandler, setupBittorrentIpc, shutdownBittorrent, warmupBittorrent, setTorrentProxies, setTorrentProxyCredentials, setProxyLogin } from './protocols/bittorrent-handler.js'
 import { watchExtensionProxy, extensionProxyCredentials } from './protocols/bt/vpn-watch.js'
 import { restoreSavedProxy, logInToProxy } from './extensions/services/proxy-settings.js'
+import { chromeLikeUserAgent } from './user-agent.js'
 import { ipfsOptions, hyperOptions } from './protocols/config.js'
 import { gateRequest, stampVetted, requireVetted, frameUrlOf } from './protocols/request-gate.js'
 import { createMenuTemplate } from './actions.js'
@@ -63,6 +64,10 @@ const log = createLogger('main')
 // around a busy site with the preinstalled MV3 extensions is enough. Electron
 // 44 fixes it (electron/electron#53144); until then, prefetch gets no spare.
 app.commandLine.appendSwitch('enable-features', 'PrefetchUseContentRefactor:start_spare_renderer/false')
+
+// Chrome's user agent, with PeerSky inside the platform part (user-agent.js):
+// sites read Electron's added tokens as an unknown browser.
+app.userAgentFallback = chromeLikeUserAgent(app.userAgentFallback, app.getVersion())
 
 // On a Linux desktop Electron does not know, the system keyring chosen at an
 // earlier start (linux-keyring.js). Set before the app is ready, or it is not
