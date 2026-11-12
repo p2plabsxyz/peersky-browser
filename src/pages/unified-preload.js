@@ -1025,12 +1025,19 @@ async function injectPageStyles () {
       console.log('Unified-preload: Syntax highlighting font injected for internal page')
     }
 
+    // A page made in HTML is left as its author made it, styled or not, as in
+    // Chrome: an RFC served as HTML, with no stylesheet and its text in a
+    // <pre>, came out white on black in a coloured code font. Only what
+    // Chromium shows as it is, such as a .txt, .json or raw code file, gets
+    // the base styles and the dark page.
+    const isMarkupPage = document.contentType === 'text/html' || document.contentType === 'application/xhtml+xml'
+
     // Check if page already has stylesheets
     const hasStylesheets = [...document.styleSheets].some(s => {
       try { return !!s.cssRules } catch { return false }
     }) || !!document.querySelector('style,link[rel="stylesheet"]')
 
-    if (!hasStylesheets) {
+    if (!hasStylesheets && !isMarkupPage) {
       // Inject base styles for pages without CSS
       const [varsCss, baseCss] = await Promise.all([
         ipcRenderer.invoke('peersky-read-css', 'vars'),
@@ -1045,8 +1052,8 @@ async function injectPageStyles () {
     }
 
     // Special handling for XML content
-    if (window.location.pathname.endsWith('.xml') ||
-        document.querySelector('rss, feed, body > pre') !== null) {
+    if (!isMarkupPage && (window.location.pathname.endsWith('.xml') ||
+        document.querySelector('rss, feed, body > pre') !== null)) {
       const sheet = document.styleSheets[document.styleSheets.length - 1]
       if (sheet) {
         sheet.insertRule('body { background: #000; color: #fff }', sheet.cssRules.length)
