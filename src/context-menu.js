@@ -3,6 +3,7 @@ import { isExternalScheme, openExternalScheme } from './external-scheme.js'
 import path from 'path'
 import extensionManager from './extensions/index.js'
 import { openDockedDevTools } from './devtools-dock.js'
+import { watchPageInput, takeInputGrant } from './page-input.js'
 
 const isMac = process.platform === 'darwin'
 
@@ -479,7 +480,9 @@ export function attachContextMenus (browserWindow, windowManager) {
     return { action: 'deny' }
   })
 
-  // Track popup limits per webview to reduce abuse
+  // Track popup limits per webview to reduce abuse. They are for what a page
+  // opens on its own: what a person opens with a click or a key is not
+  // counted, as Chrome's popup blocker never stops it (page-input.js).
   const webviewPopupLimits = new Map() // wcId -> { recent: number[] }
   const MAX_POPUPS_PER_10S = 3
   const MAX_POPUPS_PER_MIN = 10
@@ -517,6 +520,7 @@ export function attachContextMenus (browserWindow, windowManager) {
     'did-attach-webview',
     (event, webviewWebContents) => {
       attachMenuToWebContents(webviewWebContents)
+      watchPageInput(webviewWebContents)
 
       webviewWebContents.on('will-navigate', (navEvent, url) => {
         if (!isExternalScheme(url)) return
@@ -621,8 +625,9 @@ export function attachContextMenus (browserWindow, windowManager) {
           return { action: 'deny' }
         }
 
-        // Enforce modest rate limits per webview to discourage abuse
-        if (!withinPopupLimits(webviewWebContents.id)) {
+        // Enforce modest rate limits per webview to discourage abuse, on what
+        // the page opens without the person's click or key just before.
+        if (!takeInputGrant(webviewWebContents) && !withinPopupLimits(webviewWebContents.id)) {
           console.warn('Popup blocked: rate limit exceeded for webview', webviewWebContents.id)
           return { action: 'deny' }
         }
