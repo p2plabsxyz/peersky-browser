@@ -46,6 +46,16 @@ function failedUrlBehindErrorPage (webview) {
   }
 }
 
+// Two spellings of one address, such as https://example.com and
+// https://example.com/.
+function sameAddress (a, b) {
+  try {
+    return new URL(a).href === new URL(b).href
+  } catch {
+    return false
+  }
+}
+
 // A tab whose page gave no icon. icon16.png, the one named here before, is not
 // in static/assets, so those tabs showed an empty slot.
 const DEFAULT_TAB_ICON = 'url(peersky://static/assets/favicon.ico)'
@@ -1903,9 +1913,28 @@ class TabBar extends HTMLElement {
     if (!this.activeTabId) return
     const webview = this.webviews.get(this.activeTabId)
     if (webview) {
-      webview.setAttribute('src', url)
+      // The address that failed, entered again over its error page, is tried
+      // again in the error page's place, as a reload is.
+      const failed = failedUrlBehindErrorPage(webview)
+      if (failed && sameAddress(failed, url)) this.retryFailedLoad(webview, failed)
+      else webview.setAttribute('src', url)
       this.updateTab(this.activeTabId, { url })
     }
+  }
+
+  // A failed load is tried again from its error page, which the address
+  // replaces in the history as Chrome's reload of a failed page does. Loaded
+  // as a new page, it sat after the error page, and Back from it showed the
+  // error again. A page cannot open a local file, so a file is loaded as
+  // before.
+  retryFailedLoad (webview, failed) {
+    if (failed.startsWith('file:')) {
+      webview.setAttribute('src', failed)
+      return
+    }
+    // Only over the error page, which the tab may have left by now.
+    webview.executeJavaScript(`location.protocol === 'peersky:' && location.hostname === 'error.html' && location.replace(${JSON.stringify(failed)})`)
+      .catch(() => webview.setAttribute('src', failed))
   }
 
   goBackActiveTab () {
@@ -1944,7 +1973,7 @@ class TabBar extends HTMLElement {
     const webview = this.getActiveWebview()
     if (!webview) return
     const failed = failedUrlBehindErrorPage(webview)
-    if (failed) this.navigateActiveTab(failed)
+    if (failed) this.retryFailedLoad(webview, failed)
     else webview.reload()
   }
 

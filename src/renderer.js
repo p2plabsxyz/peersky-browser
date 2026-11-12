@@ -1,5 +1,6 @@
 import {
-  handleURL
+  handleURL,
+  replaceErrorDocumentScript
 } from './utils.js'
 
 const chromiumNetErrors = require('chromium-net-errors')
@@ -225,10 +226,12 @@ function setupWebviewErrorHandling (webview) {
       const count = state.retryCounts.get(validatedURL) || 0
       if (count < 1) {
         state.retryCounts.set(validatedURL, count + 1)
+        // Unless the tab has moved on. The failed entry keeps its address,
+        // which src does not have when Back or Forward reached it.
         setTimeout(() => {
           try {
-            if (webview.src === validatedURL) {
-              webview.src = validatedURL
+            if (webview.getURL() === validatedURL) {
+              showInPlaceOfFailure(validatedURL)
             }
           } catch (e) {}
         }, 3000)
@@ -256,18 +259,23 @@ function setupWebviewErrorHandling (webview) {
       code: errorInfo.code,
       name: errorInfo.name,
       msg: errorInfo.msg,
-      url: errorInfo.url,
-      t: Date.now().toString()
+      url: errorInfo.url
     })
 
-    const errorURL = `peersky://error.html?${params}`
+    showInPlaceOfFailure(`peersky://error.html?${params}`)
+    setTimeout(() => { state.isShowingError = false }, 1000)
+  }
 
-    try {
-      webview.src = errorURL
-      setTimeout(() => { state.isShowingError = false }, 1000)
-    } catch (e) {
-      state.isShowingError = false
-    }
+  // Loads target in the failed load's own history entry (see
+  // replaceErrorDocumentScript), so Back from it goes where it did before the
+  // failure and Forward still goes on. Only when the tab cannot be reached at
+  // all is it loaded as a new page, as it always was.
+  function showInPlaceOfFailure (target) {
+    Promise.resolve()
+      .then(() => webview.executeJavaScript(replaceErrorDocumentScript(target)))
+      .catch(() => {
+        try { webview.src = target } catch (e) {}
+      })
   }
 
   const handleNavigate = (event) => {

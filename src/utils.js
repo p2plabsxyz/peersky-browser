@@ -45,6 +45,24 @@ function connectionFor (protocol) {
   }
 }
 
+// A load that fails leaves Chromium's own empty error document in the tab, in
+// the history entry of the address that failed. PeerSky's error page takes that
+// entry over from inside it, as the page's own location.replace() would, so
+// Back and Forward step over the failure as in Chrome, and the entries after it
+// stay. Loaded as a new page instead, the error sat after the failed entry: Back
+// tried the failed address again and added another error page each time. Only
+// that error document is replaced, since the tab may have moved on by the time
+// this runs.
+const ERROR_DOCUMENT_URL = 'chrome-error://chromewebdata/'
+
+function replaceErrorDocumentScript (target) {
+  return `(() => {
+    if (location.href !== ${JSON.stringify(ERROR_DOCUMENT_URL)}) return false
+    location.replace(${JSON.stringify(String(target))})
+    return true
+  })()`
+}
+
 // Utility functions
 function isURL (string) {
   try {
@@ -271,6 +289,8 @@ export {
   NAVIGABLE_SCHEMES,
   CONNECTION_BY_PROTOCOL,
   connectionFor,
+  ERROR_DOCUMENT_URL,
+  replaceErrorDocumentScript,
   looksLikeDomain,
   isLoopbackAddress,
   makeHttp,
