@@ -4,8 +4,12 @@
 
 import { expect } from 'chai'
 import { EventEmitter } from 'events'
+import { readFile } from 'fs/promises'
 import esmock from 'esmock'
 import { watchPageInput, takeInputGrant, INPUT_GRACE_MS } from '../src/page-input.js'
+
+const tabBar = (await readFile(new URL('../src/pages/tab-bar.js', import.meta.url), 'utf8')).replace(/\r\n/g, '\n')
+const settle = () => new Promise((resolve) => setImmediate(resolve))
 
 function fakeTab (id = 7) {
   const tab = new EventEmitter()
@@ -38,7 +42,9 @@ async function loadMenus () {
   const tab = fakeTab()
   shell.emit('did-attach-webview', {}, tab)
   const tabsOpened = () => shell.scripts.filter((script) => script.includes('addTabFromLink'))
-  return { shell, tab, opened, tabsOpened }
+  // The options the window's tab strip was handed for each new tab.
+  const tabOptions = () => tabsOpened().map((script) => JSON.parse(/addTabFromLink\([^,]+, \d+, (\{.*?\})\);/.exec(script)[1]))
+  return { shell, tab, opened, tabsOpened, tabOptions }
 }
 
 describe('a person opening links in new tabs', function () {
@@ -48,12 +54,14 @@ describe('a person opening links in new tabs', function () {
       tab.click()
       expect(tab.open({ url: `https://example.com/${i}` })).to.deep.equal({ action: 'deny' })
     }
+    await settle()
     expect(tabsOpened()).to.have.length(5)
   })
 
   it('still limits what a page opens on its own', async function () {
     const { tab, tabsOpened } = await loadMenus()
     for (let i = 1; i <= 5; i++) tab.open({ url: `https://example.com/${i}` })
+    await settle()
     expect(tabsOpened()).to.have.length(3)
   })
 
@@ -61,7 +69,39 @@ describe('a person opening links in new tabs', function () {
     const { tab, tabsOpened } = await loadMenus()
     tab.click()
     for (let i = 1; i <= 6; i++) tab.open({ url: `https://example.com/${i}` })
+    await settle()
     expect(tabsOpened()).to.have.length(4)
+  })
+})
+
+// Cmd+click and a middle click opened the tab in front, where Chrome leaves it
+// behind the page.
+describe('a link opened behind the page', function () {
+  it('stays behind it for Cmd+click and a middle click', async function () {
+    const { tab, tabOptions } = await loadMenus()
+    tab.click()
+    tab.open({ url: 'https://example.com/a', disposition: 'background-tab' })
+    tab.click()
+    tab.open({ url: 'https://example.com/b', disposition: 'background-tab', features: 'noopener' })
+    await settle()
+    expect(tabOptions().map((options) => options.background)).to.deep.equal([true, true])
+  })
+
+  it('comes to the front for a plain click and Cmd+Shift+click', async function () {
+    const { tab, tabOptions } = await loadMenus()
+    tab.click()
+    tab.open({ url: 'https://example.com/a', disposition: 'foreground-tab' })
+    await settle()
+    expect(tabOptions()).to.deep.equal([{ background: false }])
+  })
+
+  it('is not selected, and leaves the address bar to the page', function () {
+    const fromLink = tabBar.slice(tabBar.indexOf('  addTabFromLink ('), tabBar.indexOf('  findTabByWebContentsId ('))
+    expect(fromLink).to.contain("const tabId = background ? this.addBackgroundTab(url, 'New Tab') : this.addTab(url, 'New Tab')")
+    const behind = tabBar.slice(tabBar.indexOf('  addBackgroundTab ('), tabBar.indexOf('  // Create a new webview for a tab'))
+    expect(behind).to.contain('this.addTabWithId(tabId, url, title)')
+    expect(behind).to.not.contain('selectTab')
+    expect(behind).to.not.contain("getElementById('url')")
   })
 })
 

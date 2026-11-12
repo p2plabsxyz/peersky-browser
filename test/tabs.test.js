@@ -608,11 +608,11 @@ describe('a page with no icon of its own', function () {
 // A link opened in a new tab went to the end of the strip, far from the page
 // it came from. Other browsers put it right after that tab.
 describe('a link opened in a new tab', function () {
-  const start = tabBar.indexOf('  addTabFromLink (url, openerWebContentsId = null) {')
+  const start = tabBar.indexOf('  addTabFromLink (url, openerWebContentsId = null')
   const end = tabBar.indexOf('\n  findTabByWebContentsId (')
-  const body = tabBar.slice(tabBar.indexOf('{', start) + 1, tabBar.lastIndexOf('}', end))
+  const method = tabBar.slice(start, tabBar.lastIndexOf('}', end) + 1).trim()
   // eslint-disable-next-line no-new-func
-  const addTabFromLink = new Function('url', 'openerWebContentsId', body)
+  const addTabFromLink = new Function(`return function ${method}`)()
 
   function strip (ids, { active = ids[0], pinned = [], groups = {} } = {}) {
     let counter = 0
@@ -624,6 +624,12 @@ describe('a link opened in a new tab', function () {
       tabGroupAssignments: new Map(Object.entries(groups)),
       webviews: new Map(),
       addTab () {
+        const id = `new-${++counter}`
+        this.tabs.push({ id })
+        this.activeTabId = id
+        return id
+      },
+      addBackgroundTab () {
         const id = `new-${++counter}`
         this.tabs.push({ id })
         return id
@@ -638,7 +644,7 @@ describe('a link opened in a new tab', function () {
       updateGroupedTabsUI () {},
       saveTabsState () {}
     }
-    const open = (url = 'https://example.com/') => addTabFromLink.call(bar, url, null)
+    const open = (url = 'https://example.com/', options) => addTabFromLink.call(bar, url, null, options)
     const order = () => bar.tabs.map((t) => t.id)
     return { bar, open, order }
   }
@@ -661,6 +667,14 @@ describe('a link opened in a new tab', function () {
     const { bar, open } = strip(['a', 'b'], { active: 'a', groups: { a: 'trip' } })
     const id = open()
     expect(bar.tabGroupAssignments.get(id)).to.equal('trip')
+  })
+
+  it('opened behind the page, goes in the same place and leaves the page in front', function () {
+    const { bar, open, order } = strip(['a', 'b'], { active: 'a' })
+    open('https://example.com/', { background: true })
+    open('https://example.com/', { background: true })
+    expect(order()).to.deep.equal(['a', 'new-1', 'new-2', 'b'])
+    expect(bar.activeTabId).to.equal('a')
   })
 
   it('is what the link menu and a page opening a tab use', function () {

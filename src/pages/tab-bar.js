@@ -1098,6 +1098,14 @@ class TabBar extends HTMLElement {
     return tabId
   }
 
+  // A tab that loads behind the one on screen.
+  addBackgroundTab (url, title) {
+    const tabId = `tab-${this.tabCounter++}`
+    this.addTabWithId(tabId, url, title)
+    this.saveTabsState()
+    return tabId
+  }
+
   // Create a new webview for a tab
   createWebviewForTab (tabId, url, navigation = null) {
     // Create webview element
@@ -2370,10 +2378,13 @@ class TabBar extends HTMLElement {
   // next link from that tab after the one before, as in other browsers. It
   // joins the group its tab is in. A tab of its own (the + button, Ctrl+T)
   // still goes at the end.
-  addTabFromLink (url, openerWebContentsId = null) {
+  // With background, as Cmd+click and a middle click open one in Chrome, the
+  // tab opens behind the page: it is not selected, and the address bar stays
+  // with the page.
+  addTabFromLink (url, openerWebContentsId = null, { background = false } = {}) {
     const opener = this.findTabByWebContentsId(openerWebContentsId) ||
       this.tabs.find(t => t.id === this.activeTabId)
-    const tabId = this.addTab(url, 'New Tab')
+    const tabId = background ? this.addBackgroundTab(url, 'New Tab') : this.addTab(url, 'New Tab')
     if (!opener || opener.id === tabId) return tabId
 
     const newTab = this.tabs.find(t => t.id === tabId)

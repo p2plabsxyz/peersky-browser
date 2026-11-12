@@ -528,6 +528,38 @@ export function attachContextMenus (browserWindow, windowManager) {
         openExternalScheme(browserWindow, url)
       })
 
+      // A link opened in a new tab joins the strip beside its page. With
+      // background it stays behind the page, as Cmd+click and a middle click
+      // leave it in Chrome.
+      const openInTab = (url, { background = false } = {}) => {
+        const urlLiteral = JSON.stringify(url || '')
+        const options = JSON.stringify({ background })
+        Promise.resolve()
+          .then(() => browserWindow.webContents.executeJavaScript(`
+            (function() {
+              const tabBar = document.querySelector('#tabbar');
+              if (tabBar && typeof tabBar.addTabFromLink === 'function') {
+                tabBar.addTabFromLink(${urlLiteral}, ${JSON.stringify(webviewWebContents.id)}, ${options});
+                return true;
+              }
+              if (tabBar && typeof tabBar.addTab === 'function') {
+                tabBar.addTab(${urlLiteral});
+                return true;
+              }
+              return false;
+            })()
+          `))
+          .then((added) => {
+            if (!added && windowManagerInstance) {
+              windowManagerInstance.open({ url })
+            }
+          })
+          .catch((err) => {
+            console.error('Failed to add tab from webview windowOpenHandler:', err)
+            if (windowManagerInstance) windowManagerInstance.open({ url })
+          })
+      }
+
       // Webview popups: allow native popups with opener for OAuth/extension flows
       webviewWebContents.setWindowOpenHandler((details) => {
         const { url, features = '', disposition } = details
@@ -539,41 +571,7 @@ export function attachContextMenus (browserWindow, windowManager) {
 
         // If explicitly no opener requested, prefer tab UX instead of popup
         if (hasNoOpener) {
-          try {
-            const urlLiteralNo = JSON.stringify(url || '')
-            browserWindow.webContents
-              .executeJavaScript(`
-                (function() {
-                  const tabBar = document.querySelector('tab-bar');
-                  if (tabBar && typeof tabBar.addTabFromLink === 'function') {
-                    tabBar.addTabFromLink(${urlLiteralNo}, ${JSON.stringify(webviewWebContents.id)});
-                    return true;
-                  }
-                  if (tabBar && typeof tabBar.addTab === 'function') {
-                    tabBar.addTab(${urlLiteralNo});
-                    return true;
-                  }
-                  const oldTabBar = document.querySelector('#tabbar');
-                  if (oldTabBar && typeof oldTabBar.addTabFromLink === 'function') {
-                    oldTabBar.addTabFromLink(${urlLiteralNo}, ${JSON.stringify(webviewWebContents.id)});
-                    return true;
-                  }
-                  if (oldTabBar && typeof oldTabBar.addTab === 'function') {
-                    oldTabBar.addTab(${urlLiteralNo});
-                    return true;
-                  }
-                  return false;
-                })()
-              `)
-              .then((added) => {
-                if (!added && windowManagerInstance) {
-                  windowManagerInstance.open({ url })
-                }
-              })
-              .catch(() => {
-                if (windowManagerInstance) windowManagerInstance.open({ url })
-              })
-          } catch (_) {}
+          openInTab(url, { background: wantsBackground })
           return { action: 'deny' }
         }
 
@@ -584,44 +582,7 @@ export function attachContextMenus (browserWindow, windowManager) {
             return { action: 'deny' }
           }
           // Preserve previous behavior for unsafe schemes: re-route to tab/window
-          try {
-            const urlLiteral = JSON.stringify(url || '')
-            browserWindow.webContents
-              .executeJavaScript(`
-                (function() {
-                  const tabBar = document.querySelector('tab-bar');
-                  if (tabBar && typeof tabBar.addTabFromLink === 'function') {
-                    tabBar.addTabFromLink(${urlLiteral}, ${JSON.stringify(webviewWebContents.id)});
-                    return true;
-                  }
-                  if (tabBar && typeof tabBar.addTab === 'function') {
-                    tabBar.addTab(${urlLiteral});
-                    return true;
-                  }
-                  const oldTabBar = document.querySelector('#tabbar');
-                  if (oldTabBar && typeof oldTabBar.addTabFromLink === 'function') {
-                    oldTabBar.addTabFromLink(${urlLiteral}, ${JSON.stringify(webviewWebContents.id)});
-                    return true;
-                  }
-                  if (oldTabBar && typeof oldTabBar.addTab === 'function') {
-                    oldTabBar.addTab(${urlLiteral});
-                    return true;
-                  }
-                  return false;
-                })()
-              `)
-              .then((added) => {
-                if (!added && windowManagerInstance) {
-                  windowManagerInstance.open({ url })
-                }
-              })
-              .catch((err) => {
-                console.error('Failed to add tab from unsafe-scheme windowOpenHandler:', err)
-                if (windowManagerInstance) {
-                  windowManagerInstance.open({ url })
-                }
-              })
-          } catch (_) {}
+          openInTab(url, { background: wantsBackground })
           return { action: 'deny' }
         }
 
@@ -633,43 +594,7 @@ export function attachContextMenus (browserWindow, windowManager) {
         }
 
         if (!hasPopupFeatures && !isAboutBlank && disposition !== 'new-window') {
-          try {
-            const urlLiteral = JSON.stringify(url || '')
-            browserWindow.webContents
-              .executeJavaScript(`
-                (function() {
-                  const tabBar = document.querySelector('tab-bar');
-                  if (tabBar && typeof tabBar.addTabFromLink === 'function') {
-                    tabBar.addTabFromLink(${urlLiteral}, ${JSON.stringify(webviewWebContents.id)});
-                    return true;
-                  }
-                  if (tabBar && typeof tabBar.addTab === 'function') {
-                    tabBar.addTab(${urlLiteral});
-                    return true;
-                  }
-                  const oldTabBar = document.querySelector('#tabbar');
-                  if (oldTabBar && typeof oldTabBar.addTabFromLink === 'function') {
-                    oldTabBar.addTabFromLink(${urlLiteral}, ${JSON.stringify(webviewWebContents.id)});
-                    return true;
-                  }
-                  if (oldTabBar && typeof oldTabBar.addTab === 'function') {
-                    oldTabBar.addTab(${urlLiteral});
-                    return true;
-                  }
-                  return false;
-                })()
-              `)
-              .then((added) => {
-                if (!added && windowManagerInstance) {
-                  windowManagerInstance.open({ url })
-                }
-              })
-              .catch(() => {
-                if (windowManagerInstance) windowManagerInstance.open({ url })
-              })
-          } catch (_) {
-            if (windowManagerInstance) windowManagerInstance.open({ url })
-          }
+          openInTab(url, { background: wantsBackground })
           return { action: 'deny' }
         }
 
