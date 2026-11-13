@@ -641,10 +641,16 @@ class ExtensionManager {
           }
           // A new bundled version takes the old one's folder, so it stays the
           // same extension, with its storage (services/preinstalled-update.js).
-          // Should that fail, it is imported again as before. Either way the
-          // old version's worker goes first, or it would run on.
+          // The old version's worker goes first, or it would run on.
           await this._clearExtensionWorker(existing)
           if (await this._updatePreinstalledInPlace(existing, entry, sourcePath, sourceStat)) continue
+          // Should the move fail, as it can on a full disk or a folder another
+          // program holds, the old version stays as it was, with its ID and
+          // data, and the update is tried again at the next start. Imported
+          // again it would be another extension, with none of its settings:
+          // uBlock's own filters and trusted sites gone. Only an old version
+          // whose files are gone is imported again.
+          if (await fs.stat(existing.installedPath).then(() => true, () => false)) continue
           await removePreinstalledRecord(existing)
         } else if (entry.id && this.loadedExtensions.has(entry.id)) {
           continue

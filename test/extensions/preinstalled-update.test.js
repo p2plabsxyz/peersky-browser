@@ -141,7 +141,7 @@ describe('preinstalled extension updates', function () {
     expect((await readdir(path.join(manager.extensionsBaseDir, 'oldid')))).to.deep.equal(['1.0.0_0'])
   })
 
-  it('is what a new bundled version gets, after its old worker goes and before it is imported again as before', async function () {
+  it('is what a new bundled version gets, after its old worker goes; a failed one keeps the old version', async function () {
     const source = await readFile(new URL('../../src/extensions/index.js', import.meta.url), 'utf8')
     const start = source.indexOf('async _installBundledPreinstalled')
     const body = source.slice(start, source.indexOf('\n  }\n', start))
@@ -149,7 +149,11 @@ describe('preinstalled extension updates', function () {
     const inPlace = body.indexOf('await this._updatePreinstalledInPlace(existing, entry, sourcePath, sourceStat)')
     expect(worker).to.be.greaterThan(-1)
     expect(inPlace).to.be.greaterThan(worker)
-    expect(body.indexOf('await removePreinstalledRecord(existing)', inPlace)).to.be.greaterThan(inPlace)
+    // A failed move keeps the old version, whose folder is still there, and
+    // only one whose files are gone is removed and imported again.
+    const kept = body.indexOf('if (await fs.stat(existing.installedPath).then(() => true, () => false)) continue', inPlace)
+    expect(kept).to.be.greaterThan(inPlace)
+    expect(body.indexOf('await removePreinstalledRecord(existing)', kept)).to.be.greaterThan(kept)
     // Only the worker's registration goes, not the extension's storage.
     const clear = source.slice(source.indexOf('async _clearExtensionWorker'))
     expect(clear).to.match(/clearStorageData\(\{ origin: `chrome-extension:\/\/\$\{ext\.electronId\}`, storages: \['serviceworkers'\] \}\)/)
