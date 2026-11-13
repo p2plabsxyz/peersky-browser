@@ -214,6 +214,24 @@ describe('a new tab from a link or form', function () {
     expect(tabsOpened()).to.have.length(2)
   })
 
+  it('brings the named tab to the front only after a click or key, as in Chrome', async function () {
+    const { tab } = await loadMenus()
+    tab.click()
+    tab.open({ url: 'https://example.com/1', frameName: 'results' })
+    await settle()
+    const shown = []
+    const host = { isDestroyed: () => false, executeJavaScript: async (script) => { shown.push(script) } }
+    const named = Object.assign(new EventEmitter(), { id: 12, isDestroyed: () => false, hostWebContents: host, loadURL: async () => {} })
+    queuedLoads[0].onAttach(named)
+
+    tab.open({ url: 'https://example.com/2', frameName: 'results' })
+    expect(shown).to.deep.equal([])
+    tab.click()
+    tab.open({ url: 'https://example.com/3', frameName: 'results' })
+    expect(shown).to.have.length(1)
+    expect(shown[0]).to.contain('tabBar?.findTabByWebContentsId?.(12)')
+  })
+
   it('opens _blank and a noopener open in a new tab every time', async function () {
     const { tab, tabsOpened } = await loadMenus()
     tab.click()

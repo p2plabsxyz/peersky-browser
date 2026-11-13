@@ -687,13 +687,14 @@ export function attachContextMenus (browserWindow, windowManager) {
           return { action: 'deny' }
         }
 
-        // A name this page opened a tab under loads in that tab, which comes
-        // to the front, as an existing window does in Chrome.
+        // A name this page opened a tab under loads in that tab. The tab comes
+        // to the front only for a click or key, as Chrome brings an existing
+        // window forward only then: a page on its own cannot pull it up.
         const name = nameKey(webviewWebContents.id, frameName)
         const named = url && !isAboutBlank ? namedTab(name) : null
         if (named) {
           named.loadURL(url, firstLoadOptions({ referrer, postBody })).catch(() => {})
-          if (!wantsBackground) showTab(named)
+          if (takeInputGrant(webviewWebContents) && !wantsBackground) showTab(named)
           return { action: 'deny' }
         }
 
