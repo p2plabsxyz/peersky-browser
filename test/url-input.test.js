@@ -4,6 +4,7 @@
 import { expect } from 'chai'
 import { isURL, looksLikeDomain, isLoopbackAddress, NAVIGABLE_SCHEMES, isSearchTemplate } from '../src/utils.js'
 import { readFile } from 'fs/promises'
+import { readFileSync } from 'fs'
 import vm from 'vm'
 
 const navBox = await readFile(new URL('../src/pages/nav-box.js', import.meta.url), 'utf8')
@@ -298,3 +299,30 @@ describe('text pasted or dropped into the address bar', function () {
     expect(events).to.contain('const url = stripJavascriptSchemes(textUrl).trim()')
   })
 })
+
+// After Enter in the address bar the keys stayed there, so Space, the arrow
+// keys and the page's own shortcuts never reached the page.
+describe('an address entered in the address bar', function () {
+  const renderer = readSource('renderer.js')
+
+  it('gives the page the keys, as in Chrome', function () {
+    const start = renderer.indexOf('function focusActivePage () {')
+    const source = renderer.slice(start, renderer.indexOf('\n}\n', start) + 2)
+    const calls = []
+    const webview = { focus: () => calls.push('page') }
+    const input = { blur: () => calls.push('address bar lets go') }
+    vm.runInNewContext(`${source}; focusActivePage()`, {
+      tabBar: { getActiveWebview: () => webview },
+      document: { querySelector: (selector) => (selector === '#url' ? input : null) }
+    })
+    expect(calls).to.deep.equal(['address bar lets go', 'page'])
+  })
+
+  it('does so once the tab is on its way there', function () {
+    expect(renderer).to.match(/nav\.addEventListener\('navigate', async \(\{ detail \}\) => \{\s+const \{ url \} = detail\s+await navigateTo\(url\)\s+focusActivePage\(\)/)
+  })
+})
+
+function readSource (name) {
+  return readFileSync(new URL(`../src/${name}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n')
+}

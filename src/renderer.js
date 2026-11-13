@@ -746,6 +746,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     nav.addEventListener('navigate', async ({ detail }) => {
       const { url } = detail
       await navigateTo(url)
+      focusActivePage()
     })
 
     nav.addEventListener('new-window', () => {
@@ -965,6 +966,15 @@ async function navigateTo (url) {
       webviewContainer.loadURL(url)
     }
   }
+}
+
+// Once an address is entered, the page has the keys, as in Chrome: Space, the
+// arrow keys and the page's own shortcuts stayed in the address bar.
+function focusActivePage () {
+  const webview = tabBar?.getActiveWebview?.()
+  if (!webview) return
+  document.querySelector('#url')?.blur()
+  webview.focus()
 }
 
 function updateNavigationButtons (currentTabBar) {
