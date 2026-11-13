@@ -205,7 +205,7 @@ describe('typing peersky://history', function () {
 // domain.
 describe('a word with a dot in it', function () {
   it('is a search unless its ending is a real top-level domain, as in Chrome', function () {
-    for (const text of ['node.js', 'index.html', 'jquery.min.js', 'notes.txt', 'foo.local', 'x.invalid', 'co.uk', '3.14', '1.2.3']) {
+    for (const text of ['node.js', 'index.html', 'jquery.min.js', 'notes.txt', 'x.invalid', 'co.uk', '3.14', '1.2.3']) {
       expect(looksLikeDomain(text), text).to.equal(false)
     }
   })
@@ -213,6 +213,16 @@ describe('a word with a dot in it', function () {
   it('is a site when it is one', function () {
     for (const text of ['example.com', 'EXAMPLE.COM', 'www.example.co.uk', 'foo.github.io', 'readme.md', 'example.com.', '例子.中国', 'xn--fsqu00a.xn--fiqs8s', 'en.wikipedia.org/wiki/Node.js']) {
       expect(looksLikeDomain(text), text).to.equal(true)
+    }
+  })
+
+  // They went to the search engine, which also learned the device's name.
+  it('is a device on the local network when its ending is a private one', function () {
+    for (const text of ['nas.local', 'homeassistant.local', 'printer.lan', 'router.home', 'app.internal', 'x.test', 'server.corp', 'wiki.intranet', 'nas.home.arpa', 'NAS.LOCAL']) {
+      expect(looksLikeDomain(text), text).to.equal(true)
+    }
+    for (const text of ['local', 'notes.locals', 'my local.lan', 'user@nas.local']) {
+      expect(looksLikeDomain(text), text).to.equal(false)
     }
   })
 

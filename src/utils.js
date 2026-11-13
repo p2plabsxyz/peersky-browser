@@ -142,6 +142,9 @@ function loadPublicSuffixes () {
 
 const IPV4_RE = /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/
 const HOST_LABELS_RE = /^[\p{L}\p{N}\p{M}_-]+(?:\.[\p{L}\p{N}\p{M}_-]+)+$/u
+// Names on a home or office network, which the public list never has:
+// nas.local, homeassistant.local, router.home, printer.lan, app.internal.
+const PRIVATE_NAME_RE = /\.(?:local|localhost|test|internal|lan|home|corp|intranet|home\.arpa)$/i
 
 // Whether text typed with no scheme names a site, as Chrome reads it: a host
 // whose last label is a real top-level domain, an IP address, or any dotted
@@ -170,6 +173,9 @@ function looksLikeDomain (string) {
   // 3.14 and 1.2.3 are numbers, not addresses.
   if (/^[\d.]+$/.test(host)) return false
   if (port !== undefined || /\/$/.test(rest.split(/[?#]/)[0])) return true
+  // A device on the person's own network opens, as in 1.0.1, where the rule
+  // below sent its name to the search engine.
+  if (PRIVATE_NAME_RE.test(host)) return true
   const tldts = loadPublicSuffixes()
   // Without the list, any dotted host, as before.
   if (!tldts) return true
