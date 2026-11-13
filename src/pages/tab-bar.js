@@ -60,6 +60,12 @@ function sameAddress (a, b) {
 // in static/assets, so those tabs showed an empty slot.
 const DEFAULT_TAB_ICON = 'url(peersky://static/assets/favicon.ico)'
 
+// Tabs closed in this window, the last one last, for Cmd+Shift+T. Chrome keeps
+// 25. Only in this window's memory, so a private window's are never written
+// down, and each window reopens its own. Both tab layouts share it.
+const CLOSED_TABS_KEPT = 25
+const closedTabs = []
+
 // Two addresses on one site: scheme and host. URL.origin gives "null" for
 // peersky: and the P2P schemes, so it cannot be used.
 function sameSite (a, b) {
@@ -1490,6 +1496,8 @@ class TabBar extends HTMLElement {
       return
     }
 
+    this.rememberClosedTab(this.tabs[tabIndex], tabIndex)
+
     // Remove tab from DOM and array
     tabElement.classList.add('closing')
     this.tabs.splice(tabIndex, 1)
@@ -1539,6 +1547,67 @@ class TabBar extends HTMLElement {
 
     // Dispatch event that tab was closed
     this.dispatchEvent(new CustomEvent('tab-closed', { detail: { tabId } }))
+  }
+
+  // What Cmd+Shift+T needs to bring a closing tab back as it was: its place,
+  // its pages for Back and Forward, and its pin or group.
+  rememberClosedTab (tab, index) {
+    let navigation = tab.savedNavigation?.entries?.length ? tab.savedNavigation : null
+    const webview = this.webviews.get(tab.id)
+    if (!navigation && webview) {
+      try {
+        navigation = require('electron').ipcRenderer.sendSync('get-tab-navigation', webview.getWebContentsId())
+      } catch (_) {}
+    }
+    if (navigation && !navigation.entries?.some(entry => entry.url && entry.url !== 'about:blank')) navigation = null
+    closedTabs.push({
+      url: tab.url,
+      title: tab.title,
+      navigation,
+      index,
+      pinned: this.pinnedTabs.has(tab.id),
+      groupId: this.tabGroupAssignments.get(tab.id) || null
+    })
+    if (closedTabs.length > CLOSED_TABS_KEPT) closedTabs.shift()
+  }
+
+  // Cmd+Shift+T, as in Chrome: the tab closed last comes back where it was,
+  // with its pages for Back, and is shown. Again and again, in order.
+  reopenClosedTab () {
+    const closed = closedTabs.pop()
+    if (!closed) return null
+    const tabId = `tab-${this.tabCounter++}`
+    this.addTabWithId(tabId, closed.url, closed.title, { navigation: closed.navigation })
+    if (closed.pinned) {
+      const pinned = this.tabs.filter(tab => this.pinnedTabs.has(tab.id)).length
+      this.moveTabToPosition(tabId, Math.min(closed.index, pinned))
+      this.pinnedTabs.add(tabId)
+      document.getElementById(tabId)?.classList.add('pinned')
+    } else {
+      this.moveTabToPosition(tabId, closed.index)
+      if (closed.groupId && this.tabGroups.has(closed.groupId)) {
+        this.addTabToGroup(tabId, closed.groupId)
+        this.normalizeGroupLayout()
+        this.updateGroupedTabsUI()
+      }
+    }
+    this.selectTab(tabId)
+    this.saveTabsState()
+    return tabId
+  }
+
+  // Cmd+1 to Cmd+8 show that tab, and Cmd+9 the last one, as in Chrome.
+  selectTabByNumber (number) {
+    const tab = number >= 9 ? this.tabs[this.tabs.length - 1] : this.tabs[number - 1]
+    if (tab && tab.id !== this.activeTabId) this.selectTab(tab.id)
+  }
+
+  // The next tab (step 1) or the one before (-1), round the ends.
+  selectAdjacentTab (step) {
+    if (this.tabs.length < 2) return
+    const index = this.tabs.findIndex(tab => tab.id === this.activeTabId)
+    if (index === -1) return
+    this.selectTab(this.tabs[(index + step + this.tabs.length) % this.tabs.length].id)
   }
 
   getSplitForTab (tabId) {
@@ -2015,11 +2084,13 @@ class TabBar extends HTMLElement {
     }
   }
 
-  reloadActiveTab () {
+  // ignoreCache: Cmd+Shift+R, which fetches everything again, as in Chrome.
+  reloadActiveTab ({ ignoreCache = false } = {}) {
     const webview = this.getActiveWebview()
     if (!webview) return
     const failed = failedUrlBehindErrorPage(webview)
     if (failed) this.retryFailedLoad(webview, failed)
+    else if (ignoreCache) webview.reloadIgnoringCache()
     else webview.reload()
   }
 

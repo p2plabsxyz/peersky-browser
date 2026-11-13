@@ -163,7 +163,7 @@ describe('a failed load in the history', function () {
   })
 
   it('does the same for Reload, and for the failed address entered again', function () {
-    const reload = tabBar.slice(tabBar.indexOf('  reloadActiveTab () {'), tabBar.indexOf('  // Zoom the page'))
+    const reload = tabBar.slice(tabBar.indexOf('  reloadActiveTab ('), tabBar.indexOf('  // Zoom the page'))
     expect(reload).to.contain('if (failed) this.retryFailedLoad(webview, failed)')
     const navigate = tabBar.slice(tabBar.indexOf('  navigateActiveTab (url) {'), tabBar.indexOf('  goBackActiveTab () {'))
     expect(navigate).to.contain('if (failed && sameAddress(failed, url)) this.retryFailedLoad(webview, failed)')

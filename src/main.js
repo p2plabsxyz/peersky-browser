@@ -15,6 +15,7 @@ import { attachTrackpadZoom, handlePinchZoom } from './trackpad-zoom.js'
 import { setupTabDialogs } from './tab-dialogs.js'
 import { setupHttpAuth } from './http-auth.js'
 import { setupPageDialogs } from './page-dialogs.js'
+import { reservedTabShortcut, isStopKey, tabBarCall } from './tab-shortcuts.js'
 import { followHistoryRedirect } from './history-address.js'
 import { stepTabHistory } from './history-nav.js'
 import { watchLeaving, registerTabClosing } from './leave-site.js'
@@ -177,39 +178,29 @@ app.on('web-contents-created', (event, wc) => {
 
 const webviewTabShortcutNavAttached = new WeakSet()
 
+// Chrome's tab shortcuts a page never keeps, such as Cmd+Shift+T and
+// Ctrl+Tab, are taken from it before it has them (tab-shortcuts.js). Escape
+// stops a page still loading, and the page has the key too.
 function attachWebviewTabShortcutNav (wc) {
   if (!wc || wc.isDestroyed()) return
   if (typeof wc.getType !== 'function' || wc.getType() !== 'webview') return
   if (webviewTabShortcutNavAttached.has(wc)) return
   webviewTabShortcutNavAttached.add(wc)
 
-  const runOnShell = (next) => {
+  const runOnShell = (script) => {
     const win = BrowserWindow.fromWebContents(wc)
     if (!win || win.isDestroyed()) return
     const shellWc = win.webContents
     if (shellWc.isDestroyed()) return
-    const script = next
-      ? '(()=>{try{const t=document.querySelector(\'#tabbar\');if(!t||!t.tabs||t.tabs.length<2)return;const i=t.tabs.findIndex(x=>x.id===t.activeTabId);if(i<0)return;t.selectTab(t.tabs[(i+1)%t.tabs.length].id);}catch(e){console.error(e);}})()'
-      : '(()=>{try{const t=document.querySelector(\'#tabbar\');if(!t||!t.tabs||t.tabs.length<2)return;const i=t.tabs.findIndex(x=>x.id===t.activeTabId);if(i<0)return;t.selectTab(t.tabs[(i-1+t.tabs.length)%t.tabs.length].id);}catch(e){console.error(e);}})()'
     shellWc.executeJavaScript(script).catch(() => {})
   }
 
   wc.on('before-input-event', (event, input) => {
-    if (input.type !== 'keyDown') return
-
-    const isMac = process.platform === 'darwin'
-    let goNext = null
-    if (isMac) {
-      if (input.meta && input.alt && (input.key === 'ArrowRight' || input.key === 'ArrowLeft')) {
-        goNext = input.key === 'ArrowRight'
-      }
-    } else if (input.control && input.key === 'Tab') {
-      goNext = !input.shift
-    }
-
-    if (goNext === null) return
+    if (isStopKey(input) && wc.isLoadingMainFrame()) wc.stop()
+    const shortcut = reservedTabShortcut(input)
+    if (!shortcut) return
     event.preventDefault()
-    runOnShell(goNext)
+    runOnShell(tabBarCall(shortcut.method, ...shortcut.args))
   })
 }
 
