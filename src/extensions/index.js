@@ -639,6 +639,10 @@ class ExtensionManager {
             if (changed) await this._writeRegistry()
             continue
           }
+          // A new bundled version takes the old one's folder, so it stays the
+          // same extension, with its storage (services/preinstalled-update.js).
+          // Should that fail, it is imported again as before.
+          if (await this._updatePreinstalledInPlace(existing, entry, sourcePath, sourceStat)) continue
           await removePreinstalledRecord(existing)
         } else if (entry.id && this.loadedExtensions.has(entry.id)) {
           continue
@@ -1483,6 +1487,35 @@ class ExtensionManager {
    * Prepare extension from directory (secured)
    */
   async _prepareFromDirectory (dirPath) { return (await import('./services/installers/directory.js')).prepareFromDirectory(this, dirPath) }
+
+  /**
+   * Put a new bundled version of a preinstalled extension in the installed
+   * one's folder, keeping its record, its Electron ID and so its storage.
+   * Runs before extensions are loaded. False when it could not.
+   */
+  async _updatePreinstalledInPlace (existing, entry, sourcePath, sourceStat) {
+    let fresh = null
+    try {
+      fresh = sourceStat.isDirectory()
+        ? await this._prepareFromDirectory(sourcePath)
+        : await this._prepareFromArchive(sourcePath)
+      const { moveIntoPlace } = await import('./services/preinstalled-update.js')
+      const updated = await moveIntoPlace(existing, fresh)
+      if (entry.version) updated.preinstallVersion = entry.version
+      updated.preinstalledEntry = preinstalledEntryKey(entry)
+      if (entry.name) updated.displayName = entry.name
+      this.loadedExtensions.set(existing.id, updated)
+      await this._writeRegistry()
+      log.info('ExtensionManager: Preinstalled extension updated in place:', updated.displayName || updated.name, updated.version)
+      return true
+    } catch (err) {
+      log.warn('ExtensionManager: Could not update a preinstalled extension in place:', existing?.displayName || existing?.id, err.message || err)
+      if (fresh?.installedPath && fresh.installedPath !== existing?.installedPath) {
+        await fs.rm(path.dirname(fresh.installedPath), { recursive: true, force: true }).catch(() => {})
+      }
+      return false
+    }
+  }
 
   /**
    * Prepare extension from ZIP/CRX archive
