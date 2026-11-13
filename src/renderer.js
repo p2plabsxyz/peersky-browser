@@ -894,13 +894,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       updateBookmarkIcon(e.detail.url)
     })
 
-    // Update page title
-    webviewContainer.addEventListener('page-title-updated', (e) => {
-      pageTitle.innerText = e.detail.title
-        ? `${e.detail.title} - ${windowTitle}`
-        : windowTitle
-    })
-
     // Find Menu Event Listeners
     findMenu.addEventListener('next', ({ detail }) => {
       const webview = tabBar.getActiveWebview()

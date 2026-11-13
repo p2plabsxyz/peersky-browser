@@ -1896,6 +1896,10 @@ class TabBar extends HTMLElement {
           titleElement.textContent = title
         }
       }
+      // The window is named for the tab in front, as in Chrome. The window
+      // cannot hear a page's new title itself: a <webview>'s events do not
+      // bubble, so it kept the title the tab had when it was selected.
+      if (tabId === this.activeTabId) document.title = this.windowTitleFor(title)
     }
 
     this._updateP2PIndicator(tabId)
@@ -1906,6 +1910,11 @@ class TabBar extends HTMLElement {
 
   getActiveTab () {
     return this.tabs.find(tab => tab.id === this.activeTabId)
+  }
+
+  // The window's title for a tab's: "Page - Peersky Browser".
+  windowTitleFor (title) {
+    return `${title} - ${this.isIncognito ? 'Peersky Incognito' : 'Peersky Browser'}`
   }
 
   hasTab (tabId) {

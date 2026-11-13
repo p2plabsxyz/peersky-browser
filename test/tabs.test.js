@@ -4,6 +4,7 @@
 import { expect } from 'chai'
 import { readFile } from 'fs/promises'
 import { EventEmitter } from 'events'
+import vm from 'vm'
 import esmock from 'esmock'
 import sinon from 'sinon'
 
@@ -695,5 +696,57 @@ describe('the tab and group menus', function () {
       expect(body, name).to.contain('document.body.appendChild(menu)\n    this.keepInWindow(menu)')
     }
     expect(tabBar).to.contain('menu.style.top = `$' + '{Math.max(0, window.innerHeight - rect.height - 10)}px`')
+  })
+})
+
+// After a page changed its title, the window still said "New Tab - Peersky
+// Browser": it listened on the webview container, and <webview> events do not
+// bubble.
+describe('the window title', function () {
+  const methodSource = (name, next) => {
+    const start = tabBar.indexOf(`  ${name} (`)
+    const end = tabBar.indexOf(`\n  ${next} (`, start)
+    return tabBar.slice(start, tabBar.lastIndexOf('}', end) + 1).trim()
+  }
+
+  function strip ({ incognito = false } = {}) {
+    const document = { title: 'New Tab - Peersky Browser', getElementById: () => null }
+    const context = vm.createContext({ document })
+    const updateTab = vm.runInContext(`(function ${methodSource('updateTab', 'getActiveTab')})`, context)
+    const windowTitleFor = vm.runInContext(`(function ${methodSource('windowTitleFor', 'hasTab')})`, context)
+    const bar = {
+      tabs: [{ id: 'a', title: 'New Tab' }, { id: 'b', title: 'Other' }],
+      activeTabId: 'a',
+      isIncognito: incognito,
+      windowTitleFor,
+      _getProtocol: () => 'https:',
+      _updateP2PIndicator () {},
+      saveTabsState () {}
+    }
+    return { document, update: (tabId, change) => updateTab.call(bar, tabId, change) }
+  }
+
+  it('follows the title of the tab in front as its page changes it', function () {
+    const { document, update } = strip()
+    update('a', { title: 'Second Title' })
+    expect(document.title).to.equal('Second Title - Peersky Browser')
+  })
+
+  it('is left alone by a tab behind it', function () {
+    const { document, update } = strip()
+    update('b', { title: 'Loaded behind' })
+    update('a', { url: 'https://example.com/' })
+    expect(document.title).to.equal('New Tab - Peersky Browser')
+  })
+
+  it('says Peersky Incognito in an incognito window', function () {
+    const { document, update } = strip({ incognito: true })
+    update('a', { title: 'Private page' })
+    expect(document.title).to.equal('Private page - Peersky Incognito')
+  })
+
+  it('is set by the tab strip, which hears the page, and not by a listener that never fired', function () {
+    expect(tabBar).to.contain('if (tabId === this.activeTabId) document.title = this.windowTitleFor(title)')
+    expect(renderer).to.not.contain("webviewContainer.addEventListener('page-title-updated'")
   })
 })
