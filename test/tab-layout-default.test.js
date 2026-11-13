@@ -14,7 +14,8 @@ describe('the v1 tab layout', function () {
       session: { defaultSession: {} },
       safeStorage: { isEncryptionAvailable: () => false },
       dialog: {},
-      webContents: { getAllWebContents: () => [] }
+      webContents: { getAllWebContents: () => [] },
+      nativeTheme: { themeSource: 'system' }
     }
     const readFile = async () => {
       if (saved === undefined) throw Object.assign(new Error('missing'), { code: 'ENOENT' })
