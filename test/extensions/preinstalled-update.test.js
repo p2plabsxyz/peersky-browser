@@ -12,8 +12,8 @@ import { createWriteStream } from 'fs'
 import { access, mkdtemp, mkdir, readFile, readdir, writeFile } from 'fs/promises'
 import archiver from 'archiver'
 
-import { prepareFromArchive } from '../../src/extensions/services/installers/archive.js'
-import { moveIntoPlace } from '../../src/extensions/services/preinstalled-update.js'
+import { generateSecureExtensionId } from '../../src/extensions/utils/ids.js'
+import { moveIntoPlace, prepareUpdate } from '../../src/extensions/services/preinstalled-update.js'
 
 const exists = (file) => access(file).then(() => true, () => false)
 
@@ -75,10 +75,11 @@ describe('preinstalled extension updates', function () {
   it("puts the new version in the old one's folder, under the same record", async function () {
     const source = path.join(root, 'bundle')
     await writeExtension(source, '1.1.0', 'new.js')
-    const fresh = await prepareFromArchive(manager, await zipOf(source, root))
+    const { fresh, cleanup } = await prepareUpdate(manager, await zipOf(source, root))
     expect(fresh.installedPath).to.not.equal(existing.installedPath)
 
     const updated = await moveIntoPlace(existing, fresh)
+    await cleanup()
 
     // The same folder, so Electron gives it the same ID and storage.
     expect(updated.installedPath).to.equal(existing.installedPath)
@@ -91,9 +92,40 @@ describe('preinstalled extension updates', function () {
     expect(await exists(path.join(updated.installedPath, 'old.js'))).to.equal(false)
     // Left as the person and the bundle had it.
     expect(updated).to.include({ enabled: false, source: 'preinstalled', isSystem: true, removable: false, installDate: existing.installDate })
-    // Nothing else is left in the extensions folder.
+    // Nothing else is left in the extensions folder, staging included.
     expect((await readdir(manager.extensionsBaseDir)).filter((name) => name !== '_staging')).to.deep.equal(['oldid'])
+    expect(await readdir(path.join(manager.extensionsBaseDir, '_staging')).catch(() => [])).to.deep.equal([])
     expect(await readdir(path.join(manager.extensionsBaseDir, 'oldid'))).to.deep.equal(['1.0.0_0'])
+  })
+
+  it('takes the folder too when the version going in is the one installed first, after a rollback', async function () {
+    // The installer names a folder after the manifest, so the first version
+    // of a bundle maps to the folder it is still installed in.
+    const manifest = { manifest_version: 3, name: 'Blocker', version: '1.0.0', icons: { 16: 'icon.png' } }
+    const id = generateSecureExtensionId(manifest)
+    const installedPath = path.join(manager.extensionsBaseDir, id, '1.0.0_0')
+    await writeExtension(installedPath, '1.0.0', 'later.js')
+    const installed = { ...existing, id, installedPath, version: '1.1.0' }
+    manager.loadedExtensions = new Map([[id, installed]])
+
+    const source = path.join(root, 'rollback')
+    await writeExtension(source, '1.0.0', 'first.js')
+    const { fresh, cleanup } = await prepareUpdate(manager, await zipOf(source, root))
+    expect(fresh.id).to.equal(id)
+    const updated = await moveIntoPlace(installed, fresh)
+    await cleanup()
+
+    expect(updated.installedPath).to.equal(installedPath)
+    expect(updated.version).to.equal('1.0.0')
+    expect(await readFile(path.join(installedPath, 'first.js'), 'utf8')).to.equal('1.0.0')
+    expect(await exists(path.join(installedPath, 'later.js'))).to.equal(false)
+  })
+
+  it('never removes the installed folder that holds the new files', async function () {
+    const fresh = { id: 'oldid', installedPath: path.join(manager.extensionsBaseDir, 'oldid', '1.1.0_0'), version: '1.1.0', manifest: {} }
+    await writeExtension(fresh.installedPath, '1.1.0', 'new.js')
+    const updated = await moveIntoPlace(existing, fresh)
+    expect(await readFile(path.join(updated.installedPath, 'new.js'), 'utf8')).to.equal('1.1.0')
   })
 
   it('leaves the old version as it was when the new one cannot be moved in', async function () {
@@ -109,12 +141,17 @@ describe('preinstalled extension updates', function () {
     expect((await readdir(path.join(manager.extensionsBaseDir, 'oldid')))).to.deep.equal(['1.0.0_0'])
   })
 
-  it('is what a new bundled version gets, before it is imported again as before', async function () {
+  it('is what a new bundled version gets, after its old worker goes and before it is imported again as before', async function () {
     const source = await readFile(new URL('../../src/extensions/index.js', import.meta.url), 'utf8')
     const start = source.indexOf('async _installBundledPreinstalled')
     const body = source.slice(start, source.indexOf('\n  }\n', start))
+    const worker = body.indexOf('await this._clearExtensionWorker(existing)')
     const inPlace = body.indexOf('await this._updatePreinstalledInPlace(existing, entry, sourcePath, sourceStat)')
-    expect(inPlace).to.be.greaterThan(-1)
+    expect(worker).to.be.greaterThan(-1)
+    expect(inPlace).to.be.greaterThan(worker)
     expect(body.indexOf('await removePreinstalledRecord(existing)', inPlace)).to.be.greaterThan(inPlace)
+    // Only the worker's registration goes, not the extension's storage.
+    const clear = source.slice(source.indexOf('async _clearExtensionWorker'))
+    expect(clear).to.match(/clearStorageData\(\{ origin: `chrome-extension:\/\/\$\{ext\.electronId\}`, storages: \['serviceworkers'\] \}\)/)
   })
 })

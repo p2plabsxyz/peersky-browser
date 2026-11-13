@@ -7,11 +7,35 @@
 // trusted sites and settings stayed behind with the old name. Chrome keeps an
 // extension's ID and data through an update, and so does this: the new files
 // take the old ones' folder, under the same record.
+//
+// The new version is unpacked in a staging folder of its own first. There the
+// installed version's slot does not count against it, so the same version
+// going back in, after a rollback, takes the folder too.
 
 import path from 'path'
 import { randomBytes } from 'crypto'
 import { promises as fs } from 'fs'
 import { ensureDir } from '../util.js'
+
+/**
+ * Unpacks the bundled version at sourcePath into a staging folder under the
+ * extensions folder, on the same disk, so it can be moved into place.
+ * @returns {Promise<{ fresh: object, cleanup: () => Promise<void> }>}
+ */
+export async function prepareUpdate (manager, sourcePath, { directory = false } = {}) {
+  const base = path.join(manager.extensionsBaseDir, '_staging', `update-${Date.now()}-${randomBytes(4).toString('hex')}`)
+  const cleanup = () => fs.rm(base, { recursive: true, force: true }).catch(() => {})
+  const staging = { extensionsBaseDir: base, loadedExtensions: new Map(), app: manager.app }
+  try {
+    const fresh = directory
+      ? await (await import('./installers/directory.js')).prepareFromDirectory(staging, sourcePath)
+      : await (await import('./installers/archive.js')).prepareFromArchive(staging, sourcePath)
+    return { fresh, cleanup }
+  } catch (error) {
+    await cleanup()
+    throw error
+  }
+}
 
 /**
  * Moves a freshly prepared version into the installed one's folder.
@@ -23,8 +47,11 @@ export async function moveIntoPlace (existing, fresh) {
   if (!existing?.installedPath || !fresh?.installedPath) throw new Error('Nothing to update in place')
   if (path.resolve(existing.installedPath) === path.resolve(fresh.installedPath)) throw new Error('The new version is already in place')
   await swapDir(fresh.installedPath, existing.installedPath)
-  // The new version's own folder, now empty.
-  await fs.rm(path.dirname(fresh.installedPath), { recursive: true, force: true }).catch(() => {})
+  // The new version's own folder, now empty, unless it is the installed one's.
+  const freshRoot = path.resolve(path.dirname(fresh.installedPath))
+  if (freshRoot !== path.resolve(path.dirname(existing.installedPath))) {
+    await fs.rm(freshRoot, { recursive: true, force: true }).catch(() => {})
+  }
 
   const updated = {
     ...existing,

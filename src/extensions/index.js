@@ -641,7 +641,9 @@ class ExtensionManager {
           }
           // A new bundled version takes the old one's folder, so it stays the
           // same extension, with its storage (services/preinstalled-update.js).
-          // Should that fail, it is imported again as before.
+          // Should that fail, it is imported again as before. Either way the
+          // old version's worker goes first, or it would run on.
+          await this._clearExtensionWorker(existing)
           if (await this._updatePreinstalledInPlace(existing, entry, sourcePath, sourceStat)) continue
           await removePreinstalledRecord(existing)
         } else if (entry.id && this.loadedExtensions.has(entry.id)) {
@@ -1494,13 +1496,11 @@ class ExtensionManager {
    * Runs before extensions are loaded. False when it could not.
    */
   async _updatePreinstalledInPlace (existing, entry, sourcePath, sourceStat) {
-    let fresh = null
+    const { prepareUpdate, moveIntoPlace } = await import('./services/preinstalled-update.js')
+    let staged = null
     try {
-      fresh = sourceStat.isDirectory()
-        ? await this._prepareFromDirectory(sourcePath)
-        : await this._prepareFromArchive(sourcePath)
-      const { moveIntoPlace } = await import('./services/preinstalled-update.js')
-      const updated = await moveIntoPlace(existing, fresh)
+      staged = await prepareUpdate(this, sourcePath, { directory: sourceStat.isDirectory() })
+      const updated = await moveIntoPlace(existing, staged.fresh)
       if (entry.version) updated.preinstallVersion = entry.version
       updated.preinstalledEntry = preinstalledEntryKey(entry)
       if (entry.name) updated.displayName = entry.name
@@ -1510,10 +1510,25 @@ class ExtensionManager {
       return true
     } catch (err) {
       log.warn('ExtensionManager: Could not update a preinstalled extension in place:', existing?.displayName || existing?.id, err.message || err)
-      if (fresh?.installedPath && fresh.installedPath !== existing?.installedPath) {
-        await fs.rm(path.dirname(fresh.installedPath), { recursive: true, force: true }).catch(() => {})
-      }
       return false
+    } finally {
+      await staged?.cleanup()
+    }
+  }
+
+  /**
+   * An extension's background worker stays registered under its ID, and an
+   * extension updated under the same ID went on running its old code. Its
+   * registration goes before the extension loads again, so the new version's
+   * worker is registered as it loads, as Chrome does on an update. Its storage
+   * stays.
+   */
+  async _clearExtensionWorker (ext) {
+    if (!ext?.electronId || typeof this.session?.clearStorageData !== 'function') return
+    try {
+      await this.session.clearStorageData({ origin: `chrome-extension://${ext.electronId}`, storages: ['serviceworkers'] })
+    } catch (error) {
+      log.warn('ExtensionManager: Could not clear the old worker of', ext.displayName || ext.id, error?.message || error)
     }
   }
 
