@@ -45,9 +45,3 @@ export function reservedTabShortcut (input, platform = process.platform) {
   }
   return null
 }
-
-/** Escape with nothing else held, which stops a page still loading, as in Chrome. */
-export function isStopKey (input) {
-  return input?.type === 'keyDown' && input.key === 'Escape' && !input.isComposing &&
-    !input.shift && !input.control && !input.alt && !input.meta
-}

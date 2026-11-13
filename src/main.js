@@ -15,7 +15,7 @@ import { attachTrackpadZoom, handlePinchZoom } from './trackpad-zoom.js'
 import { setupTabDialogs } from './tab-dialogs.js'
 import { setupHttpAuth, noteSignInChallenge } from './http-auth.js'
 import { setupPageDialogs } from './page-dialogs.js'
-import { reservedTabShortcut, isStopKey, tabBarCall } from './tab-shortcuts.js'
+import { reservedTabShortcut, tabBarCall } from './tab-shortcuts.js'
 import { followHistoryRedirect } from './history-address.js'
 import { stepTabHistory } from './history-nav.js'
 import { watchLeaving, registerTabClosing } from './leave-site.js'
@@ -197,7 +197,6 @@ function attachWebviewTabShortcutNav (wc) {
   }
 
   wc.on('before-input-event', (event, input) => {
-    if (isStopKey(input) && wc.isLoadingMainFrame()) wc.stop()
     const shortcut = reservedTabShortcut(input)
     if (!shortcut) return
     event.preventDefault()
@@ -1536,6 +1535,17 @@ ipcMain.on('peersky-mouse-history', (event, step) => {
   if (!tab || tab.isDestroyed() || tab.getType() !== 'webview') return
   if (event.senderFrame?.parent) return
   stepTabHistory(tab, step)
+})
+
+// Escape stops a tab's page while it is still loading, when the page did not
+// use the key itself, as to close its own dialog (pages/unified-preload.js).
+// Stopping before the page had the key cut such a page's loads short. Only a
+// tab's own page can ask, and only for that tab.
+ipcMain.on('peersky-stop-loading', (event) => {
+  const tab = event.sender
+  if (!tab || tab.isDestroyed() || tab.getType() !== 'webview') return
+  if (event.senderFrame?.parent) return
+  if (tab.isLoadingMainFrame()) tab.stop()
 })
 
 ipcMain.on('group-action', (_event, data) => {

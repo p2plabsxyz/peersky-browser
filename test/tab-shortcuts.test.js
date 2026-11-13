@@ -6,7 +6,7 @@ import { expect } from 'chai'
 import { readFile } from 'fs/promises'
 import vm from 'vm'
 import esmock from 'esmock'
-import { reservedTabShortcut, isStopKey, tabBarCall } from '../src/tab-shortcuts.js'
+import { reservedTabShortcut, tabBarCall } from '../src/tab-shortcuts.js'
 
 const source = async (file) => (await readFile(new URL(file, import.meta.url), 'utf8')).replace(/\r\n/g, '\n')
 
@@ -62,14 +62,48 @@ describe('keys a page never keeps', function () {
   })
 })
 
+// Escape stopped the page before the page had the key, which cut short the
+// loads of a page that used Escape to close its own dialog.
 describe('Escape on a page still loading', function () {
-  it('is Escape alone, pressed', function () {
-    expect(isStopKey(key({ key: 'Escape', code: 'Escape' }))).to.equal(true)
-    for (const held of ['shift', 'control', 'alt', 'meta', 'isComposing']) {
-      expect(isStopKey(key({ key: 'Escape', code: 'Escape', [held]: true })), held).to.equal(false)
+  let pressEscape
+  before(async function () {
+    const preload = await source('../src/pages/unified-preload.js')
+    const start = preload.indexOf("window.addEventListener('keydown', (event) => {\n  if (!event.isTrusted || event.key !== 'Escape'")
+    expect(start).to.be.above(-1)
+    const block = preload.slice(start, preload.indexOf('\n})\n', start) + 4)
+    pressEscape = async (init = {}) => {
+      const sent = []
+      let listener = null
+      const window = { addEventListener: (type, fn) => { if (type === 'keydown') listener = fn } }
+      vm.runInNewContext(block, { window, setTimeout, ipcRenderer: { send: (channel) => sent.push(channel) } })
+      listener({ isTrusted: true, key: 'Escape', isComposing: false, shiftKey: false, ctrlKey: false, altKey: false, metaKey: false, defaultPrevented: false, ...init })
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      return sent
     }
-    expect(isStopKey(key({ type: 'keyUp', key: 'Escape', code: 'Escape' }))).to.equal(false)
-    expect(isStopKey(key({ key: 'a' }))).to.equal(false)
+  })
+
+  it('stops the page when the page did not use it', async function () {
+    expect(await pressEscape()).to.deep.equal(['peersky-stop-loading'])
+  })
+
+  it('leaves a page that used it loading', async function () {
+    expect(await pressEscape({ defaultPrevented: true })).to.deep.equal([])
+  })
+
+  it('is Escape alone, pressed by the person', async function () {
+    for (const held of ['shiftKey', 'ctrlKey', 'altKey', 'metaKey', 'isComposing']) {
+      expect(await pressEscape({ [held]: true }), held).to.deep.equal([])
+    }
+    expect(await pressEscape({ isTrusted: false })).to.deep.equal([])
+    expect(await pressEscape({ key: 'a' })).to.deep.equal([])
+  })
+
+  it("stops only a tab's own page, from its top frame, while it loads", async function () {
+    const main = await source('../src/main.js')
+    const handler = main.slice(main.indexOf("ipcMain.on('peersky-stop-loading'"), main.indexOf("ipcMain.on('group-action'"))
+    expect(handler).to.contain("tab.getType() !== 'webview'")
+    expect(handler).to.contain('if (event.senderFrame?.parent) return')
+    expect(handler).to.contain('if (tab.isLoadingMainFrame()) tab.stop()')
   })
 })
 
@@ -80,9 +114,9 @@ describe('the shortcuts in a tab and in the menu', function () {
     actionsSource = await source('../src/actions.js')
   })
 
-  it("take a tab's reserved keys before its page has them, and stop a loading page on Escape without taking it", function () {
+  it("take a tab's reserved keys before its page has them", function () {
     const handler = main.slice(main.indexOf("  wc.on('before-input-event', (event, input) => {"), main.indexOf('// A page is a process of its own'))
-    expect(handler).to.contain('if (isStopKey(input) && wc.isLoadingMainFrame()) wc.stop()')
+    expect(handler).to.not.contain('stop()')
     expect(handler).to.contain('const shortcut = reservedTabShortcut(input)')
     expect(handler.indexOf('event.preventDefault()')).to.be.above(handler.indexOf('if (!shortcut) return'))
     expect(handler).to.contain('runOnShell(tabBarCall(shortcut.method, ...shortcut.args))')

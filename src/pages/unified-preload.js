@@ -105,6 +105,18 @@ if (process.platform === 'darwin') {
   })
 }
 
+// Escape with nothing else held stops the page while it loads, unless the page
+// used the key itself, as one closing its own dialog does (main.js).
+window.addEventListener('keydown', (event) => {
+  if (!event.isTrusted || event.key !== 'Escape' || event.isComposing) return
+  if (event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) return
+  // Looked at once every listener has had it, as for the mouse buttons above.
+  setTimeout(() => {
+    if (event.defaultPrevented) return
+    ipcRenderer.send('peersky-stop-loading')
+  }, 0)
+})
+
 // A page's alert(), confirm() and prompt() come up over its tab, naming its
 // origin, and the page waits for the answer, as in Chrome (src/page-dialogs.js).
 // Electron showed nothing for prompt() and answered null. A page that is not
