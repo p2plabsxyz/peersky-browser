@@ -23,6 +23,15 @@ export const MANAGED_PERMISSIONS = [
 ]
 
 const PROMPT_PERMISSIONS = new Set(MANAGED_PERMISSIONS.map(p => p.id))
+
+// Chromium asks for Web MIDI as midiSysex, and checks it as midi or midiSysex.
+// Both are the one MIDI devices row, as in Chrome's site settings, where a
+// request matched no row and was refused without asking.
+const PERMISSION_ROWS = { midiSysex: 'midi' }
+
+export function permissionRow (permission) {
+  return PERMISSION_ROWS[permission] || permission
+}
 const PERMISSION_LABELS = Object.fromEntries(
   MANAGED_PERMISSIONS.map(p => [p.id, p.label])
 )
@@ -360,18 +369,20 @@ export function setupIncognitoPermissionHandler (session) {
       callback(true) // eslint-disable-line n/no-callback-literal
       return
     }
+    const row = permissionRow(permission)
     const origin = originFromWebContents(webContents)
-    if (!PROMPT_PERMISSIONS.has(permission) || permission === 'p2pPublish' || !origin) {
+    if (!PROMPT_PERMISSIONS.has(row) || row === 'p2pPublish' || !origin) {
       callback(false) // eslint-disable-line n/no-callback-literal
       return
     }
-    requestSitePermission(webContents, origin, permission, { incognito: true }).then(callback)
+    requestSitePermission(webContents, origin, row, { incognito: true }).then(callback)
   })
   session.setPermissionCheckHandler((_webContents, permission, requestingOrigin, details) => {
     if (SILENT_GRANT_PERMISSIONS.has(permission) || isOwnPageFileAccess(permission, details, requestingOrigin)) return true
-    if (!PROMPT_PERMISSIONS.has(permission)) return false
+    const row = permissionRow(permission)
+    if (!PROMPT_PERMISSIONS.has(row)) return false
     const origin = permissionOriginFromUrl(requestingOrigin)
-    return !!origin && entryAllows(incognitoCache.get(cacheKey(origin, permission)))
+    return !!origin && entryAllows(incognitoCache.get(cacheKey(origin, row)))
   })
 }
 
@@ -383,7 +394,8 @@ export async function setupPermissionHandler (session) {
       callback(true) // eslint-disable-line n/no-callback-literal
       return
     }
-    if (!PROMPT_PERMISSIONS.has(permission)) {
+    const row = permissionRow(permission)
+    if (!PROMPT_PERMISSIONS.has(row)) {
       callback(false) // eslint-disable-line n/no-callback-literal
       return
     }
@@ -394,14 +406,15 @@ export async function setupPermissionHandler (session) {
       return
     }
 
-    requestSitePermission(webContents, origin, permission).then(callback)
+    requestSitePermission(webContents, origin, row).then(callback)
   })
 
   session.setPermissionCheckHandler((_webContents, permission, requestingOrigin, details) => {
     if (SILENT_GRANT_PERMISSIONS.has(permission) || isOwnPageFileAccess(permission, details, requestingOrigin)) return true
-    if (!PROMPT_PERMISSIONS.has(permission)) return false
+    const row = permissionRow(permission)
+    if (!PROMPT_PERMISSIONS.has(row)) return false
     const origin = permissionOriginFromUrl(requestingOrigin)
     if (!origin) return false
-    return entryAllows(permissionCache.get(cacheKey(origin, permission)))
+    return entryAllows(permissionCache.get(cacheKey(origin, row)))
   })
 }
