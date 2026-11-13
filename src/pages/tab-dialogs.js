@@ -1,5 +1,6 @@
-// Dialogs a tab asked for, such as a site's sign-in, drawn over that tab
-// (src/tab-dialogs.js). As in Chrome a dialog belongs to its tab: it is on
+// Dialogs a tab asked for, drawn over that tab (src/tab-dialogs.js): a site's
+// sign-in (src/http-auth.js), and a page's alert(), confirm() and prompt()
+// (src/page-dialogs.js). As in Chrome a dialog belongs to its tab: it is on
 // screen only while its tab is, keeps what was typed while another tab is in
 // front, and keeps clicks and keys from that page only.
 //
@@ -13,8 +14,12 @@
   const tabs = new Map()
 
   const BUILDERS = {
-    'sign-in': signIn
+    'sign-in': signIn,
+    alert: pageDialog,
+    confirm: pageDialog,
+    prompt: pageDialog
   }
+  const PAGE_KINDS = ['alert', 'confirm', 'prompt']
 
   ipcRenderer.on('tab-dialog-show', (_event, dialog) => add(dialog))
   ipcRenderer.on('tab-dialog-close', (_event, message) => remove(message?.id))
@@ -40,6 +45,16 @@
     const build = BUILDERS[dialog.kind]
     const webview = build ? webviewFor(dialog.webContentsId) : null
     if (!webview) return send(dialog, null)
+    // A page's dialog while its tab is not on screen, as in Chrome: confirm()
+    // and prompt() are answered at once, and alert() waits for the tab
+    // without holding the page. Only the latest alert waits.
+    if (PAGE_KINDS.includes(dialog.kind) && !shown(webview)) {
+      if (dialog.kind !== 'alert') return send(dialog, { background: true })
+      send(dialog, { later: true })
+      dialog.waiting = true
+      const before = tabs.get(dialog.webContentsId)
+      for (const old of before ? before.dialogs.filter((each) => each.waiting) : []) drop(before, old)
+    }
     const tab = tabs.get(dialog.webContentsId) || track(dialog.webContentsId, webview)
     dialog.element = build(dialog, (answer) => {
       send(dialog, answer)
@@ -67,7 +82,17 @@
     tab.dialogs.splice(index, 1)
     dialog.element.remove()
     update(tab)
-    if (hadFocus && !tab.dialogs.length && shown(tab.webview)) tab.webview.focus()
+    // The page has the keys again, as in Chrome, unless another dialog came up
+    // for it or the person went elsewhere. Not at once: Chromium hands focus
+    // on to a page a moment later, which took it from the next dialog of a
+    // page showing them one after another.
+    if (!hadFocus) return
+    const { webContentsId, webview } = tab
+    setTimeout(() => {
+      const active = document.activeElement
+      if (tabs.has(webContentsId) || !shown(webview) || (active && active !== document.body)) return
+      webview.focus()
+    }, 150)
   }
 
   function track (webContentsId, webview) {
@@ -89,6 +114,13 @@
       if (!layer.hidden) setTimeout(() => focusDialog(tab), 0)
     }
     webview.addEventListener('focus', tab.onFocus)
+    // An alert waiting for the tab goes with its page, as the dialogs main
+    // waits on do.
+    tab.onNavigate = (event) => {
+      if (!event.isMainFrame || event.isInPlace) return
+      for (const old of tab.dialogs.filter((each) => each.waiting)) drop(tab, old)
+    }
+    webview.addEventListener('did-start-navigation', tab.onNavigate)
     const focusPage = webview.focus
     Object.defineProperty(webview, 'focus', {
       configurable: true,
@@ -103,6 +135,7 @@
     tab.styleWatch.disconnect()
     tab.sizeWatch.disconnect()
     tab.webview.removeEventListener('focus', tab.onFocus)
+    tab.webview.removeEventListener('did-start-navigation', tab.onNavigate)
     delete tab.webview.focus
     tab.layer.remove()
     tabs.delete(tab.webContentsId)
@@ -151,6 +184,11 @@
     const dialog = tab.dialogs[0]
     if (!dialog || tab.layer.hidden || dialog.element.contains(document.activeElement)) return
     dialog.focusTarget?.focus()
+    // A prompt's text is selected the first time, as in Chrome.
+    if (dialog.selectOnce) {
+      dialog.selectOnce = false
+      dialog.focusTarget.select()
+    }
   }
 
   function make (tag, className, text) {
@@ -172,9 +210,9 @@
     return input
   }
 
-  function buttons (cancel, ok) {
+  function buttons (...list) {
     const row = make('div', 'tab-dialog-buttons')
-    row.append(cancel, ok)
+    row.append(...list)
     return row
   }
 
@@ -240,6 +278,53 @@
     cancel.addEventListener('click', () => done(null))
     keys(form, () => done(null))
     dialog.focusTarget = username
+    return form
+  }
+
+  // Chrome's: who says it, the message, a prompt's text, and, from the
+  // page's second dialog on, a way to stop it making more. Escape is Cancel,
+  // and OK for an alert, which has nothing else.
+  function pageDialog (dialog, done) {
+    const form = frame(dialog, 'alertdialog', dialog.title)
+    const message = make('p', 'tab-dialog-message', dialog.message)
+    message.id = `tab-dialog-${dialog.id}-message`
+    form.setAttribute('aria-describedby', message.id)
+    form.append(message)
+    let input = null
+    if (dialog.kind === 'prompt') {
+      input = document.createElement('input')
+      input.type = 'text'
+      input.className = 'tab-dialog-input'
+      input.value = dialog.value ?? ''
+      input.autocomplete = 'off'
+      input.spellcheck = false
+      input.setAttribute('aria-labelledby', message.id)
+      form.append(input)
+    }
+    let stop = null
+    if (dialog.offerStop && !dialog.answered) {
+      const row = make('label', 'tab-dialog-stop')
+      stop = document.createElement('input')
+      stop.type = 'checkbox'
+      row.append(stop, make('span', null, 'Prevent this page from creating additional dialogs'))
+      form.append(row)
+    }
+    const ok = button('OK', 'submit')
+    const cancel = dialog.kind === 'alert' ? null : button('Cancel')
+    form.append(cancel ? buttons(cancel, ok) : buttons(ok))
+    const answer = (accepted) => done({
+      ok: accepted,
+      ...(input && accepted && { value: input.value }),
+      ...(stop?.checked && { stop: true })
+    })
+    form.addEventListener('submit', (event) => {
+      event.preventDefault()
+      answer(true)
+    })
+    cancel?.addEventListener('click', () => answer(false))
+    keys(form, () => answer(dialog.kind === 'alert'))
+    dialog.focusTarget = input || ok
+    dialog.selectOnce = Boolean(input)
     return form
   }
 })()

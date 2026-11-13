@@ -105,6 +105,75 @@ if (process.platform === 'darwin') {
   })
 }
 
+// A page's alert(), confirm() and prompt() come up over its tab, naming its
+// origin, and the page waits for the answer, as in Chrome (src/page-dialogs.js).
+// Electron showed nothing for prompt() and answered null. A page that is not
+// a tab's is answered native, and keeps Electron's own.
+try {
+  contextBridge.executeInMainWorld({
+    func: (ask) => {
+      const native = { alert: window.alert, confirm: window.confirm, prompt: window.prompt }
+      const later = window.setTimeout.bind(window)
+      const now = Date.now
+      const { error, warn } = console
+      // As in Chrome, none while the page is going away.
+      let leaving = null
+      for (const type of ['beforeunload', 'pagehide']) {
+        window.addEventListener(type, () => {
+          leaving = type
+          later(() => { leaving = null }, 0)
+        }, true)
+      }
+      // Once the person stopped this page's dialogs, and for a moment after a
+      // tab not on screen was answered at once, the page has its answer
+      // without asking, so a loop cannot keep the browser busy.
+      let stopped = false
+      let quietUntil = 0
+      const call = (kind, message, value) => {
+        if (leaving) {
+          error(`Blocked ${kind}('${message}') during ${leaving}.`)
+          return { ok: false }
+        }
+        if (stopped || now() < quietUntil) return { ok: false }
+        const answer = ask(kind, message, value) || { ok: false }
+        if (answer.stopped) stopped = true
+        if (answer.background || answer.later) quietUntil = now() + 500
+        if (answer.background) warn(`A window.${kind}() dialog was not shown because this page is not in the tab on screen.`)
+        return answer
+      }
+      const dialogs = {
+        alert (...args) {
+          if (call('alert', args.length ? `${args[0]}` : '').native) native.alert.apply(window, args)
+        },
+        confirm (message = '') {
+          const shown = `${message}`
+          const answer = call('confirm', shown)
+          return answer.native ? native.confirm.call(window, shown) : answer.ok === true
+        },
+        prompt (message = '', value = '') {
+          const shown = `${message}`
+          const initial = `${value}`
+          const answer = call('prompt', shown, initial)
+          if (answer.native) return native.prompt.call(window, shown, initial)
+          return answer.ok === true ? `${answer.value ?? ''}` : null
+        }
+      }
+      for (const name of Object.keys(dialogs)) {
+        Object.defineProperty(window, name, { value: dialogs[name], writable: true, enumerable: true, configurable: true })
+      }
+    },
+    args: [(kind, message, value) => {
+      try {
+        return ipcRenderer.sendSync('page-dialog', { type: kind, message, value })
+      } catch {
+        return { native: true }
+      }
+    }]
+  })
+} catch (error) {
+  console.warn('Unified-preload: page dialogs stay Electron\'s own:', error)
+}
+
 if (isTorrentUi) {
   contextBridge.exposeInMainWorld('peerskyBT', {
     apiToken: () => ipcRenderer.invoke('bt-api-token')

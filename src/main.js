@@ -14,6 +14,7 @@ import { createHandler as createFileHandler } from './protocols/file-handler.js'
 import { attachTrackpadZoom, handlePinchZoom } from './trackpad-zoom.js'
 import { setupTabDialogs } from './tab-dialogs.js'
 import { setupHttpAuth } from './http-auth.js'
+import { setupPageDialogs } from './page-dialogs.js'
 import { followHistoryRedirect } from './history-address.js'
 import { stepTabHistory } from './history-nav.js'
 import { watchLeaving, registerTabClosing } from './leave-site.js'
@@ -146,10 +147,12 @@ app.on('browser-window-created', (event, win) => {
 
 handlePinchZoom(ipcMain)
 
-// A site's sign-in comes up over its tab (http-auth.js), drawn by the window
-// that holds the tab (tab-dialogs.js).
+// A site's sign-in, and a page's alert(), confirm() and prompt(), come up
+// over its tab (http-auth.js, page-dialogs.js), drawn by the window that
+// holds the tab (tab-dialogs.js).
 setupTabDialogs()
 setupHttpAuth()
+setupPageDialogs()
 
 app.on('web-contents-created', (event, wc) => {
   const wcId = wc.id

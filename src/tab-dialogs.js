@@ -1,7 +1,7 @@
 /**
- * Dialogs over a tab, the way Chrome shows a site's sign-in: the window that
- * holds the tab draws it over that tab only, and only while the tab is on
- * screen (pages/tab-dialogs.js), then says what was chosen.
+ * Dialogs over a tab, the way Chrome shows a site's sign-in or a page's
+ * alert(): the window that holds the tab draws it over that tab only, and only
+ * while the tab is on screen (pages/tab-dialogs.js), then says what was chosen.
  *
  * A dialog is answered with null when its tab or its window goes, and when
  * closeTabDialogs takes it down.

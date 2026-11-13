@@ -1,6 +1,6 @@
-/* A dialog a tab asked for, over that tab's page (pages/tab-dialogs.js). The
-   layer covers the page so it takes no clicks, and leaves it in view, as
-   Chrome does. */
+/* A dialog a tab asked for, over that tab's page (pages/tab-dialogs.js): a
+   site's sign-in, or a page's alert, confirm or prompt. The layer covers the
+   page so it takes no clicks, and leaves it in view, as Chrome does. */
 .tab-dialog-layer {
   position: absolute;
   z-index: 5;
@@ -52,6 +52,14 @@
   overflow-wrap: anywhere;
 }
 
+.tab-dialog-message {
+  margin: 8px 0 0;
+  max-height: 40vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .tab-dialog-field {
   display: block;
   margin-top: 12px;
@@ -62,7 +70,8 @@
   margin-bottom: 4px;
 }
 
-.tab-dialog-field input {
+.tab-dialog-field input,
+.tab-dialog-input {
   display: block;
   width: 100%;
   box-sizing: border-box;
@@ -74,9 +83,27 @@
   font: inherit;
 }
 
-.tab-dialog-field input:focus {
+.tab-dialog-input {
+  margin-top: 12px;
+}
+
+.tab-dialog-field input:focus,
+.tab-dialog-input:focus {
   outline: none;
   border-color: var(--browser-theme-primary-highlight);
+}
+
+.tab-dialog-stop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  color: var(--settings-text-secondary);
+  cursor: pointer;
+}
+
+.tab-dialog-stop input {
+  margin: 0;
 }
 
 .tab-dialog-buttons {

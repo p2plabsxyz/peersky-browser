@@ -1120,7 +1120,10 @@ class TabBar extends HTMLElement {
     const preloadPath = path.join(__dirname, 'unified-preload.js')
     const preloadURL = pathToFileURL(preloadPath).href
     webview.setAttribute('preload', preloadURL)
-    webview.setAttribute('webpreferences', 'contextIsolation=yes,nativeWindowOpen=yes,autoplayPolicy=document-user-activation-required')
+    // A frame inside the page still gets Electron's own dialogs (the preload
+    // is the top frame's: src/page-dialogs.js), so from its second one on, the
+    // person can stop it making more, as in Chrome.
+    webview.setAttribute('webpreferences', 'contextIsolation=yes,nativeWindowOpen=yes,autoplayPolicy=document-user-activation-required,safeDialogs=yes,safeDialogsMessage=Prevent this page from creating additional dialogs')
     // History can only be restored before the first load, so a tab that has
     // some starts on a placeholder that main swaps for the restored history.
     let src = url
