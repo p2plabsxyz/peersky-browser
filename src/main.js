@@ -14,6 +14,7 @@ import { createHandler as createFileHandler } from './protocols/file-handler.js'
 import { attachTrackpadZoom, handlePinchZoom } from './trackpad-zoom.js'
 import { followHistoryRedirect } from './history-address.js'
 import { stepTabHistory } from './history-nav.js'
+import { watchLeaving, registerTabClosing } from './leave-site.js'
 import { darkenRawTextPages } from './raw-text-pages.js'
 import { noteUnplayableSound } from './media-sound-notes.js'
 import { applyPasswordStore, choosePasswordStore } from './linux-keyring.js'
@@ -150,6 +151,7 @@ app.on('web-contents-created', (event, wc) => {
     followHistoryRedirect(wc)
     darkenRawTextPages(wc)
     noteUnplayableSound(wc)
+    watchLeaving(wc)
   }
   wc.on('did-navigate', (e, url) => {
     if (url.startsWith('peersky://downloads')) {
@@ -1505,6 +1507,7 @@ ipcMain.on('get-tab-navigation', (event, webContentsId) => {
 })
 
 registerNavigationRestore()
+registerTabClosing()
 
 // A mouse's back or forward button over a page, which the page in a tab hands
 // on when it did not use the press (pages/unified-preload.js). Only a tab's own

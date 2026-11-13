@@ -241,14 +241,14 @@ export function createActions (windowManager) {
       click: () => {
         const focusedWindow = BrowserWindow.getFocusedWindow()
         if (focusedWindow) {
+          // The tab's page is asked first, as in Chrome; the last tab takes
+          // the window with it once its page lets it go.
           focusedWindow.webContents.executeJavaScript(`
             try {
               const tabBar = document.querySelector('#tabbar');
-              if (tabBar && tabBar.tabs && tabBar.tabs.length > 1 && typeof tabBar.closeTab === 'function' && typeof tabBar.getActiveTab === 'function') {
-                const activeTab = tabBar.getActiveTab();
-                if (activeTab && activeTab.id) {
-                  tabBar.closeTab(activeTab.id);
-                }
+              const activeTab = tabBar && typeof tabBar.getActiveTab === 'function' ? tabBar.getActiveTab() : null;
+              if (activeTab && activeTab.id && typeof tabBar.askToCloseTab === 'function') {
+                tabBar.askToCloseTab(activeTab.id);
               } else {
                 window.close();
               }
@@ -311,10 +311,10 @@ export function createActions (windowManager) {
           focusedWindow.webContents.executeJavaScript(`
             try {
               const tabBar = document.querySelector('#tabbar');
-              if (tabBar && typeof tabBar.getActiveTab === 'function' && typeof tabBar.closeTab === 'function') {
+              if (tabBar && typeof tabBar.getActiveTab === 'function' && typeof tabBar.askToCloseTab === 'function') {
                 const activeTab = tabBar.getActiveTab();
                 if (activeTab && activeTab.id) {
-                  tabBar.closeTab(activeTab.id);
+                  tabBar.askToCloseTab(activeTab.id);
                 }
               }
             } catch (error) {

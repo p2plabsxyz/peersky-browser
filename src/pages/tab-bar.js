@@ -879,7 +879,7 @@ class TabBar extends HTMLElement {
     closeButton.innerHTML = '×'
     closeButton.addEventListener('click', (e) => {
       e.stopPropagation()
-      this.closeTab(tabId)
+      this.askToCloseTab(tabId)
     })
 
     tab.appendChild(faviconElement)
@@ -1441,6 +1441,28 @@ class TabBar extends HTMLElement {
         this.selectTab(tabId)
       }
     })
+  }
+
+  // Closing a tab asks its page first, as Chrome does: a page with a "leave
+  // site?" handler gets its question, and the tab stays if the person stays
+  // (leave-site.js). Taken away straight, the page was never asked. The tab
+  // goes once main says the page has let it.
+  askToCloseTab (tabId) {
+    const webview = this.webviews.get(tabId)
+    let webContentsId = null
+    try {
+      webContentsId = webview?.getWebContentsId?.() ?? null
+    } catch {}
+    if (webContentsId === null) return this.closeTab(tabId)
+    this._askingToClose ||= new Set()
+    if (this._askingToClose.has(tabId)) return
+    this._askingToClose.add(tabId)
+    const { ipcRenderer } = require('electron')
+    ipcRenderer.invoke('close-tab-asking-page', webContentsId)
+      .then((close) => {
+        if (close) this.closeTab(tabId)
+      }, () => this.closeTab(tabId))
+      .finally(() => this._askingToClose.delete(tabId))
   }
 
   closeTab (tabId) {
@@ -2332,7 +2354,7 @@ class TabBar extends HTMLElement {
         break
 
       case 'close':
-        this.closeTab(tabId)
+        this.askToCloseTab(tabId)
         break
 
       case 'add-to-new-group':
@@ -2433,6 +2455,19 @@ class TabBar extends HTMLElement {
       } catch {}
     }
     return null
+  }
+
+  // The person stayed on a page that asked before it was left (leave-site.js):
+  // the tab shows that page's address again, not the one typed for it.
+  stayedOnPage (webContentsId) {
+    const tab = this.findTabByWebContentsId(webContentsId)
+    const webview = tab && this.webviews.get(tab.id)
+    if (!webview) return
+    let url = ''
+    try { url = webview.getURL() } catch {}
+    if (!url || url === tab.url) return
+    this.updateTab(tab.id, { url })
+    this.dispatchEvent(new CustomEvent('tab-navigated', { detail: { tabId: tab.id, url } }))
   }
 
   addTabToTheRight (tabId) {
@@ -2780,7 +2815,7 @@ class TabBar extends HTMLElement {
       .map(tab => tab.id)
 
     tabsToClose.forEach(tabId => {
-      this.closeTab(tabId)
+      this.askToCloseTab(tabId)
     })
   }
 
@@ -3105,7 +3140,7 @@ class TabBar extends HTMLElement {
       .map(([tabId, _]) => tabId);
 
     [...tabIds].forEach(tabId => {
-      this.closeTab(tabId)
+      this.askToCloseTab(tabId)
     })
 
     // The group deletion will be handled by deleteGroupAcrossWindows if empty
@@ -3601,7 +3636,7 @@ class TabBar extends HTMLElement {
 
     // Make a copy since closeTab modifies the collection
     [...tabIds].forEach(tabId => {
-      this.closeTab(tabId)
+      this.askToCloseTab(tabId)
     })
 
     // The group should be automatically deleted when empty

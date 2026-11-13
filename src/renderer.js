@@ -470,10 +470,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   })
 
+  ipcRenderer.on('tab-stayed', (_, webContentsId) => {
+    tabBar?.stayedOnPage?.(webContentsId)
+  })
+
+  // From the Tabs page: its page is asked first, as for any tab closed by hand.
   ipcRenderer.on('close-tab', (_, id) => {
     try {
-      if (tabBar && typeof tabBar.closeTab === 'function') {
-        tabBar.closeTab(id)
+      if (tabBar && typeof tabBar.askToCloseTab === 'function') {
+        tabBar.askToCloseTab(id)
       }
     } catch (e) {
       console.error('Error closing tab via IPC:', e)
