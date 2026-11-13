@@ -1,6 +1,7 @@
 import {
   handleURL,
-  replaceErrorDocumentScript
+  replaceErrorDocumentScript,
+  failedAddressOf
 } from './utils.js'
 
 const chromiumNetErrors = require('chromium-net-errors')
@@ -9,6 +10,9 @@ const { ipcRenderer } = require('electron')
 
 const DEFAULT_PAGE = 'peersky://home'
 const isHomePage = (url) => url === 'peersky://home' || url === 'peersky://home/'
+// The address bar shows the address that failed over its error page, as in
+// Chrome, where it showed peersky://error.html/?code=...
+const shownAddress = (url) => failedAddressOf(url) || url
 let webviewContainer = null // Will be set dynamically for tabs
 let tabBar // Holds current tab bar component
 let sidePanelEl = null
@@ -572,11 +576,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (isHomePage(activeTab.url)) {
           urlInput.value = ''
         } else {
-          urlInput.value = activeTab.url
+          urlInput.value = shownAddress(activeTab.url)
         }
 
         // Also update the nav display
-        nav.setStyledUrl(isHomePage(activeTab.url) ? '' : activeTab.url, activeTab.url)
+        nav.setStyledUrl(isHomePage(activeTab.url) ? '' : shownAddress(activeTab.url), activeTab.url)
       }
     }, 300)
 
@@ -606,7 +610,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (isHomePage(url)) {
       nav.setStyledUrl('', url)
     } else {
-      nav.setStyledUrl(url)
+      nav.setStyledUrl(shownAddress(url), url)
     }
 
     const tab = tabBar.tabs.find(t => t.id === tabId)
@@ -640,7 +644,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (isHomePage(url)) {
         nav.setStyledUrl('', url)
       } else {
-        nav.setStyledUrl(url)
+        nav.setStyledUrl(shownAddress(url), url)
       }
 
       setTimeout(() => updateNavigationButtons(tabBar), 100)
@@ -730,7 +734,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const activeTab = tabBar.getActiveTab()
     if (activeTab && nav.querySelector('#url')) {
       // Hide peersky://home URL, show all others
-      nav.querySelector('#url').value = isHomePage(activeTab.url) ? '' : activeTab.url
+      nav.querySelector('#url').value = isHomePage(activeTab.url) ? '' : shownAddress(activeTab.url)
       // Update bookmark icon for initial tab
       if (activeTab.url) {
         updateBookmarkIcon(activeTab.url)

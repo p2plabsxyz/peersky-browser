@@ -45,6 +45,35 @@ function connectionFor (protocol) {
   }
 }
 
+// PeerSky's page for a load that failed (renderer.js) stands in for the
+// address that failed, which the address bar shows over it, as Chrome does.
+// Only an address the browser loads: it comes in a URL a page can make up.
+function failedAddressOf (url) {
+  try {
+    const page = new URL(url)
+    if (page.protocol !== 'peersky:' || page.hostname !== 'error.html') return null
+    const failed = page.searchParams.get('url')
+    return failed && NAVIGABLE_SCHEMES.has(new URL(failed).protocol) ? failed : null
+  } catch {
+    return null
+  }
+}
+
+// The connection the shield shows for a page. An error page is not secure,
+// whatever its peersky: address says: a site whose certificate failed showed
+// "Connection is secure".
+const ERROR_PAGE_CONNECTION = { secure: false, label: 'Not secure' }
+
+function connectionForPage (url) {
+  try {
+    const page = new URL(url)
+    if (page.protocol === 'peersky:' && page.hostname === 'error.html') return ERROR_PAGE_CONNECTION
+    return connectionFor(page.protocol)
+  } catch {
+    return connectionFor('')
+  }
+}
+
 // A load that fails leaves Chromium's own empty error document in the tab, in
 // the history entry of the address that failed. PeerSky's error page takes that
 // entry over from inside it, as the page's own location.replace() would, so
@@ -345,6 +374,8 @@ export {
   NAVIGABLE_SCHEMES,
   CONNECTION_BY_PROTOCOL,
   connectionFor,
+  connectionForPage,
+  failedAddressOf,
   ERROR_DOCUMENT_URL,
   replaceErrorDocumentScript,
   looksLikeDomain,
