@@ -46,12 +46,26 @@ function connectionFor (protocol) {
 }
 
 // PeerSky's page for a load that failed (renderer.js) stands in for the
-// address that failed, which the address bar shows over it, as Chrome does.
-// Only an address the browser loads: it comes in a URL a page can make up.
+// address that failed, which the address bar shows over it. Only an address
+// the browser loads, and only on an error page the browser made: any page can
+// open peersky://error.html with an address of its own choosing, which would
+// put a bank's address over the page's own text. The browser's error pages
+// carry a key made at each start (main.js), which pages never see.
+let errorPageKey = null
+
+function setErrorPageKey (key) {
+  errorPageKey = typeof key === 'string' && key.length >= 32 ? key : null
+}
+
+function errorPageKeyOf () {
+  return errorPageKey
+}
+
 function failedAddressOf (url) {
   try {
     const page = new URL(url)
     if (page.protocol !== 'peersky:' || page.hostname !== 'error.html') return null
+    if (!errorPageKey || page.searchParams.get('key') !== errorPageKey) return null
     const failed = page.searchParams.get('url')
     return failed && NAVIGABLE_SCHEMES.has(new URL(failed).protocol) ? failed : null
   } catch {
@@ -376,6 +390,8 @@ export {
   connectionFor,
   connectionForPage,
   failedAddressOf,
+  setErrorPageKey,
+  errorPageKeyOf,
   ERROR_DOCUMENT_URL,
   replaceErrorDocumentScript,
   looksLikeDomain,

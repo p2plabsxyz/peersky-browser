@@ -1,12 +1,17 @@
 import {
   handleURL,
   replaceErrorDocumentScript,
-  failedAddressOf
+  failedAddressOf,
+  setErrorPageKey,
+  errorPageKeyOf
 } from './utils.js'
 
 const chromiumNetErrors = require('chromium-net-errors')
 
 const { ipcRenderer } = require('electron')
+
+// The key that marks this browser's own error pages (see failedAddressOf).
+setErrorPageKey(ipcRenderer.sendSync('error-page-key'))
 
 const DEFAULT_PAGE = 'peersky://home'
 const isHomePage = (url) => url === 'peersky://home' || url === 'peersky://home/'
@@ -263,7 +268,8 @@ function setupWebviewErrorHandling (webview) {
       code: errorInfo.code,
       name: errorInfo.name,
       msg: errorInfo.msg,
-      url: errorInfo.url
+      url: errorInfo.url,
+      key: errorPageKeyOf() || ''
     })
 
     showInPlaceOfFailure(`peersky://error.html?${params}`)

@@ -52,6 +52,7 @@ import { BLOCKED_SCHEME, BLOCKED_SCHEME_PRIVILEGES, answerBlockedCall, blockedCa
 import { getBrowserSession, getIncognitoSession, INCOGNITO_PARTITION, usePersist } from './session.js'
 import { setupIncognitoPermissionHandler, setupPermissionHandler, requestSitePermission, permissionOriginFromUrl } from './permissions.js'
 import { setupSiteInfoIpc } from './site-info-ipc.js'
+import { setErrorPageKey } from './utils.js'
 import { startPeerChatPresence } from './peerchat-presence.js'
 import { setupDevToolsDock } from './devtools-dock.js'
 import { setupP2pmdPdfExportIpc } from './pages/p2p/p2pmd/pdf-export-ipc.js'
@@ -1246,6 +1247,16 @@ app.on('activate', () => {
   if (windowManager.all.length === 0) {
     windowManager.open({ isMainWindow: true })
   }
+})
+
+// The key on this run's own error pages (failedAddressOf in utils.js), for
+// the browser window only: never a tab's page, which could then make one.
+const errorPageKey = crypto.randomBytes(24).toString('hex')
+setErrorPageKey(errorPageKey)
+ipcMain.on('error-page-key', (event) => {
+  let shell = false
+  try { shell = event.sender.getType() === 'window' && event.sender.getURL().startsWith('file:') } catch {}
+  event.returnValue = shell ? errorPageKey : null
 })
 
 ipcMain.on('remove-all-tempIcon', () => {
