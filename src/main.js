@@ -13,7 +13,7 @@ import { createHandler as createWeb3Handler } from './protocols/web3-handler.js'
 import { createHandler as createFileHandler } from './protocols/file-handler.js'
 import { attachTrackpadZoom, handlePinchZoom } from './trackpad-zoom.js'
 import { setupTabDialogs } from './tab-dialogs.js'
-import { setupHttpAuth } from './http-auth.js'
+import { setupHttpAuth, noteSignInChallenge } from './http-auth.js'
 import { setupPageDialogs } from './page-dialogs.js'
 import { reservedTabShortcut, isStopKey, tabBarCall } from './tab-shortcuts.js'
 import { followHistoryRedirect } from './history-address.js'
@@ -1044,6 +1044,11 @@ function installRequestGate (session, options) {
     const stamped = stampVetted(details)
     callback(stamped ? { requestHeaders: stamped } : {}) // eslint-disable-line n/no-callback-literal
   })
+  // What a sign-in is for, before Electron asks for it (http-auth.js).
+  session.webRequest.onHeadersReceived({ urls: ['<all_urls>'] }, (details, callback) => {
+    noteSignInChallenge(details)
+    callback({}) // eslint-disable-line n/no-callback-literal
+  })
 }
 
 function installExtensionWebRequestBridge (session) {
@@ -1148,6 +1153,8 @@ function installExtensionWebRequestBridge (session) {
     { urls: ['<all_urls>'] },
     async (details, callback) => {
       const url = details?.url || ''
+      // What a sign-in is for, loopback included (http-auth.js).
+      noteSignInChallenge(details)
       if (!shouldForwardToExtensions(url)) {
         callback({}) // eslint-disable-line n/no-callback-literal
         return

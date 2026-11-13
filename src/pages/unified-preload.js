@@ -129,13 +129,17 @@ try {
       // without asking, so a loop cannot keep the browser busy.
       let stopped = false
       let quietUntil = 0
+      // Cut to what a dialog shows (MESSAGE_LIMIT and VALUE_LIMIT in
+      // src/page-dialogs.js) before it is sent, so a page cannot push a huge
+      // string through to the browser.
+      const clip = (text, limit) => (text.length > limit ? `${text.slice(0, limit)}…` : text)
       const call = (kind, message, value) => {
         if (leaving) {
           error(`Blocked ${kind}('${message}') during ${leaving}.`)
           return { ok: false }
         }
         if (stopped || now() < quietUntil) return { ok: false }
-        const answer = ask(kind, message, value) || { ok: false }
+        const answer = ask(kind, clip(message, 3000), value === undefined ? undefined : clip(value, 2000)) || { ok: false }
         if (answer.stopped) stopped = true
         if (answer.background || answer.later) quietUntil = now() + 500
         if (answer.background) warn(`A window.${kind}() dialog was not shown because this page is not in the tab on screen.`)

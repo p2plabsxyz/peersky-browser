@@ -242,6 +242,16 @@ describe("the page's alert, confirm and prompt", function () {
     expect(() => window.alert(Symbol('x'))).to.throw().with.property('name', 'TypeError')
   })
 
+  it('sends no more than a dialog shows, so a page cannot push a huge string through', function () {
+    const { window, calls } = stage()
+    window.prompt('m'.repeat(5000), 'v'.repeat(5000))
+    window.alert('a'.repeat(3000))
+    expect(calls[0][1]).to.have.length(3001)
+    expect(calls[0][1].endsWith('…')).to.equal(true)
+    expect(calls[0][2]).to.have.length(2001)
+    expect(calls[1][1], 'up to the limit as it is').to.equal('a'.repeat(3000))
+  })
+
   it('gives the page what the person chose', function () {
     const { window } = stage([{ ok: true }, { ok: false }, { ok: true, value: 'Grace' }, { ok: false }, { ok: true }])
     expect(window.confirm('a')).to.equal(true)

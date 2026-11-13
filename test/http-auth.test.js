@@ -7,13 +7,16 @@ import { expect } from 'chai'
 import { EventEmitter } from 'events'
 import { readFile } from 'fs/promises'
 import esmock from 'esmock'
+import sinon from 'sinon'
 
 const source = async (file) => (await readFile(new URL(file, import.meta.url), 'utf8')).replace(/\r\n/g, '\n')
 
-function contents (id, { type = 'webview', host = null, session = {} } = {}) {
+function contents (id, { type = 'webview', host = null, session = {}, page = 'http://example.com/' } = {}) {
   const wc = new EventEmitter()
   wc.id = id
   wc.session = session
+  wc.page = page
+  wc.getURL = () => wc.page
   wc.sent = []
   wc.destroyed = false
   wc.isDestroyed = () => wc.destroyed
@@ -125,6 +128,19 @@ describe('signing in to a site', function () {
 
   const settle = () => new Promise((resolve) => setImmediate(resolve))
 
+  // A 401 as webRequest's onHeadersReceived sees it, just before Electron
+  // asks for the sign-in.
+  function challenge (guest, url, resourceType = 'mainFrame', extra = {}) {
+    auth.noteSignInChallenge({
+      statusCode: 401,
+      webContentsId: guest.id,
+      url,
+      resourceType,
+      responseHeaders: { 'WWW-Authenticate': ['Basic realm="A"'] },
+      ...extra
+    })
+  }
+
   describe('what the dialog names', function () {
     it('the origin that asked, never the path', function () {
       expect(auth.signInRequest('https://example.com:8443/a/b?c=d')).to.deep.equal({ origin: 'https://example.com:8443', notPrivate: false })
@@ -151,6 +167,8 @@ describe('signing in to a site', function () {
     it('shares it between the requests that hit it together', async function () {
       const { guest } = tab()
       const info = { scheme: 'basic', realm: 'Files' }
+      challenge(guest, 'http://example.com/a.png', 'image')
+      challenge(guest, 'http://example.com/b.png', 'image')
       const first = auth.askToSignIn(guest, 'http://example.com/a.png', info)
       const second = auth.askToSignIn(guest, 'http://example.com/b.png', info)
       expect(asked).to.have.length(1)
@@ -163,9 +181,11 @@ describe('signing in to a site', function () {
     it('asks again once answered, so wrong credentials get another try', async function () {
       const { guest } = tab()
       const info = { scheme: 'basic', realm: 'Files' }
+      challenge(guest, 'http://example.com/')
       const first = auth.askToSignIn(guest, 'http://example.com/', info)
       asked[0].resolve({ username: 'me', password: 'wrong' })
       await first
+      challenge(guest, 'http://example.com/')
       auth.askToSignIn(guest, 'http://example.com/', info)
       expect(asked).to.have.length(2)
     })
@@ -173,6 +193,8 @@ describe('signing in to a site', function () {
     it('asks separately for another realm, another site or another tab', function () {
       const { guest } = tab(2)
       const other = tab(3).guest
+      for (const url of ['http://example.com/', 'http://example.com/', 'https://example.com/']) challenge(guest, url)
+      challenge(other, 'http://example.com/')
       auth.askToSignIn(guest, 'http://example.com/', { scheme: 'basic', realm: 'A' })
       auth.askToSignIn(guest, 'http://example.com/', { scheme: 'basic', realm: 'B' })
       auth.askToSignIn(guest, 'https://example.com/', { scheme: 'basic', realm: 'A' })
@@ -182,6 +204,8 @@ describe('signing in to a site', function () {
 
     it('gives nothing for Cancel or an answer that is not a sign-in', async function () {
       const { guest } = tab()
+      challenge(guest, 'http://example.com/')
+      challenge(guest, 'http://example.com/')
       const cancelled = auth.askToSignIn(guest, 'http://example.com/', { realm: 'A' })
       asked[0].resolve(null)
       expect(await cancelled).to.equal(null)
@@ -192,6 +216,7 @@ describe('signing in to a site', function () {
 
     it('ends when the tab goes to another page, not for a change within the page', function () {
       const { guest } = tab(5)
+      challenge(guest, 'http://example.com/')
       auth.askToSignIn(guest, 'http://example.com/', { realm: 'A' })
       guest.emit('did-start-navigation', { isMainFrame: true, isSameDocument: true })
       guest.emit('did-start-navigation', { isMainFrame: false, isSameDocument: false })
@@ -218,6 +243,7 @@ describe('signing in to a site', function () {
     it('asks over the tab in a session with no extension host, as a private window', async function () {
       auth.setupHttpAuth()
       const { guest } = tab()
+      challenge(guest, 'http://example.com/private')
       const { event, calls } = login(guest)
       expect(event.prevented).to.equal(true)
       expect(asked).to.have.length(1)
@@ -228,9 +254,21 @@ describe('signing in to a site', function () {
 
     it('cancels the challenge on Cancel, so the page gets the 401', async function () {
       auth.setupHttpAuth()
-      const { calls } = login(tab().guest)
+      const { guest } = tab()
+      challenge(guest, 'http://example.com/private')
+      const { calls } = login(guest)
       asked[0].resolve(null)
       await settle()
+      expect(calls).to.deep.equal([[]])
+    })
+
+    it('gives the 401 without asking for a request that gets no dialog', async function () {
+      auth.setupHttpAuth()
+      const { guest } = tab()
+      challenge(guest, 'http://example.com/private', 'xhr', { initiatorOrigin: 'http://other.example' })
+      const { calls } = login(guest)
+      await settle()
+      expect(asked).to.deep.equal([])
       expect(calls).to.deep.equal([[]])
     })
 
@@ -280,6 +318,7 @@ describe('signing in to a site', function () {
     })
 
     const challenge = (extra = {}) => ({ url: 'https://example.com/', webContentsId: 4, isProxy: false, scheme: 'digest', realm: 'R', ...extra })
+    const noted = (url, type = 'mainFrame') => auth.noteSignInChallenge({ statusCode: 401, webContentsId: 4, url, resourceType: type, responseHeaders: { 'www-authenticate': ['Digest realm="R"'] } })
 
     it("takes an extension's credentials and asks nothing", async function () {
       result = { authCredentials: { username: 'ext', password: 'pw' } }
@@ -294,6 +333,7 @@ describe('signing in to a site', function () {
     })
 
     it('asks the person when no extension answered', async function () {
+      noted('https://example.com/')
       const answered = webRequest.notifyOnAuthRequired(challenge())
       await settle()
       expect(asked).to.have.length(1)
@@ -304,10 +344,18 @@ describe('signing in to a site', function () {
     })
 
     it('hands back what the extensions said when the person cancels', async function () {
+      noted('https://example.com/')
       const answered = webRequest.notifyOnAuthRequired(challenge())
       await settle()
       asked[0].resolve(null)
       expect(await answered).to.deep.equal({})
+    })
+
+    it('hands back what the extensions said for a request that gets no dialog, so it ends as the 401', async function () {
+      guest.page = 'https://example.com/'
+      noted('https://tracker.example/pixel.gif', 'image')
+      expect(await webRequest.notifyOnAuthRequired(challenge({ url: 'https://tracker.example/pixel.gif' }))).to.deep.equal({})
+      expect(asked).to.deep.equal([])
     })
 
     it('leaves proxies, and pages that are not tabs, alone', async function () {
@@ -315,6 +363,108 @@ describe('signing in to a site', function () {
       expect(await webRequest.notifyOnAuthRequired(challenge({ webContentsId: 77 }))).to.deep.equal({})
       expect(await webRequest.notifyOnAuthRequired(challenge({ webContentsId: undefined }))).to.deep.equal({})
       expect(asked).to.deep.equal([])
+    })
+  })
+
+  describe('what each 401 was for', function () {
+    let clock
+    afterEach(function () { clock?.restore() })
+
+    it('is needed before anything is asked: a challenge nobody saw gets no dialog', async function () {
+      const { guest } = tab()
+      expect(await auth.askToSignIn(guest, 'http://example.com/')).to.equal(null)
+      expect(asked).to.deep.equal([])
+    })
+
+    it('is a 401 from a tab that asks for a sign-in, whatever the header name looks like', function () {
+      const { guest } = tab()
+      challenge(guest, 'http://example.com/a', 'mainFrame', { statusCode: 200 })
+      challenge(guest, 'http://example.com/b', 'mainFrame', { responseHeaders: { 'Content-Type': ['text/html'] } })
+      challenge(guest, 'http://example.com/c', 'mainFrame', { webContentsId: undefined })
+      challenge(guest, 'http://example.com/d', 'mainFrame', { responseHeaders: { 'www-authenticate': ['Basic'] } })
+      for (const url of ['http://example.com/a', 'http://example.com/b', 'http://example.com/c', 'http://example.com/d']) auth.askToSignIn(guest, url)
+      expect(asked.map(({ dialog }) => dialog.origin)).to.deep.equal(['http://example.com'])
+    })
+
+    it('is used once for each 401', function () {
+      const { guest } = tab()
+      challenge(guest, 'http://example.com/x.png', 'image')
+      challenge(guest, 'http://example.com/x.png', 'image')
+      auth.askToSignIn(guest, 'http://example.com/x.png', { realm: 'one' })
+      auth.askToSignIn(guest, 'http://example.com/x.png', { realm: 'two' })
+      auth.askToSignIn(guest, 'http://example.com/x.png', { realm: 'three' })
+      expect(asked).to.have.length(2)
+    })
+
+    it('is kept 20 seconds', function () {
+      clock = sinon.useFakeTimers({ now: Date.now(), toFake: ['Date'] })
+      const { guest } = tab()
+      challenge(guest, 'http://example.com/late')
+      clock.tick(auth.CHALLENGE_KEPT_MS + 1)
+      auth.askToSignIn(guest, 'http://example.com/late')
+      expect(asked).to.deep.equal([])
+    })
+
+    it('is one of the last 200 at most', function () {
+      const { guest } = tab()
+      for (let i = 0; i <= auth.CHALLENGES_KEPT; i++) challenge(guest, `http://example.com/${i}`)
+      auth.askToSignIn(guest, 'http://example.com/0', { realm: 'first' })
+      auth.askToSignIn(guest, `http://example.com/${auth.CHALLENGES_KEPT}`, { realm: 'last' })
+      expect(asked).to.have.length(1)
+    })
+  })
+
+  describe('which challenges get the dialog, as in Chrome', function () {
+    const may = (type, url, page, initiator) => auth.maySignIn({ type, url, page, initiator })
+
+    it('a page, and a frame\'s page from anywhere', function () {
+      expect(may('mainFrame', 'https://example.com/', '')).to.equal(true)
+      expect(may('subFrame', 'https://elsewhere.example/', 'https://example.com/')).to.equal(true)
+    })
+
+    it('what a page loads from its own site, another port or name on it included', function () {
+      expect(may('image', 'https://example.com/a.png', 'https://example.com/')).to.equal(true)
+      expect(may('image', 'https://img.example.com/a.png', 'https://www.example.com/')).to.equal(true)
+      expect(may('script', 'http://127.0.0.1:18081/a.js', 'http://127.0.0.1:18080/')).to.equal(true)
+      expect(may('stylesheet', 'https://example.com/a.css', 'https://example.com/')).to.equal(true)
+    })
+
+    it('nothing a page loads from another site, where it would name that site over this one', function () {
+      expect(may('image', 'https://tracker.example/pixel.gif', 'https://example.com/')).to.equal(false)
+      expect(may('image', 'http://site.test/a.png', 'http://127.0.0.1/')).to.equal(false)
+      expect(may('image', 'https://bob.github.io/a.png', 'https://alice.github.io/'), 'a public suffix').to.equal(false)
+      expect(may('font', 'https://fonts.example/a.woff', 'https://example.com/')).to.equal(false)
+    })
+
+    it('a fetch or XHR only to its own origin, since one to another origin is CORS', function () {
+      expect(may('xhr', 'https://example.com/api', 'https://example.com/', 'https://example.com')).to.equal(true)
+      expect(may('xhr', 'https://example.com/api', 'https://example.com/')).to.equal(true)
+      expect(may('xhr', 'https://api.example.com/x', 'https://example.com/', 'https://example.com')).to.equal(false)
+      expect(may('xhr', 'http://127.0.0.1:18081/x', 'http://127.0.0.1:18080/', 'http://127.0.0.1:18080')).to.equal(false)
+      expect(may('xhr', 'https://frame.example/api', 'https://example.com/', 'https://frame.example'), "a frame's fetch to its own origin").to.equal(true)
+      expect(may('xhr', 'https://example.com/api', 'https://example.com/', 'null'), 'an opaque origin').to.equal(false)
+    })
+
+    it('nothing sent in the clear from a private page', function () {
+      expect(may('image', 'http://example.com/a.png', 'https://example.com/')).to.equal(false)
+      expect(may('image', 'https://example.com/a.png', 'http://example.com/')).to.equal(true)
+    })
+
+    it('nothing for any other kind of request, or one it knows nothing about', function () {
+      for (const type of ['ping', 'cspReport', 'webSocket', 'other', undefined, 'mainframe']) {
+        expect(may(type, 'https://example.com/a', 'https://example.com/'), String(type)).to.equal(false)
+      }
+      expect(may('image', 'https://example.com/a.png', ''), 'no page').to.equal(false)
+    })
+
+    it('decides before anything is asked', async function () {
+      const { guest } = tab()
+      guest.page = 'http://127.0.0.1:18080/'
+      challenge(guest, 'http://site.test:18080/protected/x.png', 'image')
+      expect(await auth.askToSignIn(guest, 'http://site.test:18080/protected/x.png')).to.equal(null)
+      challenge(guest, 'http://127.0.0.1:18080/protected/y.png', 'image')
+      auth.askToSignIn(guest, 'http://127.0.0.1:18080/protected/y.png')
+      expect(asked.map(({ dialog }) => dialog.origin)).to.deep.equal(['http://127.0.0.1:18080'])
     })
   })
 })
@@ -335,6 +485,16 @@ describe('the sign-in dialog in the window', function () {
   it('is set up when the app starts', function () {
     expect(main).to.contain('setupTabDialogs()')
     expect(main).to.contain('setupHttpAuth()')
+  })
+
+  it("hears what each 401 was for, in the browser's session before anything is skipped, and in private windows", function () {
+    const bridge = main.slice(main.indexOf('function installExtensionWebRequestBridge ('))
+    const headers = bridge.slice(bridge.indexOf('session.webRequest.onHeadersReceived('), bridge.indexOf('session.webRequest.onBeforeRedirect('))
+    expect(headers.indexOf('noteSignInChallenge(details)')).to.be.above(-1)
+    expect(headers.indexOf('noteSignInChallenge(details)')).to.be.below(headers.indexOf('if (!shouldForwardToExtensions(url))'))
+    const gate = main.slice(main.indexOf('function installRequestGate ('), main.indexOf('function installExtensionWebRequestBridge ('))
+    expect(gate).to.match(/session\.webRequest\.onHeadersReceived\(\{ urls: \['<all_urls>'\] \}, \(details, callback\) => \{\s+noteSignInChallenge\(details\)\s+callback\(\{\}\)/)
+    expect(main).to.contain('installRequestGate(incognito, { incognito: true })')
   })
 
   it('puts text from sites in as text only', function () {
