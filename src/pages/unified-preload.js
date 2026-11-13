@@ -90,6 +90,21 @@ if (process.platform === 'darwin') {
   }, { passive: true })
 }
 
+// The back and forward buttons on a mouse step through the tab's history, as
+// in Chrome, unless the page used the press itself. Electron gives them to the
+// window as app commands on Windows and Linux (window-manager.js), where this
+// would go twice; on a Mac only the page sees them, and nothing went back.
+if (process.platform === 'darwin') {
+  window.addEventListener('mouseup', (event) => {
+    if (!event.isTrusted || (event.button !== 3 && event.button !== 4)) return
+    // Looked at once every listener has had it, as for the pinch above.
+    setTimeout(() => {
+      if (event.defaultPrevented) return
+      ipcRenderer.send('peersky-mouse-history', event.button === 3 ? 'back' : 'forward')
+    }, 0)
+  })
+}
+
 if (isTorrentUi) {
   contextBridge.exposeInMainWorld('peerskyBT', {
     apiToken: () => ipcRenderer.invoke('bt-api-token')

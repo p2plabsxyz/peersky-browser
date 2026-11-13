@@ -13,6 +13,7 @@ import { createHandler as createWeb3Handler } from './protocols/web3-handler.js'
 import { createHandler as createFileHandler } from './protocols/file-handler.js'
 import { attachTrackpadZoom, handlePinchZoom } from './trackpad-zoom.js'
 import { followHistoryRedirect } from './history-address.js'
+import { stepTabHistory } from './history-nav.js'
 import { darkenRawTextPages } from './raw-text-pages.js'
 import { noteUnplayableSound } from './media-sound-notes.js'
 import { applyPasswordStore, choosePasswordStore } from './linux-keyring.js'
@@ -1504,6 +1505,16 @@ ipcMain.on('get-tab-navigation', (event, webContentsId) => {
 })
 
 registerNavigationRestore()
+
+// A mouse's back or forward button over a page, which the page in a tab hands
+// on when it did not use the press (pages/unified-preload.js). Only a tab's own
+// page can ask, and only for that tab.
+ipcMain.on('peersky-mouse-history', (event, step) => {
+  const tab = event.sender
+  if (!tab || tab.isDestroyed() || tab.getType() !== 'webview') return
+  if (event.senderFrame?.parent) return
+  stepTabHistory(tab, step)
+})
 
 ipcMain.on('group-action', (_event, data) => {
   log.info('Group action received:', data)
