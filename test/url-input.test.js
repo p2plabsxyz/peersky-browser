@@ -321,6 +321,14 @@ describe('an address entered in the address bar', function () {
   it('does so once the tab is on its way there', function () {
     expect(renderer).to.match(/nav\.addEventListener\('navigate', async \(\{ detail \}\) => \{\s+const \{ url \} = detail\s+await navigateTo\(url\)\s+focusActivePage\(\)/)
   })
+
+  // The window listened for Enter in the address bar too, so every address
+  // was loaded twice: the first load started and was cut off by the second.
+  it('is loaded once, from the address bar\'s own navigate event', function () {
+    const navBox = readSource('pages/nav-box.js')
+    expect(navBox).to.match(/urlInput\.addEventListener\('keypress', \(event\) => \{\s+if \(event\.key === 'Enter'\) \{[\s\S]*?this\.dispatchEvent\(new CustomEvent\('navigate'/)
+    expect(renderer).to.not.match(/addEventListener\('keypress'/)
+  })
 })
 
 function readSource (name) {
