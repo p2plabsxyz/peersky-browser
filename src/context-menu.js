@@ -5,6 +5,7 @@ import extensionManager from './extensions/index.js'
 import { openDockedDevTools } from './devtools-dock.js'
 import { watchPageInput, takeInputGrant } from './page-input.js'
 import { queueFirstLoad } from './navigation-restore.js'
+import { getDomain } from 'tldts'
 
 const isMac = process.platform === 'darwin'
 
@@ -88,14 +89,31 @@ export function popupWindowBounds (bounds, { parentBounds, workArea } = {}) {
   return { ...options, x, y }
 }
 
+// A page's site: its scheme and registrable domain.
+function siteOf (address) {
+  try {
+    const { protocol, hostname } = new URL(address)
+    return `${protocol}//${getDomain(hostname, { allowPrivateDomains: true }) || hostname}`
+  } catch {
+    return null
+  }
+}
+
 // How a page asked for the page it opens: with its referrer, and a form's
 // POST body and type, as Electron's own window.open loads them. A new tab's
 // first load carries them (navigation-restore.js), so a POST form with
 // target=_blank stays a POST and a link sends its referrer.
-export function firstLoadOptions ({ referrer, postBody } = {}) {
+//
+// The POST goes again only to the site of the page that sent it, which its
+// referrer names. This load starts in the browser, so it carries the site's
+// SameSite cookies, which a POST from another site never gets: any page could
+// otherwise submit another site's forms as the person. A form sent to another
+// site, or with no referrer, opens its address as before.
+export function firstLoadOptions ({ url, referrer, postBody } = {}) {
   const options = {}
   if (referrer?.url) options.httpReferrer = referrer
-  if (Array.isArray(postBody?.data) && postBody.data.length) {
+  const sameSite = siteOf(referrer?.url) !== null && siteOf(referrer?.url) === siteOf(url)
+  if (sameSite && Array.isArray(postBody?.data) && postBody.data.length) {
     options.postData = postBody.data
     const type = postBody.contentType || 'application/x-www-form-urlencoded'
     options.extraHeaders = `content-type: ${type}${postBody.boundary ? `; boundary=${postBody.boundary}` : ''}`
@@ -636,7 +654,7 @@ export function attachContextMenus (browserWindow, windowManager) {
       // the page sent, and a tab opened under a name is kept by that name.
       const openInTab = (url, { background = false, referrer = null, postBody = null, name = null } = {}) => {
         const urlLiteral = JSON.stringify(url || '')
-        const load = firstLoadOptions({ referrer, postBody })
+        const load = firstLoadOptions({ url, referrer, postBody })
         const loadToken = name || Object.keys(load).length
           ? queueFirstLoad({ url, options: load, onAttach: name ? (tab) => nameTab(name, tab) : null })
           : null
@@ -694,7 +712,7 @@ export function attachContextMenus (browserWindow, windowManager) {
         const name = nameKey(webviewWebContents.id, frameName)
         const named = url && !isAboutBlank ? namedTab(name) : null
         if (named) {
-          named.loadURL(url, firstLoadOptions({ referrer, postBody })).catch(() => {})
+          named.loadURL(url, firstLoadOptions({ url, referrer, postBody })).catch(() => {})
           if (takeInputGrant(webviewWebContents) && !wantsBackground) showTab(named)
           return { action: 'deny' }
         }

@@ -178,8 +178,33 @@ describe('a new tab from a link or form', function () {
 
   it('keeps a multipart form whole', async function () {
     const { firstLoadOptions } = await loadModule()
-    const options = firstLoadOptions({ postBody: { data: [{ type: 'rawData', bytes: Buffer.from('--x') }], contentType: 'multipart/form-data', boundary: 'x' } })
+    const options = firstLoadOptions({ url: 'https://example.com/upload', referrer, postBody: { data: [{ type: 'rawData', bytes: Buffer.from('--x') }], contentType: 'multipart/form-data', boundary: 'x' } })
     expect(options.extraHeaders).to.equal('content-type: multipart/form-data; boundary=x')
+  })
+
+  // The browser starts this load, so a POST sent again carries the target's
+  // SameSite cookies: only a form on the same site may do that.
+  it('sends a POST again only to the site of the page that sent it', async function () {
+    const { firstLoadOptions } = await loadModule()
+    const posts = (url, from) => 'postData' in firstLoadOptions({ url, referrer: { url: from, policy: 'default' }, postBody })
+    expect(posts('https://example.com/echo', 'https://example.com/form')).to.equal(true)
+    expect(posts('https://accounts.example.com/echo', 'https://www.example.com/form')).to.equal(true)
+    expect(posts('https://bank.example/transfer', 'https://evil.example/')).to.equal(false)
+    expect(posts('https://example.com/echo', 'http://example.com/form')).to.equal(false)
+    expect(posts('https://alice.github.io/a', 'https://mallory.github.io/b')).to.equal(false)
+    expect(posts('https://example.com/echo', '')).to.equal(false)
+    expect('postData' in firstLoadOptions({ url: 'https://example.com/echo', postBody })).to.equal(false)
+  })
+
+  it('opens a form sent to another site as an address, with its referrer', async function () {
+    const { tab, tabOptions } = await loadMenus()
+    const from = { url: 'https://evil.example/', policy: 'strict-origin-when-cross-origin' }
+    tab.open({ url: 'https://bank.example/transfer', referrer: from, postBody })
+    await settle()
+    expect(queuedLoads).to.have.length(1)
+    expect(queuedLoads[0].url).to.equal('https://bank.example/transfer')
+    expect(queuedLoads[0].options).to.deep.equal({ httpReferrer: from })
+    expect(tabOptions()).to.have.length(1)
   })
 
   it('sends no referrer the page did not, and needs no special load then', async function () {
