@@ -10,7 +10,7 @@ const inputs = new WeakMap() // webContents -> { at, spent, used }
 
 export function watchPageInput (wc) {
   if (!wc || inputs.has(wc)) return
-  const input = { at: 0, spent: true, used: false }
+  const input = { at: 0, spent: true, used: false, pressed: false }
   inputs.set(wc, input)
   const note = (use) => {
     input.at = Date.now()
@@ -18,8 +18,17 @@ export function watchPageInput (wc) {
     if (use) input.used = true
   }
   wc.on('before-mouse-event', (_event, mouse) => {
-    if (mouse.type === 'mouseDown') note(true)
-    else if (mouse.type === 'mouseUp') note(false)
+    if (mouse.type === 'mouseDown') {
+      note(true)
+      input.pressed = true
+    } else if (mouse.type === 'mouseUp') {
+      // The same click ending: a page that opens on click gets its moment from
+      // here, but still only the one open the click allows, where mouseUp gave
+      // it a second. A button pressed outside the page counts as it goes up.
+      if (!input.pressed) note(false)
+      else if (!input.spent) input.at = Date.now()
+      input.pressed = false
+    }
   })
   wc.on('before-input-event', (_event, key) => {
     if (key.type !== 'keyDown') return

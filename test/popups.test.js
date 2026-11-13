@@ -80,6 +80,13 @@ describe('a person opening links in new tabs', function () {
     expect(tabsOpened()).to.have.length(3)
   })
 
+  it('limits what a page opens with noopener on its own too', async function () {
+    const { tab, tabsOpened } = await loadMenus()
+    for (let i = 1; i <= 5; i++) tab.open({ url: `https://example.com/${i}`, features: 'noopener' })
+    await settle()
+    expect(tabsOpened()).to.have.length(3)
+  })
+
   it('lets one click open one tab, and counts any more the page opens with it', async function () {
     const { tab, tabsOpened } = await loadMenus()
     tab.click()
@@ -331,6 +338,21 @@ describe('input in a page', function () {
     expect(takeInputGrant(tab)).to.equal(false)
     tab.emit('before-input-event', {}, { type: 'keyDown', key: 'Enter' })
     expect(takeInputGrant(tab)).to.equal(true)
+  })
+
+  // A page could open one tab as the button went down and another as it came
+  // up, both as the person's own.
+  it('gives one click one open, however the page times it', function () {
+    const tab = fakeTab()
+    watchPageInput(tab)
+    tab.emit('before-mouse-event', {}, { type: 'mouseDown', button: 'left' })
+    expect(takeInputGrant(tab)).to.equal(true)
+    tab.emit('before-mouse-event', {}, { type: 'mouseUp', button: 'left' })
+    expect(takeInputGrant(tab)).to.equal(false)
+    tab.emit('before-mouse-event', {}, { type: 'mouseDown', button: 'left' })
+    tab.emit('before-mouse-event', {}, { type: 'mouseUp', button: 'left' })
+    expect(takeInputGrant(tab)).to.equal(true)
+    expect(takeInputGrant(tab)).to.equal(false)
   })
 
   it('only counts for a moment', function () {

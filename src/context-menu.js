@@ -697,6 +697,11 @@ export function attachContextMenus (browserWindow, windowManager) {
         // If explicitly no opener requested, prefer tab UX instead of popup.
         // A name means nothing then, as in Chrome.
         if (hasNoOpener) {
+          // Limited as any other open, which this one skipped.
+          if (!takeInputGrant(webviewWebContents) && !withinPopupLimits(webviewWebContents.id)) {
+            console.warn('Popup blocked: rate limit exceeded for webview', webviewWebContents.id)
+            return { action: 'deny' }
+          }
           openInTab(url, { background: wantsBackground, referrer, postBody })
           return { action: 'deny' }
         }
