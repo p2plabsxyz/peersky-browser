@@ -750,3 +750,16 @@ describe('the window title', function () {
     expect(renderer).to.not.contain("webviewContainer.addEventListener('page-title-updated'")
   })
 })
+
+// Open Link in New Tab brought the tab to the front, where Chrome leaves it
+// behind the page, as a middle click does.
+describe("the context menu's Open Link in New Tab", function () {
+  it('opens the link in a tab behind the page', async function () {
+    const source = await readFile(new URL('../src/context-menu.js', import.meta.url), 'utf8')
+    const start = source.indexOf("label: 'Open Link in New Tab'")
+    const item = source.slice(start, source.indexOf("label: 'Open Link in New Window'", start))
+    const calls = item.match(/addTabFromLink\(url, .*\);/g)
+    expect(calls).to.have.length(2)
+    for (const call of calls) expect(call).to.contain('{ background: true }')
+  })
+})

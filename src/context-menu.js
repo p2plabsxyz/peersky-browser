@@ -470,7 +470,8 @@ export function attachContextMenus (browserWindow, windowManager) {
           new MenuItem({
             label: 'Open Link in New Tab',
             click: () => {
-              // First, attempt to add the URL as a new tab in the current window
+              // The tab opens behind the page, as Chrome's Open link in new tab
+              // leaves it.
 
               browserWindow.webContents
                 .executeJavaScript(`
@@ -478,7 +479,7 @@ export function attachContextMenus (browserWindow, windowManager) {
                     const tabBar = document.querySelector('tab-bar');
                     const url = ${JSON.stringify(params.linkURL)};
                     if (tabBar && typeof tabBar.addTabFromLink === 'function') {
-                      tabBar.addTabFromLink(url, ${JSON.stringify(webContents.id)});
+                      tabBar.addTabFromLink(url, ${JSON.stringify(webContents.id)}, { background: true });
                       return true;
                     }
                     if (tabBar && typeof tabBar.addTab === 'function') {
@@ -487,7 +488,7 @@ export function attachContextMenus (browserWindow, windowManager) {
                     }
                     const oldTabBar = document.querySelector('#tabbar');
                     if (oldTabBar && typeof oldTabBar.addTabFromLink === 'function') {
-                      oldTabBar.addTabFromLink(url, ${JSON.stringify(webContents.id)});
+                      oldTabBar.addTabFromLink(url, ${JSON.stringify(webContents.id)}, { background: true });
                       return true;
                     }
                     if (oldTabBar && typeof oldTabBar.addTab === 'function') {
