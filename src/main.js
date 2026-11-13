@@ -12,6 +12,8 @@ import { createHandler as createHSHandler, MAX_DOCUMENT_SIZE } from './protocols
 import { createHandler as createWeb3Handler } from './protocols/web3-handler.js'
 import { createHandler as createFileHandler } from './protocols/file-handler.js'
 import { attachTrackpadZoom, handlePinchZoom } from './trackpad-zoom.js'
+import { setupTabDialogs } from './tab-dialogs.js'
+import { setupHttpAuth } from './http-auth.js'
 import { followHistoryRedirect } from './history-address.js'
 import { stepTabHistory } from './history-nav.js'
 import { watchLeaving, registerTabClosing } from './leave-site.js'
@@ -143,6 +145,11 @@ app.on('browser-window-created', (event, win) => {
 })
 
 handlePinchZoom(ipcMain)
+
+// A site's sign-in comes up over its tab (http-auth.js), drawn by the window
+// that holds the tab (tab-dialogs.js).
+setupTabDialogs()
+setupHttpAuth()
 
 app.on('web-contents-created', (event, wc) => {
   const wcId = wc.id

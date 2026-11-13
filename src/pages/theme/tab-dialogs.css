@@ -1,0 +1,117 @@
+/* A dialog a tab asked for, over that tab's page (pages/tab-dialogs.js). The
+   layer covers the page so it takes no clicks, and leaves it in view, as
+   Chrome does. */
+.tab-dialog-layer {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  box-sizing: border-box;
+  padding: 12px 16px;
+}
+
+.tab-dialog-layer[hidden] {
+  display: none;
+}
+
+.tab-dialog {
+  width: 420px;
+  max-width: 100%;
+  max-height: 100%;
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 18px 20px 16px;
+  background: var(--browser-theme-background);
+  color: var(--browser-theme-text-color);
+  border: 1px solid var(--settings-border);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+  font-family: var(--browser-theme-font-family);
+  font-size: 13px;
+  line-height: 1.4;
+  animation: tab-dialog-in 0.15s ease-out;
+}
+
+@keyframes tab-dialog-in {
+  from { transform: translateY(-8px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+.tab-dialog-title {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.tab-dialog-origin,
+.tab-dialog-note {
+  margin: 0 0 2px;
+  color: var(--settings-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.tab-dialog-field {
+  display: block;
+  margin-top: 12px;
+}
+
+.tab-dialog-field span {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.tab-dialog-field input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  background: var(--peersky-background-url-input);
+  border: 1px solid var(--settings-border);
+  border-radius: 4px;
+  color: var(--browser-theme-text-color);
+  font: inherit;
+}
+
+.tab-dialog-field input:focus {
+  outline: none;
+  border-color: var(--browser-theme-primary-highlight);
+}
+
+.tab-dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.tab-dialog-buttons button {
+  padding: 6px 14px;
+  background: var(--peersky-nav-background);
+  border: 1px solid var(--settings-border);
+  border-radius: 4px;
+  color: var(--browser-theme-text-color);
+  font: inherit;
+  cursor: pointer;
+}
+
+.tab-dialog-buttons button:hover {
+  border-color: var(--settings-border-hover);
+}
+
+.tab-dialog-buttons button.primary {
+  background: var(--browser-theme-primary-highlight);
+  border-color: var(--browser-theme-primary-highlight);
+  color: var(--browser-theme-background);
+}
+
+.tab-dialog-buttons button.primary:hover {
+  background: var(--browser-theme-secondary-highlight);
+  border-color: var(--browser-theme-secondary-highlight);
+}
+
+.tab-dialog-buttons button:focus-visible {
+  outline: 2px solid var(--browser-theme-primary-highlight);
+  outline-offset: 2px;
+}
