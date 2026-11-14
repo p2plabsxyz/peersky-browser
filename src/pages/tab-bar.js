@@ -1152,6 +1152,7 @@ class TabBar extends HTMLElement {
 
     // Add to container first, then set up events
     this.webviewContainer.appendChild(webview)
+    this.watchTabShown(webview)
 
     // Track the currently-registered webContents ID so we can detect
     // guest-process replacements (Electron may create a new guest webContents
@@ -1163,6 +1164,8 @@ class TabBar extends HTMLElement {
     let registering = false
     webview.addEventListener('dom-ready', () => {
       this.applyZoomForTab(tabId)
+      // Each page that loads hears whether its tab is in front.
+      this.tellTabShown(webview, { again: true })
       // Ensure this webview is visible if it's the active tab
       if (this.activeTabId === tabId) {
         webview.style.display = 'flex'
@@ -1222,6 +1225,38 @@ class TabBar extends HTMLElement {
     this.webviews.set(tabId, webview)
 
     return webview
+  }
+
+  // PeerSky's own pages hear when their tab goes behind another one and when
+  // it comes back: Electron gives a tab's page the visibility of its window,
+  // so a page behind another tab still reads "visible" (PeerChat counted what
+  // came into a chat left open there as read). A tab is in front while its
+  // webview is laid out, side by side ones included. The preload marks the
+  // page (data-peersky-tab) for the P2P apps alone.
+  watchTabShown (webview) {
+    if (typeof IntersectionObserver !== 'function') return
+    if (!this._tabShownObserver) {
+      this._tabShownObserver = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          if (!entry.target.isConnected) {
+            this._tabShownObserver.unobserve(entry.target)
+            continue
+          }
+          this.tellTabShown(entry.target)
+        }
+      })
+    }
+    this._tabShownObserver.observe(webview)
+  }
+
+  tellTabShown (webview, { again = false } = {}) {
+    const shown = webview.getClientRects().length > 0
+    if (!again && webview.peerskyTabShown === shown) return
+    try {
+      // Throws until the page is attached; dom-ready tells it then.
+      webview.send('peersky-tab-shown', shown)
+      webview.peerskyTabShown = shown
+    } catch (_) {}
   }
 
   // Set up all event handlers for a webview

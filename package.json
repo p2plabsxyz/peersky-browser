@@ -25,7 +25,7 @@
     "test:tabs": "mocha \"test/tabs.test.js\" \"test/tab-groups.test.js\" \"test/tab-selection.test.js\" --timeout 10000",
     "test:settings": "mocha \"test/settings-broadcast.test.js\" \"test/tab-layout-default.test.js\" \"test/settings-p2p-data-lists.test.js\" --timeout 20000",
     "test:presence": "mocha \"test/peerchat-presence.test.js\" --timeout 10000",
-    "test:badges": "mocha \"test/p2p-app-badges.test.js\" \"test/tab-on-screen.test.js\" --timeout 10000",
+    "test:badges": "mocha \"test/p2p-app-badges.test.js\" \"test/tab-on-screen.test.js\" \"test/tab-shown.test.js\" --timeout 10000",
     "test:about": "mocha \"test/about-pages.test.js\" --timeout 10000",
     "test:integration": "mocha \"test/integration/**/*.test.js\" --timeout 300000",
     "test:p2pmd:gutter:e2e": "mocha \"test/integration/p2pmd-gutter-sync.e2e.test.js\" --timeout 300000 --exit",

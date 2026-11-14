@@ -70,16 +70,40 @@ const isHyperdriveViews = pageProtocol === 'peersky:' && pageHost === 'p2p' &&
   /^\/hyperdrive\/(files|photos|videos|viewer)(\/|$)/.test(pathOf(url))
 const isAiChatApp = pageProtocol === 'peersky:' && pageHost === 'p2p' && /^\/ai-chat(\/|$)/.test(pagePath)
 
+// PeerSky's own P2P apps hear when their tab goes behind another one and comes
+// back (the tab bar's tellTabShown): a tab's page reads its window's
+// visibility, "visible" behind another tab too. The page is marked
+// data-peersky-tab="hidden" or "shown", with a peersky-tab-visibility event,
+// which PeerChat reads as a chat not on screen.
+if (isP2PPage) {
+  ipcRenderer.on('peersky-tab-shown', (_event, shown) => {
+    const value = shown === false ? 'hidden' : 'shown'
+    const mark = () => {
+      const root = document.documentElement
+      if (!root) return false
+      if (root.dataset.peerskyTab !== value) {
+        root.dataset.peerskyTab = value
+        document.dispatchEvent(new Event('peersky-tab-visibility'))
+      }
+      return true
+    }
+    if (!mark()) window.addEventListener('DOMContentLoaded', mark, { once: true })
+  })
+}
+
 // AI Chat taken up again: its answers are seen, and the home page's bar stops
 // counting them. A tab switch focuses the page, and the main process checks
 // that its tab is the one in front.
 if (isAiChatApp) {
   const seen = () => {
-    if (document.visibilityState === 'visible') ipcRenderer.send('ai-chat-seen')
+    if (document.visibilityState === 'visible' && document.documentElement?.dataset.peerskyTab !== 'hidden') {
+      ipcRenderer.send('ai-chat-seen')
+    }
   }
   window.addEventListener('focus', seen)
   window.addEventListener('pointerdown', seen, { capture: true, passive: true })
   document.addEventListener('visibilitychange', seen)
+  document.addEventListener('peersky-tab-visibility', seen)
   window.addEventListener('DOMContentLoaded', seen, { once: true })
 }
 
