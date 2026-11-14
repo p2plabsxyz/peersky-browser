@@ -124,7 +124,9 @@ export function deviceSyncSnapshot (userDataDir, online = new Set()) {
         byteLength: item.byteLength,
         deviceId: device.id,
         deviceType: device.type,
-        url: privateFileUrl(urlOf(driveId), item.path)
+        url: privateFileUrl(urlOf(driveId), item.path),
+        // Added on that device since the app last showed the list.
+        new: item.addedAt > state.seenAt
       }))
     }))
   }

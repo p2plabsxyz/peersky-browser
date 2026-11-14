@@ -71,6 +71,39 @@ body::before {
   transform: scale(1.3);
 }
 
+/* A count on an app, as on the phone's home screen: unread messages in
+   PeerChat, new files from your other devices in Hyperdrive, answers AI Chat
+   finished while you were elsewhere. On the tile's top right corner, sized
+   with the bar. */
+.peerbar a[data-app-id] {
+  position: relative;
+}
+
+.peerbar-badge {
+  position: absolute;
+  top: calc(var(--peerbar-icon) * -0.04);
+  right: calc(var(--peerbar-icon) * -0.04);
+  box-sizing: border-box;
+  min-width: calc(var(--peerbar-icon) * 0.42);
+  height: calc(var(--peerbar-icon) * 0.42);
+  padding: 0 calc(var(--peerbar-icon) * 0.1);
+  border: max(1.5px, calc(var(--peerbar-icon) * 0.04)) solid #ffffff;
+  border-radius: calc(var(--peerbar-icon) * 0.21);
+  background: #d92d20;
+  color: #ffffff;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: calc(var(--peerbar-icon) * 0.24);
+  font-weight: 800;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  animation: scalePopIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+}
+
 /* Every app on a mint tile, as on the phone's home screen and in the app
    icons, so it reads over any wallpaper, an icon of your own included. The
    edge is a hairline of light rather than a white border, as on Apple's

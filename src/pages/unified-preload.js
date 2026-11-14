@@ -68,6 +68,20 @@ function pathOf (href) {
 }
 const isHyperdriveViews = pageProtocol === 'peersky:' && pageHost === 'p2p' &&
   /^\/hyperdrive\/(files|photos|videos|viewer)(\/|$)/.test(pathOf(url))
+const isAiChatApp = pageProtocol === 'peersky:' && pageHost === 'p2p' && /^\/ai-chat(\/|$)/.test(pagePath)
+
+// AI Chat taken up again: its answers are seen, and the home page's bar stops
+// counting them. A tab switch focuses the page, and the main process checks
+// that its tab is the one in front.
+if (isAiChatApp) {
+  const seen = () => {
+    if (document.visibilityState === 'visible') ipcRenderer.send('ai-chat-seen')
+  }
+  window.addEventListener('focus', seen)
+  window.addEventListener('pointerdown', seen, { capture: true, passive: true })
+  document.addEventListener('visibilitychange', seen)
+  window.addEventListener('DOMContentLoaded', seen, { once: true })
+}
 
 console.log('Unified-preload: URL detection', { url, isInternal, isExternal })
 
@@ -206,10 +220,14 @@ if (isInternal || isP2P || isUserP2PApp || isLocalFile) {
   const iteratorMaps = new Map()
   let iteratorId = 1
 
+  // AI Chat's own answers, which finish while the person may be elsewhere.
+  const chatStreams = new Set()
+
   async function chatStream (args) {
     const { id } = await ipcRenderer.invoke('llm-chat-stream', args)
     const localId = iteratorId++
     iteratorMaps.set(localId, id)
+    if (isAiChatApp) chatStreams.add(localId)
     return localId
   }
 
@@ -223,13 +241,21 @@ if (isInternal || isP2P || isUserP2PApp || isLocalFile) {
   async function iteratorNext (localId) {
     const id = iteratorMaps.get(localId)
     if (!id) throw new Error('Unknown iterator ID')
-    return ipcRenderer.invoke('llm-iterate-next', { id })
+    const result = await ipcRenderer.invoke('llm-iterate-next', { id })
+    // An answer AI Chat finished while it was out of view is counted on its
+    // icon in the home page's bar. The main process tells whether it was.
+    if (result?.done && chatStreams.delete(localId)) {
+      ipcRenderer.send('ai-chat-reply-finished')
+    }
+    return result
   }
 
   async function iteratorReturn (localId) {
     const id = iteratorMaps.get(localId)
     if (!id) throw new Error('Unknown iterator ID')
     iteratorMaps.delete(localId)
+    // Stopped before it was done: nothing to count.
+    chatStreams.delete(localId)
     return ipcRenderer.invoke('llm-iterate-return', { id })
   }
 
@@ -894,7 +920,10 @@ try {
       onClockFormatChanged: (callback) => createEventListener('clock-format-changed', callback),
       onWallpaperChanged: (callback) => createEventListener('wallpaper-changed', callback),
       p2pApps: {
-        list: p2pAppsAPI.list
+        list: p2pAppsAPI.list,
+        // The counts on the apps in the bar: unread messages, new files from
+        // the person's other devices, answers not seen yet.
+        badges: () => ipcRenderer.invoke('p2p-app-badges')
       },
       // Extension browser action APIs for home page toolbar
       extensions: {
@@ -971,7 +1000,8 @@ try {
       // The person's other devices and their private files, for the Hyperdrive
       // app. The main process answers that page alone.
       devices: {
-        list: () => ipcRenderer.invoke('device-sync-list')
+        list: () => ipcRenderer.invoke('device-sync-list'),
+        markSeen: () => ipcRenderer.invoke('device-sync-seen')
       },
       // The private files this computer shared, for the same page alone.
       privateFiles: {

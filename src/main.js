@@ -7,7 +7,7 @@ import crypto from 'crypto'
 import { createHandler as createBrowserHandler } from './protocols/peersky-protocol.js'
 import { createHandler as createBrowserThemeHandler } from './protocols/theme-handler.js'
 import { createHandler as createIPFSHandler, warmupIPFS, suspendIPFS } from './protocols/ipfs-handler.js'
-import { createHandler as createHyperHandler, warmupHyper, suspendHyper } from './protocols/hyper-handler.js'
+import { createHandler as createHyperHandler, warmupHyper, suspendHyper, getPeerChatRooms } from './protocols/hyper-handler.js'
 import { createHandler as createHSHandler, MAX_DOCUMENT_SIZE } from './protocols/hs-handler.js'
 import { createHandler as createWeb3Handler } from './protocols/web3-handler.js'
 import { createHandler as createFileHandler } from './protocols/file-handler.js'
@@ -58,6 +58,7 @@ import { setupDevToolsDock } from './devtools-dock.js'
 import { setupP2pmdPdfExportIpc } from './pages/p2p/p2pmd/pdf-export-ipc.js'
 import { setupBackupIpc } from './backup/ipc.js'
 import { setupDeviceSyncIpc } from './protocols/device-sync-ipc.js'
+import { setupAppBadgesIpc } from './p2p-app-badges.js'
 import { setupHyperdriveViewsIpc } from './protocols/hyperdrive-views-ipc.js'
 import { assertCaller } from './backup/ipc-caller.js'
 import backupManager from './backup/backup-manager.js'
@@ -531,6 +532,8 @@ app.whenReady().then(async () => {
   setupBackupIpc({ getTabs: () => windowManager.getTabs() })
   setupDeviceSyncIpc()
   setupHyperdriveViewsIpc()
+  // The counts on the apps in the home page's bar.
+  setupAppBadgesIpc({ userDataDir: app.getPath('userData'), peerChatRooms: getPeerChatRooms })
   setupSiteInfoIpc(userSession)
   setupDevToolsDock()
   // People in a PeerChat room see a yellow dot while you are away.
