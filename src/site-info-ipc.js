@@ -8,7 +8,7 @@ import {
   permissionOriginFromUrl,
   permissionsShownFor
 } from './permissions.js'
-import { connectionFor } from './utils.js'
+import { connectionForPage, failedAddressOf } from './utils.js'
 import extensionManager from './extensions/index.js'
 import { getIncognitoSession } from './session.js'
 
@@ -129,7 +129,8 @@ async function getPrivacyStatus (event) {
 
 export function setupSiteInfoIpc (session) {
   ipcMain.handle('site-info-get', async (event, pageUrl) => {
-    const parsed = parsePageUrl(pageUrl)
+    // Over an error page, the site that failed, which is not secure.
+    const parsed = parsePageUrl(failedAddressOf(pageUrl) || pageUrl)
     if (!parsed.ok) return { ok: false, error: parsed.error }
     const store = storeFor(event, session)
 
@@ -147,7 +148,7 @@ export function setupSiteInfoIpc (session) {
       origin: parsed.origin,
       hostname: parsed.hostname,
       protocol: parsed.protocol,
-      connection: connectionFor(parsed.protocol),
+      connection: connectionForPage(pageUrl),
       permissions,
       permissionMeta: permissionsShownFor(parsed.href),
       canEditPermissions: parsed.originOk,

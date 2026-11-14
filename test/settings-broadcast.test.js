@@ -18,7 +18,8 @@ describe('settings that the home page shows', function () {
       session: { defaultSession: {} },
       safeStorage: { isEncryptionAvailable: () => false },
       dialog: {},
-      webContents: { getAllWebContents: () => [windowPage, homeTab, closedTab] }
+      webContents: { getAllWebContents: () => [windowPage, homeTab, closedTab] },
+      nativeTheme: { themeSource: 'system' }
     }
     const { default: manager } = await esmock.strict('../src/settings-manager.js', {
       '../src/protocols/config.js': { ensCache: new Map(), ipfsCache: new Map(), hyperCache: new Map(), saveEnsCache () {}, saveIpfsCache () {}, saveHyperCache () {} },
@@ -43,4 +44,52 @@ describe('settings that the home page shows', function () {
       expect(closedTab.send.called).to.equal(false)
     })
   }
+})
+
+// With the Light theme on a Mac in dark mode, websites still matched
+// prefers-color-scheme: dark, since Electron followed the system whatever
+// PeerSky's theme was.
+describe('the light or dark websites see', function () {
+  async function loadManager (saved = {}) {
+    const nativeTheme = { themeSource: 'system' }
+    const electron = {
+      app: { getPath: () => '/tmp/peersky-color-scheme-test', on () {}, whenReady: () => Promise.resolve() },
+      ipcMain: { handle () {}, on () {}, removeHandler () {} },
+      BrowserWindow: { getAllWindows: () => [] },
+      session: { defaultSession: {} },
+      safeStorage: { isEncryptionAvailable: () => false },
+      dialog: {},
+      webContents: { getAllWebContents: () => [] },
+      nativeTheme
+    }
+    const module = await esmock.strict('../src/settings-manager.js', {
+      '../src/protocols/config.js': { ensCache: new Map(), ipfsCache: new Map(), hyperCache: new Map(), saveEnsCache () {}, saveIpfsCache () {}, saveHyperCache () {} },
+      '../src/ens-utils.js': { normalizeEnsHash: (v) => v },
+      '../src/permissions.js': { clearPersistedPermissions () {} },
+      '../src/p2p-app-registry.js': { default: {} }
+    }, { electron, fs: { promises: { readFile: async () => JSON.stringify({ tabLayoutV1: true, ...saved }), writeFile: async () => {}, rename: async () => {}, mkdir: async () => {}, access: async () => {}, appendFile: async () => {} } } })
+    // Let the saved settings load.
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    return { manager: module.default, colorSchemeForTheme: module.colorSchemeForTheme, nativeTheme }
+  }
+
+  it('follows the theme picked, as Chrome follows its own light or dark mode', async function () {
+    const { manager, nativeTheme } = await loadManager()
+    manager.applySettingChange('theme', 'light')
+    expect(nativeTheme.themeSource).to.equal('light')
+    manager.applySettingChange('theme', 'dark')
+    expect(nativeTheme.themeSource).to.equal('dark')
+  })
+
+  it('is light for each light theme and dark for each dark one', async function () {
+    const { colorSchemeForTheme } = await loadManager()
+    for (const theme of ['light', 'cyan', 'green', 'yellow', 'violet']) expect(colorSchemeForTheme(theme), theme).to.equal('light')
+    for (const theme of ['dark', 'transparent']) expect(colorSchemeForTheme(theme), theme).to.equal('dark')
+    expect(colorSchemeForTheme('something-new')).to.equal('system')
+  })
+
+  it('is set from the saved theme at start', async function () {
+    const { nativeTheme } = await loadManager({ theme: 'violet' })
+    expect(nativeTheme.themeSource).to.equal('light')
+  })
 })

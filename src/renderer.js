@@ -1,13 +1,23 @@
 import {
-  handleURL
+  handleURL,
+  replaceErrorDocumentScript,
+  failedAddressOf,
+  setErrorPageKey,
+  errorPageKeyOf
 } from './utils.js'
 
 const chromiumNetErrors = require('chromium-net-errors')
 
 const { ipcRenderer } = require('electron')
 
+// The key that marks this browser's own error pages (see failedAddressOf).
+setErrorPageKey(ipcRenderer.sendSync('error-page-key'))
+
 const DEFAULT_PAGE = 'peersky://home'
 const isHomePage = (url) => url === 'peersky://home' || url === 'peersky://home/'
+// The address bar shows the address that failed over its error page, as in
+// Chrome, where it showed peersky://error.html/?code=...
+const shownAddress = (url) => failedAddressOf(url) || url
 let webviewContainer = null // Will be set dynamically for tabs
 let tabBar // Holds current tab bar component
 let sidePanelEl = null
@@ -225,10 +235,12 @@ function setupWebviewErrorHandling (webview) {
       const count = state.retryCounts.get(validatedURL) || 0
       if (count < 1) {
         state.retryCounts.set(validatedURL, count + 1)
+        // Unless the tab has moved on. The failed entry keeps its address,
+        // which src does not have when Back or Forward reached it.
         setTimeout(() => {
           try {
-            if (webview.src === validatedURL) {
-              webview.src = validatedURL
+            if (webview.getURL() === validatedURL) {
+              showInPlaceOfFailure(validatedURL)
             }
           } catch (e) {}
         }, 3000)
@@ -257,17 +269,23 @@ function setupWebviewErrorHandling (webview) {
       name: errorInfo.name,
       msg: errorInfo.msg,
       url: errorInfo.url,
-      t: Date.now().toString()
+      key: errorPageKeyOf() || ''
     })
 
-    const errorURL = `peersky://error.html?${params}`
+    showInPlaceOfFailure(`peersky://error.html?${params}`)
+    setTimeout(() => { state.isShowingError = false }, 1000)
+  }
 
-    try {
-      webview.src = errorURL
-      setTimeout(() => { state.isShowingError = false }, 1000)
-    } catch (e) {
-      state.isShowingError = false
-    }
+  // Loads target in the failed load's own history entry (see
+  // replaceErrorDocumentScript), so Back from it goes where it did before the
+  // failure and Forward still goes on. Only when the tab cannot be reached at
+  // all is it loaded as a new page, as it always was.
+  function showInPlaceOfFailure (target) {
+    Promise.resolve()
+      .then(() => webview.executeJavaScript(replaceErrorDocumentScript(target)))
+      .catch(() => {
+        try { webview.src = target } catch (e) {}
+      })
   }
 
   const handleNavigate = (event) => {
@@ -462,10 +480,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   })
 
+  ipcRenderer.on('tab-stayed', (_, webContentsId) => {
+    tabBar?.stayedOnPage?.(webContentsId)
+  })
+
+  // From the Tabs page: its page is asked first, as for any tab closed by hand.
   ipcRenderer.on('close-tab', (_, id) => {
     try {
-      if (tabBar && typeof tabBar.closeTab === 'function') {
-        tabBar.closeTab(id)
+      if (tabBar && typeof tabBar.askToCloseTab === 'function') {
+        tabBar.askToCloseTab(id)
       }
     } catch (e) {
       console.error('Error closing tab via IPC:', e)
@@ -559,11 +582,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (isHomePage(activeTab.url)) {
           urlInput.value = ''
         } else {
-          urlInput.value = activeTab.url
+          urlInput.value = shownAddress(activeTab.url)
         }
 
         // Also update the nav display
-        nav.setStyledUrl(isHomePage(activeTab.url) ? '' : activeTab.url, activeTab.url)
+        nav.setStyledUrl(isHomePage(activeTab.url) ? '' : shownAddress(activeTab.url), activeTab.url)
       }
     }, 300)
 
@@ -593,7 +616,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (isHomePage(url)) {
       nav.setStyledUrl('', url)
     } else {
-      nav.setStyledUrl(url)
+      nav.setStyledUrl(shownAddress(url), url)
     }
 
     const tab = tabBar.tabs.find(t => t.id === tabId)
@@ -627,7 +650,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (isHomePage(url)) {
         nav.setStyledUrl('', url)
       } else {
-        nav.setStyledUrl(url)
+        nav.setStyledUrl(shownAddress(url), url)
       }
 
       setTimeout(() => updateNavigationButtons(tabBar), 100)
@@ -717,7 +740,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const activeTab = tabBar.getActiveTab()
     if (activeTab && nav.querySelector('#url')) {
       // Hide peersky://home URL, show all others
-      nav.querySelector('#url').value = isHomePage(activeTab.url) ? '' : activeTab.url
+      nav.querySelector('#url').value = isHomePage(activeTab.url) ? '' : shownAddress(activeTab.url)
       // Update bookmark icon for initial tab
       if (activeTab.url) {
         updateBookmarkIcon(activeTab.url)
@@ -738,6 +761,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     nav.addEventListener('navigate', async ({ detail }) => {
       const { url } = detail
       await navigateTo(url)
+      focusActivePage()
     })
 
     nav.addEventListener('new-window', () => {
@@ -862,16 +886,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       console.error('webviewElement not found in webviewContainer')
     }
 
-    const urlInput = nav.querySelector('#url')
-    if (urlInput) {
-      urlInput.addEventListener('keypress', async (e) => {
-        if (e.key === 'Enter') {
-          const rawURL = urlInput.value.trim()
-          await navigateTo(rawURL)
-        }
-      })
-    }
-
     // Update URL display and send navigation event
     webviewContainer.addEventListener('did-navigate', (e) => {
       if (nav) {
@@ -884,13 +898,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       ipcRenderer.send('webview-did-navigate', e.detail.url)
       updateBookmarkIcon(e.detail.url)
-    })
-
-    // Update page title
-    webviewContainer.addEventListener('page-title-updated', (e) => {
-      pageTitle.innerText = e.detail.title
-        ? `${e.detail.title} - ${windowTitle}`
-        : windowTitle
     })
 
     // Find Menu Event Listeners
@@ -964,6 +971,15 @@ async function navigateTo (url) {
       webviewContainer.loadURL(url)
     }
   }
+}
+
+// Once an address is entered, the page has the keys, as in Chrome: Space, the
+// arrow keys and the page's own shortcuts stayed in the address bar.
+function focusActivePage () {
+  const webview = tabBar?.getActiveWebview?.()
+  if (!webview) return
+  document.querySelector('#url')?.blur()
+  webview.focus()
 }
 
 function updateNavigationButtons (currentTabBar) {

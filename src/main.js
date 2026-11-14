@@ -7,12 +7,18 @@ import crypto from 'crypto'
 import { createHandler as createBrowserHandler } from './protocols/peersky-protocol.js'
 import { createHandler as createBrowserThemeHandler } from './protocols/theme-handler.js'
 import { createHandler as createIPFSHandler, warmupIPFS, suspendIPFS } from './protocols/ipfs-handler.js'
-import { createHandler as createHyperHandler, warmupHyper, suspendHyper } from './protocols/hyper-handler.js'
+import { createHandler as createHyperHandler, warmupHyper, suspendHyper, getPeerChatRooms } from './protocols/hyper-handler.js'
 import { createHandler as createHSHandler, MAX_DOCUMENT_SIZE } from './protocols/hs-handler.js'
 import { createHandler as createWeb3Handler } from './protocols/web3-handler.js'
 import { createHandler as createFileHandler } from './protocols/file-handler.js'
 import { attachTrackpadZoom, handlePinchZoom } from './trackpad-zoom.js'
+import { setupTabDialogs } from './tab-dialogs.js'
+import { setupHttpAuth, noteSignInChallenge } from './http-auth.js'
+import { setupPageDialogs } from './page-dialogs.js'
+import { reservedTabShortcut, tabBarCall } from './tab-shortcuts.js'
 import { followHistoryRedirect } from './history-address.js'
+import { stepTabHistory } from './history-nav.js'
+import { watchLeaving, registerTabClosing } from './leave-site.js'
 import { darkenRawTextPages } from './raw-text-pages.js'
 import { noteUnplayableSound } from './media-sound-notes.js'
 import { applyPasswordStore, choosePasswordStore } from './linux-keyring.js'
@@ -23,6 +29,7 @@ import { DEVICE_SYNC_FILE } from './protocols/device-sync-state.js'
 import { createHandler as createBittorrentHandler, setupBittorrentIpc, shutdownBittorrent, warmupBittorrent, setTorrentProxies, setTorrentProxyCredentials, setProxyLogin } from './protocols/bittorrent-handler.js'
 import { watchExtensionProxy, extensionProxyCredentials } from './protocols/bt/vpn-watch.js'
 import { restoreSavedProxy, logInToProxy } from './extensions/services/proxy-settings.js'
+import { chromeLikeUserAgent } from './user-agent.js'
 import { ipfsOptions, hyperOptions } from './protocols/config.js'
 import { gateRequest, stampVetted, requireVetted, frameUrlOf } from './protocols/request-gate.js'
 import { createMenuTemplate } from './actions.js'
@@ -45,11 +52,13 @@ import { BLOCKED_SCHEME, BLOCKED_SCHEME_PRIVILEGES, answerBlockedCall, blockedCa
 import { getBrowserSession, getIncognitoSession, INCOGNITO_PARTITION, usePersist } from './session.js'
 import { setupIncognitoPermissionHandler, setupPermissionHandler, requestSitePermission, permissionOriginFromUrl } from './permissions.js'
 import { setupSiteInfoIpc } from './site-info-ipc.js'
+import { setErrorPageKey } from './utils.js'
 import { startPeerChatPresence } from './peerchat-presence.js'
 import { setupDevToolsDock } from './devtools-dock.js'
 import { setupP2pmdPdfExportIpc } from './pages/p2p/p2pmd/pdf-export-ipc.js'
 import { setupBackupIpc } from './backup/ipc.js'
 import { setupDeviceSyncIpc } from './protocols/device-sync-ipc.js'
+import { setupAppBadgesIpc } from './p2p-app-badges.js'
 import { setupHyperdriveViewsIpc } from './protocols/hyperdrive-views-ipc.js'
 import { assertCaller } from './backup/ipc-caller.js'
 import backupManager from './backup/backup-manager.js'
@@ -63,6 +72,10 @@ const log = createLogger('main')
 // around a busy site with the preinstalled MV3 extensions is enough. Electron
 // 44 fixes it (electron/electron#53144); until then, prefetch gets no spare.
 app.commandLine.appendSwitch('enable-features', 'PrefetchUseContentRefactor:start_spare_renderer/false')
+
+// Chrome's user agent, with PeerSky inside the platform part (user-agent.js):
+// sites read Electron's added tokens as an unknown browser.
+app.userAgentFallback = chromeLikeUserAgent(app.userAgentFallback, app.getVersion())
 
 // On a Linux desktop Electron does not know, the system keyring chosen at an
 // earlier start (linux-keyring.js). Set before the app is ready, or it is not
@@ -137,6 +150,13 @@ app.on('browser-window-created', (event, win) => {
 
 handlePinchZoom(ipcMain)
 
+// A site's sign-in, and a page's alert(), confirm() and prompt(), come up
+// over its tab (http-auth.js, page-dialogs.js), drawn by the window that
+// holds the tab (tab-dialogs.js).
+setupTabDialogs()
+setupHttpAuth()
+setupPageDialogs()
+
 app.on('web-contents-created', (event, wc) => {
   const wcId = wc.id
   attachTrackpadZoom(wc)
@@ -144,6 +164,7 @@ app.on('web-contents-created', (event, wc) => {
     followHistoryRedirect(wc)
     darkenRawTextPages(wc)
     noteUnplayableSound(wc)
+    watchLeaving(wc)
   }
   wc.on('did-navigate', (e, url) => {
     if (url.startsWith('peersky://downloads')) {
@@ -159,39 +180,28 @@ app.on('web-contents-created', (event, wc) => {
 
 const webviewTabShortcutNavAttached = new WeakSet()
 
+// Chrome's tab shortcuts a page never keeps, such as Cmd+Shift+T and
+// Ctrl+Tab, are taken from it before it has them (tab-shortcuts.js). Escape
+// stops a page still loading, and the page has the key too.
 function attachWebviewTabShortcutNav (wc) {
   if (!wc || wc.isDestroyed()) return
   if (typeof wc.getType !== 'function' || wc.getType() !== 'webview') return
   if (webviewTabShortcutNavAttached.has(wc)) return
   webviewTabShortcutNavAttached.add(wc)
 
-  const runOnShell = (next) => {
+  const runOnShell = (script) => {
     const win = BrowserWindow.fromWebContents(wc)
     if (!win || win.isDestroyed()) return
     const shellWc = win.webContents
     if (shellWc.isDestroyed()) return
-    const script = next
-      ? '(()=>{try{const t=document.querySelector(\'#tabbar\');if(!t||!t.tabs||t.tabs.length<2)return;const i=t.tabs.findIndex(x=>x.id===t.activeTabId);if(i<0)return;t.selectTab(t.tabs[(i+1)%t.tabs.length].id);}catch(e){console.error(e);}})()'
-      : '(()=>{try{const t=document.querySelector(\'#tabbar\');if(!t||!t.tabs||t.tabs.length<2)return;const i=t.tabs.findIndex(x=>x.id===t.activeTabId);if(i<0)return;t.selectTab(t.tabs[(i-1+t.tabs.length)%t.tabs.length].id);}catch(e){console.error(e);}})()'
     shellWc.executeJavaScript(script).catch(() => {})
   }
 
   wc.on('before-input-event', (event, input) => {
-    if (input.type !== 'keyDown') return
-
-    const isMac = process.platform === 'darwin'
-    let goNext = null
-    if (isMac) {
-      if (input.meta && input.alt && (input.key === 'ArrowRight' || input.key === 'ArrowLeft')) {
-        goNext = input.key === 'ArrowRight'
-      }
-    } else if (input.control && input.key === 'Tab') {
-      goNext = !input.shift
-    }
-
-    if (goNext === null) return
+    const shortcut = reservedTabShortcut(input)
+    if (!shortcut) return
     event.preventDefault()
-    runOnShell(goNext)
+    runOnShell(tabBarCall(shortcut.method, ...shortcut.args))
   })
 }
 
@@ -522,6 +532,8 @@ app.whenReady().then(async () => {
   setupBackupIpc({ getTabs: () => windowManager.getTabs() })
   setupDeviceSyncIpc()
   setupHyperdriveViewsIpc()
+  // The counts on the apps in the home page's bar.
+  setupAppBadgesIpc({ userDataDir: app.getPath('userData'), peerChatRooms: getPeerChatRooms })
   setupSiteInfoIpc(userSession)
   setupDevToolsDock()
   // People in a PeerChat room see a yellow dot while you are away.
@@ -1035,6 +1047,11 @@ function installRequestGate (session, options) {
     const stamped = stampVetted(details)
     callback(stamped ? { requestHeaders: stamped } : {}) // eslint-disable-line n/no-callback-literal
   })
+  // What a sign-in is for, before Electron asks for it (http-auth.js).
+  session.webRequest.onHeadersReceived({ urls: ['<all_urls>'] }, (details, callback) => {
+    noteSignInChallenge(details)
+    callback({}) // eslint-disable-line n/no-callback-literal
+  })
 }
 
 function installExtensionWebRequestBridge (session) {
@@ -1139,6 +1156,8 @@ function installExtensionWebRequestBridge (session) {
     { urls: ['<all_urls>'] },
     async (details, callback) => {
       const url = details?.url || ''
+      // What a sign-in is for, loopback included (http-auth.js).
+      noteSignInChallenge(details)
       if (!shouldForwardToExtensions(url)) {
         callback({}) // eslint-disable-line n/no-callback-literal
         return
@@ -1230,6 +1249,16 @@ app.on('activate', () => {
   if (windowManager.all.length === 0) {
     windowManager.open({ isMainWindow: true })
   }
+})
+
+// The key on this run's own error pages (failedAddressOf in utils.js), for
+// the browser window only: never a tab's page, which could then make one.
+const errorPageKey = crypto.randomBytes(24).toString('hex')
+setErrorPageKey(errorPageKey)
+ipcMain.on('error-page-key', (event) => {
+  let shell = false
+  try { shell = event.sender.getType() === 'window' && event.sender.getURL().startsWith('file:') } catch {}
+  event.returnValue = shell ? errorPageKey : null
 })
 
 ipcMain.on('remove-all-tempIcon', () => {
@@ -1499,6 +1528,28 @@ ipcMain.on('get-tab-navigation', (event, webContentsId) => {
 })
 
 registerNavigationRestore()
+registerTabClosing()
+
+// A mouse's back or forward button over a page, which the page in a tab hands
+// on when it did not use the press (pages/unified-preload.js). Only a tab's own
+// page can ask, and only for that tab.
+ipcMain.on('peersky-mouse-history', (event, step) => {
+  const tab = event.sender
+  if (!tab || tab.isDestroyed() || tab.getType() !== 'webview') return
+  if (event.senderFrame?.parent) return
+  stepTabHistory(tab, step)
+})
+
+// Escape stops a tab's page while it is still loading, when the page did not
+// use the key itself, as to close its own dialog (pages/unified-preload.js).
+// Stopping before the page had the key cut such a page's loads short. Only a
+// tab's own page can ask, and only for that tab.
+ipcMain.on('peersky-stop-loading', (event) => {
+  const tab = event.sender
+  if (!tab || tab.isDestroyed() || tab.getType() !== 'webview') return
+  if (event.senderFrame?.parent) return
+  if (tab.isLoadingMainFrame()) tab.stop()
+})
 
 ipcMain.on('group-action', (_event, data) => {
   log.info('Group action received:', data)

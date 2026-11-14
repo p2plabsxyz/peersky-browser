@@ -1,7 +1,8 @@
 // Runs in Electron for blocked-calls.e2e.test.js: a page with a strict
-// Content-Security-Policy calls a tracker that a stand-in blocker cancels, the
-// way uBlock does through main.js's webRequest bridge, and reports what each
-// call got and what reached the tracker.
+// Content-Security-Policy calls a tracker that a stand-in blocker cancels, or
+// answers with a data: address, the way uBlock does through main.js's
+// webRequest bridge, and reports what each call got and what reached the
+// tracker.
 import http from 'http'
 import path from 'path'
 import electron from 'electron'
@@ -46,9 +47,16 @@ async function run () {
   const ses = session.fromPartition('blocked-calls-test')
   ses.protocol.handle(BLOCKED_SCHEME, blockedCallHandler)
   ses.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, (details, callback) => {
-    // The stand-in blocker: everything bound for the tracker is cancelled.
-    const blocked = details.url.startsWith(trackerUrl) ? { cancel: true } : {}
-    callback(answerBlockedCall(details, blocked))
+    if (!details.url.startsWith(trackerUrl)) return callback({}) // eslint-disable-line n/no-callback-literal
+    // The stand-in blocker: calls named stub get a data: answer, raw gets one
+    // without PeerSky's help, and everything else is cancelled.
+    const name = new URL(details.url).pathname.slice(1)
+    const text = { redirectURL: `data:text/plain;base64,${Buffer.from('stub').toString('base64')}` }
+    if (name === 'raw') return callback(text) // eslint-disable-line n/no-callback-literal
+    let decided = { cancel: true }
+    if (name.startsWith('stub')) decided = text
+    if (name === 'stub-script') decided = { redirectURL: `data:text/javascript;base64,${Buffer.from('window.stubRan = true').toString('base64')}` }
+    callback(answerBlockedCall(details, decided))
   })
 
   const win = new BrowserWindow({ show: false, webPreferences: { session: ses } })
@@ -76,6 +84,28 @@ async function run () {
       xhr.send('event=show')
     })
     out.beacon = navigator.sendBeacon(tracker + '/beacon', 'event=show')
+    await call('stub', {})
+    await call('stub-json', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+    out['stub-xhr'] = await new Promise((resolve) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open('GET', tracker + '/stub-xhr')
+      xhr.onload = () => resolve({ status: xhr.status, body: xhr.responseText })
+      xhr.onerror = () => resolve({ error: 'network error' })
+      xhr.send()
+    })
+    out['stub-script'] = await new Promise((resolve) => {
+      const el = document.createElement('script')
+      el.onload = () => resolve(window.stubRan === true ? 'ran' : 'loaded')
+      el.onerror = () => resolve('error')
+      el.src = tracker + '/stub-script'
+      document.body.appendChild(el)
+    })
+    await call('raw', {})
+    try {
+      out.guess = (await fetch('peersky-blocked://data/' + '0'.repeat(32))).status
+    } catch (error) {
+      out.guess = { error: error.message }
+    }
     const element = (tag, attr) => new Promise((resolve) => {
       const el = document.createElement(tag)
       el.onload = () => resolve('loaded')

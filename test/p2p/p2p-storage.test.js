@@ -261,7 +261,8 @@ describe('Reset P2P data, and the space read after it', function () {
       session: { defaultSession: {} },
       safeStorage: { isEncryptionAvailable: () => false },
       dialog: {},
-      webContents: { getAllWebContents: () => [] }
+      webContents: { getAllWebContents: () => [] },
+      nativeTheme: { themeSource: 'system' }
     }
     // The debug log goes to the home folder, which is the temporary one here.
     const home = () => root

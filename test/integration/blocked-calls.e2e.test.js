@@ -2,7 +2,9 @@
  * A page's blocked fetch, XHR and beacon calls get an empty answer on the
  * device instead of a network error, through real Electron: a page that waits
  * on one of its blocked calls, as Figma's sign-up dialog did, carries on, and
- * nothing reaches the tracker. Scripts and images still fail as blocked.
+ * nothing reaches the tracker. Scripts and images still fail as blocked. A
+ * request the blocker answers with a data: address, as uBlock does every fetch
+ * and XHR it redirects, gets that content, which Electron alone refuses.
  */
 
 import { expect } from 'chai'
@@ -68,6 +70,21 @@ describe('blocked calls answered on the device', function () {
   it('still blocks scripts and images', () => {
     expect(result.calls.script).to.equal('blocked')
     expect(result.calls.image).to.equal('blocked')
+  })
+
+  it("gives a request the blocker answers with data: that content, under the page's CSP", () => {
+    expect(result.calls.stub).to.deep.equal({ status: 200, body: 'stub' })
+    expect(result.calls['stub-json']).to.deep.equal({ status: 200, body: 'stub' })
+    expect(result.calls['stub-xhr']).to.deep.equal({ status: 200, body: 'stub' })
+    expect(result.calls['stub-script']).to.equal('ran')
+  })
+
+  it('finds nothing at an address no request was given', () => {
+    expect(result.calls.guess).to.equal(404)
+  })
+
+  it('needs the help: Electron alone will not follow a redirect to data:', () => {
+    expect(result.calls.raw).to.have.property('error')
   })
 
   it('sends nothing to the tracker', () => {

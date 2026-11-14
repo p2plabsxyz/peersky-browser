@@ -38,6 +38,8 @@ Vertical tabs, kept expanded, are the default since v1. A profile from an earlie
 - **Next Tab**: `CommandOrControl+Tab` (Windows/Linux) / `CommandOrControl+Option+Right` (macOS)
 - **Previous Tab**: `CommandOrControl+Shift+Tab` (Windows/Linux) / `CommandOrControl+Option+Left` (macOS)
 
+A tab's page reads its window's visibility: in Electron a page behind another tab still says `visible`. So the tab bar tells each page whether its tab is in front, laid out on screen with split ones included (`watchTabShown` and `tellTabShown` in `tab-bar.js`, `peersky-tab-shown`), each time that changes and whenever a page loads. The preload marks PeerSky's own P2P apps with `data-peersky-tab="shown"` or `"hidden"` on the page's root and a `peersky-tab-visibility` event, so PeerChat treats a chat left open behind another tab as not on screen and counts what comes in as unread. Sites hear nothing.
+
 ### Closing Tabs
 
 - Close button (`×`) on the tab

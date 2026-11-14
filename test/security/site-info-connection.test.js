@@ -1,5 +1,6 @@
 import { expect } from 'chai'
-import { connectionFor } from '../../src/utils.js'
+import esmock from 'esmock'
+import { connectionFor, connectionForPage, failedAddressOf, setErrorPageKey } from '../../src/utils.js'
 import { isSecurePageUrl } from '../../src/pages/static/js/site-info-popup.js'
 
 describe('site-info connection labels', function () {
@@ -51,5 +52,86 @@ describe('site-info shield on the home page', function () {
 
   it('still crosses out plain http', function () {
     expect(isSecurePageUrl('http://example.com')).to.equal(false)
+  })
+})
+
+// An error page showed peersky://error.html/?code=... in the address bar, and a
+// site whose certificate failed showed "Connection is secure".
+describe('an error page', function () {
+  const key = 'k'.repeat(48)
+  const failed = 'https://self-signed.example/a?b=1'
+  const page = 'peersky://error.html/?' + new URLSearchParams({ code: '-202', name: 'CertAuthorityInvalidError', msg: 'ERR_CERT_AUTHORITY_INVALID', url: failed, key })
+  before(function () { setErrorPageKey(key) })
+  after(function () { setErrorPageKey(null) })
+
+  it('stands for the address that failed', function () {
+    expect(failedAddressOf(page)).to.equal(failed)
+  })
+
+  it('stands for no address the browser would not load, and other pages for none', function () {
+    expect(failedAddressOf('peersky://error.html/?url=' + encodeURIComponent('javascript:alert(1)'))).to.equal(null)
+    expect(failedAddressOf('peersky://error.html/?code=-105')).to.equal(null)
+    expect(failedAddressOf('peersky://home')).to.equal(null)
+    expect(failedAddressOf('https://example.com/error.html?url=https://a.example/')).to.equal(null)
+    expect(failedAddressOf(undefined)).to.equal(null)
+  })
+
+  // Any page can open peersky://error.html with an address and text of its
+  // own, which put a bank's address in the address bar over the page's text.
+  it('stands for nothing on an error page a page made up', function () {
+    const madeUp = (extra) => 'peersky://error.html/?' + new URLSearchParams({ code: '-2', name: 'Account locked', msg: 'Call us', url: 'https://www.paypal.com/', ...extra })
+    expect(failedAddressOf(madeUp({}))).to.equal(null)
+    expect(failedAddressOf(madeUp({ key: 'guess' }))).to.equal(null)
+    expect(failedAddressOf(madeUp({ key }))).to.equal('https://www.paypal.com/')
+    setErrorPageKey(null)
+    expect(failedAddressOf(madeUp({ key }))).to.equal(null)
+    setErrorPageKey(key)
+  })
+
+  it('takes its key from the browser window, which only that window gets', async function () {
+    const { readFile } = await import('fs/promises')
+    const renderer = (await readFile(new URL('../../src/renderer.js', import.meta.url), 'utf8')).replace(/\r\n/g, '\n')
+    const main = (await readFile(new URL('../../src/main.js', import.meta.url), 'utf8')).replace(/\r\n/g, '\n')
+    expect(renderer).to.contain("setErrorPageKey(ipcRenderer.sendSync('error-page-key'))")
+    expect(renderer).to.contain("key: errorPageKeyOf() || ''")
+    expect(main).to.contain("event.sender.getType() === 'window' && event.sender.getURL().startsWith('file:')")
+    expect(main).to.contain('event.returnValue = shell ? errorPageKey : null')
+  })
+
+  it('is not secure', function () {
+    expect(connectionForPage(page)).to.deep.equal({ secure: false, label: 'Not secure' })
+    expect(isSecurePageUrl(page)).to.equal(false)
+    expect(connectionForPage('https://example.com/')).to.deep.equal({ secure: true, label: 'Connection is secure' })
+    expect(isSecurePageUrl('peersky://settings')).to.equal(true)
+  })
+
+  it('tells about the site that failed in the site panel', async function () {
+    const handlers = new Map()
+    const { setupSiteInfoIpc } = await esmock.strict('../../src/site-info-ipc.js', {
+      electron: { ipcMain: { handle: (channel, fn) => handlers.set(channel, fn) }, BrowserWindow: { fromWebContents: () => null } },
+      '../../src/permissions.js': {
+        MANAGED_PERMISSIONS: [],
+        getPermissionsForOrigin: () => ({}),
+        setPermission () {},
+        resetPermissionsForOrigin () {},
+        isValidOrigin: () => true,
+        permissionOriginFromUrl: (url) => new URL(url).origin,
+        permissionsShownFor: () => []
+      },
+      '../../src/extensions/index.js': { default: { listExtensions: async () => [] } },
+      '../../src/session.js': { getIncognitoSession: () => null }
+    })
+    setupSiteInfoIpc({ cookies: { get: async () => [] } })
+    const info = await handlers.get('site-info-get')({ sender: {} }, page)
+    expect(info.hostname).to.equal('self-signed.example')
+    expect(info.origin).to.equal('https://self-signed.example')
+    expect(info.connection).to.deep.equal({ secure: false, label: 'Not secure' })
+  })
+
+  it('is what the window shows in the address bar while the tab is on it', async function () {
+    const { readFile } = await import('fs/promises')
+    const renderer = (await readFile(new URL('../../src/renderer.js', import.meta.url), 'utf8')).replace(/\r\n/g, '\n')
+    expect(renderer).to.contain('const shownAddress = (url) => failedAddressOf(url) || url')
+    expect(renderer.match(/nav\.setStyledUrl\(shownAddress\(url\), url\)/g)).to.have.length(2)
   })
 })

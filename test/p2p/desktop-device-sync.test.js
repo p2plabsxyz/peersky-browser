@@ -128,8 +128,8 @@ describe('desktop device sync', function () {
     expect(snapshot.devices).to.deep.equal([{ id: phone, type: 'phone', online: true, firstSeen: 5, lastSeen: 5 }])
     const base = urlOf(PHONE_DRIVE).slice(0, -1)
     expect(snapshot.files).to.deep.equal([
-      { type: 'file', name: 'a, b?.jpg', byteLength: 9, deviceId: phone, deviceType: 'phone', url: `${base}/a,%20b%3F.jpg` },
-      { type: 'directory', name: 'Trip', byteLength: 0, deviceId: phone, deviceType: 'phone', url: `${base}/Trip/` }
+      { type: 'file', name: 'a, b?.jpg', byteLength: 9, deviceId: phone, deviceType: 'phone', url: `${base}/a,%20b%3F.jpg`, new: false },
+      { type: 'directory', name: 'Trip', byteLength: 0, deviceId: phone, deviceType: 'phone', url: `${base}/Trip/`, new: false }
     ])
     // decodeURI, as the private store reads it, gives the name back.
     expect(decodeURI(new URL(snapshot.files[0].url).pathname)).to.equal('/a, b%3F.jpg')

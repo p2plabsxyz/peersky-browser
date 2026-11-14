@@ -2,7 +2,7 @@
 // Handles settings storage, defaults, validation, and IPC communication
 // Pattern: Similar to window-manager.js
 
-import { app, ipcMain, BrowserWindow, safeStorage, dialog, webContents } from 'electron'
+import { app, ipcMain, BrowserWindow, safeStorage, dialog, webContents, nativeTheme } from 'electron'
 import { promises as fs } from 'fs'
 import path from 'path'
 import os from 'os'
@@ -89,6 +89,33 @@ const DEFAULT_SETTINGS = {
 }
 
 let isClearingBrowserCache = false
+
+// What a website's prefers-color-scheme says under each theme, as Chrome's own
+// light or dark mode decides it for every site: the light themes light, the
+// dark ones dark. Electron followed the system whatever the theme, so with
+// the Light theme on a Mac in dark mode, sites still came up dark. No theme
+// follows the system, so 'system' is only for a theme this does not know.
+const THEME_COLOR_SCHEMES = {
+  light: 'light',
+  cyan: 'light',
+  green: 'light',
+  yellow: 'light',
+  violet: 'light',
+  dark: 'dark',
+  transparent: 'dark'
+}
+
+export function colorSchemeForTheme (theme) {
+  return THEME_COLOR_SCHEMES[theme] || 'system'
+}
+
+function applyColorScheme (theme) {
+  try {
+    nativeTheme.themeSource = colorSchemeForTheme(theme)
+  } catch (error) {
+    logDebug(`Could not set the color scheme for ${theme}: ${error.message}`)
+  }
+}
 
 // Clear Cache is for websites, but PeerSky's own pages keep their storage in
 // the same session: the window its tabs under file://, the P2P apps theirs
@@ -339,6 +366,8 @@ class SettingsManager {
     } catch (error) {
       logDebug(`Initialization failed: ${error.message}`)
     }
+    // The theme loaded, or the default one.
+    app.whenReady().then(() => applyColorScheme(this.settings.theme))
   }
 
   registerIpcHandlers () {
@@ -406,6 +435,7 @@ class SettingsManager {
         this.settings = { ...DEFAULT_SETTINGS }
 
         await this.saveSettings()
+        applyColorScheme(this.settings.theme)
 
         logDebug('Settings reset to defaults successfully')
         return { success: true, settings: this.settings, oldSettings }
@@ -828,6 +858,7 @@ class SettingsManager {
       const windows = BrowserWindow.getAllWindows()
 
       if (key === 'theme') {
+        applyColorScheme(value)
         // Guests included: internal pages swap data-theme live instead of
         // waiting for a manual refresh.
         webContents.getAllWebContents().forEach(wc => {

@@ -4,6 +4,7 @@
 import { expect } from 'chai'
 import { readFile } from 'fs/promises'
 import { EventEmitter } from 'events'
+import vm from 'vm'
 import esmock from 'esmock'
 import sinon from 'sinon'
 
@@ -608,11 +609,11 @@ describe('a page with no icon of its own', function () {
 // A link opened in a new tab went to the end of the strip, far from the page
 // it came from. Other browsers put it right after that tab.
 describe('a link opened in a new tab', function () {
-  const start = tabBar.indexOf('  addTabFromLink (url, openerWebContentsId = null) {')
+  const start = tabBar.indexOf('  addTabFromLink (url, openerWebContentsId = null')
   const end = tabBar.indexOf('\n  findTabByWebContentsId (')
-  const body = tabBar.slice(tabBar.indexOf('{', start) + 1, tabBar.lastIndexOf('}', end))
+  const method = tabBar.slice(start, tabBar.lastIndexOf('}', end) + 1).trim()
   // eslint-disable-next-line no-new-func
-  const addTabFromLink = new Function('url', 'openerWebContentsId', body)
+  const addTabFromLink = new Function(`return function ${method}`)()
 
   function strip (ids, { active = ids[0], pinned = [], groups = {} } = {}) {
     let counter = 0
@@ -624,6 +625,12 @@ describe('a link opened in a new tab', function () {
       tabGroupAssignments: new Map(Object.entries(groups)),
       webviews: new Map(),
       addTab () {
+        const id = `new-${++counter}`
+        this.tabs.push({ id })
+        this.activeTabId = id
+        return id
+      },
+      addBackgroundTab () {
         const id = `new-${++counter}`
         this.tabs.push({ id })
         return id
@@ -638,7 +645,7 @@ describe('a link opened in a new tab', function () {
       updateGroupedTabsUI () {},
       saveTabsState () {}
     }
-    const open = (url = 'https://example.com/') => addTabFromLink.call(bar, url, null)
+    const open = (url = 'https://example.com/', options) => addTabFromLink.call(bar, url, null, options)
     const order = () => bar.tabs.map((t) => t.id)
     return { bar, open, order }
   }
@@ -663,6 +670,14 @@ describe('a link opened in a new tab', function () {
     expect(bar.tabGroupAssignments.get(id)).to.equal('trip')
   })
 
+  it('opened behind the page, goes in the same place and leaves the page in front', function () {
+    const { bar, open, order } = strip(['a', 'b'], { active: 'a' })
+    open('https://example.com/', { background: true })
+    open('https://example.com/', { background: true })
+    expect(order()).to.deep.equal(['a', 'new-1', 'new-2', 'b'])
+    expect(bar.activeTabId).to.equal('a')
+  })
+
   it('is what the link menu and a page opening a tab use', function () {
     expect(tabBar).to.contain('this.addTabFromLink(e.url,')
   })
@@ -681,5 +696,70 @@ describe('the tab and group menus', function () {
       expect(body, name).to.contain('document.body.appendChild(menu)\n    this.keepInWindow(menu)')
     }
     expect(tabBar).to.contain('menu.style.top = `$' + '{Math.max(0, window.innerHeight - rect.height - 10)}px`')
+  })
+})
+
+// After a page changed its title, the window still said "New Tab - Peersky
+// Browser": it listened on the webview container, and <webview> events do not
+// bubble.
+describe('the window title', function () {
+  const methodSource = (name, next) => {
+    const start = tabBar.indexOf(`  ${name} (`)
+    const end = tabBar.indexOf(`\n  ${next} (`, start)
+    return tabBar.slice(start, tabBar.lastIndexOf('}', end) + 1).trim()
+  }
+
+  function strip ({ incognito = false } = {}) {
+    const document = { title: 'New Tab - Peersky Browser', getElementById: () => null }
+    const context = vm.createContext({ document })
+    const updateTab = vm.runInContext(`(function ${methodSource('updateTab', 'getActiveTab')})`, context)
+    const windowTitleFor = vm.runInContext(`(function ${methodSource('windowTitleFor', 'hasTab')})`, context)
+    const bar = {
+      tabs: [{ id: 'a', title: 'New Tab' }, { id: 'b', title: 'Other' }],
+      activeTabId: 'a',
+      isIncognito: incognito,
+      windowTitleFor,
+      _getProtocol: () => 'https:',
+      _updateP2PIndicator () {},
+      saveTabsState () {}
+    }
+    return { document, update: (tabId, change) => updateTab.call(bar, tabId, change) }
+  }
+
+  it('follows the title of the tab in front as its page changes it', function () {
+    const { document, update } = strip()
+    update('a', { title: 'Second Title' })
+    expect(document.title).to.equal('Second Title - Peersky Browser')
+  })
+
+  it('is left alone by a tab behind it', function () {
+    const { document, update } = strip()
+    update('b', { title: 'Loaded behind' })
+    update('a', { url: 'https://example.com/' })
+    expect(document.title).to.equal('New Tab - Peersky Browser')
+  })
+
+  it('says Peersky Incognito in an incognito window', function () {
+    const { document, update } = strip({ incognito: true })
+    update('a', { title: 'Private page' })
+    expect(document.title).to.equal('Private page - Peersky Incognito')
+  })
+
+  it('is set by the tab strip, which hears the page, and not by a listener that never fired', function () {
+    expect(tabBar).to.contain('if (tabId === this.activeTabId) document.title = this.windowTitleFor(title)')
+    expect(renderer).to.not.contain("webviewContainer.addEventListener('page-title-updated'")
+  })
+})
+
+// Open Link in New Tab brought the tab to the front, where Chrome leaves it
+// behind the page, as a middle click does.
+describe("the context menu's Open Link in New Tab", function () {
+  it('opens the link in a tab behind the page', async function () {
+    const source = await readFile(new URL('../src/context-menu.js', import.meta.url), 'utf8')
+    const start = source.indexOf("label: 'Open Link in New Tab'")
+    const item = source.slice(start, source.indexOf("label: 'Open Link in New Window'", start))
+    const calls = item.match(/addTabFromLink\(url, .*\);/g)
+    expect(calls).to.have.length(2)
+    for (const call of calls) expect(call).to.contain('{ background: true }')
   })
 })

@@ -252,3 +252,45 @@ describe('the AI permission', function () {
     expect(getPermissionsForOrigin('hyper://abc').llm).to.equal('block')
   })
 })
+
+// Web MIDI asks as midiSysex, which matched no row, so a site's request was
+// refused without asking.
+describe('Web MIDI', function () {
+  const site = { getURL: () => 'https://midi.example/', hostWebContents: null }
+  const answering = (response, prompts) => ({
+    showMessageBox: async (win, options) => {
+      prompts.push((options ?? win).message)
+      return { response }
+    }
+  })
+
+  it('asks under the MIDI devices row, and keeps the answer there for both names', async function () {
+    const prompts = []
+    const { requestHandler, checkHandler, getPermissionsForOrigin } = await loadPermissions(answering(1, prompts))
+    const granted = await new Promise((resolve) => requestHandler(site, 'midiSysex', resolve, {}))
+    expect(granted).to.equal(true)
+    expect(prompts).to.deep.equal(['Allow "MIDI devices"?'])
+    expect(getPermissionsForOrigin('https://midi.example').midi).to.equal('allow-session')
+    expect(checkHandler(site, 'midiSysex', 'https://midi.example/')).to.equal(true)
+    expect(checkHandler(site, 'midi', 'https://midi.example/')).to.equal(true)
+  })
+
+  it('stays refused once blocked, whichever name it comes under', async function () {
+    const prompts = []
+    const { requestHandler, checkHandler } = await loadPermissions(answering(2, prompts))
+    expect(await new Promise((resolve) => requestHandler(site, 'midiSysex', resolve, {}))).to.equal(false)
+    expect(await new Promise((resolve) => requestHandler(site, 'midi', resolve, {}))).to.equal(false)
+    expect(prompts).to.have.length(1)
+    expect(checkHandler(site, 'midiSysex', 'https://midi.example/')).to.equal(false)
+  })
+
+  it('asks the same way in an incognito window', async function () {
+    const prompts = []
+    const { setupIncognitoPermissionHandler } = await loadPermissions(answering(0, prompts))
+    let request, check
+    setupIncognitoPermissionHandler({ setPermissionRequestHandler (fn) { request = fn }, setPermissionCheckHandler (fn) { check = fn } })
+    expect(await new Promise((resolve) => request(site, 'midiSysex', resolve, {}))).to.equal(true)
+    expect(prompts).to.deep.equal(['Allow "MIDI devices"?'])
+    expect(check(site, 'midi', 'https://midi.example/')).to.equal(true)
+  })
+})
