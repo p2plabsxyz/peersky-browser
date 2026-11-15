@@ -55,9 +55,11 @@
     }
   })()
 
-  // Button actions
+  // Button actions. The address takes this page's place in the history, as
+  // Chrome's reload of a failed page does, so Back from it goes where Back
+  // from this page would.
   retryBtn?.addEventListener('click', () => {
-    if (retryTarget) window.location.href = retryTarget
+    if (retryTarget) window.location.replace(retryTarget)
     else window.location.reload()
   })
   homeBtn?.addEventListener('click', () => (window.location.href = 'peersky://home'))

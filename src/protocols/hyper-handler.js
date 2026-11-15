@@ -535,6 +535,19 @@ export function getDeviceSyncSnapshot () {
 }
 
 /**
+ * PeerChat's rooms with their unread counts, as its own page reads them, for
+ * the count on the home page. Nothing while Hyper is not up: the home page
+ * does not start it.
+ */
+export async function getPeerChatRooms () {
+  if (!sdk || isSuspended) return []
+  const response = await handleChatRequestP2P(new Request('hyper://chat/?action=get-rooms'), sdk)
+  if (!response?.ok) return []
+  const body = await response.json().catch(() => null)
+  return Array.isArray(body?.rooms) ? body.rooms : []
+}
+
+/**
  * The private files this desktop shared, newest first, for the Hyperdrive app.
  * Listed from the drives themselves, so they are there after a restart.
  */

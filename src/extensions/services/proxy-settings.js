@@ -1,18 +1,18 @@
 /**
- * A VPN extension's proxy outlives a restart, as it does in Chrome.
+ * A VPN extension's proxy outlives a restart, as it does in Chrome, and is on
+ * the session before any tab or torrent connects.
  *
- * The extension host keeps what an extension sets with chrome.proxy in memory
- * only. After a restart the VPN extension still said it was connected, while
- * every restored tab, and torrents, went out with this computer's own address.
- * So the setting is saved each time an extension changes it, put back on the
- * session before the first window opens, and handed back to that extension
- * before it runs.
+ * The extension host (@p2plabs/peersky-chrome-extensions 2.x) keeps what an
+ * extension sets with chrome.proxy, and applies it again once that extension
+ * loads after a restart. Extensions load after the first window opens, so the
+ * proxy that counts is also saved here each time it changes and put back on
+ * the session before then. Turning the extension off takes its proxy off and
+ * turning it on puts it back, as in Chrome; removing it forgets it.
  *
- * As in Chrome, turning the extension off takes its proxy off and turning it
- * on puts it back; removing the extension forgets it.
+ * The host's 1.x kept chrome.proxy in memory only, and this file was the only
+ * copy. What it saved then is handed back to its extension once.
  *
- * Kept free of Electron imports so it can be tested directly. The proxy API it
- * works with is the extension host's (api.proxy).
+ * Kept free of Electron imports so it can be tested directly.
  */
 
 import path from 'path'
@@ -176,99 +176,71 @@ export function logInToProxy ({ request, credentialsFor, url = LOGIN_URL, timeou
   })
 }
 
-function usable (proxyApi) {
-  return !!proxyApi && typeof proxyApi.settingsSet === 'function' &&
-    typeof proxyApi.settingsClear === 'function' && typeof proxyApi.emitSettingsChange === 'function'
+function clearSaved (userDataDir) {
+  return queueWrite(() => fs.rm(settingsFile(userDataDir), { force: true }))
 }
 
-async function handBack (proxyApi, saved) {
-  await proxyApi.settingsSet({ extension: { id: saved.extensionId } }, { value: saved.value })
-}
-
-// Takes the extension's proxy off the session without forgetting it.
-async function takeOff (proxyApi) {
-  proxyApi.__peerskyProxyPausing = true
-  try {
-    await proxyApi.settingsClear({ extension: { id: proxyApi.controllingExtensionId } })
-  } finally {
-    proxyApi.__peerskyProxyPausing = false
-  }
+// The host's proxy API: the proxy that counts and the extension that set it,
+// a 'proxy-changed' event, and a way to hand an extension back its proxy.
+function usable (host) {
+  return !!host && typeof host.getProxySettings === 'function' &&
+    typeof host.restoreExtensionProxy === 'function' && typeof host.on === 'function'
 }
 
 /**
- * Saves every change an extension makes with chrome.proxy, and hands the
- * saved proxy back to its extension. Run when the extension host is created,
- * before any extension loads, so chrome.proxy.settings.get tells the VPN its
- * proxy is still set, as Chrome does. Returns the saved proxy, or null.
+ * Saves the proxy that counts each time it changes, and hands the saved one
+ * back to its extension, so chrome.proxy.settings.get tells a VPN its proxy is
+ * still set, as Chrome does. Run when the extension host is created, before
+ * any extension loads. closing() is true while the browser shuts down: it
+ * unloads every extension then, and that is no reason to forget the proxy.
+ * Returns the saved proxy, or null.
  */
-export async function keepExtensionProxy (proxyApi, userDataDir, { log } = {}) {
-  if (!usable(proxyApi)) {
+export async function keepExtensionProxy (host, userDataDir, { log, closing = () => false } = {}) {
+  if (!usable(host)) {
     log?.warn('[ProxySettings] The extension host has no proxy API to keep: a VPN extension must connect again after a restart')
     return null
   }
-  if (!proxyApi.__peerskyProxyKept) {
-    const emit = proxyApi.emitSettingsChange.bind(proxyApi)
-    proxyApi.emitSettingsChange = (...args) => {
-      if (!proxyApi.__peerskyProxyPausing) {
-        saveProxySettings(userDataDir, proxyApi.controllingExtensionId, proxyApi.currentConfig)
-          .catch((error) => log?.warn('[ProxySettings] Could not save the extension proxy:', error?.message || error))
-      }
-      return emit(...args)
-    }
-    proxyApi.__peerskyProxyKept = true
+  if (!host.__peerskyProxyKept) {
+    host.on('proxy-changed', (current) => {
+      if (!current && closing()) return
+      const write = current
+        ? saveProxySettings(userDataDir, current.extensionId, current.value)
+        : clearSaved(userDataDir)
+      write.catch((error) => log?.warn('[ProxySettings] Could not save the extension proxy:', error?.message || error))
+    })
+    host.__peerskyProxyKept = true
   }
   const saved = await readSavedProxy(userDataDir)
-  if (!saved || saved.off) return null
-  await handBack(proxyApi, saved)
+  if (!saved) return null
+  // From 1.x, or from a host that lost its own copy. One the extension set
+  // since stays as it is.
+  await host.restoreExtensionProxy(saved.extensionId, saved.value)
   return saved
 }
 
-/**
- * The extension was turned off: its proxy comes off the session, and waits
- * for the extension to be turned on again. extensionId is its id in the session.
- */
-export async function pauseExtensionProxy (proxyApi, userDataDir, extensionId) {
-  if (!usable(proxyApi) || !extensionId || proxyApi.controllingExtensionId !== extensionId) return false
-  const value = proxyApi.currentConfig
-  await takeOff(proxyApi)
-  await saveProxySettings(userDataDir, extensionId, value, { off: true })
-  return true
-}
-
-/** The extension was turned on again: the proxy it had set is back. */
-export async function resumeExtensionProxy (proxyApi, userDataDir, extensionId) {
-  if (!usable(proxyApi) || !extensionId) return false
-  const saved = await readSavedProxy(userDataDir)
-  if (!saved || saved.extensionId !== extensionId) return false
-  await handBack(proxyApi, saved)
-  return true
-}
-
-/** The extension was removed: its proxy comes off and is forgotten. */
-export async function forgetExtensionProxy (proxyApi, userDataDir, extensionId) {
+/** The extension was removed: its saved proxy goes too. The host forgets what it set (clearExtensionSettings). */
+export async function forgetExtensionProxy (userDataDir, extensionId) {
   if (!extensionId) return false
-  const controlling = usable(proxyApi) && proxyApi.controllingExtensionId === extensionId
-  if (controlling) await proxyApi.settingsClear({ extension: { id: extensionId } })
   await forgetSaved(userDataDir, extensionId)
-  return controlling
+  return true
 }
 
 /**
- * After extensions load: a saved proxy whose extension is not installed any
- * more is forgotten, and one whose extension is turned off comes off the
- * session. installed(id) and enabled(id) answer for the extension's session id.
+ * After extensions load: the saved proxy went on the session before any window
+ * opened, and if its extension is gone or turned off, nothing will replace it,
+ * so it comes off. installed(id) and enabled(id) answer for the extension's
+ * session id.
  */
-export async function settleExtensionProxy (proxyApi, userDataDir, { installed, enabled }) {
+export async function settleExtensionProxy (session, userDataDir, { installed, enabled }) {
   const saved = await readSavedProxy(userDataDir)
   if (!saved) return null
   const id = saved.extensionId
+  if (installed(id) && enabled(id)) return 'kept'
+  if (!saved.off) await session.setProxy({ mode: 'system' })
   if (!installed(id)) {
-    await forgetExtensionProxy(proxyApi, userDataDir, id)
+    await forgetSaved(userDataDir, id)
     return 'forgotten'
   }
-  if (!enabled(id)) {
-    if (!saved.off) await pauseExtensionProxy(proxyApi, userDataDir, id)
-    return 'off'
-  }
-  return 'kept'
+  if (!saved.off) await saveProxySettings(userDataDir, id, saved.value, { off: true })
+  return 'off'
 }

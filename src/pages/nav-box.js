@@ -23,6 +23,27 @@ const SEARCH_ENGINE_NAMES = {
 // one toolbar render.
 const BROWSER_ACTIONS_RENDER_COALESCE_MS = 16
 
+// Text pasted or dropped into the address bar loses any javascript: at its
+// start, as in Chrome, so a link copied from somewhere cannot run code in the
+// open page. Typed by hand, javascript: still runs. Spaces and control
+// characters before or between them go too.
+function stripJavascriptSchemes (text) {
+  const prefix = 'javascript:'
+  let i = 0
+  let found = false
+  while (i < text.length) {
+    if (text.charCodeAt(i) < 0x20 || /\s/.test(text[i])) {
+      i++
+    } else if (text.slice(i, i + prefix.length).toLowerCase() === prefix) {
+      found = true
+      i += prefix.length
+    } else {
+      break
+    }
+  }
+  return found ? text.slice(i) : text
+}
+
 class NavBox extends HTMLElement {
   constructor () {
     super()
@@ -901,6 +922,16 @@ class NavBox extends HTMLElement {
         }
       })
 
+      urlInput.addEventListener('paste', (event) => {
+        const text = event.clipboardData?.getData('text/plain')
+        if (!text) return
+        const safe = stripJavascriptSchemes(text)
+        if (safe === text) return
+        event.preventDefault()
+        // As a paste would put it in, so Undo still takes it out.
+        document.execCommand('insertText', false, safe)
+      })
+
       const normalizeFilePathToUrl = (filePath) => {
         if (!filePath) return null
         if (process.platform === 'win32') {
@@ -944,7 +975,7 @@ class NavBox extends HTMLElement {
         }
         const textUrl = dataTransfer.getData('text/uri-list') || dataTransfer.getData('text/plain')
         if (textUrl) {
-          const url = textUrl.trim()
+          const url = stripJavascriptSchemes(textUrl).trim()
           if (url) {
             urlInput.value = url
             this.dispatchEvent(new CustomEvent('navigate', { detail: { url } }))

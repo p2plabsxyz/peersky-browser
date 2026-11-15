@@ -302,7 +302,7 @@ export function attachDeviceSync (runtime, {
     }
     entry.listing = (async () => {
       try {
-        const listed = await listDriveTop(entry.drive)
+        const listed = await listDriveTop(entry.drive, { keepSeq: true })
         if (closed || watched.get(entry.id) !== entry) return
         recordDriveListing(stateDirectory, entry.id, { ...listed, now: now() })
         changed()
@@ -441,9 +441,12 @@ export function attachDeviceSync (runtime, {
  * The files and folders at the top of a drive, newest first, as far as can be
  * read in the time given.
  */
-export async function listDriveTop (drive, { maxItems = MAX_LISTED_ITEMS, timeoutMs = LIST_TIME_MS } = {}) {
+export async function listDriveTop (drive, { maxItems = MAX_LISTED_ITEMS, timeoutMs = LIST_TIME_MS, keepSeq = false } = {}) {
   const items = []
   let truncated = false
+  // How long the drive is as the listing starts: what is written after it
+  // sits at this place or later.
+  const version = Number.isSafeInteger(drive.version) ? drive.version : null
   const deadline = Date.now() + timeoutMs
   const iterator = drive.list('/', { recursive: false })[Symbol.asyncIterator]()
   try {
@@ -484,5 +487,5 @@ export async function listDriveTop (drive, { maxItems = MAX_LISTED_ITEMS, timeou
     if (typeof iterator.return === 'function') await iterator.return().catch(() => {})
   }
   items.sort((left, right) => right.seq - left.seq)
-  return { items: items.map(({ seq, ...item }) => item), truncated }
+  return { items: keepSeq ? items : items.map(({ seq, ...item }) => item), truncated, version }
 }

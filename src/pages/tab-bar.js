@@ -46,9 +46,25 @@ function failedUrlBehindErrorPage (webview) {
   }
 }
 
+// Two spellings of one address, such as https://example.com and
+// https://example.com/.
+function sameAddress (a, b) {
+  try {
+    return new URL(a).href === new URL(b).href
+  } catch {
+    return false
+  }
+}
+
 // A tab whose page gave no icon. icon16.png, the one named here before, is not
 // in static/assets, so those tabs showed an empty slot.
 const DEFAULT_TAB_ICON = 'url(peersky://static/assets/favicon.ico)'
+
+// Tabs closed in this window, the last one last, for Cmd+Shift+T. Chrome keeps
+// 25. Only in this window's memory, so a private window's are never written
+// down, and each window reopens its own. Both tab layouts share it.
+const CLOSED_TABS_KEPT = 25
+const closedTabs = []
 
 // Two addresses on one site: scheme and host. URL.origin gives "null" for
 // peersky: and the P2P schemes, so it cannot be used.
@@ -869,7 +885,7 @@ class TabBar extends HTMLElement {
     closeButton.innerHTML = '×'
     closeButton.addEventListener('click', (e) => {
       e.stopPropagation()
-      this.closeTab(tabId)
+      this.askToCloseTab(tabId)
     })
 
     tab.appendChild(faviconElement)
@@ -915,7 +931,7 @@ class TabBar extends HTMLElement {
 
     // Create webview for this tab if container exists and NOT suspended
     if (this.webviewContainer && !tabData.isSuspended) {
-      const webview = this.createWebviewForTab(tabId, url, tabData.navigation)
+      const webview = this.createWebviewForTab(tabId, url, tabData.navigation, tabData.loadToken)
       if (tabData.navigation?.entries?.length) {
         this.restoreNavigationForWebview(tabId, webview, tabData.navigation, 'new tab')
       }
@@ -1067,9 +1083,9 @@ class TabBar extends HTMLElement {
     return ids
   }
 
-  addTab (url = 'peersky://home', title = 'Home') {
+  addTab (url = 'peersky://home', title = 'Home', tabData = {}) {
     const tabId = `tab-${this.tabCounter++}`
-    this.addTabWithId(tabId, url, title)
+    this.addTabWithId(tabId, url, title, tabData)
     this.selectTab(tabId, true)
     this.saveTabsState()
 
@@ -1088,8 +1104,18 @@ class TabBar extends HTMLElement {
     return tabId
   }
 
-  // Create a new webview for a tab
-  createWebviewForTab (tabId, url, navigation = null) {
+  // A tab that loads behind the one on screen.
+  addBackgroundTab (url, title, tabData = {}) {
+    const tabId = `tab-${this.tabCounter++}`
+    this.addTabWithId(tabId, url, title, tabData)
+    this.saveTabsState()
+    return tabId
+  }
+
+  // Create a new webview for a tab. loadToken: main loads the tab's first
+  // page as the page that opened it asked for it, with its referrer and a
+  // form's POST body (navigation-restore.js).
+  createWebviewForTab (tabId, url, navigation = null, loadToken = null) {
     // Create webview element
     const webview = document.createElement('webview')
     webview.id = `webview-${tabId}`
@@ -1100,7 +1126,10 @@ class TabBar extends HTMLElement {
     const preloadPath = path.join(__dirname, 'unified-preload.js')
     const preloadURL = pathToFileURL(preloadPath).href
     webview.setAttribute('preload', preloadURL)
-    webview.setAttribute('webpreferences', 'contextIsolation=yes,nativeWindowOpen=yes,autoplayPolicy=document-user-activation-required')
+    // A frame inside the page still gets Electron's own dialogs (the preload
+    // is the top frame's: src/page-dialogs.js), so from its second one on, the
+    // person can stop it making more, as in Chrome.
+    webview.setAttribute('webpreferences', 'contextIsolation=yes,nativeWindowOpen=yes,autoplayPolicy=document-user-activation-required,safeDialogs=yes,safeDialogsMessage=Prevent this page from creating additional dialogs')
     // History can only be restored before the first load, so a tab that has
     // some starts on a placeholder that main swaps for the restored history.
     let src = url
@@ -1108,6 +1137,8 @@ class TabBar extends HTMLElement {
       const token = `${tabId}-${Date.now()}-${Math.random().toString(16).slice(2)}`
       require('electron').ipcRenderer.sendSync('queue-navigation-restore', { token, entries: navigation.entries, index: navigation.activeIndex, url })
       src = `about:blank#peersky-restore=${token}`
+    } else if (typeof loadToken === 'string' && /^[0-9a-f-]{36}$/i.test(loadToken)) {
+      src = `about:blank#peersky-load=${loadToken}`
     }
     webview.setAttribute('src', src)
     webview.setAttribute('allowpopups', '')
@@ -1121,6 +1152,7 @@ class TabBar extends HTMLElement {
 
     // Add to container first, then set up events
     this.webviewContainer.appendChild(webview)
+    this.watchTabShown(webview)
 
     // Track the currently-registered webContents ID so we can detect
     // guest-process replacements (Electron may create a new guest webContents
@@ -1132,6 +1164,8 @@ class TabBar extends HTMLElement {
     let registering = false
     webview.addEventListener('dom-ready', () => {
       this.applyZoomForTab(tabId)
+      // Each page that loads hears whether its tab is in front.
+      this.tellTabShown(webview, { again: true })
       // Ensure this webview is visible if it's the active tab
       if (this.activeTabId === tabId) {
         webview.style.display = 'flex'
@@ -1165,6 +1199,11 @@ class TabBar extends HTMLElement {
             }
             if (wcId !== pendingWcId) return // changed again while registering, skip
             registeredWcId = wcId
+            // A new tab is selected before its page exists, so extensions
+            // hear it is the active one once it is registered.
+            if (this.activeTabId === tabId) {
+              ipcRenderer.invoke('extensions-pin-active-webview', wcId).catch(() => {})
+            }
           }).catch(error => {
             console.error('[TabBar] Error registering webview:', error)
           }).finally(() => {
@@ -1186,6 +1225,38 @@ class TabBar extends HTMLElement {
     this.webviews.set(tabId, webview)
 
     return webview
+  }
+
+  // PeerSky's own pages hear when their tab goes behind another one and when
+  // it comes back: Electron gives a tab's page the visibility of its window,
+  // so a page behind another tab still reads "visible" (PeerChat counted what
+  // came into a chat left open there as read). A tab is in front while its
+  // webview is laid out, side by side ones included. The preload marks the
+  // page (data-peersky-tab) for the P2P apps alone.
+  watchTabShown (webview) {
+    if (typeof IntersectionObserver !== 'function') return
+    if (!this._tabShownObserver) {
+      this._tabShownObserver = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          if (!entry.target.isConnected) {
+            this._tabShownObserver.unobserve(entry.target)
+            continue
+          }
+          this.tellTabShown(entry.target)
+        }
+      })
+    }
+    this._tabShownObserver.observe(webview)
+  }
+
+  tellTabShown (webview, { again = false } = {}) {
+    const shown = webview.getClientRects().length > 0
+    if (!again && webview.peerskyTabShown === shown) return
+    try {
+      // Throws until the page is attached; dom-ready tells it then.
+      webview.send('peersky-tab-shown', shown)
+      webview.peerskyTabShown = shown
+    } catch (_) {}
   }
 
   // Set up all event handlers for a webview
@@ -1416,6 +1487,28 @@ class TabBar extends HTMLElement {
     })
   }
 
+  // Closing a tab asks its page first, as Chrome does: a page with a "leave
+  // site?" handler gets its question, and the tab stays if the person stays
+  // (leave-site.js). Taken away straight, the page was never asked. The tab
+  // goes once main says the page has let it.
+  askToCloseTab (tabId) {
+    const webview = this.webviews.get(tabId)
+    let webContentsId = null
+    try {
+      webContentsId = webview?.getWebContentsId?.() ?? null
+    } catch {}
+    if (webContentsId === null) return this.closeTab(tabId)
+    this._askingToClose ||= new Set()
+    if (this._askingToClose.has(tabId)) return
+    this._askingToClose.add(tabId)
+    const { ipcRenderer } = require('electron')
+    ipcRenderer.invoke('close-tab-asking-page', webContentsId)
+      .then((close) => {
+        if (close) this.closeTab(tabId)
+      }, () => this.closeTab(tabId))
+      .finally(() => this._askingToClose.delete(tabId))
+  }
+
   closeTab (tabId) {
     this.destroyHoverCard() // remove lingering hover card
     const tabElement = document.getElementById(tabId)
@@ -1437,6 +1530,8 @@ class TabBar extends HTMLElement {
       }
       return
     }
+
+    this.rememberClosedTab(this.tabs[tabIndex], tabIndex)
 
     // Remove tab from DOM and array
     tabElement.classList.add('closing')
@@ -1487,6 +1582,67 @@ class TabBar extends HTMLElement {
 
     // Dispatch event that tab was closed
     this.dispatchEvent(new CustomEvent('tab-closed', { detail: { tabId } }))
+  }
+
+  // What Cmd+Shift+T needs to bring a closing tab back as it was: its place,
+  // its pages for Back and Forward, and its pin or group.
+  rememberClosedTab (tab, index) {
+    let navigation = tab.savedNavigation?.entries?.length ? tab.savedNavigation : null
+    const webview = this.webviews.get(tab.id)
+    if (!navigation && webview) {
+      try {
+        navigation = require('electron').ipcRenderer.sendSync('get-tab-navigation', webview.getWebContentsId())
+      } catch (_) {}
+    }
+    if (navigation && !navigation.entries?.some(entry => entry.url && entry.url !== 'about:blank')) navigation = null
+    closedTabs.push({
+      url: tab.url,
+      title: tab.title,
+      navigation,
+      index,
+      pinned: this.pinnedTabs.has(tab.id),
+      groupId: this.tabGroupAssignments.get(tab.id) || null
+    })
+    if (closedTabs.length > CLOSED_TABS_KEPT) closedTabs.shift()
+  }
+
+  // Cmd+Shift+T, as in Chrome: the tab closed last comes back where it was,
+  // with its pages for Back, and is shown. Again and again, in order.
+  reopenClosedTab () {
+    const closed = closedTabs.pop()
+    if (!closed) return null
+    const tabId = `tab-${this.tabCounter++}`
+    this.addTabWithId(tabId, closed.url, closed.title, { navigation: closed.navigation })
+    if (closed.pinned) {
+      const pinned = this.tabs.filter(tab => this.pinnedTabs.has(tab.id)).length
+      this.moveTabToPosition(tabId, Math.min(closed.index, pinned))
+      this.pinnedTabs.add(tabId)
+      document.getElementById(tabId)?.classList.add('pinned')
+    } else {
+      this.moveTabToPosition(tabId, closed.index)
+      if (closed.groupId && this.tabGroups.has(closed.groupId)) {
+        this.addTabToGroup(tabId, closed.groupId)
+        this.normalizeGroupLayout()
+        this.updateGroupedTabsUI()
+      }
+    }
+    this.selectTab(tabId)
+    this.saveTabsState()
+    return tabId
+  }
+
+  // Cmd+1 to Cmd+8 show that tab, and Cmd+9 the last one, as in Chrome.
+  selectTabByNumber (number) {
+    const tab = number >= 9 ? this.tabs[this.tabs.length - 1] : this.tabs[number - 1]
+    if (tab && tab.id !== this.activeTabId) this.selectTab(tab.id)
+  }
+
+  // The next tab (step 1) or the one before (-1), round the ends.
+  selectAdjacentTab (step) {
+    if (this.tabs.length < 2) return
+    const index = this.tabs.findIndex(tab => tab.id === this.activeTabId)
+    if (index === -1) return
+    this.selectTab(this.tabs[(index + step + this.tabs.length) % this.tabs.length].id)
   }
 
   getSplitForTab (tabId) {
@@ -1869,6 +2025,10 @@ class TabBar extends HTMLElement {
           titleElement.textContent = title
         }
       }
+      // The window is named for the tab in front, as in Chrome. The window
+      // cannot hear a page's new title itself: a <webview>'s events do not
+      // bubble, so it kept the title the tab had when it was selected.
+      if (tabId === this.activeTabId) document.title = this.windowTitleFor(title)
     }
 
     this._updateP2PIndicator(tabId)
@@ -1879,6 +2039,11 @@ class TabBar extends HTMLElement {
 
   getActiveTab () {
     return this.tabs.find(tab => tab.id === this.activeTabId)
+  }
+
+  // The window's title for a tab's: "Page - Peersky Browser".
+  windowTitleFor (title) {
+    return `${title} - ${this.isIncognito ? 'Peersky Incognito' : 'Peersky Browser'}`
   }
 
   hasTab (tabId) {
@@ -1898,9 +2063,28 @@ class TabBar extends HTMLElement {
     if (!this.activeTabId) return
     const webview = this.webviews.get(this.activeTabId)
     if (webview) {
-      webview.setAttribute('src', url)
+      // The address that failed, entered again over its error page, is tried
+      // again in the error page's place, as a reload is.
+      const failed = failedUrlBehindErrorPage(webview)
+      if (failed && sameAddress(failed, url)) this.retryFailedLoad(webview, failed)
+      else webview.setAttribute('src', url)
       this.updateTab(this.activeTabId, { url })
     }
+  }
+
+  // A failed load is tried again from its error page, which the address
+  // replaces in the history as Chrome's reload of a failed page does. Loaded
+  // as a new page, it sat after the error page, and Back from it showed the
+  // error again. A page cannot open a local file, so a file is loaded as
+  // before.
+  retryFailedLoad (webview, failed) {
+    if (failed.startsWith('file:')) {
+      webview.setAttribute('src', failed)
+      return
+    }
+    // Only over the error page, which the tab may have left by now.
+    webview.executeJavaScript(`location.protocol === 'peersky:' && location.hostname === 'error.html' && location.replace(${JSON.stringify(failed)})`)
+      .catch(() => webview.setAttribute('src', failed))
   }
 
   goBackActiveTab () {
@@ -1935,11 +2119,13 @@ class TabBar extends HTMLElement {
     }
   }
 
-  reloadActiveTab () {
+  // ignoreCache: Cmd+Shift+R, which fetches everything again, as in Chrome.
+  reloadActiveTab ({ ignoreCache = false } = {}) {
     const webview = this.getActiveWebview()
     if (!webview) return
     const failed = failedUrlBehindErrorPage(webview)
-    if (failed) this.navigateActiveTab(failed)
+    if (failed) this.retryFailedLoad(webview, failed)
+    else if (ignoreCache) webview.reloadIgnoringCache()
     else webview.reload()
   }
 
@@ -2277,7 +2463,7 @@ class TabBar extends HTMLElement {
         break
 
       case 'close':
-        this.closeTab(tabId)
+        this.askToCloseTab(tabId)
         break
 
       case 'add-to-new-group':
@@ -2336,10 +2522,14 @@ class TabBar extends HTMLElement {
   // next link from that tab after the one before, as in other browsers. It
   // joins the group its tab is in. A tab of its own (the + button, Ctrl+T)
   // still goes at the end.
-  addTabFromLink (url, openerWebContentsId = null) {
+  // With background, as Cmd+click and a middle click open one in Chrome, the
+  // tab opens behind the page: it is not selected, and the address bar stays
+  // with the page. loadToken: see createWebviewForTab.
+  addTabFromLink (url, openerWebContentsId = null, { background = false, loadToken = null } = {}) {
     const opener = this.findTabByWebContentsId(openerWebContentsId) ||
       this.tabs.find(t => t.id === this.activeTabId)
-    const tabId = this.addTab(url, 'New Tab')
+    const tabData = loadToken ? { loadToken } : {}
+    const tabId = background ? this.addBackgroundTab(url, 'New Tab', tabData) : this.addTab(url, 'New Tab', tabData)
     if (!opener || opener.id === tabId) return tabId
 
     const newTab = this.tabs.find(t => t.id === tabId)
@@ -2374,6 +2564,19 @@ class TabBar extends HTMLElement {
       } catch {}
     }
     return null
+  }
+
+  // The person stayed on a page that asked before it was left (leave-site.js):
+  // the tab shows that page's address again, not the one typed for it.
+  stayedOnPage (webContentsId) {
+    const tab = this.findTabByWebContentsId(webContentsId)
+    const webview = tab && this.webviews.get(tab.id)
+    if (!webview) return
+    let url = ''
+    try { url = webview.getURL() } catch {}
+    if (!url || url === tab.url) return
+    this.updateTab(tab.id, { url })
+    this.dispatchEvent(new CustomEvent('tab-navigated', { detail: { tabId: tab.id, url } }))
   }
 
   addTabToTheRight (tabId) {
@@ -2721,7 +2924,7 @@ class TabBar extends HTMLElement {
       .map(tab => tab.id)
 
     tabsToClose.forEach(tabId => {
-      this.closeTab(tabId)
+      this.askToCloseTab(tabId)
     })
   }
 
@@ -3046,7 +3249,7 @@ class TabBar extends HTMLElement {
       .map(([tabId, _]) => tabId);
 
     [...tabIds].forEach(tabId => {
-      this.closeTab(tabId)
+      this.askToCloseTab(tabId)
     })
 
     // The group deletion will be handled by deleteGroupAcrossWindows if empty
@@ -3542,7 +3745,7 @@ class TabBar extends HTMLElement {
 
     // Make a copy since closeTab modifies the collection
     [...tabIds].forEach(tabId => {
-      this.closeTab(tabId)
+      this.askToCloseTab(tabId)
     })
 
     // The group should be automatically deleted when empty

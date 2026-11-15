@@ -16,6 +16,7 @@
 
 import { expect } from 'chai'
 import { shouldHonourTabActivation } from '../../src/extensions/tab-activation.js'
+import { readFile } from 'fs/promises'
 
 const live = { id: 1, isDestroyed: () => false }
 
@@ -47,5 +48,24 @@ describe('extension tab activation', () => {
 
   it('is refused when no window is given', () => {
     expect(shouldHonourTabActivation({ registering: false, window: null })).to.equal(false)
+  })
+})
+
+// The extension host tells extensions about a switch (tabs.onActivated) only
+// when the active tab changes. Marking the tab active before telling it made
+// every switch look like no change, and a new tab, selected before its page
+// existed, was never told at all: extensions kept seeing the old tab.
+describe('telling extensions which tab is active', () => {
+  const read = (path) => readFile(new URL(path, import.meta.url), 'utf8')
+
+  it('lets the extension host make the switch itself, with no echo back to the tab bar', async () => {
+    const ipc = await read('../../src/extensions/extensions-ipc.js')
+    expect(ipc).to.not.include('store.windowToActiveTab?.set?.(senderWindow, webviewContents)')
+    expect(ipc).to.include('extensionManager._registeringTab = true\n            try { ece.selectTab(webviewContents) } catch (_) { } finally { extensionManager._registeringTab = false }')
+  })
+
+  it('tells it about a new tab once its page is registered', async () => {
+    const tabBar = await read('../../src/pages/tab-bar.js')
+    expect(tabBar).to.match(/registeredWcId = wcId\n[\s\S]{0,200}if \(this\.activeTabId === tabId\) \{\n\s*ipcRenderer\.invoke\('extensions-pin-active-webview', wcId\)/)
   })
 })

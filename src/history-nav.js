@@ -27,3 +27,21 @@ export function goForwardActiveTab (browserWindow) {
   if (!browserWindow || browserWindow.isDestroyed()) return
   browserWindow.webContents.executeJavaScript(RENDERER_SNIPPET('goForward'))
 }
+
+/**
+ * Steps one tab's history, asked from inside that tab: the mouse's back and
+ * forward buttons on a Mac (pages/unified-preload.js). The tab comes to the
+ * front if it was not, as a click in it brings it.
+ */
+export function stepTabHistory (tab, step) {
+  const host = tab?.hostWebContents
+  if (!host || host.isDestroyed() || (step !== 'back' && step !== 'forward')) return
+  const method = step === 'back' ? 'goBackActiveTab' : 'goForwardActiveTab'
+  host.executeJavaScript(`(() => {
+    const tabBar = document.querySelector('#tabbar')
+    const tab = tabBar?.findTabByWebContentsId?.(${Number(tab.id)})
+    if (!tab) return
+    if (tab.id !== tabBar.activeTabId) tabBar.selectTab(tab.id)
+    tabBar.${method}()
+  })()`).catch(() => {})
+}

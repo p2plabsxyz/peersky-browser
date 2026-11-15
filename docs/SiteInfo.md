@@ -11,6 +11,8 @@ The shield control in the URL bar opens a panel for the active page: identity, p
 
 `clipboard-sanitized-write` is granted silently (Chromium’s usual copy-on-gesture behavior) and is not listed in the panel.
 
+A page reads the same answers before it asks. `navigator.permissions.query()` reads `prompt` for location, notifications, camera, microphone and MIDI while the site is on Ask, `granted` once allowed and `denied` once blocked, and `Notification.permission` reads `default`, `granted` or `denied` the same way. Electron’s permission check can only say yes or no, so every site nobody had answered read `denied`, and a site that looks before it asks never asked. The preload (`src/pages/unified-preload.js`) reads the answer from the main process over `page-permission-answer` (`savedAnswerFor` in `src/permissions.js`), in a page’s top frame. A page that could not have the permission anyway keeps `denied`: one that is not secure, or one whose Permissions-Policy turns the feature off.
+
 ## Pages and IPC
 
 | Surface | Notes |

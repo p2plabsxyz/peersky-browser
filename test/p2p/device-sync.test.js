@@ -13,7 +13,7 @@ import NoiseSecretStream from '@hyperswarm/secret-stream'
 import Hyperdrive from 'hyperdrive'
 import z32 from 'z32'
 import { attachDeviceSync } from '../../src/protocols/device-sync.js'
-import { readDeviceSyncState, resetDeviceSyncStateCache } from '../../src/protocols/device-sync-state.js'
+import { newDeviceFileCount, readDeviceSyncState, resetDeviceSyncStateCache } from '../../src/protocols/device-sync-state.js'
 import { startDesktopDeviceSync } from '../../src/protocols/desktop-device-sync.js'
 import { makePrivateDriveFetcher } from '../../src/protocols/private-hyperdrive.js'
 import { listPrivateHyperdrives, rememberPrivateHyperdrive } from '../../src/protocols/private-hyperdrive-registry.js'
@@ -115,6 +115,9 @@ describe('private sync with a linked phone', function () {
     await until(() => state(phoneState).listings[reportId]?.items.some((item) => item.name === 'report.pdf'), 'the desktop file on the phone')
     await until(() => state(userDataDir).listings[phoneId]?.items.some((item) => item.name === 'hello.txt'), 'the phone file on the desktop')
     expect(await (await fetcher(`hyper://${phoneHost}/hello.txt`)).text()).to.equal('phone hello')
+    // What each had when they met is not new to the other.
+    expect(newDeviceFileCount(userDataDir)).to.equal(0)
+    expect(newDeviceFileCount(phoneState)).to.equal(0)
 
     // A new upload on the phone is listed and copied, unless on cellular.
     await phoneDrive.put('/photo.jpg', randomBytes(64 * 1024))
@@ -125,6 +128,8 @@ describe('private sync with a linked phone', function () {
     await new Promise((resolve) => setTimeout(resolve, 800))
     await phoneDrive.put('/video.mp4', randomBytes(256 * 1024))
     await until(() => state(userDataDir).listings[phoneId]?.items.some((item) => item.name === 'video.mp4'), 'the video in the list')
+    // What the phone shared since counts on the home page until it is seen.
+    expect(newDeviceFileCount(userDataDir)).to.equal(2)
     await new Promise((resolve) => setTimeout(resolve, 1500))
     expect(await copy.has('/video.mp4')).to.equal(false)
     metered = false
@@ -138,6 +143,8 @@ describe('private sync with a linked phone', function () {
     await desktopSync.drivesChanged()
     const notesId = Buffer.from(notes.key).toString('hex')
     await until(() => state(phoneState).listings[notesId]?.items.some((item) => item.name === 'notes.txt'), 'the new desktop drive on the phone')
+    // A drive made here after they met is new there, all of it.
+    expect(newDeviceFileCount(phoneState)).to.equal(1)
 
     // With the phone gone, its files still open here.
     await phoneSync.close()

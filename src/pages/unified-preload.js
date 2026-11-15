@@ -68,6 +68,44 @@ function pathOf (href) {
 }
 const isHyperdriveViews = pageProtocol === 'peersky:' && pageHost === 'p2p' &&
   /^\/hyperdrive\/(files|photos|videos|viewer)(\/|$)/.test(pathOf(url))
+const isAiChatApp = pageProtocol === 'peersky:' && pageHost === 'p2p' && /^\/ai-chat(\/|$)/.test(pagePath)
+
+// PeerSky's own P2P apps hear when their tab goes behind another one and comes
+// back (the tab bar's tellTabShown): a tab's page reads its window's
+// visibility, "visible" behind another tab too. The page is marked
+// data-peersky-tab="hidden" or "shown", with a peersky-tab-visibility event,
+// which PeerChat reads as a chat not on screen.
+if (isP2PPage) {
+  ipcRenderer.on('peersky-tab-shown', (_event, shown) => {
+    const value = shown === false ? 'hidden' : 'shown'
+    const mark = () => {
+      const root = document.documentElement
+      if (!root) return false
+      if (root.dataset.peerskyTab !== value) {
+        root.dataset.peerskyTab = value
+        document.dispatchEvent(new Event('peersky-tab-visibility'))
+      }
+      return true
+    }
+    if (!mark()) window.addEventListener('DOMContentLoaded', mark, { once: true })
+  })
+}
+
+// AI Chat taken up again: its answers are seen, and the home page's bar stops
+// counting them. A tab switch focuses the page, and the main process checks
+// that its tab is the one in front.
+if (isAiChatApp) {
+  const seen = () => {
+    if (document.visibilityState === 'visible' && document.documentElement?.dataset.peerskyTab !== 'hidden') {
+      ipcRenderer.send('ai-chat-seen')
+    }
+  }
+  window.addEventListener('focus', seen)
+  window.addEventListener('pointerdown', seen, { capture: true, passive: true })
+  document.addEventListener('visibilitychange', seen)
+  document.addEventListener('peersky-tab-visibility', seen)
+  window.addEventListener('DOMContentLoaded', seen, { once: true })
+}
 
 console.log('Unified-preload: URL detection', { url, isInternal, isExternal })
 
@@ -90,6 +128,171 @@ if (process.platform === 'darwin') {
   }, { passive: true })
 }
 
+// The back and forward buttons on a mouse step through the tab's history, as
+// in Chrome, unless the page used the press itself. Electron gives them to the
+// window as app commands on Windows and Linux (window-manager.js), where this
+// would go twice; on a Mac only the page sees them, and nothing went back.
+if (process.platform === 'darwin') {
+  window.addEventListener('mouseup', (event) => {
+    if (!event.isTrusted || (event.button !== 3 && event.button !== 4)) return
+    // Looked at once every listener has had it, as for the pinch above.
+    setTimeout(() => {
+      if (event.defaultPrevented) return
+      ipcRenderer.send('peersky-mouse-history', event.button === 3 ? 'back' : 'forward')
+    }, 0)
+  })
+}
+
+// Escape with nothing else held stops the page while it loads, unless the page
+// used the key itself, as one closing its own dialog does (main.js).
+window.addEventListener('keydown', (event) => {
+  if (!event.isTrusted || event.key !== 'Escape' || event.isComposing) return
+  if (event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) return
+  // Looked at once every listener has had it, as for the mouse buttons above.
+  setTimeout(() => {
+    if (event.defaultPrevented) return
+    ipcRenderer.send('peersky-stop-loading')
+  }, 0)
+})
+
+// A page's alert(), confirm() and prompt() come up over its tab, naming its
+// origin, and the page waits for the answer, as in Chrome (src/page-dialogs.js).
+// Electron showed nothing for prompt() and answered null. A page that is not
+// a tab's is answered native, and keeps Electron's own.
+try {
+  contextBridge.executeInMainWorld({
+    func: (ask) => {
+      const native = { alert: window.alert, confirm: window.confirm, prompt: window.prompt }
+      const later = window.setTimeout.bind(window)
+      const now = Date.now
+      const { error, warn } = console
+      // As in Chrome, none while the page is going away.
+      let leaving = null
+      for (const type of ['beforeunload', 'pagehide']) {
+        window.addEventListener(type, () => {
+          leaving = type
+          later(() => { leaving = null }, 0)
+        }, true)
+      }
+      // Once the person stopped this page's dialogs, and for a moment after a
+      // tab not on screen was answered at once, the page has its answer
+      // without asking, so a loop cannot keep the browser busy.
+      let stopped = false
+      let quietUntil = 0
+      // Cut to what a dialog shows (MESSAGE_LIMIT and VALUE_LIMIT in
+      // src/page-dialogs.js) before it is sent, so a page cannot push a huge
+      // string through to the browser.
+      const clip = (text, limit) => (text.length > limit ? `${text.slice(0, limit)}…` : text)
+      const call = (kind, message, value) => {
+        if (leaving) {
+          error(`Blocked ${kind}('${message}') during ${leaving}.`)
+          return { ok: false }
+        }
+        if (stopped || now() < quietUntil) return { ok: false }
+        const answer = ask(kind, clip(message, 3000), value === undefined ? undefined : clip(value, 2000)) || { ok: false }
+        if (answer.stopped) stopped = true
+        if (answer.background || answer.later) quietUntil = now() + 500
+        if (answer.background) warn(`A window.${kind}() dialog was not shown because this page is not in the tab on screen.`)
+        return answer
+      }
+      const dialogs = {
+        alert (...args) {
+          if (call('alert', args.length ? `${args[0]}` : '').native) native.alert.apply(window, args)
+        },
+        confirm (message = '') {
+          const shown = `${message}`
+          const answer = call('confirm', shown)
+          return answer.native ? native.confirm.call(window, shown) : answer.ok === true
+        },
+        prompt (message = '', value = '') {
+          const shown = `${message}`
+          const initial = `${value}`
+          const answer = call('prompt', shown, initial)
+          if (answer.native) return native.prompt.call(window, shown, initial)
+          return answer.ok === true ? `${answer.value ?? ''}` : null
+        }
+      }
+      for (const name of Object.keys(dialogs)) {
+        Object.defineProperty(window, name, { value: dialogs[name], writable: true, enumerable: true, configurable: true })
+      }
+    },
+    args: [(kind, message, value) => {
+      try {
+        return ipcRenderer.sendSync('page-dialog', { type: kind, message, value })
+      } catch {
+        return { native: true }
+      }
+    }]
+  })
+} catch (error) {
+  console.warn('Unified-preload: page dialogs stay Electron\'s own:', error)
+}
+
+// A site looks at what it would get before it asks, with
+// navigator.permissions.query() and Notification.permission. Electron reads
+// both from the permission check (src/permissions.js), which can only say yes
+// or no, so a site nobody had answered yet read "denied", and a site that
+// checks first never asked. Where Chromium says denied, the page reads the
+// answer PeerSky has saved for the site: "prompt" ("default" for
+// Notification.permission) when there is none, "granted" once allowed, which a
+// status the page held from before the answer did not show, and "denied" once
+// blocked. A page that could not have the permission anyway keeps "denied": one
+// that is not secure, or one whose Permissions-Policy turns the feature off.
+try {
+  contextBridge.executeInMainWorld({
+    func: (savedAnswer) => {
+      // The policy feature each one is under. Notifications have none. A status
+      // for the camera or microphone names itself video_capture or audio_capture.
+      const ASKED_FOR = {
+        geolocation: 'geolocation',
+        notifications: null,
+        midi: 'midi',
+        camera: 'camera',
+        microphone: 'microphone',
+        video_capture: 'camera',
+        audio_capture: 'microphone'
+      }
+      const answerFor = (name) => {
+        if (!globalThis.isSecureContext || !Object.hasOwn(ASKED_FOR, name)) return null
+        const feature = ASKED_FOR[name]
+        const policy = globalThis.document?.featurePolicy
+        if (feature && policy?.allowsFeature && !policy.allowsFeature(feature)) return null
+        return savedAnswer(name)
+      }
+      // A Proxy over the browser's own getter keeps its name and length.
+      const wrapGetter = (target, key, read) => {
+        const descriptor = target && Object.getOwnPropertyDescriptor(target, key)
+        if (!descriptor?.get || !descriptor.configurable) return
+        const get = new Proxy(descriptor.get, {
+          apply: (getter, self, args) => read(Reflect.apply(getter, self, args), self)
+        })
+        Object.defineProperty(target, key, { ...descriptor, get })
+      }
+      const status = typeof PermissionStatus === 'function' ? PermissionStatus.prototype : null
+      const nameOf = status && Object.getOwnPropertyDescriptor(status, 'name')?.get
+      wrapGetter(status, 'state', (state, self) => {
+        if (state !== 'denied' || !nameOf) return state
+        const answer = answerFor(Reflect.apply(nameOf, self, []))
+        return answer === 'ask' ? 'prompt' : answer === 'allow' ? 'granted' : state
+      })
+      wrapGetter(typeof Notification === 'function' ? Notification : null, 'permission', (state) => {
+        if (state !== 'denied') return state
+        const answer = answerFor('notifications')
+        return answer === 'ask' ? 'default' : answer === 'allow' ? 'granted' : state
+      })
+    },
+    args: [(name) => {
+      try {
+        return ipcRenderer.sendSync('page-permission-answer', name)
+      } catch {
+        return null
+      }
+    }]
+  })
+} catch (error) {
+  console.warn('Unified-preload: permission states stay Electron\'s own:', error)
+}
+
 if (isTorrentUi) {
   contextBridge.exposeInMainWorld('peerskyBT', {
     apiToken: () => ipcRenderer.invoke('bt-api-token')
@@ -106,10 +309,14 @@ if (isInternal || isP2P || isUserP2PApp || isLocalFile) {
   const iteratorMaps = new Map()
   let iteratorId = 1
 
+  // AI Chat's own answers, which finish while the person may be elsewhere.
+  const chatStreams = new Set()
+
   async function chatStream (args) {
     const { id } = await ipcRenderer.invoke('llm-chat-stream', args)
     const localId = iteratorId++
     iteratorMaps.set(localId, id)
+    if (isAiChatApp) chatStreams.add(localId)
     return localId
   }
 
@@ -123,13 +330,21 @@ if (isInternal || isP2P || isUserP2PApp || isLocalFile) {
   async function iteratorNext (localId) {
     const id = iteratorMaps.get(localId)
     if (!id) throw new Error('Unknown iterator ID')
-    return ipcRenderer.invoke('llm-iterate-next', { id })
+    const result = await ipcRenderer.invoke('llm-iterate-next', { id })
+    // An answer AI Chat finished while it was out of view is counted on its
+    // icon in the home page's bar. The main process tells whether it was.
+    if (result?.done && chatStreams.delete(localId)) {
+      ipcRenderer.send('ai-chat-reply-finished')
+    }
+    return result
   }
 
   async function iteratorReturn (localId) {
     const id = iteratorMaps.get(localId)
     if (!id) throw new Error('Unknown iterator ID')
     iteratorMaps.delete(localId)
+    // Stopped before it was done: nothing to count.
+    chatStreams.delete(localId)
     return ipcRenderer.invoke('llm-iterate-return', { id })
   }
 
@@ -794,7 +1009,10 @@ try {
       onClockFormatChanged: (callback) => createEventListener('clock-format-changed', callback),
       onWallpaperChanged: (callback) => createEventListener('wallpaper-changed', callback),
       p2pApps: {
-        list: p2pAppsAPI.list
+        list: p2pAppsAPI.list,
+        // The counts on the apps in the bar: unread messages, new files from
+        // the person's other devices, answers not seen yet.
+        badges: () => ipcRenderer.invoke('p2p-app-badges')
       },
       // Extension browser action APIs for home page toolbar
       extensions: {
@@ -871,7 +1089,8 @@ try {
       // The person's other devices and their private files, for the Hyperdrive
       // app. The main process answers that page alone.
       devices: {
-        list: () => ipcRenderer.invoke('device-sync-list')
+        list: () => ipcRenderer.invoke('device-sync-list'),
+        markSeen: () => ipcRenderer.invoke('device-sync-seen')
       },
       // The private files this computer shared, for the same page alone.
       privateFiles: {
@@ -1025,12 +1244,19 @@ async function injectPageStyles () {
       console.log('Unified-preload: Syntax highlighting font injected for internal page')
     }
 
+    // A page made in HTML is left as its author made it, styled or not, as in
+    // Chrome: an RFC served as HTML, with no stylesheet and its text in a
+    // <pre>, came out white on black in a coloured code font. Only what
+    // Chromium shows as it is, such as a .txt, .json or raw code file, gets
+    // the base styles and the dark page.
+    const isMarkupPage = document.contentType === 'text/html' || document.contentType === 'application/xhtml+xml'
+
     // Check if page already has stylesheets
     const hasStylesheets = [...document.styleSheets].some(s => {
       try { return !!s.cssRules } catch { return false }
     }) || !!document.querySelector('style,link[rel="stylesheet"]')
 
-    if (!hasStylesheets) {
+    if (!hasStylesheets && !isMarkupPage) {
       // Inject base styles for pages without CSS
       const [varsCss, baseCss] = await Promise.all([
         ipcRenderer.invoke('peersky-read-css', 'vars'),
@@ -1045,8 +1271,8 @@ async function injectPageStyles () {
     }
 
     // Special handling for XML content
-    if (window.location.pathname.endsWith('.xml') ||
-        document.querySelector('rss, feed, body > pre') !== null) {
+    if (!isMarkupPage && (window.location.pathname.endsWith('.xml') ||
+        document.querySelector('rss, feed, body > pre') !== null)) {
       const sheet = document.styleSheets[document.styleSheets.length - 1]
       if (sheet) {
         sheet.insertRule('body { background: #000; color: #fff }', sheet.cssRules.length)

@@ -139,14 +139,19 @@ export async function clickBrowserAction (manager, actionId, window) {
         return
       }
 
-      // Method 1: Use activateExtension if available (preferred for extensions without popups)
-      if (manager.electronChromeExtensions.activateExtension) {
+      // Method 1: click it as Chrome's toolbar does: the popup if the action
+      // has one on this tab, otherwise action.onClicked, with activeTab for
+      // the tab either way. The extension host's 2.0 refuses openPopup for an
+      // action without a popup, as Chrome does, so a button such as PeerSky
+      // History's did nothing.
+      const clickAPI = manager.electronChromeExtensions.api?.browserAction
+      if (typeof clickAPI?.activateClick === 'function' && typeof activeTab?.id === 'number') {
         try {
-          await manager.electronChromeExtensions.activateExtension(activeTab, extension.electronId)
-          log.info(`ExtensionManager: activateExtension called for ${extension.displayName || extension.name}`)
+          clickAPI.activateClick({ eventType: 'click', extensionId: extension.electronId, tabId: activeTab.id })
+          log.info(`ExtensionManager: toolbar click for ${extension.displayName || extension.name}`)
           return
-        } catch (activateError) {
-          log.warn(`ExtensionManager: activateExtension failed for ${extension.displayName || extension.name}:`, activateError)
+        } catch (clickError) {
+          log.warn(`ExtensionManager: toolbar click failed for ${extension.displayName || extension.name}:`, clickError)
         }
       }
 

@@ -3,6 +3,7 @@
 // is given a placeholder src carrying a token: the src is blanked as the guest
 // attaches, and the history is restored in its place.
 import { ipcMain } from 'electron'
+import { randomUUID } from 'crypto'
 import { createLogger } from './logger.js'
 
 const log = createLogger('navigation-restore')
@@ -10,6 +11,22 @@ export const PLACEHOLDER = 'about:blank#peersky-restore='
 
 const pending = new Map() // token -> { entries, index, url }
 const results = new Map() // guest webContents id -> Promise<restored?>
+
+// A tab a page opened gets its first load as the page asked for it: with its
+// referrer, and a form's POST body, which a webview's src cannot carry. It
+// starts on a placeholder like a restored tab, and main loads it as it
+// attaches. onAttach hears which guest the tab became.
+export const LOAD_PLACEHOLDER = 'about:blank#peersky-load='
+const pendingLoads = new Map() // token -> { url, options, onAttach }
+
+export function queueFirstLoad ({ url, options = {}, onAttach = null }) {
+  const token = randomUUID()
+  pendingLoads.set(token, { url, options, onAttach })
+  // Nothing claims the token if the tab never opens.
+  const expiry = setTimeout(() => pendingLoads.delete(token), 30000)
+  if (expiry.unref) expiry.unref()
+  return token
+}
 
 export function registerNavigationRestore () {
   ipcMain.on('queue-navigation-restore', (event, { token, entries, index, url }) => {
@@ -34,14 +51,29 @@ export function registerNavigationRestore () {
 // Call for every window that hosts webviews.
 export function watchHost (host) {
   let queued = null
+  let loading = null
   host.on('will-attach-webview', (_event, _prefs, params) => {
-    const token = typeof params.src === 'string' && params.src.startsWith(PLACEHOLDER) ? params.src.slice(PLACEHOLDER.length) : null
+    const src = typeof params.src === 'string' ? params.src : ''
+    const loadToken = src.startsWith(LOAD_PLACEHOLDER) ? src.slice(LOAD_PLACEHOLDER.length) : null
+    loading = loadToken ? pendingLoads.get(loadToken) || null : null
+    if (loading) {
+      pendingLoads.delete(loadToken)
+      params.src = ''
+    }
+    const token = src.startsWith(PLACEHOLDER) ? src.slice(PLACEHOLDER.length) : null
     queued = token ? pending.get(token) : null
     if (!queued) return
     pending.delete(token)
     params.src = ''
   })
   host.on('did-attach-webview', async (_event, guest) => {
+    const load = loading
+    loading = null
+    if (load) {
+      try { load.onAttach?.(guest) } catch (error) { log.warn('A new tab could not be named:', error) }
+      guest.loadURL(load.url, load.options).catch(() => {})
+      return
+    }
     const job = queued
     queued = null
     if (!job) return

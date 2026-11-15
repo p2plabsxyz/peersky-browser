@@ -1,4 +1,4 @@
-import { connectionFor } from '../../../utils.js'
+import { connectionForPage } from '../../../utils.js'
 
 export class SiteInfoPopup {
   constructor (ipc) {
@@ -656,9 +656,5 @@ function permissionChooserHtml (permission, current) {
 
 export function isSecurePageUrl (url) {
   if (!url || typeof url !== 'string') return false
-  try {
-    return connectionFor(new URL(url).protocol).secure === true
-  } catch {
-    return false
-  }
+  return connectionForPage(url).secure === true
 }

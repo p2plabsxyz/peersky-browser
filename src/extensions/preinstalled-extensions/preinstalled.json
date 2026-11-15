@@ -14,21 +14,21 @@
     },
     {
       "name": "Consent Autodeny",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "url": "https://github.com/p2plabsxyz/consent-autodeny/releases/download/v{version}/consent-autodeny-v{version}.zip",
-      "archive": "consent-autodeny-v1.0.0.zip"
+      "archive": "consent-autodeny-v1.0.1.zip"
     },
     {
       "name": "uBlock Origin MV3",
-      "version": "1.72.2.900",
+      "version": "1.76.0",
       "url": "https://github.com/p2plabsxyz/uBlock-mv3/releases/download/v{version}/ublock-origin-chromium-v{version}.zip",
-      "archive": "ublock-origin-chromium-v1.72.2.900.zip"
+      "archive": "ublock-origin-chromium-v1.76.0.zip"
     },
     {
       "name": "Wayback Machine",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "url": "https://github.com/p2plabsxyz/wayback-machine-extension/releases/download/v{version}/wayback-machine-v{version}.zip",
-      "archive": "wayback-machine-v1.1.0.zip"
+      "archive": "wayback-machine-v1.2.0.zip"
     }
   ]
 }

@@ -2,7 +2,41 @@ import { app, BrowserWindow, webContents } from 'electron'
 import { createLogger } from './logger.js'
 import { goBackActiveTab, goForwardActiveTab } from './history-nav.js'
 import { toggleDockedDevTools } from './devtools-dock.js'
+import { tabBarCall } from './tab-shortcuts.js'
 const log = createLogger('actions')
+
+// Runs a tab bar method in the focused window, whichever tab layout it has.
+function onTabBar (method, ...args) {
+  const focusedWindow = BrowserWindow.getFocusedWindow()
+  if (!focusedWindow) return
+  focusedWindow.webContents.executeJavaScript(tabBarCall(method, ...args))
+    .catch((err) => log.error(`${method} failed:`, err))
+}
+
+// Chrome's ways to a tab that no menu shows: Cmd+1 to Cmd+8 for that tab and
+// Cmd+9 for the last, and on a Mac Ctrl+Tab and Cmd+Shift+] and [ as well as
+// Cmd+Option+Right and Left. Elsewhere F5 reloads, and with Shift or Ctrl it
+// fetches everything again. As in Chrome, a page has the numbers and the
+// reloads first, and never the keys that go to the next tab (main.js).
+function hiddenShortcuts (isMac) {
+  const hidden = (label, accelerator, click) => ({ label, accelerator, visible: false, click })
+  const actions = {}
+  for (let number = 1; number <= 8; number++) {
+    actions[`SelectTab${number}`] = hidden(`Tab ${number}`, `CommandOrControl+${number}`, () => onTabBar('selectTabByNumber', number))
+  }
+  actions.SelectLastTab = hidden('Last Tab', 'CommandOrControl+9', () => onTabBar('selectTabByNumber', 9))
+  if (isMac) {
+    actions.NextTabControl = hidden('Next Tab', 'Control+Tab', () => onTabBar('selectAdjacentTab', 1))
+    actions.PreviousTabControl = hidden('Previous Tab', 'Control+Shift+Tab', () => onTabBar('selectAdjacentTab', -1))
+    actions.NextTabBracket = hidden('Next Tab', 'Command+Shift+]', () => onTabBar('selectAdjacentTab', 1))
+    actions.PreviousTabBracket = hidden('Previous Tab', 'Command+Shift+[', () => onTabBar('selectAdjacentTab', -1))
+  } else {
+    actions.ReloadF5 = hidden('Reload', 'F5', () => onTabBar('reloadActiveTab'))
+    actions.ForceReloadShiftF5 = hidden('Force Reload', 'Shift+F5', () => onTabBar('reloadActiveTab', { ignoreCache: true }))
+    actions.ForceReloadCtrlF5 = hidden('Force Reload', 'Control+F5', () => onTabBar('reloadActiveTab', { ignoreCache: true }))
+  }
+  return actions
+}
 
 // A null step means reset.
 function zoomActiveTab (step) {
@@ -91,6 +125,12 @@ export function createActions (windowManager) {
         }
       }
     },
+    // A tab's page never has this key, as in Chrome (main.js).
+    ReopenClosedTab: {
+      label: 'Reopen Closed Tab',
+      accelerator: 'CommandOrControl+Shift+T',
+      click: () => onTabBar('reopenClosedTab')
+    },
     Forward: {
       label: 'Forward',
       accelerator: 'CommandOrControl+]',
@@ -173,6 +213,11 @@ export function createActions (windowManager) {
         }
       }
     },
+    ForceReload: {
+      label: 'Force Reload',
+      accelerator: 'CommandOrControl+Shift+R',
+      click: () => onTabBar('reloadActiveTab', { ignoreCache: true })
+    },
     ZoomIn: {
       label: 'Zoom In',
       accelerator: 'CommandOrControl+Plus',
@@ -241,14 +286,14 @@ export function createActions (windowManager) {
       click: () => {
         const focusedWindow = BrowserWindow.getFocusedWindow()
         if (focusedWindow) {
+          // The tab's page is asked first, as in Chrome; the last tab takes
+          // the window with it once its page lets it go.
           focusedWindow.webContents.executeJavaScript(`
             try {
               const tabBar = document.querySelector('#tabbar');
-              if (tabBar && tabBar.tabs && tabBar.tabs.length > 1 && typeof tabBar.closeTab === 'function' && typeof tabBar.getActiveTab === 'function') {
-                const activeTab = tabBar.getActiveTab();
-                if (activeTab && activeTab.id) {
-                  tabBar.closeTab(activeTab.id);
-                }
+              const activeTab = tabBar && typeof tabBar.getActiveTab === 'function' ? tabBar.getActiveTab() : null;
+              if (activeTab && activeTab.id && typeof tabBar.askToCloseTab === 'function') {
+                tabBar.askToCloseTab(activeTab.id);
               } else {
                 window.close();
               }
@@ -311,10 +356,10 @@ export function createActions (windowManager) {
           focusedWindow.webContents.executeJavaScript(`
             try {
               const tabBar = document.querySelector('#tabbar');
-              if (tabBar && typeof tabBar.getActiveTab === 'function' && typeof tabBar.closeTab === 'function') {
+              if (tabBar && typeof tabBar.getActiveTab === 'function' && typeof tabBar.askToCloseTab === 'function') {
                 const activeTab = tabBar.getActiveTab();
                 if (activeTab && activeTab.id) {
-                  tabBar.closeTab(activeTab.id);
+                  tabBar.askToCloseTab(activeTab.id);
                 }
               }
             } catch (error) {
@@ -379,7 +424,8 @@ export function createActions (windowManager) {
           })
         }
       }
-    }
+    },
+    ...hiddenShortcuts(process.platform === 'darwin')
   }
 
   return actions
@@ -415,6 +461,7 @@ export function createMenuTemplate (windowManager) {
         { ...actions.NewWindow },
         { ...actions.NewIncognitoWindow },
         { ...actions.NewTab },
+        { ...actions.ReopenClosedTab },
         { type: 'separator' },
         { ...actions.Print },
         { type: 'separator' },
@@ -462,6 +509,8 @@ export function createMenuTemplate (windowManager) {
       label: 'View',
       submenu: [
         { ...actions.Reload },
+        { ...actions.ForceReload },
+        ...(isMac ? [] : [{ ...actions.ReloadF5 }, { ...actions.ForceReloadShiftF5 }, { ...actions.ForceReloadCtrlF5 }]),
         { type: 'separator' },
         { ...actions.ZoomIn },
         { ...actions.ZoomInEquals },
@@ -479,6 +528,11 @@ export function createMenuTemplate (windowManager) {
         { ...actions.Minimize },
         { ...actions.NextTab },
         { ...actions.PreviousTab },
+        ...['SelectTab1', 'SelectTab2', 'SelectTab3', 'SelectTab4', 'SelectTab5', 'SelectTab6', 'SelectTab7', 'SelectTab8', 'SelectLastTab']
+          .map((name) => ({ ...actions[name] })),
+        ...(isMac
+          ? [{ ...actions.NextTabControl }, { ...actions.PreviousTabControl }, { ...actions.NextTabBracket }, { ...actions.PreviousTabBracket }]
+          : []),
         ...(isMac
           ? [
               { type: 'separator' },

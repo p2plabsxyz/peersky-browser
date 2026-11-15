@@ -503,8 +503,13 @@ export function setupExtensionIpcHandlers (extensionManager) {
             if (!store.tabs?.has?.(webviewContents)) {
               try { ece.addTab(webviewContents, senderWindow) } catch (_) { }
             }
-            try { store.windowToActiveTab?.set?.(senderWindow, webviewContents) } catch (_) { }
-            try { ece.selectTab(webviewContents, senderWindow) } catch (_) { }
+            // selectTab makes it the window's active tab and tells extensions
+            // (tabs.onActivated). Marking it active here first made the
+            // extension host take the switch as no change and say nothing.
+            // Its echo back to the tab bar is refused: the tab bar made this
+            // switch, and selecting again would take focus from the address bar.
+            extensionManager._registeringTab = true
+            try { ece.selectTab(webviewContents) } catch (_) { } finally { extensionManager._registeringTab = false }
           }
         } catch (_) { /* ignore for now */ }
 

@@ -1,6 +1,6 @@
 /**
  * Extensions get webRequest headers the way Chrome gives them
- * (@p2plabs/peersky-chrome-extensions 1.3.3).
+ * (@p2plabs/peersky-chrome-extensions since 1.3.3).
  *
  * Chrome hands listeners requestHeaders and responseHeaders as [{ name, value }]
  * and takes changes back the same way. The extension host passed Electron's
@@ -74,8 +74,9 @@ for (const [name, source] of Object.entries(builds)) {
     it('gives every listener Chrome\'s form, never Electron\'s', () => {
       expect(source).to.not.include('responseHeaders: details.responseHeaders')
       expect(source).to.not.include('requestHeaders: details.requestHeaders')
-      expect((source.match(/responseHeaders: toChromeHeaders\(details\.responseHeaders\)/g) || []).length).to.equal(5)
-      expect((source.match(/requestHeaders: toChromeHeaders\(details\.requestHeaders\)/g) || []).length).to.equal(3)
+      // 2.x makes every listener's details in one place.
+      expect((source.match(/responseHeaders: toChromeHeaders\(details\.responseHeaders\)/g) || []).length).to.equal(1)
+      expect((source.match(/requestHeaders: toChromeHeaders\(details\.requestHeaders\)/g) || []).length).to.equal(1)
     })
   })
 }

@@ -132,12 +132,16 @@ describe('the private files this desktop shared', function () {
 
   it('answers the Hyperdrive app alone', async function () {
     const handlers = new Map()
+    const front = { name: 'the Hyperdrive tab in front' }
+    let marked = 0
     const { setupDeviceSyncIpc } = await esmock.strict('../../src/protocols/device-sync-ipc.js', {
       '../../src/protocols/hyper-handler.js': {
         getDeviceSyncSnapshot: () => ({ devices: [], files: [] }),
         getOwnPrivateFiles: async () => [{ type: 'file', name: 'mine.txt' }]
-      }
-    }, { electron: { ipcMain: { handle: (channel, handler) => handlers.set(channel, handler) } } })
+      },
+      '../../src/protocols/device-sync-state.js': { markDeviceFilesSeen: () => { marked++; return true } },
+      '../../src/tab-on-screen.js': { isTabOnScreen: async (contents) => contents === front }
+    }, { electron: { ipcMain: { handle: (channel, handler) => handlers.set(channel, handler) }, app: { getPath: () => '/nowhere' } } })
     setupDeviceSyncIpc()
     const list = handlers.get('private-files-list')
     expect(await list({ senderFrame: { url: 'peersky://p2p/hyperdrive/' } })).to.deep.equal({ files: [{ type: 'file', name: 'mine.txt' }] })
@@ -148,6 +152,20 @@ describe('the private files this desktop shared', function () {
       await Promise.resolve().then(() => list({ senderFrame: { url } })).catch((caught) => { error = caught })
       expect(error?.message, String(url)).to.equal('Forbidden')
     }
+
+    // Marking the other devices' files seen: the app alone, from a tab in
+    // front, not one left behind another.
+    const seen = handlers.get('device-sync-seen')
+    expect(await seen({ senderFrame: { url: 'peersky://p2p/hyperdrive/' }, sender: { name: 'a tab behind' } })).to.equal(false)
+    expect(marked).to.equal(0)
+    expect(await seen({ senderFrame: { url: 'peersky://p2p/hyperdrive/' }, sender: front })).to.equal(true)
+    expect(marked).to.equal(1)
+    for (const url of ['peersky://p2p/peerchat/', 'peersky://p2p/hyperdrive-evil/', 'peersky://home', undefined]) {
+      let error = null
+      await Promise.resolve().then(() => seen({ senderFrame: { url }, sender: front })).catch((caught) => { error = caught })
+      expect(error?.message, String(url)).to.equal('Forbidden')
+    }
+    expect(marked).to.equal(1)
     const { readFile } = await import('fs/promises')
     const preload = await readFile(new URL('../../src/pages/unified-preload.js', import.meta.url), 'utf8')
     expect(preload).to.contain("list: () => ipcRenderer.invoke('private-files-list')")

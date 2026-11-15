@@ -14,7 +14,8 @@ describe('Clear Cache', function () {
       session: { defaultSession: {} },
       safeStorage: { isEncryptionAvailable: () => false },
       dialog: {},
-      webContents: { getAllWebContents: () => [] }
+      webContents: { getAllWebContents: () => [] },
+      nativeTheme: { themeSource: 'system' }
     }
     return esmock.strict('../../src/settings-manager.js', {
       '../../src/protocols/config.js': { ensCache: new Map(), ipfsCache: new Map(), hyperCache: new Map(), saveEnsCache () {}, saveIpfsCache () {}, saveHyperCache () {} },
@@ -61,7 +62,8 @@ describe('the P2P data export', function () {
       session: { defaultSession: {} },
       safeStorage: { isEncryptionAvailable: () => false },
       dialog: {},
-      webContents: { getAllWebContents: () => [] }
+      webContents: { getAllWebContents: () => [] },
+      nativeTheme: { themeSource: 'system' }
     }
     const { localDate } = await esmock.strict('../../src/settings-manager.js', {
       '../../src/protocols/config.js': { ensCache: new Map(), ipfsCache: new Map(), hyperCache: new Map(), saveEnsCache () {}, saveIpfsCache () {}, saveHyperCache () {} },
