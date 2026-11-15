@@ -228,6 +228,71 @@ try {
   console.warn('Unified-preload: page dialogs stay Electron\'s own:', error)
 }
 
+// A site looks at what it would get before it asks, with
+// navigator.permissions.query() and Notification.permission. Electron reads
+// both from the permission check (src/permissions.js), which can only say yes
+// or no, so a site nobody had answered yet read "denied", and a site that
+// checks first never asked. Where Chromium says denied, the page reads the
+// answer PeerSky has saved for the site: "prompt" ("default" for
+// Notification.permission) when there is none, "granted" once allowed, which a
+// status the page held from before the answer did not show, and "denied" once
+// blocked. A page that could not have the permission anyway keeps "denied": one
+// that is not secure, or one whose Permissions-Policy turns the feature off.
+try {
+  contextBridge.executeInMainWorld({
+    func: (savedAnswer) => {
+      // The policy feature each one is under. Notifications have none. A status
+      // for the camera or microphone names itself video_capture or audio_capture.
+      const ASKED_FOR = {
+        geolocation: 'geolocation',
+        notifications: null,
+        midi: 'midi',
+        camera: 'camera',
+        microphone: 'microphone',
+        video_capture: 'camera',
+        audio_capture: 'microphone'
+      }
+      const answerFor = (name) => {
+        if (!globalThis.isSecureContext || !Object.hasOwn(ASKED_FOR, name)) return null
+        const feature = ASKED_FOR[name]
+        const policy = globalThis.document?.featurePolicy
+        if (feature && policy?.allowsFeature && !policy.allowsFeature(feature)) return null
+        return savedAnswer(name)
+      }
+      // A Proxy over the browser's own getter keeps its name and length.
+      const wrapGetter = (target, key, read) => {
+        const descriptor = target && Object.getOwnPropertyDescriptor(target, key)
+        if (!descriptor?.get || !descriptor.configurable) return
+        const get = new Proxy(descriptor.get, {
+          apply: (getter, self, args) => read(Reflect.apply(getter, self, args), self)
+        })
+        Object.defineProperty(target, key, { ...descriptor, get })
+      }
+      const status = typeof PermissionStatus === 'function' ? PermissionStatus.prototype : null
+      const nameOf = status && Object.getOwnPropertyDescriptor(status, 'name')?.get
+      wrapGetter(status, 'state', (state, self) => {
+        if (state !== 'denied' || !nameOf) return state
+        const answer = answerFor(Reflect.apply(nameOf, self, []))
+        return answer === 'ask' ? 'prompt' : answer === 'allow' ? 'granted' : state
+      })
+      wrapGetter(typeof Notification === 'function' ? Notification : null, 'permission', (state) => {
+        if (state !== 'denied') return state
+        const answer = answerFor('notifications')
+        return answer === 'ask' ? 'default' : answer === 'allow' ? 'granted' : state
+      })
+    },
+    args: [(name) => {
+      try {
+        return ipcRenderer.sendSync('page-permission-answer', name)
+      } catch {
+        return null
+      }
+    }]
+  })
+} catch (error) {
+  console.warn('Unified-preload: permission states stay Electron\'s own:', error)
+}
+
 if (isTorrentUi) {
   contextBridge.exposeInMainWorld('peerskyBT', {
     apiToken: () => ipcRenderer.invoke('bt-api-token')

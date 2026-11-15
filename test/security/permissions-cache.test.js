@@ -294,3 +294,48 @@ describe('Web MIDI', function () {
     expect(check(site, 'midi', 'https://midi.example/')).to.equal(true)
   })
 })
+
+// Electron shows a page "denied" for any permission the check handler refuses,
+// including one nobody was asked for yet; the preload shows the page this
+// answer instead (src/pages/unified-preload.js).
+describe('what a page reads before it asks', function () {
+  it('is ask until the site is answered, then the answer', async function () {
+    const { savedAnswerFor, setPermission, requestHandler } = await loadPermissions({ showMessageBox: async () => ({ response: 1 }) })
+    const page = 'https://example.com/map?q=1'
+    expect(savedAnswerFor(page, 'geolocation')).to.equal('ask')
+    setPermission('https://example.com', 'geolocation', 'block')
+    expect(savedAnswerFor(page, 'geolocation')).to.equal('block')
+    setPermission('https://example.com', 'notifications', 'allow')
+    expect(savedAnswerFor(page, 'notifications')).to.equal('allow')
+    // Allow this time reads as allowed while it lasts.
+    await new Promise((resolve) => requestHandler({ getURL: () => page }, 'midiSysex', resolve, {}))
+    expect(savedAnswerFor(page, 'midi')).to.equal('allow')
+  })
+
+  it('reads the camera and microphone under the one row, by every name a status has', async function () {
+    const { savedAnswerFor, setPermission } = await loadPermissions()
+    setPermission('https://call.example', 'media', 'allow')
+    for (const name of ['camera', 'microphone', 'video_capture', 'audio_capture']) {
+      expect(savedAnswerFor('https://call.example/room', name), name).to.equal('allow')
+    }
+  })
+
+  it('covers nothing it would not ask for, and no page without a site', async function () {
+    const { savedAnswerFor } = await loadPermissions()
+    for (const name of ['clipboard-read', 'push', 'persistent-storage', 'p2pPublish', 'llm', 'fullscreen', '__proto__', 'toString']) {
+      expect(savedAnswerFor('https://example.com/', name), name).to.equal(null)
+    }
+    for (const page of ['about:blank', 'data:text/html,hi', 'null', '', undefined]) {
+      expect(savedAnswerFor(page, 'geolocation'), String(page)).to.equal(null)
+    }
+  })
+
+  it('keeps incognito answers apart from the normal ones', async function () {
+    const { savedAnswerFor, setPermission } = await loadPermissions()
+    setPermission('https://example.com', 'notifications', 'allow')
+    expect(savedAnswerFor('https://example.com/', 'notifications', { incognito: true })).to.equal('ask')
+    setPermission('https://example.com', 'notifications', 'block', { incognito: true })
+    expect(savedAnswerFor('https://example.com/', 'notifications', { incognito: true })).to.equal('block')
+    expect(savedAnswerFor('https://example.com/', 'notifications')).to.equal('allow')
+  })
+})

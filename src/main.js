@@ -50,7 +50,7 @@ import extensionManager from './extensions/index.js'
 import { setupExtensionIpcHandlers } from './extensions/extensions-ipc.js'
 import { BLOCKED_SCHEME, BLOCKED_SCHEME_PRIVILEGES, answerBlockedCall, blockedCallHandler } from './extensions/blocked-requests.js'
 import { getBrowserSession, getIncognitoSession, INCOGNITO_PARTITION, usePersist } from './session.js'
-import { setupIncognitoPermissionHandler, setupPermissionHandler, requestSitePermission, permissionOriginFromUrl } from './permissions.js'
+import { setupIncognitoPermissionHandler, setupPermissionHandler, requestSitePermission, permissionOriginFromUrl, savedAnswerFor } from './permissions.js'
 import { setupSiteInfoIpc } from './site-info-ipc.js'
 import { setErrorPageKey } from './utils.js'
 import { startPeerChatPresence } from './peerchat-presence.js'
@@ -1549,6 +1549,21 @@ ipcMain.on('peersky-stop-loading', (event) => {
   if (!tab || tab.isDestroyed() || tab.getType() !== 'webview') return
   if (event.senderFrame?.parent) return
   if (tab.isLoadingMainFrame()) tab.stop()
+})
+
+// Where Electron tells a page's navigator.permissions.query() or
+// Notification.permission "denied": the answer saved for its site, which the
+// page reads instead (pages/unified-preload.js). The preload runs in a page's
+// top frame only.
+ipcMain.on('page-permission-answer', (event, name) => {
+  let answer = null
+  try {
+    const frame = event.senderFrame
+    if (frame && !frame.parent && typeof name === 'string') {
+      answer = savedAnswerFor(frame.url, name, { incognito: event.sender.session === getIncognitoSession() })
+    }
+  } catch {}
+  event.returnValue = answer
 })
 
 ipcMain.on('group-action', (_event, data) => {

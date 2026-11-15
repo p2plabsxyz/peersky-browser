@@ -191,6 +191,34 @@ export function getPermissionsForOrigin (origin, { incognito = false } = {}) {
   return result
 }
 
+// The names navigator.permissions.query() and Notification.permission read,
+// by the row each is kept under. Chromium names a camera or microphone status
+// video_capture or audio_capture.
+const QUERIED_ROWS = {
+  geolocation: 'geolocation',
+  notifications: 'notifications',
+  midi: 'midi',
+  camera: 'media',
+  microphone: 'media',
+  video_capture: 'media',
+  audio_capture: 'media'
+}
+
+/**
+ * The answer saved for a page's site, for a permission the page reads:
+ * 'ask' when there is none yet, 'allow' (always or this time) or 'block'; null
+ * for a page or a name this does not cover. The check handler below can only
+ * say yes or no, and Electron shows a no to the page as "denied"; the preload
+ * (src/pages/unified-preload.js) shows the page this answer instead.
+ */
+export function savedAnswerFor (pageUrl, name, { incognito = false } = {}) {
+  const row = Object.hasOwn(QUERIED_ROWS, name) ? QUERIED_ROWS[name] : null
+  const origin = permissionOriginFromUrl(pageUrl)
+  if (!row || !origin || !isValidOrigin(origin)) return null
+  const state = getPermissionState(origin, row, incognito ? incognitoCache : permissionCache)
+  return state === 'allow-session' ? 'allow' : state
+}
+
 export function setPermission (origin, permission, state, { incognito = false } = {}) {
   if (!isValidOrigin(origin)) {
     return { ok: false, error: 'invalid origin' }
